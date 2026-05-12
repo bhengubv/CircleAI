@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "PersonaState.ToSystemPromptHint() cross-language test vectors.",
+  "vectors": [
+    {
+      "id": "default_empty",
+      "description": "Default persona (balanced, neutral, no locale) → empty string.",
+      "input": {
+        "verbosity": "balanced",
+        "formality": "neutral",
+        "preferredLocale": null
+      },
+      "expectedHint": ""
+    },
+    {
+      "id": "brief_casual",
+      "description": "Brief verbosity + casual formality → two-line hint block.",
+      "input": {
+        "verbosity": "brief",
+        "formality": "casual",
+        "preferredLocale": null
+      },
+      "expectedHint": "[User preferences]\nKeep responses brief.\nUse a casual, friendly tone.\n"
+    },
+    {
+      "id": "detailed_formal",
+      "description": "Detailed verbosity + formal formality → two-line hint block.",
+      "input": {
+        "verbosity": "detailed",
+        "formality": "formal",
+        "preferredLocale": null
+      },
+      "expectedHint": "[User preferences]\nKeep responses detailed.\nMaintain a formal, professional tone.\n"
+    },
+    {
+      "id": "brief_neutral_with_locale",
+      "description": "Brief verbosity + neutral formality + isiZulu locale → two-line hint block.",
+      "input": {
+        "verbosity": "brief",
+        "formality": "neutral",
+        "preferredLocale": "zu"
+      },
+      "expectedHint": "[User preferences]\nKeep responses brief.\nRespond in the language appropriate for locale zu.\n"
+    },
+    {
+      "id": "balanced_neutral_with_locale",
+      "description": "Default verbosity + neutral formality + Afrikaans locale → one-line hint block.",
+      "input": {
+        "verbosity": "balanced",
+        "formality": "neutral",
+        "preferredLocale": "af"
+      },
+      "expectedHint": "[User preferences]\nRespond in the language appropriate for locale af.\n"
+    },
+    {
+      "id": "detailed_casual_with_locale",
+      "description": "Detailed verbosity + casual formality + Swahili locale → three-line hint block.",
+      "input": {
+        "verbosity": "detailed",
+        "formality": "casual",
+        "preferredLocale": "sw"
+      },
+      "expectedHint": "[User preferences]\nKeep responses detailed.\nUse a casual, friendly tone.\nRespond in the language appropriate for locale sw.\n"
+    }
+  ]
+}

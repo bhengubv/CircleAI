@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "CircleIdentity and RegisteredDevice schema examples for cross-language test harnesses.",
+  "identityTiers": ["Anonymous", "Pseudonymous", "Verified"],
+  "platforms": ["android", "ios", "windows", "macos", "linux", "web", "watch", "iot"],
+  "examples": [
+    {
+      "id": "verified_multi_device",
+      "description": "A verified user with three devices: Android phone, iOS watch, and Windows desktop.",
+      "identity": {
+        "identityId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "displayName": "Sipho Dlamini",
+        "preferredLanguage": "zu",
+        "tier": "Verified",
+        "deviceIds": [
+          "d1000000-0000-0000-0000-000000000001",
+          "d2000000-0000-0000-0000-000000000002",
+          "d3000000-0000-0000-0000-000000000003"
+        ],
+        "createdAt": "2025-01-15T08:00:00Z",
+        "lastSeenAt": "2026-05-12T09:30:00Z"
+      },
+      "devices": [
+        {
+          "deviceId": "d1000000-0000-0000-0000-000000000001",
+          "identityId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "platform": "android",
+          "deviceName": "Samsung Galaxy S25",
+          "registeredAt": "2025-01-15T08:00:00Z",
+          "lastActiveAt": "2026-05-12T09:30:00Z"
+        },
+        {
+          "deviceId": "d2000000-0000-0000-0000-000000000002",
+          "identityId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "platform": "watch",
+          "deviceName": "Galaxy Watch 7",
+          "registeredAt": "2025-03-01T10:00:00Z",
+          "lastActiveAt": "2026-05-12T08:45:00Z"
+        },
+        {
+          "deviceId": "d3000000-0000-0000-0000-000000000003",
+          "identityId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "platform": "windows",
+          "deviceName": "Work Laptop",
+          "registeredAt": "2025-04-10T14:00:00Z",
+          "lastActiveAt": "2026-05-11T17:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "pseudonymous_single_device",
+      "description": "A pseudonymous user with a single iOS device.",
+      "identity": {
+        "identityId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "displayName": "B! User",
+        "preferredLanguage": "en",
+        "tier": "Pseudonymous",
+        "deviceIds": [
+          "d4000000-0000-0000-0000-000000000004"
+        ],
+        "createdAt": "2026-03-20T12:00:00Z",
+        "lastSeenAt": "2026-05-10T20:15:00Z"
+      },
+      "devices": [
+        {
+          "deviceId": "d4000000-0000-0000-0000-000000000004",
+          "identityId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+          "platform": "ios",
+          "deviceName": "iPhone 16",
+          "registeredAt": "2026-03-20T12:00:00Z",
+          "lastActiveAt": "2026-05-10T20:15:00Z"
+        }
+      ]
+    },
+    {
+      "id": "anonymous_iot",
+      "description": "An anonymous identity on an IoT device (no display name, no language preference).",
+      "identity": {
+        "identityId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+        "displayName": "Guest",
+        "preferredLanguage": null,
+        "tier": "Anonymous",
+        "deviceIds": [
+          "d5000000-0000-0000-0000-000000000005"
+        ],
+        "createdAt": "2026-05-01T00:00:00Z",
+        "lastSeenAt": "2026-05-12T06:00:00Z"
+      },
+      "devices": [
+        {
+          "deviceId": "d5000000-0000-0000-0000-000000000005",
+          "identityId": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+          "platform": "iot",
+          "deviceName": null,
+          "registeredAt": "2026-05-01T00:00:00Z",
+          "lastActiveAt": "2026-05-12T06:00:00Z"
+        }
+      ]
+    }
+  ],
+  "assertions": {
+    "tierOrder": ["Anonymous", "Pseudonymous", "Verified"],
+    "identityIdFormat": "UUID v4",
+    "deviceIdFormat": "UUID v4",
+    "timestampFormat": "ISO 8601 UTC (Z suffix)"
+  }
+}

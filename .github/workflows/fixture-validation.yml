@@ -1,0 +1,253 @@
+name: Fixture Validation
+
+# Validates that AffectState math, LanguageTag registry, and PersonaState hint
+# generation produce identical results across all Circle AI language implementations.
+#
+# Each language job:
+#   1. Reads fixtures/affect_state.json (12 vectors)
+#   2. Runs the language-specific test suite
+#   3. Fails if any vector mismatches by more than 1e-6
+#
+# Jobs are added progressively as language ports land:
+#   Phase 1  → csharp (reference), fixture-lint
+#   Phase 2  → python, typescript
+#   Phase 3  → go, kotlin
+#   Phase 4  → swift, rust
+#   Phase 5  → c, harmonyos, android
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'fixtures/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'python/**'
+      - 'typescript/**'
+      - 'go/**'
+      - 'kotlin/**'
+      - 'swift/**'
+      - 'rust/**'
+      - 'c/**'
+      - 'android/**'
+      - 'harmonyos/**'
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  # ── Fixture JSON lint ──────────────────────────────────────────────────────
+  fixture-lint:
+    name: Validate fixture JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON files
+        run: |
+          for f in fixtures/*.json; do
+            echo "Checking $f..."
+            python3 -c "import json, sys; json.load(open('$f'))" || exit 1
+            echo "  OK"
+          done
+      - name: Assert language_tags count
+        run: |
+          COUNT=$(python3 -c "
+          import json
+          data = json.load(open('fixtures/language_tags.json'))
+          print(len(data['languages']))
+          ")
+          echo "Language count: $COUNT"
+          [ "$COUNT" -eq 20 ] || (echo "Expected 20 languages, got $COUNT" && exit 1)
+      - name: Assert affect_state vector count
+        run: |
+          COUNT=$(python3 -c "
+          import json
+          data = json.load(open('fixtures/affect_state.json'))
+          print(len(data['vectors']))
+          ")
+          echo "Vector count: $COUNT"
+          [ "$COUNT" -eq 12 ] || (echo "Expected 12 vectors, got $COUNT" && exit 1)
+
+  # ── C# — reference implementation ─────────────────────────────────────────
+  csharp:
+    name: C# tests (reference)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Restore
+        run: dotnet restore CircleAI.sln
+      - name: Build
+        run: dotnet build CircleAI.sln --no-restore -c Release
+      - name: Test
+        run: dotnet test tests/Circle.AI.Tests/Circle.AI.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
+
+  # ── Python ─────────────────────────────────────────────────────────────────
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('python/pyproject.toml') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        working-directory: python
+        run: pip install -e ".[dev]"
+      - name: Test
+        working-directory: python
+        run: pytest tests/ -v
+
+  # ── TypeScript ─────────────────────────────────────────────────────────────
+  typescript:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('typescript/package.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: typescript
+        run: npm ci
+      - name: Build
+        working-directory: typescript
+        run: npm run build
+      - name: Test
+        working-directory: typescript
+        run: npm test
+
+  # ── Go ─────────────────────────────────────────────────────────────────────
+  go:
+    name: Go tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('go/go.mod') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test
+        working-directory: go
+        run: go test ./... -v
+
+  # ── Kotlin ─────────────────────────────────────────────────────────────────
+  kotlin:
+    name: Kotlin tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('kotlin/build.gradle.kts') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Test
+        working-directory: kotlin
+        run: ./gradlew test --no-daemon
+
+  # ── Swift ──────────────────────────────────────────────────────────────────
+  swift:
+    name: Swift tests
+    runs-on: macos-14
+    if: ${{ hashFiles('swift/Package.swift') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        working-directory: swift
+        run: swift test -v
+
+  # ── Rust ───────────────────────────────────────────────────────────────────
+  rust:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('rust/Cargo.toml') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        working-directory: rust
+        run: cargo test --all-features -- --nocapture
+
+  # ── C ──────────────────────────────────────────────────────────────────────
+  c:
+    name: C tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('c/CMakeLists.txt') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B c/build -S c -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build c/build
+      - name: Test
+        run: ctest --test-dir c/build -V
+
+  # ── Android (Kotlin/JVM) ───────────────────────────────────────────────────
+  android:
+    name: Android tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('android/build.gradle.kts') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+  # ── HarmonyOS / ArkTS ──────────────────────────────────────────────────────
+  harmonyos:
+    name: HarmonyOS tests
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('harmonyos/package.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: harmonyos
+        run: npm ci
+      - name: Test
+        working-directory: harmonyos
+        run: npm test
+
+  # ── Summary gate ───────────────────────────────────────────────────────────
+  # All jobs that ran must pass. This is the required status check.
+  all-pass:
+    name: All fixture validations passed
+    runs-on: ubuntu-latest
+    needs:
+      - fixture-lint
+      - csharp
+      - python
+      - typescript
+      - go
+      - kotlin
+      - swift
+      - rust
+      - c
+      - android
+      - harmonyos
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          RESULTS='${{ toJSON(needs) }}'
+          echo "$RESULTS"
+          # Fail if any job that ran (result != 'skipped') returned 'failure'
+          echo "$RESULTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k,v in data.items() if v['result'] == 'failure']
+          if failed:
+              print('FAILED:', ', '.join(failed))
+              sys.exit(1)
+          print('All jobs passed or were skipped.')
+          "

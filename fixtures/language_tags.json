@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "Canonical LanguageTag registry for KnownLanguages. 20 entries in declaration order.",
+  "languages": [
+    {
+      "bcpTag": "zu",
+      "englishName": "isiZulu",
+      "nativeName": "isiZulu",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "st",
+      "englishName": "Sesotho",
+      "nativeName": "Sesotho",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "af",
+      "englishName": "Afrikaans",
+      "nativeName": "Afrikaans",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "sw",
+      "englishName": "Swahili",
+      "nativeName": "Kiswahili",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "KE"
+    },
+    {
+      "bcpTag": "ha",
+      "englishName": "Hausa",
+      "nativeName": "Hausa",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "NG"
+    },
+    {
+      "bcpTag": "am",
+      "englishName": "Amharic",
+      "nativeName": "አማርኛ",
+      "writingSystem": "Ethiopic",
+      "isRtl": false,
+      "primaryRegion": "ET"
+    },
+    {
+      "bcpTag": "yo",
+      "englishName": "Yoruba",
+      "nativeName": "Yorùbá",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "NG"
+    },
+    {
+      "bcpTag": "ig",
+      "englishName": "Igbo",
+      "nativeName": "Igbo",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "NG"
+    },
+    {
+      "bcpTag": "xh",
+      "englishName": "isiXhosa",
+      "nativeName": "isiXhosa",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "nso",
+      "englishName": "Sepedi",
+      "nativeName": "Sepedi",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "tn",
+      "englishName": "Setswana",
+      "nativeName": "Setswana",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ZA"
+    },
+    {
+      "bcpTag": "so",
+      "englishName": "Somali",
+      "nativeName": "Soomaali",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "SO"
+    },
+    {
+      "bcpTag": "om",
+      "englishName": "Oromo",
+      "nativeName": "Afaan Oromoo",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ET"
+    },
+    {
+      "bcpTag": "ar",
+      "englishName": "Arabic",
+      "nativeName": "العربية",
+      "writingSystem": "Arabic",
+      "isRtl": true,
+      "primaryRegion": "SA"
+    },
+    {
+      "bcpTag": "en",
+      "englishName": "English",
+      "nativeName": "English",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "GB"
+    },
+    {
+      "bcpTag": "pt",
+      "englishName": "Portuguese",
+      "nativeName": "Português",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "PT"
+    },
+    {
+      "bcpTag": "fr",
+      "englishName": "French",
+      "nativeName": "Français",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "FR"
+    },
+    {
+      "bcpTag": "es",
+      "englishName": "Spanish",
+      "nativeName": "Español",
+      "writingSystem": "Latin",
+      "isRtl": false,
+      "primaryRegion": "ES"
+    },
+    {
+      "bcpTag": "zh",
+      "englishName": "Mandarin",
+      "nativeName": "中文",
+      "writingSystem": "Han",
+      "isRtl": false,
+      "primaryRegion": "CN"
+    },
+    {
+      "bcpTag": "hi",
+      "englishName": "Hindi",
+      "nativeName": "हिन्दी",
+      "writingSystem": "Devanagari",
+      "isRtl": false,
+      "primaryRegion": "IN"
+    }
+  ],
+  "writingSystems": ["Latin", "Arabic", "Ethiopic", "Han", "Devanagari"],
+  "assertions": {
+    "totalCount": 20,
+    "rtlLanguages": ["ar"],
+    "africanLanguageCount": 13,
+    "regionCodes": ["ZA", "KE", "NG", "ET", "SO", "SA", "GB", "PT", "FR", "ES", "CN", "IN"]
+  }
+}

@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "AffectState cross-language test vectors. Compare with epsilon 1e-6. Timestamps excluded.",
+  "epsilon": 1e-6,
+  "defaultState": {
+    "curiosity": 0.5,
+    "engagement": 0.5,
+    "uncertainty": 0.2,
+    "rapport": 0.0,
+    "energy": 0.5
+  },
+  "vectors": [
+    {
+      "id": "positive_signal_once",
+      "description": "Apply one positive signal from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "positive_signal",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.52,
+        "uncertainty": 0.18,
+        "rapport": 0.01,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "positive_signal_twice",
+      "description": "Apply two positive signals in succession from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "positive_signal",
+      "operationParam": { "count": 2 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.54,
+        "uncertainty": 0.16,
+        "rapport": 0.02,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "negative_signal_once",
+      "description": "Apply one negative signal from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "negative_signal",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.47,
+        "uncertainty": 0.23,
+        "rapport": 0.0,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "negative_signal_twice",
+      "description": "Apply two negative signals in succession from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "negative_signal",
+      "operationParam": { "count": 2 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.44,
+        "uncertainty": 0.26,
+        "rapport": 0.0,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "positive_then_negative",
+      "description": "Apply positive then negative from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "positive_then_negative",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.49,
+        "uncertainty": 0.21,
+        "rapport": 0.01,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "negative_then_positive",
+      "description": "Apply negative then positive from the default state.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "negative_then_positive",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.49,
+        "uncertainty": 0.21,
+        "rapport": 0.01,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "idle_decay_1h",
+      "description": "Idle decay for 1 hour from an elevated state. decay = min(0.3, 1*0.02) = 0.02.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.8,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.7
+      },
+      "operation": "idle_decay",
+      "operationParam": { "hours": 1.0 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.794,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.696
+      }
+    },
+    {
+      "id": "idle_decay_8h",
+      "description": "Idle decay for 8 hours from an elevated state. decay = min(0.3, 8*0.02) = 0.16.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.8,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.7
+      },
+      "operation": "idle_decay",
+      "operationParam": { "hours": 8.0 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.752,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.668
+      }
+    },
+    {
+      "id": "idle_decay_24h",
+      "description": "Idle decay for 24 hours. decay = min(0.3, 24*0.02) = 0.3 (capped).",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.8,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.7
+      },
+      "operation": "idle_decay",
+      "operationParam": { "hours": 24.0 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.71,
+        "uncertainty": 0.2,
+        "rapport": 0.4,
+        "energy": 0.64
+      }
+    },
+    {
+      "id": "clamp_max_positive",
+      "description": "Positive signal from near-max state: Engagement and Rapport must clamp to 1.0, Uncertainty to 0.0.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.99,
+        "uncertainty": 0.01,
+        "rapport": 0.99,
+        "energy": 0.5
+      },
+      "operation": "positive_signal",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 1.0,
+        "uncertainty": 0.0,
+        "rapport": 1.0,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "clamp_min_negative",
+      "description": "Negative signal from near-zero state: Engagement must clamp to 0.0, Uncertainty to 1.0.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.01,
+        "uncertainty": 0.98,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "negative_signal",
+      "operationParam": {},
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.0,
+        "uncertainty": 1.0,
+        "rapport": 0.0,
+        "energy": 0.5
+      }
+    },
+    {
+      "id": "idle_decay_neutral_no_change",
+      "description": "Decay when Engagement and Energy are already at neutral (0.5): result must be identical to input.",
+      "input": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      },
+      "operation": "idle_decay",
+      "operationParam": { "hours": 8.0 },
+      "expected": {
+        "curiosity": 0.5,
+        "engagement": 0.5,
+        "uncertainty": 0.2,
+        "rapport": 0.0,
+        "energy": 0.5
+      }
+    }
+  ]
+}
