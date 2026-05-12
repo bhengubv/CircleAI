@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bhengubv.circleai.CompanionTypesTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-05-12T23:33:09" hostname="SHONGOLOLO" time="0.054">
+  <properties/>
+  <testcase name="PersonaState satisfactionScore computed correctly when 10 or more signals()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.005"/>
+  <testcase name="CompanionContext copy works()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.005"/>
+  <testcase name="InterfaceKind values are correct()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.013"/>
+  <testcase name="InterfaceKind has exactly 7 values()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.003"/>
+  <testcase name="CompanionTurn assistant role works()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.002"/>
+  <testcase name="CompanionTurn constructs correctly()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.004"/>
+  <testcase name="CompanionContext constructs correctly()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.0"/>
+  <testcase name="PersonaState satisfactionScore is null when fewer than 10 signals()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.0"/>
+  <testcase name="InterfaceKind ordinals are 0 through 6()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.002"/>
+  <testcase name="PersonaState toSystemPromptHint matches all fixture vectors()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.01"/>
+  <testcase name="CompanionProactiveEvent constructs correctly()" classname="com.bhengubv.circleai.CompanionTypesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bhengubv.circleai.LanguageRegistryTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-05-12T23:33:09" hostname="SHONGOLOLO" time="0.027">
+  <properties/>
+  <testcase name="Arabic is the only RTL language()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.003"/>
+  <testcase name="IsiZulu has correct properties()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="LanguageTag Unknown sentinel has bcp tag und()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="KnownLanguages All has exactly 20 entries()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.001"/>
+  <testcase name="fixture matches KnownLanguages All in order()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.007"/>
+  <testcase name="Mandarin uses Han script()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="Hindi uses Devanagari script()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="Sepedi has bcp tag nso()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="Amharic uses Ethiopic script()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.001"/>
+  <testcase name="African languages count is 13()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.007"/>
+  <testcase name="All entries are unique by bcpTag()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="Arabic uses Arabic script and is RTL()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.0"/>
+  <testcase name="fixture assertions block validates counts()" classname="com.bhengubv.circleai.LanguageRegistryTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,69 @@
+// Inference.kt
+//
+// Kotlin port of Circle.AI.Inference portable layer.
+//
+// Covers:
+//   GenerationOptions  — knobs for a single generation call
+//   IChatGenerator     — contract for an on-device chat-style text generator
+//
+// Note: ChatMessage is declared in com.bhengubv.circleai.models.Models to avoid
+// duplication. The inference layer imports it from there.
+
+package com.bhengubv.circleai.inference
+
+import com.bhengubv.circleai.models.ChatMessage
+import kotlinx.coroutines.flow.Flow
+
+// ---------------------------------------------------------------------------
+// GenerationOptions
+// ---------------------------------------------------------------------------
+
+/**
+ * Knobs for a single generation call.
+ * All fields have sensible defaults and are immutable after construction.
+ */
+data class GenerationOptions(
+    /** Maximum number of new tokens to produce. */
+    val maxTokens: Int = 512,
+    /** Sampling temperature. 0 = greedy; higher = more random. */
+    val temperature: Float = 0.7f,
+    /** Nucleus sampling cutoff (top-p). 1.0 disables. */
+    val topP: Float = 0.9f,
+    /** Top-k cutoff. 0 disables. */
+    val topK: Int = 40,
+    /** Optional RNG seed. null means non-deterministic. */
+    val seed: Int? = null,
+    /**
+     * Optional substrings that will end generation when matched in the emitted
+     * output (e.g. role-tag boundaries).
+     */
+    val stopSequences: Array<String>? = null
+)
+
+// ---------------------------------------------------------------------------
+// IChatGenerator
+// ---------------------------------------------------------------------------
+
+/**
+ * Contract for an on-device chat-style text generator. Implementations own
+ * native model state and must be [AutoCloseable].
+ */
+interface IChatGenerator : AutoCloseable {
+    /**
+     * Generates a complete assistant reply for the given conversation.
+     */
+    suspend fun generateAsync(
+        messages: List<ChatMessage>,
+        options: GenerationOptions? = null
+    ): String
+
+    /**
+     * Streams the assistant reply token-by-token (or piece-by-piece) as it is
+     * decoded. Each emitted string is the next chunk to append to the output —
+     * callers should concatenate them in order.
+     */
+    fun streamAsync(
+        messages: List<ChatMessage>,
+        options: GenerationOptions? = null
+    ): Flow<String>
+}
