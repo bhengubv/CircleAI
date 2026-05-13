@@ -1,0 +1,3 @@
+[submodule "aether-protocol"]
+	path = aether-protocol
+	url = https://github.com/bhengubv/aether-protocol
