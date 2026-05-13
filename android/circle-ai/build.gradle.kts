@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21"
     id("maven-publish")
 }
 
@@ -37,6 +38,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
     testImplementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
 }

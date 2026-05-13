@@ -8,7 +8,11 @@ package com.bhengubv.circleai
 import com.bhengubv.circleai.identity.CircleIdentity
 import com.bhengubv.circleai.identity.IdentityTier
 import com.bhengubv.circleai.identity.RegisteredDevice
-import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.time.Instant
@@ -19,7 +23,7 @@ import kotlin.test.assertTrue
 
 class IdentityTest {
 
-    private val mapper = ObjectMapper()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private fun locateFixture(name: String): File {
         val absolute = File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\$name")
@@ -53,18 +57,18 @@ class IdentityTest {
 
     @Test
     fun `fixture verified_multi_device identity parses correctly`() {
-        val root = mapper.readTree(locateFixture("identity.json"))
-        val example = root["examples"].first { it["id"].asText() == "verified_multi_device" }
-        val id = example["identity"]
+        val root = json.parseToJsonElement(locateFixture("identity.json").readText()).jsonObject
+        val example = root["examples"]!!.jsonArray.first { it.jsonObject["id"]!!.jsonPrimitive.content == "verified_multi_device" }.jsonObject
+        val id = example["identity"]!!.jsonObject
 
         val identity = CircleIdentity(
-            identityId        = id["identityId"].asText(),
-            displayName       = id["displayName"].asText(),
-            preferredLanguage = id["preferredLanguage"].takeIf { !it.isNull }?.asText(),
-            tier              = IdentityTier.valueOf(id["tier"].asText()),
-            deviceIds         = id["deviceIds"].map { it.asText() },
-            createdAt         = Instant.parse(id["createdAt"].asText()),
-            lastSeenAt        = Instant.parse(id["lastSeenAt"].asText())
+            identityId        = id["identityId"]!!.jsonPrimitive.content,
+            displayName       = id["displayName"]!!.jsonPrimitive.content,
+            preferredLanguage = id["preferredLanguage"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content,
+            tier              = IdentityTier.valueOf(id["tier"]!!.jsonPrimitive.content),
+            deviceIds         = id["deviceIds"]!!.jsonArray.map { it.jsonPrimitive.content },
+            createdAt         = Instant.parse(id["createdAt"]!!.jsonPrimitive.content),
+            lastSeenAt        = Instant.parse(id["lastSeenAt"]!!.jsonPrimitive.content)
         )
 
         assertEquals("a1b2c3d4-e5f6-7890-abcd-ef1234567890", identity.identityId)
@@ -80,18 +84,19 @@ class IdentityTest {
 
     @Test
     fun `fixture verified_multi_device devices parse correctly`() {
-        val root = mapper.readTree(locateFixture("identity.json"))
-        val example = root["examples"].first { it["id"].asText() == "verified_multi_device" }
-        val devicesNode = example["devices"]
+        val root = json.parseToJsonElement(locateFixture("identity.json").readText()).jsonObject
+        val example = root["examples"]!!.jsonArray.first { it.jsonObject["id"]!!.jsonPrimitive.content == "verified_multi_device" }.jsonObject
+        val devicesArray = example["devices"]!!.jsonArray
 
-        val devices = devicesNode.map { d ->
+        val devices = devicesArray.map { element ->
+            val d = element.jsonObject
             RegisteredDevice(
-                deviceId     = d["deviceId"].asText(),
-                identityId   = d["identityId"].asText(),
-                platform     = d["platform"].asText(),
-                deviceName   = d["deviceName"].takeIf { !it.isNull }?.asText(),
-                registeredAt = Instant.parse(d["registeredAt"].asText()),
-                lastActiveAt = Instant.parse(d["lastActiveAt"].asText())
+                deviceId     = d["deviceId"]!!.jsonPrimitive.content,
+                identityId   = d["identityId"]!!.jsonPrimitive.content,
+                platform     = d["platform"]!!.jsonPrimitive.content,
+                deviceName   = d["deviceName"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content,
+                registeredAt = Instant.parse(d["registeredAt"]!!.jsonPrimitive.content),
+                lastActiveAt = Instant.parse(d["lastActiveAt"]!!.jsonPrimitive.content)
             )
         }
 
@@ -108,18 +113,18 @@ class IdentityTest {
 
     @Test
     fun `fixture pseudonymous_single_device identity parses correctly`() {
-        val root = mapper.readTree(locateFixture("identity.json"))
-        val example = root["examples"].first { it["id"].asText() == "pseudonymous_single_device" }
-        val id = example["identity"]
+        val root = json.parseToJsonElement(locateFixture("identity.json").readText()).jsonObject
+        val example = root["examples"]!!.jsonArray.first { it.jsonObject["id"]!!.jsonPrimitive.content == "pseudonymous_single_device" }.jsonObject
+        val id = example["identity"]!!.jsonObject
 
         val identity = CircleIdentity(
-            identityId        = id["identityId"].asText(),
-            displayName       = id["displayName"].asText(),
-            preferredLanguage = id["preferredLanguage"].takeIf { !it.isNull }?.asText(),
-            tier              = IdentityTier.valueOf(id["tier"].asText()),
-            deviceIds         = id["deviceIds"].map { it.asText() },
-            createdAt         = Instant.parse(id["createdAt"].asText()),
-            lastSeenAt        = Instant.parse(id["lastSeenAt"].asText())
+            identityId        = id["identityId"]!!.jsonPrimitive.content,
+            displayName       = id["displayName"]!!.jsonPrimitive.content,
+            preferredLanguage = id["preferredLanguage"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content,
+            tier              = IdentityTier.valueOf(id["tier"]!!.jsonPrimitive.content),
+            deviceIds         = id["deviceIds"]!!.jsonArray.map { it.jsonPrimitive.content },
+            createdAt         = Instant.parse(id["createdAt"]!!.jsonPrimitive.content),
+            lastSeenAt        = Instant.parse(id["lastSeenAt"]!!.jsonPrimitive.content)
         )
 
         assertEquals(IdentityTier.Pseudonymous, identity.tier)
@@ -132,32 +137,32 @@ class IdentityTest {
 
     @Test
     fun `fixture anonymous_iot has null preferredLanguage and null deviceName`() {
-        val root = mapper.readTree(locateFixture("identity.json"))
-        val example = root["examples"].first { it["id"].asText() == "anonymous_iot" }
-        val id = example["identity"]
+        val root = json.parseToJsonElement(locateFixture("identity.json").readText()).jsonObject
+        val example = root["examples"]!!.jsonArray.first { it.jsonObject["id"]!!.jsonPrimitive.content == "anonymous_iot" }.jsonObject
+        val id = example["identity"]!!.jsonObject
 
         val identity = CircleIdentity(
-            identityId        = id["identityId"].asText(),
-            displayName       = id["displayName"].asText(),
-            preferredLanguage = id["preferredLanguage"].takeIf { !it.isNull }?.asText(),
-            tier              = IdentityTier.valueOf(id["tier"].asText()),
-            deviceIds         = id["deviceIds"].map { it.asText() },
-            createdAt         = Instant.parse(id["createdAt"].asText()),
-            lastSeenAt        = Instant.parse(id["lastSeenAt"].asText())
+            identityId        = id["identityId"]!!.jsonPrimitive.content,
+            displayName       = id["displayName"]!!.jsonPrimitive.content,
+            preferredLanguage = id["preferredLanguage"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content,
+            tier              = IdentityTier.valueOf(id["tier"]!!.jsonPrimitive.content),
+            deviceIds         = id["deviceIds"]!!.jsonArray.map { it.jsonPrimitive.content },
+            createdAt         = Instant.parse(id["createdAt"]!!.jsonPrimitive.content),
+            lastSeenAt        = Instant.parse(id["lastSeenAt"]!!.jsonPrimitive.content)
         )
 
         assertEquals(IdentityTier.Anonymous, identity.tier)
         assertEquals("Guest", identity.displayName)
         assertNull(identity.preferredLanguage)
 
-        val deviceNode = example["devices"][0]
+        val deviceNode = example["devices"]!!.jsonArray[0].jsonObject
         val device = RegisteredDevice(
-            deviceId     = deviceNode["deviceId"].asText(),
-            identityId   = deviceNode["identityId"].asText(),
-            platform     = deviceNode["platform"].asText(),
-            deviceName   = deviceNode["deviceName"].takeIf { !it.isNull }?.asText(),
-            registeredAt = Instant.parse(deviceNode["registeredAt"].asText()),
-            lastActiveAt = Instant.parse(deviceNode["lastActiveAt"].asText())
+            deviceId     = deviceNode["deviceId"]!!.jsonPrimitive.content,
+            identityId   = deviceNode["identityId"]!!.jsonPrimitive.content,
+            platform     = deviceNode["platform"]!!.jsonPrimitive.content,
+            deviceName   = deviceNode["deviceName"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content,
+            registeredAt = Instant.parse(deviceNode["registeredAt"]!!.jsonPrimitive.content),
+            lastActiveAt = Instant.parse(deviceNode["lastActiveAt"]!!.jsonPrimitive.content)
         )
 
         assertEquals("iot", device.platform)
@@ -168,8 +173,8 @@ class IdentityTest {
 
     @Test
     fun `fixture platforms list has 8 entries`() {
-        val root = mapper.readTree(locateFixture("identity.json"))
-        val platforms = root["platforms"].map { it.asText() }
+        val root = json.parseToJsonElement(locateFixture("identity.json").readText()).jsonObject
+        val platforms = root["platforms"]!!.jsonArray.map { it.jsonPrimitive.content }
         assertEquals(8, platforms.size)
         assertTrue(platforms.containsAll(listOf("android", "ios", "windows", "macos", "linux", "web", "watch", "iot")))
     }

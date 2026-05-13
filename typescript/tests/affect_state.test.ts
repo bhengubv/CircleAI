@@ -4,6 +4,8 @@
 // All 12 test vectors from fixtures/affect_state.json.
 // Each computed value must match the fixture within epsilon 1e-6.
 
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AffectState } from '../src/memory';
@@ -75,6 +77,13 @@ function applyOperation(state: AffectState, vector: AffectVector): void {
   }
 }
 
+function checkClose(field: string, got: number, want: number, epsilon: number): void {
+  assert.ok(
+    Math.abs(got - want) <= epsilon,
+    `${field}: got ${got}, want ${want} (diff ${Math.abs(got - want)} > ${epsilon})`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Load fixture
 // ---------------------------------------------------------------------------
@@ -88,71 +97,63 @@ const EPSILON = fixture.epsilon;
 // ---------------------------------------------------------------------------
 
 describe('AffectState math vectors', () => {
-  test.each(fixture.vectors)(
-    '$id — $description',
-    (vector) => {
+  for (const vector of fixture.vectors) {
+    it(`${vector.id} — ${vector.description}`, () => {
       const state = makeState(vector.input);
       applyOperation(state, vector);
 
-      expect(state.curiosity).toBeCloseTo(vector.expected.curiosity,    -Math.log10(EPSILON));
-      expect(state.engagement).toBeCloseTo(vector.expected.engagement,  -Math.log10(EPSILON));
-      expect(state.uncertainty).toBeCloseTo(vector.expected.uncertainty,-Math.log10(EPSILON));
-      expect(state.rapport).toBeCloseTo(vector.expected.rapport,        -Math.log10(EPSILON));
-      expect(state.energy).toBeCloseTo(vector.expected.energy,          -Math.log10(EPSILON));
-
-      // Strict epsilon check to satisfy the "within 1e-6" contract
-      expect(Math.abs(state.curiosity   - vector.expected.curiosity)).toBeLessThanOrEqual(EPSILON);
-      expect(Math.abs(state.engagement  - vector.expected.engagement)).toBeLessThanOrEqual(EPSILON);
-      expect(Math.abs(state.uncertainty - vector.expected.uncertainty)).toBeLessThanOrEqual(EPSILON);
-      expect(Math.abs(state.rapport     - vector.expected.rapport)).toBeLessThanOrEqual(EPSILON);
-      expect(Math.abs(state.energy      - vector.expected.energy)).toBeLessThanOrEqual(EPSILON);
-    },
-  );
+      checkClose('curiosity',   state.curiosity,   vector.expected.curiosity,   EPSILON);
+      checkClose('engagement',  state.engagement,  vector.expected.engagement,  EPSILON);
+      checkClose('uncertainty', state.uncertainty, vector.expected.uncertainty, EPSILON);
+      checkClose('rapport',     state.rapport,     vector.expected.rapport,     EPSILON);
+      checkClose('energy',      state.energy,      vector.expected.energy,      EPSILON);
+    });
+  }
 });
 
 describe('AffectState toSystemPromptHint()', () => {
-  test('returns empty string for neutral state', () => {
+  it('returns empty string for neutral state', () => {
     const s = new AffectState();
-    expect(s.toSystemPromptHint()).toBe('');
+    assert.equal(s.toSystemPromptHint(), '');
   });
 
-  test('emits curiosity hint when > 0.7', () => {
+  it('emits curiosity hint when > 0.7', () => {
     const s = new AffectState();
     s.curiosity = 0.8;
     const hint = s.toSystemPromptHint();
-    expect(hint).toContain('[Affect state]');
-    expect(hint).toContain('deeply curious');
+    assert.ok((hint as string).includes('[Affect state]'), `expected "[Affect state]" in "${hint}"`);
+    assert.ok((hint as string).includes('deeply curious'), `expected "deeply curious" in "${hint}"`);
   });
 
-  test('emits high-engagement hint when engagement > 0.7', () => {
+  it('emits high-engagement hint when engagement > 0.7', () => {
     const s = new AffectState();
     s.engagement = 0.75;
     const hint = s.toSystemPromptHint();
-    expect(hint).toContain('fully engaged');
+    assert.ok((hint as string).includes('fully engaged'), `expected "fully engaged" in "${hint}"`);
   });
 
-  test('emits low-engagement hint when engagement < 0.3', () => {
+  it('emits low-engagement hint when engagement < 0.3', () => {
     const s = new AffectState();
     s.engagement = 0.2;
     const hint = s.toSystemPromptHint();
-    expect(hint).toContain('brief');
+    assert.ok((hint as string).includes('brief'), `expected "brief" in "${hint}"`);
   });
 
-  test('emits rapport hint when > 0.7', () => {
+  it('emits rapport hint when > 0.7', () => {
     const s = new AffectState();
     s.rapport = 0.8;
     const hint = s.toSystemPromptHint();
-    expect(hint).toContain('warm, familiar tone');
+    assert.ok((hint as string).includes('warm, familiar tone'), `expected "warm, familiar tone" in "${hint}"`);
   });
 
-  test('hint ends with newline when non-empty', () => {
+  it('hint ends with newline when non-empty', () => {
     const s = new AffectState();
     s.curiosity = 0.9;
     const hint = s.toSystemPromptHint();
-    expect(hint.endsWith('\n')).toBe(true);
+    assert.ok(hint.endsWith('\n'), `expected hint to end with newline, got: "${hint}"`);
   });
 
-  test('multiple flags combine into multi-line hint', () => {
+  it('multiple flags combine into multi-line hint', () => {
     const s = new AffectState();
     s.curiosity  = 0.8;
     s.engagement = 0.8;
@@ -160,18 +161,18 @@ describe('AffectState toSystemPromptHint()', () => {
     const hint = s.toSystemPromptHint();
     const lines = hint.split('\n').filter(l => l.length > 0);
     // header + 3 hints
-    expect(lines.length).toBeGreaterThanOrEqual(4);
+    assert.ok(lines.length >= 4, `expected at least 4 lines, got ${lines.length}`);
   });
 });
 
 describe('AffectState defaults', () => {
-  test('default field values match fixture defaultState', () => {
+  it('default field values match fixture defaultState', () => {
     const s = new AffectState();
-    expect(s.userId).toBe('default');
-    expect(s.curiosity).toBe(0.5);
-    expect(s.engagement).toBe(0.5);
-    expect(s.uncertainty).toBe(0.2);
-    expect(s.rapport).toBe(0.0);
-    expect(s.energy).toBe(0.5);
+    assert.equal(s.userId, 'default');
+    assert.equal(s.curiosity, 0.5);
+    assert.equal(s.engagement, 0.5);
+    assert.equal(s.uncertainty, 0.2);
+    assert.equal(s.rapport, 0.0);
+    assert.equal(s.energy, 0.5);
   });
 });

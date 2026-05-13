@@ -3,6 +3,8 @@
 // Verifies IdentityTier enum, CircleIdentity schema, RegisteredDevice schema,
 // and fixture examples from fixtures/identity.json.
 
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import { IdentityTier, type CircleIdentity, type RegisteredDevice } from '../src/identity';
@@ -38,10 +40,10 @@ interface IdentityFixture {
   platforms:     string[];
   examples:      IdentityFixtureExample[];
   assertions: {
-    tierOrder:          string[];
-    identityIdFormat:   string;
-    deviceIdFormat:     string;
-    timestampFormat:    string;
+    tierOrder:        string[];
+    identityIdFormat: string;
+    deviceIdFormat:   string;
+    timestampFormat:  string;
   };
 }
 
@@ -84,103 +86,114 @@ function buildDevices(ex: IdentityFixtureExample): RegisteredDevice[] {
 // ---------------------------------------------------------------------------
 
 describe('IdentityTier enum', () => {
-  test('has three values', () => {
+  it('has three values', () => {
     const tiers = Object.values(IdentityTier);
-    expect(tiers.length).toBe(3);
+    assert.equal(tiers.length, 3);
   });
 
-  test('contains Anonymous', () => {
-    expect(IdentityTier.Anonymous).toBe('Anonymous');
+  it('contains Anonymous', () => {
+    assert.equal(IdentityTier.Anonymous, 'Anonymous');
   });
 
-  test('contains Pseudonymous', () => {
-    expect(IdentityTier.Pseudonymous).toBe('Pseudonymous');
+  it('contains Pseudonymous', () => {
+    assert.equal(IdentityTier.Pseudonymous, 'Pseudonymous');
   });
 
-  test('contains Verified', () => {
-    expect(IdentityTier.Verified).toBe('Verified');
+  it('contains Verified', () => {
+    assert.equal(IdentityTier.Verified, 'Verified');
   });
 
-  test('tier values match fixture tierOrder', () => {
+  it('tier values match fixture tierOrder', () => {
     for (const tier of fixture.assertions.tierOrder) {
-      expect(Object.values(IdentityTier)).toContain(tier);
+      assert.ok(
+        Object.values(IdentityTier).includes(tier as IdentityTier),
+        `expected IdentityTier to contain "${tier}"`,
+      );
     }
   });
 
-  test('all fixture identity tiers are valid IdentityTier values', () => {
+  it('all fixture identity tiers are valid IdentityTier values', () => {
     for (const tier of fixture.identityTiers) {
-      expect(Object.values(IdentityTier)).toContain(tier);
+      assert.ok(
+        Object.values(IdentityTier).includes(tier as IdentityTier),
+        `expected IdentityTier to contain "${tier}"`,
+      );
     }
   });
 });
 
 describe('CircleIdentity schema', () => {
-  test.each(fixture.examples)('$id — $description', (ex) => {
-    const identity = buildIdentity(ex);
+  for (const ex of fixture.examples) {
+    it(`${ex.id} — ${ex.description}`, () => {
+      const identity = buildIdentity(ex);
 
-    expect(typeof identity.identityId).toBe('string');
-    expect(identity.identityId.length).toBeGreaterThan(0);
-    expect(typeof identity.displayName).toBe('string');
-    expect(Object.values(IdentityTier)).toContain(identity.tier);
-    expect(Array.isArray(identity.deviceIds)).toBe(true);
-    expect(identity.createdAt instanceof Date).toBe(true);
-    expect(identity.lastSeenAt instanceof Date).toBe(true);
-    expect(identity.lastSeenAt >= identity.createdAt).toBe(true);
-  });
+      assert.equal(typeof identity.identityId, 'string');
+      assert.ok(identity.identityId.length > 0, 'identityId should be non-empty');
+      assert.equal(typeof identity.displayName, 'string');
+      assert.ok(
+        Object.values(IdentityTier).includes(identity.tier),
+        `unexpected tier "${identity.tier}"`,
+      );
+      assert.ok(Array.isArray(identity.deviceIds), 'deviceIds should be an array');
+      assert.ok(identity.createdAt instanceof Date, 'createdAt should be a Date');
+      assert.ok(identity.lastSeenAt instanceof Date, 'lastSeenAt should be a Date');
+      assert.ok(identity.lastSeenAt >= identity.createdAt, 'lastSeenAt should be >= createdAt');
+    });
+  }
 
-  test('verified_multi_device has 3 device IDs', () => {
+  it('verified_multi_device has 3 device IDs', () => {
     const ex = fixture.examples.find(e => e.id === 'verified_multi_device')!;
     const identity = buildIdentity(ex);
-    expect(identity.deviceIds.length).toBe(3);
-    expect(identity.tier).toBe(IdentityTier.Verified);
+    assert.equal(identity.deviceIds.length, 3);
+    assert.equal(identity.tier, IdentityTier.Verified);
   });
 
-  test('pseudonymous_single_device has Pseudonymous tier', () => {
+  it('pseudonymous_single_device has Pseudonymous tier', () => {
     const ex = fixture.examples.find(e => e.id === 'pseudonymous_single_device')!;
     const identity = buildIdentity(ex);
-    expect(identity.tier).toBe(IdentityTier.Pseudonymous);
-    expect(identity.preferredLanguage).toBe('en');
+    assert.equal(identity.tier, IdentityTier.Pseudonymous);
+    assert.equal(identity.preferredLanguage, 'en');
   });
 
-  test('anonymous_iot has null preferredLanguage', () => {
+  it('anonymous_iot has null preferredLanguage', () => {
     const ex = fixture.examples.find(e => e.id === 'anonymous_iot')!;
     const identity = buildIdentity(ex);
-    expect(identity.tier).toBe(IdentityTier.Anonymous);
-    expect(identity.preferredLanguage).toBeNull();
+    assert.equal(identity.tier, IdentityTier.Anonymous);
+    assert.equal(identity.preferredLanguage, null);
   });
 });
 
 describe('RegisteredDevice schema', () => {
-  test('all fixture platforms are known platform strings', () => {
+  it('all fixture platforms are known platform strings', () => {
     const knownPlatforms = new Set(fixture.platforms);
     for (const ex of fixture.examples) {
       for (const d of buildDevices(ex)) {
-        expect(knownPlatforms.has(d.platform)).toBe(true);
+        assert.ok(knownPlatforms.has(d.platform), `unexpected platform "${d.platform}"`);
       }
     }
   });
 
-  test('all devices have matching identityId', () => {
+  it('all devices have matching identityId', () => {
     for (const ex of fixture.examples) {
       const devices = buildDevices(ex);
       for (const d of devices) {
-        expect(d.identityId).toBe(ex.identity.identityId);
+        assert.equal(d.identityId, ex.identity.identityId);
       }
     }
   });
 
-  test('anonymous_iot device has null deviceName', () => {
+  it('anonymous_iot device has null deviceName', () => {
     const ex = fixture.examples.find(e => e.id === 'anonymous_iot')!;
     const devices = buildDevices(ex);
-    expect(devices[0].deviceName).toBeNull();
-    expect(devices[0].platform).toBe('iot');
+    assert.equal(devices[0].deviceName, null);
+    assert.equal(devices[0].platform, 'iot');
   });
 
-  test('verified_multi_device has android, watch, windows platforms', () => {
+  it('verified_multi_device has android, watch, windows platforms', () => {
     const ex = fixture.examples.find(e => e.id === 'verified_multi_device')!;
     const platforms = buildDevices(ex).map(d => d.platform);
-    expect(platforms).toContain('android');
-    expect(platforms).toContain('watch');
-    expect(platforms).toContain('windows');
+    assert.ok(platforms.includes('android'), 'expected android platform');
+    assert.ok(platforms.includes('watch'), 'expected watch platform');
+    assert.ok(platforms.includes('windows'), 'expected windows platform');
   });
 });

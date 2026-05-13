@@ -3,11 +3,13 @@
 // Tests for Companion types — HarmonyOS/ArkTS port.
 // Verifies CompanionContext, CompanionTurn, InterfaceKind structural correctness.
 
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import type { CompanionContext, CompanionTurn } from '../src/companion';
 import { InterfaceKind } from '../src/companion';
 
 describe('Companion types', () => {
-  test('create companion context', () => {
+  it('create companion context', () => {
     const ctx: CompanionContext = {
       identityId:           '550e8400-e29b-41d4-a716-446655440001',
       displayName:          'Test User',
@@ -19,33 +21,33 @@ describe('Companion types', () => {
       activeGoals:          [],
       contextBuiltAt:       new Date(),
     };
-    expect(ctx.interface).toBe(InterfaceKind.Mobile);
-    expect(ctx.preferredLanguage).toBe('en-US');
+    assert.strictEqual(ctx.interface, InterfaceKind.Mobile);
+    assert.strictEqual(ctx.preferredLanguage, 'en-US');
   });
 
-  test('all interface kinds are defined', () => {
+  it('all interface kinds are defined', () => {
     const kinds = Object.values(InterfaceKind);
-    expect(kinds).toContain('Mobile');
-    expect(kinds).toContain('Wearable');
-    expect(kinds).toContain('Desktop');
-    expect(kinds).toContain('Web');
-    expect(kinds).toContain('IoT');
-    expect(kinds).toContain('Ambient');
-    expect(kinds).toContain('Headless');
-    expect(kinds.length).toBe(7);
+    assert.ok((kinds as string[]).includes('Mobile'));
+    assert.ok((kinds as string[]).includes('Wearable'));
+    assert.ok((kinds as string[]).includes('Desktop'));
+    assert.ok((kinds as string[]).includes('Web'));
+    assert.ok((kinds as string[]).includes('IoT'));
+    assert.ok((kinds as string[]).includes('Ambient'));
+    assert.ok((kinds as string[]).includes('Headless'));
+    assert.strictEqual(kinds.length, 7);
   });
 
-  test('create companion turn', () => {
+  it('create companion turn', () => {
     const turn: CompanionTurn = {
       role:      'user',
       content:   'Hello',
       timestamp: new Date(),
     };
-    expect(turn.role).toBe('user');
-    expect(turn.content).toBe('Hello');
+    assert.strictEqual(turn.role, 'user');
+    assert.strictEqual(turn.content, 'Hello');
   });
 
-  test('companion context with null preferredLanguage', () => {
+  it('companion context with null preferredLanguage', () => {
     const ctx: CompanionContext = {
       identityId:           '550e8400-e29b-41d4-a716-446655440002',
       displayName:          'Anonymous',
@@ -57,21 +59,21 @@ describe('Companion types', () => {
       activeGoals:          [],
       contextBuiltAt:       new Date(),
     };
-    expect(ctx.preferredLanguage).toBeNull();
-    expect(ctx.interface).toBe(InterfaceKind.IoT);
+    assert.strictEqual(ctx.preferredLanguage, null);
+    assert.strictEqual(ctx.interface, InterfaceKind.IoT);
   });
 
-  test('assistant turn', () => {
+  it('assistant turn', () => {
     const turn: CompanionTurn = {
       role:      'assistant',
       content:   'Hi there!',
       timestamp: new Date(),
     };
-    expect(turn.role).toBe('assistant');
-    expect(turn.content).toBe('Hi there!');
+    assert.strictEqual(turn.role, 'assistant');
+    assert.strictEqual(turn.content, 'Hi there!');
   });
 
-  test('contextBuiltAt is a Date', () => {
+  it('contextBuiltAt is a Date', () => {
     const now = new Date();
     const ctx: CompanionContext = {
       identityId:           '550e8400-e29b-41d4-a716-446655440003',
@@ -84,8 +86,8 @@ describe('Companion types', () => {
       activeGoals:          ['goal 1'],
       contextBuiltAt:       now,
     };
-    expect(ctx.contextBuiltAt).toBeInstanceOf(Date);
-    expect(ctx.recentMemorySnippets.length).toBe(2);
-    expect(ctx.activeGoals.length).toBe(1);
+    assert.ok(ctx.contextBuiltAt instanceof Date);
+    assert.strictEqual(ctx.recentMemorySnippets.length, 2);
+    assert.strictEqual(ctx.activeGoals.length, 1);
   });
 });

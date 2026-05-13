@@ -3,6 +3,8 @@
 // Verifies CompanionContext, CompanionTurn, CompanionProactiveEvent,
 // and InterfaceKind enum (must have exactly 7 values).
 
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import {
   InterfaceKind,
   type CompanionContext,
@@ -15,43 +17,43 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('InterfaceKind enum', () => {
-  test('has exactly 7 values', () => {
+  it('has exactly 7 values', () => {
     const values = Object.values(InterfaceKind);
-    expect(values.length).toBe(7);
+    assert.equal(values.length, 7);
   });
 
-  test('contains Mobile', () => {
-    expect(InterfaceKind.Mobile).toBe('Mobile');
+  it('contains Mobile', () => {
+    assert.equal(InterfaceKind.Mobile, 'Mobile');
   });
 
-  test('contains Wearable', () => {
-    expect(InterfaceKind.Wearable).toBe('Wearable');
+  it('contains Wearable', () => {
+    assert.equal(InterfaceKind.Wearable, 'Wearable');
   });
 
-  test('contains Desktop', () => {
-    expect(InterfaceKind.Desktop).toBe('Desktop');
+  it('contains Desktop', () => {
+    assert.equal(InterfaceKind.Desktop, 'Desktop');
   });
 
-  test('contains Web', () => {
-    expect(InterfaceKind.Web).toBe('Web');
+  it('contains Web', () => {
+    assert.equal(InterfaceKind.Web, 'Web');
   });
 
-  test('contains IoT', () => {
-    expect(InterfaceKind.IoT).toBe('IoT');
+  it('contains IoT', () => {
+    assert.equal(InterfaceKind.IoT, 'IoT');
   });
 
-  test('contains Ambient', () => {
-    expect(InterfaceKind.Ambient).toBe('Ambient');
+  it('contains Ambient', () => {
+    assert.equal(InterfaceKind.Ambient, 'Ambient');
   });
 
-  test('contains Headless', () => {
-    expect(InterfaceKind.Headless).toBe('Headless');
+  it('contains Headless', () => {
+    assert.equal(InterfaceKind.Headless, 'Headless');
   });
 
-  test('all 7 values are unique', () => {
+  it('all 7 values are unique', () => {
     const values = Object.values(InterfaceKind);
     const unique = new Set(values);
-    expect(unique.size).toBe(7);
+    assert.equal(unique.size, 7);
   });
 });
 
@@ -75,38 +77,38 @@ describe('CompanionContext', () => {
     };
   }
 
-  test('constructs with all required fields', () => {
+  it('constructs with all required fields', () => {
     const ctx = makeContext();
-    expect(ctx.identityId).toBe('test-identity-001');
-    expect(ctx.displayName).toBe('Sipho Dlamini');
-    expect(ctx.preferredLanguage).toBe('zu');
-    expect(ctx.interface).toBe(InterfaceKind.Mobile);
+    assert.equal(ctx.identityId, 'test-identity-001');
+    assert.equal(ctx.displayName, 'Sipho Dlamini');
+    assert.equal(ctx.preferredLanguage, 'zu');
+    assert.equal(ctx.interface, InterfaceKind.Mobile);
   });
 
-  test('preferredLanguage can be null', () => {
+  it('preferredLanguage can be null', () => {
     const ctx = makeContext({ preferredLanguage: null });
-    expect(ctx.preferredLanguage).toBeNull();
+    assert.equal(ctx.preferredLanguage, null);
   });
 
-  test('recentMemorySnippets is an array', () => {
+  it('recentMemorySnippets is an array', () => {
     const ctx = makeContext();
-    expect(Array.isArray(ctx.recentMemorySnippets)).toBe(true);
+    assert.ok(Array.isArray(ctx.recentMemorySnippets), 'recentMemorySnippets should be an array');
   });
 
-  test('activeGoals is an array', () => {
+  it('activeGoals is an array', () => {
     const ctx = makeContext();
-    expect(Array.isArray(ctx.activeGoals)).toBe(true);
+    assert.ok(Array.isArray(ctx.activeGoals), 'activeGoals should be an array');
   });
 
-  test('contextBuiltAt is a Date', () => {
+  it('contextBuiltAt is a Date', () => {
     const ctx = makeContext();
-    expect(ctx.contextBuiltAt instanceof Date).toBe(true);
+    assert.ok(ctx.contextBuiltAt instanceof Date, 'contextBuiltAt should be a Date');
   });
 
-  test('interface accepts any InterfaceKind value', () => {
+  it('interface accepts any InterfaceKind value', () => {
     for (const kind of Object.values(InterfaceKind)) {
       const ctx = makeContext({ interface: kind });
-      expect(ctx.interface).toBe(kind);
+      assert.equal(ctx.interface, kind);
     }
   });
 });
@@ -116,32 +118,32 @@ describe('CompanionContext', () => {
 // ---------------------------------------------------------------------------
 
 describe('CompanionTurn', () => {
-  test('constructs user turn', () => {
+  it('constructs user turn', () => {
     const turn: CompanionTurn = {
       role:      'user',
       content:   'Hello B!',
       timestamp: new Date(),
     };
-    expect(turn.role).toBe('user');
-    expect(turn.content).toBe('Hello B!');
-    expect(turn.timestamp instanceof Date).toBe(true);
+    assert.equal(turn.role, 'user');
+    assert.equal(turn.content, 'Hello B!');
+    assert.ok(turn.timestamp instanceof Date, 'timestamp should be a Date');
   });
 
-  test('constructs assistant turn', () => {
+  it('constructs assistant turn', () => {
     const turn: CompanionTurn = {
       role:      'assistant',
       content:   'Hi there! How can I help?',
       timestamp: new Date(),
     };
-    expect(turn.role).toBe('assistant');
+    assert.equal(turn.role, 'assistant');
   });
 
-  test('timestamps are ordered in a sequence', () => {
+  it('timestamps are ordered in a sequence', () => {
     const t1 = new Date('2026-05-13T09:00:00Z');
     const t2 = new Date('2026-05-13T09:00:05Z');
-    const userTurn: CompanionTurn    = { role: 'user',      content: 'Hey', timestamp: t1 };
-    const assistantTurn: CompanionTurn = { role: 'assistant', content: 'Hi', timestamp: t2 };
-    expect(assistantTurn.timestamp > userTurn.timestamp).toBe(true);
+    const userTurn: CompanionTurn      = { role: 'user',      content: 'Hey', timestamp: t1 };
+    const assistantTurn: CompanionTurn = { role: 'assistant', content: 'Hi',  timestamp: t2 };
+    assert.ok(assistantTurn.timestamp > userTurn.timestamp, 'assistantTurn should come after userTurn');
   });
 });
 
@@ -162,23 +164,23 @@ describe('CompanionProactiveEvent', () => {
     };
   }
 
-  test('constructs with all required fields', () => {
+  it('constructs with all required fields', () => {
     const event = makeEvent();
-    expect(event.sessionId).toBe('session-abc-001');
-    expect(event.identityId).toBe('identity-xyz-002');
-    expect(event.interface).toBe(InterfaceKind.Mobile);
-    expect(event.message.length).toBeGreaterThan(0);
-    expect(event.triggerName).toBe('daily-checkin');
-    expect(event.generatedAt instanceof Date).toBe(true);
+    assert.equal(event.sessionId, 'session-abc-001');
+    assert.equal(event.identityId, 'identity-xyz-002');
+    assert.equal(event.interface, InterfaceKind.Mobile);
+    assert.ok(event.message.length > 0, 'message should be non-empty');
+    assert.equal(event.triggerName, 'daily-checkin');
+    assert.ok(event.generatedAt instanceof Date, 'generatedAt should be a Date');
   });
 
-  test('interface can be Headless for background events', () => {
+  it('interface can be Headless for background events', () => {
     const event = makeEvent({ interface: InterfaceKind.Headless });
-    expect(event.interface).toBe(InterfaceKind.Headless);
+    assert.equal(event.interface, InterfaceKind.Headless);
   });
 
-  test('message is non-empty', () => {
+  it('message is non-empty', () => {
     const event = makeEvent();
-    expect(event.message.trim().length).toBeGreaterThan(0);
+    assert.ok(event.message.trim().length > 0, 'message should have non-whitespace content');
   });
 });

@@ -3,8 +3,10 @@
 // Verifies KnownLanguages against the 20 canonical entries in
 // fixtures/language_tags.json — HarmonyOS/ArkTS port.
 
-import * as fs from 'fs';
-import * as path from 'path';
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { KnownLanguages, WritingSystem, type LanguageTag } from '../src/languages';
 
 // ---------------------------------------------------------------------------
@@ -34,104 +36,103 @@ interface LanguageFixture {
 // Load fixture
 // ---------------------------------------------------------------------------
 
-const fixturePath = path.resolve(__dirname, '../../fixtures/language_tags.json');
-const fixture: LanguageFixture = JSON.parse(fs.readFileSync(fixturePath, 'utf-8'));
+const fixturePath = resolve(__dirname, '../../fixtures/language_tags.json');
+const fixture: LanguageFixture = JSON.parse(readFileSync(fixturePath, 'utf-8'));
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('KnownLanguages.ALL length', () => {
-  test('contains exactly 20 languages', () => {
-    expect(KnownLanguages.ALL.length).toBe(20);
+  it('contains exactly 20 languages', () => {
+    assert.strictEqual(KnownLanguages.ALL.length, 20);
   });
 
-  test('length matches fixture assertion', () => {
-    expect(KnownLanguages.ALL.length).toBe(fixture.assertions.totalCount);
+  it('length matches fixture assertion', () => {
+    assert.strictEqual(KnownLanguages.ALL.length, fixture.assertions.totalCount);
   });
 });
 
 describe('KnownLanguages fixture entries', () => {
-  test.each(fixture.languages)(
-    'bcpTag=$bcpTag ($englishName)',
-    (entry) => {
+  for (const entry of fixture.languages) {
+    it(`bcpTag=${entry.bcpTag} (${entry.englishName})`, () => {
       const tag: LanguageTag | undefined = KnownLanguages.ALL.find(
         t => t.bcpTag === entry.bcpTag,
       );
 
-      expect(tag).toBeDefined();
+      assert.ok(tag !== undefined);
       if (!tag) return;
 
-      expect(tag.bcpTag).toBe(entry.bcpTag);
-      expect(tag.englishName).toBe(entry.englishName);
-      expect(tag.nativeName).toBe(entry.nativeName);
-      expect(tag.writingSystem).toBe(entry.writingSystem as WritingSystem);
-      expect(tag.isRtl).toBe(entry.isRtl);
-      expect(tag.primaryRegion).toBe(entry.primaryRegion);
-    },
-  );
+      assert.strictEqual(tag.bcpTag, entry.bcpTag);
+      assert.strictEqual(tag.englishName, entry.englishName);
+      assert.strictEqual(tag.nativeName, entry.nativeName);
+      assert.strictEqual(tag.writingSystem, entry.writingSystem as WritingSystem);
+      assert.strictEqual(tag.isRtl, entry.isRtl);
+      assert.strictEqual(tag.primaryRegion, entry.primaryRegion);
+    });
+  }
 });
 
 describe('KnownLanguages declaration order', () => {
-  test('ALL is in the same order as the fixture', () => {
+  it('ALL is in the same order as the fixture', () => {
     for (let i = 0; i < fixture.languages.length; i++) {
-      expect(KnownLanguages.ALL[i].bcpTag).toBe(fixture.languages[i].bcpTag);
+      assert.strictEqual(KnownLanguages.ALL[i].bcpTag, fixture.languages[i].bcpTag);
     }
   });
 });
 
 describe('KnownLanguages RTL languages', () => {
-  test('only Arabic is RTL', () => {
+  it('only Arabic is RTL', () => {
     const rtl = KnownLanguages.ALL.filter(t => t.isRtl).map(t => t.bcpTag);
-    expect(rtl).toEqual(fixture.assertions.rtlLanguages);
+    assert.deepStrictEqual(rtl, fixture.assertions.rtlLanguages);
   });
 });
 
 describe('KnownLanguages African languages', () => {
-  test('13 African languages present', () => {
+  it('13 African languages present', () => {
     const africanRegions = new Set(['ZA', 'KE', 'NG', 'ET', 'SO']);
     const count = KnownLanguages.ALL.filter(t => africanRegions.has(t.primaryRegion)).length;
-    expect(count).toBe(fixture.assertions.africanLanguageCount);
+    assert.strictEqual(count, fixture.assertions.africanLanguageCount);
   });
 });
 
 describe('KnownLanguages writing systems', () => {
-  test('Latin is the most common writing system', () => {
+  it('Latin is the most common writing system', () => {
     const latinCount = KnownLanguages.ALL.filter(t => t.writingSystem === WritingSystem.Latin).length;
-    expect(latinCount).toBeGreaterThan(10);
+    assert.ok(latinCount > 10);
   });
 
-  test('Devanagari used for Hindi', () => {
-    expect(KnownLanguages.Hindi.writingSystem).toBe(WritingSystem.Devanagari);
+  it('Devanagari used for Hindi', () => {
+    assert.strictEqual(KnownLanguages.Hindi.writingSystem, WritingSystem.Devanagari);
   });
 
-  test('Ethiopic used for Amharic', () => {
-    expect(KnownLanguages.Amharic.writingSystem).toBe(WritingSystem.Ethiopic);
+  it('Ethiopic used for Amharic', () => {
+    assert.strictEqual(KnownLanguages.Amharic.writingSystem, WritingSystem.Ethiopic);
   });
 
-  test('Han used for Mandarin', () => {
-    expect(KnownLanguages.Mandarin.writingSystem).toBe(WritingSystem.Han);
+  it('Han used for Mandarin', () => {
+    assert.strictEqual(KnownLanguages.Mandarin.writingSystem, WritingSystem.Han);
   });
 
-  test('Arabic script used for Arabic', () => {
-    expect(KnownLanguages.Arabic.writingSystem).toBe(WritingSystem.Arabic);
+  it('Arabic script used for Arabic', () => {
+    assert.strictEqual(KnownLanguages.Arabic.writingSystem, WritingSystem.Arabic);
   });
 });
 
 describe('KnownLanguages named constants', () => {
-  test('IsiZulu has correct bcpTag', () => {
-    expect(KnownLanguages.IsiZulu.bcpTag).toBe('zu');
+  it('IsiZulu has correct bcpTag', () => {
+    assert.strictEqual(KnownLanguages.IsiZulu.bcpTag, 'zu');
   });
 
-  test('English has correct region', () => {
-    expect(KnownLanguages.English.primaryRegion).toBe('GB');
+  it('English has correct region', () => {
+    assert.strictEqual(KnownLanguages.English.primaryRegion, 'GB');
   });
 
-  test('Sepedi has bcpTag nso', () => {
-    expect(KnownLanguages.Sepedi.bcpTag).toBe('nso');
+  it('Sepedi has bcpTag nso', () => {
+    assert.strictEqual(KnownLanguages.Sepedi.bcpTag, 'nso');
   });
 
-  test('Arabic is RTL', () => {
-    expect(KnownLanguages.Arabic.isRtl).toBe(true);
+  it('Arabic is RTL', () => {
+    assert.strictEqual(KnownLanguages.Arabic.isRtl, true);
   });
 });

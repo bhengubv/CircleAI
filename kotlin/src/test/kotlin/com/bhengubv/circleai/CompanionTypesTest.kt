@@ -12,7 +12,11 @@ import com.bhengubv.circleai.companion.CompanionProactiveEvent
 import com.bhengubv.circleai.companion.CompanionTurn
 import com.bhengubv.circleai.companion.InterfaceKind
 import com.bhengubv.circleai.memory.PersonaState
-import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.time.Instant
@@ -21,7 +25,7 @@ import kotlin.test.assertTrue
 
 class CompanionTypesTest {
 
-    private val mapper = ObjectMapper()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private fun locateFixture(name: String): File {
         val absolute = File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\$name")
@@ -138,20 +142,21 @@ class CompanionTypesTest {
 
     @Test
     fun `PersonaState toSystemPromptHint matches all fixture vectors`() {
-        val root = mapper.readTree(locateFixture("persona_state.json"))
-        val vectors = root["vectors"].toList()
+        val root = json.parseToJsonElement(locateFixture("persona_state.json").readText()).jsonObject
+        val vectors = root["vectors"]!!.jsonArray
 
         assertEquals(6, vectors.size, "Expected 6 persona_state fixture vectors")
 
-        vectors.forEach { v ->
-            val id = v["id"].asText()
-            val inp = v["input"]
-            val expected = v["expectedHint"].asText()
+        vectors.forEach { element ->
+            val v = element.jsonObject
+            val id = v["id"]!!.jsonPrimitive.content
+            val inp = v["input"]!!.jsonObject
+            val expected = v["expectedHint"]!!.jsonPrimitive.content
 
             val persona = PersonaState("test-user").apply {
-                verbosity       = inp["verbosity"].asText()
-                formality       = inp["formality"].asText()
-                preferredLocale = inp["preferredLocale"].takeIf { !it.isNull }?.asText()
+                verbosity       = inp["verbosity"]!!.jsonPrimitive.content
+                formality       = inp["formality"]!!.jsonPrimitive.content
+                preferredLocale = inp["preferredLocale"]!!.takeIf { it !is JsonNull }?.jsonPrimitive?.content
             }
 
             val actual = persona.toSystemPromptHint()

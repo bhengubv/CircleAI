@@ -11,7 +11,12 @@ package com.bhengubv.circleai
 
 import com.bhengubv.circleai.languages.KnownLanguages
 import com.bhengubv.circleai.languages.WritingSystem
-import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import java.io.File
 import kotlin.test.assertEquals
@@ -21,7 +26,7 @@ import kotlin.test.assertTrue
 
 class LanguageRegistryTest {
 
-    private val mapper = ObjectMapper()
+    private val json = Json { ignoreUnknownKeys = true }
 
     private fun locateFixture(name: String): File {
         val absolute = File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\$name")
@@ -45,19 +50,20 @@ class LanguageRegistryTest {
 
     @Test
     fun `fixture matches KnownLanguages All in order`() {
-        val root = mapper.readTree(locateFixture("language_tags.json"))
-        val fixtureLanguages = root["languages"].toList()
+        val root = json.parseToJsonElement(locateFixture("language_tags.json").readText()).jsonObject
+        val fixtureLanguages = root["languages"]!!.jsonArray
 
         assertEquals(20, fixtureLanguages.size, "Fixture must have 20 languages")
 
-        fixtureLanguages.forEachIndexed { index, node ->
+        fixtureLanguages.forEachIndexed { index, element ->
+            val node = element.jsonObject
             val tag = KnownLanguages.All[index]
-            val bcpTag = node["bcpTag"].asText()
-            val englishName = node["englishName"].asText()
-            val nativeName = node["nativeName"].asText()
-            val writingSystem = node["writingSystem"].asText()
-            val isRtl = node["isRtl"].asBoolean()
-            val primaryRegion = node["primaryRegion"].asText()
+            val bcpTag = node["bcpTag"]!!.jsonPrimitive.content
+            val englishName = node["englishName"]!!.jsonPrimitive.content
+            val nativeName = node["nativeName"]!!.jsonPrimitive.content
+            val writingSystem = node["writingSystem"]!!.jsonPrimitive.content
+            val isRtl = node["isRtl"]!!.jsonPrimitive.boolean
+            val primaryRegion = node["primaryRegion"]!!.jsonPrimitive.content
 
             assertEquals(bcpTag, tag.bcpTag,
                 "[$index] bcpTag mismatch: fixture=$bcpTag, actual=${tag.bcpTag}")
@@ -154,11 +160,11 @@ class LanguageRegistryTest {
 
     @Test
     fun `fixture assertions block validates counts`() {
-        val root = mapper.readTree(locateFixture("language_tags.json"))
-        val assertions = root["assertions"]
-        assertEquals(20, assertions["totalCount"].intValue())
-        val rtlTags = assertions["rtlLanguages"].map { it.asText() }
+        val root = json.parseToJsonElement(locateFixture("language_tags.json").readText()).jsonObject
+        val assertions = root["assertions"]!!.jsonObject
+        assertEquals(20, assertions["totalCount"]!!.jsonPrimitive.int)
+        val rtlTags = assertions["rtlLanguages"]!!.jsonArray.map { it.jsonPrimitive.content }
         assertEquals(listOf("ar"), rtlTags)
-        assertEquals(13, assertions["africanLanguageCount"].intValue())
+        assertEquals(13, assertions["africanLanguageCount"]!!.jsonPrimitive.int)
     }
 }

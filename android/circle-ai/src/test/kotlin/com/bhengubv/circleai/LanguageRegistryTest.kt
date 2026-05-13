@@ -1,11 +1,24 @@
 package com.bhengubv.circleai
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
 
 class LanguageRegistryTest {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun locateFixture(name: String): File {
+        val absolute = File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\$name")
+        if (absolute.exists()) return absolute
+        val relative = File("../../fixtures/$name")
+        if (relative.exists()) return relative
+        error("Cannot locate fixture $name")
+    }
+
     @Test fun countIs20() = assertEquals(20, KnownLanguages.count())
 
     @Test fun firstIsZulu() {
@@ -40,13 +53,13 @@ class LanguageRegistryTest {
     }
 
     @Test fun fixtureMatchesRegistry() {
-        val mapper = ObjectMapper()
-        val fixture = mapper.readTree(File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\language_tags.json"))
-        val fixtureLangs = fixture["languages"]
-        assertEquals(20, fixtureLangs.size())
+        val root = json.parseToJsonElement(locateFixture("language_tags.json").readText()).jsonObject
+        val fixtureLangs = root["languages"]!!.jsonArray
+        assertEquals(20, fixtureLangs.size)
         for (lang in fixtureLangs) {
-            val found = KnownLanguages.findByBcpTag(lang["bcpTag"].asText())
-            assertNotNull("Missing: ${lang["bcpTag"].asText()}", found)
+            val bcpTag = lang.jsonObject["bcpTag"]!!.jsonPrimitive.content
+            val found = KnownLanguages.findByBcpTag(bcpTag)
+            assertNotNull("Missing: $bcpTag", found)
         }
     }
 }

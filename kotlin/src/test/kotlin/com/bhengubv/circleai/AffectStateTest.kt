@@ -6,8 +6,14 @@
 package com.bhengubv.circleai
 
 import com.bhengubv.circleai.memory.AffectState
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
@@ -29,7 +35,7 @@ data class AffectVector(
     val inputRapport: Float,
     val inputEnergy: Float,
     val operation: String,
-    val operationParam: JsonNode,
+    val operationParam: JsonElement,
     val expectedCuriosity: Float,
     val expectedEngagement: Float,
     val expectedUncertainty: Float,
@@ -57,28 +63,29 @@ class AffectStateTest {
          */
         @JvmStatic
         fun vectors(): Stream<AffectVector> {
-            val mapper = ObjectMapper()
-            val root = mapper.readTree(locateFixture("affect_state.json"))
+            val json = Json { ignoreUnknownKeys = true }
+            val root = json.parseToJsonElement(locateFixture("affect_state.json").readText()).jsonObject
             val list = mutableListOf<AffectVector>()
-            for (v in root["vectors"]) {
-                val inp = v["input"]
-                val exp = v["expected"]
+            for (v in root["vectors"]!!.jsonArray) {
+                val vObj = v.jsonObject
+                val inp = vObj["input"]!!.jsonObject
+                val exp = vObj["expected"]!!.jsonObject
                 list.add(
                     AffectVector(
-                        id                  = v["id"].asText(),
-                        description         = v["description"].asText(),
-                        inputCuriosity      = inp["curiosity"].floatValue(),
-                        inputEngagement     = inp["engagement"].floatValue(),
-                        inputUncertainty    = inp["uncertainty"].floatValue(),
-                        inputRapport        = inp["rapport"].floatValue(),
-                        inputEnergy         = inp["energy"].floatValue(),
-                        operation           = v["operation"].asText(),
-                        operationParam      = v["operationParam"],
-                        expectedCuriosity   = exp["curiosity"].floatValue(),
-                        expectedEngagement  = exp["engagement"].floatValue(),
-                        expectedUncertainty = exp["uncertainty"].floatValue(),
-                        expectedRapport     = exp["rapport"].floatValue(),
-                        expectedEnergy      = exp["energy"].floatValue()
+                        id                  = vObj["id"]!!.jsonPrimitive.content,
+                        description         = vObj["description"]!!.jsonPrimitive.content,
+                        inputCuriosity      = inp["curiosity"]!!.jsonPrimitive.double.toFloat(),
+                        inputEngagement     = inp["engagement"]!!.jsonPrimitive.double.toFloat(),
+                        inputUncertainty    = inp["uncertainty"]!!.jsonPrimitive.double.toFloat(),
+                        inputRapport        = inp["rapport"]!!.jsonPrimitive.double.toFloat(),
+                        inputEnergy         = inp["energy"]!!.jsonPrimitive.double.toFloat(),
+                        operation           = vObj["operation"]!!.jsonPrimitive.content,
+                        operationParam      = vObj["operationParam"]!!,
+                        expectedCuriosity   = exp["curiosity"]!!.jsonPrimitive.double.toFloat(),
+                        expectedEngagement  = exp["engagement"]!!.jsonPrimitive.double.toFloat(),
+                        expectedUncertainty = exp["uncertainty"]!!.jsonPrimitive.double.toFloat(),
+                        expectedRapport     = exp["rapport"]!!.jsonPrimitive.double.toFloat(),
+                        expectedEnergy      = exp["energy"]!!.jsonPrimitive.double.toFloat()
                     )
                 )
             }
@@ -99,11 +106,13 @@ class AffectStateTest {
 
         when (vector.operation) {
             "positive_signal" -> {
-                val count = if (vector.operationParam.has("count")) vector.operationParam["count"].intValue() else 1
+                val paramObj = vector.operationParam.jsonObject
+                val count = paramObj["count"]?.jsonPrimitive?.int ?: 1
                 repeat(count) { state.applyPositiveSignal() }
             }
             "negative_signal" -> {
-                val count = if (vector.operationParam.has("count")) vector.operationParam["count"].intValue() else 1
+                val paramObj = vector.operationParam.jsonObject
+                val count = paramObj["count"]?.jsonPrimitive?.int ?: 1
                 repeat(count) { state.applyNegativeSignal() }
             }
             "positive_then_negative" -> {
@@ -115,7 +124,7 @@ class AffectStateTest {
                 state.applyPositiveSignal()
             }
             "idle_decay" -> {
-                val hours = vector.operationParam["hours"].doubleValue()
+                val hours = vector.operationParam.jsonObject["hours"]!!.jsonPrimitive.double
                 val seconds = (hours * 3600.0).toLong()
                 state.applyIdleDecay(Duration.ofSeconds(seconds))
             }
