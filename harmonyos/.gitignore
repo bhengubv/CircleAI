@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.preview/
+build/
+oh_modules/

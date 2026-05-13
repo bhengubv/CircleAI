@@ -1,0 +1,16 @@
+find_library(MATH_LIB m)
+
+function(add_circle_test name)
+    add_executable(${name} ${name}.c)
+    if(MATH_LIB)
+        target_link_libraries(${name} circle_ai ${MATH_LIB})
+    else()
+        target_link_libraries(${name} circle_ai)
+    endif()
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_circle_test(test_affect_state)
+add_circle_test(test_language_registry)
+add_circle_test(test_identity)
+add_circle_test(test_companion_types)
