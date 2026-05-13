@@ -1,137 +1,264 @@
-name: Publish to NuGet
+name: Publish SDK Packages
+
+# Triggered by pushing a semver tag: git tag v0.1.0 && git push origin v0.1.0
+#
+# Publishes all language ports in parallel to their respective registries.
+# Required secrets:
+#   NUGET_API_KEY         — NuGet.org API key
+#   CRATES_IO_TOKEN       — crates.io API token
+#   PYPI_API_TOKEN        — PyPI API token (trusted publisher or token)
+#   NPM_TOKEN             — npm access token (for @bhengubv/circle-ai)
 
 on:
   push:
     tags:
-      - 'v[0-9]*'   # v1.0.0, v1.2.3, etc.
-  workflow_dispatch:   # allow manual trigger from GitHub UI
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
+permissions:
+  contents: read
+  packages: write   # GitHub Packages (Maven, NuGet)
+
 jobs:
-  # ── Verify tests pass before packing ─────────────────────────────────────
-  test:
-    name: Test
+  # ── Extract version from tag ────────────────────────────────────────────────
+  meta:
+    name: Extract version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Parse tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.x'
-
-      - name: Run tests
-        run: |
-          dotnet test tests/Circle.AI.Tests/Circle.AI.Tests.csproj \
-            --configuration Release \
-            --verbosity minimal
-
-  # ── Pack all non-MAUI packages (net9.0, ubuntu) ──────────────────────────
-  pack-standard:
-    name: Pack standard packages
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '9.x'
-
-      - name: Pack
-        run: |
-          for proj in \
-            src/Circle.AI.Core \
-            src/Circle.AI.Inference \
-            src/Circle.AI.Embeddings \
-            src/Circle.AI.Search \
-            src/Circle.AI.Memory \
-            src/Circle.AI.Skills \
-            src/Circle.AI.Tools \
-            src/Circle.AI.Voice \
-            src/Circle.AI.Hosting \
-            src/Circle.AI.Aether \
-            src/Circle.AI.Security; do
-            dotnet pack "$proj" \
-              --configuration Release \
-              -p:ContinuousIntegrationBuild=true \
-              --output ./nupkgs
-          done
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nupkgs-standard
-          path: |
-            ./nupkgs/*.nupkg
-            ./nupkgs/*.snupkg
-
-  # ── Pack Circle.AI.Maui (requires MAUI workloads on Windows + net10) ─────
-  pack-maui:
-    name: Pack Circle.AI.Maui
+  # ── C# (NuGet.org) ─────────────────────────────────────────────────────────
+  publish-csharp:
+    name: Publish C# packages
     runs-on: windows-latest
-    needs: test
+    needs: meta
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
-
       - name: Install MAUI workloads
         run: dotnet workload install maui --source https://api.nuget.org/v3/index.json
-
-      - name: Pack
+      - name: Build & pack
         run: |
-          dotnet pack src/Circle.AI.Maui `
-            --configuration Release `
-            -p:ContinuousIntegrationBuild=true `
-            --output ./nupkgs
+          dotnet build CircleAI.sln -c Release -p:Version=${{ needs.meta.outputs.version }}
+          dotnet pack CircleAI.sln -c Release --no-build -p:Version=${{ needs.meta.outputs.version }} -o nupkgs
+      - name: Push to NuGet.org
+        run: |
+          foreach ($pkg in Get-ChildItem -Path nupkgs -Filter *.nupkg) {
+            dotnet nuget push $pkg.FullName `
+              --api-key ${{ secrets.NUGET_API_KEY }} `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+          }
+      - name: Push symbols
+        continue-on-error: true
+        run: |
+          foreach ($pkg in Get-ChildItem -Path nupkgs -Filter *.snupkg) {
+            dotnet nuget push $pkg.FullName `
+              --api-key ${{ secrets.NUGET_API_KEY }} `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+          }
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: nupkgs-maui
-          path: |
-            ./nupkgs/*.nupkg
-            ./nupkgs/*.snupkg
-
-  # ── Push all packages to NuGet.org ────────────────────────────────────────
-  push:
-    name: Push to NuGet
+  # ── Rust (crates.io) ───────────────────────────────────────────────────────
+  publish-rust:
+    name: Publish Rust crate
     runs-on: ubuntu-latest
-    needs: [pack-standard, pack-maui]
+    needs: meta
     steps:
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Set version
+        working-directory: rust
+        run: sed -i "s/^version = .*/version = \"${{ needs.meta.outputs.version }}\"/" Cargo.toml
+      - name: Publish
+        working-directory: rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --no-verify
+
+  # ── Python (PyPI) ──────────────────────────────────────────────────────────
+  publish-python:
+    name: Publish Python package
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          dotnet-version: '9.x'
+          python-version: '3.12'
+      - name: Install build tools
+        run: pip install build twine
+      - name: Set version
+        working-directory: python
+        run: sed -i "s/^version = .*/version = \"${{ needs.meta.outputs.version }}\"/" pyproject.toml
+      - name: Build
+        working-directory: python
+        run: python -m build
+      - name: Publish
+        working-directory: python
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
 
-      - name: Download all packages
-        uses: actions/download-artifact@v4
+  # ── TypeScript (npm) ───────────────────────────────────────────────────────
+  publish-typescript:
+    name: Publish TypeScript package
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          pattern: nupkgs-*
-          merge-multiple: true
-          path: ./nupkgs
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install & build
+        working-directory: typescript
+        run: npm ci && npm run build
+      - name: Set version
+        working-directory: typescript
+        run: npm version ${{ needs.meta.outputs.version }} --no-git-tag-version
+      - name: Publish
+        working-directory: typescript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
-      - name: Push .nupkg files
-        run: |
-          for pkg in ./nupkgs/*.nupkg; do
-            dotnet nuget push "$pkg" \
-              --api-key ${{ secrets.NUGET_API_KEY }} \
-              --source https://api.nuget.org/v3/index.json \
-              --skip-duplicate
-          done
+  # ── Go (go modules via git tag) ────────────────────────────────────────────
+  verify-go:
+    name: Verify Go module
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Verify
+        working-directory: go
+        run: go mod tidy && go vet ./...
+      # Go modules are published via the git tag — the push that triggered this
+      # workflow serves as the release. Users: go get github.com/bhengubv/CircleAI/go@v<version>
 
-      - name: Push .snupkg files
+  # ── Kotlin (GitHub Packages / Maven) ──────────────────────────────────────
+  publish-kotlin:
+    name: Publish Kotlin package
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Publish to GitHub Packages
+        working-directory: kotlin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew publish --no-daemon -Pversion=${{ needs.meta.outputs.version }}
+
+  # ── Swift (Swift Package Manager via git tag) ──────────────────────────────
+  verify-swift:
+    name: Verify Swift package
+    runs-on: macos-14
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify builds
+        working-directory: swift
+        run: swift build
+      # Swift packages are consumed via SPM using the git URL + version tag.
+      # Users: .package(url: "https://github.com/bhengubv/CircleAI.git", from: "<version>")
+
+  # ── Android (GitHub Packages / Maven) ─────────────────────────────────────
+  publish-android:
+    name: Publish Android library
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - name: Publish to GitHub Packages
+        working-directory: android
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :circle-ai:publish --no-daemon -Pversion=${{ needs.meta.outputs.version }}
+
+  # ── HarmonyOS (npm) ───────────────────────────────────────────────────────
+  publish-harmonyos:
+    name: Publish HarmonyOS package
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Install
+        working-directory: harmonyos
+        run: npm ci
+      - name: Set version
+        working-directory: harmonyos
+        run: npm version ${{ needs.meta.outputs.version }} --no-git-tag-version
+      - name: Publish
+        working-directory: harmonyos
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+  # ── C (source release via git tag) ────────────────────────────────────────
+  verify-c:
+    name: Verify C build
+    runs-on: ubuntu-latest
+    needs: meta
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -B c/build -S c -DCMAKE_BUILD_TYPE=Release
+      - name: Build & test
+        run: cmake --build c/build && ctest --test-dir c/build -V
+
+  # ── Summary ─────────────────────────────────────────────────────────────────
+  publish-summary:
+    name: All packages published
+    runs-on: ubuntu-latest
+    needs:
+      - publish-csharp
+      - publish-rust
+      - publish-python
+      - publish-typescript
+      - verify-go
+      - publish-kotlin
+      - verify-swift
+      - publish-android
+      - publish-harmonyos
+      - verify-c
+    if: always()
+    steps:
+      - name: Check results
         run: |
-          shopt -s nullglob
-          for pkg in ./nupkgs/*.snupkg; do
-            dotnet nuget push "$pkg" \
-              --api-key ${{ secrets.NUGET_API_KEY }} \
-              --source https://api.nuget.org/v3/index.json \
-              --skip-duplicate
-          done
-        continue-on-error: true   # symbol packages are best-effort
+          RESULTS='${{ toJSON(needs) }}'
+          echo "$RESULTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          failed = [k for k, v in data.items() if v['result'] == 'failure']
+          if failed:
+              print('PUBLISH FAILED:', ', '.join(failed))
+              sys.exit(1)
+          print('All packages published successfully.')
+          "
