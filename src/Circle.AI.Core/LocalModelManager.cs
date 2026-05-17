@@ -20,11 +20,12 @@ namespace Circle.AI.Core
 
             if (modelRepositoryUrl != null)
             {
+                // ModelScope (modelscope.cn, Alibaba) is the sole download source.
+                // No Western fallback — both primary (API) and fallback (CDN) are on Chinese infrastructure.
                 _modelDownloader = new ModelDownloader(
                     new IModelSource[]
                     {
                         new ModelScopeSource(),
-                        new HuggingFaceSource(),
                     },
                     ownsSources: true);
             }

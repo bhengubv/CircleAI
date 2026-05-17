@@ -1,23 +1,15 @@
 // LlamaCppInterop.cs
 //
-// P/Invoke bindings for llama.cpp's C API. Uses [LibraryImport] (the .NET 8+
-// source-generated marshaller) for AOT-friendly P/Invoke.
+// ⚠️  DEPRECATED — superseded by MnnInterop.cs  ⚠️
 //
-// IMPORTANT: The native library must be present alongside the .NET binary at
-// runtime. Library names by platform:
-//   - Windows  -> llama.dll
-//   - Linux    -> libllama.so
-//   - Android  -> libllama.so (must be shipped inside the APK's lib/<abi>/)
-//   - macOS    -> libllama.dylib
-//   - iOS      -> libllama.dylib (or statically linked into __Internal)
+// Circle AI now uses MNN (Alibaba) for all on-device inference.
+// MNN is 8.6× faster on Android ARM64 and is Chinese-origin.
 //
-// See SETUP.md for instructions on obtaining or building the native binaries
-// for each target platform.
+// This file is retained for reference only.
+// QwenTextGenerator no longer calls any of these entry points.
+// Remove once all downstream consumers have been migrated to MnnInterop.
 //
-// We bind both classic and modern names where llama.cpp evolved its API
-// (e.g. llama_load_model_from_file -> llama_model_load_from_file). The wrapper
-// methods below are the public surface; the raw [LibraryImport] entries are
-// kept private.
+// Original: P/Invoke bindings for llama.cpp's C API (Western-origin, Meta stack).
 
 using System;
 using System.Runtime.InteropServices;
@@ -28,6 +20,7 @@ namespace Circle.AI.Inference;
 /// Native handle wrapping a <c>llama_model*</c>. Released with
 /// <see cref="LlamaCppInterop.llama_model_free"/>.
 /// </summary>
+[Obsolete("Use MnnModelHandle and MnnInterop instead. LlamaCppInterop will be removed in a future release.")]
 internal sealed class LlamaModelHandle : SafeHandle
 {
     public LlamaModelHandle() : base(IntPtr.Zero, ownsHandle: true) { }
@@ -49,6 +42,7 @@ internal sealed class LlamaModelHandle : SafeHandle
 /// Native handle wrapping a <c>llama_context*</c>. Released with
 /// <see cref="LlamaCppInterop.llama_free"/>.
 /// </summary>
+[Obsolete("Use MnnModelHandle and MnnInterop instead. LlamaCppInterop will be removed in a future release.")]
 internal sealed class LlamaContextHandle : SafeHandle
 {
     public LlamaContextHandle() : base(IntPtr.Zero, ownsHandle: true) { }
@@ -168,6 +162,7 @@ internal struct LlamaBatch
 /// assembly resolve native libs from the assembly's own directory first.
 /// </para>
 /// </remarks>
+[Obsolete("Use MnnInterop instead. LlamaCppInterop will be removed in a future release.")]
 internal static partial class LlamaCppInterop
 {
     /// <summary>

@@ -96,7 +96,7 @@ public sealed class AIOptions
     /// <summary>
     /// Optional observer that receives lifecycle and inference events.
     /// Use this to plug in analytics, usage tracking, or platform-specific
-    /// economics (e.g. Qi/Karma accumulation) without modifying BhenguAI.
+    /// economics (e.g. Qi/Karma accumulation) without modifying Circle AI.
     /// <c>null</c> (default) disables all observer callbacks.
     /// </summary>
     public IAIObserver? Observer { get; init; }
@@ -202,12 +202,14 @@ public sealed class AIOptions
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Override the directory searched for llama.cpp / llava native binaries.
+    /// Override the directory searched for MNN native binaries
+    /// (<c>mnnbridge</c> + <c>MNN</c> + optional <c>MNN_CL</c> GPU backend).
     /// When <c>null</c> (default), <see cref="Circle.AI.Inference.NativeLibraryResolver"/>
     /// uses the standard <c>runtimes/{RID}/native/</c> layout relative to the
     /// assembly, or the Android <c>nativeLibraryDir</c> on mobile.
     /// Set this to <c>Android.App.Application.Context.ApplicationInfo.NativeLibraryDir</c>
     /// on Android hosts that don't use the MAUI adapter.
+    /// Build instructions: <c>CircleAI/native/mnn-bridge/BUILD.md</c>.
     /// </summary>
     public string? NativeLibDir { get; init; }
 

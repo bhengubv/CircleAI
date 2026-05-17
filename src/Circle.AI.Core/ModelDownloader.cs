@@ -18,9 +18,8 @@ namespace Circle.AI.Core
     public sealed class ModelDownloader : IModelDownloader, IDisposable
     {
         /// <summary>
-        /// Backwards-compatible progress shape. Mirrors <see cref="DownloadProgress"/>
-        /// but kept as a class+event so existing consumers of HuggingFaceModelDownloader
-        /// can keep their wiring.
+        /// Progress report shape emitted during downloads.
+        /// Mirrors <see cref="DownloadProgress"/> as a class+event for consumer compatibility.
         /// </summary>
         public sealed class DownloadProgressReport
         {
@@ -165,12 +164,11 @@ namespace Circle.AI.Core
                     return s;
             }
 
-            // Specific known hosts.
+            // All registered download URLs are on modelscope.cn (Alibaba).
+            // No Western source is registered — if a URL slips through that isn't
+            // on a registered source, MatchSource returns null and the downloader skips it.
             if (host.Contains("modelscope", StringComparison.OrdinalIgnoreCase))
                 return _sources.FirstOrDefault(s => s.Name.Equals("ModelScope", StringComparison.OrdinalIgnoreCase));
-
-            if (host.Contains("huggingface", StringComparison.OrdinalIgnoreCase))
-                return _sources.FirstOrDefault(s => s.Name.Equals("HuggingFace", StringComparison.OrdinalIgnoreCase));
 
             return null;
         }

@@ -1,15 +1,18 @@
 // NativeLibraryResolver.cs
 //
-// Registers a custom DllImportResolver that searches for llama.cpp native
-// binaries under a `runtimes/{RID}/native/` directory relative to the
-// assembly location. This is the standard NuGet native library layout.
+// Registers a custom DllImportResolver that searches for MNN native binaries
+// under a `runtimes/{RID}/native/` directory relative to the assembly location.
+// This is the standard NuGet native library layout.
 //
-// Placement guide (ship these alongside Circle.AI.Inference.dll):
-//   Windows x64 : runtimes/win-x64/native/llama.dll
-//   Linux x64   : runtimes/linux-x64/native/libllama.so
-//   macOS arm64 : runtimes/osx-arm64/native/libllama.dylib
-//   Android arm64: runtimes/android-arm64/native/libllama.so
-//   iOS arm64   : runtimes/ios-arm64/native/libllama.dylib
+// Required libraries (ship all alongside Circle.AI.Inference.dll):
+//   Windows x64  : runtimes/win-x64/native/mnnbridge.dll  + MNN.dll
+//   Linux x64    : runtimes/linux-x64/native/libmnnbridge.so  + libMNN.so
+//   macOS arm64  : runtimes/osx-arm64/native/libmnnbridge.dylib + libMNN.dylib
+//   Android arm64: runtimes/android-arm64/native/libmnnbridge.so + libMNN.so [+ libMNN_CL.so GPU]
+//   iOS arm64    : statically linked into app bundle
+//
+// Build instructions: CircleAI/native/mnn-bridge/BUILD.md
+// MNN releases (pre-built): https://github.com/alibaba/MNN/releases
 
 using System;
 using System.IO;
@@ -91,7 +94,7 @@ public static class NativeLibraryResolver
     {
         // Normalise: strip leading "lib" and any extension.
         var name = Path.GetFileNameWithoutExtension(libraryName)
-            .TrimStart('l', 'i', 'b'); // correct for llama / llava
+            .TrimStart('l', 'i', 'b'); // strips "lib" prefix so libmnnbridge → mnnbridge, libMNN → MNN
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             return $"{name}.dll";

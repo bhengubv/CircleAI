@@ -13,82 +13,13 @@ using Xunit;
 namespace Circle.AI.Tests;
 
 /// <summary>
-/// Unit tests for <see cref="HuggingFaceSource"/> and <see cref="ModelScopeSource"/>.
+/// Unit tests for <see cref="ModelScopeSource"/>.
+/// All model downloads route through ModelScope (modelscope.cn, Alibaba).
+/// HuggingFace has been removed — it is a Western (US) company.
 /// Only exercises argument validation and dispose guards — no network I/O.
 /// </summary>
 public sealed class ModelSourceTests
 {
-    // =========================================================================
-    // HuggingFaceSource
-    // =========================================================================
-
-    [Fact]
-    public void HuggingFaceSource_Name_IsHuggingFace()
-    {
-        using var src = new HuggingFaceSource();
-        Assert.Equal("HuggingFace", src.Name);
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_DownloadAsync_NullUrl_Throws()
-    {
-        using var src = new HuggingFaceSource();
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            src.DownloadAsync(null!, "/tmp/model.bin"));
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_DownloadAsync_WhitespaceUrl_Throws()
-    {
-        using var src = new HuggingFaceSource();
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            src.DownloadAsync("   ", "/tmp/model.bin"));
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_DownloadAsync_NullLocalPath_Throws()
-    {
-        using var src = new HuggingFaceSource();
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            src.DownloadAsync("https://huggingface.co/file.bin", null!));
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_DownloadAsync_WrongHost_ThrowsArgumentException()
-    {
-        using var src = new HuggingFaceSource();
-        // modelscope.cn is not huggingface.co — must reject
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            src.DownloadAsync("https://modelscope.cn/file.bin", "/tmp/x"));
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_DownloadAsync_AfterDispose_Throws()
-    {
-        var src = new HuggingFaceSource();
-        src.Dispose();
-        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
-            src.DownloadAsync("https://huggingface.co/file.bin", "/tmp/x"));
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_IsAvailableAsync_AfterDispose_ReturnsFalse()
-    {
-        var src = new HuggingFaceSource();
-        src.Dispose();
-        var result = await src.IsAvailableAsync();
-        Assert.False(result);
-    }
-
-    [Fact]
-    public void HuggingFaceSource_Dispose_IsIdempotent()
-    {
-        var src = new HuggingFaceSource();
-        src.Dispose();
-        var ex = Record.Exception(() => src.Dispose());
-        Assert.Null(ex);
-    }
-
     // =========================================================================
     // ModelScopeSource
     // =========================================================================
@@ -161,24 +92,14 @@ public sealed class ModelSourceTests
     }
 
     // =========================================================================
-    // Cross-source: wrong host rejection is symmetric
+    // Host rejection — must block non-ModelScope URLs
     // =========================================================================
 
     [Theory]
     [InlineData("https://evil.com/file.bin")]
     [InlineData("https://cdn.example.net/model.gguf")]
+    [InlineData("https://huggingface.co/model.bin")]  // Western — always rejected
     [InlineData("https://s3.amazonaws.com/bucket/model.bin")]
-    public async Task HuggingFaceSource_RejectsNonHuggingFaceUrls(string url)
-    {
-        using var src = new HuggingFaceSource();
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            src.DownloadAsync(url, "/tmp/x"));
-    }
-
-    [Theory]
-    [InlineData("https://evil.com/file.bin")]
-    [InlineData("https://cdn.example.net/model.gguf")]
-    [InlineData("https://huggingface.co/model.bin")]
     public async Task ModelScopeSource_RejectsNonModelScopeUrls(string url)
     {
         using var src = new ModelScopeSource();
@@ -212,37 +133,16 @@ public sealed class ModelSourceOwnershipTests
     }
 
     [Fact]
-    public void HuggingFaceSource_InjectedClient_IsNotDisposedOnSourceDispose()
+    public void ModelScopeSource_InjectedClient_IsNotDisposedOnSourceDispose()
     {
         // When an HttpClient is injected (ownsClient=false) the source must
         // never dispose it — the caller retains ownership.
-        var handler = new TrackingHandler();
-        using var http = new HttpClient(handler, disposeHandler: false);
-        var src = new HuggingFaceSource(http);
-        src.Dispose();
-        Assert.False(handler.Disposed,
-            "HuggingFaceSource must not dispose an injected HttpClient.");
-    }
-
-    [Fact]
-    public void ModelScopeSource_InjectedClient_IsNotDisposedOnSourceDispose()
-    {
         var handler = new TrackingHandler();
         using var http = new HttpClient(handler, disposeHandler: false);
         var src = new ModelScopeSource(http);
         src.Dispose();
         Assert.False(handler.Disposed,
             "ModelScopeSource must not dispose an injected HttpClient.");
-    }
-
-    [Fact]
-    public async Task HuggingFaceSource_OwnedClient_IsAvailableAsync_AfterDispose_ReturnsFalse()
-    {
-        // Sanity check that the _disposed guard short-circuits IsAvailableAsync
-        // when the source created and owns its own client.
-        var src = new HuggingFaceSource();   // ownsClient = true
-        src.Dispose();
-        Assert.False(await src.IsAvailableAsync());
     }
 
     [Fact]
@@ -255,7 +155,7 @@ public sealed class ModelSourceOwnershipTests
 }
 
 // =========================================================================
-// SourceDownloadHelper behaviour — tested via HuggingFaceSource with a
+// SourceDownloadHelper behaviour — tested via ModelScopeSource with a
 // fake HttpMessageHandler so we exercise the real download pipeline without
 // any network I/O.
 // =========================================================================
@@ -315,9 +215,9 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         var path = TempFile("model.bin");
 
         using var handler = new ContentHandler(payload);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/model.bin", path);
+        await src.DownloadAsync("https://modelscope.cn/models/qwen/Qwen3-4B-Q4/model.bin", path);
 
         Assert.Equal(payload, await File.ReadAllBytesAsync(path));
     }
@@ -332,9 +232,9 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
 
         // Server honours the Range header and returns 206.
         using var handler = new ContentHandler(extra, HttpStatusCode.PartialContent);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/resume.bin", path);
+        await src.DownloadAsync("https://modelscope.cn/models/qwen/Qwen3-4B-Q4/resume.bin", path);
 
         var expected = initial.Concat(extra).ToArray();
         Assert.Equal(expected, await File.ReadAllBytesAsync(path));
@@ -351,9 +251,9 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         await File.WriteAllBytesAsync(path, stale);
 
         using var handler = new ContentHandler(fresh, HttpStatusCode.OK);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/overwrite.bin", path);
+        await src.DownloadAsync("https://modelscope.cn/models/qwen/Qwen3-4B-Q4/overwrite.bin", path);
 
         Assert.Equal(fresh, await File.ReadAllBytesAsync(path));
     }
@@ -368,9 +268,9 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         var prog    = new SyncProgress<DownloadProgress>(r => reports.Add(r));
 
         using var handler = new ContentHandler(payload);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/progress.bin", path, prog);
+        await src.DownloadAsync("https://modelscope.cn/models/qwen/Qwen3-4B-Q4/progress.bin", path, prog);
 
         // At least one report must have been fired (triggered when bytesRead == totalBytes).
         Assert.NotEmpty(reports);
@@ -383,18 +283,20 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
     public async Task Progress_FileName_MatchesLocalPathBaseName()
     {
         var payload = new byte[] { 1, 2, 3 };
-        var path    = TempFile("my_model.gguf");
+        var path    = TempFile("qwen3-4b-q4.gguf");
 
         DownloadProgress? report = null;
         var prog = new SyncProgress<DownloadProgress>(r => report = r);
 
         using var handler = new ContentHandler(payload);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/my_model.gguf", path, prog);
+        await src.DownloadAsync(
+            "https://modelscope.cn/models/qwen/Qwen3-4B-Instruct-GGUF/resolve/master/qwen3-4b-q4.gguf",
+            path, prog);
 
         Assert.NotNull(report);
-        Assert.Equal("my_model.gguf", report!.FileName);
+        Assert.Equal("qwen3-4b-q4.gguf", report!.FileName);
     }
 
     [Fact]
@@ -407,10 +309,12 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         cts.Cancel(); // pre-cancel
 
         using var handler = new ContentHandler(payload);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            src.DownloadAsync("https://huggingface.co/cancel.bin", path, ct: cts.Token));
+            src.DownloadAsync(
+                "https://modelscope.cn/models/qwen/Qwen3-4B-Q4/cancel.bin",
+                path, ct: cts.Token));
     }
 
     [Fact]
@@ -421,9 +325,10 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         await File.WriteAllBytesAsync(path, existing);
 
         using var handler = new ContentHandler(new byte[] { 3, 4 }, HttpStatusCode.PartialContent);
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/rangecheck.bin", path);
+        await src.DownloadAsync(
+            "https://modelscope.cn/models/qwen/Qwen3-4B-Q4/rangecheck.bin", path);
 
         // The helper must have sent a Range: bytes=2- header.
         Assert.NotNull(handler.LastRequest?.Headers.Range);
@@ -438,9 +343,10 @@ public sealed class SourceDownloadHelperBehaviourTests : IDisposable
         var path = TempFile("norange.bin");
 
         using var handler = new ContentHandler(new byte[] { 7, 8, 9 });
-        using var src = new HuggingFaceSource(new HttpClient(handler));
+        using var src = new ModelScopeSource(new HttpClient(handler));
 
-        await src.DownloadAsync("https://huggingface.co/norange.bin", path);
+        await src.DownloadAsync(
+            "https://modelscope.cn/models/qwen/Qwen3-4B-Q4/norange.bin", path);
 
         Assert.Null(handler.LastRequest?.Headers.Range);
     }

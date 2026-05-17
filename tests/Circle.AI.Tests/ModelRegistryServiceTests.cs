@@ -141,13 +141,13 @@ public sealed class ModelEntryTests
             Name:         "Qwen3-14B-Q4",
             Version:      "3.0",
             Quantization: "Q4_K_M",
-            Url:          "https://hf.co/model.gguf",
+            Url:          "https://modelscope.cn/models/qwen/Qwen3-14B-Instruct-GGUF/resolve/master/qwen3-14b-instruct-q4_k_m.gguf",
             Checksum:     "sha256:abc123");
 
         Assert.Equal("Qwen3-14B-Q4",          entry.Name);
         Assert.Equal("3.0",                    entry.Version);
         Assert.Equal("Q4_K_M",                entry.Quantization);
-        Assert.Equal("https://hf.co/model.gguf", entry.Url);
+        Assert.Equal("https://modelscope.cn/models/qwen/Qwen3-14B-Instruct-GGUF/resolve/master/qwen3-14b-instruct-q4_k_m.gguf", entry.Url);
         Assert.Equal("sha256:abc123",          entry.Checksum);
     }
 
@@ -183,7 +183,7 @@ public sealed class ModelEntryTests
         // Production blocker: both registry entries currently carry "sha256:TBD".
         // This test documents and detects the placeholder so it can't ship silently.
         var entry = new ModelEntry("Qwen3-14B-Q4", "3.0", "Q4_K_M",
-            "https://hf.co/model.gguf", "sha256:TBD");
+            "https://modelscope.cn/models/qwen/Qwen3-14B-Instruct-GGUF/resolve/master/qwen3-14b-instruct-q4_k_m.gguf", "sha256:TBD");
         Assert.Contains("TBD", entry.Checksum, StringComparison.Ordinal);
     }
 }
@@ -195,7 +195,7 @@ public sealed class ModelRegistryRecordTests
     {
         var entries = new List<ModelEntry>
         {
-            new("Qwen3-14B-Q4", "3.0", "Q4_K_M", "https://hf.co/a.gguf", "sha256:abc"),
+            new("Qwen3-14B-Q4", "3.0", "Q4_K_M", "https://modelscope.cn/models/qwen/Qwen3-14B-Instruct-GGUF/resolve/master/qwen3-14b-instruct-q4_k_m.gguf", "sha256:abc"),
         };
         var ts  = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         var reg = new ModelRegistry("https://registry.thegeek.co.za/models.json", ts, entries);

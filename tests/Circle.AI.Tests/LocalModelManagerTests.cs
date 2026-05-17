@@ -50,7 +50,7 @@ public sealed class LocalModelManagerTests : IDisposable
     [Fact]
     public void Constructor_Uri_NonNullUri_CreatesDownloader()
     {
-        var uri = new Uri("https://huggingface.co/");
+        var uri = new Uri("https://modelscope.cn/");
         var dir = Path.Combine(_tempDir, "sub3");
         using var mgr = new LocalModelManager(uri, dir);
         Assert.NotNull(mgr);
@@ -115,7 +115,7 @@ public sealed class LocalModelManagerTests : IDisposable
     [Fact]
     public async Task GetModelPathAsync_SlashInModelId_IsSanitized()
     {
-        // Model IDs often come in "org/model" HuggingFace format.
+        // Model IDs often come in "org/model" format (e.g. ModelScope namespace/model).
         // SanitizeModelId must replace '/' with '_' before using it as a path segment.
         var dl  = new FakeModelDownloader();
         var dir = Path.Combine(_tempDir, "sub6");

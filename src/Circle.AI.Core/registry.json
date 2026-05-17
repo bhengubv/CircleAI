@@ -1,82 +1,135 @@
 {
-  "Qwen3-14B-Q4": {
-    "FileName": "qwen3-14b-instruct-q4_k_m.gguf",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-14B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-14b-instruct-q4_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3-14B-Instruct-GGUF/resolve/main/qwen3-14b-instruct-q4_k_m.gguf",
-    "Checksum": "sha256:TBD",
-    "SizeBytes": 8800000000,
-    "Version": "1.0",
-    "Architecture": "qwen3",
-    "QuantizationType": "Q4_K_M"
-  },
-  "Qwen3.6-35B-A3B-Q3": {
-    "FileName": "qwen3.6-35b-a3b-q3_k_m.gguf",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3.6-35B-A3B-GGUF/repo?Revision=master&FilePath=qwen3.6-35b-a3b-q3_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B-GGUF/resolve/main/qwen3.6-35b-a3b-q3_k_m.gguf",
-    "Checksum": "sha256:TBD",
-    "SizeBytes": 14000000000,
-    "Version": "1.0",
-    "Architecture": "qwen3-moe",
-    "QuantizationType": "Q3_K_M"
-  },
-  "Qwen3-0.6B-Q4": {
-    "FileName": "qwen3-0.6b-instruct-q4_k_m.gguf",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-0.6B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-0.6b-instruct-q4_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3-0.6B-Instruct-GGUF/resolve/main/qwen3-0.6b-instruct-q4_k_m.gguf",
-    "Checksum": "sha256:TBD",
-    "SizeBytes": 490000000,
-    "Version": "1.0",
-    "Architecture": "qwen3",
-    "QuantizationType": "Q4_K_M"
-  },
+  "Notes": "All sources are Chinese-origin. Primary = ModelScope API. Fallback = ModelScope CDN. No Western source.",
+
   "Qwen3-1.7B-Q4": {
     "FileName": "qwen3-1.7b-instruct-q4_k_m.gguf",
     "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-1.7B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-1.7b-instruct-q4_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3-1.7B-Instruct-GGUF/resolve/main/qwen3-1.7b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3-1.7B-Instruct-GGUF/resolve/master/qwen3-1.7b-instruct-q4_k_m.gguf",
     "Checksum": "sha256:TBD",
-    "SizeBytes": 1100000000,
+    "SizeBytes": 1360000000,
     "Version": "1.0",
     "Architecture": "qwen3",
     "QuantizationType": "Q4_K_M"
   },
+
+  "Qwen3.5-2B-Q4": {
+    "FileName": "qwen3.5-2b-instruct-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3.5-2B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3.5-2b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3.5-2B-Instruct-GGUF/resolve/master/qwen3.5-2b-instruct-q4_k_m.gguf",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 1280000000,
+    "Version": "1.0",
+    "Architecture": "qwen3.5",
+    "QuantizationType": "Q4_K_M"
+  },
+
   "Qwen3-4B-Q4": {
     "FileName": "qwen3-4b-instruct-q4_k_m.gguf",
     "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-4B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-4b-instruct-q4_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3-4B-Instruct-GGUF/resolve/main/qwen3-4b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3-4B-Instruct-GGUF/resolve/master/qwen3-4b-instruct-q4_k_m.gguf",
     "Checksum": "sha256:TBD",
-    "SizeBytes": 2600000000,
+    "SizeBytes": 2500000000,
     "Version": "1.0",
     "Architecture": "qwen3",
     "QuantizationType": "Q4_K_M"
   },
+
+  "Qwen3.5-4B-Q4": {
+    "FileName": "qwen3.5-4b-instruct-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3.5-4B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3.5-4b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3.5-4B-Instruct-GGUF/resolve/master/qwen3.5-4b-instruct-q4_k_m.gguf",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 2700000000,
+    "Version": "1.0",
+    "Architecture": "qwen3.5",
+    "QuantizationType": "Q4_K_M"
+  },
+
   "Qwen3-8B-Q4": {
     "FileName": "qwen3-8b-instruct-q4_k_m.gguf",
     "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-8B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-8b-instruct-q4_k_m.gguf",
-    "FallbackUrl": "https://huggingface.co/Qwen/Qwen3-8B-Instruct-GGUF/resolve/main/qwen3-8b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3-8B-Instruct-GGUF/resolve/master/qwen3-8b-instruct-q4_k_m.gguf",
     "Checksum": "sha256:TBD",
     "SizeBytes": 5000000000,
     "Version": "1.0",
     "Architecture": "qwen3",
     "QuantizationType": "Q4_K_M"
   },
-  "Whisper-Base": {
-    "FileName": "ggml-base.bin",
-    "PrimaryUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
-    "FallbackUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+
+  "Qwen3.5-9B-Q4": {
+    "FileName": "qwen3.5-9b-instruct-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3.5-9B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3.5-9b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3.5-9B-Instruct-GGUF/resolve/master/qwen3.5-9b-instruct-q4_k_m.gguf",
     "Checksum": "sha256:TBD",
-    "SizeBytes": 148000000,
+    "SizeBytes": 5700000000,
     "Version": "1.0",
-    "Architecture": "whisper",
-    "QuantizationType": "f16"
+    "Architecture": "qwen3.5",
+    "QuantizationType": "Q4_K_M"
   },
-  "Whisper-Small": {
-    "FileName": "ggml-small.bin",
-    "PrimaryUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
-    "FallbackUrl": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+
+  "Qwen3-14B-Q4": {
+    "FileName": "qwen3-14b-instruct-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-14B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-14b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3-14B-Instruct-GGUF/resolve/master/qwen3-14b-instruct-q4_k_m.gguf",
     "Checksum": "sha256:TBD",
-    "SizeBytes": 488000000,
+    "SizeBytes": 9000000000,
     "Version": "1.0",
-    "Architecture": "whisper",
-    "QuantizationType": "f16"
+    "Architecture": "qwen3",
+    "QuantizationType": "Q4_K_M"
+  },
+
+  "Qwen3.6-35B-A3B-Q3": {
+    "FileName": "qwen3.6-35b-a3b-q3_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3.6-35B-A3B-GGUF/repo?Revision=master&FilePath=qwen3.6-35b-a3b-q3_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3.6-35B-A3B-GGUF/resolve/master/qwen3.6-35b-a3b-q3_k_m.gguf",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 14000000000,
+    "Version": "1.0",
+    "Architecture": "qwen3-moe",
+    "QuantizationType": "Q3_K_M"
+  },
+
+  "Qwen3-0.6B-Q4": {
+    "FileName": "qwen3-0.6b-instruct-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/qwen/Qwen3-0.6B-Instruct-GGUF/repo?Revision=master&FilePath=qwen3-0.6b-instruct-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/qwen/Qwen3-0.6B-Instruct-GGUF/resolve/master/qwen3-0.6b-instruct-q4_k_m.gguf",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 490000000,
+    "Version": "1.0",
+    "Architecture": "qwen3",
+    "QuantizationType": "Q4_K_M"
+  },
+
+  "Kimi-VL-A3B-Thinking-2506-Q4": {
+    "FileName": "kimi-vl-a3b-thinking-2506-q4_k_m.gguf",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/moonshotai/Kimi-VL-A3B-Thinking-2506-GGUF/repo?Revision=master&FilePath=kimi-vl-a3b-thinking-2506-q4_k_m.gguf",
+    "FallbackUrl": "https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506-GGUF/resolve/master/kimi-vl-a3b-thinking-2506-q4_k_m.gguf",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 10500000000,
+    "Version": "2506",
+    "Architecture": "kimi-vl-moe",
+    "QuantizationType": "Q4_K_M"
+  },
+
+  "SenseVoice-Small": {
+    "FileName": "sensevoice-small.onnx",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/FunAudioLLM/SenseVoiceSmall/repo?Revision=master&FilePath=model.onnx",
+    "FallbackUrl": "https://modelscope.cn/models/FunAudioLLM/SenseVoiceSmall/resolve/master/model.onnx",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 234000000,
+    "Version": "1.0",
+    "Architecture": "sensevoice",
+    "QuantizationType": "fp32"
+  },
+
+  "SenseVoice-Large": {
+    "FileName": "sensevoice-large.onnx",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/FunAudioLLM/SenseVoiceLarge/repo?Revision=master&FilePath=model.onnx",
+    "FallbackUrl": "https://modelscope.cn/models/FunAudioLLM/SenseVoiceLarge/resolve/master/model.onnx",
+    "Checksum": "sha256:TBD",
+    "SizeBytes": 1600000000,
+    "Version": "1.0",
+    "Architecture": "sensevoice",
+    "QuantizationType": "fp32"
   }
 }
