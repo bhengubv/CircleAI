@@ -8,7 +8,7 @@ namespace Circle.AI.Core
     /// <summary>
     /// Downloads a model file (or set of files) to local storage.
     /// Implementations are expected to walk a chain of <see cref="IModelSource"/> instances
-    /// so that, e.g., ModelScope can be tried first and HuggingFace second.
+    /// so that, e.g., ModelScope API can be tried first and ModelScope CDN second.
     /// </summary>
     public interface IModelDownloader
     {

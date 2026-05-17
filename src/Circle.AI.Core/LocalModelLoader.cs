@@ -21,7 +21,7 @@ namespace Circle.AI.Core
         {
             _modelDir = modelDirectory ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "BhenguAI",
+                "CircleAI",
                 "Models");
 
             Directory.CreateDirectory(_modelDir);
@@ -41,7 +41,7 @@ namespace Circle.AI.Core
                 if (modelInfo.Checksum.StartsWith("sha256:TBD"))
                 {
                     Trace.TraceWarning(
-                        "BhenguAI: Model '{0}' has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
+                        "CircleAI: Model '{0}' has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
                         modelInfo.FileName);
                     return localPath;
                 }
@@ -50,7 +50,7 @@ namespace Circle.AI.Core
                 File.Delete(localPath);
             }
 
-            // Try primary (ModelScope) first, fall back to HuggingFace.
+            // Try primary (ModelScope) first, fall back to ModelScope CDN.
             var sources = new[] { modelInfo.PrimaryUrl, modelInfo.FallbackUrl };
             Exception? lastError = null;
             foreach (var url in sources)
@@ -62,7 +62,7 @@ namespace Circle.AI.Core
                     if (modelInfo.Checksum.StartsWith("sha256:TBD"))
                     {
                         Trace.TraceWarning(
-                            "BhenguAI: Model '{0}' downloaded but has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
+                            "CircleAI: Model '{0}' downloaded but has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
                             modelInfo.FileName);
                         return localPath;
                     }

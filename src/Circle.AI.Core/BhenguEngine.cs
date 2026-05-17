@@ -34,7 +34,7 @@ namespace Circle.AI.Core
 
         /// <summary>
         /// The model loader used to acquire and cache model files from
-        /// ModelScope (primary) or HuggingFace (fallback).
+        /// ModelScope API (primary) or ModelScope CDN (fallback).
         /// </summary>
         public IModelLoader ModelLoader { get; }
 

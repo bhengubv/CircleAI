@@ -35,9 +35,9 @@ namespace Circle.AI.Core.Sources
                 _ownsClient = false;
             }
 
-            if (!_httpClient.DefaultRequestHeaders.UserAgent.TryParseAdd("BhenguAI"))
+            if (!_httpClient.DefaultRequestHeaders.UserAgent.TryParseAdd("CircleAI"))
             {
-                _httpClient.DefaultRequestHeaders.Add("User-Agent", "BhenguAI");
+                _httpClient.DefaultRequestHeaders.Add("User-Agent", "CircleAI");
             }
             _httpClient.Timeout = TimeSpan.FromMinutes(30);
         }

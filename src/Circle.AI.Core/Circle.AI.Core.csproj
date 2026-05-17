@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>Circle.AI.Core</PackageId>
-    <Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / HuggingFace fallback), and local cache.</Description>
+    <Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

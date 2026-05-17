@@ -17,7 +17,7 @@ namespace Circle.AI.Core.Models
             _httpClient = new HttpClient();
             _registryPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "BhenguAI",
+                "CircleAI",
                 "Models",
                 "remote_registry.json");
 

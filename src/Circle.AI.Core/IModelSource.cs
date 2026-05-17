@@ -6,7 +6,7 @@ namespace Circle.AI.Core
 {
     /// <summary>
     /// Abstraction for model file sources. Allows fallback chains for sanctions resilience
-    /// (e.g. ModelScope primary, HuggingFace fallback).
+    /// (e.g. ModelScope API primary, ModelScope CDN fallback).
     /// </summary>
     public interface IModelSource
     {
