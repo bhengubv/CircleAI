@@ -1,7 +1,7 @@
-// BhenguAI ConsoleTest
+// CircleAI ConsoleTest
 //
 // Demonstrates the post-pivot flow:
-//   1. Build a BhenguEngine wired to LocalModelLoader.
+//   1. Build a CircleEngine wired to LocalModelLoader.
 //   2. Download Qwen 3 14B Q4_K_M (skipping if already cached).
 //   3. Construct a QwenTextGenerator over the cached GGUF.
 //   4. Run a single chat completion and print the answer.
@@ -17,12 +17,12 @@ const string ModelId = "Qwen3-14B-Q4";
 
 try
 {
-    Console.WriteLine("BhenguAI ConsoleTest");
+    Console.WriteLine("CircleAI ConsoleTest");
     Console.WriteLine("====================");
 
     // 1. Engine + model loader.
     using var loader = new LocalModelLoader();
-    var engine = new BhenguEngine(loader);
+    var engine = new CircleEngine(loader);
 
     // 2. Acquire the model. The loader caches and verifies, so this is a
     // no-op once we've downloaded it before.

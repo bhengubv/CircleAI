@@ -1,9 +1,9 @@
 namespace Circle.AI.Core
 {
-    public interface IBhenguModule : IDisposable
+    public interface ICircleModule : IDisposable
     {
         string ModuleName { get; }
-        Task InitAsync(BhenguEngine engine);
+        Task InitAsync(CircleEngine engine);
         bool IsModelLoaded { get; }
     }
 }

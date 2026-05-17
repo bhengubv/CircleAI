@@ -3,9 +3,9 @@ using Xunit;
 
 namespace Circle.AI.Tests;
 
-public sealed class BhenguEngineTests
+public sealed class CircleEngineTests
 {
-    private static BhenguEngine BuildEngine() =>
+    private static CircleEngine BuildEngine() =>
         new(new FakeModelLoader());
 
     // ------------------------------------------------------------------
@@ -15,14 +15,14 @@ public sealed class BhenguEngineTests
     [Fact]
     public void Constructor_NullLoader_Throws()
     {
-        Assert.Throws<ArgumentNullException>(() => new BhenguEngine(null!));
+        Assert.Throws<ArgumentNullException>(() => new CircleEngine(null!));
     }
 
     [Fact]
     public void Constructor_SetsModelLoader()
     {
         var loader = new FakeModelLoader();
-        var engine = new BhenguEngine(loader);
+        var engine = new CircleEngine(loader);
         Assert.Same(loader, engine.ModelLoader);
     }
 
@@ -116,28 +116,28 @@ public sealed class BhenguEngineTests
         var engine = BuildEngine();
         var module = new FakeModule();
 
-        engine.RegisterModule<IBhenguModule>(module);
+        engine.RegisterModule<ICircleModule>(module);
 
-        Assert.Same(module, engine.GetModule<IBhenguModule>());
+        Assert.Same(module, engine.GetModule<ICircleModule>());
     }
 
     [Fact]
     public void HasModule_RegisteredViaInterfaceKey_ReturnsTrue()
     {
         var engine = BuildEngine();
-        engine.RegisterModule<IBhenguModule>(new FakeModule());
-        Assert.True(engine.HasModule<IBhenguModule>());
+        engine.RegisterModule<ICircleModule>(new FakeModule());
+        Assert.True(engine.HasModule<ICircleModule>());
     }
 
     [Fact]
     public void RegisterByConcreteType_GetByInterfaceKey_ReturnsNull()
     {
         // The key is exact type — registering under FakeModule (concrete)
-        // and querying under IBhenguModule (interface) must miss.
+        // and querying under ICircleModule (interface) must miss.
         var engine = BuildEngine();
         engine.RegisterModule(new FakeModule());      // key = FakeModule
 
-        Assert.Null(engine.GetModule<IBhenguModule>()); // key = IBhenguModule → miss
-        Assert.False(engine.HasModule<IBhenguModule>());
+        Assert.Null(engine.GetModule<ICircleModule>()); // key = ICircleModule → miss
+        Assert.False(engine.HasModule<ICircleModule>());
     }
 }

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Circle.AI.Core
 {
     /// <summary>
-    /// Top-level facade for the BhenguAI on-device stack. Holds the
+    /// Top-level facade for the CircleAI on-device stack. Holds the
     /// <see cref="IModelLoader"/> and a small registry of attached modules
     /// (embeddings, search, chat generators, tool bridges) wired in from
     /// downstream assemblies via extension methods.
@@ -28,7 +28,7 @@ namespace Circle.AI.Core
     /// them back out with <see cref="GetModule{T}"/>.
     /// </para>
     /// </remarks>
-    public sealed class BhenguEngine
+    public sealed class CircleEngine
     {
         private readonly Dictionary<Type, object> _modules = new();
 
@@ -40,13 +40,13 @@ namespace Circle.AI.Core
 
         /// <summary>
         /// Optional embedding service. Wired in by
-        /// <c>Circle.AI.Embeddings.BhenguEngineExtensions.WithEmbeddingService</c>.
+        /// <c>Circle.AI.Embeddings.CircleEngineExtensions.WithEmbeddingService</c>.
         /// Kept as a settable <see cref="object"/> so that Core does not need
         /// to reference downstream embedding implementations.
         /// </summary>
         public object? EmbeddingService { get; set; }
 
-        public BhenguEngine(IModelLoader modelLoader)
+        public CircleEngine(IModelLoader modelLoader)
         {
             ModelLoader = modelLoader ?? throw new ArgumentNullException(nameof(modelLoader));
         }
@@ -54,7 +54,7 @@ namespace Circle.AI.Core
         /// <summary>
         /// Register a module instance keyed by its concrete or interface type.
         /// </summary>
-        public BhenguEngine RegisterModule<T>(T module) where T : notnull
+        public CircleEngine RegisterModule<T>(T module) where T : notnull
         {
             if (module is null) throw new ArgumentNullException(nameof(module));
             _modules[typeof(T)] = module;

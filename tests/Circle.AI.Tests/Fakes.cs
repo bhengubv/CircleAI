@@ -286,14 +286,14 @@ internal sealed class FakeVoiceTranscriber : IVoiceTranscriber
 }
 
 // ---------------------------------------------------------------------------
-// IBhenguModule (minimal)
+// ICircleModule (minimal)
 // ---------------------------------------------------------------------------
 
-internal sealed class FakeModule : IBhenguModule
+internal sealed class FakeModule : ICircleModule
 {
     public string ModuleName => "Fake";
     public bool IsModelLoaded => true;
-    public Task InitAsync(BhenguEngine engine) => Task.CompletedTask;
+    public Task InitAsync(CircleEngine engine) => Task.CompletedTask;
     public void Dispose() { }
 }
 
