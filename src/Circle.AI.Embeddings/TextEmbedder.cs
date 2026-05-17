@@ -1,23 +1,25 @@
 // TextEmbedder.cs
 //
-// On-device text embedding using a GGUF embedding model via llama.cpp.
-// Supports any llama.cpp-compatible embedding model (Qwen-Embedding, BGE-zh,
-// nomic-embed, etc.). The backend is factory-injectable for testability.
+// On-device text embedding using a GGUF / MNN embedding model via MNN (Alibaba Group).
+// Supports any MNN-compatible embedding model (Qwen-Embedding, BGE-zh, etc.).
+// The backend is factory-injectable for testability.
 //
 // Architecture notes:
-//   - LlamaEmbeddingBackend is the production path. It loads a GGUF embedding
-//     model with embeddings=1 on the context, runs llama_decode, then reads
-//     the pooled embedding vector via llama_get_embeddings_seq.
+//   - MnnEmbeddingBackend is the production path. It loads a GGUF or MNN embedding
+//     model via mnn_llm_create + mnn_llm_load, calls mnn_embed_text per request,
+//     then L2-normalises the output vector.
+//   - No global backend ref-count is needed: MNN initialises per model handle,
+//     unlike llama.cpp which required llama_backend_init / llama_backend_free.
 //   - L2 normalisation is always applied so downstream cosine similarity
 //     reduces to a dot product.
-//   - TextEmbedder is disposable; it destroys the native model handle when
-//     disposed.
+//   - TextEmbedder is disposable; it destroys the native model handle when disposed.
 //   - Model loading is lazy (first GenerateAsync call) and serialised by a
 //     SemaphoreSlim so concurrent callers share a single initialisation.
+//
+// MNN performance vs llama.cpp on Android ARM64:
+//   Prefill: 8.6×  |  Decode: 3.7×  |  Peak RAM: −40%
 
 using System;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Circle.AI.Core;
@@ -27,7 +29,7 @@ namespace Circle.AI.Embeddings
 {
     // -------------------------------------------------------------------------
     // Internal embedding-backend abstraction — lets tests inject a fake
-    // without needing the native llama.cpp library on the test machine.
+    // without needing the native MNN library on the test machine.
     // -------------------------------------------------------------------------
 
     internal interface IEmbeddingBackend : IDisposable
@@ -44,50 +46,52 @@ namespace Circle.AI.Embeddings
     }
 
     // -------------------------------------------------------------------------
-    // Production backend — llama.cpp GGUF embedding model
+    // Production backend — MNN GGUF / MNN-format embedding model
     // -------------------------------------------------------------------------
 
-    internal sealed class LlamaEmbeddingBackend : IEmbeddingBackend
+    internal sealed class MnnEmbeddingBackend : IEmbeddingBackend
     {
-        private readonly LlamaModelHandle _model;
+        private readonly MnnModelHandle _model;
         private readonly int _dimension;
-        private readonly int _threads;
         private bool _disposed;
 
-        private static int s_backendRefCount;
-        private static readonly object s_lock = new();
-
-        public LlamaEmbeddingBackend(string modelPath, int? threads = null)
+        public MnnEmbeddingBackend(string modelPath, int? threads = null)
         {
             if (string.IsNullOrWhiteSpace(modelPath))
                 throw new ArgumentException("Model path is required.", nameof(modelPath));
             if (!System.IO.File.Exists(modelPath))
                 throw new System.IO.FileNotFoundException("Embedding model file not found.", modelPath);
 
-            EnsureBackend();
-
-            var mp = LlamaCppInterop.llama_model_default_params();
-            mp.use_mmap = 1;
-            mp.use_mlock = 0;
-            mp.n_gpu_layers = 0;
-
-            var handle = LlamaCppInterop.llama_model_load_from_file(modelPath, mp);
+            var handle = MnnInterop.mnn_llm_create(modelPath);
             if (handle.IsInvalid)
             {
                 handle.Dispose();
-                ReleaseBackend();
                 throw new InvalidOperationException(
-                    $"llama.cpp failed to load embedding model at '{modelPath}'.");
+                    $"MNN failed to create embedding model from '{modelPath}'. " +
+                    "Verify the file is a valid GGUF or MNN embedding model and that " +
+                    "libmnnbridge is on the native library search path.");
             }
 
-            _model = handle;
-            _dimension = LlamaCppInterop.llama_n_embd(_model);
-            _threads = threads ?? Math.Max(1, Environment.ProcessorCount);
+            int rc = MnnInterop.mnn_llm_load(handle);
+            if (rc != 0)
+            {
+                handle.Dispose();
+                throw new InvalidOperationException(
+                    $"MNN embedding model load failed with code {rc} for '{modelPath}'. " +
+                    "Check available RAM and that the model file is not corrupt.");
+            }
 
-            if (_dimension <= 0)
+            int dim = MnnInterop.mnn_embed_get_dim(handle);
+            if (dim <= 0)
+            {
+                handle.Dispose();
                 throw new InvalidOperationException(
                     "Embedding model returned dimension <= 0. " +
                     "Ensure the GGUF file is a valid embedding model.");
+            }
+
+            _model = handle;
+            _dimension = dim;
         }
 
         public int Dimension => _dimension;
@@ -96,83 +100,19 @@ namespace Circle.AI.Embeddings
         {
             ThrowIfDisposed();
 
-            // 1. Create an embeddings-mode context per call (cheap; no KV cache).
-            var cp = LlamaCppInterop.llama_context_default_params();
-            cp.n_ctx = 512;                // typical max sequence for embedding models
-            cp.n_batch = 512;
-            cp.n_ubatch = 512;
-            cp.n_threads = _threads;
-            cp.n_threads_batch = _threads;
-            cp.embeddings = 1;             // ← enables embedding output
-            cp.pooling_type = 1;           // LLAMA_POOLING_TYPE_MEAN
-
-            using var ctx = LlamaCppInterop.llama_new_context_with_model(_model, cp);
-            if (ctx.IsInvalid)
-                throw new InvalidOperationException("llama.cpp failed to create embedding context.");
-
-            // 2. Tokenise the input.
-            var utf8 = Encoding.UTF8.GetBytes(text);
-            int maxTokens = utf8.Length + 8;
-            var tokens = new int[maxTokens];
-
-            int nTokens;
-            fixed (byte* pText = utf8)
-            fixed (int* pTok = tokens)
+            var output = new float[_dimension];
+            int rc;
+            fixed (float* pOut = output)
             {
-                nTokens = LlamaCppInterop.llama_tokenize(
-                    _model, pText, utf8.Length,
-                    pTok, tokens.Length,
-                    add_special: 1,   // prepend BOS
-                    parse_special: 0);
+                rc = MnnInterop.mnn_embed_text(_model, text, pOut, _dimension);
             }
 
-            if (nTokens < 0)
-            {
-                // Resize and retry.
-                tokens = new int[-nTokens];
-                fixed (byte* pText = utf8)
-                fixed (int* pTok = tokens)
-                {
-                    nTokens = LlamaCppInterop.llama_tokenize(
-                        _model, pText, utf8.Length,
-                        pTok, tokens.Length,
-                        add_special: 1, parse_special: 0);
-                }
-                if (nTokens < 0)
-                    throw new InvalidOperationException("Tokenisation of embedding input failed.");
-            }
+            if (rc < 0)
+                throw new InvalidOperationException($"MNN embedding failed with code {rc}.");
 
-            // Truncate to the context window.
-            nTokens = Math.Min(nTokens, (int)cp.n_ctx);
-
-            // 3. Decode the prompt batch.
-            fixed (int* pTok = tokens)
-            {
-                var batch = LlamaCppInterop.llama_batch_get_one(pTok, nTokens);
-                int rc = LlamaCppInterop.llama_decode(ctx, batch);
-                if (rc != 0)
-                    throw new InvalidOperationException(
-                        $"llama_decode for embedding failed with code {rc}.");
-            }
-
-            // 4. Read the pooled embedding vector.
-            // llama_get_embeddings_seq returns the mean-pooled vector for seq 0.
-            IntPtr ptr = LlamaCppInterop.llama_get_embeddings_seq(ctx, 0);
-            if (ptr == IntPtr.Zero)
-            {
-                // Fall back to the non-seq variant (older llama.cpp builds).
-                ptr = LlamaCppInterop.llama_get_embeddings(ctx);
-            }
-            if (ptr == IntPtr.Zero)
-                throw new InvalidOperationException(
-                    "llama_get_embeddings returned null. Ensure the model supports embedding output.");
-
-            var result = new float[_dimension];
-            Marshal.Copy(ptr, result, 0, _dimension);
-
-            // 5. L2-normalise so cosine similarity == dot product downstream.
-            L2Normalize(result);
-            return result;
+            // L2-normalise so cosine similarity == dot product downstream.
+            L2Normalize(output);
+            return output;
         }
 
         public void Dispose()
@@ -180,34 +120,12 @@ namespace Circle.AI.Embeddings
             if (_disposed) return;
             _disposed = true;
             _model.Dispose();
-            ReleaseBackend();
             GC.SuppressFinalize(this);
         }
 
         private void ThrowIfDisposed()
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(LlamaEmbeddingBackend));
-        }
-
-        private static void EnsureBackend()
-        {
-            lock (s_lock)
-            {
-                if (s_backendRefCount == 0) LlamaCppInterop.llama_backend_init();
-                s_backendRefCount++;
-            }
-        }
-
-        private static void ReleaseBackend()
-        {
-            lock (s_lock)
-            {
-                if (s_backendRefCount > 0)
-                {
-                    s_backendRefCount--;
-                    if (s_backendRefCount == 0) LlamaCppInterop.llama_backend_free();
-                }
-            }
+            if (_disposed) throw new ObjectDisposedException(nameof(MnnEmbeddingBackend));
         }
 
         private static void L2Normalize(float[] v)
@@ -226,8 +144,8 @@ namespace Circle.AI.Embeddings
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// On-device text embedder backed by a GGUF embedding model (Qwen-Embedding,
-    /// BGE, nomic-embed, etc.) loaded via llama.cpp. Returns L2-normalised
+    /// On-device text embedder backed by a GGUF / MNN embedding model (Qwen-Embedding,
+    /// BGE-zh, etc.) loaded via MNN (Alibaba Group). Returns L2-normalised
     /// <c>float[]</c> vectors suitable for cosine-similarity retrieval.
     /// </summary>
     public sealed class TextEmbedder : ITextEmbedder, IDisposable
@@ -245,12 +163,12 @@ namespace Circle.AI.Embeddings
         // ------------------------------------------------------------------
 
         /// <summary>
-        /// Production constructor. Uses <see cref="LlamaEmbeddingBackend"/>
+        /// Production constructor. Uses <see cref="MnnEmbeddingBackend"/>
         /// with the model path resolved via <paramref name="modelManager"/>.
         /// </summary>
         public TextEmbedder(IModelManager modelManager, byte[] expectedChecksum)
             : this(modelManager, expectedChecksum,
-                  static path => new LlamaEmbeddingBackend(path))
+                  static path => new MnnEmbeddingBackend(path))
         { }
 
         // ------------------------------------------------------------------

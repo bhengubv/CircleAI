@@ -267,6 +267,29 @@ internal static partial class MnnInterop
         MnnTokenCallback callback,
         IntPtr userData);
 
+    // ── Embeddings ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the embedding vector dimension for a model loaded in embedding mode.
+    /// Returns a positive integer on success; 0 or negative if the model does not
+    /// support embedding output.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "mnn_embed_get_dim")]
+    public static partial int mnn_embed_get_dim(MnnModelHandle handle);
+
+    /// <summary>
+    /// Embeds UTF-8 <paramref name="text"/> into a dense float vector.
+    /// Writes at most <paramref name="maxDims"/> floats into <paramref name="output"/>.
+    /// Returns the number of floats written on success, or a negative error code.
+    /// The caller is responsible for L2-normalisation if required.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "mnn_embed_text", StringMarshalling = StringMarshalling.Utf8)]
+    public static unsafe partial int mnn_embed_text(
+        MnnModelHandle handle,
+        string text,
+        float* output,
+        int maxDims);
+
     // ── Convenience wrappers ──────────────────────────────────────────────────
 
     /// <summary>Save the KV-cache session. Returns <c>true</c> on success.</summary>
