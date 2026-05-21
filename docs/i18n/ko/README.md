@@ -1,21 +1,19 @@
-# Circle AI — 10-Language SDK
+# Circle AI — 10개 언어 SDK
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
-
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
+Circle AI 컴패니언 스택의 이식성 있는 핵심 구성 요소입니다. 모든
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) 노드(웨어러블,
+스마트폰, IoT, HarmonyOS)에서 FFI 오버헤드 및 런타임 브리지 없이 네이티브로 동작합니다.
 
 ---
 
-## Portable Core (8 modules)
+## 이식 가능한 핵심 (8개 모듈)
 
-| Module | Key types |
+| 모듈 | 주요 타입 |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (20개 BCP-47 태그), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -23,7 +21,7 @@ phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
 
 ---
 
-## Language Quickstart
+## 언어별 빠른 시작
 
 ### C# (.NET)
 
@@ -225,37 +223,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Cross-Language Math
+## AffectState — 언어 간 수학적 일관성
 
-All 10 implementations produce identical float results (ε ≤ 1e-5).
+10개 구현체 모두 동일한 부동소수점 결과를 생성합니다 (ε ≤ 1e-5).
 
-| Operation | Effect |
+| 연산 | 효과 |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (범위 [0, 1]로 제한) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (범위 제한) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement과 energy가 0.5 방향으로 선형 보간 |
 
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
+테스트 벡터는 [`fixtures/affect_state.json`](fixtures/affect_state.json)에 있습니다 (12개 벡터). CI에서 10개 언어 모두 검증됩니다.
 
 ---
 
-## Languages Registry (20 BCP-47 tags)
+## 언어 레지스트리 (20개 BCP-47 태그)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Repository Layout
+## 저장소 구조
 
 ```
 CircleAI/
-├── src/            C# reference implementation (Circle.AI.*)
-├── tests/          C# test suite
-├── fixtures/       Cross-language test vectors (JSON)
+├── src/            C# 참조 구현체 (Circle.AI.*)
+├── tests/          C# 테스트 스위트
+├── fixtures/       언어 간 테스트 벡터 (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android library
-├── c/              Pure C99, CMake
-├── go/             Go module
+├── android/        Kotlin/Android 라이브러리
+├── c/              순수 C99, CMake
+├── go/             Go 모듈
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -268,13 +266,13 @@ CircleAI/
 
 ## CI
 
-| Workflow | Trigger |
+| 워크플로 | 트리거 |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Fixture Validation](.github/workflows/fixture-validation.yml) | master에 push/PR 시 — 10개 테스트 스위트 전체 실행 |
+| [Publish](.github/workflows/publish.yml) | git 태그 `v*.*.*` 시 — NuGet, crates.io, PyPI, npm, GitHub Packages에 게시 |
 
 ---
 
-## License
+## 라이선스
 
 MIT

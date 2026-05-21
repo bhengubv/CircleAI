@@ -1,21 +1,19 @@
-# Circle AI — 10-Language SDK
+# Circle AI — 十语言 SDK
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
-
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
+Circle AI 伴侣套件的可移植核心。原生运行于每个
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) 节点旁——可穿戴设备、
+手机、IoT、HarmonyOS——无 FFI 开销，无运行时桥接。
 
 ---
 
-## Portable Core (8 modules)
+## 可移植核心（8 个模块）
 
-| Module | Key types |
+| 模块 | 核心类型 |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages`（20 个 BCP-47 标签）, `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -23,7 +21,7 @@ phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
 
 ---
 
-## Language Quickstart
+## 各语言快速入门
 
 ### C# (.NET)
 
@@ -225,56 +223,56 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Cross-Language Math
+## AffectState — 跨语言数学计算
 
-All 10 implementations produce identical float results (ε ≤ 1e-5).
+所有 10 种实现产生相同的浮点结果（ε ≤ 1e-5）。
 
-| Operation | Effect |
+| 操作 | 效果 |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
+| `applyPositiveSignal()` | engagement +0.02，rapport +0.01，uncertainty −0.02（限幅至 [0, 1]） |
+| `applyNegativeSignal()` | engagement −0.03，uncertainty +0.03（限幅） |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02)；engagement 和 energy 向 0.5 线性插值 |
 
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
+测试向量位于 [`fixtures/affect_state.json`](fixtures/affect_state.json)（12 个向量）。在所有 10 种语言中通过 CI 验证。
 
 ---
 
-## Languages Registry (20 BCP-47 tags)
+## 语言注册表（20 个 BCP-47 标签）
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Repository Layout
+## 仓库结构
 
 ```
 CircleAI/
-├── src/            C# reference implementation (Circle.AI.*)
-├── tests/          C# test suite
-├── fixtures/       Cross-language test vectors (JSON)
+├── src/            C# 参考实现（Circle.AI.*）
+├── tests/          C# 测试套件
+├── fixtures/       跨语言测试向量（JSON）
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android library
-├── c/              Pure C99, CMake
-├── go/             Go module
-├── harmonyos/      ArkTS, OpenHarmony
+├── android/        Kotlin/Android 库
+├── c/              纯 C99，CMake
+├── go/             Go 模块
+├── harmonyos/      ArkTS，OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
-├── rust/           Rust, Cargo
-├── swift/          Swift 5.9+, Swift Package Manager
-└── typescript/     TypeScript, npm
+├── rust/           Rust，Cargo
+├── swift/          Swift 5.9+，Swift Package Manager
+└── typescript/     TypeScript，npm
 ```
 
 ---
 
 ## CI
 
-| Workflow | Trigger |
+| 工作流 | 触发条件 |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR 至 master——运行全部 10 个测试套件 |
+| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*`——发布至 NuGet、crates.io、PyPI、npm、GitHub Packages |
 
 ---
 
-## License
+## 许可证
 
 MIT

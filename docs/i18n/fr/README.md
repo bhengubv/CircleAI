@@ -1,21 +1,19 @@
-# Circle AI — 10-Language SDK
+# Circle AI — SDK 10 Langages
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
-
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
+Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
+nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
+téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
 
 ---
 
-## Portable Core (8 modules)
+## Cœur Portable (8 modules)
 
-| Module | Key types |
+| Module | Types clés |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -23,7 +21,7 @@ phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
 
 ---
 
-## Language Quickstart
+## Démarrage Rapide par Langage
 
 ### C# (.NET)
 
@@ -225,37 +223,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Cross-Language Math
+## AffectState — Calculs Communs à Tous les Langages
 
-All 10 implementations produce identical float results (ε ≤ 1e-5).
+Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
 
-| Operation | Effect |
+| Opération | Effet |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
 
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
+Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
 
 ---
 
-## Languages Registry (20 BCP-47 tags)
+## Registre des Langues (20 balises BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Repository Layout
+## Structure du Dépôt
 
 ```
 CircleAI/
-├── src/            C# reference implementation (Circle.AI.*)
-├── tests/          C# test suite
-├── fixtures/       Cross-language test vectors (JSON)
+├── src/            Implémentation de référence C# (Circle.AI.*)
+├── tests/          Suite de tests C#
+├── fixtures/       Vecteurs de test multi-langages (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android library
-├── c/              Pure C99, CMake
-├── go/             Go module
+├── android/        Bibliothèque Kotlin/Android
+├── c/              C99 pur, CMake
+├── go/             Module Go
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -266,15 +264,15 @@ CircleAI/
 
 ---
 
-## CI
+## IC (Intégration Continue)
 
-| Workflow | Trigger |
+| Workflow | Déclencheur |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
+| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## License
+## Licence
 
 MIT

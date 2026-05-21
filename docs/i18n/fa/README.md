@@ -1,21 +1,21 @@
-# Circle AI — 10-Language SDK
+<div dir="rtl">
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
+# Circle AI — کتابخانه SDK ده زبانه
 
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
+هسته قابل‌حمل پشته همراه Circle AI. به‌صورت بومی در کنار هر گره
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) اجرا می‌شود — پوشیدنی،
+تلفن، اینترنت اشیاء، HarmonyOS — بدون سربار FFI و بدون پل اتصال runtime.
 
 ---
 
-## Portable Core (8 modules)
+## هسته قابل‌حمل (۸ ماژول)
 
-| Module | Key types |
+| ماژول | انواع اصلی |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (۲۰ برچسب BCP-47)، `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -23,7 +23,7 @@ phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
 
 ---
 
-## Language Quickstart
+## شروع سریع به تفکیک زبان
 
 ### C# (.NET)
 
@@ -225,56 +225,58 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Cross-Language Math
+## AffectState — محاسبات یکسان در همه زبان‌ها
 
-All 10 implementations produce identical float results (ε ≤ 1e-5).
+تمام ۱۰ پیاده‌سازی نتایج float یکسانی تولید می‌کنند (ε ≤ 1e-5).
 
-| Operation | Effect |
+| عملیات | تأثیر |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
+| `applyPositiveSignal()` | engagement ‎+0.02،‏ rapport ‎+0.01،‏ uncertainty ‎−0.02 (محدود به [0, 1]) |
+| `applyNegativeSignal()` | engagement ‎−0.03،‏ uncertainty ‎+0.03 (محدود) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02)؛ engagement و energy به سمت 0.5 میل می‌کنند |
 
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
+بردارهای آزمون در [`fixtures/affect_state.json`](fixtures/affect_state.json) (۱۲ بردار). توسط CI در تمام ۱۰ زبان تأیید می‌شود.
 
 ---
 
-## Languages Registry (20 BCP-47 tags)
+## ثبت زبان‌ها (۲۰ برچسب BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Repository Layout
+## ساختار مخزن
 
 ```
 CircleAI/
-├── src/            C# reference implementation (Circle.AI.*)
-├── tests/          C# test suite
-├── fixtures/       Cross-language test vectors (JSON)
+├── src/            پیاده‌سازی مرجع C# (Circle.AI.*)
+├── tests/          مجموعه آزمون C#
+├── fixtures/       بردارهای آزمون بین‌زبانی (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android library
-├── c/              Pure C99, CMake
-├── go/             Go module
-├── harmonyos/      ArkTS, OpenHarmony
+├── android/        کتابخانه Kotlin/Android
+├── c/              C99 خالص، CMake
+├── go/             ماژول Go
+├── harmonyos/      ArkTS، OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
-├── rust/           Rust, Cargo
-├── swift/          Swift 5.9+, Swift Package Manager
-└── typescript/     TypeScript, npm
+├── rust/           Rust، Cargo
+├── swift/          Swift 5.9+، Swift Package Manager
+└── typescript/     TypeScript، npm
 ```
 
 ---
 
 ## CI
 
-| Workflow | Trigger |
+| گردش‌کار | راه‌انداز |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR به master — همه ۱۰ مجموعه آزمون را اجرا می‌کند |
+| [Publish](.github/workflows/publish.yml) | git tag ‎`v*.*.*`‎ — به NuGet، crates.io، PyPI، npm، GitHub Packages منتشر می‌کند |
 
 ---
 
-## License
+## مجوز
 
 MIT
+
+</div>

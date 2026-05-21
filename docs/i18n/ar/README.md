@@ -1,21 +1,21 @@
-# Circle AI — 10-Language SDK
+<div dir="rtl">
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
+# Circle AI — حزمة SDK لعشر لغات
 
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
+النواة المحمولة لمكدس مرافق Circle AI. تعمل بشكل أصلي بجانب كل عقدة من عقد
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) — الأجهزة القابلة للارتداء،
+والهواتف، وإنترنت الأشياء، وHarmonyOS — دون أي تكاليف FFI ودون جسور وقت التشغيل.
 
 ---
 
-## Portable Core (8 modules)
+## النواة المحمولة (8 وحدات)
 
-| Module | Key types |
+| الوحدة | الأنواع الرئيسية |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (20 وسم BCP-47), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -23,7 +23,7 @@ phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
 
 ---
 
-## Language Quickstart
+## دليل البدء السريع بحسب اللغة
 
 ### C# (.NET)
 
@@ -225,27 +225,27 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Cross-Language Math
+## AffectState — الحسابات المشتركة بين اللغات
 
-All 10 implementations produce identical float results (ε ≤ 1e-5).
+تُنتج جميع تطبيقات اللغات العشر نتائج عشرية متطابقة (ε ≤ 1e-5).
 
-| Operation | Effect |
+| العملية | التأثير |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
+| `applyPositiveSignal()` | الانخراط +0.02، التقارب +0.01، عدم اليقين −0.02 (محصورة في [0, 1]) |
+| `applyNegativeSignal()` | الانخراط −0.03، عدم اليقين +0.03 (محصورة) |
+| `applyIdleDecay(hours)` | الاضمحلال = min(0.3, hours × 0.02)؛ الانخراط والطاقة يتجهان نحو 0.5 بالاستيفاء الخطي |
 
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
+متجهات الاختبار في [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 متجهاً). يتم التحقق منها بواسطة CI عبر جميع اللغات العشر.
 
 ---
 
-## Languages Registry (20 BCP-47 tags)
+## سجل اللغات (20 وسم BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Repository Layout
+## هيكل المستودع
 
 ```
 CircleAI/
@@ -266,15 +266,17 @@ CircleAI/
 
 ---
 
-## CI
+## التكامل المستمر (CI)
 
-| Workflow | Trigger |
+| سير العمل | المحفّز |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Fixture Validation](.github/workflows/fixture-validation.yml) | الدفع/طلب السحب إلى master — تشغيل جميع مجموعات الاختبارات العشر |
+| [Publish](.github/workflows/publish.yml) | وسم git `v*.*.*` — النشر إلى NuGet وcrates.io وPyPI وnpm وGitHub Packages |
 
 ---
 
-## License
+## الرخصة
 
 MIT
+
+</div>
