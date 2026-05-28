@@ -337,6 +337,49 @@ internal sealed class FakeModelSource : IModelSource
 }
 
 // ---------------------------------------------------------------------------
+// IBiometricStore
+// ---------------------------------------------------------------------------
+
+/// <summary>
+/// In-memory biometric store for tests. Stores profiles in a dictionary;
+/// never encrypts (tests only — do not use in production).
+/// </summary>
+internal sealed class FakeBiometricStore : Circle.AI.Identity.IBiometricStore
+{
+    private readonly Dictionary<string, Circle.AI.Identity.BiometricProfile> _store = new();
+
+    public int SaveCallCount   { get; private set; }
+    public int GetCallCount    { get; private set; }
+    public int DeleteCallCount { get; private set; }
+
+    public Task<Circle.AI.Identity.BiometricProfile?> GetAsync(
+        string identityId, CancellationToken ct = default)
+    {
+        GetCallCount++;
+        _store.TryGetValue(identityId, out var profile);
+        return Task.FromResult(profile);
+    }
+
+    public Task SaveAsync(
+        Circle.AI.Identity.BiometricProfile profile, CancellationToken ct = default)
+    {
+        SaveCallCount++;
+        _store[profile.IdentityId] = profile;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteAsync(string identityId, CancellationToken ct = default)
+    {
+        DeleteCallCount++;
+        _store.Remove(identityId);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> ExistsAsync(string identityId, CancellationToken ct = default) =>
+        Task.FromResult(_store.ContainsKey(identityId));
+}
+
+// ---------------------------------------------------------------------------
 // IModelManager
 // ---------------------------------------------------------------------------
 

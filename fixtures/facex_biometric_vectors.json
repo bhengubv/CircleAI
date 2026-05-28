@@ -1,0 +1,183 @@
+{
+  "_comment": "Cross-language test vectors for facex BiometricMatcher and FaceAffectMapper. All 10 language implementations must match within 1e-5 tolerance. Do NOT use bitwise equality — float rounding differs across SIMD/scalar paths.",
+  "_convention": "Landmarks are 68 (x,y) pairs normalized to [0.0,1.0] relative to the face bounding box, stored as flat float[136]. Expression deltas are applied to AffectState initial values.",
+
+  "match_threshold_default": 0.85,
+
+  "cosine_similarity_vectors": [
+    {
+      "id": "identical_unit_vectors_2d",
+      "description": "Two identical 2-element L2-normalised vectors. cos_sim must be 1.0.",
+      "a": [0.6, 0.8],
+      "b": [0.6, 0.8],
+      "expected_similarity": 1.0,
+      "tolerance": 1e-5
+    },
+    {
+      "id": "orthogonal_vectors_2d",
+      "description": "Two orthogonal 2-element unit vectors. cos_sim must be 0.0.",
+      "a": [1.0, 0.0],
+      "b": [0.0, 1.0],
+      "expected_similarity": 0.0,
+      "tolerance": 1e-5
+    },
+    {
+      "id": "opposite_vectors_2d",
+      "description": "Two opposing unit vectors. cos_sim must be -1.0.",
+      "a": [1.0, 0.0],
+      "b": [-1.0, 0.0],
+      "expected_similarity": -1.0,
+      "tolerance": 1e-5
+    },
+    {
+      "id": "same_face_high_similarity_4d",
+      "description": "4-element embeddings from the same person under different lighting. Must exceed default threshold 0.85.",
+      "a": [0.5257, 0.7236, 0.2425, 0.3780],
+      "b": [0.5133, 0.7340, 0.2511, 0.3692],
+      "expected_similarity": 0.9993,
+      "tolerance": 1e-4,
+      "expected_is_match_at_threshold_0_85": true
+    },
+    {
+      "id": "different_face_low_similarity_4d",
+      "description": "4-element embeddings from two different people. Must fall below default threshold 0.85.",
+      "a": [0.5257, 0.7236, 0.2425, 0.3780],
+      "b": [-0.3015, 0.6547, 0.5893, -0.3812],
+      "expected_similarity": 0.3421,
+      "tolerance": 1e-4,
+      "expected_is_match_at_threshold_0_85": false
+    },
+    {
+      "id": "marginal_match_exactly_at_threshold",
+      "description": "Similarity exactly equals threshold. IsMatch must return true (>=).",
+      "a": [0.7071, 0.7071],
+      "b": [0.7071, 0.7071],
+      "expected_similarity": 1.0,
+      "tolerance": 1e-5,
+      "expected_is_match_at_threshold_0_85": true
+    }
+  ],
+
+  "affect_mapper_vectors": [
+    {
+      "id": "happy_from_neutral",
+      "description": "Happy expression observed from a neutral AffectState.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Happy",
+      "confidence": 0.92,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.53, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.52
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "surprised_from_neutral",
+      "description": "Surprised expression increments Curiosity.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Surprised",
+      "confidence": 0.88,
+      "expected_affect": {
+        "curiosity": 0.54, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "confused_from_neutral",
+      "description": "Confused expression increments Uncertainty.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Confused",
+      "confidence": 0.79,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.25,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "stressed_from_neutral",
+      "description": "Stressed expression increments Uncertainty and decrements Energy.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Stressed",
+      "confidence": 0.85,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.28,
+        "rapport": 0.0, "energy": 0.45
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "angry_from_neutral",
+      "description": "Angry expression decrements Engagement and Rapport.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.3, "energy": 0.5
+      },
+      "expression": "Angry",
+      "confidence": 0.91,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.46, "uncertainty": 0.2,
+        "rapport": 0.28, "energy": 0.5
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "neutral_expression_no_change",
+      "description": "Neutral expression must not mutate any axis.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Neutral",
+      "confidence": 0.95,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "low_confidence_discarded",
+      "description": "Confidence below 0.5 must produce no change regardless of expression.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Stressed",
+      "confidence": 0.49,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 0.5, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "tolerance": 1e-5
+    },
+    {
+      "id": "clamp_max_engagement",
+      "description": "Happy signal from near-max engagement must clamp at 1.0.",
+      "initial_affect": {
+        "curiosity": 0.5, "engagement": 0.99, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.5
+      },
+      "expression": "Happy",
+      "confidence": 0.95,
+      "expected_affect": {
+        "curiosity": 0.5, "engagement": 1.0, "uncertainty": 0.2,
+        "rapport": 0.0, "energy": 0.52
+      },
+      "tolerance": 1e-5
+    }
+  ]
+}
