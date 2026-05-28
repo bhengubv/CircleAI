@@ -28,18 +28,12 @@ DEFAULT_THRESHOLD = float(FIXTURE["match_threshold_default"])
 
 @pytest.mark.parametrize("entry", COSINE_VECTORS, ids=[e["id"] for e in COSINE_VECTORS])
 def test_cosine_similarity(entry: dict) -> None:
-    """Validate cosine_similarity output.
+    """Validate cosine_similarity output against the fixture's exact values.
 
-    For 2-element unit vectors (identity, orthogonal, opposite) the fixture
-    provides mathematically exact expected values — checked against the stated
-    tolerance.
-
-    For the 4-element real-world embedding vectors the fixture's
-    expected_similarity values are human-rounded approximations (e.g. 0.9993 ~
-    cos(3°), 0.3421 ~ cos(70°)) and do not match the precise result for those
-    specific inputs.  For those entries we verify only that the computed
-    similarity is on the correct side of the match threshold (high or low),
-    which is the property that is_match() actually relies on.
+    Every entry in fixtures/facex_biometric_vectors.json provides the
+    mathematically-precise expected_similarity (verified against the C#
+    reference implementation). All ports must agree within the stated
+    tolerance — 1e-5 for unit vectors, 1e-4 for 4-element embeddings.
     """
     a = [float(v) for v in entry["a"]]
     b = [float(v) for v in entry["b"]]
@@ -48,28 +42,10 @@ def test_cosine_similarity(entry: dict) -> None:
 
     result = cosine_similarity(a, b)
 
-    if len(a) == 2:
-        # Exact 2D unit-vector cases — hold to the fixture tolerance
-        assert abs(result - expected) <= fixture_tolerance, (
-            f"[{entry['id']}] cosine_similarity mismatch: got {result}, "
-            f"expected {expected} (tolerance {fixture_tolerance})"
-        )
-    else:
-        # Multi-dimensional embeddings — fixture expected values are rounded
-        # approximations. Validate direction and range instead.
-        assert -1.0 <= result <= 1.0, (
-            f"[{entry['id']}] cosine_similarity out of range: {result}"
-        )
-        # High-similarity entry: result must also be clearly high (> 0.9)
-        # Low-similarity entry: result must also be clearly low (< 0.85)
-        if expected > 0.9:
-            assert result > 0.9, (
-                f"[{entry['id']}] expected high similarity (>0.9), got {result}"
-            )
-        elif expected < 0.5:
-            assert result < 0.5, (
-                f"[{entry['id']}] expected low similarity (<0.5), got {result}"
-            )
+    assert abs(result - expected) <= fixture_tolerance, (
+        f"[{entry['id']}] cosine_similarity mismatch: got {result}, "
+        f"expected {expected} (tolerance {fixture_tolerance})"
+    )
 
 
 @pytest.mark.parametrize(

@@ -71,11 +71,11 @@ class BiometricMatcherTest {
 
     @Test
     fun `same face 4d embeddings have high similarity`() {
-        // fixtures: same_face_high_similarity_4d  expected=0.9993  tolerance=1e-4
+        // fixtures: same_face_high_similarity_4d  expected=0.999794  tolerance=1e-4
         val a = floatArrayOf(0.5257f, 0.7236f, 0.2425f, 0.3780f)
         val b = floatArrayOf(0.5133f, 0.7340f, 0.2511f, 0.3692f)
         val sim = BiometricMatcher.cosineSimilarity(a, b)
-        assertApprox(0.9993, sim, 1e-4, "same_face_4d similarity")
+        assertApprox(0.999794, sim, 1e-4, "same_face_4d similarity")
     }
 
     @Test
@@ -88,11 +88,11 @@ class BiometricMatcherTest {
 
     @Test
     fun `different face 4d embeddings have low similarity`() {
-        // fixtures: different_face_low_similarity_4d  expected=0.3421  tolerance=1e-4
+        // fixtures: different_face_low_similarity_4d  expected=0.311911  tolerance=1e-4
         val a = floatArrayOf(0.5257f,  0.7236f, 0.2425f,  0.3780f)
         val b = floatArrayOf(-0.3015f, 0.6547f, 0.5893f, -0.3812f)
         val sim = BiometricMatcher.cosineSimilarity(a, b)
-        assertApprox(0.3421, sim, 1e-4, "different_face_4d similarity")
+        assertApprox(0.311911, sim, 1e-4, "different_face_4d similarity")
     }
 
     @Test

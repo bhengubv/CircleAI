@@ -124,13 +124,13 @@ fn test_opposite_vectors_2d() {
 
 #[test]
 fn test_same_face_high_similarity_4d() {
-    // From fixture: same_face_high_similarity_4d — expected ~0.9993, tol 1e-4
+    // From fixture: same_face_high_similarity_4d — expected ~0.999794, tol 1e-4
     let a = [0.5257_f32, 0.7236_f32, 0.2425_f32, 0.3780_f32];
     let b = [0.5133_f32, 0.7340_f32, 0.2511_f32, 0.3692_f32];
     let sim = BiometricMatcher::cosine_similarity(&a, &b);
     assert!(
-        (sim - 0.9993_f64).abs() <= EPSILON_4,
-        "same_face_4d: expected ~0.9993, got {sim}"
+        (sim - 0.999794_f64).abs() <= EPSILON_4,
+        "same_face_4d: expected ~0.999794, got {sim}"
     );
 }
 

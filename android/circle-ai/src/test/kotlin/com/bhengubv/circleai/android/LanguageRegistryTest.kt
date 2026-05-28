@@ -13,7 +13,7 @@ class LanguageRegistryTest {
     @Test fun totalCount() = assertEquals("All must be 20", 20, KnownLanguages.all.size)
 
     @Test fun declarationOrder() {
-        val tags = KnownLanguages.all.map { it.bcp47Tag }
+        val tags = KnownLanguages.all.map { it.bcpTag }
         assertEquals(listOf(
             "zu","st","af","sw","ha","am","yo","ig","xh","nso",
             "tn","so","om","ar","en","pt","fr","es","zh","hi"
@@ -21,21 +21,21 @@ class LanguageRegistryTest {
     }
 
     @Test fun onlyArabicIsRtl() {
-        val rtlLangs = KnownLanguages.all.filter { it.isRtl }.map { it.bcp47Tag }
+        val rtlLangs = KnownLanguages.all.filter { it.isRtl }.map { it.bcpTag }
         assertEquals(listOf("ar"), rtlLangs)
     }
 
     @Test fun africaCount() {
         val african = listOf("zu","st","af","sw","ha","am","yo","ig","xh","nso","tn","so","om")
-        assertEquals(13, KnownLanguages.all.count { it.bcp47Tag in african })
+        assertEquals(13, KnownLanguages.all.count { it.bcpTag in african })
     }
 
-    @Test fun writingSystems() {
-        assertEquals(WritingSystem.Ethiopic,   KnownLanguages.Amharic.writingSystem)
-        assertEquals(WritingSystem.Arabic,     KnownLanguages.Arabic.writingSystem)
-        assertEquals(WritingSystem.Han,        KnownLanguages.Mandarin.writingSystem)
-        assertEquals(WritingSystem.Devanagari, KnownLanguages.Hindi.writingSystem)
-        assertEquals(WritingSystem.Latin,      KnownLanguages.English.writingSystem)
+    @Test fun scripts() {
+        assertEquals(WritingSystem.Ethiopic,   KnownLanguages.Amharic.script)
+        assertEquals(WritingSystem.Arabic,     KnownLanguages.Arabic.script)
+        assertEquals(WritingSystem.Han,        KnownLanguages.Mandarin.script)
+        assertEquals(WritingSystem.Devanagari, KnownLanguages.Hindi.script)
+        assertEquals(WritingSystem.Latin,      KnownLanguages.English.script)
     }
 
     @Test fun nativeNames() {
@@ -48,26 +48,26 @@ class LanguageRegistryTest {
         assertEquals("Afaan Oromoo", KnownLanguages.Oromo.nativeName)
     }
 
-    @Test fun primaryRegions() {
-        assertEquals("ZA", KnownLanguages.IsiZulu.primaryRegion)
-        assertEquals("KE", KnownLanguages.Swahili.primaryRegion)
-        assertEquals("NG", KnownLanguages.Hausa.primaryRegion)
-        assertEquals("SA", KnownLanguages.Arabic.primaryRegion)
-        assertEquals("GB", KnownLanguages.English.primaryRegion)
-        assertEquals("CN", KnownLanguages.Mandarin.primaryRegion)
-        assertEquals("IN", KnownLanguages.Hindi.primaryRegion)
+    @Test fun isoRegions() {
+        assertEquals("ZA", KnownLanguages.IsiZulu.isoRegion)
+        assertEquals("KE", KnownLanguages.Swahili.isoRegion)
+        assertEquals("NG", KnownLanguages.Hausa.isoRegion)
+        assertEquals("SA", KnownLanguages.Arabic.isoRegion)
+        assertEquals("GB", KnownLanguages.English.isoRegion)
+        assertEquals("CN", KnownLanguages.Mandarin.isoRegion)
+        assertEquals("IN", KnownLanguages.Hindi.isoRegion)
     }
 
-    @Test fun englishNames() {
-        assertEquals("isiZulu",    KnownLanguages.IsiZulu.englishName)
-        assertEquals("Swahili",    KnownLanguages.Swahili.englishName)
-        assertEquals("Amharic",    KnownLanguages.Amharic.englishName)
-        assertEquals("Arabic",     KnownLanguages.Arabic.englishName)
-        assertEquals("English",    KnownLanguages.English.englishName)
-        assertEquals("Portuguese", KnownLanguages.Portuguese.englishName)
-        assertEquals("French",     KnownLanguages.French.englishName)
-        assertEquals("Spanish",    KnownLanguages.Spanish.englishName)
-        assertEquals("Mandarin",   KnownLanguages.Mandarin.englishName)
-        assertEquals("Hindi",      KnownLanguages.Hindi.englishName)
+    @Test fun displayNames() {
+        assertEquals("isiZulu",    KnownLanguages.IsiZulu.displayName)
+        assertEquals("Swahili",    KnownLanguages.Swahili.displayName)
+        assertEquals("Amharic",    KnownLanguages.Amharic.displayName)
+        assertEquals("Arabic",     KnownLanguages.Arabic.displayName)
+        assertEquals("English",    KnownLanguages.English.displayName)
+        assertEquals("Portuguese", KnownLanguages.Portuguese.displayName)
+        assertEquals("French",     KnownLanguages.French.displayName)
+        assertEquals("Spanish",    KnownLanguages.Spanish.displayName)
+        assertEquals("Mandarin",   KnownLanguages.Mandarin.displayName)
+        assertEquals("Hindi",      KnownLanguages.Hindi.displayName)
     }
 }

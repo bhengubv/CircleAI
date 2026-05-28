@@ -55,12 +55,12 @@ int main(void) {
         check_sim("opposite_2d", sim, -1.0, TOL_STRICT);
     }
 
-    /* same_face_high_similarity_4d => ~0.9993, tol 1e-4 */
+    /* same_face_high_similarity_4d => ~0.999794, tol 1e-4 */
     {
         float a[] = { 0.5257f, 0.7236f, 0.2425f, 0.3780f };
         float b[] = { 0.5133f, 0.7340f, 0.2511f, 0.3692f };
         sim = ca_biometric_cosine_similarity(a, b, 4);
-        check_sim("same_face_4d", sim, 0.9993, TOL_LOOSE);
+        check_sim("same_face_4d", sim, 0.999794, TOL_LOOSE);
 
         /* is_match at default threshold 0.85 => true */
         profile.embedding_vector = b;
@@ -69,12 +69,12 @@ int main(void) {
         assert(ca_biometric_is_match(a, &profile) == true);
     }
 
-    /* different_face_low_similarity_4d => ~0.3421, tol 1e-4 */
+    /* different_face_low_similarity_4d => ~0.311911, tol 1e-4 */
     {
         float a[] = {  0.5257f,  0.7236f, 0.2425f,  0.3780f };
         float b[] = { -0.3015f,  0.6547f, 0.5893f, -0.3812f };
         sim = ca_biometric_cosine_similarity(a, b, 4);
-        check_sim("different_face_4d", sim, 0.3421, TOL_LOOSE);
+        check_sim("different_face_4d", sim, 0.311911, TOL_LOOSE);
 
         /* is_match at default threshold 0.85 => false */
         profile.embedding_vector = b;

@@ -34,7 +34,7 @@
       "description": "4-element embeddings from the same person under different lighting. Must exceed default threshold 0.85.",
       "a": [0.5257, 0.7236, 0.2425, 0.3780],
       "b": [0.5133, 0.7340, 0.2511, 0.3692],
-      "expected_similarity": 0.9993,
+      "expected_similarity": 0.999794,
       "tolerance": 1e-4,
       "expected_is_match_at_threshold_0_85": true
     },
@@ -43,7 +43,7 @@
       "description": "4-element embeddings from two different people. Must fall below default threshold 0.85.",
       "a": [0.5257, 0.7236, 0.2425, 0.3780],
       "b": [-0.3015, 0.6547, 0.5893, -0.3812],
-      "expected_similarity": 0.3421,
+      "expected_similarity": 0.311911,
       "tolerance": 1e-4,
       "expected_is_match_at_threshold_0_85": false
     },

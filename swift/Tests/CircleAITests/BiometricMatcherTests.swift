@@ -92,13 +92,13 @@ final class BiometricMatcherTests: XCTestCase {
     func testSameFace4D() {
         let a: [Float] = [0.5257, 0.7236, 0.2425, 0.3780]
         let b: [Float] = [0.5133, 0.7340, 0.2511, 0.3692]
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.9993, accuracy: 1e-4)
+        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.999794, accuracy: 1e-4)
     }
 
     func testDifferentFace4D() {
         let a: [Float] = [0.5257,  0.7236,  0.2425,  0.3780]
         let b: [Float] = [-0.3015, 0.6547,  0.5893, -0.3812]
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.3421, accuracy: 1e-4)
+        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.311911, accuracy: 1e-4)
     }
 
     func testEmptyVectorsReturn0() {

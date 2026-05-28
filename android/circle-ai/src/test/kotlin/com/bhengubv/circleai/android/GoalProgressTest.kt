@@ -23,7 +23,7 @@ class GoalProgressTest {
     private fun goal(progress: Float) = Goal(
         id = "g1", userId = "u1", title = "Test", description = "Test goal",
         status = GoalStatus.Active, priority = GoalPriority.Normal,
-        createdUtc = Instant.now(), progress = progress
+        createdAt = Instant.now(), progress = progress
     )
 
     @Test fun zeroInitial() =

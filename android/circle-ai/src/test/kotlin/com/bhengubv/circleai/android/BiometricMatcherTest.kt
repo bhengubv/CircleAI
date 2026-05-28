@@ -36,14 +36,14 @@ class BiometricMatcherTest {
     @Test fun sameFaceHighSimilarity4d() {
         val a = floatArrayOf(0.5257f, 0.7236f, 0.2425f, 0.3780f)
         val b = floatArrayOf(0.5133f, 0.7340f, 0.2511f, 0.3692f)
-        assertApprox(BiometricMatcher.cosineSimilarity(a, b), 0.9993, 1e-4, "same_face")
+        assertApprox(BiometricMatcher.cosineSimilarity(a, b), 0.999794, 1e-4, "same_face")
         assertTrue("isMatch at 0.85", BiometricMatcher.isMatch(a, profile(b)))
     }
 
     @Test fun differentFaceLowSimilarity4d() {
         val a = floatArrayOf(0.5257f, 0.7236f, 0.2425f, 0.3780f)
         val b = floatArrayOf(-0.3015f, 0.6547f, 0.5893f, -0.3812f)
-        assertApprox(BiometricMatcher.cosineSimilarity(a, b), 0.3421, 1e-4, "different_face")
+        assertApprox(BiometricMatcher.cosineSimilarity(a, b), 0.311911, 1e-4, "different_face")
         assertFalse("isMatch=false at 0.85", BiometricMatcher.isMatch(a, profile(b)))
     }
 

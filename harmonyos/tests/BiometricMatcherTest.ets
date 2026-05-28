@@ -64,18 +64,14 @@ function assertFalse(label: string, condition: boolean): void {
 })();
 
 // ---------------------------------------------------------------------------
-// Vector: same_face_high_similarity_4d
-// Fixture states expected ~0.9993 — actual computed value is ~0.9998.
-// The fixture tolerance (1e-4) is used for an approximate reference value.
-// The critical behavioral assertion is: sim >= 0.85 (isMatch = true).
+// Vector: same_face_high_similarity_4d — fixture expected 0.999794, tol 1e-4
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const a: number[] = [0.5257, 0.7236, 0.2425, 0.3780];
   const b: number[] = [0.5133, 0.7340, 0.2511, 0.3692];
   const sim: number = cosineSimilarity(a, b);
-  // Similarity is high (> 0.99) for same-face vectors
-  assertTrue('same_face_4d_sim_above_0_99', sim > 0.99);
+  assertApprox('same_face_4d', sim, 0.999794, 1e-4);
   const profile: BiometricProfile = {
     identityId: 'test-same-face',
     embeddingVector: b,
@@ -87,16 +83,15 @@ function assertFalse(label: string, condition: boolean): void {
 })();
 
 // ---------------------------------------------------------------------------
-// Vector: different_face_low_similarity_4d
-// Fixture states expected ~0.3421 — actual computed value is ~0.3119.
-// The critical behavioral assertion is: sim < 0.85 (isMatch = false).
+// Vector: different_face_low_similarity_4d — fixture expected 0.311911, tol 1e-4
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const a: number[] = [0.5257, 0.7236, 0.2425, 0.3780];
   const b: number[] = [-0.3015, 0.6547, 0.5893, -0.3812];
   const sim: number = cosineSimilarity(a, b);
-  // Similarity is low (< 0.5) for different-face vectors
+  assertApprox('different_face_4d', sim, 0.311911, 1e-4);
+  // Behavioral: low (< 0.5) for different-face vectors
   assertTrue('different_face_4d_sim_below_0_5', sim < 0.5);
   const profile: BiometricProfile = {
     identityId: 'test-different-face',
