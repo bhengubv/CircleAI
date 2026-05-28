@@ -3,22 +3,22 @@
     <Project Path="samples/ConsoleTest/ConsoleTest.csproj" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/Circle.AI.Aether/Circle.AI.Aether.csproj" />
-    <Project Path="src/Circle.AI.Core/Circle.AI.Core.csproj" />
-    <Project Path="src/Circle.AI.Embeddings/Circle.AI.Embeddings.csproj" />
-    <Project Path="src/Circle.AI.Hosting/Circle.AI.Hosting.csproj" />
-    <Project Path="src/Circle.AI.Inference/Circle.AI.Inference.csproj" />
-    <Project Path="src/Circle.AI.Maui/Circle.AI.Maui.csproj" />
-    <Project Path="src/Circle.AI.Memory/Circle.AI.Memory.csproj" />
-    <Project Path="src/Circle.AI.Orchestration/Circle.AI.Orchestration.csproj" />
-    <Project Path="src/Circle.AI.Search/Circle.AI.Search.csproj" />
-    <Project Path="src/Circle.AI.Security/Circle.AI.Security.csproj" />
-    <Project Path="src/Circle.AI.Skills/Circle.AI.Skills.csproj" />
-    <Project Path="src/Circle.AI.Tools/Circle.AI.Tools.csproj" />
-    <Project Path="src/Circle.AI.Voice/Circle.AI.Voice.csproj" />
+    <Project Path="src/CircleAI.Aether/CircleAI.Aether.csproj" />
+    <Project Path="src/CircleAI.Core/CircleAI.Core.csproj" />
+    <Project Path="src/CircleAI.Embeddings/CircleAI.Embeddings.csproj" />
+    <Project Path="src/CircleAI.Hosting/CircleAI.Hosting.csproj" />
+    <Project Path="src/CircleAI.Inference/CircleAI.Inference.csproj" />
+    <Project Path="src/CircleAI.Maui/CircleAI.Maui.csproj" />
+    <Project Path="src/CircleAI.Memory/CircleAI.Memory.csproj" />
+    <Project Path="src/CircleAI.Orchestration/CircleAI.Orchestration.csproj" />
+    <Project Path="src/CircleAI.Search/CircleAI.Search.csproj" />
+    <Project Path="src/CircleAI.Security/CircleAI.Security.csproj" />
+    <Project Path="src/CircleAI.Skills/CircleAI.Skills.csproj" />
+    <Project Path="src/CircleAI.Tools/CircleAI.Tools.csproj" />
+    <Project Path="src/CircleAI.Voice/CircleAI.Voice.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Circle.AI.Tests/Circle.AI.Tests.csproj" />
-    <Project Path="tests/Circle.AI.Orchestration.Tests/Circle.AI.Orchestration.Tests.csproj" />
+    <Project Path="tests/CircleAI.Tests/CircleAI.Tests.csproj" />
+    <Project Path="tests/CircleAI.Orchestration.Tests/CircleAI.Orchestration.Tests.csproj" />
   </Folder>
 </Solution>

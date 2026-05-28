@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "Canonical schema for Circle.AI.Simulation GraphNode and GraphEdge. Validated in tests/Circle.AI.Simulation.Tests/GraphSchemaTests.cs",
+  "$comment": "Canonical schema for CircleAI.Simulation GraphNode and GraphEdge. Validated in tests/CircleAI.Simulation.Tests/GraphSchemaTests.cs",
   "graphNode": {
     "fields": ["id", "label", "kind", "properties", "extractedAt"],
     "kinds": ["person", "topic", "app", "event", "system"],

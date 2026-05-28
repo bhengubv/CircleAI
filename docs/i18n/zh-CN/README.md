@@ -26,12 +26,12 @@ Circle AI 伴侣套件的可移植核心。原生运行于每个
 ### C# (.NET)
 
 ```bash
-dotnet add package Circle.AI.Core
+dotnet add package CircleAI.Core
 ```
 
 ```csharp
-using Circle.AI.Memory;
-using Circle.AI.Languages;
+using CircleAI.Memory;
+using CircleAI.Languages;
 
 var state = new AffectState();
 state.ApplyPositiveSignal();
@@ -247,7 +247,7 @@ console.log(state.engagement); // 0.52
 
 ```
 CircleAI/
-├── src/            C# 参考实现（Circle.AI.*）
+├── src/            C# 参考实现（CircleAI.*）
 ├── tests/          C# 测试套件
 ├── fixtures/       跨语言测试向量（JSON）
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md

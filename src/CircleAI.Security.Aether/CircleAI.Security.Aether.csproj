@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Security.Aether</PackageId>
+    <Description>
+      Aether mesh bridge for CircleAI.Security.
+      Translates Aether telemetry events into transport-agnostic PeerSecurityEvents
+      and adapts the transport-agnostic intelligence output to implement
+      IAetherIntelligence and IAISecurityLayer.
+      Requires CircleAI.Security (base layer) and CircleAI.Aether (mesh contracts).
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Security\CircleAI.Security.csproj" />
+    <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
+  </ItemGroup>
+
+</Project>

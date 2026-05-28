@@ -28,12 +28,12 @@
 ### C# (.NET)
 
 ```bash
-dotnet add package Circle.AI.Core
+dotnet add package CircleAI.Core
 ```
 
 ```csharp
-using Circle.AI.Memory;
-using Circle.AI.Languages;
+using CircleAI.Memory;
+using CircleAI.Languages;
 
 var state = new AffectState();
 state.ApplyPositiveSignal();
@@ -249,7 +249,7 @@ console.log(state.engagement); // 0.52
 
 ```
 CircleAI/
-├── src/            پیاده‌سازی مرجع C# (Circle.AI.*)
+├── src/            پیاده‌سازی مرجع C# (CircleAI.*)
 ├── tests/          مجموعه آزمون C#
 ├── fixtures/       بردارهای آزمون بین‌زبانی (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Knowledge</PackageId>
+    <Description>Markdown-on-disk knowledge store for Circle AI — episodic memory as user-editable .md files with YAML frontmatter. Git-diffable, exportable, user-owned.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <!-- IEpisodicMemoryStore + EpisodicMemoryEntry live here. -->
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+  </ItemGroup>
+</Project>

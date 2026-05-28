@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Orchestration</PackageId>
+    <Description>Host-side loki-mode agent orchestration layer for Circle AI — spawns Engineering, Operations, and Review agent swarms, routes incident triggers, and enforces quality gates before deployment.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core interfaces (IDeviceContext, IModelManager, etc.) -->
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <!-- EpisodicMemoryEntry, AffectState -->
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <!-- AnomalySignal, ThreatVector — immune-system inputs to ops-security tasks -->
+    <ProjectReference Include="..\CircleAI.Security\CircleAI.Security.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -19,16 +19,16 @@ Every viable personal AI needs ten capability layers. The stack below shows what
 
 | # | Layer | Packages | Status |
 |---|---|---|---|
-| 1 | **Perception** — face, voice, gesture, biosignal, context | `Circle.AI.Voice`, `Circle.AI.Wearable.Biosignals`, facex integration | Voice ✓ in C#, ports needed; Biosignals ✓ new this commit |
-| 2 | **Memory** — episodic + semantic + procedural + working | `Circle.AI.Memory`, `Circle.AI.Embeddings`, `Circle.AI.Search`, `Circle.AI.Knowledge` | Schemas + algorithms ✓; Markdown-backed store ✓ new this commit |
-| 3 | **Identity** — UHID, trust, biometric, key management | `Circle.AI.Identity`, `Circle.AI.Security` | Biometric matcher + UhidKeyRing + watchdog ✓ |
-| 4 | **Reasoning** — LLM inference, planning, simulation | `Circle.AI.Inference`, `Circle.AI.Hosting.InferenceBridge`, `Circle.AI.Simulation` | Inference contracts ✓; cross-OS bridge ✓ new this commit; simulation ✓ |
-| 5 | **Affect** — engagement, mood, rapport, VAD | `Circle.AI.Memory.AffectState`, `AffectVad` | 5-dim + VAD projection ✓ across 10 languages |
-| 6 | **Action** — tools, agents, automations | `Circle.AI.Tools`, `Circle.AI.Skills`, `Circle.AI.Orchestration`, `Circle.AI.Agents.Peer` | Tool catalogue ✓; agent dispatch ✓; agent-to-agent over mesh ✓ new this commit |
-| 7 | **Language** — multilingual, cultural context | `Circle.AI.Languages` | 20 languages, Africa-first registry ✓ |
-| 8 | **Transport** — mesh, sync, federation | `Circle.AI.Aether`, `Circle.AI.Federation` | Mesh ✓; federated learning model ✓ new this commit |
-| 9 | **Security** — immune system, audit, attestation | `Circle.AI.Security`, `Circle.AI.Security.Aether` | Watchdog, checkpoints, key rotation, BugHunter CI ✓ |
-| 10 | **Distribution** — apps, OS integration, embeds | `Circle.AI.Hosting.InferenceBridge`, `Circle.AI.Personality`, `Circle.AI.Personal`, `Circle.AI.Knowledge` | Cross-OS daemon contract ✓ new this commit; personal-data adapters ✓ new this commit |
+| 1 | **Perception** — face, voice, gesture, biosignal, context | `CircleAI.Voice`, `CircleAI.Wearable.Biosignals`, facex integration | Voice ✓ in C#, ports needed; Biosignals ✓ new this commit |
+| 2 | **Memory** — episodic + semantic + procedural + working | `CircleAI.Memory`, `CircleAI.Embeddings`, `CircleAI.Search`, `CircleAI.Knowledge` | Schemas + algorithms ✓; Markdown-backed store ✓ new this commit |
+| 3 | **Identity** — UHID, trust, biometric, key management | `CircleAI.Identity`, `CircleAI.Security` | Biometric matcher + UhidKeyRing + watchdog ✓ |
+| 4 | **Reasoning** — LLM inference, planning, simulation | `CircleAI.Inference`, `CircleAI.Hosting.InferenceBridge`, `CircleAI.Simulation` | Inference contracts ✓; cross-OS bridge ✓ new this commit; simulation ✓ |
+| 5 | **Affect** — engagement, mood, rapport, VAD | `CircleAI.Memory.AffectState`, `AffectVad` | 5-dim + VAD projection ✓ across 10 languages |
+| 6 | **Action** — tools, agents, automations | `CircleAI.Tools`, `CircleAI.Skills`, `CircleAI.Orchestration`, `CircleAI.Agents.Peer` | Tool catalogue ✓; agent dispatch ✓; agent-to-agent over mesh ✓ new this commit |
+| 7 | **Language** — multilingual, cultural context | `CircleAI.Languages` | 20 languages, Africa-first registry ✓ |
+| 8 | **Transport** — mesh, sync, federation | `CircleAI.Aether`, `CircleAI.Federation` | Mesh ✓; federated learning model ✓ new this commit |
+| 9 | **Security** — immune system, audit, attestation | `CircleAI.Security`, `CircleAI.Security.Aether` | Watchdog, checkpoints, key rotation, BugHunter CI ✓ |
+| 10 | **Distribution** — apps, OS integration, embeds | `CircleAI.Hosting.InferenceBridge`, `CircleAI.Personality`, `CircleAI.Personal`, `CircleAI.Knowledge` | Cross-OS daemon contract ✓ new this commit; personal-data adapters ✓ new this commit |
 
 ---
 
@@ -44,13 +44,13 @@ Every viable personal AI needs ten capability layers. The stack below shows what
 
 | Package | What it does | Why it matters |
 |---|---|---|
-| `Circle.AI.Personality` | User-DECLARED persona (distinct from learned `PersonaState`). JSON document the user owns and edits. | Replika hides personality. Pi hides personality. Ours is `notes.md`-like, owned by the user. |
-| `Circle.AI.Knowledge` | Markdown-on-disk memory backing. Episodic memories become Git-diffable `.md` files with YAML frontmatter. | Pi.ai / Personal.ai hide memory in databases. Ours is a folder. Export, version, audit, delete. |
-| `Circle.AI.Hosting.InferenceBridge` | Cross-OS LLM daemon contract. One model loaded once per device, every app on the device shares it. | Apple Intelligence is iOS-only. Gemini Nano is Android-only. **Nobody has cross-OS.** This is the single sharpest differentiator. |
-| `Circle.AI.Wearable.Biosignals` | HR/HRV/SpO2/accelerometer/temperature → AffectState mutations. Deterministic, fixture-validated. | Personal AI without biosignal awareness can't claim to be "personal." |
-| `Circle.AI.Personal` | Permission-gated Calendar + Email + Contacts adapter contracts. Every call requires a UhidKeyRing-signed `UserConsentToken`. | Apple/Google adapters lock you into their ecosystem. Ours is portable across both. |
-| `Circle.AI.Federation` | Federated learning round model. Only deltas leave the device, never raw data. Designed for Aether mesh aggregation. | Federated learning over BLE / Wi-Fi Direct is structurally impossible for cloud-only competitors. |
-| `Circle.AI.Agents.Peer` | Agent-to-agent protocol over Aether mesh. One person's AI talks to another's directly. | Uniquely available because of the Aether substrate. No competitor can offer offline P2P AI federation. |
+| `CircleAI.Personality` | User-DECLARED persona (distinct from learned `PersonaState`). JSON document the user owns and edits. | Replika hides personality. Pi hides personality. Ours is `notes.md`-like, owned by the user. |
+| `CircleAI.Knowledge` | Markdown-on-disk memory backing. Episodic memories become Git-diffable `.md` files with YAML frontmatter. | Pi.ai / Personal.ai hide memory in databases. Ours is a folder. Export, version, audit, delete. |
+| `CircleAI.Hosting.InferenceBridge` | Cross-OS LLM daemon contract. One model loaded once per device, every app on the device shares it. | Apple Intelligence is iOS-only. Gemini Nano is Android-only. **Nobody has cross-OS.** This is the single sharpest differentiator. |
+| `CircleAI.Wearable.Biosignals` | HR/HRV/SpO2/accelerometer/temperature → AffectState mutations. Deterministic, fixture-validated. | Personal AI without biosignal awareness can't claim to be "personal." |
+| `CircleAI.Personal` | Permission-gated Calendar + Email + Contacts adapter contracts. Every call requires a UhidKeyRing-signed `UserConsentToken`. | Apple/Google adapters lock you into their ecosystem. Ours is portable across both. |
+| `CircleAI.Federation` | Federated learning round model. Only deltas leave the device, never raw data. Designed for Aether mesh aggregation. | Federated learning over BLE / Wi-Fi Direct is structurally impossible for cloud-only competitors. |
+| `CircleAI.Agents.Peer` | Agent-to-agent protocol over Aether mesh. One person's AI talks to another's directly. | Uniquely available because of the Aether substrate. No competitor can offer offline P2P AI federation. |
 
 ---
 
@@ -58,9 +58,9 @@ Every viable personal AI needs ten capability layers. The stack below shows what
 
 The Voice, Embeddings, and Skills modules exist in C# with substantial implementations but haven't been ported to the other 9 languages. Priority order for the next porting round:
 
-1. **`Circle.AI.Voice` → 9 langs** — Pi.ai's whole pitch is voice. ITtsEngine + IVoiceTranscriber + IWakeWordDetector + IVoiceActivityDetector interfaces, plus null impls. Concrete impls (Whisper, ONNX TTS) stay C#-only for now.
-2. **`Circle.AI.Embeddings` → 9 langs** — ITextEmbedder interface + a fixture-validated cosine-search helper.
-3. **`Circle.AI.Skills` → 9 langs** — Skill catalogue contract (ISkillStore, SkillDetail, SkillDraft).
+1. **`CircleAI.Voice` → 9 langs** — Pi.ai's whole pitch is voice. ITtsEngine + IVoiceTranscriber + IWakeWordDetector + IVoiceActivityDetector interfaces, plus null impls. Concrete impls (Whisper, ONNX TTS) stay C#-only for now.
+2. **`CircleAI.Embeddings` → 9 langs** — ITextEmbedder interface + a fixture-validated cosine-search helper.
+3. **`CircleAI.Skills` → 9 langs** — Skill catalogue contract (ISkillStore, SkillDetail, SkillDraft).
 4. **Personality + Knowledge → 9 langs** — straightforward port using the same parallel-agent pattern as AnomalySignal / AffectVad.
 5. **InferenceBridge → 9 langs** — contract-only port; OS-specific adapters live per platform.
 
@@ -108,11 +108,11 @@ Investigation of `bhengubv/mempalace` (96.6% R@5 on LongMemEval, 500 questions, 
 
 Every CircleAI target language already has either an HNSW library (`hnswlib`, `usearch`) or a vector DB binding. The novelty is the discipline, not the algorithm. **Skip AAAK compression** — by their own benchmark it regresses 12.4 points and saves no tokens at realistic scales.
 
-This will be implemented as an enhancement to `Circle.AI.Memory.IEpisodicMemoryStore` + `Circle.AI.Search` in the next porting round:
+This will be implemented as an enhancement to `CircleAI.Memory.IEpisodicMemoryStore` + `CircleAI.Search` in the next porting round:
 
 - `IEpisodicMemoryStore.AppendVerbatimAsync(EpisodicMemoryEntry entry, IReadOnlyDictionary<string,string> scopeKeys)` — verbatim, scope-tagged
 - `IEpisodicMemoryStore.GetSessionCapsuleAsync(string uhid)` — wake-up projection
-- `Circle.AI.Search.IFilterableVectorSearch` — filter-then-ANN contract
+- `CircleAI.Search.IFilterableVectorSearch` — filter-then-ANN contract
 - `fixtures/memory_recall_benchmark.json` — LongMemEval-style golden vectors so all 10 ports can compare R@5 against the reference
 
 ---
@@ -127,18 +127,18 @@ This will be implemented as an enhancement to `Circle.AI.Memory.IEpisodicMemoryS
 
 ### Near-term (next 2-3 sessions)
 
-4. mempalace pattern integration into Circle.AI.Memory + Circle.AI.Search (filter-then-ANN, wake-up capsule, verbatim discipline)
+4. mempalace pattern integration into CircleAI.Memory + CircleAI.Search (filter-then-ANN, wake-up capsule, verbatim discipline)
 5. Wake-word concrete implementation per OS (Android Porcupine binding, iOS Speech framework binding, etc.)
-6. First Calendar adapter implementation (`Circle.AI.Personal.Google`, `Circle.AI.Personal.Microsoft`)
+6. First Calendar adapter implementation (`CircleAI.Personal.Google`, `CircleAI.Personal.Microsoft`)
 7. InferenceBridge Android adapter (Binder service binding)
 8. InferenceBridge iOS adapter (XPC service)
 
 ### Medium-term
 
-9. `Circle.AI.Generation.{Image,Audio}` — multimodal output via distilled local models
-10. `Circle.AI.AR` — HUD-projection contract for Apple Vision / Meta Ray-Bans / future glasses
-11. `Circle.AI.Adaptation` — on-device LoRA fine-tuning, federated rounds over mesh
-12. `Circle.AI.Memory.Forgetting` — explicit memory garbage-collection with user-controlled forgetting policy
+9. `CircleAI.Generation.{Image,Audio}` — multimodal output via distilled local models
+10. `CircleAI.AR` — HUD-projection contract for Apple Vision / Meta Ray-Bans / future glasses
+11. `CircleAI.Adaptation` — on-device LoRA fine-tuning, federated rounds over mesh
+12. `CircleAI.Memory.Forgetting` — explicit memory garbage-collection with user-controlled forgetting policy
 
 ### Long-term
 

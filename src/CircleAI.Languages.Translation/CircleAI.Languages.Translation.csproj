@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Languages.Translation</PackageId>
+    <Description>On-device real-time translation for Circle AI. No API call, no data leaving device. Context-aware, live conversation mode, document translation.</Description>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Languages\CircleAI.Languages.csproj" />
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,5 +1,5 @@
 {
-  "$comment": "Circle AI BugHunter VRT taxonomy. Referenced by .github/workflows/bughunter-gate.yml and Circle.AI.Security scanning gates.",
+  "$comment": "Circle AI BugHunter VRT taxonomy. Referenced by .github/workflows/bughunter-gate.yml and CircleAI.Security scanning gates.",
   "version": "1.0.0",
   "gate_policy": {
     "block_on": ["critical", "high"],

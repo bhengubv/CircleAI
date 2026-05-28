@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Aether</PackageId>
+    <Description>Aether mesh-network telemetry contracts, observer interfaces, and IAetherAiProvider bridge for Circle AI.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- net10.0 matches Aether.Core so the bridge class can reference IAetherAiProvider directly. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    IAetherAiProvider lives in Aether.Core.
+    When Circle.AI is checked out as a submodule of aether-protocol the parent
+    project is three levels up — use a direct ProjectReference (no NuGet round-trip,
+    no version skew). When built standalone (e.g. CI, downstream consumers) fall back
+    to the published NuGet package.
+  -->
+  <ItemGroup Condition="Exists('../../../src/Aether.Core/Aether.Core.csproj')">
+    <ProjectReference Include="../../../src/Aether.Core/Aether.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('../../../src/Aether.Core/Aether.Core.csproj')">
+    <PackageReference Include="Aether.Core" Version="1.0.0" />
+  </ItemGroup>
+
+</Project>

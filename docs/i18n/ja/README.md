@@ -26,12 +26,12 @@ Circle AIコンパニオンスタックのポータブルコア。すべての
 ### C# (.NET)
 
 ```bash
-dotnet add package Circle.AI.Core
+dotnet add package CircleAI.Core
 ```
 
 ```csharp
-using Circle.AI.Memory;
-using Circle.AI.Languages;
+using CircleAI.Memory;
+using CircleAI.Languages;
 
 var state = new AffectState();
 state.ApplyPositiveSignal();
@@ -247,7 +247,7 @@ console.log(state.engagement); // 0.52
 
 ```
 CircleAI/
-├── src/            C# リファレンス実装 (Circle.AI.*)
+├── src/            C# リファレンス実装 (CircleAI.*)
 ├── tests/          C# テストスイート
 ├── fixtures/       クロス言語テストベクター (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md

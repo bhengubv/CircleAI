@@ -26,12 +26,12 @@ smartphone, IoT, HarmonyOS — sem overhead de FFI e sem pontes de runtime.
 ### C# (.NET)
 
 ```bash
-dotnet add package Circle.AI.Core
+dotnet add package CircleAI.Core
 ```
 
 ```csharp
-using Circle.AI.Memory;
-using Circle.AI.Languages;
+using CircleAI.Memory;
+using CircleAI.Languages;
 
 var state = new AffectState();
 state.ApplyPositiveSignal();
@@ -247,7 +247,7 @@ Vetores de teste em [`fixtures/affect_state.json`](fixtures/affect_state.json) (
 
 ```
 CircleAI/
-├── src/            Implementação de referência em C# (Circle.AI.*)
+├── src/            Implementação de referência em C# (CircleAI.*)
 ├── tests/          Suite de testes em C#
 ├── fixtures/       Vetores de teste multilinguagem (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md

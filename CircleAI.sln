@@ -1,227 +1,227 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Core", "src\Circle.AI.Core\Circle.AI.Core.csproj", "{B1E15D3E-66A1-4456-8D47-B6F26BB55640}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Core", "src\CircleAI.Core\CircleAI.Core.csproj", "{B1E15D3E-66A1-4456-8D47-B6F26BB55640}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConsoleTest", "samples\ConsoleTest\ConsoleTest.csproj", "{4FB73A47-03B6-49B5-8787-91C80602007A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Embeddings", "src\Circle.AI.Embeddings\Circle.AI.Embeddings.csproj", "{5A5456A5-5AFE-1308-7195-A6E962CC0C74}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Embeddings", "src\CircleAI.Embeddings\CircleAI.Embeddings.csproj", "{5A5456A5-5AFE-1308-7195-A6E962CC0C74}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Search", "src\Circle.AI.Search\Circle.AI.Search.csproj", "{04F5F8EA-0D34-8D20-3E35-7B2E472F56F1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Search", "src\CircleAI.Search\CircleAI.Search.csproj", "{04F5F8EA-0D34-8D20-3E35-7B2E472F56F1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Inference", "src\Circle.AI.Inference\Circle.AI.Inference.csproj", "{5600640A-7E87-494C-ABC0-03B777498279}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Inference", "src\CircleAI.Inference\CircleAI.Inference.csproj", "{5600640A-7E87-494C-ABC0-03B777498279}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Tools", "src\Circle.AI.Tools\Circle.AI.Tools.csproj", "{C7FA2080-31DE-41EC-976F-65AAA96DCDD8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Tools", "src\CircleAI.Tools\CircleAI.Tools.csproj", "{C7FA2080-31DE-41EC-976F-65AAA96DCDD8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Hosting", "src\Circle.AI.Hosting\Circle.AI.Hosting.csproj", "{169A4B79-7AA0-421A-A97E-0087A1D3D647}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Hosting", "src\CircleAI.Hosting\CircleAI.Hosting.csproj", "{169A4B79-7AA0-421A-A97E-0087A1D3D647}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Voice", "src\Circle.AI.Voice\Circle.AI.Voice.csproj", "{63AA4722-917F-4CD6-AD54-10256CE656CC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Voice", "src\CircleAI.Voice\CircleAI.Voice.csproj", "{63AA4722-917F-4CD6-AD54-10256CE656CC}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Tests", "tests\Circle.AI.Tests\Circle.AI.Tests.csproj", "{2072059D-9AD8-4569-B198-72252EAF0573}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Tests", "tests\CircleAI.Tests\CircleAI.Tests.csproj", "{2072059D-9AD8-4569-B198-72252EAF0573}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Memory", "src\Circle.AI.Memory\Circle.AI.Memory.csproj", "{9CA2BC99-EBA9-4D6F-98F7-1BA9F43E2018}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Memory", "src\CircleAI.Memory\CircleAI.Memory.csproj", "{9CA2BC99-EBA9-4D6F-98F7-1BA9F43E2018}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Skills", "src\Circle.AI.Skills\Circle.AI.Skills.csproj", "{16CB7553-D71E-4B4D-846E-7525249A2FDD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Skills", "src\CircleAI.Skills\CircleAI.Skills.csproj", "{16CB7553-D71E-4B4D-846E-7525249A2FDD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Aether", "src\Circle.AI.Aether\Circle.AI.Aether.csproj", "{A5F77185-663F-49A9-8717-240C6BAA32E9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Aether", "src\CircleAI.Aether\CircleAI.Aether.csproj", "{A5F77185-663F-49A9-8717-240C6BAA32E9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Security", "src\Circle.AI.Security\Circle.AI.Security.csproj", "{4E8C471A-DE6A-4CDA-879C-2F698635DEC1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Security", "src\CircleAI.Security\CircleAI.Security.csproj", "{4E8C471A-DE6A-4CDA-879C-2F698635DEC1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Security.Aether", "src\Circle.AI.Security.Aether\Circle.AI.Security.Aether.csproj", "{11AEC296-76E2-45B2-B2B4-AEC3B55B4ACE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Security.Aether", "src\CircleAI.Security.Aether\CircleAI.Security.Aether.csproj", "{11AEC296-76E2-45B2-B2B4-AEC3B55B4ACE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Accessibility", "src\Circle.AI.Accessibility\Circle.AI.Accessibility.csproj", "{707600A6-BC8E-4D41-A2D7-763DE00A2203}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Accessibility", "src\CircleAI.Accessibility\CircleAI.Accessibility.csproj", "{707600A6-BC8E-4D41-A2D7-763DE00A2203}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Companion", "src\Circle.AI.Companion\Circle.AI.Companion.csproj", "{612E4295-95CB-4984-BA79-624D12953EE6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Companion", "src\CircleAI.Companion\CircleAI.Companion.csproj", "{612E4295-95CB-4984-BA79-624D12953EE6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Identity", "src\Circle.AI.Identity\Circle.AI.Identity.csproj", "{A52DB721-F783-4687-B2D3-F17411C16F7F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Identity", "src\CircleAI.Identity\CircleAI.Identity.csproj", "{A52DB721-F783-4687-B2D3-F17411C16F7F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Sync", "src\Circle.AI.Sync\Circle.AI.Sync.csproj", "{41EA4EAA-0230-4ED8-BCF6-CE51540C4BF8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Sync", "src\CircleAI.Sync\CircleAI.Sync.csproj", "{41EA4EAA-0230-4ED8-BCF6-CE51540C4BF8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking", "src\Circle.AI.Networking\Circle.AI.Networking.csproj", "{F7AE5ED7-F921-4715-A8DC-5FF9564B64AD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking", "src\CircleAI.Networking\CircleAI.Networking.csproj", "{F7AE5ED7-F921-4715-A8DC-5FF9564B64AD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages", "src\Circle.AI.Languages\Circle.AI.Languages.csproj", "{F5584120-F20E-423A-A180-327E5821112C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages", "src\CircleAI.Languages\CircleAI.Languages.csproj", "{F5584120-F20E-423A-A180-327E5821112C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Translation", "src\Circle.AI.Languages.Translation\Circle.AI.Languages.Translation.csproj", "{96D9A360-79FC-407E-9596-E87CF52DDBC3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Translation", "src\CircleAI.Languages.Translation\CircleAI.Languages.Translation.csproj", "{96D9A360-79FC-407E-9596-E87CF52DDBC3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Agriculture", "src\Circle.AI.Agriculture\Circle.AI.Agriculture.csproj", "{6642ACAA-6510-4FB3-AB4C-2F3C5F747065}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Agriculture", "src\CircleAI.Agriculture\CircleAI.Agriculture.csproj", "{6642ACAA-6510-4FB3-AB4C-2F3C5F747065}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Ambient", "src\Circle.AI.Ambient\Circle.AI.Ambient.csproj", "{7CFFE343-BA25-4091-84EA-E2AF93BA2970}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Ambient", "src\CircleAI.Ambient\CircleAI.Ambient.csproj", "{7CFFE343-BA25-4091-84EA-E2AF93BA2970}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Beauty", "src\Circle.AI.Beauty\Circle.AI.Beauty.csproj", "{1B530627-1879-495C-BE24-2778B5F7B2F1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Beauty", "src\CircleAI.Beauty\CircleAI.Beauty.csproj", "{1B530627-1879-495C-BE24-2778B5F7B2F1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Business", "src\Circle.AI.Business\Circle.AI.Business.csproj", "{7D79B4C6-A07F-4F32-9B90-EE76105C9BB0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Business", "src\CircleAI.Business\CircleAI.Business.csproj", "{7D79B4C6-A07F-4F32-9B90-EE76105C9BB0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Civic", "src\Circle.AI.Civic\Circle.AI.Civic.csproj", "{C29042A8-40EE-49EF-9285-95A35DD49FFE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Civic", "src\CircleAI.Civic\CircleAI.Civic.csproj", "{C29042A8-40EE-49EF-9285-95A35DD49FFE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Commerce", "src\Circle.AI.Commerce\Circle.AI.Commerce.csproj", "{40D14B97-5CCE-4D14-9A6E-A9D43C751A33}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Commerce", "src\CircleAI.Commerce\CircleAI.Commerce.csproj", "{40D14B97-5CCE-4D14-9A6E-A9D43C751A33}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Commerce.Accounting", "src\Circle.AI.Commerce.Accounting\Circle.AI.Commerce.Accounting.csproj", "{CD682AD9-4042-4251-8A6F-8104A60DB890}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Commerce.Accounting", "src\CircleAI.Commerce.Accounting\CircleAI.Commerce.Accounting.csproj", "{CD682AD9-4042-4251-8A6F-8104A60DB890}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Commerce.Finance", "src\Circle.AI.Commerce.Finance\Circle.AI.Commerce.Finance.csproj", "{A5BCFD56-6EBD-4275-8F72-6E15725995BB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Commerce.Finance", "src\CircleAI.Commerce.Finance\CircleAI.Commerce.Finance.csproj", "{A5BCFD56-6EBD-4275-8F72-6E15725995BB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Commerce.Integration.PayFast", "src\Circle.AI.Commerce.Integration.PayFast\Circle.AI.Commerce.Integration.PayFast.csproj", "{4F45E3C0-D28D-4426-9D83-E953882594C5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Commerce.Integration.PayFast", "src\CircleAI.Commerce.Integration.PayFast\CircleAI.Commerce.Integration.PayFast.csproj", "{4F45E3C0-D28D-4426-9D83-E953882594C5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Commerce.Integration.Xero", "src\Circle.AI.Commerce.Integration.Xero\Circle.AI.Commerce.Integration.Xero.csproj", "{745936C6-18BB-4ACD-97FC-16325A8B30B4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Commerce.Integration.Xero", "src\CircleAI.Commerce.Integration.Xero\CircleAI.Commerce.Integration.Xero.csproj", "{745936C6-18BB-4ACD-97FC-16325A8B30B4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Community", "src\Circle.AI.Community\Circle.AI.Community.csproj", "{EAB6F1C7-44B9-4F5F-97B5-7442387E0E54}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Community", "src\CircleAI.Community\CircleAI.Community.csproj", "{EAB6F1C7-44B9-4F5F-97B5-7442387E0E54}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Construction", "src\Circle.AI.Construction\Circle.AI.Construction.csproj", "{204A7489-774B-4B96-A4E6-D7D40205AA2B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Construction", "src\CircleAI.Construction\CircleAI.Construction.csproj", "{204A7489-774B-4B96-A4E6-D7D40205AA2B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Creative", "src\Circle.AI.Creative\Circle.AI.Creative.csproj", "{FBC08C58-4DC1-4D41-BAF1-58AA8E1E6B9A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Creative", "src\CircleAI.Creative\CircleAI.Creative.csproj", "{FBC08C58-4DC1-4D41-BAF1-58AA8E1E6B9A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Desktop", "src\Circle.AI.Desktop\Circle.AI.Desktop.csproj", "{A928AC04-EB14-407E-94EA-42F1F11A58CD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Desktop", "src\CircleAI.Desktop\CircleAI.Desktop.csproj", "{A928AC04-EB14-407E-94EA-42F1F11A58CD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Education", "src\Circle.AI.Education\Circle.AI.Education.csproj", "{54472728-24DD-49DD-85FE-CF1693F06A0C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Education", "src\CircleAI.Education\CircleAI.Education.csproj", "{54472728-24DD-49DD-85FE-CF1693F06A0C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Elderly", "src\Circle.AI.Elderly\Circle.AI.Elderly.csproj", "{FDEB7919-4BA6-4A95-AAD8-068E555E61FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Elderly", "src\CircleAI.Elderly\CircleAI.Elderly.csproj", "{FDEB7919-4BA6-4A95-AAD8-068E555E61FE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Energy", "src\Circle.AI.Energy\Circle.AI.Energy.csproj", "{3682B48D-1617-45F8-82A5-65237EC7C593}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Energy", "src\CircleAI.Energy\CircleAI.Energy.csproj", "{3682B48D-1617-45F8-82A5-65237EC7C593}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Faith", "src\Circle.AI.Faith\Circle.AI.Faith.csproj", "{017EC739-6FDC-4224-B320-5F4A55A7912B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Faith", "src\CircleAI.Faith\CircleAI.Faith.csproj", "{017EC739-6FDC-4224-B320-5F4A55A7912B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Family", "src\Circle.AI.Family\Circle.AI.Family.csproj", "{004348EF-5FDE-485C-BB9B-644288BDA686}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Family", "src\CircleAI.Family\CircleAI.Family.csproj", "{004348EF-5FDE-485C-BB9B-644288BDA686}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Fitness", "src\Circle.AI.Fitness\Circle.AI.Fitness.csproj", "{4C1BCAC3-740C-4AD8-84DE-03094920B465}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Fitness", "src\CircleAI.Fitness\CircleAI.Fitness.csproj", "{4C1BCAC3-740C-4AD8-84DE-03094920B465}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Food", "src\Circle.AI.Food\Circle.AI.Food.csproj", "{FA06BD02-FBD4-4DB7-A894-554A19C8DA0E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Food", "src\CircleAI.Food\CircleAI.Food.csproj", "{FA06BD02-FBD4-4DB7-A894-554A19C8DA0E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Gaming", "src\Circle.AI.Gaming\Circle.AI.Gaming.csproj", "{0B720E24-4AAC-4841-99EE-A02C763290C7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Gaming", "src\CircleAI.Gaming\CircleAI.Gaming.csproj", "{0B720E24-4AAC-4841-99EE-A02C763290C7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Healthcare", "src\Circle.AI.Healthcare\Circle.AI.Healthcare.csproj", "{C2E2462C-23F4-43F9-B4D1-A68E665313C1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Healthcare", "src\CircleAI.Healthcare\CircleAI.Healthcare.csproj", "{C2E2462C-23F4-43F9-B4D1-A68E665313C1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Home", "src\Circle.AI.Home\Circle.AI.Home.csproj", "{429BB62F-CF02-466B-B17D-BFEA6CB283AD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Home", "src\CircleAI.Home\CircleAI.Home.csproj", "{429BB62F-CF02-466B-B17D-BFEA6CB283AD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.HR", "src\Circle.AI.HR\Circle.AI.HR.csproj", "{CFEC4791-C2BC-4940-AB7F-573F343FF15F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.HR", "src\CircleAI.HR\CircleAI.HR.csproj", "{CFEC4791-C2BC-4940-AB7F-573F343FF15F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.IoT", "src\Circle.AI.IoT\Circle.AI.IoT.csproj", "{303F5FB4-223D-40F5-9608-2E00033E1C6F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.IoT", "src\CircleAI.IoT\CircleAI.IoT.csproj", "{303F5FB4-223D-40F5-9608-2E00033E1C6F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Kids", "src\Circle.AI.Kids\Circle.AI.Kids.csproj", "{BFF15CB7-FF32-4AE6-931B-8A075244941D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Kids", "src\CircleAI.Kids\CircleAI.Kids.csproj", "{BFF15CB7-FF32-4AE6-931B-8A075244941D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language", "src\Circle.AI.Languages.Language\Circle.AI.Languages.Language.csproj", "{592E43AF-6D17-46FD-9E39-328B0EBE3B34}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language", "src\CircleAI.Languages.Language\CircleAI.Languages.Language.csproj", "{592E43AF-6D17-46FD-9E39-328B0EBE3B34}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Afrikaans", "src\Circle.AI.Languages.Language.Afrikaans\Circle.AI.Languages.Language.Afrikaans.csproj", "{F9ECD22E-59A1-4E65-A03E-D40E893144CE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Afrikaans", "src\CircleAI.Languages.Language.Afrikaans\CircleAI.Languages.Language.Afrikaans.csproj", "{F9ECD22E-59A1-4E65-A03E-D40E893144CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Amharic", "src\Circle.AI.Languages.Language.Amharic\Circle.AI.Languages.Language.Amharic.csproj", "{71B70AF4-3C5C-424E-B775-17D0ED29FEB8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Amharic", "src\CircleAI.Languages.Language.Amharic\CircleAI.Languages.Language.Amharic.csproj", "{71B70AF4-3C5C-424E-B775-17D0ED29FEB8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Arabic", "src\Circle.AI.Languages.Language.Arabic\Circle.AI.Languages.Language.Arabic.csproj", "{69699D87-B574-4063-B2C3-687BEB226A92}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Arabic", "src\CircleAI.Languages.Language.Arabic\CircleAI.Languages.Language.Arabic.csproj", "{69699D87-B574-4063-B2C3-687BEB226A92}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Hausa", "src\Circle.AI.Languages.Language.Hausa\Circle.AI.Languages.Language.Hausa.csproj", "{9CB9772B-7310-47B3-836B-AD054B0B8EEA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Hausa", "src\CircleAI.Languages.Language.Hausa\CircleAI.Languages.Language.Hausa.csproj", "{9CB9772B-7310-47B3-836B-AD054B0B8EEA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.isiZulu", "src\Circle.AI.Languages.Language.isiZulu\Circle.AI.Languages.Language.isiZulu.csproj", "{79AD77EA-BA16-4A3E-ACAA-9E1F776A63B2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.isiZulu", "src\CircleAI.Languages.Language.isiZulu\CircleAI.Languages.Language.isiZulu.csproj", "{79AD77EA-BA16-4A3E-ACAA-9E1F776A63B2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Portuguese", "src\Circle.AI.Languages.Language.Portuguese\Circle.AI.Languages.Language.Portuguese.csproj", "{A21C94BB-0F6A-43C7-9BC7-A6BBD728B9E6}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Portuguese", "src\CircleAI.Languages.Language.Portuguese\CircleAI.Languages.Language.Portuguese.csproj", "{A21C94BB-0F6A-43C7-9BC7-A6BBD728B9E6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Sesotho", "src\Circle.AI.Languages.Language.Sesotho\Circle.AI.Languages.Language.Sesotho.csproj", "{01873D5F-CC79-4015-B7CD-B6A86663035D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Sesotho", "src\CircleAI.Languages.Language.Sesotho\CircleAI.Languages.Language.Sesotho.csproj", "{01873D5F-CC79-4015-B7CD-B6A86663035D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Languages.Language.Swahili", "src\Circle.AI.Languages.Language.Swahili\Circle.AI.Languages.Language.Swahili.csproj", "{7ABB027C-7140-40C5-B6AA-4D96307730AE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Languages.Language.Swahili", "src\CircleAI.Languages.Language.Swahili\CircleAI.Languages.Language.Swahili.csproj", "{7ABB027C-7140-40C5-B6AA-4D96307730AE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Legal", "src\Circle.AI.Legal\Circle.AI.Legal.csproj", "{5D99A333-D68D-4490-B5C8-7FCAE5E9A186}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Legal", "src\CircleAI.Legal\CircleAI.Legal.csproj", "{5D99A333-D68D-4490-B5C8-7FCAE5E9A186}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Logistics", "src\Circle.AI.Logistics\Circle.AI.Logistics.csproj", "{B4520FEF-FE31-437F-A9FB-58660E0BF3DD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Logistics", "src\CircleAI.Logistics\CircleAI.Logistics.csproj", "{B4520FEF-FE31-437F-A9FB-58660E0BF3DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Maui", "src\Circle.AI.Maui\Circle.AI.Maui.csproj", "{B3638912-6853-4F55-9E15-7E631921FC60}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Maui", "src\CircleAI.Maui\CircleAI.Maui.csproj", "{B3638912-6853-4F55-9E15-7E631921FC60}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Media", "src\Circle.AI.Media\Circle.AI.Media.csproj", "{370F0FF3-A817-416B-A39D-A5C27058EE13}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Media", "src\CircleAI.Media\CircleAI.Media.csproj", "{370F0FF3-A817-416B-A39D-A5C27058EE13}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Aether", "src\Circle.AI.Networking.Aether\Circle.AI.Networking.Aether.csproj", "{382003F5-7537-43A6-8D51-2CC485184FD7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Aether", "src\CircleAI.Networking.Aether\CircleAI.Networking.Aether.csproj", "{382003F5-7537-43A6-8D51-2CC485184FD7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Bluetooth", "src\Circle.AI.Networking.Bluetooth\Circle.AI.Networking.Bluetooth.csproj", "{5CE27B4E-CFDA-4811-AD9B-59FBD3651932}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Bluetooth", "src\CircleAI.Networking.Bluetooth\CircleAI.Networking.Bluetooth.csproj", "{5CE27B4E-CFDA-4811-AD9B-59FBD3651932}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Dtn", "src\Circle.AI.Networking.Dtn\Circle.AI.Networking.Dtn.csproj", "{80715035-42B1-4B5C-80AB-14AF23D6A3EE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Dtn", "src\CircleAI.Networking.Dtn\CircleAI.Networking.Dtn.csproj", "{80715035-42B1-4B5C-80AB-14AF23D6A3EE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Grpc", "src\Circle.AI.Networking.Grpc\Circle.AI.Networking.Grpc.csproj", "{4ED434F6-7050-49EC-9B4D-E98C52DB93D4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Grpc", "src\CircleAI.Networking.Grpc\CircleAI.Networking.Grpc.csproj", "{4ED434F6-7050-49EC-9B4D-E98C52DB93D4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Http", "src\Circle.AI.Networking.Http\Circle.AI.Networking.Http.csproj", "{2344123A-FDE8-409F-B2C8-2002550767BB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Http", "src\CircleAI.Networking.Http\CircleAI.Networking.Http.csproj", "{2344123A-FDE8-409F-B2C8-2002550767BB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Mqtt", "src\Circle.AI.Networking.Mqtt\Circle.AI.Networking.Mqtt.csproj", "{48336708-61F8-4ACE-95CA-63CB4B02631E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Mqtt", "src\CircleAI.Networking.Mqtt\CircleAI.Networking.Mqtt.csproj", "{48336708-61F8-4ACE-95CA-63CB4B02631E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.NearLink", "src\Circle.AI.Networking.NearLink\Circle.AI.Networking.NearLink.csproj", "{ED0AA3F3-7ACD-43B3-BEB5-9BFF9648EB2C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.NearLink", "src\CircleAI.Networking.NearLink\CircleAI.Networking.NearLink.csproj", "{ED0AA3F3-7ACD-43B3-BEB5-9BFF9648EB2C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.Tcp", "src\Circle.AI.Networking.Tcp\Circle.AI.Networking.Tcp.csproj", "{73C077C7-0E72-44A5-8FAB-6876FC2B20D4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.Tcp", "src\CircleAI.Networking.Tcp\CircleAI.Networking.Tcp.csproj", "{73C077C7-0E72-44A5-8FAB-6876FC2B20D4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.WebSocket", "src\Circle.AI.Networking.WebSocket\Circle.AI.Networking.WebSocket.csproj", "{80E00D30-DFB4-4A42-B884-51722C1B1CA4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.WebSocket", "src\CircleAI.Networking.WebSocket\CircleAI.Networking.WebSocket.csproj", "{80E00D30-DFB4-4A42-B884-51722C1B1CA4}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Networking.WiFi", "src\Circle.AI.Networking.WiFi\Circle.AI.Networking.WiFi.csproj", "{1DEFFE6F-45E7-4345-A027-4900E56C0887}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Networking.WiFi", "src\CircleAI.Networking.WiFi\CircleAI.Networking.WiFi.csproj", "{1DEFFE6F-45E7-4345-A027-4900E56C0887}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Parenting", "src\Circle.AI.Parenting\Circle.AI.Parenting.csproj", "{7A6D66A7-3758-49AE-B6E3-B05C690C9B3A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Parenting", "src\CircleAI.Parenting\CircleAI.Parenting.csproj", "{7A6D66A7-3758-49AE-B6E3-B05C690C9B3A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personal", "src\Circle.AI.Personal\Circle.AI.Personal.csproj", "{F8CB6F48-DF4F-4214-AA0F-E529B7FCE988}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personal", "src\CircleAI.Personal\CircleAI.Personal.csproj", "{F8CB6F48-DF4F-4214-AA0F-E529B7FCE988}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personal.Finance", "src\Circle.AI.Personal.Finance\Circle.AI.Personal.Finance.csproj", "{45CD95B4-A226-4FAC-A278-7B134AB19593}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personal.Finance", "src\CircleAI.Personal.Finance\CircleAI.Personal.Finance.csproj", "{45CD95B4-A226-4FAC-A278-7B134AB19593}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personal.Health", "src\Circle.AI.Personal.Health\Circle.AI.Personal.Health.csproj", "{BDCDF992-5842-4258-9586-43F1B0522D3F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personal.Health", "src\CircleAI.Personal.Health\CircleAI.Personal.Health.csproj", "{BDCDF992-5842-4258-9586-43F1B0522D3F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personal.Mental", "src\Circle.AI.Personal.Mental\Circle.AI.Personal.Mental.csproj", "{7A9F68FA-802E-492A-9469-3A7782F4731C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personal.Mental", "src\CircleAI.Personal.Mental\CircleAI.Personal.Mental.csproj", "{7A9F68FA-802E-492A-9469-3A7782F4731C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Pets", "src\Circle.AI.Pets\Circle.AI.Pets.csproj", "{7F7D9545-E5F4-4899-A511-1C37E44C4A6A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Pets", "src\CircleAI.Pets\CircleAI.Pets.csproj", "{7F7D9545-E5F4-4899-A511-1C37E44C4A6A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.RealEstate", "src\Circle.AI.RealEstate\Circle.AI.RealEstate.csproj", "{D1919C41-C6AB-4A07-8C4C-C40093D67611}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.RealEstate", "src\CircleAI.RealEstate\CircleAI.RealEstate.csproj", "{D1919C41-C6AB-4A07-8C4C-C40093D67611}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Relationships", "src\Circle.AI.Relationships\Circle.AI.Relationships.csproj", "{088C3286-975B-4BCB-B627-50536A1750A0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Relationships", "src\CircleAI.Relationships\CircleAI.Relationships.csproj", "{088C3286-975B-4BCB-B627-50536A1750A0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Retail", "src\Circle.AI.Retail\Circle.AI.Retail.csproj", "{B2AAD880-7912-4B39-B79A-129A7C19D5FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Retail", "src\CircleAI.Retail\CircleAI.Retail.csproj", "{B2AAD880-7912-4B39-B79A-129A7C19D5FE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Safety", "src\Circle.AI.Safety\Circle.AI.Safety.csproj", "{EF99C2A4-61F3-4F36-AFF1-307A73B90E9D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Safety", "src\CircleAI.Safety\CircleAI.Safety.csproj", "{EF99C2A4-61F3-4F36-AFF1-307A73B90E9D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Safety.Child", "src\Circle.AI.Safety.Child\Circle.AI.Safety.Child.csproj", "{3418D28D-F1E9-4465-9E38-6981DB4FE44C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Safety.Child", "src\CircleAI.Safety.Child\CircleAI.Safety.Child.csproj", "{3418D28D-F1E9-4465-9E38-6981DB4FE44C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Social", "src\Circle.AI.Social\Circle.AI.Social.csproj", "{2F4FCBF0-28C6-475C-B08F-8B100AFEA67E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Social", "src\CircleAI.Social\CircleAI.Social.csproj", "{2F4FCBF0-28C6-475C-B08F-8B100AFEA67E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Sports", "src\Circle.AI.Sports\Circle.AI.Sports.csproj", "{4C6B08D1-1A2D-45C7-814B-516D298B8F8C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Sports", "src\CircleAI.Sports\CircleAI.Sports.csproj", "{4C6B08D1-1A2D-45C7-814B-516D298B8F8C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Tourism", "src\Circle.AI.Tourism\Circle.AI.Tourism.csproj", "{8D55BD43-519D-41DC-94FD-8665A29BD137}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Tourism", "src\CircleAI.Tourism\CircleAI.Tourism.csproj", "{8D55BD43-519D-41DC-94FD-8665A29BD137}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Travel", "src\Circle.AI.Travel\Circle.AI.Travel.csproj", "{1E13AAE0-7371-47E3-B98B-0891BA20F9E5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Travel", "src\CircleAI.Travel\CircleAI.Travel.csproj", "{1E13AAE0-7371-47E3-B98B-0891BA20F9E5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Wearable", "src\Circle.AI.Wearable\Circle.AI.Wearable.csproj", "{E818CCD0-CDEB-46A7-B97A-05029B4C1CB9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Wearable", "src\CircleAI.Wearable\CircleAI.Wearable.csproj", "{E818CCD0-CDEB-46A7-B97A-05029B4C1CB9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Web", "src\Circle.AI.Web\Circle.AI.Web.csproj", "{512E7582-1C3D-4ED8-A035-F3714FA6E5E0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Web", "src\CircleAI.Web\CircleAI.Web.csproj", "{512E7582-1C3D-4ED8-A035-F3714FA6E5E0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Orchestration", "src\Circle.AI.Orchestration\Circle.AI.Orchestration.csproj", "{ECE4E694-9AB7-4D03-B0C7-CDD20C8BB1AA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Orchestration", "src\CircleAI.Orchestration\CircleAI.Orchestration.csproj", "{ECE4E694-9AB7-4D03-B0C7-CDD20C8BB1AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Orchestration.Tests", "tests\Circle.AI.Orchestration.Tests\Circle.AI.Orchestration.Tests.csproj", "{B74F8819-876D-4A36-AE66-947D10DD18BD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Orchestration.Tests", "tests\CircleAI.Orchestration.Tests\CircleAI.Orchestration.Tests.csproj", "{B74F8819-876D-4A36-AE66-947D10DD18BD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Simulation", "src\Circle.AI.Simulation\Circle.AI.Simulation.csproj", "{06A72774-D4C0-4BB5-AE42-16C3E33B403F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Simulation", "src\CircleAI.Simulation\CircleAI.Simulation.csproj", "{06A72774-D4C0-4BB5-AE42-16C3E33B403F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Simulation.Tests", "tests\Circle.AI.Simulation.Tests\Circle.AI.Simulation.Tests.csproj", "{76712757-FB67-4307-969B-4E1A8A4C7C8A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Simulation.Tests", "tests\CircleAI.Simulation.Tests\CircleAI.Simulation.Tests.csproj", "{76712757-FB67-4307-969B-4E1A8A4C7C8A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Security.Tests", "tests\Circle.AI.Security.Tests\Circle.AI.Security.Tests.csproj", "{5D9F1146-E1CF-4196-B956-7DF6162B46D7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Security.Tests", "tests\CircleAI.Security.Tests\CircleAI.Security.Tests.csproj", "{5D9F1146-E1CF-4196-B956-7DF6162B46D7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Memory.Tests", "tests\Circle.AI.Memory.Tests\Circle.AI.Memory.Tests.csproj", "{37DA7155-D708-4AC7-BFD2-FC92A940A3C0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Memory.Tests", "tests\CircleAI.Memory.Tests\CircleAI.Memory.Tests.csproj", "{37DA7155-D708-4AC7-BFD2-FC92A940A3C0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Agents.Peer", "src\Circle.AI.Agents.Peer\Circle.AI.Agents.Peer.csproj", "{B5AFDB40-194E-4D80-8D2E-431AF0EC79DD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Agents.Peer", "src\CircleAI.Agents.Peer\CircleAI.Agents.Peer.csproj", "{B5AFDB40-194E-4D80-8D2E-431AF0EC79DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Agents.Peer.Tests", "tests\Circle.AI.Agents.Peer.Tests\Circle.AI.Agents.Peer.Tests.csproj", "{EA2D5E74-1CEA-457B-B7DC-33B0A131145E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Agents.Peer.Tests", "tests\CircleAI.Agents.Peer.Tests\CircleAI.Agents.Peer.Tests.csproj", "{EA2D5E74-1CEA-457B-B7DC-33B0A131145E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Hosting.InferenceBridge", "src\Circle.AI.Hosting.InferenceBridge\Circle.AI.Hosting.InferenceBridge.csproj", "{E409C8DC-07EC-4A18-AF38-71CA6B2696DA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Hosting.InferenceBridge", "src\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj", "{E409C8DC-07EC-4A18-AF38-71CA6B2696DA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Federation", "src\Circle.AI.Federation\Circle.AI.Federation.csproj", "{70623371-F0D5-41D8-8217-7F461C6B1639}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Federation", "src\CircleAI.Federation\CircleAI.Federation.csproj", "{70623371-F0D5-41D8-8217-7F461C6B1639}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Hosting.InferenceBridge.Tests", "tests\Circle.AI.Hosting.InferenceBridge.Tests\Circle.AI.Hosting.InferenceBridge.Tests.csproj", "{F41F631B-354E-4614-8E2B-AFDDB5B579FB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Hosting.InferenceBridge.Tests", "tests\CircleAI.Hosting.InferenceBridge.Tests\CircleAI.Hosting.InferenceBridge.Tests.csproj", "{F41F631B-354E-4614-8E2B-AFDDB5B579FB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Federation.Tests", "tests\Circle.AI.Federation.Tests\Circle.AI.Federation.Tests.csproj", "{746D5568-5D72-47ED-B40C-F3EE74764669}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Federation.Tests", "tests\CircleAI.Federation.Tests\CircleAI.Federation.Tests.csproj", "{746D5568-5D72-47ED-B40C-F3EE74764669}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personality", "src\Circle.AI.Personality\Circle.AI.Personality.csproj", "{082C0DF3-2EAB-4895-993A-1FC37E2C3B19}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personality", "src\CircleAI.Personality\CircleAI.Personality.csproj", "{082C0DF3-2EAB-4895-993A-1FC37E2C3B19}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Knowledge", "src\Circle.AI.Knowledge\Circle.AI.Knowledge.csproj", "{0D4E81F3-EFEF-4788-818F-80D08BED3A7A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Knowledge", "src\CircleAI.Knowledge\CircleAI.Knowledge.csproj", "{0D4E81F3-EFEF-4788-818F-80D08BED3A7A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personality.Tests", "tests\Circle.AI.Personality.Tests\Circle.AI.Personality.Tests.csproj", "{609862E4-927F-4B11-B148-2C1F406E7F5E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personality.Tests", "tests\CircleAI.Personality.Tests\CircleAI.Personality.Tests.csproj", "{609862E4-927F-4B11-B148-2C1F406E7F5E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Knowledge.Tests", "tests\Circle.AI.Knowledge.Tests\Circle.AI.Knowledge.Tests.csproj", "{286FE8A5-91D7-4E10-96E7-C19256AF6BE0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Knowledge.Tests", "tests\CircleAI.Knowledge.Tests\CircleAI.Knowledge.Tests.csproj", "{286FE8A5-91D7-4E10-96E7-C19256AF6BE0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Wearable.Biosignals", "src\Circle.AI.Wearable.Biosignals\Circle.AI.Wearable.Biosignals.csproj", "{E8238574-1085-4383-B191-0F09F25B8C54}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Wearable.Biosignals", "src\CircleAI.Wearable.Biosignals\CircleAI.Wearable.Biosignals.csproj", "{E8238574-1085-4383-B191-0F09F25B8C54}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Wearable.Biosignals.Tests", "tests\Circle.AI.Wearable.Biosignals.Tests\Circle.AI.Wearable.Biosignals.Tests.csproj", "{D7CA284A-7BDE-4259-B976-04F43C90DD11}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Wearable.Biosignals.Tests", "tests\CircleAI.Wearable.Biosignals.Tests\CircleAI.Wearable.Biosignals.Tests.csproj", "{D7CA284A-7BDE-4259-B976-04F43C90DD11}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Circle.AI.Personal.Tests", "tests\Circle.AI.Personal.Tests\Circle.AI.Personal.Tests.csproj", "{C6FFA552-1707-47DB-8DA7-8D3BEE60D45A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Personal.Tests", "tests\CircleAI.Personal.Tests\CircleAI.Personal.Tests.csproj", "{C6FFA552-1707-47DB-8DA7-8D3BEE60D45A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

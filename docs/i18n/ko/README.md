@@ -26,12 +26,12 @@ Circle AI 컴패니언 스택의 이식성 있는 핵심 구성 요소입니다.
 ### C# (.NET)
 
 ```bash
-dotnet add package Circle.AI.Core
+dotnet add package CircleAI.Core
 ```
 
 ```csharp
-using Circle.AI.Memory;
-using Circle.AI.Languages;
+using CircleAI.Memory;
+using CircleAI.Languages;
 
 var state = new AffectState();
 state.ApplyPositiveSignal();
@@ -247,7 +247,7 @@ console.log(state.engagement); // 0.52
 
 ```
 CircleAI/
-├── src/            C# 참조 구현체 (Circle.AI.*)
+├── src/            C# 참조 구현체 (CircleAI.*)
 ├── tests/          C# 테스트 스위트
 ├── fixtures/       언어 간 테스트 벡터 (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md

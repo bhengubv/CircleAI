@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Agents.Peer</PackageId>
+    <Description>
+      Agent-to-agent protocol over Aether mesh transport for Circle AI —
+      one person's AI talks to another person's AI directly over BLE/Wi-Fi
+      Direct, no cloud.
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Security\CircleAI.Security.csproj" />
+  </ItemGroup>
+
+</Project>
