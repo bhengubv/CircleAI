@@ -1,7 +1,7 @@
 // companion.go
 //
 // InterfaceKind, CompanionContext, CompanionTurn, CompanionProactiveEvent,
-// ICompanionSession.
+// ICompanionSession, FaceAffectMapper, FaceCompanionBridge.
 //
 // The Companion is the HER + JARVIS persona — available on every surface,
 // with memory and identity that travels with the person.
@@ -122,6 +122,93 @@ type CompanionProactiveEvent struct {
 
 	// GeneratedAt is the UTC time when the event was generated.
 	GeneratedAt time.Time
+}
+
+// ---------------------------------------------------------------------------
+// FaceAffectMapper
+// ---------------------------------------------------------------------------
+
+// minFaceConfidence is the minimum confidence score required before a facial
+// expression is applied to AffectState. Readings below this threshold are
+// discarded as unreliable.
+const minFaceConfidence = float32(0.5)
+
+// ApplyFaceAffect updates the AffectState based on the expression and confidence
+// in the FacialMetricMatrix. Readings with ConfidenceScore < 0.5 are ignored.
+// Exact deltas (must match fixtures/facex_biometric_vectors.json):
+//
+//	Happy:    Engagement += 0.03, Energy     += 0.02
+//	Surprised: Curiosity += 0.04
+//	Confused: Uncertainty += 0.05
+//	Stressed: Uncertainty += 0.08, Energy    -= 0.05
+//	Angry:    Engagement  -= 0.04, Rapport   -= 0.02
+//	Neutral / Sad / Unknown: no change
+func ApplyFaceAffect(m *FacialMetricMatrix, s *AffectState) {
+	if m.ConfidenceScore < minFaceConfidence {
+		return
+	}
+	switch m.Expression {
+	case FaceExpressionHappy:
+		s.Engagement = clamp32(s.Engagement+0.03, 0, 1)
+		s.Energy = clamp32(s.Energy+0.02, 0, 1)
+	case FaceExpressionSurprised:
+		s.Curiosity = clamp32(s.Curiosity+0.04, 0, 1)
+	case FaceExpressionConfused:
+		s.Uncertainty = clamp32(s.Uncertainty+0.05, 0, 1)
+	case FaceExpressionStressed:
+		s.Uncertainty = clamp32(s.Uncertainty+0.08, 0, 1)
+		s.Energy = clamp32(s.Energy-0.05, 0, 1)
+	case FaceExpressionAngry:
+		s.Engagement = clamp32(s.Engagement-0.04, 0, 1)
+		s.Rapport = clamp32(s.Rapport-0.02, 0, 1)
+	}
+	s.LastUpdatedUTC = time.Now().UTC()
+}
+
+// ---------------------------------------------------------------------------
+// FaceCompanionBridge
+// ---------------------------------------------------------------------------
+
+// FaceCompanionBridge bridges the face analytics pipeline and the Companion
+// companion layer. It observes a FacialMetricMatrix, applies affect mutations
+// via ApplyFaceAffect, and optionally emits a CompanionProactiveEvent when
+// uncertainty exceeds the confusion threshold.
+type FaceCompanionBridge struct {
+	// ConfusionThreshold is the uncertainty level above which a proactive
+	// "are you confused?" event is emitted. Default: 0.70.
+	ConfusionThreshold float32
+}
+
+// NewFaceCompanionBridge returns a FaceCompanionBridge with the default
+// confusion threshold of 0.70.
+func NewFaceCompanionBridge() FaceCompanionBridge {
+	return FaceCompanionBridge{ConfusionThreshold: 0.70}
+}
+
+// Observe applies the expression in m to affect s and returns a
+// CompanionProactiveEvent when post-update uncertainty exceeds
+// ConfusionThreshold. Returns nil when no proactive event is warranted.
+func (b *FaceCompanionBridge) Observe(
+	m *FacialMetricMatrix,
+	s *AffectState,
+	sessionID, identityID string,
+	surface InterfaceKind,
+) *CompanionProactiveEvent {
+	ApplyFaceAffect(m, s)
+	// Both conditions must hold — a high Uncertainty score alone (from
+	// prior interactions) does not trigger a face-driven proactive event.
+	isConfusedExpr := m.Expression == FaceExpressionConfused || m.Expression == FaceExpressionStressed
+	if s.Uncertainty >= b.ConfusionThreshold && isConfusedExpr {
+		return &CompanionProactiveEvent{
+			SessionID:   sessionID,
+			IdentityID:  identityID,
+			Interface:   surface,
+			Message:     "I notice you might be finding this a bit tricky. Would you like me to slow down or explain it differently?",
+			TriggerName: "face.confusion_detected",
+			GeneratedAt: time.Now().UTC(),
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

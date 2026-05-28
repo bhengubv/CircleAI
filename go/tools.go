@@ -1,13 +1,17 @@
 // tools.go
 //
 // ToolDefinition, ToolParameter, ToolInvocation, ToolResult, IToolBridge.
+// FaceExpressionClassification, FaceBoundingBox, FacialMetricMatrix.
 //
 // Bridge between the local LLM and TheGeekNetwork APIs. Implementations
 // route tool calls to the appropriate API client.
 
 package circleai
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ---------------------------------------------------------------------------
 // ToolDefinition
@@ -93,6 +97,91 @@ func ToolResultOK(toolName string, result interface{}) ToolResult {
 		Success:  true,
 		Result:   result,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// FaceExpressionClassification
+// ---------------------------------------------------------------------------
+
+// FaceExpressionClassification is the detected facial expression.
+type FaceExpressionClassification int
+
+const (
+	// FaceExpressionNeutral is the baseline, no-emotion expression.
+	FaceExpressionNeutral FaceExpressionClassification = iota
+
+	// FaceExpressionHappy: smiling or positive affect.
+	FaceExpressionHappy
+
+	// FaceExpressionSad: downturned mouth, sad eyes.
+	FaceExpressionSad
+
+	// FaceExpressionSurprised: raised eyebrows, open mouth.
+	FaceExpressionSurprised
+
+	// FaceExpressionConfused: furrowed brow, tilted head.
+	FaceExpressionConfused
+
+	// FaceExpressionStressed: tense brow, tight mouth.
+	FaceExpressionStressed
+
+	// FaceExpressionAngry: narrowed eyes, lowered brow.
+	FaceExpressionAngry
+
+	// FaceExpressionUnknown is returned when classification fails.
+	FaceExpressionUnknown
+)
+
+// ---------------------------------------------------------------------------
+// FaceBoundingBox
+// ---------------------------------------------------------------------------
+
+// FaceBoundingBox is a normalised (0.0–1.0) face bounding box within the
+// source image frame.
+type FaceBoundingBox struct {
+	// X is the left edge, normalised to [0, 1].
+	X float32
+
+	// Y is the top edge, normalised to [0, 1].
+	Y float32
+
+	// Width is the width, normalised to [0, 1].
+	Width float32
+
+	// Height is the height, normalised to [0, 1].
+	Height float32
+}
+
+// ---------------------------------------------------------------------------
+// FacialMetricMatrix
+// ---------------------------------------------------------------------------
+
+// FacialMetricMatrix holds all facial analytics produced by the on-device
+// face processing pipeline for a single detected face.
+type FacialMetricMatrix struct {
+	// Landmarks holds 68 (x, y) landmark coordinate pairs normalised to
+	// [0.0, 1.0] relative to the face bounding box, stored as a flat
+	// array of length 136 (index 2*i = x, 2*i+1 = y for landmark i).
+	Landmarks [136]float32
+
+	// BoundingBox is the normalised face bounding box in the source frame.
+	BoundingBox FaceBoundingBox
+
+	// Expression is the classified facial expression.
+	Expression FaceExpressionClassification
+
+	// ConfidenceScore is the detector's confidence in the expression
+	// classification, in [0, 1].
+	ConfidenceScore float32
+
+	// CapturedAt is the UTC time when the frame was captured.
+	CapturedAt time.Time
+}
+
+// GetLandmark returns the (x, y) coordinates of landmark i (0-indexed).
+// Panics when i is out of range.
+func (m *FacialMetricMatrix) GetLandmark(i int) (x, y float32) {
+	return m.Landmarks[2*i], m.Landmarks[2*i+1]
 }
 
 // ---------------------------------------------------------------------------

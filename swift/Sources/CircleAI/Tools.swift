@@ -95,6 +95,95 @@ public struct ToolResult: @unchecked Sendable {
     }
 }
 
+// MARK: - FaceExpressionClassification
+
+/// Classified facial expression from the on-device face analysis pipeline.
+public enum FaceExpressionClassification: String, Sendable, CaseIterable {
+    /// Relaxed, expressionless face.
+    case neutral
+    /// Smile or laughter.
+    case happy
+    /// Downturned mouth, furrowed brows.
+    case sad
+    /// Raised brows, wide eyes.
+    case surprised
+    /// Furrowed brows, head tilt.
+    case confused
+    /// Tense jaw, tight eyes, shallow breathing indicators.
+    case stressed
+    /// Lowered brows, clenched jaw.
+    case angry
+    /// Classifier could not determine expression with sufficient confidence.
+    case unknown
+}
+
+// MARK: - FaceBoundingBox
+
+/// Normalised bounding box for a detected face.
+/// All coordinates are in the range [0.0, 1.0] relative to the image dimensions.
+public struct FaceBoundingBox: Sendable {
+    /// Left edge (0 = left of frame).
+    public let x: Float
+    /// Top edge (0 = top of frame).
+    public let y: Float
+    /// Width of the box.
+    public let width: Float
+    /// Height of the box.
+    public let height: Float
+
+    public init(x: Float, y: Float, width: Float, height: Float) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+// MARK: - FacialMetricMatrix
+
+/// Output of the on-device face analysis pipeline for a single frame.
+/// Contains 68 landmark pairs (136 floats), the bounding box, the classified
+/// expression, and a confidence score.
+public final class FacialMetricMatrix: @unchecked Sendable {
+
+    /// 68 (x, y) landmark pairs stored as a flat array of 136 normalised floats.
+    /// Indices: landmark k → (x=landmarks[k*2], y=landmarks[k*2+1]).
+    public let landmarks: [Float]
+
+    /// Normalised bounding box of the detected face.
+    public let boundingBox: FaceBoundingBox
+
+    /// Classified expression for this frame.
+    public let expression: FaceExpressionClassification
+
+    /// Model confidence for the expression classification, in [0.0, 1.0].
+    public let confidenceScore: Float
+
+    /// UTC time when this frame was captured.
+    public let capturedAt: Date
+
+    public init(
+        landmarks: [Float],
+        boundingBox: FaceBoundingBox,
+        expression: FaceExpressionClassification,
+        confidenceScore: Float,
+        capturedAt: Date = Date()
+    ) {
+        precondition(landmarks.count == 136, "FacialMetricMatrix.landmarks must have exactly 136 elements (68 x/y pairs)")
+        self.landmarks = landmarks
+        self.boundingBox = boundingBox
+        self.expression = expression
+        self.confidenceScore = confidenceScore
+        self.capturedAt = capturedAt
+    }
+
+    /// Returns the (x, y) pair for landmark at index i (0-based, 0–67).
+    public func getLandmark(at i: Int) -> (x: Float, y: Float) {
+        precondition(i >= 0 && i < 68, "Landmark index must be in 0..<68")
+        return (x: landmarks[i * 2], y: landmarks[i * 2 + 1])
+    }
+}
+
 // MARK: - IToolBridge
 
 /// Bridge between the local LLM and the TheGeekNetwork APIs.

@@ -101,6 +101,98 @@ public struct RegisteredDevice: Sendable {
     }
 }
 
+// MARK: - BiometricProfile
+
+/// An enrolled biometric profile used for face-based identity matching.
+/// The embeddingVector must be L2-normalised before storage.
+public struct BiometricProfile: Sendable {
+    /// The identity this profile belongs to.
+    public let identityId: String
+
+    /// L2-normalised face embedding vector.
+    public let embeddingVector: [Float]
+
+    /// Cosine-similarity threshold above which a candidate is considered a match.
+    /// Default 0.85.
+    public let matchThreshold: Float
+
+    /// When this profile was enrolled (UTC).
+    public let enrolledAt: Date
+
+    /// When the profile was last successfully matched (UTC). nil if never matched.
+    public let lastMatchAt: Date?
+
+    /// Dimensionality of the embedding vector.
+    public var embeddingDimension: Int { embeddingVector.count }
+
+    public init(
+        identityId: String,
+        embeddingVector: [Float],
+        matchThreshold: Float = 0.85,
+        enrolledAt: Date,
+        lastMatchAt: Date? = nil
+    ) {
+        self.identityId = identityId
+        self.embeddingVector = embeddingVector
+        self.matchThreshold = matchThreshold
+        self.enrolledAt = enrolledAt
+        self.lastMatchAt = lastMatchAt
+    }
+}
+
+// MARK: - BiometricMatcher
+
+/// Scalar cosine-similarity matcher for face embeddings.
+/// IMPORTANT: Uses Double accumulators and a plain scalar loop.
+/// Do NOT use Accelerate, vDSP, SIMD, or any hardware intrinsics.
+/// The scalar-Double constraint ensures bit-identical results across
+/// all platforms (arm64, x86_64, armv7) and runtimes (Swift, C#, Kotlin, Python…).
+public enum BiometricMatcher {
+
+    /// Computes the cosine similarity between two Float vectors.
+    /// Returns a value in [-1.0, 1.0], or 0.0 for empty/mismatched vectors.
+    ///
+    /// Uses Double accumulators for cross-platform reproducibility.
+    /// Do NOT use SIMD, vDSP, Accelerate framework, or any hardware intrinsics.
+    public static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Double {
+        guard a.count == b.count, !a.isEmpty else { return 0.0 }
+        var dot  = 0.0
+        var magA = 0.0
+        var magB = 0.0
+        for i in 0..<a.count {
+            let ai = Double(a[i])
+            let bi = Double(b[i])
+            dot  += ai * bi
+            magA += ai * ai
+            magB += bi * bi
+        }
+        magA = sqrt(magA)
+        magB = sqrt(magB)
+        guard magA > 1e-10, magB > 1e-10 else { return 0.0 }
+        return max(-1.0, min(1.0, dot / (magA * magB)))
+    }
+
+    /// Returns true when the candidate embedding's cosine similarity to the
+    /// enrolled profile meets or exceeds the profile's matchThreshold.
+    public static func isMatch(_ candidate: [Float], against profile: BiometricProfile) -> Bool {
+        return cosineSimilarity(candidate, profile.embeddingVector) >= Double(profile.matchThreshold)
+    }
+}
+
+// MARK: - IBiometricStore
+
+/// Persistent store for biometric profiles.
+public protocol IBiometricStore {
+    /// Returns the biometric profile for the given identityId, or nil if not enrolled.
+    func get(identityId: String) async throws -> BiometricProfile?
+
+    /// Stores or replaces the biometric profile.
+    func save(_ profile: BiometricProfile) async throws
+
+    /// Deletes the biometric profile. No-op if not found.
+    func delete(identityId: String) async throws
+}
+
 // MARK: - IIdentityStore
 
 /// Persistent store for Circle AI identities and device registrations.

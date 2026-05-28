@@ -4,6 +4,7 @@
 
 #![allow(dead_code)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::excessive_precision)]
 
 pub mod companion;
 pub mod identity;

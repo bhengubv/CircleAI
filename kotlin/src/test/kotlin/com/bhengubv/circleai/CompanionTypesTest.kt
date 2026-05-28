@@ -4,14 +4,22 @@
 //   - InterfaceKind has exactly 7 values with correct names
 //   - CompanionContext, CompanionTurn, CompanionProactiveEvent data class construction
 //   - PersonaState.toSystemPromptHint() against all 6 fixture vectors from persona_state.json
+//   - FaceAffectMapper.apply: Happy, Confused, low-confidence discard
+//   - FaceCompanionBridge: confusion threshold triggers ProactiveEvent
 
 package com.bhengubv.circleai
 
 import com.bhengubv.circleai.companion.CompanionContext
 import com.bhengubv.circleai.companion.CompanionProactiveEvent
 import com.bhengubv.circleai.companion.CompanionTurn
+import com.bhengubv.circleai.companion.FaceAffectMapper
+import com.bhengubv.circleai.companion.FaceCompanionBridge
 import com.bhengubv.circleai.companion.InterfaceKind
+import com.bhengubv.circleai.memory.AffectState
 import com.bhengubv.circleai.memory.PersonaState
+import com.bhengubv.circleai.tools.FaceBoundingBox
+import com.bhengubv.circleai.tools.FaceExpressionClassification
+import com.bhengubv.circleai.tools.FacialMetricMatrix
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
@@ -20,7 +28,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import java.io.File
 import java.time.Instant
+import kotlin.math.abs
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CompanionTypesTest {
@@ -34,6 +45,27 @@ class CompanionTypesTest {
         if (relative.exists()) return relative
         error("Cannot locate fixture $name")
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private fun assertApprox(expected: Float, actual: Float, epsilon: Float = 1e-5f, message: String = "") {
+        assertTrue(
+            abs(actual - expected) <= epsilon,
+            "${if (message.isNotEmpty()) "[$message] " else ""}expected $expected ± $epsilon, got $actual"
+        )
+    }
+
+    /** Build a blank [FacialMetricMatrix] with zeroed landmarks and the given expression/confidence. */
+    private fun matrix(
+        expression: FaceExpressionClassification,
+        confidence: Float
+    ): FacialMetricMatrix = FacialMetricMatrix(
+        landmarks      = FloatArray(136) { 0f },
+        boundingBox    = FaceBoundingBox(0f, 0f, 1f, 1f),
+        expression     = expression,
+        confidenceScore = confidence,
+        capturedAt     = Instant.EPOCH
+    )
 
     // ── InterfaceKind ─────────────────────────────────────────────────────────
 
@@ -175,7 +207,7 @@ class CompanionTypesTest {
             positiveSignals = 5
             negativeSignals = 4
         }
-        assertEquals(null, persona.satisfactionScore)
+        assertNull(persona.satisfactionScore)
     }
 
     @Test
@@ -185,7 +217,219 @@ class CompanionTypesTest {
             negativeSignals = 2
         }
         val score = persona.satisfactionScore
-        assertTrue(score != null)
+        assertNotNull(score)
         assertEquals(0.8, score, 1e-9)
+    }
+
+    // ── FaceAffectMapper — Happy expression ──────────────────────────────────
+
+    @Test
+    fun `FaceAffectMapper apply Happy increments engagement and energy`() {
+        // fixtures: happy_from_neutral  engagement+0.03, energy+0.02
+        val affect = AffectState("u").apply {
+            curiosity   = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport     = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Happy, 0.92f), affect)
+        assertApprox(0.5f,  affect.curiosity,   message = "curiosity unchanged")
+        assertApprox(0.53f, affect.engagement,  message = "engagement +0.03")
+        assertApprox(0.2f,  affect.uncertainty, message = "uncertainty unchanged")
+        assertApprox(0.0f,  affect.rapport,     message = "rapport unchanged")
+        assertApprox(0.52f, affect.energy,      message = "energy +0.02")
+    }
+
+    // ── FaceAffectMapper — Confused expression ────────────────────────────────
+
+    @Test
+    fun `FaceAffectMapper apply Confused increments uncertainty`() {
+        // fixtures: confused_from_neutral  uncertainty+0.05
+        val affect = AffectState("u").apply {
+            curiosity   = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport     = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Confused, 0.79f), affect)
+        assertApprox(0.5f,  affect.curiosity,   message = "curiosity unchanged")
+        assertApprox(0.5f,  affect.engagement,  message = "engagement unchanged")
+        assertApprox(0.25f, affect.uncertainty, message = "uncertainty +0.05")
+        assertApprox(0.0f,  affect.rapport,     message = "rapport unchanged")
+        assertApprox(0.5f,  affect.energy,      message = "energy unchanged")
+    }
+
+    // ── FaceAffectMapper — low confidence discard ─────────────────────────────
+
+    @Test
+    fun `FaceAffectMapper apply with confidence below 0_5 produces no change`() {
+        // fixtures: low_confidence_discarded  confidence=0.49 → no mutation
+        val affect = AffectState("u").apply {
+            curiosity   = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport     = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Stressed, 0.49f), affect)
+        assertApprox(0.5f, affect.curiosity,   message = "curiosity unchanged")
+        assertApprox(0.5f, affect.engagement,  message = "engagement unchanged")
+        assertApprox(0.2f, affect.uncertainty, message = "uncertainty unchanged")
+        assertApprox(0.0f, affect.rapport,     message = "rapport unchanged")
+        assertApprox(0.5f, affect.energy,      message = "energy unchanged")
+    }
+
+    @Test
+    fun `FaceAffectMapper apply with confidence exactly 0_5 is applied`() {
+        // MIN_CONFIDENCE = 0.5f, condition is < 0.5 so exactly 0.5 should mutate
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Confused, 0.5f), affect)
+        // Confused adds 0.05 to uncertainty
+        assertApprox(0.25f, affect.uncertainty, message = "uncertainty +0.05 at exactly min confidence")
+    }
+
+    // ── FaceAffectMapper — Surprised, Stressed, Angry ────────────────────────
+
+    @Test
+    fun `FaceAffectMapper apply Surprised increments curiosity`() {
+        // fixtures: surprised_from_neutral  curiosity+0.04
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Surprised, 0.88f), affect)
+        assertApprox(0.54f, affect.curiosity,  message = "curiosity +0.04")
+        assertApprox(0.5f,  affect.engagement, message = "engagement unchanged")
+        assertApprox(0.5f,  affect.energy,     message = "energy unchanged")
+    }
+
+    @Test
+    fun `FaceAffectMapper apply Stressed increments uncertainty and decrements energy`() {
+        // fixtures: stressed_from_neutral  uncertainty+0.08, energy-0.05
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Stressed, 0.85f), affect)
+        assertApprox(0.28f, affect.uncertainty, message = "uncertainty +0.08")
+        assertApprox(0.45f, affect.energy,      message = "energy -0.05")
+    }
+
+    @Test
+    fun `FaceAffectMapper apply Angry decrements engagement and rapport`() {
+        // fixtures: angry_from_neutral  engagement-0.04, rapport-0.02
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.3f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Angry, 0.91f), affect)
+        assertApprox(0.46f, affect.engagement, message = "engagement -0.04")
+        assertApprox(0.28f, affect.rapport,    message = "rapport -0.02")
+    }
+
+    @Test
+    fun `FaceAffectMapper apply Neutral produces no change`() {
+        // fixtures: neutral_expression_no_change
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Neutral, 0.95f), affect)
+        assertApprox(0.5f, affect.curiosity,   message = "curiosity unchanged")
+        assertApprox(0.5f, affect.engagement,  message = "engagement unchanged")
+        assertApprox(0.2f, affect.uncertainty, message = "uncertainty unchanged")
+        assertApprox(0.0f, affect.rapport,     message = "rapport unchanged")
+        assertApprox(0.5f, affect.energy,      message = "energy unchanged")
+    }
+
+    // ── FaceAffectMapper — clamp max ──────────────────────────────────────────
+
+    @Test
+    fun `FaceAffectMapper apply Happy clamps engagement at 1_0`() {
+        // fixtures: clamp_max_engagement  engagement starts at 0.99
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.99f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        FaceAffectMapper.apply(matrix(FaceExpressionClassification.Happy, 0.95f), affect)
+        assertApprox(1.0f,  affect.engagement, message = "engagement clamped to 1.0")
+        assertApprox(0.52f, affect.energy,     message = "energy +0.02")
+    }
+
+    // ── FaceCompanionBridge — confusion threshold ─────────────────────────────
+
+    @Test
+    fun `FaceCompanionBridge observe returns null below confusion threshold`() {
+        // uncertainty starts at 0.2; Confused adds 0.05 → 0.25, well below 0.70
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.2f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        val event = FaceCompanionBridge.observe(
+            matrix  = matrix(FaceExpressionClassification.Confused, 0.79f),
+            affect  = affect,
+            sessionId  = "sess-1",
+            identityId = "id-1",
+            surface    = InterfaceKind.Mobile
+        )
+        assertNull(event, "Should not trigger below confusion threshold (0.25 < 0.70)")
+    }
+
+    @Test
+    fun `FaceCompanionBridge observe returns event above confusion threshold`() {
+        // uncertainty starts at 0.68; Confused adds 0.05 → 0.73 >= 0.70
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.68f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        val event = FaceCompanionBridge.observe(
+            matrix  = matrix(FaceExpressionClassification.Confused, 0.79f),
+            affect  = affect,
+            sessionId  = "sess-2",
+            identityId = "id-2",
+            surface    = InterfaceKind.Mobile
+        )
+        assertNotNull(event, "Should trigger when uncertainty crosses 0.70")
+        assertEquals("sess-2",   event.sessionId)
+        assertEquals("id-2",     event.identityId)
+        assertEquals(InterfaceKind.Mobile, event.interfaceKind)
+        assertEquals("face.confusion_detected", event.triggerName)
+        assertTrue(event.message.isNotBlank())
+    }
+
+    @Test
+    fun `FaceCompanionBridge observe Stressed also triggers above threshold`() {
+        // uncertainty starts at 0.65; Stressed adds 0.08 → 0.73 >= 0.70
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.65f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        val event = FaceCompanionBridge.observe(
+            matrix  = matrix(FaceExpressionClassification.Stressed, 0.85f),
+            affect  = affect,
+            sessionId  = "sess-3",
+            identityId = "id-3",
+            surface    = InterfaceKind.Desktop
+        )
+        assertNotNull(event, "Stressed + high uncertainty should trigger event")
+        assertEquals("face.confusion_detected", event.triggerName)
+    }
+
+    @Test
+    fun `FaceCompanionBridge observe Happy does not trigger confusion event`() {
+        // Happy never generates a confusion-expression, so no event even if uncertainty is high
+        val affect = AffectState("u").apply {
+            curiosity = 0.5f; engagement = 0.5f; uncertainty = 0.9f
+            rapport   = 0.0f; energy     = 0.5f
+        }
+        val event = FaceCompanionBridge.observe(
+            matrix  = matrix(FaceExpressionClassification.Happy, 0.92f),
+            affect  = affect,
+            sessionId  = "sess-4",
+            identityId = "id-4",
+            surface    = InterfaceKind.Mobile
+        )
+        assertNull(event, "Happy expression should never trigger confusion event")
+    }
+
+    @Test
+    fun `FaceCompanionBridge confusion threshold constant is 0_70`() {
+        assertEquals(0.70f, FaceCompanionBridge.CONFUSION_THRESHOLD)
     }
 }

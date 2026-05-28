@@ -75,21 +75,15 @@ impl GenerationOptions {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Contract for an on-device chat-style text generator.
-///
-/// NOTE: Synchronous shape for portability. Platform implementations wrap
-/// this with async execution. The `stream` method returns a boxed iterator
-/// of string tokens (or chunks) in decode order.
 pub trait IChatGenerator {
     type Error: std::error::Error;
 
-    /// Generates a complete assistant reply for the given conversation.
     fn generate(
         &self,
         messages: &[ChatMessage],
         opts: Option<&GenerationOptions>,
     ) -> Result<String, Self::Error>;
 
-    /// Streams the assistant reply chunk-by-chunk. Callers concatenate in order.
     fn stream(
         &self,
         messages: &[ChatMessage],

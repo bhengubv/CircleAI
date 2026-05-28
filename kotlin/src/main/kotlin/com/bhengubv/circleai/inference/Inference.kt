@@ -24,20 +24,18 @@ import kotlinx.coroutines.flow.Flow
  */
 data class GenerationOptions(
     /** Maximum number of new tokens to produce. */
-    val maxTokens: Int = 512,
+    val maxTokens: Int = 2048,
     /** Sampling temperature. 0 = greedy; higher = more random. */
     val temperature: Float = 0.7f,
     /** Nucleus sampling cutoff (top-p). 1.0 disables. */
     val topP: Float = 0.9f,
-    /** Top-k cutoff. 0 disables. */
-    val topK: Int = 40,
-    /** Optional RNG seed. null means non-deterministic. */
-    val seed: Int? = null,
     /**
      * Optional substrings that will end generation when matched in the emitted
      * output (e.g. role-tag boundaries).
      */
-    val stopSequences: Array<String>? = null
+    val stopSequences: List<String> = emptyList(),
+    /** Optional system prompt to prepend before the conversation messages. */
+    val systemPrompt: String = ""
 )
 
 // ---------------------------------------------------------------------------
@@ -54,7 +52,7 @@ interface IChatGenerator : AutoCloseable {
      */
     suspend fun generateAsync(
         messages: List<ChatMessage>,
-        options: GenerationOptions? = null
+        opts: GenerationOptions = GenerationOptions()
     ): String
 
     /**
@@ -64,6 +62,6 @@ interface IChatGenerator : AutoCloseable {
      */
     fun streamAsync(
         messages: List<ChatMessage>,
-        options: GenerationOptions? = null
+        opts: GenerationOptions = GenerationOptions()
     ): Flow<String>
 }

@@ -394,6 +394,16 @@ type Goal struct {
 
 	// Notes holds freeform notes B! or the user has attached to this goal.
 	Notes *string
+
+	// Progress is the completion fraction in [0.0, 1.0]. 0 = not started, 1 = done.
+	Progress float32
+}
+
+// AdvanceProgress returns a copy of the goal with Progress advanced by delta,
+// clamped to [0.0, 1.0]. A negative delta reduces progress (regression).
+func (g Goal) AdvanceProgress(delta float32) Goal {
+	g.Progress = clamp32(g.Progress+delta, 0, 1)
+	return g
 }
 
 // ---------------------------------------------------------------------------

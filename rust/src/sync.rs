@@ -43,9 +43,6 @@ impl SyncDomainKeys {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// An incremental state change that must reach every device owned by `owner_id`.
-///
-/// This is the primitive that makes Circle AI cross-device continuous —
-/// HER + JARVIS memory following the person.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncDelta {
     /// Identity whose state this belongs to.
@@ -102,27 +99,13 @@ impl SyncDelta {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// The cross-device continuity primitive.
-///
-/// Pushes memory/state deltas across whatever transport is available:
-/// gRPC over 5G, BLE mesh via a neighbour, DTN bundle arriving 6 hours later.
-/// App code is identical in every case.
-///
-/// NOTE: Synchronous shape for portability. Platform implementations add async
-/// execution context. The `receive_deltas` method returns a boxed iterator over
-/// available deltas; in async implementations this becomes an async stream.
 pub trait ISyncChannel {
     type Error: std::error::Error;
 
-    /// Push a delta. Channel selects transport and handles retries.
-    /// Returns when accepted (not necessarily delivered for DTN/LocalStore).
     fn push_delta(&mut self, delta: &SyncDelta) -> Result<(), Self::Error>;
-
-    /// Iterate over deltas arriving for `owner_id`.
     fn receive_deltas(
         &self,
         owner_id: &str,
     ) -> Result<Box<dyn Iterator<Item = Result<SyncDelta, Self::Error>>>, Self::Error>;
-
-    /// Return the last-seen sequence number for `owner_id` + `domain_key`.
     fn get_last_sequence(&self, owner_id: &str, domain_key: &str) -> Result<i64, Self::Error>;
 }

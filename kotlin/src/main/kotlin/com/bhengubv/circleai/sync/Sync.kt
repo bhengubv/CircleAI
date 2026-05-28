@@ -3,29 +3,95 @@
 // Kotlin port of Circle.AI.Networking sync primitives.
 //
 // Covers:
-//   SyncDeliveryMode   — enum: BestEffort | Reliable | Guaranteed
-//   SyncDomainKeys     — well-known domain key constants
+//   SyncDeliveryMode   — enum: Immediate | Batched | BestEffort
+//   SchedulingHint     — peer/window suggestions for a sync delta
 //   SyncDelta          — an incremental state change for cross-device sync
+//   SyncDomainKeys     — well-known domain key constants
 //   ISyncChannel       — the cross-device continuity primitive
 
 package com.bhengubv.circleai.sync
 
 import kotlinx.coroutines.flow.Flow
-import java.time.Duration
 import java.time.Instant
 
 // ---------------------------------------------------------------------------
 // SyncDeliveryMode
 // ---------------------------------------------------------------------------
 
-/** Requested delivery guarantee for a [SyncDelta]. */
+/** Requested delivery mode for a [SyncDelta]. */
 enum class SyncDeliveryMode {
+    /** Deliver as soon as a path is available. */
+    Immediate,
+    /** Accumulate into a batch for efficient bulk transfer. */
+    Batched,
     /** Fire and forget — no delivery confirmation required. */
     BestEffort,
-    /** Delivered at least once; duplicates are possible. */
-    Reliable,
-    /** Delivered exactly once in order; higher overhead. */
-    Guaranteed,
+}
+
+// ---------------------------------------------------------------------------
+// SchedulingHint
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional scheduling metadata attached to a [SyncDelta].
+ * Allows the sender to suggest preferred recipients and delivery windows.
+ */
+data class SchedulingHint(
+    /** Preferred peer identity IDs to route this delta through. */
+    val preferredPeerIds: List<String>,
+    /** Suggested UTC delivery window start, or null for immediate. */
+    val suggestedWindowUtc: Instant?,
+    /** Confidence in the scheduling hint, 0.0–1.0. */
+    val confidenceScore: Float
+)
+
+// ---------------------------------------------------------------------------
+// SyncDelta
+// ---------------------------------------------------------------------------
+
+/**
+ * An incremental state change that must reach every device owned by the identity.
+ * This is the primitive that makes Circle AI cross-device continuous —
+ * HER + JARVIS memory following the person.
+ */
+data class SyncDelta(
+    /**
+     * Domain key identifying the type of state carried.
+     * Use [SyncDomainKeys] constants or a custom string.
+     */
+    val domainKey: String,
+    /** Unique entity identifier within the domain. */
+    val entityId: String,
+    /** Serialised state payload (e.g. JSON or protobuf bytes). */
+    val payload: ByteArray,
+    /** UTC timestamp when this delta was created. */
+    val timestamp: Instant,
+    /** Requested delivery mode. */
+    val deliveryMode: SyncDeliveryMode,
+    /** Optional scheduling hint. null = no preference. */
+    val schedulingHint: SchedulingHint? = null
+) {
+    // ByteArray is reference-equal by default; override for value semantics.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SyncDelta) return false
+        return domainKey == other.domainKey &&
+            entityId == other.entityId &&
+            payload.contentEquals(other.payload) &&
+            timestamp == other.timestamp &&
+            deliveryMode == other.deliveryMode &&
+            schedulingHint == other.schedulingHint
+    }
+
+    override fun hashCode(): Int {
+        var result = domainKey.hashCode()
+        result = 31 * result + entityId.hashCode()
+        result = 31 * result + payload.contentHashCode()
+        result = 31 * result + timestamp.hashCode()
+        result = 31 * result + deliveryMode.hashCode()
+        result = 31 * result + (schedulingHint?.hashCode() ?: 0)
+        return result
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -39,65 +105,8 @@ object SyncDomainKeys {
     const val Persona        = "persona"
     const val Goals          = "goals"
     const val Identity       = "identity"
-}
-
-// ---------------------------------------------------------------------------
-// SyncDelta
-// ---------------------------------------------------------------------------
-
-/**
- * An incremental state change that must reach every device owned by [ownerId].
- * This is the primitive that makes Circle AI cross-device continuous —
- * HER + JARVIS memory following the person.
- */
-data class SyncDelta(
-    /** Identity whose state this belongs to. */
-    val ownerId: String,
-    /** Origin device. */
-    val sourceDeviceId: String,
-    /** Destination device. "" = broadcast to all owned devices. */
-    val targetDeviceId: String,
-    /**
-     * Domain key identifying the type of state carried.
-     * Use [SyncDomainKeys] constants or a custom string.
-     */
-    val domainKey: String,
-    /** Serialised state payload (e.g. JSON or protobuf bytes). */
-    val payload: ByteArray,
-    /** Monotonic sequence number per owner + domain. */
-    val sequence: Long,
-    val deliveryMode: SyncDeliveryMode,
-    /** Optional time-to-live. null = live forever. */
-    val ttl: Duration?,
-    val createdAt: Instant
-) {
-    // ByteArray is reference-equal by default; override for value semantics.
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is SyncDelta) return false
-        return ownerId == other.ownerId &&
-            sourceDeviceId == other.sourceDeviceId &&
-            targetDeviceId == other.targetDeviceId &&
-            domainKey == other.domainKey &&
-            payload.contentEquals(other.payload) &&
-            sequence == other.sequence &&
-            deliveryMode == other.deliveryMode &&
-            ttl == other.ttl &&
-            createdAt == other.createdAt
-    }
-
-    override fun hashCode(): Int {
-        var result = ownerId.hashCode()
-        result = 31 * result + sourceDeviceId.hashCode()
-        result = 31 * result + targetDeviceId.hashCode()
-        result = 31 * result + domainKey.hashCode()
-        result = 31 * result + payload.contentHashCode()
-        result = 31 * result + sequence.hashCode()
-        result = 31 * result + deliveryMode.hashCode()
-        result = 31 * result + (ttl?.hashCode() ?: 0)
-        result = 31 * result + createdAt.hashCode()
-        return result
-    }
+    const val Feedback       = "feedback"
+    const val BiometricProfile = "biometric.profile"
 }
 
 // ---------------------------------------------------------------------------
@@ -110,26 +119,17 @@ data class SyncDelta(
  * Pushes memory/state deltas across whatever transport is available:
  * gRPC over 5G, BLE mesh via a neighbour, DTN bundle arriving 6 hours later.
  * App code is identical in every case.
- *
- * This is the primitive that makes Circle AI HER + JARVIS:
- * memory follows the person, not the device.
  */
 interface ISyncChannel {
     /**
      * Push a delta. Channel selects transport and handles retries.
-     * Returns when accepted (not necessarily delivered for DTN/LocalStore).
+     * Returns when accepted (not necessarily delivered).
      */
-    suspend fun pushDeltaAsync(delta: SyncDelta)
+    suspend fun send(delta: SyncDelta)
 
     /**
-     * Emits all incoming deltas for [ownerId] as a cold [Flow].
+     * Emits all incoming deltas as a cold [Flow].
      * The flow completes when the channel is closed or the caller cancels.
      */
-    fun receiveDeltasAsync(ownerId: String): Flow<SyncDelta>
-
-    /**
-     * Returns the last seen sequence number for [ownerId] / [domainKey].
-     * Returns 0 when no delta has been received yet.
-     */
-    suspend fun getLastSequenceAsync(ownerId: String, domainKey: String): Long
+    fun receive(): Flow<SyncDelta>
 }

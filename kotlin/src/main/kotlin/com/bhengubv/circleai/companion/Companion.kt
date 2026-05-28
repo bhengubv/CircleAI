@@ -7,10 +7,15 @@
 //   CompanionContext           — snapshot of all context injected into the system prompt
 //   CompanionTurn              — a single turn in the session conversation log
 //   CompanionProactiveEvent    — metadata emitted on proactive companion contact
+//   FaceAffectMapper           — applies facial expression deltas to AffectState
+//   FaceCompanionBridge        — observes face metrics and emits proactive events
 //   ICompanionSession          — primary contract for a Circle AI Companion session
 
 package com.bhengubv.circleai.companion
 
+import com.bhengubv.circleai.memory.AffectState
+import com.bhengubv.circleai.tools.FaceExpressionClassification
+import com.bhengubv.circleai.tools.FacialMetricMatrix
 import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 
@@ -20,8 +25,6 @@ import java.time.Instant
 
 /**
  * The surface on which the Companion session is running.
- * Determines sensory capabilities, available UI affordances, and how the
- * Companion adapts its communication style.
  */
 enum class InterfaceKind {
     /** Mobile phone or tablet (MAUI). */
@@ -46,7 +49,6 @@ enum class InterfaceKind {
 
 /**
  * Snapshot of all context injected into the Companion's system prompt.
- * Rebuilt at the start of each session and refreshed on request.
  */
 data class CompanionContext(
     val identityId: String,
@@ -65,12 +67,10 @@ data class CompanionContext(
 // ---------------------------------------------------------------------------
 
 /**
- * A single turn in the Companion conversation log, held in memory for the
- * duration of the session.
+ * A single turn in the Companion conversation log.
  * [role] is "user" or "assistant".
  */
 data class CompanionTurn(
-    /** "user" | "assistant" */
     val role: String,
     val content: String,
     val timestamp: Instant
@@ -82,8 +82,6 @@ data class CompanionTurn(
 
 /**
  * Metadata emitted when the Companion proactively initiates contact.
- * Mirrors ProactiveMessageEventArgs in the hosting layer but enriched with
- * Companion session info.
  */
 data class CompanionProactiveEvent(
     val sessionId: String,
@@ -95,6 +93,118 @@ data class CompanionProactiveEvent(
 )
 
 // ---------------------------------------------------------------------------
+// FaceAffectMapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies facial expression deltas to an [AffectState].
+ *
+ * CRITICAL: The delta constants below must match the reference implementation
+ * exactly — they are cross-validated against fixtures/facex_biometric_vectors.json.
+ * Confidence scores below [MIN_CONFIDENCE] are discarded without mutation.
+ */
+object FaceAffectMapper {
+
+    private const val MIN_CONFIDENCE = 0.5f
+
+    /**
+     * Applies expression-driven affect deltas to [affect].
+     * No-op if [matrix.confidenceScore] < [MIN_CONFIDENCE].
+     *
+     * Deltas (all values coerced to [0f, 1f] after application):
+     *   Happy     → engagement +0.03, energy +0.02
+     *   Surprised → curiosity  +0.04
+     *   Confused  → uncertainty +0.05
+     *   Stressed  → uncertainty +0.08, energy -0.05
+     *   Angry     → engagement -0.04, rapport -0.02
+     *   All other expressions (Neutral, Sad, Unknown) → no change
+     */
+    fun apply(matrix: FacialMetricMatrix, affect: AffectState) {
+        if (matrix.confidenceScore < MIN_CONFIDENCE) return
+
+        when (matrix.expression) {
+            FaceExpressionClassification.Happy -> {
+                affect.engagement = (affect.engagement + 0.03f).coerceIn(0f, 1f)
+                affect.energy     = (affect.energy     + 0.02f).coerceIn(0f, 1f)
+            }
+            FaceExpressionClassification.Surprised -> {
+                affect.curiosity = (affect.curiosity + 0.04f).coerceIn(0f, 1f)
+            }
+            FaceExpressionClassification.Confused -> {
+                affect.uncertainty = (affect.uncertainty + 0.05f).coerceIn(0f, 1f)
+            }
+            FaceExpressionClassification.Stressed -> {
+                affect.uncertainty = (affect.uncertainty + 0.08f).coerceIn(0f, 1f)
+                affect.energy      = (affect.energy      - 0.05f).coerceIn(0f, 1f)
+            }
+            FaceExpressionClassification.Angry -> {
+                affect.engagement = (affect.engagement - 0.04f).coerceIn(0f, 1f)
+                affect.rapport    = (affect.rapport    - 0.02f).coerceIn(0f, 1f)
+            }
+            else -> return
+        }
+
+        affect.lastUpdatedUtc = Instant.now()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FaceCompanionBridge
+// ---------------------------------------------------------------------------
+
+/**
+ * Observes a stream of [FacialMetricMatrix] frames, applies them to
+ * [AffectState] via [FaceAffectMapper], and emits a [CompanionProactiveEvent]
+ * when the user appears confused or stressed beyond [CONFUSION_THRESHOLD].
+ */
+object FaceCompanionBridge {
+
+    /**
+     * Uncertainty threshold above which a confusion/stress event is emitted.
+     * Applied after the face-driven affect delta has been applied.
+     */
+    const val CONFUSION_THRESHOLD = 0.70f
+
+    /**
+     * Observes one [FacialMetricMatrix] frame. Applies affect deltas then
+     * returns a [CompanionProactiveEvent] if the confusion threshold has been
+     * crossed, or null otherwise.
+     *
+     * @param matrix    The facial metric data for this frame.
+     * @param affect    The mutable affect state to update in-place.
+     * @param sessionId Companion session identifier for the event payload.
+     * @param identityId Identity that owns this session.
+     * @param surface   The interface kind of the running session.
+     */
+    fun observe(
+        matrix: FacialMetricMatrix,
+        affect: AffectState,
+        sessionId: String,
+        identityId: String,
+        surface: InterfaceKind
+    ): CompanionProactiveEvent? {
+        FaceAffectMapper.apply(matrix, affect)
+
+        val isConfusionExpression = matrix.expression == FaceExpressionClassification.Confused ||
+            matrix.expression == FaceExpressionClassification.Stressed
+
+        val crossed = affect.uncertainty >= CONFUSION_THRESHOLD && isConfusionExpression
+
+        if (!crossed) return null
+
+        return CompanionProactiveEvent(
+            sessionId     = sessionId,
+            identityId    = identityId,
+            interfaceKind = surface,
+            message       = "I notice you might be finding this a bit tricky. " +
+                            "Would you like me to slow down or explain it differently?",
+            triggerName   = "face.confusion_detected",
+            generatedAt   = Instant.now()
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // ICompanionSession
 // ---------------------------------------------------------------------------
 
@@ -102,9 +212,6 @@ data class CompanionProactiveEvent(
  * A Companion conversation session. Combines identity awareness, cross-device
  * memory, language adaptation, affect sensing, and proactive reasoning into a
  * single coherent interface.
- *
- * Implementations should be [AutoCloseable] / released via a try-with-resources
- * equivalent when no longer needed.
  */
 interface ICompanionSession : AutoCloseable {
 
@@ -123,36 +230,26 @@ interface ICompanionSession : AutoCloseable {
 
     /**
      * Send a message to the Companion and receive a complete reply.
-     * Context enrichment (identity, memory, persona, affect, language) is
-     * applied automatically.
      */
     suspend fun sendAsync(message: String): String
 
     /**
      * Stream the Companion's reply token-by-token for low-latency rendering.
-     * Each emitted [String] is the next chunk to append to the output.
      */
     fun streamAsync(message: String): Flow<String>
 
     /**
      * Agentic mode: sends the instruction, detects tool calls in the reply,
      * executes them, and re-prompts until the model produces a plain-text answer.
-     * Enables "do things, not just say things."
      */
     suspend fun agentAsync(instruction: String): String
 
     // ── Context ──────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the most recent [CompanionContext] snapshot, including identity,
-     * persona hints, affect summary, and recent memories.
-     */
+    /** Returns the most recent [CompanionContext] snapshot. */
     fun getContext(): CompanionContext
 
-    /**
-     * Refreshes the context from backing stores (memory, persona, affect).
-     * Call after significant state changes (e.g. new goal set, mood shift).
-     */
+    /** Refreshes the context from backing stores. */
     suspend fun refreshContextAsync()
 
     // ── History ───────────────────────────────────────────────────────────────
@@ -162,18 +259,13 @@ interface ICompanionSession : AutoCloseable {
 
     // ── Feedback ──────────────────────────────────────────────────────────────
 
-    /**
-     * Signal satisfaction with the last reply. Used to evolve the persona and
-     * communication style over time.
-     */
+    /** Signal satisfaction with the last reply. */
     suspend fun signalFeedbackAsync(positive: Boolean, note: String? = null)
 
     // ── Proactive ─────────────────────────────────────────────────────────────
 
     /**
-     * Raised when the Companion initiates contact without being prompted —
-     * e.g. a goal check-in, a mood-triggered nudge, or a scheduled reminder.
-     * Callers should observe this flow for proactive messages.
+     * Raised when the Companion initiates contact without being prompted.
      */
     val proactiveEvents: Flow<CompanionProactiveEvent>
 }

@@ -1,9 +1,9 @@
 {
   "name": "@bhengubv/circle-ai",
   "version": "0.1.0",
-  "description": "Circle AI SDK — HarmonyOS/ArkTS",
-  "main": "src/index.ts",
-  "author": "bhengubv",
+  "description": "Circle AI SDK for HarmonyOS",
+  "main": "src/main/ets/index.ets",
+  "author": "Bhengu B.V.",
   "license": "MIT",
   "dependencies": {}
 }

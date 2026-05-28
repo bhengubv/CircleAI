@@ -1,264 +1,198 @@
-name: Publish SDK Packages
+name: Publish — All SDKs
 
-# Triggered by pushing a semver tag: git tag v0.1.0 && git push origin v0.1.0
-#
-# Publishes all language ports in parallel to their respective registries.
-# Required secrets:
-#   NUGET_API_KEY         — NuGet.org API key
-#   CRATES_IO_TOKEN       — crates.io API token
-#   PYPI_API_TOKEN        — PyPI API token (trusted publisher or token)
-#   NPM_TOKEN             — npm access token (for @bhengubv/circle-ai)
+# Publishes all language packages on a version tag push (v*.*.*).
+# Each language publishes to its own registry.
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.0)"
+        required: true
 
 env:
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
-  DOTNET_NOLOGO: true
-  DOTNET_CLI_TELEMETRY_OPTOUT: 1
-
-permissions:
-  contents: read
-  packages: write   # GitHub Packages (Maven, NuGet)
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
-  # ── Extract version from tag ────────────────────────────────────────────────
-  meta:
-    name: Extract version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
-    steps:
-      - name: Parse tag
-        id: ver
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+  # ──────────────────────────────────────────────────────────────────────────
+  # Guard: all tests must pass before any publish
+  # ──────────────────────────────────────────────────────────────────────────
+  run-tests:
+    name: All tests (publish gate)
+    uses: ./.github/workflows/sdk-tests.yml
 
-  # ── C# (NuGet.org) ─────────────────────────────────────────────────────────
-  publish-csharp:
-    name: Publish C# packages
-    runs-on: windows-latest
-    needs: meta
+  # ──────────────────────────────────────────────────────────────────────────
+  # Python → PyPI
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-python:
+    name: Publish Python → PyPI
+    runs-on: ubuntu-latest
+    needs: run-tests
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC for trusted publishing
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-python@v5
         with:
-          dotnet-version: '10.x'
-      - name: Install MAUI workloads
-        run: dotnet workload install maui --source https://api.nuget.org/v3/index.json
-      - name: Build & pack
+          python-version: "3.11"
+      - name: Set version
+        working-directory: python
+        run: sed -i "s/version = \"0.1.0\"/version = \"${VERSION#v}\"/" pyproject.toml
+      - name: Build
+        working-directory: python
         run: |
-          dotnet build CircleAI.sln -c Release -p:Version=${{ needs.meta.outputs.version }}
-          dotnet pack CircleAI.sln -c Release --no-build -p:Version=${{ needs.meta.outputs.version }} -o nupkgs
-      - name: Push to NuGet.org
-        run: |
-          foreach ($pkg in Get-ChildItem -Path nupkgs -Filter *.nupkg) {
-            dotnet nuget push $pkg.FullName `
-              --api-key ${{ secrets.NUGET_API_KEY }} `
-              --source https://api.nuget.org/v3/index.json `
-              --skip-duplicate
-          }
-      - name: Push symbols
-        continue-on-error: true
-        run: |
-          foreach ($pkg in Get-ChildItem -Path nupkgs -Filter *.snupkg) {
-            dotnet nuget push $pkg.FullName `
-              --api-key ${{ secrets.NUGET_API_KEY }} `
-              --source https://api.nuget.org/v3/index.json `
-              --skip-duplicate
-          }
+          pip install build
+          python -m build
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
 
-  # ── Rust (crates.io) ───────────────────────────────────────────────────────
-  publish-rust:
-    name: Publish Rust crate
+  # ──────────────────────────────────────────────────────────────────────────
+  # TypeScript → npm
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-typescript:
+    name: Publish TypeScript → npm
     runs-on: ubuntu-latest
-    needs: meta
+    needs: run-tests
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Set version and build
+        working-directory: typescript
+        run: |
+          npm version "${VERSION#v}" --no-git-tag-version
+          npm ci
+          npm run build
+      - name: Publish
+        working-directory: typescript
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Go → Go Modules (tag push is sufficient; no explicit publish step)
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-go:
+    name: Publish Go → Go Modules (tag)
+    runs-on: ubuntu-latest
+    needs: run-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Verify module
+        working-directory: go
+        run: go mod verify
+      - name: Tag pushed — module is discoverable
+        run: echo "Go module github.com/bhengubv/CircleAI/go@${VERSION} is now discoverable via proxy.golang.org"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Kotlin JVM → GitHub Packages (Maven)
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-kotlin:
+    name: Publish Kotlin → GitHub Packages
+    runs-on: ubuntu-latest
+    needs: run-tests
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+      - uses: gradle/actions/setup-gradle@v3
+      - working-directory: kotlin
+        run: ./gradlew publish -Pversion="${VERSION#v}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Swift → Swift Package Index (tag push + README is sufficient)
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-swift:
+    name: Publish Swift → SPM (tag)
+    runs-on: macos-14
+    needs: run-tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      - working-directory: swift
+        run: swift build -c release
+      - run: echo "Swift package CircleAI@${VERSION} available via SPM at https://github.com/bhengubv/CircleAI"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Rust → crates.io
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-rust:
+    name: Publish Rust → crates.io
+    runs-on: ubuntu-latest
+    needs: run-tests
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Set version
         working-directory: rust
-        run: sed -i "s/^version = .*/version = \"${{ needs.meta.outputs.version }}\"/" Cargo.toml
+        run: sed -i "s/^version = \"0.1.0\"/version = \"${VERSION#v}\"/" Cargo.toml
       - name: Publish
         working-directory: rust
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --no-verify
+        run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
-  # ── Python (PyPI) ──────────────────────────────────────────────────────────
-  publish-python:
-    name: Publish Python package
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install build tools
-        run: pip install build twine
-      - name: Set version
-        working-directory: python
-        run: sed -i "s/^version = .*/version = \"${{ needs.meta.outputs.version }}\"/" pyproject.toml
-      - name: Build
-        working-directory: python
-        run: python -m build
-      - name: Publish
-        working-directory: python
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*
-
-  # ── TypeScript (npm) ───────────────────────────────────────────────────────
-  publish-typescript:
-    name: Publish TypeScript package
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Install & build
-        working-directory: typescript
-        run: npm ci && npm run build
-      - name: Set version
-        working-directory: typescript
-        run: npm version ${{ needs.meta.outputs.version }} --no-git-tag-version
-      - name: Publish
-        working-directory: typescript
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
-
-  # ── Go (go modules via git tag) ────────────────────────────────────────────
-  verify-go:
-    name: Verify Go module
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-      - name: Verify
-        working-directory: go
-        run: go mod tidy && go vet ./...
-      # Go modules are published via the git tag — the push that triggered this
-      # workflow serves as the release. Users: go get github.com/bhengubv/CircleAI/go@v<version>
-
-  # ── Kotlin (GitHub Packages / Maven) ──────────────────────────────────────
-  publish-kotlin:
-    name: Publish Kotlin package
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-      - name: Publish to GitHub Packages
-        working-directory: kotlin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew publish --no-daemon -Pversion=${{ needs.meta.outputs.version }}
-
-  # ── Swift (Swift Package Manager via git tag) ──────────────────────────────
-  verify-swift:
-    name: Verify Swift package
-    runs-on: macos-14
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify builds
-        working-directory: swift
-        run: swift build
-      # Swift packages are consumed via SPM using the git URL + version tag.
-      # Users: .package(url: "https://github.com/bhengubv/CircleAI.git", from: "<version>")
-
-  # ── Android (GitHub Packages / Maven) ─────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────────────────
+  # Android → GitHub Packages (AAR)
+  # ──────────────────────────────────────────────────────────────────────────
   publish-android:
-    name: Publish Android library
+    name: Publish Android → GitHub Packages
     runs-on: ubuntu-latest
-    needs: meta
+    needs: run-tests
+    permissions:
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-      - name: Publish to GitHub Packages
-        working-directory: android
+          java-version: "17"
+          distribution: "temurin"
+      - uses: gradle/actions/setup-gradle@v3
+      - working-directory: android
+        run: ./gradlew :circle-ai:publish -Pversion="${VERSION#v}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew :circle-ai:publish --no-daemon -Pversion=${{ needs.meta.outputs.version }}
 
-  # ── HarmonyOS (npm) ───────────────────────────────────────────────────────
-  publish-harmonyos:
-    name: Publish HarmonyOS package
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-      - name: Install
-        working-directory: harmonyos
-        run: npm ci
-      - name: Set version
-        working-directory: harmonyos
-        run: npm version ${{ needs.meta.outputs.version }} --no-git-tag-version
-      - name: Publish
-        working-directory: harmonyos
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
-
-  # ── C (source release via git tag) ────────────────────────────────────────
-  verify-c:
-    name: Verify C build
-    runs-on: ubuntu-latest
-    needs: meta
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -B c/build -S c -DCMAKE_BUILD_TYPE=Release
-      - name: Build & test
-        run: cmake --build c/build && ctest --test-dir c/build -V
-
-  # ── Summary ─────────────────────────────────────────────────────────────────
-  publish-summary:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Summary
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-complete:
     name: All packages published
     runs-on: ubuntu-latest
     needs:
-      - publish-csharp
-      - publish-rust
       - publish-python
       - publish-typescript
-      - verify-go
+      - publish-go
       - publish-kotlin
-      - verify-swift
+      - publish-swift
+      - publish-rust
       - publish-android
-      - publish-harmonyos
-      - verify-c
-    if: always()
     steps:
-      - name: Check results
-        run: |
-          RESULTS='${{ toJSON(needs) }}'
-          echo "$RESULTS" | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          failed = [k for k, v in data.items() if v['result'] == 'failure']
-          if failed:
-              print('PUBLISH FAILED:', ', '.join(failed))
-              sys.exit(1)
-          print('All packages published successfully.')
-          "
+      - run: |
+          echo "CircleAI ${VERSION} published:"
+          echo "  Python  → PyPI:            circle-ai-sdk"
+          echo "  TS      → npm:             @bhengubv/circle-ai"
+          echo "  Go      → go modules:      github.com/bhengubv/CircleAI/go"
+          echo "  Kotlin  → GitHub Packages: com.bhengubv:circle-ai"
+          echo "  Swift   → SPM:             CircleAI"
+          echo "  Rust    → crates.io:       circle-ai"
+          echo "  Android → GitHub Packages: com.bhengubv:circle-ai-android"

@@ -18,7 +18,6 @@ package com.bhengubv.circleai.memory
 
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 
 // ---------------------------------------------------------------------------
 // GoalStatus / GoalPriority enums
@@ -49,16 +48,13 @@ enum class GoalPriority {
 // ---------------------------------------------------------------------------
 
 /** Polarity of the feedback signal. */
-enum class FeedbackPolarity(val value: Int) {
+enum class FeedbackPolarity {
     /** User explicitly approved / up-voted the response. */
-    Positive(1),
+    Positive,
     /** User explicitly rejected / down-voted the response. */
-    Negative(-1),
-    /**
-     * User provided a correction (neutral polarity, but carries the
-     * preferred text in [FeedbackSignal.correctedText]).
-     */
-    Correction(0),
+    Negative,
+    /** No explicit signal (neutral observation). */
+    Neutral,
 }
 
 // ---------------------------------------------------------------------------
@@ -76,58 +72,78 @@ enum class FeedbackPolarity(val value: Int) {
  */
 class AffectState(
     /** Opaque user identifier (device ID or hashed phone number). Never contains PII in plaintext. */
-    val userId: String = "default"
+    val userId: String = "default",
+    lastUpdatedUtc: Instant = Instant.now(),
+    curiosity: Float = 0.5f,
+    engagement: Float = 0.5f,
+    uncertainty: Float = 0.2f,
+    rapport: Float = 0.0f,
+    energy: Float = 0.5f
 ) {
     /** UTC time of the last update to this affect state. */
-    var lastUpdatedAt: Instant = Instant.now()
+    var lastUpdatedUtc: Instant = lastUpdatedUtc
 
     /** 0=bored, 1=fascinated. Drives proactive questions. */
-    var curiosity: Float = 0.5f
+    var curiosity: Float = curiosity
 
     /** 0=disengaged, 1=fully engaged. Rises with frequent quality interactions. */
-    var engagement: Float = 0.5f
+    var engagement: Float = engagement
 
     /** 0=confident, 1=confused. High = ask clarifying questions. */
-    var uncertainty: Float = 0.2f
+    var uncertainty: Float = uncertainty
 
     /** 0=stranger, 1=deep rapport. Grows slowly over many sessions. */
-    var rapport: Float = 0.0f
+    var rapport: Float = rapport
 
     /** 0=subdued, 1=energetic. Mirrors time-of-day and interaction pace. */
-    var energy: Float = 0.5f
+    var energy: Float = energy
 
-    /** Apply a positive interaction: nudge Engagement and Rapport up slightly. */
+    /**
+     * Apply a positive interaction:
+     * engagement += 0.02, rapport += 0.01, uncertainty -= 0.02
+     */
     fun applyPositiveSignal() {
         engagement  = (engagement  + 0.02f).coerceIn(0f, 1f)
         rapport     = (rapport     + 0.01f).coerceIn(0f, 1f)
         uncertainty = (uncertainty - 0.02f).coerceIn(0f, 1f)
-        lastUpdatedAt = Instant.now()
+        lastUpdatedUtc = Instant.now()
     }
 
-    /** Apply a negative interaction: nudge Engagement down. */
+    /**
+     * Apply a negative interaction:
+     * engagement -= 0.03, uncertainty += 0.03
+     */
     fun applyNegativeSignal() {
         engagement  = (engagement  - 0.03f).coerceIn(0f, 1f)
         uncertainty = (uncertainty + 0.03f).coerceIn(0f, 1f)
-        lastUpdatedAt = Instant.now()
+        lastUpdatedUtc = Instant.now()
     }
 
     /**
      * Apply idle time decay: Engagement and Energy drift back toward 0.5.
      *
-     * [idle] is a [java.time.Duration]. Converted to fractional hours as
+     * [idle] is a [Duration]. Converted to fractional hours as
      * `idle.seconds / 3600f` to match the C# `TotalHours` float arithmetic exactly.
+     * decay = min(0.3, hours * 0.02)
+     * lerp(a, b, t) = a + (b - a) * t.coerceIn(0, 1)
      */
     fun applyIdleDecay(idle: Duration) {
         val hours = idle.seconds.toFloat() / 3600f
         val decay = minOf(0.3f, hours * 0.02f)
         engagement = lerp(engagement, 0.5f, decay)
         energy     = lerp(energy,     0.5f, decay)
-        lastUpdatedAt = Instant.now()
+        lastUpdatedUtc = Instant.now()
     }
 
-    private fun lerp(a: Float, b: Float, t: Float): Float {
-        val tc = t.coerceIn(0f, 1f)
-        return a + (b - a) * tc
+    /**
+     * Overload accepting hours directly, for callers that already computed the interval.
+     * decay = min(0.3, hours * 0.02)
+     */
+    fun applyIdleDecay(hours: Float) {
+        val decay = (hours * 0.02f).coerceAtMost(0.3f)
+        engagement = lerp(engagement, 0.5f, decay)
+        energy     = lerp(energy,     0.5f, decay)
+        lastUpdatedUtc = Instant.now()
     }
 
     /**
@@ -155,6 +171,13 @@ class AffectState(
         if (hints.isEmpty()) return ""
         return "[Affect state]\n" + hints.joinToString("\n") + "\n"
     }
+
+    companion object {
+        private fun lerp(a: Float, b: Float, t: Float): Float {
+            val tc = t.coerceIn(0f, 1f)
+            return a + (b - a) * tc
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,34 +185,50 @@ class AffectState(
 // ---------------------------------------------------------------------------
 
 /**
- * A single recorded episode (one user↔assistant exchange) stored in
- * [IEpisodicMemoryStore].
+ * A single recorded episode stored in [IEpisodicMemoryStore].
  */
 data class EpisodicMemoryEntry(
     /** Stable identifier for the entry. */
-    val id: UUID = UUID.randomUUID(),
-    /** UTC timestamp of the assistant's response. */
-    val recordedAtUtc: Instant = Instant.now(),
-    /** The user's message text. */
-    val userText: String = "",
-    /** The assistant's response text. */
-    val assistantText: String = "",
+    val id: String,
+    /** Owner user identifier. */
+    val userId: String,
+    /** The content of this episodic memory. */
+    val content: String,
     /**
-     * Optional identifier for the app context in which the exchange happened
-     * (e.g. "tgn.bidbaas").
+     * L2-normalised embedding vector, pre-computed at write time.
      */
-    val appContext: String? = null,
-    /**
-     * L2-normalised embedding of `userText + " " + assistantText`, pre-computed
-     * at write time. null if the embedding backend was unavailable when the entry
-     * was stored.
-     */
-    val embedding: FloatArray? = null,
-    /**
-     * Arbitrary key-value tags (e.g. locale, sentiment).
-     */
-    val tags: Map<String, String>? = null
-)
+    val embedding: FloatArray,
+    /** UTC timestamp when this entry was recorded. */
+    val createdUtc: Instant = Instant.now(),
+    /** Arbitrary tags for filtering. */
+    val tags: List<String> = emptyList(),
+    /** Importance score 0.0–1.0. */
+    val importance: Float = 0.5f
+) {
+    // FloatArray is reference-equal by default; override for value semantics.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is EpisodicMemoryEntry) return false
+        return id == other.id &&
+            userId == other.userId &&
+            content == other.content &&
+            embedding.contentEquals(other.embedding) &&
+            createdUtc == other.createdUtc &&
+            tags == other.tags &&
+            importance == other.importance
+    }
+
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + userId.hashCode()
+        result = 31 * result + content.hashCode()
+        result = 31 * result + embedding.contentHashCode()
+        result = 31 * result + createdUtc.hashCode()
+        result = 31 * result + tags.hashCode()
+        result = 31 * result + importance.hashCode()
+        return result
+    }
+}
 
 // ---------------------------------------------------------------------------
 // FeedbackSignal
@@ -197,31 +236,20 @@ data class EpisodicMemoryEntry(
 
 /**
  * A single user-feedback event tied to a specific B! response.
- * Stored by [IFeedbackStore] for later analysis and potential on-device adaptation.
  */
 data class FeedbackSignal(
     /** Stable identifier for the signal. */
-    val id: UUID = UUID.randomUUID(),
-    /** UTC time when the user provided the signal. */
-    val recordedAtUtc: Instant = Instant.now(),
-    /**
-     * The [EpisodicMemoryEntry.id] of the episode this feedback refers to,
-     * if the exchange was also stored episodically.
-     */
-    val episodeId: UUID? = null,
-    /** The user's original message. */
-    val userText: String = "",
-    /** B!'s response that is being rated. */
-    val assistantText: String = "",
+    val id: String,
+    /** Owner user identifier. */
+    val userId: String,
+    /** The turn or response being rated. */
+    val turnId: String,
     /** User's rating. */
-    val polarity: FeedbackPolarity = FeedbackPolarity.Positive,
-    /**
-     * For [FeedbackPolarity.Correction] signals — the user's preferred response
-     * that should have been given.
-     */
-    val correctedText: String? = null,
-    /** Free-text comment the user optionally attached to the signal. */
-    val comment: String? = null
+    val polarity: FeedbackPolarity,
+    /** Optional free-text note the user attached to the signal. */
+    val note: String? = null,
+    /** UTC time when the user provided the signal. */
+    val recordedAt: Instant = Instant.now()
 )
 
 // ---------------------------------------------------------------------------
@@ -259,8 +287,6 @@ class PersonaState(
 
     /**
      * Weighted topic interests accumulated from positive interactions.
-     * Key = normalised topic label (e.g. "finance", "sport"),
-     * Value = accumulated positive-signal weight (unbounded positive float).
      */
     val topicWeights: MutableMap<String, Float> = mutableMapOf()
 
@@ -275,6 +301,11 @@ class PersonaState(
 
     /** Cumulative negative feedback signals. */
     var negativeSignals: Int = 0
+
+    /**
+     * Short description of the user's traits, used as a system prompt hint.
+     */
+    var traitSummary: String = ""
 
     /**
      * Derived satisfaction score 0.0–1.0. Returns null when insufficient data
@@ -313,7 +344,6 @@ class PersonaState(
 
 /**
  * A user goal that B! tracks and proactively helps with.
- * Inspired by the way Samantha in *Her* remembered what Theodore cared about.
  */
 data class Goal(
     /** Unique stable identifier for this goal. */
@@ -335,8 +365,21 @@ data class Goal(
     /** When the goal was completed or abandoned (UTC). */
     val completedUtc: Instant? = null,
     /** Freeform notes B! or the user has attached to this goal. */
-    val notes: String? = null
-)
+    val notes: String? = null,
+    /**
+     * Progress toward completion, 0.0–1.0.
+     * Updated via [advanceProgress].
+     */
+    val progress: Float = 0f
+) {
+    /**
+     * Returns a copy of this goal with progress advanced by [delta],
+     * clamped to [0.0, 1.0].
+     * Formula: new_progress = clamp(progress + delta, 0.0, 1.0)
+     */
+    fun advanceProgress(delta: Float): Goal =
+        copy(progress = (progress + delta).coerceIn(0f, 1f))
+}
 
 // ---------------------------------------------------------------------------
 // Store interfaces
@@ -351,79 +394,41 @@ interface IAffectStore {
     suspend fun loadAsync(userId: String): AffectState
 
     /**
-     * Persists the affect state. Implementations must be crash-safe
-     * (write-then-swap or similar) to avoid partial writes.
+     * Persists the affect state.
      */
     suspend fun saveAsync(state: AffectState)
 }
 
 /**
- * Persistent store for episodic memories (conversational exchanges + embeddings).
- * Implementations may be in-memory (tests/edge), SQLite-vec (production on-device),
- * or a remote vector database.
+ * Persistent store for episodic memories.
  */
 interface IEpisodicMemoryStore {
-    /**
-     * Appends a new entry to the store. The store must assign
-     * [EpisodicMemoryEntry.id] if not already set.
-     */
-    suspend fun addAsync(entry: EpisodicMemoryEntry)
+    /** Saves a new entry to the store. */
+    suspend fun save(entry: EpisodicMemoryEntry)
 
-    /**
-     * Returns the [topK] entries whose embeddings are most similar (cosine) to
-     * [queryEmbedding]. When [queryEmbedding] is null, falls back to recency
-     * (most recent [topK] entries).
-     */
-    suspend fun searchAsync(queryEmbedding: FloatArray?, topK: Int = 5): List<EpisodicMemoryEntry>
+    /** Returns the [limit] most recent entries for [userId], newest-first. */
+    suspend fun getRecent(userId: String, limit: Int): List<EpisodicMemoryEntry>
 
-    /**
-     * Returns the most recent [count] entries ordered newest-first.
-     */
-    suspend fun getRecentAsync(count: Int = 10): List<EpisodicMemoryEntry>
-
-    /** Total number of entries currently stored. */
-    suspend fun countAsync(): Int
-
-    /**
-     * Removes all entries older than [cutoff].
-     * Returns the number of entries removed.
-     */
-    suspend fun pruneOlderThanAsync(cutoff: Instant): Int
+    /** Deletes the entry with the given [id]. No-op if not found. */
+    suspend fun delete(id: String)
 }
 
 /** Loads and persists [PersonaState] for a specific user. */
 interface IPersonaStore {
-    /**
-     * Loads the persona for [userId]. Returns a fresh default persona when none
-     * is found.
-     */
+    /** Loads the persona for [userId]. Returns a fresh default persona when none is found. */
     suspend fun loadAsync(userId: String): PersonaState
 
-    /**
-     * Persists the persona. The implementation must be crash-safe
-     * (write-then-swap or similar) to avoid partial writes.
-     */
+    /** Persists the persona. */
     suspend fun saveAsync(persona: PersonaState)
 }
 
 /** Persists user feedback signals for later analysis and on-device adaptation. */
 interface IFeedbackStore {
     /** Records a new feedback signal. */
-    suspend fun addAsync(signal: FeedbackSignal)
+    suspend fun save(signal: FeedbackSignal)
 
-    /**
-     * Returns the most recent [count] signals, newest-first.
-     */
-    suspend fun getRecentAsync(count: Int = 50): List<FeedbackSignal>
-
-    /** Total number of signals stored. */
-    suspend fun countAsync(): Int
-
-    /**
-     * Returns the fraction of stored signals that are [FeedbackPolarity.Positive]
-     * (0.0–1.0). Returns null when no signals are available.
-     */
-    suspend fun positiveRatioAsync(): Double?
+    /** Returns the most recent [limit] signals for [userId], newest-first. */
+    suspend fun getRecent(userId: String, limit: Int): List<FeedbackSignal>
 }
 
 /** Persists and retrieves [Goal] records for a user. */
@@ -431,22 +436,15 @@ interface IGoalStore {
     /** Returns all goals for the given user, in any order. */
     suspend fun listAsync(userId: String): List<Goal>
 
-    /**
-     * Returns the goal with the given [id], or null if it does not exist.
-     */
+    /** Returns the goal with the given [id], or null if it does not exist. */
     suspend fun getAsync(id: String): Goal?
 
-    /**
-     * Inserts or replaces the goal. The goal's id is the natural key.
-     * Returns the stored goal.
-     */
+    /** Inserts or replaces the goal. Returns the stored goal. */
     suspend fun upsertAsync(goal: Goal): Goal
 
     /** Deletes the goal with the given [id]. No-op if not found. */
     suspend fun deleteAsync(id: String)
 
-    /**
-     * Returns all goals for [userId] where [Goal.status] is [GoalStatus.Active].
-     */
+    /** Returns all goals for [userId] where [Goal.status] is [GoalStatus.Active]. */
     suspend fun getActiveAsync(userId: String): List<Goal>
 }

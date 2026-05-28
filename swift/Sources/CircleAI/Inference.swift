@@ -5,19 +5,7 @@
 
 import Foundation
 
-// MARK: - ChatMessage
-
-/// A single message in a chat history.
-/// Role is one of "system", "user", or "assistant".
-public struct ChatMessage: Sendable {
-    public var role: String
-    public var content: String
-
-    public init(role: String, content: String) {
-        self.role = role
-        self.content = content
-    }
-}
+// NOTE: ChatMessage is declared in Models.swift and re-used here.
 
 // MARK: - GenerationOptions
 

@@ -323,6 +323,9 @@ public struct Goal: Sendable {
     /// Freeform notes B! or the user has attached to this goal.
     public var notes: String?
 
+    /// Completion progress in [0.0, 1.0]. 0.0 = not started, 1.0 = fully complete.
+    public var progress: Float
+
     public init(
         id: String,
         userId: String,
@@ -333,7 +336,8 @@ public struct Goal: Sendable {
         createdAt: Date,
         dueAt: Date? = nil,
         completedAt: Date? = nil,
-        notes: String? = nil
+        notes: String? = nil,
+        progress: Float = 0.0
     ) {
         self.id = id
         self.userId = userId
@@ -345,6 +349,14 @@ public struct Goal: Sendable {
         self.dueAt = dueAt
         self.completedAt = completedAt
         self.notes = notes
+        self.progress = min(1.0, max(0.0, progress))
+    }
+
+    /// Returns a copy of this goal with progress advanced by delta, clamped to [0.0, 1.0].
+    public func advancingProgress(by delta: Float) -> Goal {
+        var copy = self
+        copy.progress = min(1.0, max(0.0, progress + delta))
+        return copy
     }
 }
 

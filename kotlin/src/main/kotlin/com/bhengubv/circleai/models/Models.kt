@@ -6,27 +6,30 @@
 
 package com.bhengubv.circleai.models
 
+import java.time.Instant
+
 /**
  * A single message in a chat history.
  * [role] is one of "system", "user", or "assistant".
  */
 data class ChatMessage(
+    val id: String,
     val role: String,
-    val content: String
+    val content: String,
+    val createdAt: Instant = Instant.now()
 )
 
 /**
  * Progress report for a model or asset download.
- * [totalBytes] is null when content-length is unknown.
  */
 data class DownloadProgress(
-    val bytesReceived: Long,
-    val totalBytes: Long?
+    val totalBytes: Long,
+    val downloadedBytes: Long,
+    val filename: String
 ) {
     /**
-     * 0.0–1.0 fraction complete, or null when total is unknown.
+     * 0.0–1.0 fraction complete. Returns 0.0 when totalBytes is 0.
      */
-    val fraction: Double?
-        get() = if (totalBytes == null || totalBytes == 0L) null
-                else bytesReceived.toDouble() / totalBytes.toDouble()
+    val fractionComplete: Double
+        get() = if (totalBytes == 0L) 0.0 else downloadedBytes.toDouble() / totalBytes
 }

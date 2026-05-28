@@ -1,0 +1,7 @@
+{
+  "module": {
+    "name": "circle_ai",
+    "type": "har",
+    "description": "Circle AI portable core"
+  }
+}

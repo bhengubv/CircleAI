@@ -2,12 +2,22 @@
 name = "circle-ai"
 version = "0.1.0"
 edition = "2021"
+authors = ["Bhengu B.V. <info@bhengubv.com>"]
+description = "Circle AI SDK — portable core for the B! companion"
+license = "MIT"
+repository = "https://github.com/bhengubv/CircleAI"
 
 [dependencies]
-uuid = { version = "1.0", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["full"], optional = true }
 chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+uuid = { version = "1", features = ["v4", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+
+[features]
+default = ["async"]
+async = ["tokio"]
 
 [dev-dependencies]
-# serde_json already available via [dependencies]
+tokio = { version = "1", features = ["full"] }
