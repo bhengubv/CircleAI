@@ -16,6 +16,13 @@ public enum ScenarioKind
 
     /// <summary>Model a security patch propagating through the peer network.</summary>
     SecurityPatch,
+
+    /// <summary>
+    /// Model how a confirmed runtime threat (from an <c>AnomalySignal</c>)
+    /// would propagate through the peer network if not contained.
+    /// Built by <see cref="ThreatPropagationScenario.FromAnomalySignal"/>.
+    /// </summary>
+    ThreatPropagation,
 }
 
 /// <summary>

@@ -1,4 +1,4 @@
-from .affect_state import AffectState
+from .affect_state import AffectState, AffectVad
 from .episodic_memory import EpisodicMemoryEntry
 from .feedback_signal import FeedbackPolarity, FeedbackSignal
 from .goal import Goal, GoalPriority, GoalStatus
@@ -13,6 +13,7 @@ from .stores import (
 
 __all__ = [
     "AffectState",
+    "AffectVad",
     "EpisodicMemoryEntry",
     "FeedbackPolarity",
     "FeedbackSignal",

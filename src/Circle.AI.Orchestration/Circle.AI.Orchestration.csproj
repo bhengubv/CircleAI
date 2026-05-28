@@ -18,6 +18,8 @@
     <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
     <!-- EpisodicMemoryEntry, AffectState -->
     <ProjectReference Include="..\Circle.AI.Memory\Circle.AI.Memory.csproj" />
+    <!-- AnomalySignal, ThreatVector — immune-system inputs to ops-security tasks -->
+    <ProjectReference Include="..\Circle.AI.Security\Circle.AI.Security.csproj" />
   </ItemGroup>
 
 </Project>

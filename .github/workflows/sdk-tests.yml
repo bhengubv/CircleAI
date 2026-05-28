@@ -15,14 +15,33 @@ jobs:
   # C# (reference implementation)
   # ──────────────────────────────────────────────────────────────────────────
   test-csharp:
-    name: C# / .NET 8
+    name: C# / .NET 9 (host packages)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
-      - run: dotnet test src/Circle.AI.sln --configuration Release --logger "console;verbosity=normal"
+          dotnet-version: "9.x"
+
+      # Build and test only the host-side packages that target net9.0 and are
+      # part of the CircleAI portable + host distribution. The big legacy
+      # Circle.AI.Tests project pulls in net10-only dependencies (Aether)
+      # which are out of scope for the SDK publish gate.
+      - name: Test Circle.AI.Security
+        run: dotnet test tests/Circle.AI.Security.Tests/Circle.AI.Security.Tests.csproj
+             --configuration Release --logger "console;verbosity=normal"
+
+      - name: Test Circle.AI.Orchestration
+        run: dotnet test tests/Circle.AI.Orchestration.Tests/Circle.AI.Orchestration.Tests.csproj
+             --configuration Release --logger "console;verbosity=normal"
+
+      - name: Test Circle.AI.Simulation
+        run: dotnet test tests/Circle.AI.Simulation.Tests/Circle.AI.Simulation.Tests.csproj
+             --configuration Release --logger "console;verbosity=normal"
+
+      - name: Test Circle.AI.Memory (AffectVad fixture)
+        run: dotnet test tests/Circle.AI.Memory.Tests/Circle.AI.Memory.Tests.csproj
+             --configuration Release --logger "console;verbosity=normal"
 
   # ──────────────────────────────────────────────────────────────────────────
   # Python

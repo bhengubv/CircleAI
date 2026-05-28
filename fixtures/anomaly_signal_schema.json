@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "Schema + cross-language clamp vectors for AnomalySignal and ThreatVector. AnomalySignal is portable schema only — the watchdog implementation stays C# host-side.",
+  "threatVector": {
+    "values": [
+      { "name": "MemoryAnomaly",         "ordinal": 0 },
+      { "name": "ControlFlowDrift",      "ordinal": 1 },
+      { "name": "PrivilegeEscalation",   "ordinal": 2 },
+      { "name": "BiometricSpoofAttempt", "ordinal": 3 },
+      { "name": "NetworkPivot",          "ordinal": 4 },
+      { "name": "StateCorruption",       "ordinal": 5 },
+      { "name": "AgentPatchRejected",    "ordinal": 6 },
+      { "name": "Unknown",               "ordinal": 7 }
+    ],
+    "$comment": "Ordinals are stable across language ports. Add new values at the end."
+  },
+  "anomalySignal": {
+    "fields": [
+      { "name": "id",             "type": "uuid-v4",  "required": true },
+      { "name": "vector",         "type": "ThreatVector", "required": true },
+      { "name": "confidence",     "type": "float",    "required": true, "range": [0.0, 1.0], "clamp": true },
+      { "name": "affectedModule", "type": "string",   "required": true },
+      { "name": "description",    "type": "string",   "required": true },
+      { "name": "evidence",       "type": "map<string,string>", "required": false, "default": "{}" },
+      { "name": "detectedAt",     "type": "iso8601-utc", "required": true }
+    ],
+    "factory_contract": "Create(vector, confidence, affectedModule, description, evidence?) — stamps new UUID and current UTC time; clamps confidence to [0,1]"
+  },
+  "clamp_vectors": [
+    { "id": "above_max",  "input_confidence":  1.5, "expected_confidence": 1.0 },
+    { "id": "below_min",  "input_confidence": -0.3, "expected_confidence": 0.0 },
+    { "id": "at_max",     "input_confidence":  1.0, "expected_confidence": 1.0 },
+    { "id": "at_min",     "input_confidence":  0.0, "expected_confidence": 0.0 },
+    { "id": "nominal",    "input_confidence":  0.7, "expected_confidence": 0.7 }
+  ]
+}

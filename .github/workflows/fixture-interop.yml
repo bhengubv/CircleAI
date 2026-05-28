@@ -35,11 +35,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
-      - run: >
-          dotnet test src/Circle.AI.sln
+          dotnet-version: "9.x"
+
+      # AffectVad fixture lives in Circle.AI.Memory.Tests (standalone, net9)
+      - name: Memory fixture tests (AffectVad)
+        run: >
+          dotnet test tests/Circle.AI.Memory.Tests/Circle.AI.Memory.Tests.csproj
           --configuration Release
-          --filter "FullyQualifiedName~AffectState|FullyQualifiedName~Biometric|FullyQualifiedName~GoalProgress"
+          --logger "console;verbosity=normal"
+
+      # AnomalySignal/ThreatVector schema vectors live in Circle.AI.Security.Tests
+      - name: Security fixture tests (AnomalySignal)
+        run: >
+          dotnet test tests/Circle.AI.Security.Tests/Circle.AI.Security.Tests.csproj
+          --configuration Release
           --logger "console;verbosity=normal"
 
   interop-python:

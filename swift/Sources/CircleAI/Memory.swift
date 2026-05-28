@@ -85,6 +85,56 @@ public final class AffectState: @unchecked Sendable {
     }
 }
 
+// MARK: - AffectVad
+
+/// Derived Russell-PAD (Valence / Arousal / Dominance) view of an `AffectState`.
+///
+/// The Circle AI SDK uses a 5-dimensional affect model (curiosity, engagement,
+/// uncertainty, rapport, energy). Some downstream systems — including external
+/// affective-computing research tooling and HR/health analytics pipelines —
+/// expect Russell's PAD/VAD model. `AffectVad` is the DERIVED 3-dimensional
+/// view of the same underlying state; it does not replace `AffectState`.
+///
+/// Derivation (all results clamped to [0.0, 1.0]):
+/// ```
+///   Valence   = (engagement + rapport + (1 - uncertainty)) / 3
+///   Arousal   = (energy * 2 + curiosity + uncertainty) / 4
+///   Dominance = (engagement + (1 - uncertainty)) / 2
+/// ```
+/// These formulas are the cross-language fixture contract — see
+/// `fixtures/affect_vad_derivation.json`. Any change to the math must update
+/// every port and every fixture vector.
+public struct AffectVad: Sendable, Equatable {
+    /// Pleasure ↔ displeasure axis. 1.0 = maximally pleasant, 0.0 = maximally unpleasant.
+    public let valence: Float
+
+    /// Activation ↔ deactivation axis. 1.0 = maximally aroused/alert,
+    /// 0.0 = maximally calm/dormant.
+    public let arousal: Float
+
+    /// In-control ↔ submissive axis. 1.0 = maximally in control,
+    /// 0.0 = maximally submissive/overwhelmed.
+    public let dominance: Float
+
+    /// Computes the VAD projection of an `AffectState` using the canonical
+    /// fixture derivation. Output components are clamped to [0, 1].
+    public static func from(_ state: AffectState) -> AffectVad {
+        let v = (state.engagement + state.rapport + (1 - state.uncertainty)) / 3
+        let a = (state.energy * 2 + state.curiosity + state.uncertainty) / 4
+        let d = (state.engagement + (1 - state.uncertainty)) / 2
+        return AffectVad(
+            valence:   max(0, min(1, v)),
+            arousal:   max(0, min(1, a)),
+            dominance: max(0, min(1, d))
+        )
+    }
+}
+
+extension AffectState {
+    /// Projects this `AffectState` into the derived VAD view.
+    public func toVad() -> AffectVad { AffectVad.from(self) }
+}
+
 // MARK: - PersonaState
 
 /// B!'s dynamic persona state for a specific user. Persisted between

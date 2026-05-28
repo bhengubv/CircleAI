@@ -1,4 +1,5 @@
 using Circle.AI.Memory;
+using Circle.AI.Security;
 
 namespace Circle.AI.Orchestration;
 
@@ -95,5 +96,70 @@ public static class IncidentTrigger
         }
 
         return tasks;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Anomaly bridge — Security → Orchestration
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Maps a confirmed <see cref="AnomalySignal"/> from the local immune system
+    /// into an <see cref="AgentTask"/> for an ops-security agent. Returns
+    /// <c>null</c> for signals below the dispatch threshold.
+    /// </summary>
+    /// <param name="signal">The anomaly signal to evaluate.</param>
+    /// <param name="dispatchThreshold">
+    /// Minimum <see cref="AnomalySignal.Confidence"/> required to dispatch.
+    /// Default 0.30 — matches <c>DefaultSecurityWatchdog</c>'s rotation threshold.
+    /// </param>
+    /// <returns>
+    /// An <see cref="AgentTask"/> tagged with <see cref="AgentRole.Security"/>
+    /// and priority derived from the signal's confidence; or <c>null</c> if the
+    /// signal is below threshold.
+    /// </returns>
+    public static AgentTask? FromAnomalySignal(
+        AnomalySignal signal,
+        double dispatchThreshold = 0.30)
+    {
+        ArgumentNullException.ThrowIfNull(signal);
+        if (signal.Confidence < dispatchThreshold) return null;
+
+        // Confidence drives priority — high-severity vectors are bumped one rank.
+        var priority = signal.Confidence switch
+        {
+            >= 0.85 => AgentPriority.Critical,
+            >= 0.60 => AgentPriority.High,
+            _       => AgentPriority.Normal,
+        };
+
+        bool isHighSeverityVector = signal.Vector is
+            ThreatVector.ControlFlowDrift or
+            ThreatVector.PrivilegeEscalation or
+            ThreatVector.NetworkPivot or
+            ThreatVector.StateCorruption;
+
+        if (isHighSeverityVector && priority > AgentPriority.Critical /* lower numeric is higher */)
+        {
+            // priority ordering: Critical=0 < High=1 < Normal=2 < Low=3
+            // "bumping one rank" means decreasing the numeric value
+            priority = (AgentPriority)Math.Max((int)AgentPriority.Critical, (int)priority - 1);
+        }
+
+        var inputs = new Dictionary<string, string>(signal.Evidence)
+        {
+            ["signal_id"]         = signal.Id.ToString(),
+            ["vector"]            = signal.Vector.ToString(),
+            ["confidence"]        = signal.Confidence.ToString("F3", System.Globalization.CultureInfo.InvariantCulture),
+            ["affected_module"]   = signal.AffectedModule,
+            ["description"]       = signal.Description,
+            ["detected_at"]       = signal.DetectedAt.ToString("O"),
+        };
+
+        return AgentTask.Create(
+            AgentRole.Security,
+            $"ops-security: anomaly {signal.Vector} in {signal.AffectedModule} " +
+            $"(confidence {signal.Confidence:P0})",
+            priority,
+            inputs);
     }
 }

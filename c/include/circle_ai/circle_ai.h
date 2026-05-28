@@ -14,5 +14,6 @@
 #include "inference.h"
 #include "tools.h"
 #include "sync.h"
+#include "security.h"
 
 #endif /* CIRCLE_AI_H */

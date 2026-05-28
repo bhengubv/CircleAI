@@ -135,6 +135,47 @@ func clamp32(v, lo, hi float32) float32 {
 }
 
 // ---------------------------------------------------------------------------
+// AffectVad
+// ---------------------------------------------------------------------------
+
+// AffectVad projects AffectState's five engagement dimensions onto the
+// three-axis Valence / Arousal / Dominance space used by the affective-
+// computing literature. Useful for cross-modal alignment (e.g. matching
+// against a face-expression V/A/D codebook or a TTS prosody model).
+//
+// Each axis is clamped to [0.0, 1.0]. Derivation must be byte-identical
+// across language ports — see fixtures/affect_vad_derivation.json.
+type AffectVad struct {
+	// Valence: 0 = negative, 1 = positive.
+	Valence float32
+
+	// Arousal: 0 = calm, 1 = aroused.
+	Arousal float32
+
+	// Dominance: 0 = submissive / overwhelmed, 1 = in-control.
+	Dominance float32
+}
+
+// ToVad projects the AffectState onto the Valence / Arousal / Dominance
+// axes. All three outputs are clamped to [0.0, 1.0].
+//
+// Derivation (must stay byte-identical across language ports):
+//
+//	valence   = (engagement + rapport + (1 - uncertainty)) / 3
+//	arousal   = (energy * 2 + curiosity + uncertainty) / 4
+//	dominance = (engagement + (1 - uncertainty)) / 2
+func (s *AffectState) ToVad() AffectVad {
+	v := (s.Engagement + s.Rapport + (1 - s.Uncertainty)) / 3
+	a := (s.Energy*2 + s.Curiosity + s.Uncertainty) / 4
+	d := (s.Engagement + (1 - s.Uncertainty)) / 2
+	return AffectVad{
+		Valence:   clamp32(v, 0, 1),
+		Arousal:   clamp32(a, 0, 1),
+		Dominance: clamp32(d, 0, 1),
+	}
+}
+
+// ---------------------------------------------------------------------------
 // PersonaState
 // ---------------------------------------------------------------------------
 

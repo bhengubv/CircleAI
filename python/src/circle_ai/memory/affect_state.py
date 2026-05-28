@@ -72,8 +72,59 @@ class AffectState:
             return ""
         return "[Affect state]\n" + "\n".join(hints) + "\n"
 
+    def to_vad(self) -> "AffectVad":
+        """Project this AffectState into the derived 3-dimensional VAD view."""
+        return AffectVad.from_state(self)
+
 
 def _lerp(a: float, b: float, t: float) -> float:
     """Linear interpolation. t is clamped to [0, 1]."""
     t = max(0.0, min(1.0, t))
     return a + (b - a) * t
+
+
+@dataclass(frozen=True)
+class AffectVad:
+    """Derived Russell-PAD (Valence / Arousal / Dominance) view of an AffectState.
+
+    The Circle AI SDK uses a 5-dimensional affect model (curiosity, engagement,
+    uncertainty, rapport, energy). Some downstream systems — including external
+    affective-computing research tooling and HR/health analytics pipelines —
+    expect Russell's PAD/VAD model. AffectVad is the DERIVED 3-dimensional view
+    of the same underlying state; it does not replace AffectState.
+
+    Derivation (all results clamped to [0.0, 1.0]):
+        valence   = (engagement + rapport + (1 - uncertainty)) / 3
+        arousal   = (energy * 2 + curiosity + uncertainty) / 4
+        dominance = (engagement + (1 - uncertainty)) / 2
+
+    These formulas are the cross-language fixture contract — see
+    fixtures/affect_vad_derivation.json. Any change to the math must update
+    every port and every fixture vector.
+    """
+
+    # Pleasure ↔ displeasure axis. 1.0 = maximally pleasant, 0.0 = maximally unpleasant.
+    valence: float
+
+    # Activation ↔ deactivation axis. 1.0 = maximally aroused/alert,
+    # 0.0 = maximally calm/dormant.
+    arousal: float
+
+    # In-control ↔ submissive axis. 1.0 = maximally in control,
+    # 0.0 = maximally submissive/overwhelmed.
+    dominance: float
+
+    @classmethod
+    def from_state(cls, state: "AffectState") -> "AffectVad":
+        """Compute the VAD projection of an :class:`AffectState`.
+
+        Output components are clamped to ``[0.0, 1.0]``.
+        """
+        v = (state.engagement + state.rapport + (1.0 - state.uncertainty)) / 3.0
+        a = (state.energy * 2.0 + state.curiosity + state.uncertainty) / 4.0
+        d = (state.engagement + (1.0 - state.uncertainty)) / 2.0
+        return cls(
+            valence=max(0.0, min(1.0, v)),
+            arousal=max(0.0, min(1.0, a)),
+            dominance=max(0.0, min(1.0, d)),
+        )

@@ -12,8 +12,14 @@ add_library(circle_ai STATIC
     src/inference.c
     src/tools.c
     src/sync.c
+    src/security.c
 )
 target_include_directories(circle_ai PUBLIC include)
+
+# security.c uses BCryptGenRandom on Windows
+if(WIN32)
+    target_link_libraries(circle_ai PUBLIC bcrypt)
+endif()
 
 enable_testing()
 add_subdirectory(tests)

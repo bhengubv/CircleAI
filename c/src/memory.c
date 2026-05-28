@@ -67,6 +67,29 @@ void ca_affect_state_idle_decay(ca_affect_state_t *s, float idle_hours) {
 }
 
 /* ---------------------------------------------------------------------------
+ * AffectVad — derived Russell PAD projection of AffectState.
+ *
+ * Formulas (cross-language contract, see fixtures/affect_vad_derivation.json):
+ *   valence   = (engagement + rapport + (1 - uncertainty)) / 3
+ *   arousal   = (energy * 2 + curiosity + uncertainty) / 4
+ *   dominance = (engagement + (1 - uncertainty)) / 2
+ * All outputs clamped to [0.0, 1.0].
+ * --------------------------------------------------------------------------- */
+
+void ca_affect_vad_from(const ca_affect_state_t *state, ca_affect_vad_t *out_vad) {
+    if (!state || !out_vad) return;
+    float v = (state->engagement + state->rapport + (1.0f - state->uncertainty)) / 3.0f;
+    float a = (state->energy * 2.0f + state->curiosity + state->uncertainty) / 4.0f;
+    float d = (state->engagement + (1.0f - state->uncertainty)) / 2.0f;
+    if (v < 0.0f) v = 0.0f; if (v > 1.0f) v = 1.0f;
+    if (a < 0.0f) a = 0.0f; if (a > 1.0f) a = 1.0f;
+    if (d < 0.0f) d = 0.0f; if (d > 1.0f) d = 1.0f;
+    out_vad->valence   = v;
+    out_vad->arousal   = a;
+    out_vad->dominance = d;
+}
+
+/* ---------------------------------------------------------------------------
  * PersonaState hint
  *
  * Rules (fixtures/persona_state.json):

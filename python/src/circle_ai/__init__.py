@@ -7,7 +7,7 @@
 from .models.models import ChatMessage, DownloadProgress
 
 # memory
-from .memory.affect_state import AffectState
+from .memory.affect_state import AffectState, AffectVad
 from .memory.episodic_memory import EpisodicMemoryEntry
 from .memory.feedback_signal import FeedbackPolarity, FeedbackSignal
 from .memory.goal import Goal, GoalPriority, GoalStatus
@@ -19,6 +19,9 @@ from .memory.stores import (
     IGoalStore,
     IPersonaStore,
 )
+
+# security
+from .security import AnomalySignal, ThreatVector
 
 # identity
 from .identity.identity_types import CircleIdentity, IdentityTier, RegisteredDevice
@@ -60,6 +63,7 @@ __all__ = [
     "DownloadProgress",
     # memory
     "AffectState",
+    "AffectVad",
     "EpisodicMemoryEntry",
     "FeedbackPolarity",
     "FeedbackSignal",
@@ -110,4 +114,7 @@ __all__ = [
     "SyncDeliveryMode",
     "SyncDelta",
     "SyncDomainKeys",
+    # security
+    "AnomalySignal",
+    "ThreatVector",
 ]

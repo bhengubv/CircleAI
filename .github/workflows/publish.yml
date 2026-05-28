@@ -173,6 +173,63 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ──────────────────────────────────────────────────────────────────────────
+  # C# host-side packages → GitHub Packages (NuGet)
+  #
+  # These three packages are .NET 9 only — they bridge the portable SDK to
+  # the loki-mode orchestration runner, the MiroFish simulation engine, and
+  # the immune-system response layer. They live next to the 10-language SDK
+  # but only ship as NuGet packages.
+  # ──────────────────────────────────────────────────────────────────────────
+  publish-dotnet:
+    name: Publish .NET host packages → GitHub Packages
+    runs-on: ubuntu-latest
+    needs: run-tests
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.x"
+
+      - name: Pack Circle.AI.Security
+        run: |
+          dotnet pack src/Circle.AI.Security/Circle.AI.Security.csproj \
+            -c Release \
+            -p:PackageVersion="${VERSION#v}" \
+            -o ./nupkgs
+
+      - name: Pack Circle.AI.Orchestration
+        run: |
+          dotnet pack src/Circle.AI.Orchestration/Circle.AI.Orchestration.csproj \
+            -c Release \
+            -p:PackageVersion="${VERSION#v}" \
+            -o ./nupkgs
+
+      - name: Pack Circle.AI.Simulation
+        run: |
+          dotnet pack src/Circle.AI.Simulation/Circle.AI.Simulation.csproj \
+            -c Release \
+            -p:PackageVersion="${VERSION#v}" \
+            -o ./nupkgs
+
+      - name: Push to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget add source \
+            --username bhengubv \
+            --password "${GITHUB_TOKEN}" \
+            --store-password-in-clear-text \
+            --name github \
+            "https://nuget.pkg.github.com/bhengubv/index.json"
+          dotnet nuget push "./nupkgs/*.nupkg" \
+            --source github \
+            --api-key "${GITHUB_TOKEN}" \
+            --skip-duplicate
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Summary
   # ──────────────────────────────────────────────────────────────────────────
   publish-complete:
@@ -186,13 +243,17 @@ jobs:
       - publish-swift
       - publish-rust
       - publish-android
+      - publish-dotnet
     steps:
       - run: |
           echo "CircleAI ${VERSION} published:"
-          echo "  Python  → PyPI:            circle-ai-sdk"
-          echo "  TS      → npm:             @bhengubv/circle-ai"
-          echo "  Go      → go modules:      github.com/bhengubv/CircleAI/go"
-          echo "  Kotlin  → GitHub Packages: com.bhengubv:circle-ai"
-          echo "  Swift   → SPM:             CircleAI"
-          echo "  Rust    → crates.io:       circle-ai"
-          echo "  Android → GitHub Packages: com.bhengubv:circle-ai-android"
+          echo "  Python       → PyPI:            circle-ai-sdk"
+          echo "  TS           → npm:             @bhengubv/circle-ai"
+          echo "  Go           → go modules:      github.com/bhengubv/CircleAI/go"
+          echo "  Kotlin       → GitHub Packages: com.bhengubv:circle-ai"
+          echo "  Swift        → SPM:             CircleAI"
+          echo "  Rust         → crates.io:       circle-ai"
+          echo "  Android      → GitHub Packages: com.bhengubv:circle-ai-android"
+          echo "  .NET host    → GitHub Packages: Circle.AI.Security,"
+          echo "                                   Circle.AI.Orchestration,"
+          echo "                                   Circle.AI.Simulation"

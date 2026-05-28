@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 using Circle.AI.Security;
 using Xunit;
 
-namespace Circle.AI.Tests;
+namespace Circle.AI.Security.Tests;
 
 // ── AnomalySignal ─────────────────────────────────────────────────────────────
 

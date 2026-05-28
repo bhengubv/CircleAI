@@ -56,6 +56,32 @@ void ca_affect_state_negative_signal(ca_affect_state_t *s);
 void ca_affect_state_idle_decay(ca_affect_state_t *s, float idle_hours);
 
 /* ---------------------------------------------------------------------------
+ * AffectVad — derived Russell PAD (Valence / Arousal / Dominance) projection.
+ *
+ * AffectVad is a DERIVED 3-axis view of AffectState; it does not replace the
+ * 5-axis model. Derivation (output clamped to [0.0, 1.0]):
+ *
+ *   valence   = (engagement + rapport + (1 - uncertainty)) / 3
+ *   arousal   = (energy * 2 + curiosity + uncertainty) / 4
+ *   dominance = (engagement + (1 - uncertainty)) / 2
+ *
+ * This math is the cross-language fixture contract — see
+ * fixtures/affect_vad_derivation.json. Must match every port byte-identically.
+ * --------------------------------------------------------------------------- */
+
+typedef struct {
+    float valence;   /* pleasure ↔ displeasure, [0, 1] */
+    float arousal;   /* activation ↔ calm,       [0, 1] */
+    float dominance; /* in-control ↔ submissive, [0, 1] */
+} ca_affect_vad_t;
+
+/*
+ * Project an AffectState into its derived VAD view.
+ * Both pointers must be non-NULL; the function is a no-op when either is NULL.
+ */
+void ca_affect_vad_from(const ca_affect_state_t *state, ca_affect_vad_t *out_vad);
+
+/* ---------------------------------------------------------------------------
  * PersonaState — verbosity, formality, locale preference
  * --------------------------------------------------------------------------- */
 

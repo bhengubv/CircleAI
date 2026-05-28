@@ -18,6 +18,8 @@
     <ProjectReference Include="..\Circle.AI.Memory\Circle.AI.Memory.csproj" />
     <!-- Core interfaces (IDeviceContext, IModelManager, etc.) -->
     <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
+    <!-- AnomalySignal, ThreatVector — used by ThreatPropagationScenario factory -->
+    <ProjectReference Include="..\Circle.AI.Security\Circle.AI.Security.csproj" />
   </ItemGroup>
 
 </Project>

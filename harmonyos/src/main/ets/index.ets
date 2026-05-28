@@ -9,3 +9,4 @@ export * from './tools/index';
 export * from './companion/index';
 export * from './inference/index';
 export * from './sync/index';
+export * from './security/index';

@@ -448,3 +448,52 @@ interface IGoalStore {
     /** Returns all goals for [userId] where [Goal.status] is [GoalStatus.Active]. */
     suspend fun getActiveAsync(userId: String): List<Goal>
 }
+
+// ---------------------------------------------------------------------------
+// AffectVad — Valence/Arousal/Dominance projection of AffectState
+// ---------------------------------------------------------------------------
+
+/**
+ * Three-dimensional VAD (Valence, Arousal, Dominance) projection of an
+ * [AffectState]. Used by downstream consumers that expect the classical
+ * dimensional-emotion representation rather than B!'s five-dimensional
+ * native model.
+ *
+ * All components are in `[0f, 1f]`. The mapping in [from] is byte-identical
+ * to the C# / Swift / Python / TS / Go reference implementations — do not
+ * change the constants or arithmetic order.
+ */
+data class AffectVad(
+    /** Pleasantness, 0=unpleasant, 1=pleasant. */
+    val valence: Float,
+    /** Activation, 0=calm, 1=excited. */
+    val arousal: Float,
+    /** Sense of control, 0=submissive, 1=dominant. */
+    val dominance: Float,
+) {
+    companion object {
+        /**
+         * Project an [AffectState] into VAD space.
+         *
+         * Formulas (kept verbatim across all language ports):
+         *   valence   = (engagement + rapport + (1 - uncertainty)) / 3
+         *   arousal   = (energy * 2 + curiosity + uncertainty) / 4
+         *   dominance = (engagement + (1 - uncertainty)) / 2
+         *
+         * Each component is clamped to `[0f, 1f]` after computation.
+         */
+        fun from(state: AffectState): AffectVad {
+            val v = (state.engagement + state.rapport + (1f - state.uncertainty)) / 3f
+            val a = (state.energy * 2f + state.curiosity + state.uncertainty) / 4f
+            val d = (state.engagement + (1f - state.uncertainty)) / 2f
+            return AffectVad(
+                valence   = v.coerceIn(0f, 1f),
+                arousal   = a.coerceIn(0f, 1f),
+                dominance = d.coerceIn(0f, 1f),
+            )
+        }
+    }
+}
+
+/** Convenience extension equivalent to [AffectVad.from]. */
+fun AffectState.toVad(): AffectVad = AffectVad.from(this)

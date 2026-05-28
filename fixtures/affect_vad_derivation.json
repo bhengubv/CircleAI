@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12",
+  "$comment": "AffectVad cross-language derivation vectors. AffectState (5-dim) → AffectVad (V/A/D). Compare with epsilon 1e-5.",
+  "epsilon": 1e-5,
+  "derivation": {
+    "valence":   "(engagement + rapport + (1 - uncertainty)) / 3",
+    "arousal":   "(energy * 2 + curiosity + uncertainty) / 4",
+    "dominance": "(engagement + (1 - uncertainty)) / 2",
+    "output_clamp": [0.0, 1.0]
+  },
+  "vectors": [
+    {
+      "id": "default_state",
+      "description": "Default AffectState — curiosity=0.5, engagement=0.5, uncertainty=0.2, rapport=0, energy=0.5",
+      "input": {
+        "curiosity":   0.5,
+        "engagement":  0.5,
+        "uncertainty": 0.2,
+        "rapport":     0.0,
+        "energy":      0.5
+      },
+      "expected": {
+        "valence":   0.43333333,
+        "arousal":   0.425,
+        "dominance": 0.65
+      }
+    },
+    {
+      "id": "all_max",
+      "description": "All positive dimensions max, uncertainty zero.",
+      "input": {
+        "curiosity":   1.0,
+        "engagement":  1.0,
+        "uncertainty": 0.0,
+        "rapport":     1.0,
+        "energy":      1.0
+      },
+      "expected": {
+        "valence":   1.0,
+        "arousal":   0.75,
+        "dominance": 1.0
+      }
+    },
+    {
+      "id": "all_min_high_uncertainty",
+      "description": "All positive dimensions zero, uncertainty maxed.",
+      "input": {
+        "curiosity":   0.0,
+        "engagement":  0.0,
+        "uncertainty": 1.0,
+        "rapport":     0.0,
+        "energy":      0.0
+      },
+      "expected": {
+        "valence":   0.0,
+        "arousal":   0.25,
+        "dominance": 0.0
+      }
+    },
+    {
+      "id": "high_engagement_warm",
+      "description": "Engaged + warm rapport + low uncertainty.",
+      "input": {
+        "curiosity":   0.6,
+        "engagement":  0.9,
+        "uncertainty": 0.1,
+        "rapport":     0.8,
+        "energy":      0.7
+      },
+      "expected": {
+        "valence":   0.86666667,
+        "arousal":   0.525,
+        "dominance": 0.9
+      }
+    },
+    {
+      "id": "stressed_low_energy",
+      "description": "High uncertainty, low rapport, low energy — overwhelmed state.",
+      "input": {
+        "curiosity":   0.3,
+        "engagement":  0.2,
+        "uncertainty": 0.8,
+        "rapport":     0.0,
+        "energy":      0.2
+      },
+      "expected": {
+        "valence":   0.13333333,
+        "arousal":   0.375,
+        "dominance": 0.2
+      }
+    },
+    {
+      "id": "energetic_curious",
+      "description": "High curiosity + high energy — alert / exploratory.",
+      "input": {
+        "curiosity":   0.9,
+        "engagement":  0.6,
+        "uncertainty": 0.3,
+        "rapport":     0.4,
+        "energy":      0.9
+      },
+      "expected": {
+        "valence":   0.56666667,
+        "arousal":   0.75,
+        "dominance": 0.65
+      }
+    }
+  ]
+}

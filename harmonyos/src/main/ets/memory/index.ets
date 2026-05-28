@@ -101,6 +101,55 @@ function affectLerp(a: number, b: number, t: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// AffectVad — Valence/Arousal/Dominance projection of AffectState
+// ---------------------------------------------------------------------------
+
+/**
+ * Three-dimensional VAD (Valence, Arousal, Dominance) projection of an
+ * [AffectState]. Used by downstream consumers that expect the classical
+ * Russell PAD dimensional-emotion representation rather than Circle AI's
+ * five-dimensional native model.
+ *
+ * All components are in `[0, 1]`. The math in [affectStateToVad] is
+ * byte-identical to the C# / Kotlin / Rust / Swift / Python / TS / Go
+ * reference implementations — do NOT change the constants or arithmetic
+ * order.
+ */
+export interface AffectVad {
+  /** Pleasantness. 0 = unpleasant, 1 = pleasant. */
+  valence: number;
+  /** Activation. 0 = calm, 1 = excited. */
+  arousal: number;
+  /** Sense of control. 0 = submissive/overwhelmed, 1 = in control. */
+  dominance: number;
+}
+
+/**
+ * Projects an [AffectState] into VAD space.
+ *
+ * Formulas (kept verbatim across all language ports):
+ *   valence   = (engagement + rapport + (1 - uncertainty)) / 3
+ *   arousal   = (energy * 2 + curiosity + uncertainty) / 4
+ *   dominance = (engagement + (1 - uncertainty)) / 2
+ *
+ * Each component is clamped to `[0, 1]` after computation.
+ *
+ * CRITICAL: uses plain scalar number arithmetic — no Float32Array tricks —
+ * to keep results byte-identical to the cross-language fixture contract in
+ * `fixtures/affect_vad_derivation.json` (epsilon 1e-5).
+ */
+export function affectStateToVad(state: AffectState): AffectVad {
+  const v: number = (state.engagement + state.rapport + (1 - state.uncertainty)) / 3;
+  const a: number = (state.energy * 2 + state.curiosity + state.uncertainty) / 4;
+  const d: number = (state.engagement + (1 - state.uncertainty)) / 2;
+  return {
+    valence:   Math.min(1, Math.max(0, v)),
+    arousal:   Math.min(1, Math.max(0, a)),
+    dominance: Math.min(1, Math.max(0, d)),
+  } as AffectVad;
+}
+
+// ---------------------------------------------------------------------------
 // Goal
 // ---------------------------------------------------------------------------
 

@@ -127,7 +127,7 @@ class BiometricMatcherTest {
     }
 
     @Test
-    fun `result is coerced to [-1_0, 1_0]`() {
+    fun `result is coerced to minus1 to 1`() {
         // Numerically stable: result should always be in range even with denormals.
         val a = floatArrayOf(Float.MIN_VALUE, 0.0f)
         val b = floatArrayOf(Float.MIN_VALUE, 0.0f)
