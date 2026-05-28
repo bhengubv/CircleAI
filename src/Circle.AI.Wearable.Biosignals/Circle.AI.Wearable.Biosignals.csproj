@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>Circle.AI.Wearable.Biosignals</PackageId>
+    <Description>Biosignal ingestion (HR, HRV, SpO2, accelerometer, etc.) and projection into Circle.AI.Memory.AffectState — the sensor layer of personal AI.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
+    <ProjectReference Include="..\Circle.AI.Memory\Circle.AI.Memory.csproj" />
+  </ItemGroup>
+
+</Project>

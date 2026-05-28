@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>Circle.AI.Hosting.InferenceBridge</PackageId>
+    <Description>Cross-OS LLM inference daemon contract for Circle AI — one model loaded once per device, shared by every app via OS-specific IPC. Ship-once, run-everywhere.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
+    <ProjectReference Include="..\Circle.AI.Inference\Circle.AI.Inference.csproj" />
+  </ItemGroup>
+
+</Project>

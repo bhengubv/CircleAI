@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>Circle.AI.Personality</PackageId>
+    <Description>User-declared persona artefact — structured identity declaration the user owns, edits, and exports. Complements Circle.AI.Memory.PersonaState (AI's learned model of the user).</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core interfaces (IDeviceContext, etc.) -->
+    <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
+    <!-- PersonaState lives here — Persona declares bounds, PersonaState is the learned interior. -->
+    <ProjectReference Include="..\Circle.AI.Memory\Circle.AI.Memory.csproj" />
+  </ItemGroup>
+</Project>
