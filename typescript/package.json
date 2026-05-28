@@ -1,14 +1,16 @@
 {
   "name": "@bhengubv/circle-ai",
   "version": "0.1.0",
-  "description": "Circle AI portable core — TypeScript",
+  "description": "Circle AI SDK — on-device AI companion, memory, identity, and language primitives",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "build": "tsc",
     "test": "tsx --test tests/*.test.ts",
-    "build": "tsc"
+    "typecheck": "tsc -p tsconfig.check.json"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3"
   }

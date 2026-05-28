@@ -1,27 +1,19 @@
-# test_affect_state.py
-#
-# Validates AffectState math against all 12 vectors in fixtures/affect_state.json.
-# All float comparisons use epsilon = 1e-6 as specified in the fixture schema.
+"""test_affect_state.py
 
+Validates AffectState math against all vectors in fixtures/affect_state.json.
+All float comparisons use epsilon = 1e-6 as specified in the fixture schema.
+"""
 from __future__ import annotations
 
 import json
 import pathlib
+
 import pytest
 
-# Adjust sys.path so the package is importable when running pytest from the
-# python/ directory (no install required).
-import sys
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
-
-from circle_ai.memory import AffectState
-
-
-# ---------------------------------------------------------------------------
-# Fixtures helpers
-# ---------------------------------------------------------------------------
+from circle_ai.memory.affect_state import AffectState
 
 FIXTURES_DIR = pathlib.Path(__file__).parent.parent.parent / "fixtures"
+EPSILON = 1e-6
 
 
 def _load_vectors() -> list[dict]:
@@ -40,14 +32,8 @@ def _make_state(inp: dict) -> AffectState:
     return state
 
 
-EPSILON = 1e-6
-
 VECTORS = _load_vectors()
 
-
-# ---------------------------------------------------------------------------
-# Parametrised test
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("vector", VECTORS, ids=[v["id"] for v in VECTORS])
 def test_affect_vector(vector: dict) -> None:

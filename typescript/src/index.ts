@@ -1,11 +1,12 @@
-// index.ts — Circle AI portable core, TypeScript
-// Re-exports all public symbols from the 8 modules.
+// src/index.ts
+// Barrel export for the @bhengubv/circle-ai package.
+// Re-exports everything from all 8 portable modules.
 
-export * from './models';
-export * from './memory';
-export * from './identity';
-export * from './languages';
-export * from './companion';
-export * from './inference';
-export * from './tools';
-export * from './sync';
+export * from "./models/index.js";
+export * from "./memory/index.js";
+export * from "./identity/index.js";
+export * from "./languages/index.js";
+export * from "./companion/index.js";
+export * from "./inference/index.js";
+export * from "./tools/index.js";
+export * from "./sync/index.js";

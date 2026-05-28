@@ -278,28 +278,47 @@ export enum GoalPriority {
 
 /**
  * A user goal that B! tracks and proactively helps with.
+ * Inspired by the way Samantha in *Her* remembered what Theodore cared about.
  */
-export interface Goal {
+export class Goal {
   /** Unique stable identifier for this goal. */
-  readonly id: string;
+  id: string = '';
   /** Owner of this goal. */
-  readonly userId: string;
+  userId: string = '';
   /** Short, human-readable title. */
-  readonly title: string;
+  title: string = '';
   /** Full description of what the user wants to achieve. */
-  readonly description: string;
+  description: string = '';
   /** Current lifecycle state. */
-  readonly status: GoalStatus;
+  status: GoalStatus = GoalStatus.Active;
   /** Relative importance. */
-  readonly priority: GoalPriority;
+  priority: GoalPriority = GoalPriority.Normal;
   /** When this goal was first recorded (UTC). */
-  readonly createdAt: Date;
+  createdUtc: Date = new Date();
   /** Optional deadline (UTC). */
-  readonly dueAt: Date | null;
+  dueUtc?: Date;
   /** When the goal was completed or abandoned (UTC). */
-  readonly completedAt: Date | null;
+  completedUtc?: Date;
   /** Freeform notes B! or the user has attached to this goal. */
-  readonly notes: string | null;
+  notes?: string;
+
+  /**
+   * Fraction of the goal completed, in the range [0.0, 1.0].
+   * 0.0 = not started; 1.0 = fully achieved.
+   */
+  progress: number = 0.0;
+
+  /**
+   * Returns a NEW Goal with progress advanced by delta, clamped to [0.0, 1.0].
+   * Does not mutate this instance.
+   *
+   * Formula: new_progress = clamp(progress + delta, 0.0, 1.0)
+   */
+  advanceProgress(delta: number): Goal {
+    const g = Object.assign(new Goal(), this);
+    g.progress = Math.max(0, Math.min(1, this.progress + delta));
+    return g;
+  }
 }
 
 // ---------------------------------------------------------------------------
