@@ -53,4 +53,29 @@ public sealed record Goal(
     DateTimeOffset CreatedUtc,
     DateTimeOffset? DueUtc = null,
     DateTimeOffset? CompletedUtc = null,
-    string? Notes = null);
+    string? Notes = null)
+{
+    // ------------------------------------------------------------------
+    // Progress tracking
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Fraction of the goal completed, in the range [0.0, 1.0].
+    /// <c>0.0</c> = not started; <c>1.0</c> = fully achieved.
+    /// Stored separately from <see cref="Status"/> so that B! can show
+    /// fine-grained progress bars before a goal is officially completed.
+    /// </summary>
+    public float Progress { get; set; } = 0f;
+
+    /// <summary>
+    /// Returns a copy of this goal with <see cref="Progress"/> advanced by
+    /// <paramref name="delta"/>, clamped to [0.0, 1.0].
+    /// </summary>
+    /// <param name="delta">
+    /// Amount to add to the current progress. May be negative to regress
+    /// progress (e.g. when a sub-task is un-completed). The result is always
+    /// clamped: <c>clamp(Progress + delta, 0.0, 1.0)</c>.
+    /// </param>
+    public Goal AdvanceProgress(float delta) =>
+        this with { Progress = Math.Clamp(Progress + delta, 0f, 1f) };
+}

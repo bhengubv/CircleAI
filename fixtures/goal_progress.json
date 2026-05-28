@@ -1,0 +1,54 @@
+{
+  "_comment": "Cross-language test vectors for Goal.AdvanceProgress(delta). All implementations must produce identical float results. Progress is clamped to [0.0, 1.0]. Formula: new_progress = clamp(progress + delta, 0.0, 1.0).",
+  "vectors": [
+    {
+      "id": "zero_initial",
+      "description": "Advance by 0 from 0 — no change",
+      "initial_progress": 0.0,
+      "delta": 0.0,
+      "expected_progress": 0.0
+    },
+    {
+      "id": "partial_advance",
+      "description": "Advance 30% from zero",
+      "initial_progress": 0.0,
+      "delta": 0.3,
+      "expected_progress": 0.3
+    },
+    {
+      "id": "clamp_max",
+      "description": "Advance past 1.0 — clamped to 1.0",
+      "initial_progress": 0.9,
+      "delta": 0.5,
+      "expected_progress": 1.0
+    },
+    {
+      "id": "clamp_min",
+      "description": "Negative delta past 0.0 — clamped to 0.0",
+      "initial_progress": 0.1,
+      "delta": -0.5,
+      "expected_progress": 0.0
+    },
+    {
+      "id": "zero_delta",
+      "description": "Zero delta mid-progress — unchanged",
+      "initial_progress": 0.5,
+      "delta": 0.0,
+      "expected_progress": 0.5
+    },
+    {
+      "id": "advance_to_full",
+      "description": "Exact advance to 1.0 — not clamped",
+      "initial_progress": 0.75,
+      "delta": 0.25,
+      "expected_progress": 1.0
+    },
+    {
+      "id": "negative_delta",
+      "description": "Regression: subtract progress without hitting floor",
+      "initial_progress": 0.6,
+      "delta": -0.2,
+      "expected_progress": 0.4
+    }
+  ]
+}

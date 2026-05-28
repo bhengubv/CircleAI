@@ -14,4 +14,5 @@ public sealed record SyncDelta(
     long Sequence,            // monotonic per owner+domain
     SyncDeliveryMode DeliveryMode,
     TimeSpan? Ttl,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    SchedulingHint? SchedulingHint = null);  // optional AI-layer routing advisory

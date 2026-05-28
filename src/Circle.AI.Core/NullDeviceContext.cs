@@ -29,6 +29,10 @@ namespace Circle.AI.Core
         public float? BatteryLevel    => null;
         public bool? IsCharging       => null;
         public string? NetworkType    => null;
+        public float? CpuUsagePercent      => null;
+        public long?  AvailableMemoryBytes => null;
+        public ThermalState? ThermalState  => null;
+        public long?  StorageFreeBytes     => null;
         public DateTimeOffset? LastActiveUtc => null;
     }
 }

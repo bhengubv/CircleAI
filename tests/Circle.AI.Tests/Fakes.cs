@@ -411,6 +411,11 @@ internal sealed class FakeDeviceContext : IDeviceContext
     public float? BatteryLevel   { get; set; }
     public bool? IsCharging      { get; set; }
     public string? NetworkType   { get; set; }
+    // Diagnostics (Mandate 1)
+    public float? CpuUsagePercent      { get; set; }
+    public long?  AvailableMemoryBytes { get; set; }
+    public ThermalState? ThermalState  { get; set; }
+    public long?  StorageFreeBytes     { get; set; }
     public DateTimeOffset? LastActiveUtc { get; set; }
 }
 

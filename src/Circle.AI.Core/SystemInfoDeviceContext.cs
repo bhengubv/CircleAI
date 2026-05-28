@@ -66,6 +66,22 @@ namespace Circle.AI.Core
         public string? NetworkType => null;
 
         // ------------------------------------------------------------------
+        // Diagnostics — unavailable without platform APIs.
+        // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        public float? CpuUsagePercent => null;
+
+        /// <inheritdoc />
+        public long? AvailableMemoryBytes => null;
+
+        /// <inheritdoc />
+        public ThermalState? ThermalState => null;
+
+        /// <inheritdoc />
+        public long? StorageFreeBytes => null;
+
+        // ------------------------------------------------------------------
         // User signals
         // ------------------------------------------------------------------
 

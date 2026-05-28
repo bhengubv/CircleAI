@@ -182,6 +182,24 @@ namespace Circle.AI.Maui
         }
 
         // ------------------------------------------------------------------
+        // Diagnostics — not yet wired; override or extend for platform-native
+        // CPU / memory / thermal / storage APIs (Android UsageStatsManager,
+        // iOS ProcessInfo, HarmonyOS ThermalManager, etc.).
+        // ------------------------------------------------------------------
+
+        /// <inheritdoc />
+        public float? CpuUsagePercent => null;
+
+        /// <inheritdoc />
+        public long? AvailableMemoryBytes => null;
+
+        /// <inheritdoc />
+        public Circle.AI.Core.ThermalState? ThermalState => null;
+
+        /// <inheritdoc />
+        public long? StorageFreeBytes => null;
+
+        // ------------------------------------------------------------------
         // User signals
         // ------------------------------------------------------------------
 

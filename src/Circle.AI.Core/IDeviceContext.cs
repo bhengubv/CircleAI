@@ -76,6 +76,37 @@ namespace Circle.AI.Core
         string? NetworkType { get; }
 
         // ------------------------------------------------------------------
+        // Diagnostics
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// CPU usage as a fraction 0.0–1.0 (overall or average across cores),
+        /// or <c>null</c> if the platform cannot report it. B! uses this to
+        /// defer compute-heavy inference tasks when the CPU is saturated.
+        /// </summary>
+        float? CpuUsagePercent { get; }
+
+        /// <summary>
+        /// Available physical memory in bytes, or <c>null</c> if unavailable.
+        /// B! skips large model loads when available memory is critically low.
+        /// </summary>
+        long? AvailableMemoryBytes { get; }
+
+        /// <summary>
+        /// Current thermal condition of the device, or <c>null</c> if the
+        /// platform does not expose thermal data. See <see cref="ThermalState"/>
+        /// for the three-level scale. B! backs off inference when
+        /// <see cref="ThermalState.Critical"/> is reported.
+        /// </summary>
+        ThermalState? ThermalState { get; }
+
+        /// <summary>
+        /// Free storage space in bytes, or <c>null</c> if unavailable.
+        /// Used by the model downloader to gate downloads before starting them.
+        /// </summary>
+        long? StorageFreeBytes { get; }
+
+        // ------------------------------------------------------------------
         // User signals
         // ------------------------------------------------------------------
 
