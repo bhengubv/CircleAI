@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>Circle.AI.Simulation</PackageId>
+    <Description>GraphRAG/MiroFish simulation layer for Circle AI — builds knowledge graphs from episodic memory, runs offline network health forecasts.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Episodic memory types (EpisodicMemoryEntry) -->
+    <ProjectReference Include="..\Circle.AI.Memory\Circle.AI.Memory.csproj" />
+    <!-- Core interfaces (IDeviceContext, IModelManager, etc.) -->
+    <ProjectReference Include="..\Circle.AI.Core\Circle.AI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

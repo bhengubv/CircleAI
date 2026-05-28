@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Canonical schema for Circle.AI.Simulation GraphNode and GraphEdge. Validated in tests/Circle.AI.Simulation.Tests/GraphSchemaTests.cs",
+  "graphNode": {
+    "fields": ["id", "label", "kind", "properties", "extractedAt"],
+    "kinds": ["person", "topic", "app", "event", "system"],
+    "id": "uuid-v4",
+    "label": "non-empty string",
+    "weight_range": null
+  },
+  "graphEdge": {
+    "fields": ["id", "sourceId", "targetId", "relation", "weight", "createdAt"],
+    "relations": ["mentions", "causes", "resolves", "depends_on", "tagged_with", "occurred_in", "followed_by"],
+    "weight_min": 0.0,
+    "weight_max": 1.0,
+    "weight_clamp": true
+  },
+  "test_vectors": [
+    { "case": "clamp_above_max", "input_weight": 1.5, "expected_weight": 1.0 },
+    { "case": "clamp_below_min", "input_weight": -0.3, "expected_weight": 0.0 },
+    { "case": "nominal",         "input_weight": 0.7,  "expected_weight": 0.7 }
+  ]
+}

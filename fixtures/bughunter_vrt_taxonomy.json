@@ -1,0 +1,91 @@
+{
+  "$comment": "Circle AI BugHunter VRT taxonomy. Referenced by .github/workflows/bughunter-gate.yml and Circle.AI.Security scanning gates.",
+  "version": "1.0.0",
+  "gate_policy": {
+    "block_on": ["critical", "high"],
+    "annotate_only": ["medium", "low", "informational"],
+    "require_review_comment": ["critical", "high", "medium"]
+  },
+  "categories": [
+    {
+      "id": "A01",
+      "name": "Injection",
+      "severity": "critical",
+      "cwe": ["CWE-89", "CWE-77", "CWE-78"],
+      "patterns": ["string.Format.*sql", "SqlCommand.*\\+", "Process.Start.*userInput"],
+      "description": "SQL, command, or code injection via unsanitised input"
+    },
+    {
+      "id": "A02",
+      "name": "Broken Authentication",
+      "severity": "critical",
+      "cwe": ["CWE-287", "CWE-306", "CWE-798"],
+      "patterns": ["hardcoded.*password", "password\\s*=\\s*\"", "secret\\s*=\\s*\""],
+      "description": "Hardcoded credentials or missing authentication checks"
+    },
+    {
+      "id": "A03",
+      "name": "Sensitive Data Exposure",
+      "severity": "high",
+      "cwe": ["CWE-311", "CWE-312", "CWE-319"],
+      "patterns": ["Console.Write.*password", "Log.*token", "Debug.Write.*secret"],
+      "description": "Credentials or PII written to logs or console"
+    },
+    {
+      "id": "A04",
+      "name": "Insecure Deserialization",
+      "severity": "high",
+      "cwe": ["CWE-502"],
+      "patterns": ["BinaryFormatter", "JavaScriptSerializer", "JsonConvert.DeserializeObject.*Type.GetType"],
+      "description": "Use of unsafe deserializers that allow arbitrary type instantiation"
+    },
+    {
+      "id": "A05",
+      "name": "Broken Access Control",
+      "severity": "high",
+      "cwe": ["CWE-284", "CWE-285", "CWE-639"],
+      "patterns": ["skip.*auth", "bypass.*authorization", "\\.AllowAnonymous"],
+      "description": "Missing or bypassed authorisation checks"
+    },
+    {
+      "id": "A06",
+      "name": "Security Misconfiguration",
+      "severity": "medium",
+      "cwe": ["CWE-16", "CWE-732"],
+      "patterns": ["UseHttpsRedirection\\(\\)", "AllowAnyOrigin", "DisableCors"],
+      "description": "Insecure default configuration or overly permissive CORS/HTTPS settings"
+    },
+    {
+      "id": "A07",
+      "name": "Cross-Site Scripting (XSS)",
+      "severity": "medium",
+      "cwe": ["CWE-79"],
+      "patterns": ["MarkupString.*user", "RenderFragment.*input", "innerHTML.*="],
+      "description": "Unescaped user input rendered as HTML markup"
+    },
+    {
+      "id": "A08",
+      "name": "Unhandled Exception Leak",
+      "severity": "low",
+      "cwe": ["CWE-209"],
+      "patterns": ["catch.*Exception.*e\\)", "return.*e\\.Message", "return.*e\\.StackTrace"],
+      "description": "Raw exception details returned to caller or logged externally"
+    },
+    {
+      "id": "A09",
+      "name": "Using Components with Known Vulnerabilities",
+      "severity": "high",
+      "cwe": ["CWE-1035"],
+      "patterns": [],
+      "description": "Detected via dotnet list package --vulnerable; no source pattern"
+    },
+    {
+      "id": "A10",
+      "name": "Insufficient Logging & Monitoring",
+      "severity": "informational",
+      "cwe": ["CWE-778"],
+      "patterns": ["// TODO.*log", "// FIXME.*audit"],
+      "description": "Security-relevant actions not logged"
+    }
+  ]
+}

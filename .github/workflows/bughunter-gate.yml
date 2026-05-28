@@ -1,0 +1,432 @@
+name: BugHunter Security Gate
+
+# ──────────────────────────────────────────────────────────────────────────────
+# What this does:
+#   Runs offline security scanning on every PR and every push to main/develop.
+#   Scans are driven by fixtures/bughunter_vrt_taxonomy.json (VRT taxonomy).
+#   Critical and High findings cause the gate to fail, blocking merges and
+#   deploys. Medium, Low, and Informational findings are annotated in the job
+#   summary but do not block.
+#
+# How to bypass (hotfixes only):
+#   Add "[BUGHUNTER-SKIP]" to your commit message. The gate still runs but
+#   exits 0, and the skip is written to the signed-gate artifact for audit.
+#   This bypass is logged and will appear in the Circle.AI.Orchestration
+#   quality-gate audit trail. Do not abuse it.
+#
+# Relation to Circle.AI.Orchestration quality gate:
+#   The trust-registry-sign job writes a signed JSON artifact consumed by
+#   Circle.AI.Orchestration's deploy pipeline. A deploy cannot proceed unless
+#   a signed artifact with status "signed" is present for the target commit.
+#   A [BUGHUNTER-SKIP] sets status "signed-with-bypass" instead, which
+#   Orchestration permits but flags in ops dashboards.
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: bughunter-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1 — dotnet-vuln-scan
+  # Runs `dotnet list package --vulnerable` against the solution and fails
+  # if any Critical or High CVEs are present (VRT A09 – Known Vulnerabilities).
+  # ──────────────────────────────────────────────────────────────────────────
+  dotnet-vuln-scan:
+    name: VRT A09 — NuGet vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.x'
+
+      - name: Restore solution
+        run: dotnet restore CircleAI.sln
+
+      - name: Check for [BUGHUNTER-SKIP] bypass
+        id: bypass
+        run: |
+          if echo "${{ github.event.head_commit.message }}${{ github.event.commits[0].message }}" | grep -q '\[BUGHUNTER-SKIP\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### [BUGHUNTER-SKIP] bypass detected — NuGet vuln scan running in warn-only mode" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run dotnet list package --vulnerable
+        id: vuln
+        run: |
+          REPORT_FILE="vuln-scan-report.txt"
+          dotnet list CircleAI.sln package --vulnerable --include-transitive 2>&1 | tee "$REPORT_FILE"
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Parse findings — fail on Critical/High (VRT A09)
+        run: |
+          REPORT="vuln-scan-report.txt"
+          SKIP="${{ steps.bypass.outputs.skip }}"
+
+          # Capture lines that contain severity markers from dotnet output.
+          # dotnet list package --vulnerable prints lines like:
+          #   > PackageName  1.2.3  Critical  https://...
+          CRITICAL_LINES=$(grep -iE '^\s*>\s.*\bCritical\b' "$REPORT" || true)
+          HIGH_LINES=$(grep -iE '^\s*>\s.*\bHigh\b' "$REPORT" || true)
+          MEDIUM_LINES=$(grep -iE '^\s*>\s.*\bModerate\b' "$REPORT" || true)
+          LOW_LINES=$(grep -iE '^\s*>\s.*\b(Low|Info)\b' "$REPORT" || true)
+
+          HAS_BLOCKING=false
+          if [ -n "$CRITICAL_LINES" ] || [ -n "$HIGH_LINES" ]; then
+            HAS_BLOCKING=true
+          fi
+
+          # Build step summary
+          {
+            echo "## VRT A09 — NuGet Vulnerability Scan"
+            echo ""
+            if [ -n "$CRITICAL_LINES" ]; then
+              echo "### Critical (blocks merge)"
+              echo '```'
+              echo "$CRITICAL_LINES"
+              echo '```'
+            fi
+            if [ -n "$HIGH_LINES" ]; then
+              echo "### High (blocks merge)"
+              echo '```'
+              echo "$HIGH_LINES"
+              echo '```'
+            fi
+            if [ -n "$MEDIUM_LINES" ]; then
+              echo "### Moderate (annotated only)"
+              echo '```'
+              echo "$MEDIUM_LINES"
+              echo '```'
+            fi
+            if [ -n "$LOW_LINES" ]; then
+              echo "### Low / Informational (annotated only)"
+              echo '```'
+              echo "$LOW_LINES"
+              echo '```'
+            fi
+            if [ "$HAS_BLOCKING" = "false" ]; then
+              echo "No Critical or High vulnerabilities found."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Gate: fail unless bypassed
+          if [ "$HAS_BLOCKING" = "true" ]; then
+            if [ "$SKIP" = "true" ]; then
+              echo "WARNING: Critical/High NuGet vulnerabilities detected but [BUGHUNTER-SKIP] bypass is active."
+            else
+              echo "FAIL: Critical or High NuGet vulnerabilities found (VRT A09 – CWE-1035). Resolve before merging."
+              exit 1
+            fi
+          else
+            echo "PASS: No Critical or High NuGet vulnerabilities detected."
+          fi
+
+      - name: Upload vuln-scan-report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vuln-scan-report
+          path: vuln-scan-report.txt
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2 — pattern-scan
+  # Uses ripgrep (pre-installed on ubuntu-latest) to match VRT taxonomy
+  # patterns from fixtures/bughunter_vrt_taxonomy.json across src/ and tests/.
+  # Covers: A01 Injection, A02 Broken Auth, A03 Sensitive Data Exposure.
+  # Critical and High pattern matches fail the gate.
+  # ──────────────────────────────────────────────────────────────────────────
+  pattern-scan:
+    name: VRT A01-A03 — Source pattern scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for [BUGHUNTER-SKIP] bypass
+        id: bypass
+        run: |
+          if echo "${{ github.event.head_commit.message }}${{ github.event.commits[0].message }}" | grep -q '\[BUGHUNTER-SKIP\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### [BUGHUNTER-SKIP] bypass detected — pattern scan running in warn-only mode" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── VRT A01 – Injection (critical) ────────────────────────────────────
+      # Patterns: SqlCommand concatenation, string.Format with SQL keyword
+      # CWE-89 (SQLi), CWE-77/78 (command injection)
+      - name: VRT A01 — Injection pattern scan (critical)
+        id: scan_a01
+        run: |
+          PATTERN='(string\.Format[^;]*[Ss][Qq][Ll]|SqlCommand[^;]*\+[^;]*|Process\.Start[^;]*userInput)'
+          FINDINGS_FILE="findings_a01.txt"
+
+          rg --type cs --type-add 'razor:*.razor' --type razor \
+             -n -i "$PATTERN" src/ tests/ > "$FINDINGS_FILE" || true
+
+          COUNT=$(wc -l < "$FINDINGS_FILE" | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "a01_hit=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## VRT A01 — Injection (CRITICAL | CWE-89, CWE-77, CWE-78)"
+              echo "SQL, command, or code injection via unsanitised input."
+              echo "**$COUNT finding(s) — blocks merge.**"
+              echo '```'
+              cat "$FINDINGS_FILE"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "a01_hit=false" >> "$GITHUB_OUTPUT"
+            echo "## VRT A01 — Injection: no matches found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── VRT A02 – Broken Authentication (critical) ────────────────────────
+      # Patterns: hardcoded password/secret literals
+      # CWE-287, CWE-306, CWE-798
+      - name: VRT A02 — Broken Authentication pattern scan (critical)
+        id: scan_a02
+        run: |
+          PATTERN='(hardcoded.*password|password\s*=\s*"|secret\s*=\s*")'
+          FINDINGS_FILE="findings_a02.txt"
+
+          rg --type cs --type-add 'razor:*.razor' --type razor \
+             -n -i "$PATTERN" src/ tests/ > "$FINDINGS_FILE" || true
+
+          COUNT=$(wc -l < "$FINDINGS_FILE" | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "a02_hit=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## VRT A02 — Broken Authentication (CRITICAL | CWE-287, CWE-306, CWE-798)"
+              echo "Hardcoded credentials or missing authentication checks."
+              echo "**$COUNT finding(s) — blocks merge.**"
+              echo '```'
+              cat "$FINDINGS_FILE"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "a02_hit=false" >> "$GITHUB_OUTPUT"
+            echo "## VRT A02 — Broken Authentication: no matches found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── VRT A03 – Sensitive Data Exposure (high) ──────────────────────────
+      # Patterns: passwords/tokens/secrets written to Console, Log, or Debug
+      # CWE-311, CWE-312, CWE-319
+      - name: VRT A03 — Sensitive Data Exposure pattern scan (high)
+        id: scan_a03
+        run: |
+          PATTERN='(Console\.Write[^;]*password|Log\.[A-Za-z]*[^;]*token|Debug\.Write[^;]*secret)'
+          FINDINGS_FILE="findings_a03.txt"
+
+          rg --type cs --type-add 'razor:*.razor' --type razor \
+             -n -i "$PATTERN" src/ tests/ > "$FINDINGS_FILE" || true
+
+          COUNT=$(wc -l < "$FINDINGS_FILE" | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "a03_hit=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## VRT A03 — Sensitive Data Exposure (HIGH | CWE-311, CWE-312, CWE-319)"
+              echo "Credentials or PII written to logs or console."
+              echo "**$COUNT finding(s) — blocks merge.**"
+              echo '```'
+              cat "$FINDINGS_FILE"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "a03_hit=false" >> "$GITHUB_OUTPUT"
+            echo "## VRT A03 — Sensitive Data Exposure: no matches found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ── Aggregate gate ────────────────────────────────────────────────────
+      - name: Evaluate pattern-scan results
+        run: |
+          SKIP="${{ steps.bypass.outputs.skip }}"
+          A01="${{ steps.scan_a01.outputs.a01_hit }}"
+          A02="${{ steps.scan_a02.outputs.a02_hit }}"
+          A03="${{ steps.scan_a03.outputs.a03_hit }}"
+
+          HAS_BLOCKING=false
+          SUMMARY_LINES=""
+
+          if [ "$A01" = "true" ]; then
+            HAS_BLOCKING=true
+            SUMMARY_LINES="$SUMMARY_LINES\n  - VRT A01 Injection (critical)"
+          fi
+          if [ "$A02" = "true" ]; then
+            HAS_BLOCKING=true
+            SUMMARY_LINES="$SUMMARY_LINES\n  - VRT A02 Broken Authentication (critical)"
+          fi
+          if [ "$A03" = "true" ]; then
+            HAS_BLOCKING=true
+            SUMMARY_LINES="$SUMMARY_LINES\n  - VRT A03 Sensitive Data Exposure (high)"
+          fi
+
+          if [ "$HAS_BLOCKING" = "true" ]; then
+            if [ "$SKIP" = "true" ]; then
+              echo "WARNING: Blocking pattern findings detected but [BUGHUNTER-SKIP] bypass is active."
+              printf "Bypassed findings:%b\n" "$SUMMARY_LINES"
+            else
+              echo "FAIL: Blocking security pattern findings detected:"
+              printf "%b\n" "$SUMMARY_LINES"
+              echo "Resolve all Critical and High findings before merging."
+              exit 1
+            fi
+          else
+            echo "PASS: No Critical or High source patterns detected across A01-A03."
+          fi
+
+      - name: Upload pattern-scan findings artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pattern-scan-findings
+          path: findings_a0*.txt
+          if-no-files-found: ignore
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 3 — trust-registry-sign
+  # Depends on both scanning jobs. If both passed (or were bypassed),
+  # writes a signed-gate artifact for Circle.AI.Orchestration to consume.
+  # A [BUGHUNTER-SKIP] produces status "signed-with-bypass" instead of
+  # "signed", which Orchestration flags in ops dashboards.
+  # ──────────────────────────────────────────────────────────────────────────
+  trust-registry-sign:
+    name: Trust registry — sign gate artifact
+    runs-on: ubuntu-latest
+    needs: [dotnet-vuln-scan, pattern-scan]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect bypass in commit message
+        id: bypass
+        run: |
+          if echo "${{ github.event.head_commit.message }}${{ github.event.commits[0].message }}" | grep -q '\[BUGHUNTER-SKIP\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write signed-gate artifact
+        run: |
+          SKIP="${{ steps.bypass.outputs.skip }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COMMIT="${{ github.sha }}"
+          REF="${{ github.ref }}"
+          WORKFLOW_RUN="${{ github.run_id }}"
+
+          if [ "$SKIP" = "true" ]; then
+            STATUS="signed-with-bypass"
+          else
+            STATUS="signed"
+          fi
+
+          cat > signed-gate.json <<EOF
+          {
+            "schema_version": "1.0",
+            "gate": "bughunter",
+            "vrt_taxonomy_version": "1.0.0",
+            "status": "$STATUS",
+            "gated_at": "$TIMESTAMP",
+            "commit": "$COMMIT",
+            "ref": "$REF",
+            "workflow_run_id": "$WORKFLOW_RUN",
+            "scans_run": ["dotnet-vuln-scan", "pattern-scan"],
+            "bypass_active": $SKIP,
+            "signed_by": "trust-registry-sign@bughunter-gate.yml"
+          }
+          EOF
+
+          echo "Signed gate artifact written:"
+          cat signed-gate.json
+
+          {
+            echo "## Trust Registry — Gate Signature"
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Status | \`$STATUS\` |"
+            echo "| Commit | \`$COMMIT\` |"
+            echo "| Gated at | \`$TIMESTAMP\` |"
+            echo "| Bypass active | \`$SKIP\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed-gate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-gate-${{ github.sha }}
+          path: signed-gate.json
+          retention-days: 90
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 4 — bughunter-gate (final gate)
+  # The single status check that branch protection rules should target.
+  # All upstream jobs must succeed before this runs.
+  # ──────────────────────────────────────────────────────────────────────────
+  bughunter-gate:
+    name: BugHunter gate
+    runs-on: ubuntu-latest
+    needs: [trust-registry-sign]
+    steps:
+      - name: Check for [BUGHUNTER-SKIP] bypass
+        id: bypass
+        run: |
+          if echo "${{ github.event.head_commit.message }}${{ github.event.commits[0].message }}" | grep -q '\[BUGHUNTER-SKIP\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report gate result
+        run: |
+          SKIP="${{ steps.bypass.outputs.skip }}"
+          if [ "$SKIP" = "true" ]; then
+            echo "BugHunter gate passed with bypass — [BUGHUNTER-SKIP] was active."
+            echo "Status written to trust registry as 'signed-with-bypass'."
+            echo "This bypass is recorded in the signed-gate artifact and will appear in ops dashboards."
+          else
+            echo "BugHunter gate passed — all scans clean."
+            echo "  VRT A09: no Critical/High NuGet vulnerabilities"
+            echo "  VRT A01: no Injection patterns detected"
+            echo "  VRT A02: no Broken Authentication patterns detected"
+            echo "  VRT A03: no Sensitive Data Exposure patterns detected"
+            echo "Trust registry signed as 'signed' for commit ${{ github.sha }}."
+          fi
+
+          {
+            echo "## BugHunter Gate — Final Result"
+            if [ "$SKIP" = "true" ]; then
+              echo "**Status: PASSED WITH BYPASS** ([BUGHUNTER-SKIP] active)"
+            else
+              echo "**Status: PASSED**"
+              echo ""
+              echo "| VRT ID | Category | Severity | Result |"
+              echo "|--------|----------|----------|--------|"
+              echo "| A01 | Injection | Critical | CLEAN |"
+              echo "| A02 | Broken Authentication | Critical | CLEAN |"
+              echo "| A03 | Sensitive Data Exposure | High | CLEAN |"
+              echo "| A09 | Known Vulnerabilities | High | CLEAN |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
