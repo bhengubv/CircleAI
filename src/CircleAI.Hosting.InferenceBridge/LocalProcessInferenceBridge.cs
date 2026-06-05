@@ -18,6 +18,7 @@ using CircleAI.Core.Components;
 using CircleAI.Core.Diagnostics;
 using CircleAI.Core.Validation;
 using CircleAI.Inference;
+using CircleAI.Runtime.Capabilities;
 
 /// <summary>
 /// In-process <see cref="IInferenceBridge"/> implementation. Wraps any
@@ -26,11 +27,12 @@ using CircleAI.Inference;
 /// no cross-process channel — calls never leave the host process.
 /// </summary>
 [CircleAIVerificationStatus(VerificationLevel.WireProven,
-    Notes = "Wraps any IChatGenerator. Outcome classification + duration metrics + audit emission verified. GetDeviceCapabilitiesAsync returns synthetic values (see [Experimental] attribute on that method).")]
+    Notes = "Wraps any IChatGenerator. Outcome classification + duration metrics + audit emission verified. GetDeviceCapabilitiesAsync now delegates to CircleAI.Runtime.ICapabilityProbe — real values on Windows/Linux/macOS/Android.")]
 public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInferenceBridge
 {
     private readonly IChatGenerator _chatGenerator;
     private readonly ModelDescriptor _descriptor;
+    private readonly ICapabilityProbe _capabilityProbe;
 
     /// <inheritdoc />
     public override string ComponentName => "LocalProcessInferenceBridge";
@@ -38,18 +40,39 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
     /// <summary>
     /// Constructs a bridge that forwards every call to
     /// <paramref name="chatGenerator"/> for the model described by
-    /// <paramref name="descriptor"/>.
+    /// <paramref name="descriptor"/>. Uses the default
+    /// <see cref="CapabilityProbe"/> for device-capability reporting.
     /// </summary>
     /// <param name="chatGenerator">The in-process chat generator to wrap.</param>
     /// <param name="descriptor">Canonical descriptor for the loaded model.</param>
     /// <exception cref="ArgumentNullException">When any argument is <c>null</c>.</exception>
     public LocalProcessInferenceBridge(IChatGenerator chatGenerator, ModelDescriptor descriptor)
+        : this(chatGenerator, descriptor, capabilityProbe: null) { }
+
+    /// <summary>
+    /// Constructs a bridge with an explicit capability probe — useful in
+    /// tests and when hosting on a port (iOS / HarmonyOS) that ships a
+    /// platform-specific probe alongside the bridge.
+    /// </summary>
+    /// <param name="chatGenerator">The in-process chat generator to wrap.</param>
+    /// <param name="descriptor">Canonical descriptor for the loaded model.</param>
+    /// <param name="capabilityProbe">
+    /// Probe to use for <see cref="GetDeviceCapabilitiesAsync"/>. When <c>null</c>
+    /// a fresh <see cref="CapabilityProbe"/> is constructed (auto-selects the
+    /// running platform).
+    /// </param>
+    /// <exception cref="ArgumentNullException">When chatGenerator or descriptor are <c>null</c>.</exception>
+    public LocalProcessInferenceBridge(
+        IChatGenerator chatGenerator,
+        ModelDescriptor descriptor,
+        ICapabilityProbe? capabilityProbe)
         : base(logger: null)
     {
         ArgumentNullException.ThrowIfNull(chatGenerator);
         ArgumentNullException.ThrowIfNull(descriptor);
         _chatGenerator = chatGenerator;
         _descriptor = descriptor;
+        _capabilityProbe = capabilityProbe ?? new CapabilityProbe();
     }
 
     /// <inheritdoc/>
@@ -226,40 +249,36 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Currently returns synthetic values — <c>HasGpu</c>/<c>HasNpu</c> are
-    /// hardcoded to <c>false</c> regardless of the actual device. Real
-    /// platform probes (DXGI/Metal/Vulkan/NNAPI/CoreML/DirectML) are pending.
-    /// Treat the GPU/NPU fields as place-holders, not as ground truth.
+    /// Delegates to the configured <see cref="ICapabilityProbe"/> (default:
+    /// <see cref="CapabilityProbe"/>) which reads the host's real
+    /// CPU/RAM/GPU/NPU surface. The returned <see cref="DeviceCapabilities"/>
+    /// is a projection of the richer <see cref="HostProfile"/> — see
+    /// <see cref="HostProfile"/> if you need driver versions or per-core split.
     /// </remarks>
-    [Experimental("CIRCLEAI_DEVCAPS_001",
-        UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
     public Task<DeviceCapabilities> GetDeviceCapabilitiesAsync(CancellationToken ct = default)
     {
         return RunOperationAsync(
             "GetDeviceCapabilitiesAsync",
-            () =>
+            async () =>
             {
-                var osName = DetectOsName();
-                var osVersion = Environment.OSVersion.Version.ToString();
-                var cores = Environment.ProcessorCount;
-                var physicalMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-
-                var caps = new DeviceCapabilities(
-                    OsName: osName,
-                    OsVersion: osVersion,
-                    PhysicalMemoryBytes: physicalMemory,
-                    CpuCoreCount: cores,
-                    HasGpu: false,
-                    GpuName: null,
-                    GpuMemoryBytes: null,
-                    HasNpu: false,
-                    NpuName: null,
-                    HasTransportLayerEncryption: true);
-
-                return Task.FromResult(caps);
+                var profile = await _capabilityProbe.ProbeAsync(ct).ConfigureAwait(false);
+                return ToDeviceCapabilities(profile);
             },
             ct);
     }
+
+    private static DeviceCapabilities ToDeviceCapabilities(HostProfile p) =>
+        new(
+            OsName: p.Os.ToString(),
+            OsVersion: p.OsVersion,
+            PhysicalMemoryBytes: p.TotalPhysicalMemoryBytes,
+            CpuCoreCount: p.LogicalCoreCount,
+            HasGpu: p.Gpu is not null,
+            GpuName: p.Gpu?.Model,
+            GpuMemoryBytes: p.Gpu?.VramBytes is { } vram and > 0 ? vram : null,
+            HasNpu: p.Npu is not null,
+            NpuName: p.Npu?.Model,
+            HasTransportLayerEncryption: true);
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -290,23 +309,7 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
         return Math.Max(1, text.Length / 4);
     }
 
-    private static string DetectOsName()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "Windows";
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macOS";
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            // Best-effort Android detection: the Android runtime sets this
-            // env var and ships a distinctive process path. The JRE/native
-            // host fills it in for managed code.
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANDROID_ROOT"))
-                || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ANDROID_DATA")))
-            {
-                return "Android";
-            }
-            return "Linux";
-        }
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Create("IOS"))) return "iOS";
-        return "Unknown";
-    }
+    // ── OS-detection helper was deleted (Phase 1) — GetDeviceCapabilitiesAsync
+    //     now delegates to ICapabilityProbe whose ArchHelpers.ResolveOsKind()
+    //     handles Android/iOS/macOS/Linux/Windows discrimination.
 }

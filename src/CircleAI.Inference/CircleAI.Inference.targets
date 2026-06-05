@@ -1,201 +1,241 @@
 <!--
-  Bhengu.AI.Inference.targets
+  CircleAI.Inference.targets
   ═══════════════════════════════════════════════════════════════════════════
-  Bundles platform-native llama.cpp (+ llava) binaries into the consuming
-  project's output so NativeLibraryResolver can find them at runtime.
+  Native runtime model for CircleAI.Inference.
 
-  Supported Runtime Identifiers
-  ──────────────────────────────
+  Default behaviour: NOTHING is bundled at build time.
+  ──────────────────────────────────────────────────────────────────────────
+  CircleAI.Runtime.NativeRuntimeFetcher downloads pre-built Alibaba MNN
+  bundles from ModelScope (primary) / github.com/alibaba/MNN/releases
+  (fallback) on demand at runtime. The bundle that gets fetched is chosen
+  by CircleAI.Runtime.CapabilityProbe + BackendSelector based on the
+  host's actual CPU / GPU / NPU surface.
+
+  This file used to bundle llama.cpp + llava binaries. CircleAI no longer
+  uses any Western inference runtime (llama.cpp / vLLM / ONNX Runtime /
+  TensorRT) — see github.com/bhengubv/CircleAI/blob/master/docs/ARCHITECTURE.md.
+
+  Opt-in offline-bundle mode
+  ──────────────────────────────────────────────────────────────────────────
+  Set <CircleAIBundleMnn>true</CircleAIBundleMnn> in your project and
+  populate $(CircleAINativeLibRoot)runtimes/{RID}/native/ with the
+  expected MNN libraries; this targets file will copy them into your
+  output (desktop) or register them as AndroidNativeLibrary /
+  NativeReference (mobile) so the runtime fetcher's first-launch HTTP
+  hop is skipped. Use this for air-gapped or offline-first deployments.
+
+  Expected native file layout (per RID)
+  ──────────────────────────────────────────────────────────────────────────
+    runtimes/{RID}/native/
+      Windows  → mnnbridge.dll          MNN.dll
+      Linux    → libmnnbridge.so        libMNN.so
+      macOS    → libmnnbridge.dylib     libMNN.dylib
+      Android  → libmnnbridge.so        libMNN.so
+      iOS/Cat  → libmnnbridge.a         libMNN.a    (static — linked at build)
+
+  Supported RIDs
+  ──────────────────────────────────────────────────────────────────────────
     Desktop / server
-      win-x64     win-arm64
-      linux-x64   linux-arm64
-      osx-x64     osx-arm64
+      win-x64    win-arm64
+      linux-x64  linux-arm64  linux-loong64
+      osx-x64    osx-arm64
 
     Mobile (MAUI)
-      android-arm64   android-x64
+      android-arm64  android-x64
       ios-arm64
-      maccatalyst-arm64   maccatalyst-x64
-
-  Native file layout
-  ──────────────────
-  Ship the compiled llama.cpp / llava binaries alongside
-  Bhengu.AI.Inference.dll (or the .csproj when building from source) under:
-
-    runtimes/{RID}/native/
-      Windows  → llama.dll           llava_shared.dll
-      Linux    → libllama.so         libllava_shared.so
-      macOS    → libllama.dylib      libllava_shared.dylib
-      Android  → libllama.so         libllava_shared.so
-      iOS/Cat  → libllama.a          libllava_shared.a  (static — linked at build)
+      maccatalyst-arm64  maccatalyst-x64
 
   Customisation
-  ─────────────
-  Override the root search directory by setting $(BhenguNativeLibRoot) in your
-  project before importing this targets file.  Default: same directory as this
-  targets file (i.e., alongside the dll / csproj).
+  ──────────────────────────────────────────────────────────────────────────
+    <CircleAINativeLibRoot>...</CircleAINativeLibRoot>
+        Override the root search directory for bundled libs. Default: same
+        directory as this targets file.
 
-  Usage in csproj (already wired in Bhengu.AI.Inference.csproj):
-    <Import Project="$(MSBuildThisFileDirectory)Bhengu.AI.Inference.targets" />
+    <CircleAIBundleMnn>true|false</CircleAIBundleMnn>
+        Enable build-time bundling. Default: false (runtime fetch).
+
+  Backward-compat aliases
+  ──────────────────────────────────────────────────────────────────────────
+    $(BhenguNativeLibRoot) is honoured as a fallback for projects that
+    haven't migrated to $(CircleAINativeLibRoot) yet.
 -->
 <Project>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       Root search directory — override via $(BhenguNativeLibRoot)
+       Root search directory — override via $(CircleAINativeLibRoot).
+       Honours the legacy $(BhenguNativeLibRoot) name as a fallback.
        ═══════════════════════════════════════════════════════════════════ -->
   <PropertyGroup>
-    <BhenguNativeLibRoot
-        Condition="'$(BhenguNativeLibRoot)' == ''">$(MSBuildThisFileDirectory)</BhenguNativeLibRoot>
+    <CircleAINativeLibRoot
+        Condition="'$(CircleAINativeLibRoot)' == '' And '$(BhenguNativeLibRoot)' != ''">$(BhenguNativeLibRoot)</CircleAINativeLibRoot>
+    <CircleAINativeLibRoot
+        Condition="'$(CircleAINativeLibRoot)' == ''">$(MSBuildThisFileDirectory)</CircleAINativeLibRoot>
+
+    <CircleAIBundleMnn
+        Condition="'$(CircleAIBundleMnn)' == ''">false</CircleAIBundleMnn>
   </PropertyGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
        Resolve effective RID for the current build leg
        ═══════════════════════════════════════════════════════════════════ -->
   <PropertyGroup>
-    <!-- MAUI multi-targeting: TargetPlatformIdentifier is set per TFM.
-         RuntimeIdentifier is set per ABI leg inside the Xamarin/MAUI SDK. -->
-    <_BRI Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_BRI>
+    <_CARI Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_CARI>
 
-    <!-- Fallback for MAUI build legs where RID is not yet propagated -->
-    <_BRI Condition="'$(_BRI)' == '' And '$(TargetPlatformIdentifier)' == 'android'">android-arm64</_BRI>
-    <_BRI Condition="'$(_BRI)' == '' And '$(TargetPlatformIdentifier)' == 'ios'">ios-arm64</_BRI>
-    <_BRI Condition="'$(_BRI)' == '' And '$(TargetPlatformIdentifier)' == 'maccatalyst'">maccatalyst-arm64</_BRI>
+    <!-- MAUI build-leg fallbacks -->
+    <_CARI Condition="'$(_CARI)' == '' And '$(TargetPlatformIdentifier)' == 'android'">android-arm64</_CARI>
+    <_CARI Condition="'$(_CARI)' == '' And '$(TargetPlatformIdentifier)' == 'ios'">ios-arm64</_CARI>
+    <_CARI Condition="'$(_CARI)' == '' And '$(TargetPlatformIdentifier)' == 'maccatalyst'">maccatalyst-arm64</_CARI>
 
-    <!-- Final fallback: use the SDK host RID -->
-    <_BRI Condition="'$(_BRI)' == ''">$(NETCoreSdkRuntimeIdentifier)</_BRI>
+    <!-- Final fallback: SDK host RID -->
+    <_CARI Condition="'$(_CARI)' == ''">$(NETCoreSdkRuntimeIdentifier)</_CARI>
   </PropertyGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       Map RID → native file names
+       Map RID → MNN native file names
        ═══════════════════════════════════════════════════════════════════ -->
   <PropertyGroup>
-    <!-- llama core library -->
-    <_LlamaLib Condition="$(_BRI.StartsWith('win'))">llama.dll</_LlamaLib>
-    <_LlamaLib Condition="$(_BRI.StartsWith('osx')) Or $(_BRI.StartsWith('ios')) Or $(_BRI.StartsWith('maccatalyst'))">libllama.dylib</_LlamaLib>
-    <_LlamaLib Condition="'$(_LlamaLib)' == ''">libllama.so</_LlamaLib>
+    <!-- mnnbridge shim — CircleAI's P/Invoke surface over Alibaba MNN -->
+    <_MnnBridgeLib Condition="$(_CARI.StartsWith('win'))">mnnbridge.dll</_MnnBridgeLib>
+    <_MnnBridgeLib Condition="$(_CARI.StartsWith('osx')) Or $(_CARI.StartsWith('ios')) Or $(_CARI.StartsWith('maccatalyst'))">libmnnbridge.dylib</_MnnBridgeLib>
+    <_MnnBridgeLib Condition="'$(_MnnBridgeLib)' == ''">libmnnbridge.so</_MnnBridgeLib>
 
-    <!-- llava multimodal addon -->
-    <_LlavaLib Condition="$(_BRI.StartsWith('win'))">llava_shared.dll</_LlavaLib>
-    <_LlavaLib Condition="$(_BRI.StartsWith('osx')) Or $(_BRI.StartsWith('ios')) Or $(_BRI.StartsWith('maccatalyst'))">libllava_shared.dylib</_LlavaLib>
-    <_LlavaLib Condition="'$(_LlavaLib)' == ''">libllava_shared.so</_LlavaLib>
+    <!-- MNN core engine (Alibaba) -->
+    <_MnnCoreLib Condition="$(_CARI.StartsWith('win'))">MNN.dll</_MnnCoreLib>
+    <_MnnCoreLib Condition="$(_CARI.StartsWith('osx')) Or $(_CARI.StartsWith('ios')) Or $(_CARI.StartsWith('maccatalyst'))">libMNN.dylib</_MnnCoreLib>
+    <_MnnCoreLib Condition="'$(_MnnCoreLib)' == ''">libMNN.so</_MnnCoreLib>
 
-    <!-- iOS / macCatalyst use static libs (.a) linked at compile time -->
-    <_LlamaStaticLib>libllama.a</_LlamaStaticLib>
-    <_LlavaStaticLib>libllava_shared.a</_LlavaStaticLib>
+    <!-- Static libs for iOS / macCatalyst (link-time) -->
+    <_MnnBridgeStaticLib>libmnnbridge.a</_MnnBridgeStaticLib>
+    <_MnnCoreStaticLib>libMNN.a</_MnnCoreStaticLib>
 
-    <!-- Intermediate path shorthand -->
-    <_NativeDir>$(BhenguNativeLibRoot)runtimes/$(_BRI)/native/</_NativeDir>
+    <_CANativeDir>$(CircleAINativeLibRoot)runtimes/$(_CARI)/native/</_CANativeDir>
   </PropertyGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
        Desktop / Server — copy to $(OutDir)runtimes/{RID}/native/
-       Applies to: win-*, linux-*, osx-*
+       Only when CircleAIBundleMnn=true (default: false, fetch at runtime).
+       Applies to: win-*, linux-*, osx-*.
        ═══════════════════════════════════════════════════════════════════ -->
-  <ItemGroup Condition="'$(_BRI)' != '' And
-                         (  $(_BRI.StartsWith('win'))
-                          Or $(_BRI.StartsWith('linux'))
-                          Or $(_BRI.StartsWith('osx')))">
-    <!-- llama core -->
-    <_BhenguNativeFile
-        Include="$(_NativeDir)$(_LlamaLib)"
-        Condition="Exists('$(_NativeDir)$(_LlamaLib)')"
-        DestRid="$(_BRI)" />
+  <ItemGroup Condition="'$(CircleAIBundleMnn)' == 'true' And '$(_CARI)' != '' And
+                         (  $(_CARI.StartsWith('win'))
+                          Or $(_CARI.StartsWith('linux'))
+                          Or $(_CARI.StartsWith('osx')))">
+    <_CircleAINativeFile
+        Include="$(_CANativeDir)$(_MnnBridgeLib)"
+        Condition="Exists('$(_CANativeDir)$(_MnnBridgeLib)')"
+        DestRid="$(_CARI)" />
 
-    <!-- llava addon (optional — omit if not shipping multimodal) -->
-    <_BhenguNativeFile
-        Include="$(_NativeDir)$(_LlavaLib)"
-        Condition="Exists('$(_NativeDir)$(_LlavaLib)')"
-        DestRid="$(_BRI)" />
+    <_CircleAINativeFile
+        Include="$(_CANativeDir)$(_MnnCoreLib)"
+        Condition="Exists('$(_CANativeDir)$(_MnnCoreLib)')"
+        DestRid="$(_CARI)" />
   </ItemGroup>
 
-  <Target Name="_BhenguCopyNativeLibs"
+  <Target Name="_CircleAICopyNativeLibs"
           BeforeTargets="Build"
-          Condition="'@(_BhenguNativeFile)' != ''">
-    <MakeDir Directories="$(OutDir)runtimes/$(_BRI)/native/" />
-    <Copy SourceFiles="@(_BhenguNativeFile)"
-          DestinationFolder="$(OutDir)runtimes/$(_BRI)/native/"
+          Condition="'$(CircleAIBundleMnn)' == 'true' And '@(_CircleAINativeFile)' != ''">
+    <MakeDir Directories="$(OutDir)runtimes/$(_CARI)/native/" />
+    <Copy SourceFiles="@(_CircleAINativeFile)"
+          DestinationFolder="$(OutDir)runtimes/$(_CARI)/native/"
           SkipUnchangedFiles="true"
           Retries="3"
           RetryDelayMilliseconds="500" />
     <Message Importance="normal"
-             Text="[BhenguAI] Native libs → $(OutDir)runtimes/$(_BRI)/native/" />
+             Text="[CircleAI] MNN native libs → $(OutDir)runtimes/$(_CARI)/native/" />
   </Target>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       Android — AndroidNativeLibrary items (bundled into APK by the SDK)
+       Android — AndroidNativeLibrary items (bundled into APK).
+       Always registered when files are present so the runtime fetcher's
+       first-launch hop is optional. Set CircleAIBundleMnn=false if you
+       deliberately want a thinner APK and accept the runtime download.
        arm64-v8a  ← android-arm64
        x86_64     ← android-x64
        ═══════════════════════════════════════════════════════════════════ -->
-  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
-    <!-- arm64-v8a llama -->
+  <ItemGroup Condition="'$(CircleAIBundleMnn)' == 'true' And '$(TargetPlatformIdentifier)' == 'android'">
     <AndroidNativeLibrary
-        Include="$(BhenguNativeLibRoot)runtimes/android-arm64/native/libllama.so"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/android-arm64/native/libllama.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-arm64/native/libmnnbridge.so"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-arm64/native/libmnnbridge.so')"
         Abi="arm64-v8a" />
 
-    <!-- arm64-v8a llava -->
     <AndroidNativeLibrary
-        Include="$(BhenguNativeLibRoot)runtimes/android-arm64/native/libllava_shared.so"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/android-arm64/native/libllava_shared.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-arm64/native/libMNN.so"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-arm64/native/libMNN.so')"
         Abi="arm64-v8a" />
 
-    <!-- x86_64 llama -->
     <AndroidNativeLibrary
-        Include="$(BhenguNativeLibRoot)runtimes/android-x64/native/libllama.so"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/android-x64/native/libllama.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-x64/native/libmnnbridge.so"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-x64/native/libmnnbridge.so')"
         Abi="x86_64" />
 
-    <!-- x86_64 llava -->
     <AndroidNativeLibrary
-        Include="$(BhenguNativeLibRoot)runtimes/android-x64/native/libllava_shared.so"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/android-x64/native/libllava_shared.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-x64/native/libMNN.so"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-x64/native/libMNN.so')"
         Abi="x86_64" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       iOS — NativeReference items (static libs, linked at compile time)
+       iOS — NativeReference items (static libs, linked at compile time).
+       iOS does not allow runtime-loaded native libs from a managed cache
+       directory, so iOS apps MUST set CircleAIBundleMnn=true and provide
+       libmnnbridge.a + libMNN.a at the expected layout. CircleAI.Runtime's
+       fetcher is bypassed on iOS by design.
        ═══════════════════════════════════════════════════════════════════ -->
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios'">
     <NativeReference
-        Include="$(BhenguNativeLibRoot)runtimes/ios-arm64/native/libllama.a"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/ios-arm64/native/libllama.a')"
+        Include="$(CircleAINativeLibRoot)runtimes/ios-arm64/native/libmnnbridge.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/ios-arm64/native/libmnnbridge.a')"
         Kind="Static"
         SmartLink="true"
         ForceLoad="true" />
 
     <NativeReference
-        Include="$(BhenguNativeLibRoot)runtimes/ios-arm64/native/libllava_shared.a"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/ios-arm64/native/libllava_shared.a')"
+        Include="$(CircleAINativeLibRoot)runtimes/ios-arm64/native/libMNN.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/ios-arm64/native/libMNN.a')"
         Kind="Static"
         SmartLink="true"
         ForceLoad="true" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       macOS Catalyst — NativeReference items (static libs)
+       macOS Catalyst — NativeReference items (static libs).
        ═══════════════════════════════════════════════════════════════════ -->
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'maccatalyst'">
     <NativeReference
-        Include="$(BhenguNativeLibRoot)runtimes/maccatalyst-arm64/native/libllama.a"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/maccatalyst-arm64/native/libllama.a')"
+        Include="$(CircleAINativeLibRoot)runtimes/maccatalyst-arm64/native/libmnnbridge.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/maccatalyst-arm64/native/libmnnbridge.a')"
         Kind="Static"
         SmartLink="true" />
 
     <NativeReference
-        Include="$(BhenguNativeLibRoot)runtimes/maccatalyst-x64/native/libllama.a"
-        Condition="Exists('$(BhenguNativeLibRoot)runtimes/maccatalyst-x64/native/libllama.a')"
+        Include="$(CircleAINativeLibRoot)runtimes/maccatalyst-arm64/native/libMNN.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/maccatalyst-arm64/native/libMNN.a')"
+        Kind="Static"
+        SmartLink="true" />
+
+    <NativeReference
+        Include="$(CircleAINativeLibRoot)runtimes/maccatalyst-x64/native/libmnnbridge.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/maccatalyst-x64/native/libmnnbridge.a')"
+        Kind="Static"
+        SmartLink="true" />
+
+    <NativeReference
+        Include="$(CircleAINativeLibRoot)runtimes/maccatalyst-x64/native/libMNN.a"
+        Condition="Exists('$(CircleAINativeLibRoot)runtimes/maccatalyst-x64/native/libMNN.a')"
         Kind="Static"
         SmartLink="true" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════
-       NuGet packaging — include all runtimes/ under the package root
-       Only runs when building a NuGet package (dotnet pack).
+       NuGet packaging — only include runtimes/ when explicit bundle mode
+       is on. Default runtime-fetch deployments keep the package thin
+       (≈3 MB managed binaries, no native payload).
        ═══════════════════════════════════════════════════════════════════ -->
-  <ItemGroup Condition="'$(IsPackable)' == 'true'">
-    <None Include="$(BhenguNativeLibRoot)runtimes/**"
+  <ItemGroup Condition="'$(IsPackable)' == 'true' And '$(CircleAIBundleMnn)' == 'true'">
+    <None Include="$(CircleAINativeLibRoot)runtimes/**"
           Pack="true"
           PackagePath="runtimes"
-          Condition="Exists('$(BhenguNativeLibRoot)runtimes/')" />
+          Condition="Exists('$(CircleAINativeLibRoot)runtimes/')" />
   </ItemGroup>
 
 </Project>

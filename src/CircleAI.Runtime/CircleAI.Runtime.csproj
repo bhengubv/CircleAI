@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Runtime</PackageId>
+    <Description>Runtime capability detection (OS/arch/CPU/GPU/RAM/NPU), backend selection (CPU/CUDA/Vulkan/OpenCL/Metal/Ascend/Cambricon), and on-demand fetch of pre-built Alibaba MNN native runtime bundles from ModelScope. Mirrors CircleAI.Inference.ModelDownloadService for runtime binaries.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Diagnostics, audit sink, component base. -->
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For AddCircleAIRuntime DI extension. Abstractions only so consumers
+         pick their own container implementation. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded runtime registry — same shape as Models\embedded_registry.json
+         in CircleAI.Core. JSON is consumed at startup by NativeRuntimeRegistry. -->
+    <EmbeddedResource Include="NativeRuntimes\embedded_native_registry.json" />
+  </ItemGroup>
+
+</Project>

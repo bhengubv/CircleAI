@@ -16,6 +16,11 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <!-- Real device-capability probe + backend selector + native runtime
+         fetcher. LocalProcessInferenceBridge defaults to a new
+         CapabilityProbe() when no ICapabilityProbe is supplied — replaces
+         the synthetic GetDeviceCapabilitiesAsync stub. -->
+    <ProjectReference Include="..\CircleAI.Runtime\CircleAI.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

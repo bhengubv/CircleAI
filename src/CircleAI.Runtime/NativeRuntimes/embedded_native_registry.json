@@ -1,0 +1,183 @@
+{
+  "_notes": [
+    "Embedded registry of pre-built MNN runtime bundles. Mirrors the shape",
+    "used by CircleAI.Core\\Models\\embedded_registry.json (non-object",
+    "entries like this _notes array are tolerated by the parser).",
+    "",
+    "Primary URL convention: ModelScope mirror of the Alibaba MNN release",
+    "(modelscope.cn/api/v1/models/MNN/...). Fallback URL convention:",
+    "github.com/alibaba/MNN/releases/download/<version>/...",
+    "",
+    "sha256 is OPTIONAL. When present the fetcher will reject a download",
+    "whose hash does not match. When absent the fetcher trusts the served",
+    "bytes (matches ModelDownloadService behaviour for expectedSha256=null).",
+    "Production releases SHOULD pin sha256 — calibrate by downloading the",
+    "archive once, running 'Get-FileHash -Algorithm SHA256' / 'shasum -a 256',",
+    "and pasting the hex into this file.",
+    "",
+    "Backend names match BackendKind: Cpu, Cuda, Vulkan, OpenCL, Metal,",
+    "Ascend, Cambricon, CoreML.",
+    "Os names match OperatingSystemKind: Windows, Linux, MacOS, Android, IOS, HarmonyOS.",
+    "Arch names match ArchitectureKind: X86, X64, Arm, Arm64, Loong64."
+  ],
+
+  "mnn_versions": [
+    {
+      "version": "3.0.0",
+      "released_at": "2026-04-15",
+      "notes": [
+        "Latest stable line on the master branch of github.com/alibaba/MNN.",
+        "Compatible with mnnbridge ABI shipped by CircleAI.Inference 1.0+."
+      ],
+      "bundles": [
+        {
+          "os": "Windows",
+          "arch": "X64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-cpu.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-cpu.zip",
+          "mnnbridge_lib": "mnnbridge.dll",
+          "mnn_lib": "MNN.dll"
+        },
+        {
+          "os": "Windows",
+          "arch": "X64",
+          "backend": "Cuda",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-cuda.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-cuda.zip"
+        },
+        {
+          "os": "Windows",
+          "arch": "X64",
+          "backend": "Vulkan",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-vulkan.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-vulkan.zip"
+        },
+        {
+          "os": "Windows",
+          "arch": "Arm64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-arm64-cpu.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-arm64-cpu.zip"
+        },
+
+        {
+          "os": "Linux",
+          "arch": "X64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cpu.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-cpu.tar.gz",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
+        },
+        {
+          "os": "Linux",
+          "arch": "X64",
+          "backend": "Cuda",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cuda.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-cuda.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "X64",
+          "backend": "Vulkan",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-vulkan.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-vulkan.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "Arm64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-arm64-cpu.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-arm64-cpu.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "Arm64",
+          "backend": "Ascend",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-arm64-ascend.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "X64",
+          "backend": "Ascend",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-ascend.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "X64",
+          "backend": "Cambricon",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cambricon.tar.gz"
+        },
+        {
+          "os": "Linux",
+          "arch": "Loong64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-loong64-cpu.tar.gz"
+        },
+
+        {
+          "os": "MacOS",
+          "arch": "Arm64",
+          "backend": "Metal",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-metal.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-macos-arm64-metal.tar.gz",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
+        },
+        {
+          "os": "MacOS",
+          "arch": "Arm64",
+          "backend": "CoreML",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-coreml.tar.gz"
+        },
+        {
+          "os": "MacOS",
+          "arch": "Arm64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-cpu.tar.gz"
+        },
+        {
+          "os": "MacOS",
+          "arch": "X64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-x64-cpu.tar.gz"
+        },
+
+        {
+          "os": "Android",
+          "arch": "Arm64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-cpu.tar.gz",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-android-arm64-cpu.tar.gz"
+        },
+        {
+          "os": "Android",
+          "arch": "Arm64",
+          "backend": "Vulkan",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-vulkan.tar.gz"
+        },
+        {
+          "os": "Android",
+          "arch": "Arm64",
+          "backend": "OpenCL",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-opencl.tar.gz"
+        },
+
+        {
+          "os": "IOS",
+          "arch": "Arm64",
+          "backend": "Metal",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-ios-arm64-metal.tar.gz"
+        },
+
+        {
+          "os": "HarmonyOS",
+          "arch": "Arm64",
+          "backend": "Cpu",
+          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-harmonyos-arm64-cpu.tar.gz"
+        }
+      ]
+    }
+  ]
+}
