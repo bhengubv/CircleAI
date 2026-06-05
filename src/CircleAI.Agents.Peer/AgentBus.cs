@@ -11,7 +11,9 @@
 // contract can be exercised without a real Aether router on the wire.
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
+using CircleAI.Core.Validation;
 
 namespace CircleAI.Agents.Peer;
 
@@ -19,6 +21,9 @@ namespace CircleAI.Agents.Peer;
 /// In-process bus used to simulate a mesh of CircleAI peers for tests and
 /// samples. Not a production transport.
 /// </summary>
+[Experimental("CIRCLEAI_PEER_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference,
+    Notes = "In-process channel-backed bus. Designed for tests and same-process simulations. Not transport-backed — use an Aether-backed IAgentPeerProtocol in production.")]
 public sealed class AgentBus
 {
     private readonly ConcurrentDictionary<string, PeerAgent> _peers = new(StringComparer.Ordinal);

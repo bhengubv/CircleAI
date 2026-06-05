@@ -11,6 +11,9 @@
 // Host applications can substitute their own (e.g. one that also pages
 // the ops-security agent via CircleAI.Orchestration).
 
+using CircleAI.Core.Components;
+using CircleAI.Core.Validation;
+
 namespace CircleAI.Security;
 
 /// <summary>
@@ -59,7 +62,9 @@ public interface ISecurityWatchdog
 /// Host applications can replace this with a watchdog that also invokes
 /// <c>LokiOrchestrator</c> ops-security agents.
 /// </summary>
-public sealed class DefaultSecurityWatchdog : ISecurityWatchdog
+[CircleAIVerificationStatus(VerificationLevel.WireProven,
+    Notes = "In-process Channel<AnomalySignal>. Single-process correct. Not multi-replica safe — signals emitted on replica A do not reach stream subscribers on replica B.")]
+public sealed class DefaultSecurityWatchdog : CircleAIComponentBase, ISecurityWatchdog
 {
     private const double RotationThreshold  = 0.30;
     private const double CompositeThreshold = 0.60;
@@ -68,62 +73,87 @@ public sealed class DefaultSecurityWatchdog : ISecurityWatchdog
         System.Threading.Channels.Channel.CreateUnbounded<AnomalySignal>();
 
     /// <inheritdoc/>
-    public async Task<SecurityResponse> OnAnomalyDetectedAsync(
+    public override string ComponentName => "DefaultSecurityWatchdog";
+
+    /// <summary>Construct the default watchdog.</summary>
+    public DefaultSecurityWatchdog() : base()
+    {
+    }
+
+    /// <inheritdoc/>
+    public Task<SecurityResponse> OnAnomalyDetectedAsync(
         AnomalySignal signal,
         SecurityCheckpoint? checkpoint = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(signal);
 
-        // Broadcast to any stream subscribers
-        await _signals.Writer.WriteAsync(signal, ct).ConfigureAwait(false);
-
-        // ── Graduated response policy ────────────────────────────────────────
-
-        if (signal.Confidence < RotationThreshold)
-            return SecurityResponse.NoAction(signal.Id,
-                $"Confidence {signal.Confidence:P0} below rotation threshold — monitoring only.");
-
-        // High-severity vectors always warrant rollback if we have a checkpoint
-        bool isHighSeverity = signal.Vector is
-            ThreatVector.ControlFlowDrift or
-            ThreatVector.PrivilegeEscalation or
-            ThreatVector.NetworkPivot or
-            ThreatVector.StateCorruption;
-
-        if (signal.Confidence > CompositeThreshold)
-        {
-            var actions = new List<SecurityResponseKind>
+        return RunOperationAsync(
+            "OnAnomalyDetectedAsync",
+            async () =>
             {
-                SecurityResponseKind.KeyRotation,
-                SecurityResponseKind.MeshIsolationSignal,
-            };
+                // Broadcast to any stream subscribers
+                await _signals.Writer.WriteAsync(signal, ct).ConfigureAwait(false);
 
-            SecurityCheckpoint? restored = null;
-            if (checkpoint is not null && isHighSeverity && checkpoint.Verify())
-            {
-                actions.Add(SecurityResponseKind.StateRollback);
-                restored = checkpoint;
-            }
+                CircleAI.Core.Diagnostics.CircleAIDiagnostics.AnomalySignalsTotal.Add(1,
+                    new KeyValuePair<string, object?>("vector", signal.Vector.ToString()),
+                    new KeyValuePair<string, object?>("confidence_band", signal.Confidence switch
+                    {
+                        < 0.30 => "low",
+                        < 0.60 => "mid",
+                        _ => "high"
+                    }));
 
-            return SecurityResponse.Composite(
-                signal.Id, actions,
-                $"Composite response for {signal.Vector} (confidence {signal.Confidence:P0}) " +
-                $"in {signal.AffectedModule}.",
-                restored);
-        }
+                // ── Graduated response policy ────────────────────────────────────────
 
-        // Mid-range confidence: rotate keys only
-        return SecurityResponse.ForKeyRotation(signal.Id,
-            $"Key rotation triggered for {signal.Vector} (confidence {signal.Confidence:P0}) " +
-            $"in {signal.AffectedModule}.");
+                if (signal.Confidence < RotationThreshold)
+                    return SecurityResponse.NoAction(signal.Id,
+                        $"Confidence {signal.Confidence:P0} below rotation threshold — monitoring only.");
+
+                // High-severity vectors always warrant rollback if we have a checkpoint
+                bool isHighSeverity = signal.Vector is
+                    ThreatVector.ControlFlowDrift or
+                    ThreatVector.PrivilegeEscalation or
+                    ThreatVector.NetworkPivot or
+                    ThreatVector.StateCorruption;
+
+                if (signal.Confidence > CompositeThreshold)
+                {
+                    var actions = new List<SecurityResponseKind>
+                    {
+                        SecurityResponseKind.KeyRotation,
+                        SecurityResponseKind.MeshIsolationSignal,
+                    };
+
+                    SecurityCheckpoint? restored = null;
+                    if (checkpoint is not null && isHighSeverity && checkpoint.Verify())
+                    {
+                        actions.Add(SecurityResponseKind.StateRollback);
+                        restored = checkpoint;
+                    }
+
+                    return SecurityResponse.Composite(
+                        signal.Id, actions,
+                        $"Composite response for {signal.Vector} (confidence {signal.Confidence:P0}) " +
+                        $"in {signal.AffectedModule}.",
+                        restored);
+                }
+
+                // Mid-range confidence: rotate keys only
+                return SecurityResponse.ForKeyRotation(signal.Id,
+                    $"Key rotation triggered for {signal.Vector} (confidence {signal.Confidence:P0}) " +
+                    $"in {signal.AffectedModule}.");
+            },
+            ct,
+            correlationId: signal.Id.ToString());
     }
 
     /// <inheritdoc/>
-    public async IAsyncEnumerable<AnomalySignal> StreamSignalsAsync(
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    public IAsyncEnumerable<AnomalySignal> StreamSignalsAsync(CancellationToken ct = default)
     {
-        await foreach (var signal in _signals.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            yield return signal;
+        return RunStreamAsync<AnomalySignal>(
+            "StreamSignalsAsync",
+            (c) => _signals.Reader.ReadAllAsync(c),
+            ct);
     }
 }

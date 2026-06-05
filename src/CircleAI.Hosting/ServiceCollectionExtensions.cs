@@ -181,7 +181,12 @@ public static class ServiceCollectionExtensions
                 return new RagContextBuilder(opts.EpisodicMemory, embedder: null, topK: opts.RagTopK);
 
             // Fallback: in-memory store so RagContextBuilder is always resolvable.
+            // CIRCLEAI_MEM_CAP_001 gates the store's 1000-entry FIFO default
+            // on the public surface; this hosting fallback is deliberate and
+            // documented, so the suppression is narrowly scoped to the call.
+#pragma warning disable CIRCLEAI_MEM_CAP_001
             return new RagContextBuilder(new InMemoryEpisodicStore());
+#pragma warning restore CIRCLEAI_MEM_CAP_001
         });
     }
 

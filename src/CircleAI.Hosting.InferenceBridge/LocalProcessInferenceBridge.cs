@@ -11,8 +11,12 @@
 namespace CircleAI.Hosting.InferenceBridge;
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CircleAI.Core.Components;
+using CircleAI.Core.Diagnostics;
+using CircleAI.Core.Validation;
 using CircleAI.Inference;
 
 /// <summary>
@@ -21,10 +25,15 @@ using CircleAI.Inference;
 /// Transport-layer encryption is reported as <c>true</c> because there is
 /// no cross-process channel — calls never leave the host process.
 /// </summary>
-public sealed class LocalProcessInferenceBridge : IInferenceBridge
+[CircleAIVerificationStatus(VerificationLevel.WireProven,
+    Notes = "Wraps any IChatGenerator. Outcome classification + duration metrics + audit emission verified. GetDeviceCapabilitiesAsync returns synthetic values (see [Experimental] attribute on that method).")]
+public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInferenceBridge
 {
     private readonly IChatGenerator _chatGenerator;
     private readonly ModelDescriptor _descriptor;
+
+    /// <inheritdoc />
+    public override string ComponentName => "LocalProcessInferenceBridge";
 
     /// <summary>
     /// Constructs a bridge that forwards every call to
@@ -35,6 +44,7 @@ public sealed class LocalProcessInferenceBridge : IInferenceBridge
     /// <param name="descriptor">Canonical descriptor for the loaded model.</param>
     /// <exception cref="ArgumentNullException">When any argument is <c>null</c>.</exception>
     public LocalProcessInferenceBridge(IChatGenerator chatGenerator, ModelDescriptor descriptor)
+        : base(logger: null)
     {
         ArgumentNullException.ThrowIfNull(chatGenerator);
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -45,24 +55,51 @@ public sealed class LocalProcessInferenceBridge : IInferenceBridge
     /// <inheritdoc/>
     public Task<IReadOnlyList<ModelDescriptor>> ListLoadedModelsAsync(CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
-        IReadOnlyList<ModelDescriptor> list = new[] { _descriptor };
-        return Task.FromResult(list);
+        return RunOperationAsync(
+            "ListLoadedModelsAsync",
+            () =>
+            {
+                IReadOnlyList<ModelDescriptor> list = new[] { _descriptor };
+                return Task.FromResult(list);
+            },
+            ct);
     }
 
     /// <inheritdoc/>
     public Task<bool> IsModelLoadedAsync(string modelId, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(modelId);
-        ct.ThrowIfCancellationRequested();
-        return Task.FromResult(string.Equals(_descriptor.ModelId, modelId, StringComparison.Ordinal));
+        return RunOperationAsync(
+            "IsModelLoadedAsync",
+            () => Task.FromResult(string.Equals(_descriptor.ModelId, modelId, StringComparison.Ordinal)),
+            ct,
+            correlationId: modelId);
     }
 
     /// <inheritdoc/>
-    public async Task<InferenceResponse> CompleteAsync(InferenceRequest request, CancellationToken ct = default)
+    public Task<InferenceResponse> CompleteAsync(InferenceRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        return RunOperationAsync(
+            "CompleteAsync",
+            async () =>
+            {
+                var response = await CompleteImplAsync(request, ct).ConfigureAwait(false);
+
+                CircleAIDiagnostics.InferenceRequestsTotal.Add(1,
+                    new KeyValuePair<string, object?>("bridge", ComponentName),
+                    new KeyValuePair<string, object?>("model_id", request.ModelId),
+                    new KeyValuePair<string, object?>("outcome", response.Status.ToString().ToLowerInvariant()));
+
+                return response;
+            },
+            ct,
+            correlationId: request.Id.ToString("N"));
+    }
+
+    private async Task<InferenceResponse> CompleteImplAsync(InferenceRequest request, CancellationToken ct)
+    {
         if (!string.Equals(_descriptor.ModelId, request.ModelId, StringComparison.Ordinal))
         {
             return new InferenceResponse(
@@ -135,12 +172,23 @@ public sealed class LocalProcessInferenceBridge : IInferenceBridge
     }
 
     /// <inheritdoc/>
-    public async IAsyncEnumerable<string> StreamCompletionAsync(
+    public IAsyncEnumerable<string> StreamCompletionAsync(
         InferenceRequest request,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        return RunStreamAsync<string>(
+            "StreamCompletionAsync",
+            innerCt => StreamCompletionImplAsync(request, innerCt),
+            ct,
+            correlationId: request.Id.ToString("N"));
+    }
+
+    private async IAsyncEnumerable<string> StreamCompletionImplAsync(
+        InferenceRequest request,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
         if (!string.Equals(_descriptor.ModelId, request.ModelId, StringComparison.Ordinal))
         {
             yield break;
@@ -177,28 +225,40 @@ public sealed class LocalProcessInferenceBridge : IInferenceBridge
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Currently returns synthetic values — <c>HasGpu</c>/<c>HasNpu</c> are
+    /// hardcoded to <c>false</c> regardless of the actual device. Real
+    /// platform probes (DXGI/Metal/Vulkan/NNAPI/CoreML/DirectML) are pending.
+    /// Treat the GPU/NPU fields as place-holders, not as ground truth.
+    /// </remarks>
+    [Experimental("CIRCLEAI_DEVCAPS_001",
+        UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
     public Task<DeviceCapabilities> GetDeviceCapabilitiesAsync(CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
+        return RunOperationAsync(
+            "GetDeviceCapabilitiesAsync",
+            () =>
+            {
+                var osName = DetectOsName();
+                var osVersion = Environment.OSVersion.Version.ToString();
+                var cores = Environment.ProcessorCount;
+                var physicalMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
 
-        var osName = DetectOsName();
-        var osVersion = Environment.OSVersion.Version.ToString();
-        var cores = Environment.ProcessorCount;
-        var physicalMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+                var caps = new DeviceCapabilities(
+                    OsName: osName,
+                    OsVersion: osVersion,
+                    PhysicalMemoryBytes: physicalMemory,
+                    CpuCoreCount: cores,
+                    HasGpu: false,
+                    GpuName: null,
+                    GpuMemoryBytes: null,
+                    HasNpu: false,
+                    NpuName: null,
+                    HasTransportLayerEncryption: true);
 
-        var caps = new DeviceCapabilities(
-            OsName: osName,
-            OsVersion: osVersion,
-            PhysicalMemoryBytes: physicalMemory,
-            CpuCoreCount: cores,
-            HasGpu: false,
-            GpuName: null,
-            GpuMemoryBytes: null,
-            HasNpu: false,
-            NpuName: null,
-            HasTransportLayerEncryption: true);
-
-        return Task.FromResult(caps);
+                return Task.FromResult(caps);
+            },
+            ct);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -19,4 +19,8 @@
 
   <!-- No transport dependencies — security primitives are self-contained. -->
 
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
 </Project>

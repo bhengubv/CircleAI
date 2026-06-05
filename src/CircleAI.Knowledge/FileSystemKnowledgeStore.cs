@@ -7,6 +7,8 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using CircleAI.Core.Components;
+using CircleAI.Core.Validation;
 
 namespace CircleAI.Knowledge;
 
@@ -14,8 +16,13 @@ namespace CircleAI.Knowledge;
 /// File-system <see cref="IKnowledgeStore"/>. Each note is stored as
 /// <c>{rootDirectory}/{id-no-dashes}.md</c>.
 /// </summary>
-public sealed class FileSystemKnowledgeStore : IKnowledgeStore
+[CircleAIVerificationStatus(VerificationLevel.WireProven,
+    Notes = "POSIX/Windows file system. Atomic write-then-rename. Per-Guid SemaphoreSlim correctness verified for single-process. NOT multi-replica safe — writes from multiple host processes can race; readers may see partial state.")]
+public sealed class FileSystemKnowledgeStore : CircleAIComponentBase, IKnowledgeStore
 {
+    /// <inheritdoc />
+    public override string ComponentName => "FileSystemKnowledgeStore";
+
     private readonly string _rootDirectory;
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
@@ -24,6 +31,7 @@ public sealed class FileSystemKnowledgeStore : IKnowledgeStore
     /// The directory is created if it does not already exist.
     /// </summary>
     public FileSystemKnowledgeStore(string rootDirectory)
+        : base()
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(rootDirectory);
         _rootDirectory = rootDirectory;
@@ -31,79 +39,124 @@ public sealed class FileSystemKnowledgeStore : IKnowledgeStore
     }
 
     /// <inheritdoc />
-    public async Task<KnowledgeNote?> GetAsync(Guid id, CancellationToken ct = default)
+    public Task<KnowledgeNote?> GetAsync(Guid id, CancellationToken ct = default)
     {
-        var path = NotePath(id);
-        if (!File.Exists(path)) return null;
+        return RunOperationAsync<KnowledgeNote?>(
+            "GetAsync",
+            async () =>
+            {
+                var path = NotePath(id);
+                if (!File.Exists(path)) return null;
 
-        var gate = LockFor(id);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
-            return KnowledgeNote.ParseFile(text);
-        }
-        finally { gate.Release(); }
+                var gate = LockFor(id);
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    var text = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+                    return KnowledgeNote.ParseFile(text);
+                }
+                finally { gate.Release(); }
+            },
+            ct,
+            correlationId: id.ToString("N"));
     }
 
     /// <inheritdoc />
-    public async Task<KnowledgeNote> SaveAsync(KnowledgeNote note, CancellationToken ct = default)
+    public Task<KnowledgeNote> SaveAsync(KnowledgeNote note, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(note);
 
-        var refreshed = note with { UpdatedAt = DateTimeOffset.UtcNow };
-        var target = NotePath(refreshed.Id);
-        var tmp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        return RunOperationAsync<KnowledgeNote>(
+            "SaveAsync",
+            async () =>
+            {
+                var refreshed = note with { UpdatedAt = DateTimeOffset.UtcNow };
+                var target = NotePath(refreshed.Id);
+                var tmp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
-        var gate = LockFor(refreshed.Id);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            // Write to tmp first so a crash mid-write never corrupts the
-            // canonical file.
-            await File.WriteAllTextAsync(tmp, refreshed.ToFileText(), ct)
-                .ConfigureAwait(false);
-            File.Move(tmp, target, overwrite: true);
-            return refreshed;
-        }
-        catch
-        {
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
-            throw;
-        }
-        finally { gate.Release(); }
+                var gate = LockFor(refreshed.Id);
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    // Write to tmp first so a crash mid-write never corrupts the
+                    // canonical file.
+                    await File.WriteAllTextAsync(tmp, refreshed.ToFileText(), ct)
+                        .ConfigureAwait(false);
+                    File.Move(tmp, target, overwrite: true);
+                    return refreshed;
+                }
+                catch
+                {
+                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
+                    throw;
+                }
+                finally { gate.Release(); }
+            },
+            ct,
+            correlationId: note.Id.ToString("N"));
     }
 
     /// <inheritdoc />
-    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
+    public Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
-        var path = NotePath(id);
-        var gate = LockFor(id);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            if (File.Exists(path)) File.Delete(path);
-        }
-        finally { gate.Release(); }
+        return RunOperationAsync<bool>(
+            "DeleteAsync",
+            async () =>
+            {
+                var path = NotePath(id);
+                var gate = LockFor(id);
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                    return true;
+                }
+                finally { gate.Release(); }
+            },
+            ct,
+            correlationId: id.ToString("N"));
     }
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<KnowledgeNote> SearchByTagAsync(
+    public IAsyncEnumerable<KnowledgeNote> SearchByTagAsync(
         string tag,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
 
-        await foreach (var note in EnumerateAllAsync(ct).ConfigureAwait(false))
+        return RunStreamAsync<KnowledgeNote>(
+            "SearchByTagAsync",
+            innerCt => SearchByTagImplAsync(tag, innerCt),
+            ct);
+    }
+
+    /// <inheritdoc />
+    public IAsyncEnumerable<KnowledgeNote> EnumerateAllAsync(
+        CancellationToken ct = default)
+    {
+        return RunStreamAsync<KnowledgeNote>(
+            "EnumerateAllAsync",
+            innerCt => EnumerateAllImplAsync(innerCt),
+            ct);
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming implementations (wrapped by RunStreamAsync above)
+    // ------------------------------------------------------------------
+
+    private async IAsyncEnumerable<KnowledgeNote> SearchByTagImplAsync(
+        string tag,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var note in EnumerateAllImplAsync(ct).ConfigureAwait(false))
         {
             if (note.Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))
                 yield return note;
         }
     }
 
-    /// <inheritdoc />
-    public async IAsyncEnumerable<KnowledgeNote> EnumerateAllAsync(
-        [EnumeratorCancellation] CancellationToken ct = default)
+    private async IAsyncEnumerable<KnowledgeNote> EnumerateAllImplAsync(
+        [EnumeratorCancellation] CancellationToken ct)
     {
         if (!Directory.Exists(_rootDirectory)) yield break;
 

@@ -7,6 +7,8 @@
 
 namespace CircleAI.Federation;
 
+using System.Diagnostics.CodeAnalysis;
+
 /// <summary>
 /// Lifecycle state of a <see cref="FederationRound"/>.
 /// </summary>
@@ -48,6 +50,7 @@ public enum RoundStatus
 /// <param name="CommittedAt">
 /// UTC timestamp the round was committed, or <c>null</c> if not yet committed.
 /// </param>
+[Experimental("CIRCLEAI_FED_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
 public sealed record FederationRound(
     Guid Id,
     string ModelId,

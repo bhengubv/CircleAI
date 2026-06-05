@@ -3,6 +3,9 @@
 // Sliding-window aggregator. Pulls samples from an IBiosignalSource and
 // computes per-kind min/max/mean/count over a configurable time window.
 
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Validation;
+
 namespace CircleAI.Wearable.Biosignals;
 
 /// <summary>
@@ -26,6 +29,13 @@ public sealed record BiosignalSnapshot(
 /// <summary>
 /// Sliding-window aggregator over an <see cref="IBiosignalSource"/>.
 /// </summary>
+/// <remarks>
+/// Marked <see cref="VerificationLevel.Reference"/>: aggregation math is
+/// correct, but downstream interpretation (mapping the snapshot to affect or
+/// alarms) is the consumer's responsibility and is not validated here.
+/// </remarks>
+[Experimental("CIRCLEAI_BIO_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference)]
 public sealed class BiosignalAggregator
 {
     private readonly IBiosignalSource _source;

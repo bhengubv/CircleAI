@@ -10,16 +10,25 @@
 namespace CircleAI.Federation;
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Components;
+using CircleAI.Core.Validation;
 
 /// <summary>
 /// In-process reference <see cref="IFederationAggregator"/>. Stores all round
 /// and delta state in memory; not durable across process restarts. Use for
 /// tests, edge devices, or as a starting point for a real implementation.
 /// </summary>
-public sealed class InMemoryFederationAggregator : IFederationAggregator
+[Experimental("CIRCLEAI_FED_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference,
+    Notes = "In-memory dictionary of rounds. Not durable across process restarts. Optional signature validator delegate makes 'no verification' the trivial default — production code should wire a UhidKeyRing-backed validator.")]
+public sealed class InMemoryFederationAggregator : CircleAIComponentBase, IFederationAggregator
 {
     private readonly ConcurrentDictionary<Guid, RoundState> _rounds = new();
     private readonly Func<ModelDelta, bool> _signatureValidator;
+
+    /// <inheritdoc/>
+    public override string ComponentName => "InMemoryFederationAggregator";
 
     /// <summary>
     /// Constructs the aggregator with a signature validator. Pass
@@ -30,6 +39,7 @@ public sealed class InMemoryFederationAggregator : IFederationAggregator
     /// aggregator drops deltas whose validator returns <c>false</c> at commit time.
     /// </param>
     public InMemoryFederationAggregator(Func<ModelDelta, bool> signatureValidator)
+        : base(logger: null)
     {
         ArgumentNullException.ThrowIfNull(signatureValidator);
         _signatureValidator = signatureValidator;
@@ -56,128 +66,157 @@ public sealed class InMemoryFederationAggregator : IFederationAggregator
             throw new ArgumentOutOfRangeException(nameof(maxParticipants),
                 $"maxParticipants ({maxParticipants}) must be >= minParticipants ({minParticipants}).");
         }
-        ct.ThrowIfCancellationRequested();
 
-        var round = new FederationRound(
-            Id: Guid.NewGuid(),
-            ModelId: modelId,
-            FromVersion: fromVersion,
-            ToVersion: toVersion,
-            MinParticipants: minParticipants,
-            MaxParticipants: maxParticipants,
-            CurrentParticipantCount: 0,
-            Status: RoundStatus.Open,
-            OpenedAt: DateTimeOffset.UtcNow,
-            CommittedAt: null);
+        return RunOperationAsync(
+            nameof(OpenRoundAsync),
+            () =>
+            {
+                ct.ThrowIfCancellationRequested();
 
-        var state = new RoundState(round);
-        _rounds[round.Id] = state;
-        return Task.FromResult(state.Snapshot);
+                var round = new FederationRound(
+                    Id: Guid.NewGuid(),
+                    ModelId: modelId,
+                    FromVersion: fromVersion,
+                    ToVersion: toVersion,
+                    MinParticipants: minParticipants,
+                    MaxParticipants: maxParticipants,
+                    CurrentParticipantCount: 0,
+                    Status: RoundStatus.Open,
+                    OpenedAt: DateTimeOffset.UtcNow,
+                    CommittedAt: null);
+
+                var state = new RoundState(round);
+                _rounds[round.Id] = state;
+                return Task.FromResult(state.Snapshot);
+            },
+            ct);
     }
 
     /// <inheritdoc/>
     public Task SubmitDeltaAsync(ModelDelta delta, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(delta);
-        ct.ThrowIfCancellationRequested();
 
-        if (!_rounds.TryGetValue(delta.RoundId, out var state))
-        {
-            throw new KeyNotFoundException($"Round {delta.RoundId} is not open.");
-        }
-
-        if (delta.DeltaPayload.Length == 0)
-        {
-            // Treat empty payloads as invalid: do not store, do not count.
-            // The aggregator does not raise — callers may legitimately submit
-            // an "empty" gradient if their local data was insufficient, and we
-            // want the round to remain viable.
-            return Task.CompletedTask;
-        }
-
-        lock (state.Lock)
-        {
-            if (state.Snapshot.Status != RoundStatus.Open)
+        return RunOperationAsync(
+            nameof(SubmitDeltaAsync),
+            () =>
             {
-                throw new InvalidOperationException(
-                    $"Round {delta.RoundId} is {state.Snapshot.Status}; not accepting deltas.");
-            }
-            if (state.Deltas.Count >= state.Snapshot.MaxParticipants)
-            {
-                throw new InvalidOperationException(
-                    $"Round {delta.RoundId} has reached MaxParticipants ({state.Snapshot.MaxParticipants}).");
-            }
+                ct.ThrowIfCancellationRequested();
 
-            state.Deltas.Add(delta);
-            state.Snapshot = state.Snapshot with { CurrentParticipantCount = state.Deltas.Count };
-        }
-        return Task.CompletedTask;
+                if (!_rounds.TryGetValue(delta.RoundId, out var state))
+                {
+                    throw new KeyNotFoundException($"Round {delta.RoundId} is not open.");
+                }
+
+                if (delta.DeltaPayload.Length == 0)
+                {
+                    // Treat empty payloads as invalid: do not store, do not count.
+                    // The aggregator does not raise — callers may legitimately submit
+                    // an "empty" gradient if their local data was insufficient, and we
+                    // want the round to remain viable.
+                    return Task.FromResult(true);
+                }
+
+                lock (state.Lock)
+                {
+                    if (state.Snapshot.Status != RoundStatus.Open)
+                    {
+                        throw new InvalidOperationException(
+                            $"Round {delta.RoundId} is {state.Snapshot.Status}; not accepting deltas.");
+                    }
+                    if (state.Deltas.Count >= state.Snapshot.MaxParticipants)
+                    {
+                        throw new InvalidOperationException(
+                            $"Round {delta.RoundId} has reached MaxParticipants ({state.Snapshot.MaxParticipants}).");
+                    }
+
+                    state.Deltas.Add(delta);
+                    state.Snapshot = state.Snapshot with { CurrentParticipantCount = state.Deltas.Count };
+                }
+                return Task.FromResult(true);
+            },
+            ct,
+            correlationId: delta.RoundId.ToString());
     }
 
     /// <inheritdoc/>
     public Task<byte[]?> TryCommitAsync(Guid roundId, CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
-        if (!_rounds.TryGetValue(roundId, out var state))
-        {
-            throw new KeyNotFoundException($"Round {roundId} is unknown.");
-        }
-
-        lock (state.Lock)
-        {
-            if (state.Snapshot.Status == RoundStatus.Committed)
+        return RunOperationAsync(
+            nameof(TryCommitAsync),
+            () =>
             {
-                // Idempotent: re-return the previously committed payload.
-                return Task.FromResult<byte[]?>(state.CommittedPayload);
-            }
-            if (state.Snapshot.Status == RoundStatus.Aborted)
-            {
-                return Task.FromResult<byte[]?>(null);
-            }
+                ct.ThrowIfCancellationRequested();
+                if (!_rounds.TryGetValue(roundId, out var state))
+                {
+                    throw new KeyNotFoundException($"Round {roundId} is unknown.");
+                }
 
-            var validDeltas = state.Deltas.Where(_signatureValidator).ToList();
-            if (validDeltas.Count < state.Snapshot.MinParticipants)
-            {
-                return Task.FromResult<byte[]?>(null);
-            }
+                lock (state.Lock)
+                {
+                    if (state.Snapshot.Status == RoundStatus.Committed)
+                    {
+                        // Idempotent: re-return the previously committed payload.
+                        return Task.FromResult<byte[]?>(state.CommittedPayload);
+                    }
+                    if (state.Snapshot.Status == RoundStatus.Aborted)
+                    {
+                        return Task.FromResult<byte[]?>(null);
+                    }
 
-            state.Snapshot = state.Snapshot with { Status = RoundStatus.Aggregating };
+                    var validDeltas = state.Deltas.Where(_signatureValidator).ToList();
+                    if (validDeltas.Count < state.Snapshot.MinParticipants)
+                    {
+                        return Task.FromResult<byte[]?>(null);
+                    }
 
-            byte[] aggregated;
-            try
-            {
-                aggregated = FederatedAveraging.Average(validDeltas);
-            }
-            catch (ArgumentException)
-            {
-                // Payload encoding inconsistent — fall back to the median
-                // delta by SampleCount as documented in the contract.
-                aggregated = FallbackMedianPayload(validDeltas);
-            }
+                    state.Snapshot = state.Snapshot with { Status = RoundStatus.Aggregating };
 
-            state.CommittedPayload = aggregated;
-            state.Snapshot = state.Snapshot with
-            {
-                Status = RoundStatus.Committed,
-                CommittedAt = DateTimeOffset.UtcNow,
-            };
+                    byte[] aggregated;
+                    try
+                    {
+                        aggregated = FederatedAveraging.Average(validDeltas);
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Payload encoding inconsistent — fall back to the median
+                        // delta by SampleCount as documented in the contract.
+                        aggregated = FallbackMedianPayload(validDeltas);
+                    }
 
-            return Task.FromResult<byte[]?>(aggregated);
-        }
+                    state.CommittedPayload = aggregated;
+                    state.Snapshot = state.Snapshot with
+                    {
+                        Status = RoundStatus.Committed,
+                        CommittedAt = DateTimeOffset.UtcNow,
+                    };
+
+                    return Task.FromResult<byte[]?>(aggregated);
+                }
+            },
+            ct,
+            correlationId: roundId.ToString());
     }
 
     /// <inheritdoc/>
     public Task<FederationRound> GetRoundAsync(Guid roundId, CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
-        if (!_rounds.TryGetValue(roundId, out var state))
-        {
-            throw new KeyNotFoundException($"Round {roundId} is unknown.");
-        }
-        lock (state.Lock)
-        {
-            return Task.FromResult(state.Snapshot);
-        }
+        return RunOperationAsync(
+            nameof(GetRoundAsync),
+            () =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!_rounds.TryGetValue(roundId, out var state))
+                {
+                    throw new KeyNotFoundException($"Round {roundId} is unknown.");
+                }
+                lock (state.Lock)
+                {
+                    return Task.FromResult(state.Snapshot);
+                }
+            },
+            ct,
+            correlationId: roundId.ToString());
     }
 
     /// <summary>

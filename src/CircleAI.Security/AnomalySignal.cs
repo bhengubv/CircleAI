@@ -6,6 +6,8 @@
 // The signal is IMMUTABLE — detection sites create it and hand it off.
 // The watchdog (and any ops-security agent) reads it and decides the response.
 
+using System.Text.Json.Serialization;
+
 namespace CircleAI.Security;
 
 /// <summary>
@@ -36,6 +38,7 @@ public sealed record AnomalySignal(
     double Confidence,
     string AffectedModule,
     string Description,
+    [property: JsonConverter(typeof(RedactedEvidenceJsonConverter))]
     IReadOnlyDictionary<string, string> Evidence,
     DateTimeOffset DetectedAt)
 {

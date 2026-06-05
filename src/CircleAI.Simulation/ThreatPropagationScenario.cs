@@ -8,6 +8,8 @@
 // CircleAI.Simulation so that the SDK's simulation surface stays
 // Security-aware without Security needing to know about Simulation.
 
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Validation;
 using CircleAI.Security;
 
 namespace CircleAI.Simulation;
@@ -17,6 +19,13 @@ namespace CircleAI.Simulation;
 /// <see cref="ScenarioKind.ThreatPropagation"/> from an
 /// <see cref="AnomalySignal"/>.
 /// </summary>
+/// <remarks>
+/// Marked <see cref="VerificationLevel.Reference"/>: depth + spread
+/// constants are heuristic and not yet calibrated against observed
+/// propagation curves on a live peer mesh.
+/// </remarks>
+[Experimental("CIRCLEAI_SIM_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference)]
 public static class ThreatPropagationScenario
 {
     /// <summary>

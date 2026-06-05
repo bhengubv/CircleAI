@@ -6,6 +6,8 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RunSettingsFilePath>$(MSBuildThisFileDirectory)bhengu.runsettings</RunSettingsFilePath>
+    <!-- Tests deliberately exercise types gated as Experimental on the public surface. -->
+    <NoWarn>$(NoWarn);CIRCLEAI_MEM_CAP_001;CIRCLEAI_DEVCAPS_001;CIRCLEAI_PEER_001;CIRCLEAI_FED_001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

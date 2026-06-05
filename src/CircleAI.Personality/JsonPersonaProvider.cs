@@ -9,6 +9,8 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CircleAI.Core.Components;
+using CircleAI.Core.Validation;
 
 namespace CircleAI.Personality;
 
@@ -16,8 +18,13 @@ namespace CircleAI.Personality;
 /// File-system <see cref="IPersonaProvider"/> that stores each persona as a
 /// JSON document under a configured root directory.
 /// </summary>
-public sealed class JsonPersonaProvider : IPersonaProvider
+[CircleAIVerificationStatus(VerificationLevel.WireProven,
+    Notes = "POSIX/Windows file system. Atomic write-then-rename. Per-userId SemaphoreSlim correctness verified for single-process. NOT multi-replica safe — concurrent writes from multiple host processes can race on disk.")]
+public sealed class JsonPersonaProvider : CircleAIComponentBase, IPersonaProvider
 {
+    /// <inheritdoc />
+    public override string ComponentName => "JsonPersonaProvider";
+
     private static readonly JsonSerializerOptions s_opts = new()
     {
         WriteIndented = true,
@@ -41,71 +48,98 @@ public sealed class JsonPersonaProvider : IPersonaProvider
     }
 
     /// <inheritdoc />
-    public async Task<Persona?> GetAsync(string userId, CancellationToken ct = default)
+    public Task<Persona?> GetAsync(string userId, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
-        var path = PersonaPath(userId);
-        if (!File.Exists(path)) return null;
 
-        var gate = LockFor(userId);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            await using var fs = new FileStream(
-                path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                bufferSize: 4096, useAsync: true);
+        return RunOperationAsync<Persona?>(
+            "GetAsync",
+            async () =>
+            {
+                var path = PersonaPath(userId);
+                if (!File.Exists(path)) return null;
 
-            return await JsonSerializer
-                .DeserializeAsync<Persona>(fs, s_opts, ct)
-                .ConfigureAwait(false);
-        }
-        finally { gate.Release(); }
+                var gate = LockFor(userId);
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await using var fs = new FileStream(
+                        path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: 4096, useAsync: true);
+
+                    return await JsonSerializer
+                        .DeserializeAsync<Persona>(fs, s_opts, ct)
+                        .ConfigureAwait(false);
+                }
+                finally { gate.Release(); }
+            },
+            ct,
+            uhidIdentityId: userId);
     }
 
     /// <inheritdoc />
-    public async Task<Persona> SaveAsync(string userId, Persona persona, CancellationToken ct = default)
+    public Task<Persona> SaveAsync(string userId, Persona persona, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(persona);
 
-        var refreshed = persona with { UpdatedAt = DateTimeOffset.UtcNow };
-        var target = PersonaPath(userId);
-        var tmp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
-
-        var gate = LockFor(userId);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            await using (var fs = new FileStream(
-                tmp, FileMode.Create, FileAccess.Write, FileShare.None,
-                bufferSize: 4096, useAsync: true))
+        return RunOperationAsync(
+            "SaveAsync",
+            async () =>
             {
-                await JsonSerializer.SerializeAsync(fs, refreshed, s_opts, ct)
-                    .ConfigureAwait(false);
-            }
+                var refreshed = persona with { UpdatedAt = DateTimeOffset.UtcNow };
+                var target = PersonaPath(userId);
+                var tmp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
-            File.Move(tmp, target, overwrite: true);
-            return refreshed;
-        }
-        catch
-        {
-            try { File.Delete(tmp); } catch { /* best effort */ }
-            throw;
-        }
-        finally { gate.Release(); }
+                var gate = LockFor(userId);
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await using (var fs = new FileStream(
+                        tmp, FileMode.Create, FileAccess.Write, FileShare.None,
+                        bufferSize: 4096, useAsync: true))
+                    {
+                        await JsonSerializer.SerializeAsync(fs, refreshed, s_opts, ct)
+                            .ConfigureAwait(false);
+                    }
+
+                    File.Move(tmp, target, overwrite: true);
+                    return refreshed;
+                }
+                catch
+                {
+                    try { File.Delete(tmp); } catch { /* best effort */ }
+                    throw;
+                }
+                finally { gate.Release(); }
+            },
+            ct,
+            uhidIdentityId: userId);
     }
 
     /// <inheritdoc />
     public Task<bool> ExistsAsync(string userId, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
-        ct.ThrowIfCancellationRequested();
-        return Task.FromResult(File.Exists(PersonaPath(userId)));
+
+        return RunOperationAsync(
+            "ExistsAsync",
+            () => Task.FromResult(File.Exists(PersonaPath(userId))),
+            ct,
+            uhidIdentityId: userId);
     }
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<Persona> ExportAllAsync(
-        [EnumeratorCancellation] CancellationToken ct = default)
+    public IAsyncEnumerable<Persona> ExportAllAsync(CancellationToken ct = default)
+    {
+        return RunStreamAsync<Persona>(
+            "ExportAllAsync",
+            c => EnumerateAllImpl(c),
+            ct);
+    }
+
+    private async IAsyncEnumerable<Persona> EnumerateAllImpl(
+        [EnumeratorCancellation] CancellationToken ct)
     {
         if (!Directory.Exists(_rootDirectory)) yield break;
 

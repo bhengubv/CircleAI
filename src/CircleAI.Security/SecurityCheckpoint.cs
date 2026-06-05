@@ -74,4 +74,22 @@ public sealed record SecurityCheckpoint(
         var current = SHA256.HashData(Payload);
         return CryptographicOperations.FixedTimeEquals(current, PayloadHash);
     }
+
+    /// <summary>
+    /// Returns a non-sensitive textual representation of this checkpoint —
+    /// the payload bytes are NEVER included in clear. Only the first
+    /// 16 hex chars of <see cref="PayloadHash"/> are emitted, sufficient
+    /// for correlation across logs without leaking content. Overrides the
+    /// default record <c>ToString</c> so structured loggers can't
+    /// accidentally serialise <see cref="Payload"/> through reflection.
+    /// </summary>
+    public override string ToString()
+    {
+        var hashPrefix = PayloadHash is { Length: >= 8 }
+            ? Convert.ToHexString(PayloadHash.AsSpan(0, 8))
+            : "(empty)";
+        return $"SecurityCheckpoint(Id={Id:D}, Module={ModuleLabel}, " +
+               $"Uhid={UhidIdentityId}, PayloadSha256={hashPrefix}…, " +
+               $"PayloadBytes={Payload?.Length ?? 0}, CreatedAt={CreatedAt:O})";
+    }
 }

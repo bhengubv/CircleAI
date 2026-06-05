@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Validation;
 using CircleAI.Memory;
 
 namespace CircleAI.Simulation;
@@ -7,6 +9,14 @@ namespace CircleAI.Simulation;
 /// memory, then runs a deterministic diffusion model to forecast the health
 /// impact of the given scenario on the peer network.
 /// </summary>
+/// <remarks>
+/// Marked <see cref="VerificationLevel.Reference"/>: the diffusion math is
+/// deterministic and unit-tested in-process, but no end-to-end wire-proven
+/// run has been executed against a populated peer graph in production.
+/// Consumers should treat output as advisory until that bar is met.
+/// </remarks>
+[Experimental("CIRCLEAI_SIM_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference)]
 public sealed class NetworkHealthSimulator
 {
     private readonly IGraphBuilder    _extractor;

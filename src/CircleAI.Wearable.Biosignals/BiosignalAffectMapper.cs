@@ -4,6 +4,8 @@
 // Pure function on (sample, state). No persistence. No side effects beyond the
 // state mutation. Same rules can be ported to Rust/Go/Python/Swift/TS.
 
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Validation;
 using CircleAI.Memory;
 
 namespace CircleAI.Wearable.Biosignals;
@@ -24,7 +26,12 @@ namespace CircleAI.Wearable.Biosignals;
 ///   <item>SleepStage 2 or 3 (deep / REM): no mutation — user is not interacting.</item>
 ///   <item>Confidence &lt; 0.5 on any signal: no mutation.</item>
 /// </list>
+/// Marked <see cref="VerificationLevel.Reference"/>: the rule sheet is
+/// internally consistent and fixture-tested, but the thresholds have not
+/// been clinically validated. Do not use as a medical signal.
 /// </remarks>
+[Experimental("CIRCLEAI_BIO_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference)]
 public static class BiosignalAffectMapper
 {
     private const float MinConfidence = 0.5f;

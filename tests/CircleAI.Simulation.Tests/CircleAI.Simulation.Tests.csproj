@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Tests deliberately exercise types gated as Experimental on the public surface. -->
+    <NoWarn>$(NoWarn);CIRCLEAI_SIM_001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -7,6 +7,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Tests deliberately exercise types gated as Experimental on the public surface. -->
+    <NoWarn>$(NoWarn);CIRCLEAI_BIO_001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

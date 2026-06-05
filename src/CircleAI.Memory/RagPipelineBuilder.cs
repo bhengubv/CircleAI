@@ -81,7 +81,13 @@ public sealed class RagPipelineBuilder
     /// <returns>This builder for chaining.</returns>
     public RagPipelineBuilder WithInMemoryStore()
     {
+        // This package owns InMemoryEpisodicStore and exposes it deliberately
+        // through this convenience helper. The CIRCLEAI_MEM_CAP_001 gate is
+        // for downstream consumers — within this assembly the FIFO default
+        // is intentional. Justified suppression, narrow scope.
+#pragma warning disable CIRCLEAI_MEM_CAP_001
         _store = new InMemoryEpisodicStore();
+#pragma warning restore CIRCLEAI_MEM_CAP_001
         return this;
     }
 

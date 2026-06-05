@@ -11,6 +11,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CIRCLEAI_FED_001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

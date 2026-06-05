@@ -6,9 +6,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Core.Validation;
 
 namespace CircleAI.Memory
 {
@@ -17,6 +19,15 @@ namespace CircleAI.Memory
     /// <c>ReaderWriterLockSlim</c>. Maximum capacity is capped to prevent
     /// unbounded growth on long-running processes.
     /// </summary>
+    /// <remarks>
+    /// Marked <see cref="VerificationLevel.Reference"/> and gated behind
+    /// <c>CIRCLEAI_MEM_CAP_001</c>: the 1000-entry FIFO cap is a default
+    /// chosen for tests. Production deployments MUST configure
+    /// <c>maxEntries</c> explicitly based on observed memory pressure and
+    /// expected retention horizon, or substitute a persistent backend.
+    /// </remarks>
+    [Experimental("CIRCLEAI_MEM_CAP_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+    [CircleAIVerificationStatus(VerificationLevel.Reference)]
     public sealed class InMemoryEpisodicStore : IEpisodicMemoryStore
     {
         private readonly int _maxEntries;

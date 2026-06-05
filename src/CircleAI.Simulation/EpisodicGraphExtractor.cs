@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using CircleAI.Core.Validation;
 using CircleAI.Memory;
 
 namespace CircleAI.Simulation;
@@ -14,7 +16,12 @@ namespace CircleAI.Simulation;
 ///   <item>AppContext becomes an "app" node; an edge event → app with relation "occurred_in" and weight 1.0 is added.</item>
 ///   <item>Consecutive entries within 1 hour are connected via a "followed_by" edge with weight 0.5.</item>
 /// </list>
+/// Marked <see cref="VerificationLevel.Reference"/>: heuristic extractor only,
+/// no LLM-grounded entity resolution. The shape of the graph is correct but
+/// the choice of nodes/edges is not yet validated against a labelled corpus.
 /// </remarks>
+[Experimental("CIRCLEAI_SIM_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference)]
 public sealed class EpisodicGraphExtractor : IGraphBuilder
 {
     /// <inheritdoc/>

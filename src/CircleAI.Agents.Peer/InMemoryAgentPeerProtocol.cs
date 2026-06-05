@@ -8,8 +8,11 @@
 // CircleAI.Aether and follow the same contract.
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using CircleAI.Core.Components;
+using CircleAI.Core.Validation;
 
 namespace CircleAI.Agents.Peer;
 
@@ -18,7 +21,10 @@ namespace CircleAI.Agents.Peer;
 /// Backed by an <see cref="AgentBus"/> so multiple instances can simulate a
 /// mesh of CircleAI peers in tests and samples.
 /// </summary>
-public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
+[Experimental("CIRCLEAI_PEER_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
+[CircleAIVerificationStatus(VerificationLevel.Reference,
+    Notes = "In-process channel-backed bus. Designed for tests and same-process simulations. Not transport-backed — use an Aether-backed IAgentPeerProtocol in production.")]
+public sealed class InMemoryAgentPeerProtocol : CircleAIComponentBase, IAgentPeerProtocol, IDisposable
 {
     private static readonly TimeSpan DefaultDiscoveryWindow = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan DefaultInvokeTimeout = TimeSpan.FromSeconds(5);
@@ -43,6 +49,9 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
             new UnboundedChannelOptions { SingleReader = false, SingleWriter = true });
 
     private int _disposed;
+
+    /// <inheritdoc />
+    public override string ComponentName => "InMemoryAgentPeerProtocol";
 
     /// <summary>
     /// Creates a new in-memory protocol instance, registers it on
@@ -69,6 +78,7 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
         byte[] ownPublicKey,
         Func<byte[], byte[]>? signer = null,
         Func<AgentCapability, byte[], byte[]>? capabilityHandler = null)
+        : base(logger: null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ownUhid);
         ArgumentNullException.ThrowIfNull(bus);
@@ -98,7 +108,95 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
     public string OwnUhid => _ownUhid;
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyList<PeerAgent>> DiscoverPeersAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<PeerAgent>> DiscoverPeersAsync(CancellationToken cancellationToken)
+    {
+        return RunOperationAsync(
+            "DiscoverPeersAsync",
+            () => DiscoverPeersImplAsync(cancellationToken),
+            cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public Task<PeerAgent?> GreetAsync(string targetUhid, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
+
+        return RunOperationAsync(
+            "GreetAsync",
+            () => GreetImplAsync(targetUhid),
+            cancellationToken,
+            correlationId: targetUhid);
+    }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<AgentCapability>> QueryCapabilitiesAsync(
+        string targetUhid,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
+
+        return RunOperationAsync(
+            "QueryCapabilitiesAsync",
+            () => QueryCapabilitiesImplAsync(targetUhid),
+            cancellationToken,
+            correlationId: targetUhid);
+    }
+
+    /// <inheritdoc/>
+    public Task<AgentMessage> InvokeAsync(
+        string targetUhid,
+        AgentCapability capability,
+        byte[] requestPayload,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
+        ArgumentNullException.ThrowIfNull(capability);
+        ArgumentNullException.ThrowIfNull(requestPayload);
+
+        return RunOperationAsync(
+            "InvokeAsync",
+            () => InvokeImplAsync(targetUhid, capability, requestPayload, cancellationToken),
+            cancellationToken,
+            correlationId: targetUhid);
+    }
+
+    /// <inheritdoc/>
+    public IAsyncEnumerable<AgentMessage> StreamInboxAsync(CancellationToken cancellationToken)
+    {
+        return RunStreamAsync<AgentMessage>(
+            "StreamInboxAsync",
+            innerCt => StreamInboxImplAsync(innerCt),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Tears down the protocol, unregisters from the bus, and stops the
+    /// inbox pump.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _runCts.Cancel();
+        try
+        {
+            _pumpTask.Wait(TimeSpan.FromSeconds(1));
+        }
+        catch (AggregateException)
+        {
+            // Expected when the pump observes cancellation.
+        }
+        _bus.Unregister(_ownUhid);
+        _externalInbox.Writer.TryComplete();
+        _runCts.Dispose();
+    }
+
+    // ── Private impls (wrapped above by RunOperationAsync / RunStreamAsync) ──
+
+    private async Task<IReadOnlyList<PeerAgent>> DiscoverPeersImplAsync(CancellationToken cancellationToken)
     {
         // Broadcast a Discover so peers can refresh their view of us.
         var announcement = AgentMessage.Create(
@@ -128,11 +226,8 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
             .ToList();
     }
 
-    /// <inheritdoc/>
-    public Task<PeerAgent?> GreetAsync(string targetUhid, CancellationToken cancellationToken)
+    private Task<PeerAgent?> GreetImplAsync(string targetUhid)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
-
         if (!_bus.TryGetPeer(targetUhid, out var peer))
         {
             return Task.FromResult<PeerAgent?>(null);
@@ -150,13 +245,8 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
         return Task.FromResult<PeerAgent?>(WithLastSeen(peer));
     }
 
-    /// <inheritdoc/>
-    public Task<IReadOnlyList<AgentCapability>> QueryCapabilitiesAsync(
-        string targetUhid,
-        CancellationToken cancellationToken)
+    private Task<IReadOnlyList<AgentCapability>> QueryCapabilitiesImplAsync(string targetUhid)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
-
         if (!_bus.TryGetPeer(targetUhid, out var peer))
         {
             return Task.FromResult<IReadOnlyList<AgentCapability>>([]);
@@ -165,17 +255,12 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
         return Task.FromResult(peer.Capabilities);
     }
 
-    /// <inheritdoc/>
-    public async Task<AgentMessage> InvokeAsync(
+    private async Task<AgentMessage> InvokeImplAsync(
         string targetUhid,
         AgentCapability capability,
         byte[] requestPayload,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetUhid);
-        ArgumentNullException.ThrowIfNull(capability);
-        ArgumentNullException.ThrowIfNull(requestPayload);
-
         if (!_bus.TryGetPeer(targetUhid, out var unusedPeer))
         {
             throw new AgentInvocationException(
@@ -228,8 +313,7 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
         return reply;
     }
 
-    /// <inheritdoc/>
-    public async IAsyncEnumerable<AgentMessage> StreamInboxAsync(
+    private async IAsyncEnumerable<AgentMessage> StreamInboxImplAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         while (await _externalInbox.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
@@ -239,31 +323,6 @@ public sealed class InMemoryAgentPeerProtocol : IAgentPeerProtocol, IDisposable
                 yield return message;
             }
         }
-    }
-
-    /// <summary>
-    /// Tears down the protocol, unregisters from the bus, and stops the
-    /// inbox pump.
-    /// </summary>
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-        {
-            return;
-        }
-
-        _runCts.Cancel();
-        try
-        {
-            _pumpTask.Wait(TimeSpan.FromSeconds(1));
-        }
-        catch (AggregateException)
-        {
-            // Expected when the pump observes cancellation.
-        }
-        _bus.Unregister(_ownUhid);
-        _externalInbox.Writer.TryComplete();
-        _runCts.Dispose();
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────
