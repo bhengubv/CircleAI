@@ -22,7 +22,7 @@ namespace CircleAI.Runtime.Backends;
 /// </param>
 public sealed record BackendSelection(
     BackendKind Backend,
-    ModelTier ActualTier,
+    CapabilityTier ActualTier,
     string Rationale);
 
 /// <summary>
@@ -33,9 +33,9 @@ public sealed record BackendSelection(
 public interface IBackendSelector
 {
     /// <summary>
-    /// Pick the best <see cref="BackendKind"/> + <see cref="ModelTier"/> combo
+    /// Pick the best <see cref="BackendKind"/> + <see cref="CapabilityTier"/> combo
     /// for the given host. <paramref name="requestedTier"/> is the upper
     /// bound — the returned tier may be lower if the host cannot run it.
     /// </summary>
-    BackendSelection Select(HostProfile profile, ModelTier requestedTier);
+    BackendSelection Select(HostProfile profile, CapabilityTier requestedTier);
 }

@@ -1,9 +1,16 @@
-// ModelTier.cs
+// CapabilityTier.cs
 //
 // Tier-based sizing for Qwen / DeepSeek / GLM / Kimi families. Picked by
 // IBackendSelector based on available compute headroom. The exact model ID
 // per tier comes from the model registry (CircleAI.Core embedded_registry.json
 // and downstream model managers); the tier here is the routing key.
+//
+// Named CapabilityTier (not ModelTier) to avoid colliding with the existing
+// CircleAI.Inference.ModelTier sealed-record sizing entry. Functionally they
+// describe related but distinct things: this enum is the device-side
+// capability ceiling; the record is the model-side requirement floor. A
+// BackendSelector returns this tier; a ModelSelector looks up which models
+// fit within it.
 
 namespace CircleAI.Runtime.Backends;
 
@@ -12,7 +19,7 @@ namespace CircleAI.Runtime.Backends;
 /// Higher tiers require more RAM / VRAM. Tier0 is the always-runnable floor
 /// (≈600 MB footprint); Tier4 targets 24 GB+ VRAM frontier models.
 /// </summary>
-public enum ModelTier
+public enum CapabilityTier
 {
     /// <summary>Tier 0 — Qwen3-0.6B class. ≈600 MB. CPU-friendly. Always available.</summary>
     Tier0_Tiny = 0,

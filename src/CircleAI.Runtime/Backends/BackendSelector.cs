@@ -18,7 +18,7 @@ public sealed class BackendSelector : IBackendSelector
     private const long GiB = 1024L * 1024 * 1024;
 
     /// <inheritdoc/>
-    public BackendSelection Select(HostProfile profile, ModelTier requestedTier)
+    public BackendSelection Select(HostProfile profile, CapabilityTier requestedTier)
     {
         ArgumentNullException.ThrowIfNull(profile);
 
@@ -47,7 +47,7 @@ public sealed class BackendSelector : IBackendSelector
         // ── 3. Huawei Ascend NPU — Chinese data-centre + Kirin laptops ─────────
         if (profile.Npu?.Vendor == NpuVendor.HuaweiAscend)
         {
-            var tier = ClampTier(requestedTier, ceiling: ModelTier.Tier3_Large);
+            var tier = ClampTier(requestedTier, ceiling: CapabilityTier.Tier3_Large);
             return new BackendSelection(
                 BackendKind.Ascend, tier,
                 $"Huawei Ascend NPU detected ({profile.Npu.Model}); Ascend (CANN) backend; tier capped to {tier}.");
@@ -56,7 +56,7 @@ public sealed class BackendSelector : IBackendSelector
         // ── 4. Cambricon MLU — Chinese accelerator ─────────────────────────────
         if (profile.Npu?.Vendor == NpuVendor.CambriconMlu)
         {
-            var tier = ClampTier(requestedTier, ceiling: ModelTier.Tier3_Large);
+            var tier = ClampTier(requestedTier, ceiling: CapabilityTier.Tier3_Large);
             return new BackendSelection(
                 BackendKind.Cambricon, tier,
                 $"Cambricon MLU detected; Cambricon backend; tier capped to {tier}.");
@@ -80,7 +80,7 @@ public sealed class BackendSelector : IBackendSelector
         if (profile.Npu?.Vendor == NpuVendor.QualcommHexagon ||
             profile.Gpu?.Vendor == GpuVendor.Qualcomm)
         {
-            var tier = ClampTier(requestedTier, ceiling: ModelTier.Tier1_Small);
+            var tier = ClampTier(requestedTier, ceiling: CapabilityTier.Tier1_Small);
             return new BackendSelection(
                 BackendKind.OpenCL, tier,
                 $"Qualcomm Snapdragon platform; OpenCL backend (Adreno/Hexagon shared compute); tier capped to {tier}.");
@@ -89,7 +89,7 @@ public sealed class BackendSelector : IBackendSelector
         // ── 7. ARM Mali via Vulkan (MediaTek, Exynos, Tensor) ──────────────────
         if (profile.Gpu?.Vendor is GpuVendor.Arm or GpuVendor.Huawei)
         {
-            var tier = ClampTier(requestedTier, ceiling: ModelTier.Tier1_Small);
+            var tier = ClampTier(requestedTier, ceiling: CapabilityTier.Tier1_Small);
             return new BackendSelection(
                 BackendKind.Vulkan, tier,
                 $"ARM/Mali class GPU ({profile.Gpu.Model}); Vulkan backend; tier capped to {tier}.");
@@ -106,38 +106,38 @@ public sealed class BackendSelector : IBackendSelector
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static ModelTier ClampTier(ModelTier requested, ModelTier ceiling) =>
+    private static CapabilityTier ClampTier(CapabilityTier requested, CapabilityTier ceiling) =>
         requested <= ceiling ? requested : ceiling;
 
-    private static ModelTier TierForVram(long vramBytes) =>
+    private static CapabilityTier TierForVram(long vramBytes) =>
         vramBytes switch
         {
-            >= 24L * GiB => ModelTier.Tier4_Frontier,
-            >= 12L * GiB => ModelTier.Tier3_Large,
-            >= 8L  * GiB => ModelTier.Tier2_Medium,
-            >= 4L  * GiB => ModelTier.Tier1_Small,
-            _            => ModelTier.Tier0_Tiny,
+            >= 24L * GiB => CapabilityTier.Tier4_Frontier,
+            >= 12L * GiB => CapabilityTier.Tier3_Large,
+            >= 8L  * GiB => CapabilityTier.Tier2_Medium,
+            >= 4L  * GiB => CapabilityTier.Tier1_Small,
+            _            => CapabilityTier.Tier0_Tiny,
         };
 
-    private static ModelTier TierForUnifiedMemory(long ramBytes) =>
+    private static CapabilityTier TierForUnifiedMemory(long ramBytes) =>
         // Apple Silicon shares one pool — be more conservative because the OS,
         // app, and graphics surface all consume from the same RAM.
         ramBytes switch
         {
-            >= 64L * GiB => ModelTier.Tier4_Frontier,
-            >= 32L * GiB => ModelTier.Tier3_Large,
-            >= 16L * GiB => ModelTier.Tier2_Medium,
-            >= 8L  * GiB => ModelTier.Tier1_Small,
-            _            => ModelTier.Tier0_Tiny,
+            >= 64L * GiB => CapabilityTier.Tier4_Frontier,
+            >= 32L * GiB => CapabilityTier.Tier3_Large,
+            >= 16L * GiB => CapabilityTier.Tier2_Medium,
+            >= 8L  * GiB => CapabilityTier.Tier1_Small,
+            _            => CapabilityTier.Tier0_Tiny,
         };
 
-    private static ModelTier TierForCpuRam(long ramBytes) =>
+    private static CapabilityTier TierForCpuRam(long ramBytes) =>
         ramBytes switch
         {
-            >= 64L * GiB => ModelTier.Tier3_Large,    // Server CPU with lots of RAM
-            >= 32L * GiB => ModelTier.Tier2_Medium,
-            >= 16L * GiB => ModelTier.Tier1_Small,
-            >= 8L  * GiB => ModelTier.Tier1_Small,
-            _            => ModelTier.Tier0_Tiny,
+            >= 64L * GiB => CapabilityTier.Tier3_Large,    // Server CPU with lots of RAM
+            >= 32L * GiB => CapabilityTier.Tier2_Medium,
+            >= 16L * GiB => CapabilityTier.Tier1_Small,
+            >= 8L  * GiB => CapabilityTier.Tier1_Small,
+            _            => CapabilityTier.Tier0_Tiny,
         };
 }

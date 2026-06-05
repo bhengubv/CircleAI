@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Inference.Server</PackageId>
+    <Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>circleai-inference-server-9d0e4c45</UserSecretsId>
+    <RootNamespace>CircleAI.Inference.Server</RootNamespace>
+    <AssemblyName>CircleAI.Inference.Server</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Companion + bridge + embeddings — the three surfaces the server exposes. -->
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj" />
+    <ProjectReference Include="..\CircleAI.Runtime\CircleAI.Runtime.csproj" />
+    <ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ASP.NET Core JWT bearer + Windows service hosting (no-op on Linux/macOS). -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- appsettings.json + appsettings.Development.json are auto-included by
+       the Web SDK as Content items; no explicit <Content> needed. -->
+
+  <ItemGroup>
+    <None Include="Dockerfile;systemd\circleai-inference-server.service;windows\install-windows-service.ps1" />
+  </ItemGroup>
+
+</Project>

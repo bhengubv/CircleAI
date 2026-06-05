@@ -50,9 +50,9 @@ public sealed class EndToEndIntegrationTests : IDisposable
             new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
 
         // 2. Selector picks the backend.
-        var selection = new BackendSelector().Select(profile, ModelTier.Tier4_Frontier);
+        var selection = new BackendSelector().Select(profile, CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cuda, selection.Backend);
-        Assert.True(selection.ActualTier >= ModelTier.Tier2_Medium);
+        Assert.True(selection.ActualTier >= CapabilityTier.Tier2_Medium);
 
         // 3. Registry returns a real bundle for that tuple.
         var bundle = NativeRuntimeRegistry.LoadEmbedded()
@@ -89,7 +89,7 @@ public sealed class EndToEndIntegrationTests : IDisposable
             new NpuInfo(NpuVendor.AppleNeuralEngine, "Apple Neural Engine"),
             new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
 
-        var selection = new BackendSelector().Select(profile, ModelTier.Tier4_Frontier);
+        var selection = new BackendSelector().Select(profile, CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Metal, selection.Backend);
 
         var bundle = NativeRuntimeRegistry.LoadEmbedded()

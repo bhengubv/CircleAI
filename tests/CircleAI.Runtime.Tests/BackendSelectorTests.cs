@@ -32,9 +32,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Nvidia, "RTX 4090", 24 * GiB, "550.0")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cuda, sel.Backend);
-        Assert.Equal(ModelTier.Tier4_Frontier, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier4_Frontier, sel.ActualTier);
         Assert.Contains("CUDA", sel.Rationale);
     }
 
@@ -43,9 +43,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Nvidia, "RTX 4070", 12 * GiB, "550.0")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cuda, sel.Backend);
-        Assert.Equal(ModelTier.Tier3_Large, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier3_Large, sel.ActualTier);
     }
 
     [Fact]
@@ -53,9 +53,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Nvidia, "RTX 3060 Ti", 8 * GiB, "550.0")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cuda, sel.Backend);
-        Assert.Equal(ModelTier.Tier2_Medium, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier2_Medium, sel.ActualTier);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed class BackendSelectorTests
         var sel = new BackendSelector().Select(
             MakeProfile(ram: 32 * GiB,
                 gpu: new GpuInfo(GpuVendor.Nvidia, "GTX 1050", 3 * GiB, "470.0")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cpu, sel.Backend);
     }
 
@@ -80,9 +80,9 @@ public sealed class BackendSelectorTests
                 arch: ArchitectureKind.Arm64,
                 ram: 32 * GiB,
                 gpu: new GpuInfo(GpuVendor.Apple, "Apple M3 Pro GPU", 32 * GiB, null)),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Metal, sel.Backend);
-        Assert.Equal(ModelTier.Tier3_Large, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier3_Large, sel.ActualTier);
     }
 
     [Fact]
@@ -94,9 +94,9 @@ public sealed class BackendSelectorTests
                 arch: ArchitectureKind.Arm64,
                 ram: 8 * GiB,
                 gpu: new GpuInfo(GpuVendor.Apple, "Apple M2 GPU", 8 * GiB, null)),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Metal, sel.Backend);
-        Assert.Equal(ModelTier.Tier1_Small, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier1_Small, sel.ActualTier);
     }
 
     // ── Huawei Ascend NPU ────────────────────────────────────────────────────
@@ -108,9 +108,9 @@ public sealed class BackendSelectorTests
             MakeProfile(
                 os: OperatingSystemKind.Linux,
                 npu: new NpuInfo(NpuVendor.HuaweiAscend, "Ascend 910B")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Ascend, sel.Backend);
-        Assert.Equal(ModelTier.Tier3_Large, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier3_Large, sel.ActualTier);
     }
 
     // ── Cambricon MLU ─────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ public sealed class BackendSelectorTests
             MakeProfile(
                 os: OperatingSystemKind.Linux,
                 npu: new NpuInfo(NpuVendor.CambriconMlu, "MLU370")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cambricon, sel.Backend);
     }
 
@@ -133,9 +133,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Amd, "RX 7800 XT", 16 * GiB, "23.20")),
-            ModelTier.Tier3_Large);
+            CapabilityTier.Tier3_Large);
         Assert.Equal(BackendKind.Vulkan, sel.Backend);
-        Assert.Equal(ModelTier.Tier3_Large, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier3_Large, sel.ActualTier);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Intel, "Arc A770", 16 * GiB, "31.0.101.5000")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Vulkan, sel.Backend);
     }
 
@@ -158,9 +158,9 @@ public sealed class BackendSelectorTests
                 arch: ArchitectureKind.Arm64,
                 ram: 8 * GiB,
                 npu: new NpuInfo(NpuVendor.QualcommHexagon, "Hexagon 780")),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.OpenCL, sel.Backend);
-        Assert.Equal(ModelTier.Tier1_Small, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier1_Small, sel.ActualTier);
     }
 
     // ── ARM Mali ──────────────────────────────────────────────────────────────
@@ -174,9 +174,9 @@ public sealed class BackendSelectorTests
                 arch: ArchitectureKind.Arm64,
                 ram: 12 * GiB,
                 gpu: new GpuInfo(GpuVendor.Arm, "Mali-G715", 0, null)),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Vulkan, sel.Backend);
-        Assert.Equal(ModelTier.Tier1_Small, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier1_Small, sel.ActualTier);
     }
 
     // ── CPU fallback ──────────────────────────────────────────────────────────
@@ -186,9 +186,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(ram: 64 * GiB),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cpu, sel.Backend);
-        Assert.Equal(ModelTier.Tier3_Large, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier3_Large, sel.ActualTier);
     }
 
     [Fact]
@@ -196,9 +196,9 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(ram: 4 * GiB),
-            ModelTier.Tier4_Frontier);
+            CapabilityTier.Tier4_Frontier);
         Assert.Equal(BackendKind.Cpu, sel.Backend);
-        Assert.Equal(ModelTier.Tier0_Tiny, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier0_Tiny, sel.ActualTier);
     }
 
     [Fact]
@@ -207,15 +207,15 @@ public sealed class BackendSelectorTests
         // 24 GiB GPU could run Tier4, but the caller asked for Tier1 — must NOT upgrade.
         var sel = new BackendSelector().Select(
             MakeProfile(gpu: new GpuInfo(GpuVendor.Nvidia, "RTX 4090", 24 * GiB, "550.0")),
-            ModelTier.Tier1_Small);
+            CapabilityTier.Tier1_Small);
         Assert.Equal(BackendKind.Cuda, sel.Backend);
-        Assert.Equal(ModelTier.Tier1_Small, sel.ActualTier);
+        Assert.Equal(CapabilityTier.Tier1_Small, sel.ActualTier);
     }
 
     [Fact]
     public void Null_Profile_Throws_ArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new BackendSelector().Select(null!, ModelTier.Tier0_Tiny));
+        Assert.Throws<ArgumentNullException>(() => new BackendSelector().Select(null!, CapabilityTier.Tier0_Tiny));
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class BackendSelectorTests
     {
         var sel = new BackendSelector().Select(
             MakeProfile(ram: 8 * GiB),
-            ModelTier.Tier1_Small);
+            CapabilityTier.Tier1_Small);
         Assert.False(string.IsNullOrWhiteSpace(sel.Rationale));
     }
 }

@@ -1,0 +1,43 @@
+# /etc/systemd/system/circleai-inference-server.service
+#
+# Install:
+#   sudo cp circleai-inference-server.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now circleai-inference-server
+#
+# Inspect:
+#   sudo systemctl status circleai-inference-server
+#   sudo journalctl -u circleai-inference-server -f
+
+[Unit]
+Description=CircleAI Inference Server (OpenAI-compatible, MNN, Chinese-sovereign)
+Documentation=https://github.com/bhengubv/CircleAI/blob/master/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/CircleAI.Inference.Server
+Restart=on-failure
+RestartSec=5s
+User=circleai
+Group=circleai
+
+# Environment overrides — set these to point at your data root etc.
+Environment=ASPNETCORE_URLS=http://0.0.0.0:8080
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+Environment=CircleAIServer__RuntimeCacheRoot=/var/lib/circleai/runtime
+Environment=CircleAIServer__ModelStorageRoot=/var/lib/circleai/models
+
+# Read-only root, writable data dir.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/circleai
+NoNewPrivileges=true
+
+# Resource limits — adjust upward for larger model footprints.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
