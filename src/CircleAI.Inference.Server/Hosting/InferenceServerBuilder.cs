@@ -10,12 +10,14 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using CircleAI.Inference.Server.Auth;
 using CircleAI.Inference.Server.Endpoints;
+using CircleAI.Inference.Server.Lifecycle;
 using CircleAI.Inference.Server.Models;
 using CircleAI.Inference.Server.Options;
 using CircleAI.Runtime;
@@ -43,6 +45,12 @@ public static class InferenceServerBuilder
         services.AddSingleton<ServerCounters>();
         services.AddSingleton<AdmissionControl>();
         services.AddSingleton<IInferenceServerModelRegistry, InferenceServerModelRegistry>();
+
+        // Phase 3 — lifecycle + admin surface. Hosts that want to allow runtime
+        // model loads register an IBridgeFactory that knows how to materialise
+        // bridges from their model cache. The default factory rejects all loads.
+        services.AddSingleton<IModelLifecycleManager, ModelLifecycleManager>();
+        services.TryAddSingleton<IBridgeFactory, UnconfiguredBridgeFactory>();
 
         // CircleAI.Runtime wiring — paths are expanded at AddSingleton time so
         // the directories exist before any request lands.
@@ -114,5 +122,6 @@ public static class InferenceServerBuilder
         app.MapEmbeddings();
         app.MapCompanion();
         app.MapDiagnostics();
+        app.MapAdminLifecycle();
     }
 }

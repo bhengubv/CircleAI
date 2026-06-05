@@ -12,7 +12,7 @@ using CircleAI.Inference.Server.Models;
 
 namespace CircleAI.Inference.Server.Tests.TestFixtures;
 
-public sealed class InferenceServerFactory : WebApplicationFactory<Program>
+public class InferenceServerFactory : WebApplicationFactory<Program>
 {
     public const string TestApiKey = "test-key-AAA";
 

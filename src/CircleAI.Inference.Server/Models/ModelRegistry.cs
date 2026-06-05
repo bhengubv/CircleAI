@@ -23,6 +23,12 @@ public interface IInferenceServerModelRegistry
     /// <summary>Register an embedder under <paramref name="modelId"/>.</summary>
     void RegisterEmbedder(string modelId, ITextEmbedder embedder);
 
+    /// <summary>
+    /// Remove the bridge registered under <paramref name="modelId"/>.
+    /// Returns <c>true</c> when a bridge was found and removed.
+    /// </summary>
+    bool Deregister(string modelId);
+
     /// <summary>Look up a bridge. Returns <c>null</c> when the model is not registered.</summary>
     IInferenceBridge? Resolve(string modelId);
 
@@ -57,6 +63,9 @@ public sealed class InferenceServerModelRegistry : IInferenceServerModelRegistry
         ArgumentNullException.ThrowIfNull(embedder);
         _embed[modelId] = embedder;
     }
+
+    /// <inheritdoc/>
+    public bool Deregister(string modelId) => _chat.TryRemove(modelId, out _);
 
     /// <inheritdoc/>
     public IInferenceBridge? Resolve(string modelId) =>
