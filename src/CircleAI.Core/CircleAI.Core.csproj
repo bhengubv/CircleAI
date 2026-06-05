@@ -3,7 +3,8 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache.</Description>
+    <Version>1.0.1</Version>
+    <Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache. 1.0.1 hardens the embedded-registry parser against non-object top-level fields (e.g. a free-text "Notes" entry coexisting with model entries).</Description>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -13,7 +14,16 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- Legacy file kept for callers that load it by name; the canonical resource
+		     consumed by ModelRegistryService is Models\embedded_registry.json. -->
 		<EmbeddedResource Include="registry.json" />
+		<EmbeddedResource Include="Models\embedded_registry.json" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- 1.1.0 — CircleAIComponentBase + LoggerAuditLog need ILogger.
+		     Abstractions-only so consumers choose their own logging backend. -->
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
 	</ItemGroup>
 
 	<PropertyGroup>
