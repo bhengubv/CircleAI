@@ -4,7 +4,7 @@
     <Description>WiFi Direct / mDNS / LAN transport for Circle AI. No Aether required. Peer discovery via UDP broadcast and mDNS.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

@@ -2,6 +2,6 @@
   <PropertyGroup><PackageId>CircleAI.Commerce</PackageId>
     <Description>Circle AI e-commerce domain assistant. Listings, pricing, orders, suppliers, and marketplace analytics.</Description>
   </PropertyGroup>
-  <PropertyGroup><TargetFramework>net9.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" /></ItemGroup>
 </Project>

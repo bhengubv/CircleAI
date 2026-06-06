@@ -4,7 +4,7 @@
     <Description>Language pack base for Circle AI. Idiomatic context, cultural nuance, locale-specific prompt tuning. Each language sub-package provides a concrete ILanguagePack.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

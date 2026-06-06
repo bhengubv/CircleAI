@@ -4,7 +4,7 @@
     <Description>DTN store-and-forward for Circle AI. 72hr TTL bundles with custody transfer over any transport. Delivers when a path exists.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

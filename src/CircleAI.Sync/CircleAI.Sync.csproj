@@ -4,7 +4,7 @@
     <Description>Memory delta sync for Circle AI. Episodic memory, affect state, and persona deltas propagate across all devices via any transport (gRPC, mesh, DTN). This is the cross-device continuity layer.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

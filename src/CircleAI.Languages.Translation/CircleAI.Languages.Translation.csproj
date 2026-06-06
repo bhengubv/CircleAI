@@ -4,7 +4,7 @@
     <Description>On-device real-time translation for Circle AI. No API call, no data leaving device. Context-aware, live conversation mode, document translation.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

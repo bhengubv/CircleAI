@@ -4,7 +4,7 @@
     <Description>Raw BLE GATT transport for Circle AI. No Aether required. Device discovery and characteristic read/write.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

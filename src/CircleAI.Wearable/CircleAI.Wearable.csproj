@@ -6,7 +6,7 @@ Injects biometric context (heart rate, steps, SpO₂) into the Companion session
 and enforces wearable-appropriate reply constraints.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

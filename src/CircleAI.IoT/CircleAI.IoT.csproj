@@ -6,7 +6,7 @@ Voice-in, voice-out, minimal compute. Optimised for devices with
 256 MB RAM or less running .NET IoT.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
