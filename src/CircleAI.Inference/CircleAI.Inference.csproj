@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.2.0</Version><Description>On-device LLM inference for Circle. llama.cpp P/Invoke layer with Qwen 3 chat generator. Native binaries supplied separately (see SETUP.md).</Description>
+    <Version>1.2.1</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.2.1 ships the Windows x64 mnnbridge.dll + MNN.dll under runtimes/win-x64/native/ — first version that actually runs inference end-to-end on Windows. Other platforms: build mnnbridge from native/mnn-bridge/ per BUILD.md.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,14 +22,17 @@
 		<!-- Disable RID-specific asset warnings -->
 		<EnableRuntimeIdentifierChecking>false</EnableRuntimeIdentifierChecking>
 
-		<!-- Native llama.cpp libs (libllama.so / libllama.dylib / llama.dll) are
-		     supplied separately at deploy time. See SETUP.md. -->
+		<!-- Native MNN libs (mnnbridge + MNN) live under runtimes/{RID}/native/.
+		     Windows x64 ships in the package out of the box. Other RIDs are
+		     built per native/mnn-bridge/BUILD.md and added to the same folder
+		     before publish. -->
 		<PublishReadyToRun>false</PublishReadyToRun>
 		<StripSymbols>true</StripSymbols>
 	</PropertyGroup>
 
-	<!-- Native library bundling — copies llama.cpp binaries for the current
-	     platform. Override $(BhenguNativeLibRoot) to point at your own dir. -->
+	<!-- Native library bundling — copies mnnbridge + MNN binaries for the
+	     current platform. Override $(CircleAINativeLibRoot) to point at your
+	     own directory if you've built mnnbridge for another RID. -->
 	<Import Project="$(MSBuildThisFileDirectory)CircleAI.Inference.targets" />
 
 </Project>
