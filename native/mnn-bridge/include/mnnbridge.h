@@ -179,6 +179,37 @@ MNNBRIDGE_API int mnn_llm_generate_with_image_stream_ex(
 // models). <0 on error.
 MNNBRIDGE_API int mnn_embed_get_dim(mnn_llm_handle handle);
 
+// ── KV cache compression (Phase 4 — TurboQuant) ─────────────────────────
+//
+// Mode encoding:
+//   0 = off (full FP16 KV cache, default)
+//   1 = TurboQuant 4-bit per channel
+//   2 = TurboQuant 3-bit per channel
+//   3 = TurboQuant 2-bit per channel
+//
+// SCAFFOLDING (mnnbridge 1.1.0): the C ABI surface is stable; the native
+// side currently records the requested mode and returns
+// MNNBRIDGE_KV_NOT_IMPLEMENTED (=2) until the TurboQuant attention path
+// lands (tracked as Phase 4.1 — separate workstream, 2–4 weeks of
+// native MNN attention-layer modifications). Callers should treat
+// MNNBRIDGE_KV_NOT_IMPLEMENTED as "configured, but the current build
+// can't honour it — falling back to mode 0".
+//
+// Returns:
+//   0  = success (mode applied at inference time)
+//   1  = invalid mode value
+//   2  = MNNBRIDGE_KV_NOT_IMPLEMENTED — native algorithm not yet ported
+//   <0 = handle invalid
+#define MNNBRIDGE_KV_NOT_IMPLEMENTED 2
+MNNBRIDGE_API int mnn_llm_set_kv_compression_mode(
+    mnn_llm_handle handle,
+    int mode);
+
+// Returns the currently-set KV compression mode (0..3), or -1 on invalid
+// handle. Reports the LAST value set by mnn_llm_set_kv_compression_mode
+// regardless of whether the native path actually honoured it.
+MNNBRIDGE_API int mnn_llm_get_kv_compression_mode(mnn_llm_handle handle);
+
 // ── Version ──────────────────────────────────────────────────────────────
 
 // Returns a static NUL-terminated string with the bridge's version, e.g.

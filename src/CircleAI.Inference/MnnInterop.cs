@@ -290,6 +290,31 @@ internal static partial class MnnInterop
         float* output,
         int maxDims);
 
+    // ── KV cache compression (Phase 4 — TurboQuant scaffolding) ──────────────
+    //
+    // The C ABI surface is stable as of mnnbridge 1.1.0. The native algorithm
+    // is NOT yet implemented — calls with non-zero mode currently return
+    // status code 2 (MNNBRIDGE_KV_NOT_IMPLEMENTED). The managed wrapper
+    // surfaces that as <see cref="KvCompressionApplyResult.NotImplemented"/>
+    // so hosts can react (log + fall back) without ambiguity.
+
+    /// <summary>
+    /// Sets the requested KV cache compression mode on a loaded handle.
+    /// Returns the raw C ABI status code (0 = applied, 1 = invalid mode,
+    /// 2 = scaffolded but not yet implemented natively, &lt;0 = handle invalid).
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "mnn_llm_set_kv_compression_mode")]
+    public static partial int mnn_llm_set_kv_compression_mode(MnnModelHandle handle, int mode);
+
+    /// <summary>
+    /// Returns the currently-stored KV compression mode (0..3), or -1 on
+    /// invalid handle. Reflects the last value passed to
+    /// <see cref="mnn_llm_set_kv_compression_mode"/>, not whether the native
+    /// path is honouring it.
+    /// </summary>
+    [LibraryImport(LibraryName, EntryPoint = "mnn_llm_get_kv_compression_mode")]
+    public static partial int mnn_llm_get_kv_compression_mode(MnnModelHandle handle);
+
     // ── Convenience wrappers ──────────────────────────────────────────────────
 
     /// <summary>Save the KV-cache session. Returns <c>true</c> on success.</summary>
@@ -299,4 +324,77 @@ internal static partial class MnnInterop
     /// <summary>Load a KV-cache session. Returns <c>true</c> on success.</summary>
     public static bool LoadSession(MnnModelHandle handle, string path)
         => mnn_llm_load_session(handle, path) == 0;
+}
+
+/// <summary>
+/// KV cache compression mode. Mirrors the C ABI's integer encoding so the
+/// managed and native layers agree without translation tables.
+/// </summary>
+public enum KvCompressionMode
+{
+    /// <summary>Full FP16 KV cache — default behaviour, always supported.</summary>
+    Off = 0,
+
+    /// <summary>TurboQuant at 4 bits per channel — ~4× shrink, &lt; 1% accuracy loss expected.</summary>
+    TurboQuant4Bit = 1,
+
+    /// <summary>TurboQuant at 3 bits per channel — ~5× shrink, marginal accuracy loss expected.</summary>
+    TurboQuant3Bit = 2,
+
+    /// <summary>TurboQuant at 2 bits per channel — ~8× shrink, noticeable accuracy loss expected.</summary>
+    TurboQuant2Bit = 3,
+}
+
+/// <summary>
+/// Outcome of <see cref="MnnInterop.mnn_llm_set_kv_compression_mode"/> after
+/// being translated into a typed result. Mirrors the C ABI status codes.
+/// </summary>
+public enum KvCompressionApplyResult
+{
+    /// <summary>Native path accepted the mode and will use it.</summary>
+    Applied = 0,
+
+    /// <summary>The mode value was outside the valid 0..3 range.</summary>
+    InvalidMode = 1,
+
+    /// <summary>
+    /// Scaffolding only — the native attention path has not yet been ported
+    /// to honour TurboQuant. Mode is recorded but inference still runs at
+    /// FP16 KV cache. Treat as "configured, falling back to Off".
+    /// </summary>
+    NotImplemented = 2,
+
+    /// <summary>Handle pointer was invalid.</summary>
+    HandleInvalid = -1,
+}
+
+/// <summary>
+/// Typed wrapper over the KV-compression C ABI so callers don't deal with
+/// raw integers. Internal because <see cref="MnnModelHandle"/> is internal.
+/// Phase 4.1 will expose a public Session.SetKvCompression once the native
+/// algorithm path is in place.
+/// </summary>
+internal static class MnnKvCompression
+{
+    /// <summary>Applies the requested mode and returns the typed result.</summary>
+    public static KvCompressionApplyResult Set(MnnModelHandle handle, KvCompressionMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        var raw = MnnInterop.mnn_llm_set_kv_compression_mode(handle, (int)mode);
+        return raw switch
+        {
+            0 => KvCompressionApplyResult.Applied,
+            1 => KvCompressionApplyResult.InvalidMode,
+            2 => KvCompressionApplyResult.NotImplemented,
+            _ => KvCompressionApplyResult.HandleInvalid,
+        };
+    }
+
+    /// <summary>Reads the last-set mode (or <see cref="KvCompressionMode.Off"/> on invalid handle).</summary>
+    public static KvCompressionMode Get(MnnModelHandle handle)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        var raw = MnnInterop.mnn_llm_get_kv_compression_mode(handle);
+        return raw is >= 0 and <= 3 ? (KvCompressionMode)raw : KvCompressionMode.Off;
+    }
 }
