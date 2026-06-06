@@ -131,8 +131,38 @@ namespace CircleAI.Core
             using var stream = assembly.GetManifestResourceStream(RegistryResourceName)
                 ?? throw new FileNotFoundException("Embedded registry not found");
 
-            return JsonSerializer.Deserialize<Dictionary<string, ModelInfo>>(stream)
-                ?? throw new InvalidDataException("Invalid registry format");
+            // Walk top-level properties; skip non-object values so free-text metadata
+            // (e.g. a "Notes" field) can coexist with model entries without blowing up
+            // the loader.
+            var registry = new Dictionary<string, ModelInfo>(StringComparer.OrdinalIgnoreCase);
+            using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            });
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return registry;
+            }
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            };
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var entry = property.Value.Deserialize<ModelInfo>(options);
+                if (entry is not null)
+                {
+                    registry[property.Name] = entry;
+                }
+            }
+            return registry;
         }
 
         private bool VerifyChecksum(string filePath, string expectedChecksum)

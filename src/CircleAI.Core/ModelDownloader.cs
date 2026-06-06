@@ -185,26 +185,60 @@ namespace CircleAI.Core
         {
             var assembly = typeof(ModelDownloader).Assembly;
             using var stream = assembly.GetManifestResourceStream(RegistryResourceName);
-            if (stream is null)
+            if (stream is not null)
             {
-                // Registry isn't embedded — fall back to a sibling registry.json next to the assembly.
-                var assemblyDir = Path.GetDirectoryName(assembly.Location);
-                var fallback = assemblyDir is null
-                    ? null
-                    : Path.Combine(assemblyDir, "registry.json");
-
-                if (fallback is null || !File.Exists(fallback))
-                {
-                    return new Dictionary<string, ModelEntry>(StringComparer.OrdinalIgnoreCase);
-                }
-
-                using var fs = File.OpenRead(fallback);
-                return JsonSerializer.Deserialize<Dictionary<string, ModelEntry>>(fs, JsonOpts())
-                       ?? new Dictionary<string, ModelEntry>(StringComparer.OrdinalIgnoreCase);
+                return ParseRegistry(stream);
             }
 
-            return JsonSerializer.Deserialize<Dictionary<string, ModelEntry>>(stream, JsonOpts())
-                   ?? new Dictionary<string, ModelEntry>(StringComparer.OrdinalIgnoreCase);
+            // Registry isn't embedded — fall back to a sibling registry.json next to the assembly.
+            var assemblyDir = Path.GetDirectoryName(assembly.Location);
+            var fallback = assemblyDir is null
+                ? null
+                : Path.Combine(assemblyDir, "registry.json");
+
+            if (fallback is null || !File.Exists(fallback))
+            {
+                return new Dictionary<string, ModelEntry>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            using var fs = File.OpenRead(fallback);
+            return ParseRegistry(fs);
+        }
+
+        /// <summary>
+        /// Reads registry.json as a flat dictionary of <see cref="ModelEntry"/>. Any top-level
+        /// entries that are not JSON objects (e.g. a free-text <c>"Notes"</c> field) are skipped
+        /// so registry metadata can coexist with model entries without breaking deserialization.
+        /// </summary>
+        private static IReadOnlyDictionary<string, ModelEntry> ParseRegistry(Stream stream)
+        {
+            var registry = new Dictionary<string, ModelEntry>(StringComparer.OrdinalIgnoreCase);
+            using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            });
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return registry;
+            }
+
+            var options = JsonOpts();
+            foreach (var property in doc.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Object)
+                {
+                    // Skip metadata fields (Notes, $schema, etc.) — only object values are entries.
+                    continue;
+                }
+
+                var entry = property.Value.Deserialize<ModelEntry>(options);
+                if (entry is not null)
+                {
+                    registry[property.Name] = entry;
+                }
+            }
+            return registry;
         }
 
         private static JsonSerializerOptions JsonOpts() => new()
