@@ -28,14 +28,30 @@ public sealed class NativeRuntimeRegistryTests
     }
 
     [Fact]
-    public void Embedded_Registry_Has_Windows_X64_Cuda_Bundle()
+    public void Embedded_Registry_Has_Windows_X64_OpenCL_Bundle_With_Real_Sha256()
     {
+        // Alibaba MNN 3.5.0 ships ONE Windows x64 bundle (cpu+opencl). CUDA is
+        // not pre-built — caller would build from source. We verify the real
+        // OpenCL/CPU bundle is present with its real SHA-256.
         var reg = NativeRuntimeRegistry.LoadEmbedded();
-        var bundle = reg.Find(OperatingSystemKind.Windows, ArchitectureKind.X64, BackendKind.Cuda);
+        var bundle = reg.Find(OperatingSystemKind.Windows, ArchitectureKind.X64, BackendKind.OpenCL);
         Assert.NotNull(bundle);
-        Assert.Equal("3.0.0", bundle!.MnnVersion);
-        Assert.Equal("modelscope.cn", bundle.PrimaryUri.Host);
+        Assert.Equal("3.5.0", bundle!.MnnVersion);
+        Assert.Equal("github.com", bundle.PrimaryUri.Host);
+        Assert.Equal(
+            "e37dbed6a5a6c26122239468d7fc8569d003c7f4a12c8a8024a33660fb13e4b7",
+            bundle.ArchiveSha256Hex);
         Assert.NotNull(bundle.FallbackUri);
+    }
+
+    [Fact]
+    public void Embedded_Registry_Does_Not_Claim_Cuda_Bundles_That_Are_Not_Shipped()
+    {
+        // CUDA is not in any of MNN's pre-built archives — guard against
+        // somebody re-adding speculative entries.
+        var reg = NativeRuntimeRegistry.LoadEmbedded();
+        Assert.Null(reg.Find(OperatingSystemKind.Windows, ArchitectureKind.X64, BackendKind.Cuda));
+        Assert.Null(reg.Find(OperatingSystemKind.Linux,   ArchitectureKind.X64, BackendKind.Cuda));
     }
 
     [Fact]
@@ -49,12 +65,27 @@ public sealed class NativeRuntimeRegistryTests
     }
 
     [Fact]
-    public void Embedded_Registry_Has_Linux_Arm64_Ascend_Bundle_For_Huawei_Atlas()
+    public void Embedded_Registry_Has_Android_Arm64_Vulkan_Bundle_With_Real_Sha256()
     {
+        // Android universal bundle ships CPU + OpenCL + Vulkan. Confirm the
+        // Vulkan tuple resolves to the real archive with its real hash.
         var reg = NativeRuntimeRegistry.LoadEmbedded();
-        var bundle = reg.Find(OperatingSystemKind.Linux, ArchitectureKind.Arm64, BackendKind.Ascend);
+        var bundle = reg.Find(OperatingSystemKind.Android, ArchitectureKind.Arm64, BackendKind.Vulkan);
         Assert.NotNull(bundle);
-        Assert.Equal(BackendKind.Ascend, bundle!.Backend);
+        Assert.Equal(
+            "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
+            bundle!.ArchiveSha256Hex);
+    }
+
+    [Fact]
+    public void Embedded_Registry_Does_Not_Claim_Ascend_Or_Cambricon_Bundles_Not_Shipped()
+    {
+        // Alibaba does not pre-build Ascend (CANN) or Cambricon MLU archives.
+        // Hosts using those accelerators currently build MNN from source.
+        var reg = NativeRuntimeRegistry.LoadEmbedded();
+        Assert.Null(reg.Find(OperatingSystemKind.Linux, ArchitectureKind.Arm64, BackendKind.Ascend));
+        Assert.Null(reg.Find(OperatingSystemKind.Linux, ArchitectureKind.X64,   BackendKind.Ascend));
+        Assert.Null(reg.Find(OperatingSystemKind.Linux, ArchitectureKind.X64,   BackendKind.Cambricon));
     }
 
     [Fact]

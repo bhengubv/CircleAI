@@ -4,178 +4,222 @@
     "used by CircleAI.Core\\Models\\embedded_registry.json (non-object",
     "entries like this _notes array are tolerated by the parser).",
     "",
-    "Primary URL convention: ModelScope mirror of the Alibaba MNN release",
-    "(modelscope.cn/api/v1/models/MNN/...). Fallback URL convention:",
-    "github.com/alibaba/MNN/releases/download/<version>/...",
+    "Real release URLs + SHA-256s pulled from",
+    "https://github.com/alibaba/MNN/releases/tag/3.5.0 (2026-04-07).",
+    "Last refreshed: 2026-06-05. Bytes hashed locally with sha256sum.",
     "",
-    "sha256 is OPTIONAL. When present the fetcher will reject a download",
-    "whose hash does not match. When absent the fetcher trusts the served",
-    "bytes (matches ModelDownloadService behaviour for expectedSha256=null).",
-    "Production releases SHOULD pin sha256 — calibrate by downloading the",
-    "archive once, running 'Get-FileHash -Algorithm SHA256' / 'shasum -a 256',",
-    "and pasting the hex into this file.",
+    "Reality vs prior speculative registry:",
+    "  - Alibaba ships ONE bundle per (OS, arch) carrying MULTIPLE backends,",
+    "    not one bundle per (OS, arch, backend). The Windows x64 ZIP contains",
+    "    both the CPU and OpenCL libraries; the macOS universal bundle covers",
+    "    CPU + OpenCL + Metal; the iOS bundle ships CPU + Metal + CoreML; the",
+    "    Android universal bundle ships CPU + OpenCL + Vulkan.",
+    "  - To preserve the existing (os, arch, backend) -> bundle lookup API,",
+    "    we register each (os, arch, backend) tuple pointing at the same",
+    "    underlying zip + sha. The fetcher will extract the same archive",
+    "    multiple times (once per backend tuple); we accept this storage",
+    "    overhead as the simpler 1.2.0 trade-off vs reshaping the API.",
+    "  - Backends NOT shipped pre-built by Alibaba (need source build):",
+    "    Linux arm64, Linux loong64, Windows arm64, CUDA (any OS), Ascend,",
+    "    Cambricon, HarmonyOS. These were in the prior speculative registry",
+    "    and are now correctly absent.",
     "",
-    "Backend names match BackendKind: Cpu, Cuda, Vulkan, OpenCL, Metal,",
-    "Ascend, Cambricon, CoreML.",
-    "Os names match OperatingSystemKind: Windows, Linux, MacOS, Android, IOS, HarmonyOS.",
-    "Arch names match ArchitectureKind: X86, X64, Arm, Arm64, Loong64."
+    "Fallback URL convention: same github.com/alibaba/MNN/releases/download",
+    "path as primary. Primary uses HTTPS direct; fallback also uses HTTPS",
+    "direct — same host. The real fallback story is to mirror these onto",
+    "modelscope.cn (Alibaba's sovereign mirror) once that pipeline is wired;",
+    "until then both URIs point at the canonical GitHub release.",
+    "",
+    "Refresh procedure (for new MNN releases):",
+    "  1. gh release list --repo alibaba/MNN",
+    "  2. gh release view <version> --repo alibaba/MNN --json assets",
+    "  3. curl -sL -o $asset 'https://github.com/alibaba/MNN/releases/download/<version>/$asset'",
+    "  4. sha256sum $asset",
+    "  5. Update version + url + sha256 in this file"
   ],
 
   "mnn_versions": [
     {
-      "version": "3.0.0",
-      "released_at": "2026-04-15",
+      "version": "3.5.0",
+      "released_at": "2026-04-07",
       "notes": [
-        "Latest stable line on the master branch of github.com/alibaba/MNN.",
-        "Compatible with mnnbridge ABI shipped by CircleAI.Inference 1.0+."
+        "Latest stable on github.com/alibaba/MNN as of 2026-06-05.",
+        "ABI compatible with mnnbridge surface used by CircleAI.Inference 1.2.0."
       ],
       "bundles": [
         {
           "os": "Windows",
           "arch": "X64",
           "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-cpu.zip",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-cpu.zip",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
+          "sha256": "e37dbed6a5a6c26122239468d7fc8569d003c7f4a12c8a8024a33660fb13e4b7",
           "mnnbridge_lib": "mnnbridge.dll",
           "mnn_lib": "MNN.dll"
         },
         {
           "os": "Windows",
           "arch": "X64",
-          "backend": "Cuda",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-cuda.zip",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-cuda.zip"
-        },
-        {
-          "os": "Windows",
-          "arch": "X64",
-          "backend": "Vulkan",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-x64-vulkan.zip",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-x64-vulkan.zip"
-        },
-        {
-          "os": "Windows",
-          "arch": "Arm64",
-          "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-windows-arm64-cpu.zip",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-windows-arm64-cpu.zip"
+          "backend": "OpenCL",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
+          "sha256": "e37dbed6a5a6c26122239468d7fc8569d003c7f4a12c8a8024a33660fb13e4b7",
+          "mnnbridge_lib": "mnnbridge.dll",
+          "mnn_lib": "MNN.dll"
         },
 
         {
           "os": "Linux",
           "arch": "X64",
           "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cpu.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-cpu.tar.gz",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
+          "sha256": "a9f4b00bf7c8473b3ef3c47873df84512ebf452d4422a4fde0a70ee81e073a17",
           "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
         {
           "os": "Linux",
           "arch": "X64",
-          "backend": "Cuda",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cuda.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-cuda.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "X64",
-          "backend": "Vulkan",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-vulkan.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-x64-vulkan.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "Arm64",
-          "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-arm64-cpu.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-linux-arm64-cpu.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "Arm64",
-          "backend": "Ascend",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-arm64-ascend.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "X64",
-          "backend": "Ascend",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-ascend.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "X64",
-          "backend": "Cambricon",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-x64-cambricon.tar.gz"
-        },
-        {
-          "os": "Linux",
-          "arch": "Loong64",
-          "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-linux-loong64-cpu.tar.gz"
+          "backend": "OpenCL",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
+          "sha256": "a9f4b00bf7c8473b3ef3c47873df84512ebf452d4422a4fde0a70ee81e073a17",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
         },
 
         {
           "os": "MacOS",
           "arch": "Arm64",
-          "backend": "Metal",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-metal.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-macos-arm64-metal.tar.gz",
+          "backend": "Cpu",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
           "mnnbridge_lib": "libmnnbridge.dylib",
           "mnn_lib": "libMNN.dylib"
         },
         {
           "os": "MacOS",
           "arch": "Arm64",
-          "backend": "CoreML",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-coreml.tar.gz"
+          "backend": "OpenCL",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
         },
         {
           "os": "MacOS",
           "arch": "Arm64",
-          "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-arm64-cpu.tar.gz"
+          "backend": "Metal",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
         },
         {
           "os": "MacOS",
           "arch": "X64",
           "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-macos-x64-cpu.tar.gz"
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
+        },
+        {
+          "os": "MacOS",
+          "arch": "X64",
+          "backend": "OpenCL",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
+        },
+        {
+          "os": "MacOS",
+          "arch": "X64",
+          "backend": "Metal",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
+          "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+          "mnnbridge_lib": "libmnnbridge.dylib",
+          "mnn_lib": "libMNN.dylib"
         },
 
         {
           "os": "Android",
           "arch": "Arm64",
           "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-cpu.tar.gz",
-          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.0.0/mnn-3.0.0-android-arm64-cpu.tar.gz"
-        },
-        {
-          "os": "Android",
-          "arch": "Arm64",
-          "backend": "Vulkan",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-vulkan.tar.gz"
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
         },
         {
           "os": "Android",
           "arch": "Arm64",
           "backend": "OpenCL",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-android-arm64-opencl.tar.gz"
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
+        },
+        {
+          "os": "Android",
+          "arch": "Arm64",
+          "backend": "Vulkan",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
+        },
+        {
+          "os": "Android",
+          "arch": "Arm",
+          "backend": "Cpu",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
+          "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
+          "mnnbridge_lib": "libmnnbridge.so",
+          "mnn_lib": "libMNN.so"
         },
 
         {
           "os": "IOS",
           "arch": "Arm64",
-          "backend": "Metal",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-ios-arm64-metal.tar.gz"
-        },
-
-        {
-          "os": "HarmonyOS",
-          "arch": "Arm64",
           "backend": "Cpu",
-          "url": "https://modelscope.cn/api/v1/models/MNN/MNN-runtime/repo/files?Revision=v3.0.0&FilePath=mnn-3.0.0-harmonyos-arm64-cpu.tar.gz"
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
+          "mnnbridge_lib": "libmnnbridge.a",
+          "mnn_lib": "libMNN.a"
+        },
+        {
+          "os": "IOS",
+          "arch": "Arm64",
+          "backend": "Metal",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
+          "mnnbridge_lib": "libmnnbridge.a",
+          "mnn_lib": "libMNN.a"
+        },
+        {
+          "os": "IOS",
+          "arch": "Arm64",
+          "backend": "CoreML",
+          "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
+          "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
+          "mnnbridge_lib": "libmnnbridge.a",
+          "mnn_lib": "libMNN.a"
         }
       ]
     }

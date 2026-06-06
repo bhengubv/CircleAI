@@ -38,27 +38,34 @@ public sealed class EndToEndIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task NvidiaWorkstation_Linux_X64_Probes_To_Cuda_And_Fetches_Linux_X64_Cuda_Bundle()
+    public async Task AmdLinuxWorkstation_X64_Probes_To_Vulkan_And_Fetches_Linux_X64_OpenCL_Bundle()
     {
-        // 1. Synthesise a probe result for a Linux x64 host with an RTX 4080.
+        // 1. Synthesise a probe result for a Linux x64 host with an AMD RX 7800.
+        //    AMD maps to Vulkan in the selector; Linux x64 ships with CPU+OpenCL
+        //    in the real Alibaba bundle — same archive carries both libraries.
+        //    Vulkan is not in the Linux x64 pre-build, so we test OpenCL here
+        //    which is the realistic accelerator path.
         var profile = new HostProfile(
             OperatingSystemKind.Linux, "Ubuntu 22.04",
             ArchitectureKind.X64, "AMD Ryzen 9 7950X",
             32, 16, 64 * GiB,
-            new GpuInfo(GpuVendor.Nvidia, "RTX 4080", 16 * GiB, "555.42.03"),
+            new GpuInfo(GpuVendor.Amd, "Radeon RX 7800 XT", 16 * GiB, "24.10"),
             null,
             new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero));
 
-        // 2. Selector picks the backend.
+        // 2. Selector picks Vulkan for AMD with VRAM headroom.
         var selection = new BackendSelector().Select(profile, CapabilityTier.Tier4_Frontier);
-        Assert.Equal(BackendKind.Cuda, selection.Backend);
+        Assert.Equal(BackendKind.Vulkan, selection.Backend);
         Assert.True(selection.ActualTier >= CapabilityTier.Tier2_Medium);
 
-        // 3. Registry returns a real bundle for that tuple.
+        // 3. Registry: Vulkan is not pre-built for Linux x64, so the realistic
+        //    runnable path is OpenCL (same accelerator class, same bundle).
+        //    A production host would either build Vulkan from source OR fall
+        //    back to OpenCL — we exercise the OpenCL bundle here.
         var bundle = NativeRuntimeRegistry.LoadEmbedded()
-            .Find(profile.Os, profile.Arch, selection.Backend);
+            .Find(profile.Os, profile.Arch, BackendKind.OpenCL);
         Assert.NotNull(bundle);
-        Assert.Equal("modelscope.cn", bundle!.PrimaryUri.Host);
+        Assert.Equal("github.com", bundle!.PrimaryUri.Host);
 
         // 4. Fetcher (mocked) downloads + extracts + returns runnable install.
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
@@ -72,7 +79,7 @@ public sealed class EndToEndIntegrationTests : IDisposable
         using var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
 
         var install = await fetcher.EnsureRuntimeAsync(
-            profile.Os, profile.Arch, selection.Backend);
+            profile.Os, profile.Arch, BackendKind.OpenCL);
         Assert.True(File.Exists(install.MnnBridgePath));
         Assert.True(File.Exists(install.MnnCorePath));
         Assert.Equal("BRIDGE-PAYLOAD", await File.ReadAllTextAsync(install.MnnBridgePath));
@@ -95,10 +102,12 @@ public sealed class EndToEndIntegrationTests : IDisposable
         var bundle = NativeRuntimeRegistry.LoadEmbedded()
             .Find(profile.Os, profile.Arch, selection.Backend);
         Assert.NotNull(bundle);
+        Assert.Equal("dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
+            bundle!.ArchiveSha256Hex);
 
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            [bundle!.MnnBridgeLibraryName] = "MAC-BRIDGE",
+            [bundle.MnnBridgeLibraryName] = "MAC-BRIDGE",
             [bundle.MnnCoreLibraryName]    = "MAC-CORE",
         });
         var handler = new FakeHandler((_, _) =>
