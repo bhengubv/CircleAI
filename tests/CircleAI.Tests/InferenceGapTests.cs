@@ -110,25 +110,25 @@ public sealed class ModelSelectorTests
     [Fact]
     public void Select_6GB_ReturnsMidRangeTier()
     {
-        // 6 GB fits "Qwen3-4B-Q4" (4 GB) but not "Qwen3.6-35B-A3B-Q3" (8 GB)
+        // 6 GB fits "Qwen3-4B-MNN" (6 GB target) but not "Qwen3-8B-MNN" (12 GB)
         var tier = ModelSelector.Select(GB(6));
-        Assert.Equal("Qwen3-4B-Q4", tier.ModelId);
+        Assert.Equal("Qwen3-4B-MNN", tier.ModelId);
     }
 
     [Fact]
     public void Select_12GB_ReturnsFlagshipTier()
     {
-        // 12 GB fits "Qwen3.6-35B-A3B-Q3" (8 GB) but not "Qwen3-30B-A3B-Q4" (16 GB)
+        // 12 GB fits "Qwen3-8B-MNN" (12 GB) but not "Qwen3-14B-MNN" (24 GB)
         var tier = ModelSelector.Select(GB(12));
-        Assert.Equal("Qwen3.6-35B-A3B-Q3", tier.ModelId);
+        Assert.Equal("Qwen3-8B-MNN", tier.ModelId);
     }
 
     [Fact]
     public void Select_64GB_ReturnsServerTier()
     {
-        // 64 GB comfortably fits the top tier (48 GB)
+        // 64 GB comfortably fits the top tier (32 GB multimodal workstation)
         var tier = ModelSelector.Select(GB(64));
-        Assert.Equal("Qwen3-235B-A22B-Q2", tier.ModelId);
+        Assert.Equal("Kimi-VL-A3B-Thinking-2506", tier.ModelId);
     }
 
     [Fact]

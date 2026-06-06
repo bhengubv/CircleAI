@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Multi-target so the net9.0 leg runs every non-Aether test (Aether refs +
-         AetherContractTests.cs + SecurityLayerTests.cs need net10.0 because
-         Aether.Core on NuGet is net10.0-only). The net10.0 leg runs every test. -->
+    <!-- Multi-target. Every test runs on both legs — Aether bridges
+         are now contracts-only (no external runtime tether) so there
+         is no longer a net10-only test subset. -->
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,7 +26,9 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- Non-Aether references — both TFM legs. -->
+  <!-- All ProjectReferences — both TFM legs. The Aether bridges are now
+       contracts-only (no external runtime dep) so they multi-target net9.0;net10.0
+       just like everything else; no conditional includes needed. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
@@ -40,17 +42,7 @@
     <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
-  </ItemGroup>
-
-  <!-- Aether bridge — net10.0 leg only (Aether.Core 1.0.1 on NuGet is net10.0-only). -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
     <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security.Aether\CircleAI.Security.Aether.csproj" />
-  </ItemGroup>
-
-  <!-- Aether-dependent test files — excluded from the net9.0 compile. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <Compile Remove="AetherContractTests.cs" />
-    <Compile Remove="SecurityLayerTests.cs" />
   </ItemGroup>
 </Project>

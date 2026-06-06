@@ -7,10 +7,22 @@ namespace CircleAI.Tests;
 
 /// <summary>
 /// Tests for <see cref="LocalModelLoader"/> that do NOT require network access
-/// or real model files.
+/// or real model files. Model names match the real ModelScope entries in
+/// <c>src/CircleAI.Core/registry.json</c> (Qwen3-*-MNN family).
 /// </summary>
 public sealed class LocalModelLoaderTests : IDisposable
 {
+    // Real registry entries (post-2026-06-06 ModelScope sync). Picked the two
+    // smallest so disk-touch tests stay cheap even if anyone ever materialises
+    // the file.
+    private const string KnownModelA = "Qwen3-0.6B-MNN";
+    private const string KnownModelB = "Qwen3-1.7B-MNN";
+
+    // FileName field of every Qwen3-*-MNN entry — the on-disk artefact MNN
+    // expects is always "llm.mnn.weight" (sibling tokenizer + config files
+    // live in the same directory).
+    private const string KnownModelAFileName = "llm.mnn.weight";
+
     private readonly string _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
 
     public LocalModelLoaderTests() => Directory.CreateDirectory(_tempDir);
@@ -25,8 +37,8 @@ public sealed class LocalModelLoaderTests : IDisposable
     // ------------------------------------------------------------------
 
     [Theory]
-    [InlineData("Qwen3-14B-Q4")]
-    [InlineData("Qwen3.6-35B-A3B-Q3")]
+    [InlineData(KnownModelA)]
+    [InlineData(KnownModelB)]
     public void GetModelPath_KnownModel_ReturnsPathString(string modelName)
     {
         using var loader = new LocalModelLoader(_tempDir);
@@ -60,8 +72,8 @@ public sealed class LocalModelLoaderTests : IDisposable
     public void ModelExists_KnownModelFileAbsent_ReturnsFalse()
     {
         using var loader = new LocalModelLoader(_tempDir);
-        // The GGUF file is not present → must return false
-        Assert.False(loader.ModelExists("Qwen3-14B-Q4"));
+        // The MNN weight file is not present → must return false
+        Assert.False(loader.ModelExists(KnownModelA));
     }
 
     [Fact]
@@ -82,7 +94,7 @@ public sealed class LocalModelLoaderTests : IDisposable
         loader.Dispose();
 
         Assert.Throws<ObjectDisposedException>(
-            () => loader.GetModelPath("Qwen3-14B-Q4"));
+            () => loader.GetModelPath(KnownModelA));
     }
 
     [Fact]
@@ -92,7 +104,7 @@ public sealed class LocalModelLoaderTests : IDisposable
         loader.Dispose();
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => loader.DownloadModelAsync("Qwen3-14B-Q4"));
+            () => loader.DownloadModelAsync(KnownModelA));
     }
 
     [Fact]
@@ -104,47 +116,26 @@ public sealed class LocalModelLoaderTests : IDisposable
     }
 
     // ------------------------------------------------------------------
-    // TBD checksum behaviour (production blocker documentation)
-    // PRODUCTION BLOCKER: see TODO.md — all models currently have sha256:TBD.
-    // These tests document the current behaviour until real hashes are computed.
+    // Checksum mismatch — the real-world tamper / partial-download case
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Documents that <see cref="LocalModelLoader.ModelExists"/> returns
-    /// <c>false</c> for any model whose registry entry has <c>sha256:TBD</c>,
-    /// even when the physical file is present.
-    /// This is an inconsistency with <see cref="LocalModelLoader.DownloadModelAsync"/>
-    /// which skips verification for TBD. Real checksums must be added before shipping.
+    /// When the on-disk file exists but its SHA-256 doesn't match the registry
+    /// checksum (tamper, partial download, wrong file in the slot),
+    /// <see cref="LocalModelLoader.ModelExists"/> must return <c>false</c>
+    /// rather than reporting the model as ready.
     /// </summary>
     [Fact]
-    public void ModelExists_TbdChecksumWithFilePresent_ReturnsFalse()
+    public void ModelExists_FileExistsButChecksumMismatch_ReturnsFalse()
     {
-        // Synthesise the expected file name from what the registry specifies.
-        var modelPath = Path.Combine(_tempDir, "qwen3-14b-instruct-q4_k_m.gguf");
-        File.WriteAllBytes(modelPath, new byte[16]); // sentinel file
+        // The expected file name is the registry's FileName ("llm.mnn.weight").
+        // A 16-byte sentinel file cannot possibly hash to the real
+        // multi-gigabyte weight's SHA-256.
+        var modelPath = Path.Combine(_tempDir, KnownModelAFileName);
+        File.WriteAllBytes(modelPath, new byte[16]);
 
         using var loader = new LocalModelLoader(_tempDir);
-        // File exists but checksum is TBD → VerifyChecksum("sha256:TBD") always
-        // returns false because the actual SHA-256 never equals the literal "TBD".
-        Assert.False(loader.ModelExists("Qwen3-14B-Q4"));
-    }
-
-    /// <summary>
-    /// Documents that <see cref="LocalModelLoader.DownloadModelAsync"/> skips
-    /// re-download and verification when the local file exists and the checksum
-    /// is <c>sha256:TBD</c>. This is the correct short-circuit for development use.
-    /// </summary>
-    [Fact]
-    public async Task DownloadModelAsync_TbdChecksumExistingFile_ReturnsPathWithoutDownload()
-    {
-        var modelPath = Path.Combine(_tempDir, "qwen3-14b-instruct-q4_k_m.gguf");
-        File.WriteAllBytes(modelPath, new byte[16]); // sentinel file
-
-        using var loader = new LocalModelLoader(_tempDir);
-        // Checksum is TBD + file exists → loader returns path immediately,
-        // no network call, no ArgumentException.
-        var result = await loader.DownloadModelAsync("Qwen3-14B-Q4");
-        Assert.Equal(modelPath, result, StringComparer.OrdinalIgnoreCase);
+        Assert.False(loader.ModelExists(KnownModelA));
     }
 
     // ------------------------------------------------------------------
@@ -188,7 +179,7 @@ public sealed class LocalModelLoaderTests : IDisposable
         // The path is the expected on-disk location, not a live-file check.
         // File absence must not cause GetModelPath to throw or return empty.
         using var loader = new LocalModelLoader(_tempDir);
-        var path = loader.GetModelPath("Qwen3-14B-Q4");
+        var path = loader.GetModelPath(KnownModelA);
         Assert.False(string.IsNullOrWhiteSpace(path));
         Assert.StartsWith(_tempDir, path, StringComparison.OrdinalIgnoreCase);
     }

@@ -19,14 +19,24 @@ public sealed record ModelTier(string ModelId, long MinRamBytes, string Descript
 /// </summary>
 public static class ModelSelector
 {
+    // Every ModelId here MUST exist in the embedded model registry that
+    // ModelDownloader resolves. Picking a model the registry doesn't know
+    // throws KeyNotFoundException at LoadAsync time and silently demotes
+    // CircleAI to "not ready" — which cascades to Chat.razor falling back
+    // to whichever cloud provider sorts first alphabetically.
+    //
+    // Source of truth: src/CircleAI.Core/registry.json (kept in sync with
+    // ModelScope, last refreshed 2026-06-06). Tiers below are the real Qwen3
+    // MNN family plus Kimi-VL for multimodal-capable workstations.
     private static readonly IReadOnlyList<ModelTier> _defaultTiers =
         new List<ModelTier>
         {
-            new("Qwen3-1.7B-Q4",       MinRamBytes: 2L  * 1024 * 1024 * 1024, "Low-end phone / wearable"),
-            new("Qwen3-4B-Q4",         MinRamBytes: 4L  * 1024 * 1024 * 1024, "Mid-range phone"),
-            new("Qwen3.6-35B-A3B-Q3",  MinRamBytes: 8L  * 1024 * 1024 * 1024, "Flagship phone / tablet (default)"),
-            new("Qwen3-30B-A3B-Q4",    MinRamBytes: 16L * 1024 * 1024 * 1024, "Desktop / laptop"),
-            new("Qwen3-235B-A22B-Q2",  MinRamBytes: 48L * 1024 * 1024 * 1024, "Server / workstation"),
+            new("Qwen3-0.6B-MNN",                MinRamBytes: 2L  * 1024 * 1024 * 1024, "Wearable / low-end phone"),
+            new("Qwen3-1.7B-MNN",                MinRamBytes: 3L  * 1024 * 1024 * 1024, "Entry phone"),
+            new("Qwen3-4B-MNN",                  MinRamBytes: 6L  * 1024 * 1024 * 1024, "Mid-range phone"),
+            new("Qwen3-8B-MNN",                  MinRamBytes: 12L * 1024 * 1024 * 1024, "Flagship phone / tablet"),
+            new("Qwen3-14B-MNN",                 MinRamBytes: 24L * 1024 * 1024 * 1024, "Desktop / laptop"),
+            new("Kimi-VL-A3B-Thinking-2506",     MinRamBytes: 32L * 1024 * 1024 * 1024, "Multimodal workstation"),
         }.AsReadOnly();
 
     /// <summary>

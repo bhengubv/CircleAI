@@ -3,32 +3,29 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Aether</PackageId>
-    <Version>1.2.0</Version><Description>Aether mesh-network telemetry contracts, observer interfaces, and IAetherAiProvider bridge for Circle AI.</Description>
+    <Version>1.3.0</Version>
+    <Description>
+      Aether mesh contracts for CircleAI — pure abstractions, no external runtime
+      dependency. Defines IAetherContext, IAetherIntelligence, IAetherTelemetry,
+      IAISecurityLayer, IAuthChallenge and supporting event types. Implementations
+      ship in separate adapter packages (e.g. CircleAI.Aether.AetherMesh) that
+      float their AetherMesh version constraint — this package never tethers
+      consumers to a specific Aether protocol version.
+    </Description>
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- net10.0 only — Aether.Core 1.0.1 on NuGet is net10.0 only.
-         Consumers that target net9.0 must reference this project conditionally,
-         e.g. via <ProjectReference Condition="'$(TargetFramework)'=='net10.0'" />.
-         See CircleAI.Tests.csproj for the pattern. -->
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <!--
-    IAetherAiProvider lives in Aether.Core.
-    When Circle.AI is checked out as a submodule of aether-protocol the parent
-    project is three levels up — use a direct ProjectReference (no NuGet round-trip,
-    no version skew). When built standalone (e.g. CI, downstream consumers) fall back
-    to the published NuGet package.
+    NO external dependencies. This is a pure contracts package.
+    To wire a real mesh implementation, install an adapter:
+        dotnet add package CircleAI.Aether.AetherMesh
+    Adapters float their AetherMesh.* version with Version="1.*" so they pick
+    up upstream patch/minor releases without consumers needing to re-pin.
   -->
-  <ItemGroup Condition="Exists('../../../src/Aether.Core/Aether.Core.csproj')">
-    <ProjectReference Include="../../../src/Aether.Core/Aether.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup Condition="!Exists('../../../src/Aether.Core/Aether.Core.csproj')">
-    <PackageReference Include="Aether.Core" Version="1.0.0" />
-  </ItemGroup>
 
 </Project>

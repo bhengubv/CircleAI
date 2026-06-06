@@ -1,17 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Aether</PackageId>
-    <Version>1.2.0</Version><Description>Aether mesh implementation of CircleAI.Networking. Signal E2E, AODV routing, DTN store-and-forward, SOS flood. Wraps aether-protocol engine.</Description>
+    <Version>1.3.0</Version>
+    <Description>
+      Aether mesh implementation of CircleAI.Networking. Signal-Protocol E2E,
+      AODV routing, DTN store-and-forward, SOS flood. Wraps any IAetherContext
+      provided by the host — contracts-only, no compile-time Aether runtime
+      dependency. To wire a real mesh, install CircleAI.Aether.AetherMesh.
+    </Description>
   </PropertyGroup>
+
   <PropertyGroup>
-    <!-- net10.0 only — depends on CircleAI.Aether (net10.0 because
-         Aether.Core 1.0.1 on NuGet is net10.0-only). -->
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
     <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
   </ItemGroup>
+
 </Project>
