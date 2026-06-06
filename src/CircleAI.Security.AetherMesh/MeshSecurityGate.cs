@@ -10,7 +10,7 @@
 // every consumer.
 // ──────────────────────────────────────────────────────────────────────────
 
-namespace CircleAI.Security.Aether;
+namespace CircleAI.Security.AetherMesh;
 
 /// <summary>
 /// Query surface for asking "is this user/node currently blocked by the mesh?"

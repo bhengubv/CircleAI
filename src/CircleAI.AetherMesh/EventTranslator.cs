@@ -13,7 +13,7 @@
 using AetherMesh.Extensibility.Events;
 using CircleAI.Aether;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 internal static class EventTranslator
 {

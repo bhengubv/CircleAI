@@ -8,7 +8,7 @@
       Aether mesh implementation of CircleAI.Networking. Signal-Protocol E2E,
       AODV routing, DTN store-and-forward, SOS flood. Wraps any IAetherContext
       provided by the host — contracts-only, no compile-time Aether runtime
-      dependency. To wire a real mesh, install CircleAI.Aether.AetherMesh.
+      dependency. To wire a real mesh, install CircleAI.AetherMesh.
     </Description>
   </PropertyGroup>
 

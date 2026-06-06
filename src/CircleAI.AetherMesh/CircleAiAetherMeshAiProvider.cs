@@ -18,7 +18,7 @@ using AetherMesh.Extensibility;
 using AetherMesh.Protocol;
 using CircleAI.Aether;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 /// <summary>
 /// Bridges CircleAI's <see cref="IAetherIntelligence"/> to AetherMesh's

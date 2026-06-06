@@ -43,6 +43,6 @@
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security.Aether\CircleAI.Security.Aether.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Security.AetherMesh\CircleAI.Security.AetherMesh.csproj" />
   </ItemGroup>
 </Project>

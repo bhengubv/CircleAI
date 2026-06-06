@@ -2,7 +2,7 @@
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
-    <PackageId>CircleAI.Aether.AetherMesh</PackageId>
+    <PackageId>CircleAI.AetherMesh</PackageId>
     <Version>1.0.0</Version>
     <Description>
       The runtime adapter that bridges CircleAI.Aether contracts to the live

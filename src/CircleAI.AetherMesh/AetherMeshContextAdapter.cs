@@ -13,7 +13,7 @@
 using CircleAI.Aether;
 using AetherMesh.Constants;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 /// <summary>
 /// Reports the presence and capability of AetherMesh to CircleAI consumers

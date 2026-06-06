@@ -19,7 +19,7 @@ using CircleAI.Aether;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace CircleAI.Security.Aether;
+namespace CircleAI.Security.AetherMesh;
 
 /// <summary>
 /// DI wiring for the CircleAI mesh-security directive pipeline.

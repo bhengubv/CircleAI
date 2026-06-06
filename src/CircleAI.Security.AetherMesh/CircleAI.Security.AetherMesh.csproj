@@ -2,21 +2,23 @@
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
-    <PackageId>CircleAI.Security.Aether</PackageId>
-    <Version>1.4.0</Version>
+    <PackageId>CircleAI.Security.AetherMesh</PackageId>
+    <Version>1.0.0</Version>
     <Description>
-      Aether mesh bridge for CircleAI.Security. Two surfaces:
+      AetherMesh-targeted security bridge for CircleAI. Two surfaces:
 
       • Mesh telemetry / intelligence — translates mesh events into transport-
         agnostic PeerSecurityEvents and adapts intelligence output to
         CircleAI.Aether's IAetherIntelligence + IAISecurityLayer.
 
-      • Mesh-directive store (NEW in 1.4.0) — MeshDirectiveStore records
-        SecurityDirectives the mesh has issued; MeshSecurityGate exposes the
-        fast-path "is this user blocked?" query for chat / API / moderation
-        code. Wire via AddCircleAiMeshSecurity().
+      • Mesh-directive store — MeshDirectiveStore records SecurityDirectives
+        the mesh has issued; MeshSecurityGate exposes the fast-path "is this
+        user blocked?" query for chat / API / moderation code. Wire via
+        AddCircleAiMeshSecurity().
 
-      Contracts-only — no external Aether runtime dependency.
+      Renamed from CircleAI.Security.Aether 1.4.0 → CircleAI.Security.AetherMesh 1.0.0
+      to be honest about the runtime it targets. CircleAI.Security.Aether 1.4.0
+      remains the last build under the old name.
     </Description>
   </PropertyGroup>
 

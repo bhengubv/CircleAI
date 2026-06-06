@@ -14,7 +14,7 @@ using CircleAI.Aether;
 using MeshDirective = AetherMesh.Extensibility.SecurityDirective;
 using MeshConsumer = AetherMesh.Extensibility.ISecurityDirectiveConsumer;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 /// <summary>
 /// Forwards CircleAI security directives to the AetherMesh policy engine.

@@ -7,7 +7,7 @@
       Transport-agnostic AI Security Layer for Circle AI.
       Trust scoring, threat detection, and security directives work across
       any network transport (WiFi, BLE, NearLink, HTTP, Aether mesh, etc.).
-      For Aether-specific telemetry integration, add CircleAI.Security.Aether.
+      For AetherMesh-specific telemetry integration, add CircleAI.Security.AetherMesh.
     </Description>
   </PropertyGroup>
 

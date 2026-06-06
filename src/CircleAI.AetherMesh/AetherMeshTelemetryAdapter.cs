@@ -14,7 +14,7 @@ using AetherMesh.Extensibility;
 using AetherMesh.Extensibility.Events;
 using CircleAI.Aether;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 /// <summary>
 /// Bridges AetherMesh's telemetry bus to CircleAI's <see cref="IAetherTelemetry"/>

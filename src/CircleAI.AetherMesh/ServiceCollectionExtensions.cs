@@ -24,7 +24,7 @@ using CircleAI.Aether;
 using Microsoft.Extensions.DependencyInjection;
 using MeshConsumer = AetherMesh.Extensibility.ISecurityDirectiveConsumer;
 
-namespace CircleAI.Aether.AetherMesh;
+namespace CircleAI.AetherMesh;
 
 /// <summary>
 /// DI wiring for the CircleAI ↔ AetherMesh adapter family.
