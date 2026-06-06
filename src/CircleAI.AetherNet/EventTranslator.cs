@@ -148,4 +148,16 @@ internal static class EventTranslator
         SecurityDirectiveKind.ElevateMonitoring    => global::AetherNet.Extensibility.SecurityDirectiveKind.ElevateMonitoring,
         _ => global::AetherNet.Extensibility.SecurityDirectiveKind.UpdateNodeTrust,
     };
+
+    // Reverse — mesh → CircleAI direction (for AetherNetInboundDirectiveBridge).
+    public static SecurityDirectiveKind MapDirectiveKind(global::AetherNet.Extensibility.SecurityDirectiveKind k) => k switch
+    {
+        global::AetherNet.Extensibility.SecurityDirectiveKind.UpdateNodeTrust      => SecurityDirectiveKind.UpdateNodeTrust,
+        global::AetherNet.Extensibility.SecurityDirectiveKind.AvoidNode            => SecurityDirectiveKind.AvoidNode,
+        global::AetherNet.Extensibility.SecurityDirectiveKind.QuarantineNode       => SecurityDirectiveKind.QuarantineNode,
+        global::AetherNet.Extensibility.SecurityDirectiveKind.ReleaseNode          => SecurityDirectiveKind.ReleaseNode,
+        global::AetherNet.Extensibility.SecurityDirectiveKind.RequestReauth        => SecurityDirectiveKind.RequestReauth,
+        global::AetherNet.Extensibility.SecurityDirectiveKind.ElevateMonitoring    => SecurityDirectiveKind.ElevateMonitoring,
+        _ => SecurityDirectiveKind.UpdateNodeTrust,
+    };
 }

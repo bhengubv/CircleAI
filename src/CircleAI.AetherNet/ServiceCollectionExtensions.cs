@@ -72,4 +72,38 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Adds the inbound directive bridge — when AetherNet publishes a
+    /// SecurityDirective (locally authored or received over the mesh) it gets
+    /// translated and forwarded to the CircleAI <see cref="ISecurityDirectiveConsumer"/>
+    /// (typically <c>MeshDirectiveStore</c>).
+    /// <para>
+    /// Call this AFTER both <see cref="AddCircleAiAetherNetAdapter"/> and
+    /// <c>AddCircleAiMeshSecurity()</c> have been called.
+    /// </para>
+    /// </summary>
+    public static IServiceCollection AddCircleAiAetherNetInboundDirectives(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        // Concrete type — host wires it as an additional mesh-side consumer
+        // (the AetherNet runtime fires every registered consumer when a
+        // directive arrives). The constructor takes the CircleAI-side
+        // ISecurityDirectiveConsumer; the type alias below avoids ambiguity
+        // with the mesh-side interface of the same simple name.
+        services.AddSingleton(sp =>
+            new AetherNetInboundDirectiveBridge(
+                sp.GetRequiredService<CircleAI.Aether.ISecurityDirectiveConsumer>()));
+
+        // Also register under the mesh-side interface so AetherNet's DI
+        // discovery picks it up. Sequence: outbound sink keeps its concrete
+        // registration; inbound bridge claims the IAetherNet ISecurityDirective
+        // Consumer slot for mesh → CircleAI delivery.
+        services.AddSingleton<MeshConsumer>(sp =>
+            sp.GetRequiredService<AetherNetInboundDirectiveBridge>());
+
+        return services;
+    }
 }
