@@ -2,13 +2,17 @@
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
-    <PackageId>CircleAI.Networking.Aether</PackageId>
-    <Version>1.3.0</Version>
+    <PackageId>CircleAI.Networking.AetherMesh</PackageId>
+    <Version>1.0.0</Version>
     <Description>
-      Aether mesh implementation of CircleAI.Networking. Signal-Protocol E2E,
+      AetherMesh-targeted networking adapter for CircleAI. Signal-Protocol E2E,
       AODV routing, DTN store-and-forward, SOS flood. Wraps any IAetherContext
       provided by the host — contracts-only, no compile-time Aether runtime
       dependency. To wire a real mesh, install CircleAI.AetherMesh.
+
+      Renamed from CircleAI.Networking.Aether 1.3.0 → CircleAI.Networking.AetherMesh
+      1.0.0 to be honest about the runtime it targets. CircleAI.Networking.Aether
+      1.3.0 remains the last build under the old name.
     </Description>
   </PropertyGroup>
 

@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using CircleAI.Networking;
 using CircleAI.Aether;
 
-namespace CircleAI.Networking.Aether;
+namespace CircleAI.Networking.AetherMesh;
 
 /// <summary>
 /// <see cref="ISyncChannel"/> backed by Aether DTN store-and-forward.

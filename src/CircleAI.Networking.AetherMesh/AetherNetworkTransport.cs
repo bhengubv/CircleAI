@@ -3,7 +3,7 @@ using System.Threading.Channels;
 using CircleAI.Networking;
 using CircleAI.Aether;
 
-namespace CircleAI.Networking.Aether;
+namespace CircleAI.Networking.AetherMesh;
 
 /// <summary>
 /// <see cref="INetworkTransport"/> backed by the Aether mesh protocol engine.
