@@ -46,11 +46,14 @@ public static class InferenceServerBuilder
         services.AddSingleton<AdmissionControl>();
         services.AddSingleton<IInferenceServerModelRegistry, InferenceServerModelRegistry>();
 
-        // Phase 3 — lifecycle + admin surface. Hosts that want to allow runtime
-        // model loads register an IBridgeFactory that knows how to materialise
-        // bridges from their model cache. The default factory rejects all loads.
+        // Phase 3 — lifecycle + admin surface. Default IBridgeFactory is the
+        // real MnnInferenceBridgeFactory which composes ModelRegistryService +
+        // ModelDownloadService + NativeRuntimeFetcher + QwenTextGenerator into
+        // a working IInferenceBridge. Hosts that need a different materialiser
+        // (custom model cache, dual-backend fan-out, etc.) replace it via
+        // services.AddSingleton<IBridgeFactory, MyFactory>() AFTER calling this.
         services.AddSingleton<IModelLifecycleManager, ModelLifecycleManager>();
-        services.TryAddSingleton<IBridgeFactory, UnconfiguredBridgeFactory>();
+        services.TryAddSingleton<IBridgeFactory, MnnInferenceBridgeFactory>();
 
         // CircleAI.Runtime wiring — paths are expanded at AddSingleton time so
         // the directories exist before any request lands.
