@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.2.1</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.2.1 ships the Windows x64 mnnbridge.dll + MNN.dll under runtimes/win-x64/native/ — first version that actually runs inference end-to-end on Windows. Other platforms: build mnnbridge from native/mnn-bridge/ per BUILD.md.</Description>
+    <Version>1.2.2</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.2.2 ships the Windows x64 mnnbridge.dll + MNN.dll inside the package at runtimes/win-x64/native/ — first version that actually runs inference end-to-end on Windows. Other platforms: build mnnbridge from native/mnn-bridge/ per BUILD.md. (1.2.1 missed the explicit pack items — use 1.2.2.)</Description>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -16,6 +16,16 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+	</ItemGroup>
+
+	<!-- Native runtime payload. The SDK's default item glob excludes
+	     runtimes/** from auto-pack, so we explicitly add anything under
+	     runtimes/{RID}/native/ to the package at the matching path.
+	     Currently: win-x64. Future platforms: build mnnbridge per BUILD.md,
+	     drop the .so/.dylib into the matching runtimes/{RID}/native/
+	     folder, re-pack. -->
+	<ItemGroup>
+		<None Include="runtimes/**/*.*" Pack="true" PackagePath="runtimes/" />
 	</ItemGroup>
 
 	<PropertyGroup>
