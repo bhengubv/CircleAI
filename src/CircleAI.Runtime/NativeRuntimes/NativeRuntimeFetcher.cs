@@ -72,9 +72,9 @@ public sealed class NativeRuntimeFetcher : INativeRuntimeFetcher, IDisposable
         if (bundle is null) return Task.FromResult(false);
 
         var extractDir = GetExtractDir(bundle);
-        var bridgePath = Path.Combine(extractDir, bundle.MnnBridgeLibraryName);
-        var corePath   = Path.Combine(extractDir, bundle.MnnCoreLibraryName);
-        return Task.FromResult(File.Exists(bridgePath) && File.Exists(corePath));
+        if (!Directory.Exists(extractDir)) return Task.FromResult(false);
+
+        return Task.FromResult(FindMnnCorePath(extractDir, bundle) is not null);
     }
 
     /// <inheritdoc/>
@@ -90,19 +90,22 @@ public sealed class NativeRuntimeFetcher : INativeRuntimeFetcher, IDisposable
                 string.Join(", ", _registry.All.Select(b => $"({b.Os},{b.Arch},{b.Backend})")));
 
         var extractDir = GetExtractDir(bundle);
-        var bridgePath = Path.Combine(extractDir, bundle.MnnBridgeLibraryName);
-        var corePath   = Path.Combine(extractDir, bundle.MnnCoreLibraryName);
 
-        // ── Fast path: extracted, both required libs present ─────────────────
-        if (File.Exists(bridgePath) && File.Exists(corePath))
+        // ── Fast path: extracted, MNN core findable in the tree ──────────────
+        if (Directory.Exists(extractDir))
         {
-            progress?.Report(1.0);
-            return new NativeRuntimeInstall(bundle, extractDir, bridgePath, corePath);
+            var cachedCorePath = FindMnnCorePath(extractDir, bundle);
+            if (cachedCorePath is not null)
+            {
+                progress?.Report(1.0);
+                return new NativeRuntimeInstall(bundle, extractDir, cachedCorePath);
+            }
         }
 
         // ── Slow path: download archive, verify SHA, extract atomically ──────
         var tempArchive = Path.Combine(_cacheRoot, $"{bundle.MnnVersion}-{bundle.Os}-{bundle.Arch}-{bundle.Backend}.partial");
         var tempExtract = extractDir + ".tmp";
+        string corePath;
         try
         {
             await DownloadWithFallbackAsync(bundle, tempArchive, progress, ct).ConfigureAwait(false);
@@ -127,16 +130,11 @@ public sealed class NativeRuntimeFetcher : INativeRuntimeFetcher, IDisposable
 
             File.Delete(tempArchive);
 
-            // Re-resolve under the final root.
-            bridgePath = Path.Combine(extractDir, bundle.MnnBridgeLibraryName);
-            corePath   = Path.Combine(extractDir, bundle.MnnCoreLibraryName);
-
-            if (!File.Exists(bridgePath) || !File.Exists(corePath))
-            {
-                throw new InvalidOperationException(
-                    $"Extracted runtime bundle is missing required libraries. " +
-                    $"Expected '{bundle.MnnBridgeLibraryName}' and '{bundle.MnnCoreLibraryName}' under '{extractDir}'.");
-            }
+            corePath = FindMnnCorePath(extractDir, bundle)
+                ?? throw new InvalidOperationException(
+                    $"Extracted runtime bundle is missing the MNN core library. " +
+                    $"Searched recursively under '{extractDir}' for '{bundle.MnnCoreLibraryName}'. " +
+                    "Either the bundle layout changed or the wrong archive was served.");
         }
         catch
         {
@@ -146,8 +144,66 @@ public sealed class NativeRuntimeFetcher : INativeRuntimeFetcher, IDisposable
             throw;
         }
 
-        return new NativeRuntimeInstall(bundle, extractDir, bridgePath, corePath);
+        return new NativeRuntimeInstall(bundle, extractDir, corePath);
     }
+
+    // ── MNN binary discovery ────────────────────────────────────────────────
+    //
+    // Alibaba MNN bundles ship the binary at a deep, platform-specific path:
+    //   Windows: lib/x64/Release/Dynamic/MD/MNN.dll          (preferred — matches .NET CRT)
+    //            lib/x64/Release/Dynamic/MT/MNN.dll          (alt CRT)
+    //   macOS:   Dynamic/MNN.framework/Versions/A/MNN        (framework binary)
+    //            (fall back to libMNN.dylib when bundle ships flat)
+    //   iOS:     Dynamic/MNN.framework/Versions/A/MNN        (framework binary)
+    //   Linux:   lib/x64/libMNN.so                           (typical)
+    //   Android: jni/{abi}/libMNN.so                         (per-ABI)
+    //
+    // We search by file name with per-platform preferences. Returning null
+    // means the bundle layout did NOT contain MNN where we'd expect — at
+    // which point EnsureRuntimeAsync raises a clear error citing the
+    // searched location.
+
+    /// <summary>
+    /// Searches the extracted bundle directory tree for the MNN core library
+    /// using a platform-specific preference ordering. Returns the absolute
+    /// path, or <c>null</c> if not found.
+    /// </summary>
+    private static string? FindMnnCorePath(string extractRoot, NativeRuntimeBundle bundle)
+    {
+        // 1. macOS / iOS framework layout: prefer MNN.framework/Versions/<v>/MNN
+        if (bundle.Os is OperatingSystemKind.MacOS or OperatingSystemKind.IOS)
+        {
+            var fw = Directory.EnumerateFiles(extractRoot, "MNN", SearchOption.AllDirectories)
+                .Select(NormaliseSep)
+                .FirstOrDefault(p => p.Contains("/MNN.framework/Versions/", StringComparison.Ordinal)
+                                     && p.EndsWith("/MNN", StringComparison.Ordinal));
+            if (fw is not null) return fw;
+        }
+
+        // 2. By-name match anywhere in the tree.
+        var candidates = Directory.EnumerateFiles(
+                extractRoot, bundle.MnnCoreLibraryName, SearchOption.AllDirectories)
+            .Select(NormaliseSep)
+            .ToList();
+
+        if (candidates.Count == 0) return null;
+
+        // 3. Per-platform preference:
+        //    Windows: prefer Dynamic over Static, MD over MT, Release over Debug.
+        //    Others : take the first hit.
+        if (bundle.Os == OperatingSystemKind.Windows)
+        {
+            return candidates
+                .OrderBy(p => p.Contains("/Static/",  StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenBy (p => p.Contains("/MT/",      StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenBy (p => p.Contains("/Debug/",   StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .First();
+        }
+
+        return candidates[0];
+    }
+
+    private static string NormaliseSep(string p) => p.Replace('\\', '/');
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 

@@ -76,7 +76,21 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
 
-        // ── 1 & 2. Probe host, fetch the right MNN runtime bundle ─────────
+        // ── 1. Resolve the model entry from the registry FIRST ───────────
+        //
+        // Cheap, deterministic, no network. Fails fast for unknown ids
+        // before we spend the user's bandwidth fetching a 240 MB runtime
+        // for a model that doesn't exist.
+        var entry = _modelRegistry.GetLatestModel(modelId)
+            ?? throw new InvalidOperationException(
+                $"Model '{modelId}' is not in the embedded registry. " +
+                "Either add it to CircleAI.Core/Models/embedded_registry.json or pre-register the model file path via an alternative IBridgeFactory.");
+
+        if (!Uri.TryCreate(entry.Url, UriKind.Absolute, out var downloadUri))
+            throw new InvalidOperationException(
+                $"Registry entry for '{modelId}' has an invalid Url: '{entry.Url}'.");
+
+        // ── 2 & 3. Probe host, fetch the right MNN runtime bundle ────────
         var profile = await _probe.ProbeAsync(ct).ConfigureAwait(false);
         _log.LogInformation(
             "Materialising bridge for model {ModelId} on {Backend} (host: {Os}/{Arch}, GPU: {Gpu}).",
@@ -96,19 +110,23 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
                 $"required by model '{modelId}'. {ex.Message}", ex);
         }
 
-        // ── 3. Point the P/Invoke resolver at the extracted runtime ───────
-        NativeLibraryResolver.OverrideDirectory = runtimeInstall.ExtractedRoot;
-        NativeLibraryResolver.EnsureRegistered();
-
-        // ── 4. Resolve the model entry from the registry ──────────────────
-        var entry = _modelRegistry.GetLatestModel(modelId)
+        // ── 4. Point the P/Invoke resolver at the directory containing MNN ─
+        //
+        // Alibaba bundles ship MNN at a deeply nested path (Windows:
+        // lib/x64/Release/Dynamic/MD/MNN.dll; macOS: MNN.framework/...).
+        // NativeRuntimeFetcher walked the tree and reports the real path
+        // in MnnCorePath — we use its containing directory so the resolver
+        // finds MNN without recursive scanning at P/Invoke time.
+        //
+        // "mnnbridge" is NOT in this directory; it ships with the
+        // CircleAI.Inference NuGet's runtimes/{RID}/native/ folder and is
+        // resolved by NativeLibraryResolver via its assembly-relative
+        // fallback paths.
+        var mnnDirectory = Path.GetDirectoryName(runtimeInstall.MnnCorePath)
             ?? throw new InvalidOperationException(
-                $"Model '{modelId}' is not in the embedded registry. " +
-                "Either add it to CircleAI.Core/Models/embedded_registry.json or pre-register the model file path via an alternative IBridgeFactory.");
-
-        if (!Uri.TryCreate(entry.Url, UriKind.Absolute, out var downloadUri))
-            throw new InvalidOperationException(
-                $"Registry entry for '{modelId}' has an invalid Url: '{entry.Url}'.");
+                $"MNN core path '{runtimeInstall.MnnCorePath}' has no parent directory.");
+        NativeLibraryResolver.OverrideDirectory = mnnDirectory;
+        NativeLibraryResolver.EnsureRegistered();
 
         // ── 5. Ensure the model file is on disk ───────────────────────────
         var modelPath = await _modelDownload

@@ -1,43 +1,38 @@
 {
   "_notes": [
-    "Embedded registry of pre-built MNN runtime bundles. Mirrors the shape",
-    "used by CircleAI.Core\\Models\\embedded_registry.json (non-object",
-    "entries like this _notes array are tolerated by the parser).",
+    "Embedded registry of pre-built Alibaba MNN runtime bundles. Real release URLs +",
+    "SHA-256 fingerprints pulled from https://github.com/alibaba/MNN/releases/tag/3.5.0",
+    "(2026-04-07). Bytes hashed locally with sha256sum.",
+    "Last refreshed: 2026-06-06.",
     "",
-    "Real release URLs + SHA-256s pulled from",
-    "https://github.com/alibaba/MNN/releases/tag/3.5.0 (2026-04-07).",
-    "Last refreshed: 2026-06-05. Bytes hashed locally with sha256sum.",
+    "IMPORTANT — bundle internal layout:",
+    "  Alibaba ships ONE archive per (OS, arch), carrying MULTIPLE backend libraries.",
+    "  The MNN binary is DEEPLY NESTED inside the archive:",
+    "    Windows: lib/x64/Release/Dynamic/MD/MNN.dll  (MD CRT — matches .NET on Windows)",
+    "             lib/x64/Release/Dynamic/MT/MNN.dll  (MT CRT — static CRT linkage)",
+    "    macOS:   Dynamic/MNN.framework/Versions/A/MNN  (framework binary, no extension)",
+    "    iOS:     Dynamic/MNN.framework/Versions/A/MNN",
+    "    Linux:   lib/x64/libMNN.so  (or similar nested path)",
+    "    Android: jni/{abi}/libMNN.so",
+    "  NativeRuntimeFetcher recursively walks the extracted tree to find the binary",
+    "  by name, with per-platform preferences (Windows: prefer Dynamic/MD over MT and",
+    "  Static; macOS/iOS: prefer the framework binary; others: first hit wins).",
     "",
-    "Reality vs prior speculative registry:",
-    "  - Alibaba ships ONE bundle per (OS, arch) carrying MULTIPLE backends,",
-    "    not one bundle per (OS, arch, backend). The Windows x64 ZIP contains",
-    "    both the CPU and OpenCL libraries; the macOS universal bundle covers",
-    "    CPU + OpenCL + Metal; the iOS bundle ships CPU + Metal + CoreML; the",
-    "    Android universal bundle ships CPU + OpenCL + Vulkan.",
-    "  - To preserve the existing (os, arch, backend) -> bundle lookup API,",
-    "    we register each (os, arch, backend) tuple pointing at the same",
-    "    underlying zip + sha. The fetcher will extract the same archive",
-    "    multiple times (once per backend tuple); we accept this storage",
-    "    overhead as the simpler 1.2.0 trade-off vs reshaping the API.",
-    "  - Backends NOT shipped pre-built by Alibaba (need source build):",
-    "    Linux arm64, Linux loong64, Windows arm64, CUDA (any OS), Ascend,",
-    "    Cambricon, HarmonyOS. These were in the prior speculative registry",
-    "    and are now correctly absent.",
+    "  \"mnnbridge\" is the CircleAI shim — NOT in Alibaba's bundle. mnnbridge ships",
+    "  in CircleAI.Inference's NuGet runtimes/{RID}/native/ folder and is resolved",
+    "  by CircleAI.Inference.NativeLibraryResolver via its assembly-relative fallback",
+    "  paths. The registry exposes only MNN.",
     "",
-    "Fallback URL convention: same github.com/alibaba/MNN/releases/download",
-    "path as primary. Primary uses HTTPS direct; fallback also uses HTTPS",
-    "direct — same host. The real fallback story is to mirror these onto",
-    "modelscope.cn (Alibaba's sovereign mirror) once that pipeline is wired;",
-    "until then both URIs point at the canonical GitHub release.",
+    "Backends NOT in any Alibaba pre-build (need source build):",
+    "  CUDA, Ascend, Cambricon, Linux arm64, Loong64, HarmonyOS.",
     "",
     "Refresh procedure (for new MNN releases):",
     "  1. gh release list --repo alibaba/MNN",
     "  2. gh release view <version> --repo alibaba/MNN --json assets",
-    "  3. curl -sL -o $asset 'https://github.com/alibaba/MNN/releases/download/<version>/$asset'",
-    "  4. sha256sum $asset",
-    "  5. Update version + url + sha256 in this file"
+    "  3. for each asset: curl -sL -o <asset> https://github.com/alibaba/MNN/releases/download/<version>/<asset>",
+    "  4. sha256sum <asset>",
+    "  5. Update version + url + sha256 here"
   ],
-
   "mnn_versions": [
     {
       "version": "3.5.0",
@@ -54,7 +49,6 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
           "sha256": "e37dbed6a5a6c26122239468d7fc8569d003c7f4a12c8a8024a33660fb13e4b7",
-          "mnnbridge_lib": "mnnbridge.dll",
           "mnn_lib": "MNN.dll"
         },
         {
@@ -64,10 +58,8 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_windows_x64_cpu_opencl.zip",
           "sha256": "e37dbed6a5a6c26122239468d7fc8569d003c7f4a12c8a8024a33660fb13e4b7",
-          "mnnbridge_lib": "mnnbridge.dll",
           "mnn_lib": "MNN.dll"
         },
-
         {
           "os": "Linux",
           "arch": "X64",
@@ -75,7 +67,6 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
           "sha256": "a9f4b00bf7c8473b3ef3c47873df84512ebf452d4422a4fde0a70ee81e073a17",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
         {
@@ -85,10 +76,8 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_linux_x64_cpu_opencl.zip",
           "sha256": "a9f4b00bf7c8473b3ef3c47873df84512ebf452d4422a4fde0a70ee81e073a17",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
-
         {
           "os": "MacOS",
           "arch": "Arm64",
@@ -96,8 +85,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
         {
           "os": "MacOS",
@@ -106,8 +94,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
         {
           "os": "MacOS",
@@ -116,8 +103,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
         {
           "os": "MacOS",
@@ -126,8 +112,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
         {
           "os": "MacOS",
@@ -136,8 +121,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
         {
           "os": "MacOS",
@@ -146,10 +130,8 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal.zip",
           "sha256": "dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
-          "mnnbridge_lib": "libmnnbridge.dylib",
-          "mnn_lib": "libMNN.dylib"
+          "mnn_lib": "MNN"
         },
-
         {
           "os": "Android",
           "arch": "Arm64",
@@ -157,7 +139,6 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
         {
@@ -167,7 +148,6 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
         {
@@ -177,7 +157,6 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
         {
@@ -187,10 +166,8 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_android_armv7_armv8_cpu_opencl_vulkan.zip",
           "sha256": "b5513459ee5d70dec98e7a0763ce2d09a9824897c150069e65b2b1a04570c573",
-          "mnnbridge_lib": "libmnnbridge.so",
           "mnn_lib": "libMNN.so"
         },
-
         {
           "os": "IOS",
           "arch": "Arm64",
@@ -198,8 +175,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
-          "mnnbridge_lib": "libmnnbridge.a",
-          "mnn_lib": "libMNN.a"
+          "mnn_lib": "MNN"
         },
         {
           "os": "IOS",
@@ -208,8 +184,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
-          "mnnbridge_lib": "libmnnbridge.a",
-          "mnn_lib": "libMNN.a"
+          "mnn_lib": "MNN"
         },
         {
           "os": "IOS",
@@ -218,8 +193,7 @@
           "url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "fallback_url": "https://github.com/alibaba/MNN/releases/download/3.5.0/mnn_3.5.0_ios_armv82_cpu_metal_coreml.zip",
           "sha256": "fd9b6c5769718286f07ff300897c72ff6511a1d2a25ef79b3b2f8b2b3313281a",
-          "mnnbridge_lib": "libmnnbridge.a",
-          "mnn_lib": "libMNN.a"
+          "mnn_lib": "MNN"
         }
       ]
     }

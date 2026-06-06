@@ -55,13 +55,17 @@ public sealed class NativeRuntimeRegistryTests
     }
 
     [Fact]
-    public void Embedded_Registry_Has_MacOS_Arm64_Metal_Bundle()
+    public void Embedded_Registry_Has_MacOS_Arm64_Metal_Bundle_With_Framework_Binary_Name()
     {
+        // macOS / iOS ship MNN as a framework: the binary at
+        // MNN.framework/Versions/A/MNN has no prefix or extension, so the
+        // registry's mnn_lib for these platforms is just "MNN". The
+        // fetcher recognises the framework layout and finds the binary at
+        // its real nested path.
         var reg = NativeRuntimeRegistry.LoadEmbedded();
         var bundle = reg.Find(OperatingSystemKind.MacOS, ArchitectureKind.Arm64, BackendKind.Metal);
         Assert.NotNull(bundle);
-        Assert.Equal("libmnnbridge.dylib", bundle!.MnnBridgeLibraryName);
-        Assert.Equal("libMNN.dylib", bundle.MnnCoreLibraryName);
+        Assert.Equal("MNN", bundle!.MnnCoreLibraryName);
     }
 
     [Fact]

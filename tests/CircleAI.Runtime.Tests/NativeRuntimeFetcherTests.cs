@@ -1,8 +1,13 @@
 // NativeRuntimeFetcherTests.cs
 //
 // Verifies the cache-hit fast path, SHA-256 validation, atomic extraction,
-// archive cleanup on failure, and the fallback URI sequence. Uses a fake
-// HttpMessageHandler so no real network call is required.
+// archive cleanup on failure, the fallback URI sequence, and the
+// platform-aware recursive search for the MNN binary inside the real
+// Alibaba bundle layout (deeply nested, e.g.
+// lib/x64/Release/Dynamic/MD/MNN.dll on Windows or
+// Dynamic/MNN.framework/Versions/A/MNN on macOS).
+//
+// Uses a fake HttpMessageHandler so no real network call is required.
 
 using System;
 using System.Collections.Generic;
@@ -11,10 +16,8 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Runtime.Backends;
@@ -43,30 +46,32 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     // ── Cache-hit fast path ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task EnsureRuntime_Returns_Cached_Install_Without_HTTP_When_Both_Libs_Exist()
+    public async Task EnsureRuntime_Returns_Cached_Install_Without_HTTP_When_Mnn_Already_On_Disk()
     {
         var bundle = MakeBundle(BackendKind.Cpu, sha: null);
         var registry = SingleBundleRegistry(bundle);
-
-        // Pre-populate the extracted directory with both expected libs.
         var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, NeverCalledHttp());
+
+        // Pre-populate at the real-layout nested path that the Alibaba
+        // Windows bundle uses, so the fast path proves it can find MNN
+        // anywhere under the extract root.
         var expectedDir = GetExpectedExtractDir(bundle);
-        Directory.CreateDirectory(expectedDir);
-        File.WriteAllText(Path.Combine(expectedDir, bundle.MnnBridgeLibraryName), "stub");
-        File.WriteAllText(Path.Combine(expectedDir, bundle.MnnCoreLibraryName),   "stub");
+        var nested = Path.Combine(expectedDir, "lib", "x64", "Release", "Dynamic", "MD");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(nested, bundle.MnnCoreLibraryName), "stub");
 
         var progress = new TrackingProgress();
         var install = await fetcher.EnsureRuntimeAsync(
             bundle.Os, bundle.Arch, bundle.Backend, progress, CancellationToken.None);
 
         Assert.Equal(expectedDir, install.ExtractedRoot);
-        Assert.EndsWith(bundle.MnnBridgeLibraryName, install.MnnBridgePath);
+        Assert.True(File.Exists(install.MnnCorePath));
         Assert.EndsWith(bundle.MnnCoreLibraryName, install.MnnCorePath);
         Assert.Equal(1.0, progress.Reports.Last());
     }
 
     [Fact]
-    public async Task IsRuntimeCached_Returns_True_When_Both_Libs_Present()
+    public async Task IsRuntimeCached_Returns_True_When_Mnn_Is_Findable_At_Any_Depth()
     {
         var bundle = MakeBundle(BackendKind.Cpu, sha: null);
         var registry = SingleBundleRegistry(bundle);
@@ -75,9 +80,9 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
         Assert.False(await fetcher.IsRuntimeCachedAsync(bundle.Os, bundle.Arch, bundle.Backend));
 
         var dir = GetExpectedExtractDir(bundle);
-        Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, bundle.MnnBridgeLibraryName), "stub");
-        File.WriteAllText(Path.Combine(dir, bundle.MnnCoreLibraryName),   "stub");
+        var nested = Path.Combine(dir, "lib", "x64", "Release", "Dynamic", "MD");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(nested, bundle.MnnCoreLibraryName), "stub");
 
         Assert.True(await fetcher.IsRuntimeCachedAsync(bundle.Os, bundle.Arch, bundle.Backend));
     }
@@ -85,15 +90,18 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     // ── Slow path: download + extract ─────────────────────────────────────────
 
     [Fact]
-    public async Task EnsureRuntime_Downloads_Then_Extracts_Both_Libs()
+    public async Task EnsureRuntime_Downloads_Then_Finds_Mnn_At_Real_Nested_Path()
     {
+        // Build a zip mirroring Alibaba's real Windows layout:
+        // top-level dir / lib / x64 / Release / Dynamic / MD / MNN.dll
         var bundle = MakeBundle(BackendKind.Cpu, sha: null);
         var registry = SingleBundleRegistry(bundle);
 
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            [bundle.MnnBridgeLibraryName] = "BRIDGE",
-            [bundle.MnnCoreLibraryName]   = "CORE",
+            ["mnn_3.5.0_windows_x64_cpu_opencl/lib/x64/Release/Dynamic/MD/MNN.dll"] = "MNN-MD",
+            ["mnn_3.5.0_windows_x64_cpu_opencl/lib/x64/Release/Dynamic/MT/MNN.dll"] = "MNN-MT",
+            ["mnn_3.5.0_windows_x64_cpu_opencl/lib/x64/Release/Static/MD/MNN.lib"]  = "STATIC-LIB",
         });
 
         var handler = new FakeHandler((req, ct) =>
@@ -101,10 +109,72 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
         var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
 
         var install = await fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend);
-        Assert.True(File.Exists(install.MnnBridgePath));
         Assert.True(File.Exists(install.MnnCorePath));
-        Assert.Equal("BRIDGE", await File.ReadAllTextAsync(install.MnnBridgePath));
-        Assert.Equal("CORE",   await File.ReadAllTextAsync(install.MnnCorePath));
+        Assert.EndsWith("MNN.dll", install.MnnCorePath);
+
+        // Windows preference: MD CRT should win over MT.
+        var p = install.MnnCorePath.Replace('\\', '/');
+        Assert.Contains("/Dynamic/MD/", p);
+        Assert.DoesNotContain("/Dynamic/MT/", p);
+
+        Assert.Equal("MNN-MD", await File.ReadAllTextAsync(install.MnnCorePath));
+    }
+
+    [Fact]
+    public async Task EnsureRuntime_Throws_When_Mnn_Is_Missing_From_Bundle()
+    {
+        // Bundle that doesn't contain MNN.dll anywhere — fetcher must
+        // raise a clear error citing the searched name.
+        var bundle = MakeBundle(BackendKind.Cpu, sha: null);
+        var registry = SingleBundleRegistry(bundle);
+
+        var archive = MakeZipArchiveBytes(new Dictionary<string, string>
+        {
+            ["mnn_3.5.0_windows_x64_cpu_opencl/lib/x64/Release/Dynamic/MD/SomethingElse.dll"] = "not-mnn",
+        });
+
+        var handler = new FakeHandler((req, ct) =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+        var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend));
+        Assert.Contains("missing the MNN core library", ex.Message);
+        Assert.Contains("MNN.dll", ex.Message);
+    }
+
+    [Fact]
+    public async Task EnsureRuntime_Finds_Macos_Framework_Binary_Named_MNN_Under_MNN_framework_Path()
+    {
+        // Real macOS bundle ships the binary at Dynamic/MNN.framework/Versions/A/MNN
+        // — a framework binary with no extension. Verify the fetcher's
+        // macOS-specific branch finds it.
+        var bundle = new NativeRuntimeBundle(
+            MnnVersion: "9.9.9",
+            Os: OperatingSystemKind.MacOS,
+            Arch: ArchitectureKind.Arm64,
+            Backend: BackendKind.Metal,
+            PrimaryUri: new Uri("https://test.example/macos.zip"),
+            FallbackUri: null,
+            ArchiveSha256Hex: null,
+            MnnCoreLibraryName: "MNN");
+        var registry = SingleBundleRegistry(bundle);
+
+        var archive = MakeZipArchiveBytes(new Dictionary<string, string>
+        {
+            ["mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal/Dynamic/MNN.framework/Versions/A/MNN"] = "FRAMEWORK-MNN",
+            ["mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal/Dynamic/MNN.framework/Versions/A/Resources/Info.plist"] = "<plist/>",
+        });
+
+        var handler = new FakeHandler((req, ct) =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+        var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
+
+        var install = await fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend);
+        Assert.True(File.Exists(install.MnnCorePath));
+        var p = install.MnnCorePath.Replace('\\', '/');
+        Assert.Contains("/MNN.framework/Versions/A/MNN", p);
+        Assert.Equal("FRAMEWORK-MNN", await File.ReadAllTextAsync(install.MnnCorePath));
     }
 
     // ── SHA-256 verification ─────────────────────────────────────────────────
@@ -114,11 +184,9 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     {
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            ["mnnbridge.dll"] = "BRIDGE",
-            ["MNN.dll"]       = "CORE",
+            ["nested/Dynamic/MD/MNN.dll"] = "CORE",
         });
 
-        // Pin a wrong SHA — fetcher must throw and delete the partial archive.
         var wrongSha = new string('A', 64);
         var bundle = MakeBundle(BackendKind.Cpu, sha: wrongSha);
         var registry = SingleBundleRegistry(bundle);
@@ -131,7 +199,6 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
             fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend));
         Assert.Contains("SHA-256 mismatch", ex.Message);
 
-        // Partial archive must NOT linger.
         var leaked = Directory.EnumerateFiles(_cacheRoot, "*.partial").ToList();
         Assert.Empty(leaked);
     }
@@ -141,8 +208,7 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     {
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            ["mnnbridge.dll"] = "BRIDGE",
-            ["MNN.dll"]       = "CORE",
+            ["nested/Dynamic/MD/MNN.dll"] = "CORE",
         });
         var sha = Convert.ToHexString(SHA256.HashData(archive));
         var bundle = MakeBundle(BackendKind.Cpu, sha: sha);
@@ -153,7 +219,7 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
         var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
 
         var install = await fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend);
-        Assert.True(File.Exists(install.MnnBridgePath));
+        Assert.True(File.Exists(install.MnnCorePath));
     }
 
     // ── Unregistered tuple ───────────────────────────────────────────────────
@@ -178,15 +244,14 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     {
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            ["mnnbridge.dll"] = "BRIDGE",
-            ["MNN.dll"]       = "CORE",
+            ["nested/Dynamic/MD/MNN.dll"] = "CORE",
         });
 
         var bundle = new NativeRuntimeBundle(
             "9.9.9", OperatingSystemKind.Windows, ArchitectureKind.X64, BackendKind.Cpu,
             new Uri("https://primary.invalid/runtime.zip"),
             new Uri("https://fallback.invalid/runtime.zip"),
-            null, "mnnbridge.dll", "MNN.dll");
+            null, "MNN.dll");
         var registry = SingleBundleRegistry(bundle);
 
         var calls = new List<Uri>();
@@ -200,7 +265,7 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
         var fetcher = new NativeRuntimeFetcher(_cacheRoot, registry, new HttpClient(handler));
 
         var install = await fetcher.EnsureRuntimeAsync(bundle.Os, bundle.Arch, bundle.Backend);
-        Assert.True(File.Exists(install.MnnBridgePath));
+        Assert.True(File.Exists(install.MnnCorePath));
         Assert.Equal(2, calls.Count);
         Assert.Contains("primary",  calls[0].Host);
         Assert.Contains("fallback", calls[1].Host);
@@ -213,7 +278,7 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
             "9.9.9", OperatingSystemKind.Windows, ArchitectureKind.X64, BackendKind.Cpu,
             new Uri("https://primary.invalid/runtime.zip"),
             new Uri("https://fallback.invalid/runtime.zip"),
-            null, "mnnbridge.dll", "MNN.dll");
+            null, "MNN.dll");
         var registry = SingleBundleRegistry(bundle);
         var handler = new FakeHandler((req, ct) =>
             new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
@@ -230,7 +295,6 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     {
         var bundle = MakeBundle(BackendKind.Cpu, sha: null);
         var registry = SingleBundleRegistry(bundle);
-        // Always returns OK with empty body — we cancel before the request fires.
         var handler = new FakeHandler((req, ct) =>
         {
             ct.ThrowIfCancellationRequested();
@@ -266,7 +330,7 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
             OperatingSystemKind.Windows, ArchitectureKind.X64, backend,
             new Uri($"https://test.example/{backend}-runtime.zip"),
             null, sha,
-            "mnnbridge.dll", "MNN.dll");
+            "MNN.dll");
 
     private static NativeRuntimeRegistry SingleBundleRegistry(NativeRuntimeBundle bundle)
     {
@@ -287,7 +351,6 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
     {
         var sb = new StringBuilder();
         sb.Append("{ \"mnn_versions\": [");
-        // Group by version so the registry shape is realistic.
         var groups = bundles.GroupBy(b => b.MnnVersion);
         bool firstGroup = true;
         foreach (var g in groups)
@@ -305,7 +368,6 @@ public sealed class NativeRuntimeFetcherTests : IDisposable
                   .Append($"\"arch\":\"{b.Arch}\",")
                   .Append($"\"backend\":\"{b.Backend}\",")
                   .Append($"\"url\":\"{b.PrimaryUri}\",")
-                  .Append($"\"mnnbridge_lib\":\"{b.MnnBridgeLibraryName}\",")
                   .Append($"\"mnn_lib\":\"{b.MnnCoreLibraryName}\"");
                 if (b.ArchiveSha256Hex is not null) sb.Append($",\"sha256\":\"{b.ArchiveSha256Hex}\"");
                 if (b.FallbackUri is not null) sb.Append($",\"fallback_url\":\"{b.FallbackUri}\"");

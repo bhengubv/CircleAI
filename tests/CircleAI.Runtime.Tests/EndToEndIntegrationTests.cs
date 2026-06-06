@@ -2,7 +2,8 @@
 //
 // Glue check — verifies that the documented happy path
 // (ICapabilityProbe -> IBackendSelector -> INativeRuntimeFetcher)
-// composes into a runnable install for a representative host shape.
+// composes into a runnable install for a representative host shape,
+// using the real nested layout Alibaba MNN bundles ship with.
 
 using System;
 using System.Collections.Generic;
@@ -43,8 +44,9 @@ public sealed class EndToEndIntegrationTests : IDisposable
         // 1. Synthesise a probe result for a Linux x64 host with an AMD RX 7800.
         //    AMD maps to Vulkan in the selector; Linux x64 ships with CPU+OpenCL
         //    in the real Alibaba bundle — same archive carries both libraries.
-        //    Vulkan is not in the Linux x64 pre-build, so we test OpenCL here
-        //    which is the realistic accelerator path.
+        //    Vulkan is not pre-built for Linux x64, so the realistic accelerator
+        //    path is OpenCL (closest pre-built native surface from the same
+        //    bundle).
         var profile = new HostProfile(
             OperatingSystemKind.Linux, "Ubuntu 22.04",
             ArchitectureKind.X64, "AMD Ryzen 9 7950X",
@@ -58,20 +60,18 @@ public sealed class EndToEndIntegrationTests : IDisposable
         Assert.Equal(BackendKind.Vulkan, selection.Backend);
         Assert.True(selection.ActualTier >= CapabilityTier.Tier2_Medium);
 
-        // 3. Registry: Vulkan is not pre-built for Linux x64, so the realistic
-        //    runnable path is OpenCL (same accelerator class, same bundle).
-        //    A production host would either build Vulkan from source OR fall
-        //    back to OpenCL — we exercise the OpenCL bundle here.
+        // 3. Registry: pick the OpenCL bundle (realistic fallback when
+        //    Vulkan isn't pre-built).
         var bundle = NativeRuntimeRegistry.LoadEmbedded()
             .Find(profile.Os, profile.Arch, BackendKind.OpenCL);
         Assert.NotNull(bundle);
         Assert.Equal("github.com", bundle!.PrimaryUri.Host);
 
-        // 4. Fetcher (mocked) downloads + extracts + returns runnable install.
+        // 4. Fetcher (mocked) downloads + extracts. Place MNN at a nested
+        //    path mirroring Alibaba's real Linux layout.
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            [bundle.MnnBridgeLibraryName] = "BRIDGE-PAYLOAD",
-            [bundle.MnnCoreLibraryName]   = "CORE-PAYLOAD",
+            [$"mnn_3.5.0_linux_x64_cpu_opencl/lib/x64/{bundle.MnnCoreLibraryName}"] = "LINUX-MNN",
         });
         var handler = new FakeHandler((_, _) =>
             new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
@@ -80,13 +80,13 @@ public sealed class EndToEndIntegrationTests : IDisposable
 
         var install = await fetcher.EnsureRuntimeAsync(
             profile.Os, profile.Arch, BackendKind.OpenCL);
-        Assert.True(File.Exists(install.MnnBridgePath));
         Assert.True(File.Exists(install.MnnCorePath));
-        Assert.Equal("BRIDGE-PAYLOAD", await File.ReadAllTextAsync(install.MnnBridgePath));
+        Assert.EndsWith(bundle.MnnCoreLibraryName, install.MnnCorePath);
+        Assert.Equal("LINUX-MNN", await File.ReadAllTextAsync(install.MnnCorePath));
     }
 
     [Fact]
-    public async Task AppleSilicon_Macbook_Probes_To_Metal_And_Fetches_MacOS_Arm64_Metal_Bundle()
+    public async Task AppleSilicon_Macbook_Probes_To_Metal_And_Fetches_MacOS_Arm64_Framework_Binary()
     {
         var profile = new HostProfile(
             OperatingSystemKind.MacOS, "14.5",
@@ -104,11 +104,14 @@ public sealed class EndToEndIntegrationTests : IDisposable
         Assert.NotNull(bundle);
         Assert.Equal("dec927b86f32ef4351c5af527d54ec0afe0bef0b9b1b2bf94e59e3ae55bf42eb",
             bundle!.ArchiveSha256Hex);
+        // macOS bundle resolves the framework binary, no extension.
+        Assert.Equal("MNN", bundle.MnnCoreLibraryName);
 
+        // Real macOS layout: Dynamic/MNN.framework/Versions/A/MNN
         var archive = MakeZipArchiveBytes(new Dictionary<string, string>
         {
-            [bundle.MnnBridgeLibraryName] = "MAC-BRIDGE",
-            [bundle.MnnCoreLibraryName]    = "MAC-CORE",
+            ["mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal/Dynamic/MNN.framework/Versions/A/MNN"] = "MAC-FRAMEWORK-MNN",
+            ["mnn_3.5.0_macos_x64_arm82_cpu_opencl_metal/Dynamic/MNN.framework/Versions/A/Resources/Info.plist"] = "<plist/>",
         });
         var handler = new FakeHandler((_, _) =>
             new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
@@ -117,7 +120,10 @@ public sealed class EndToEndIntegrationTests : IDisposable
 
         var install = await fetcher.EnsureRuntimeAsync(
             profile.Os, profile.Arch, selection.Backend);
-        Assert.True(File.Exists(install.MnnBridgePath));
+        Assert.True(File.Exists(install.MnnCorePath));
+        Assert.Contains("/MNN.framework/Versions/A/MNN",
+            install.MnnCorePath.Replace('\\', '/'));
+        Assert.Equal("MAC-FRAMEWORK-MNN", await File.ReadAllTextAsync(install.MnnCorePath));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -126,7 +132,7 @@ public sealed class EndToEndIntegrationTests : IDisposable
     {
         var json = $"{{\"mnn_versions\":[{{\"version\":\"{bundle.MnnVersion}\",\"bundles\":[" +
                    $"{{\"os\":\"{bundle.Os}\",\"arch\":\"{bundle.Arch}\",\"backend\":\"{bundle.Backend}\"," +
-                   $"\"url\":\"{bundle.PrimaryUri}\",\"mnnbridge_lib\":\"{bundle.MnnBridgeLibraryName}\"," +
+                   $"\"url\":\"{bundle.PrimaryUri}\"," +
                    $"\"mnn_lib\":\"{bundle.MnnCoreLibraryName}\"}}]}}]}}";
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
         return NativeRuntimeRegistry.LoadFromStream(stream);

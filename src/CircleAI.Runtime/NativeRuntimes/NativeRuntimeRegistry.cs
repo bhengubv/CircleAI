@@ -90,30 +90,27 @@ public sealed class NativeRuntimeRegistry
 
         var sha = b.TryGetProperty("sha256", out var shaEl) ? shaEl.GetString() : null;
 
-        var bridgeLib = b.TryGetProperty("mnnbridge_lib", out var blEl)
-            ? blEl.GetString() ?? DefaultBridgeLibName(os)
-            : DefaultBridgeLibName(os);
+        // mnnbridge is the CircleAI shim — NOT shipped in Alibaba's bundle.
+        // The bundle only carries MNN. mnnbridge resolution is handled
+        // separately by CircleAI.Inference.NativeLibraryResolver via the
+        // SDK's runtimes/{RID}/native/ fallback paths.
+        //
+        // For macOS / iOS, the framework binary is named just "MNN" (no
+        // prefix or extension); the fetcher recognises the framework
+        // layout and finds it under MNN.framework/Versions/<v>/MNN.
         var coreLib   = b.TryGetProperty("mnn_lib", out var mlEl)
             ? mlEl.GetString() ?? DefaultCoreLibName(os)
             : DefaultCoreLibName(os);
 
         bundle = new NativeRuntimeBundle(
-            mnnVersion, os, arch, backend, primaryUri, fallback, sha,
-            bridgeLib, coreLib);
+            mnnVersion, os, arch, backend, primaryUri, fallback, sha, coreLib);
         return true;
     }
-
-    private static string DefaultBridgeLibName(OperatingSystemKind os) => os switch
-    {
-        OperatingSystemKind.Windows => "mnnbridge.dll",
-        OperatingSystemKind.MacOS or OperatingSystemKind.IOS => "libmnnbridge.dylib",
-        _ => "libmnnbridge.so",
-    };
 
     private static string DefaultCoreLibName(OperatingSystemKind os) => os switch
     {
         OperatingSystemKind.Windows => "MNN.dll",
-        OperatingSystemKind.MacOS or OperatingSystemKind.IOS => "libMNN.dylib",
+        OperatingSystemKind.MacOS or OperatingSystemKind.IOS => "MNN",
         _ => "libMNN.so",
     };
 
