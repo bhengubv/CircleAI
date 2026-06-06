@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Desktop</PackageId>
+    <Version>1.2.0</Version>
     <Description>Circle AI surface adapter for desktop and laptop computers (Windows, macOS, Linux).
 Injects system context (active app, clipboard, open files) and enables full
 markdown rendering and file-system-aware responses.</Description>

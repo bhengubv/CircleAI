@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Http</PackageId>
+    <Version>1.2.0</Version>
     <Description>HTTP/HTTPS transport for Circle AI Networking. Wraps HttpClient with retry, backoff, and circuit-breaker.</Description>
   </PropertyGroup>
   <PropertyGroup>

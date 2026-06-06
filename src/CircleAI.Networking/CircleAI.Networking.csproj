@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Networking</PackageId>
+    <Version>1.2.0</Version>
     <Description>
       Transport-agnostic networking abstractions for Circle AI.
       INetworkTransport / ISyncChannel work across HTTP, WebSocket, gRPC, MQTT,

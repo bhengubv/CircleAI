@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.IoT</PackageId>
+    <Version>1.2.0</Version>
     <Description>Circle AI surface adapter for embedded IoT devices.
 Voice-in, voice-out, minimal compute. Optimised for devices with
 256 MB RAM or less running .NET IoT.</Description>

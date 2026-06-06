@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Identity</PackageId>
+    <Version>1.2.0</Version>
     <Description>Cross-device identity for Circle AI. Unified persona key that travels with the person — not the device. Foundation for CircleAI.Sync.</Description>
   </PropertyGroup>
   <PropertyGroup>

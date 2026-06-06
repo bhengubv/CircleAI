@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.2.0</Version>
     <Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache. 1.0.1 hardens the embedded-registry parser against non-object top-level fields (e.g. a free-text "Notes" entry coexisting with model entries).</Description>
   </PropertyGroup>
 

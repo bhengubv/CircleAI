@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Languages.Language.Sesotho</PackageId>
+    <Version>1.2.0</Version>
     <Description>Sesotho language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for ZA,LS.</Description>
   </PropertyGroup>
   <PropertyGroup>

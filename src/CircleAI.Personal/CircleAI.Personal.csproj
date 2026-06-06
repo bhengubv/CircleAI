@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Personal</PackageId>
+    <Version>1.2.0</Version>
     <Description>Permission-gated personal data adapters for Circle AI — Calendar, Email, Contacts. Every call requires an explicit user consent token. Adapter contracts only; OAuth implementations ship separately. Also hosts the legacy personal-life companion adapter.</Description>
   </PropertyGroup>
 

@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Embeddings</PackageId>
+    <Version>1.2.0</Version>
     <Description>On-device text embeddings for Circle AI. Sovereign-origin embedder (BGE / Qwen-Embedding) for fully offline semantic search.</Description>
   </PropertyGroup>
 

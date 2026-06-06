@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Languages.Language</PackageId>
+    <Version>1.2.0</Version>
     <Description>Language pack base for Circle AI. Idiomatic context, cultural nuance, locale-specific prompt tuning. Each language sub-package provides a concrete ILanguagePack.</Description>
   </PropertyGroup>
   <PropertyGroup>

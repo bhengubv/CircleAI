@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Aether</PackageId>
+    <Version>1.2.0</Version>
     <Description>Aether mesh implementation of CircleAI.Networking. Signal E2E, AODV routing, DTN store-and-forward, SOS flood. Wraps aether-protocol engine.</Description>
   </PropertyGroup>
   <PropertyGroup>

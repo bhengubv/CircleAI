@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting</PackageId>
+    <Version>1.2.0</Version>
     <Description>DI wiring, scheduled tasks, and proactive reasoning host for Circle AI agents.</Description>
   </PropertyGroup>
 

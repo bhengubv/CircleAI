@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Security.Aether</PackageId>
+    <Version>1.2.0</Version>
     <Description>
       Aether mesh bridge for CircleAI.Security.
       Translates Aether telemetry events into transport-agnostic PeerSecurityEvents

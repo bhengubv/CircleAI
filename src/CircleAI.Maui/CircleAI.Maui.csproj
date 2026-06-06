@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Maui</PackageId>
+    <Version>1.2.0</Version>
     <Description>.NET MAUI platform adapter for Circle AI. On-device inference on Android, iOS, macOS Catalyst, and Windows.</Description>
   </PropertyGroup>
 

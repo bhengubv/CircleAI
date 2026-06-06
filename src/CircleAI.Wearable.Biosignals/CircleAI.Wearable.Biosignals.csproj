@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Wearable.Biosignals</PackageId>
+    <Version>1.2.0</Version>
     <Description>Biosignal ingestion (HR, HRV, SpO2, accelerometer, etc.) and projection into CircleAI.Memory.AffectState — the sensor layer of personal AI.</Description>
   </PropertyGroup>
 

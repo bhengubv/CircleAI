@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Aether</PackageId>
+    <Version>1.2.0</Version>
     <Description>Aether mesh-network telemetry contracts, observer interfaces, and IAetherAiProvider bridge for Circle AI.</Description>
   </PropertyGroup>
 

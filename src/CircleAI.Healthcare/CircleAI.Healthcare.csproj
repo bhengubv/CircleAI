@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><PackageId>CircleAI.Healthcare</PackageId><Description>Circle AI healthcare domain assistant. Clinical admin, patient workflows, compliance, and medical knowledge support.</Description></PropertyGroup>
+    <Version>1.2.0</Version>
   <PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" /></ItemGroup>
 </Project>

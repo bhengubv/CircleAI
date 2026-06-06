@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Knowledge</PackageId>
+    <Version>1.2.0</Version>
     <Description>Markdown-on-disk knowledge store for Circle AI — episodic memory as user-editable .md files with YAML frontmatter. Git-diffable, exportable, user-owned.</Description>
   </PropertyGroup>
 

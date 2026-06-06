@@ -3,6 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Skills</PackageId>
+    <Version>1.2.0</Version>
     <Description>Skill dispatch and execution pipeline for Circle AI on-device agents.</Description>
   </PropertyGroup>
 

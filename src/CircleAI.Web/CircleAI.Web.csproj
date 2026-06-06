@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Web</PackageId>
+    <Version>1.2.0</Version>
     <Description>Circle AI surface adapter for browser-hosted experiences (Blazor Server / WebAssembly).
 Exposes the Companion as a streaming Blazor-compatible service with
 SSR-safe session management.</Description>
