@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Security.AetherNet</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>
       AetherNet-targeted security bridge for CircleAI. Two surfaces:
 
@@ -31,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Security\CircleAI.Security.csproj" />
     <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
+    <ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" />
   </ItemGroup>
 
 </Project>

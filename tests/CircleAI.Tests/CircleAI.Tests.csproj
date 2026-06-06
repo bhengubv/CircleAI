@@ -1,48 +1,47 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <!-- Multi-target. Every test runs on both legs — Aether bridges
-         are now contracts-only (no external runtime tether) so there
-         is no longer a net10-only test subset. -->
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <IsPackable>false</IsPackable>
-    <IsTestProject>true</IsTestProject>
-    <RunSettingsFilePath>$(MSBuildThisFileDirectory)bhengu.runsettings</RunSettingsFilePath>
-    <!-- Tests deliberately exercise types gated as Experimental on the public surface. -->
-    <NoWarn>$(NoWarn);CIRCLEAI_MEM_CAP_001;CIRCLEAI_DEVCAPS_001;CIRCLEAI_PEER_001;CIRCLEAI_FED_001</NoWarn>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
-
-  <!-- All ProjectReferences — both TFM legs. The Aether bridges are now
-       contracts-only (no external runtime dep) so they multi-target net9.0;net10.0
-       just like everything else; no conditional includes needed. -->
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Search\CircleAI.Search.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security.AetherNet\CircleAI.Security.AetherNet.csproj" />
-  </ItemGroup>
-</Project>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Multi-target. Every test runs on both legs — Aether bridges
+         are now contracts-only (no external runtime tether) so there
+         is no longer a net10-only test subset. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)bhengu.runsettings</RunSettingsFilePath>
+    <!-- Tests deliberately exercise types gated as Experimental on the public surface. -->
+    <NoWarn>$(NoWarn);CIRCLEAI_MEM_CAP_001;CIRCLEAI_DEVCAPS_001;CIRCLEAI_PEER_001;CIRCLEAI_FED_001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Search\CircleAI.Search.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Security.AetherNet\CircleAI.Security.AetherNet.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Companion\CircleAI.Companion.csproj" />
+  </ItemGroup>
+</Project>

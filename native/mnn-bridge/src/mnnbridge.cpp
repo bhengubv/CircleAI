@@ -45,6 +45,10 @@ struct LlmWrapper {
                     void(*)(MNN::Transformer::Llm*)> llm{nullptr,
         +[](MNN::Transformer::Llm* p) { if (p) MNN::Transformer::Llm::destroy(p); }};
     bool loaded = false;
+    // Phase 4 scaffolding: requested KV compression mode. The native
+    // TurboQuant attention path is not yet implemented (Phase 4.1) — we
+    // record the request but the C ABI returns MNNBRIDGE_KV_NOT_IMPLEMENTED.
+    int kv_compression_mode = 0;
 };
 
 inline LlmWrapper* as_wrapper(mnn_llm_handle h) {
@@ -408,10 +412,33 @@ MNNBRIDGE_API int mnn_embed_get_dim(mnn_llm_handle handle) {
     return extract_int_from_config(w->llm.get(), "hidden_size", 0);
 }
 
+// ── KV cache compression (Phase 4 scaffolding) ──────────────────────────
+//
+// The native TurboQuant attention path is the Phase 4.1 workstream
+// (separate, 2–4 weeks of MNN attention-layer modifications). For now we
+// validate the requested mode, persist it on the wrapper, and return
+// MNNBRIDGE_KV_NOT_IMPLEMENTED so the C# layer can react (typically: log
+// a one-time warning and fall back to mode 0 inference).
+
+MNNBRIDGE_API int mnn_llm_set_kv_compression_mode(mnn_llm_handle handle, int mode) {
+    auto w = as_wrapper(handle);
+    if (!w) return MNNBRIDGE_ERR_INVALID_HANDLE;
+    if (mode < 0 || mode > 3) return 1;  // invalid mode value
+    w->kv_compression_mode = mode;
+    if (mode == 0) return 0; // off is always honourable
+    return MNNBRIDGE_KV_NOT_IMPLEMENTED;
+}
+
+MNNBRIDGE_API int mnn_llm_get_kv_compression_mode(mnn_llm_handle handle) {
+    auto w = as_wrapper(handle);
+    if (!w) return -1;
+    return w->kv_compression_mode;
+}
+
 // ── Version ──────────────────────────────────────────────────────────────
 
 MNNBRIDGE_API const char* mnn_bridge_version(void) {
-    return "1.0.0-mnn3.5.0";
+    return "1.1.0-mnn3.5.0";
 }
 
 // (Windows-specific includes moved to the top of this file so they're
