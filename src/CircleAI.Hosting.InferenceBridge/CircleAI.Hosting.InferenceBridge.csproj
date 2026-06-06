@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting.InferenceBridge</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Cross-OS LLM inference daemon contract for Circle AI — one model loaded once per device, shared by every app via OS-specific IPC. Ship-once, run-everywhere.</Description>
+    <Version>1.2.0</Version><Description>Cross-OS LLM inference daemon contract for Circle AI — one model loaded once per device, shared by every app via OS-specific IPC. Ship-once, run-everywhere.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

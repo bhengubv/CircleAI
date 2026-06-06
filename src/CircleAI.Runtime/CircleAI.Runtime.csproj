@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Runtime</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Runtime capability detection (OS/arch/CPU/GPU/RAM/NPU), backend selection (CPU/CUDA/Vulkan/OpenCL/Metal/Ascend/Cambricon), and on-demand fetch of pre-built Alibaba MNN native runtime bundles from ModelScope. Mirrors CircleAI.Inference.ModelDownloadService for runtime binaries.</Description>
+    <Version>1.2.0</Version><Description>Runtime capability detection (OS/arch/CPU/GPU/RAM/NPU), backend selection (CPU/CUDA/Vulkan/OpenCL/Metal/Ascend/Cambricon), and on-demand fetch of pre-built Alibaba MNN native runtime bundles from ModelScope. Mirrors CircleAI.Inference.ModelDownloadService for runtime binaries.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

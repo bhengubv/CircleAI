@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Companion</PackageId>
-    <Version>1.2.0</Version>
-    <Description>
+    <Version>1.2.0</Version><Description>
       Circle AI Companion — the HER + JARVIS concierge persona. Knows who you are,
       remembers everything across all devices, speaks your language, feels your mood,
       adapts its personality, initiates contact, and acts in the world.

@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Search</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Vector search over local SQLite data for Circle AI retrieval-augmented generation.</Description>
+    <Version>1.2.0</Version><Description>Vector search over local SQLite data for Circle AI retrieval-augmented generation.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

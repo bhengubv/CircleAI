@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Grpc</PackageId>
-    <Version>1.2.0</Version>
-    <Description>gRPC transport for Circle AI Networking. Channel management, deadlines, mutual TLS.</Description>
+    <Version>1.2.0</Version><Description>gRPC transport for Circle AI Networking. Channel management, deadlines, mutual TLS.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

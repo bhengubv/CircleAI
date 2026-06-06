@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Memory</PackageId>
-    <Version>1.2.0</Version>
-    <Description>On-device episodic memory, affect state, and context window management for Circle AI agents.</Description>
+    <Version>1.2.0</Version><Description>On-device episodic memory, affect state, and context window management for Circle AI agents.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

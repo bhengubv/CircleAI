@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Federation</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Federated learning round model for Circle AI — only deltas leave the device, never raw data. Designed for mesh-based aggregation over Aether transport.</Description>
+    <Version>1.2.0</Version><Description>Federated learning round model for Circle AI — only deltas leave the device, never raw data. Designed for mesh-based aggregation over Aether transport.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

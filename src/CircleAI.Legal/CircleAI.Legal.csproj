@@ -1,6 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><PackageId>CircleAI.Legal</PackageId><Description>Circle AI legal domain assistant. Contract review, compliance guidance, legal research, and document drafting support.</Description></PropertyGroup>
-    <Version>1.2.0</Version>
-  <PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <PropertyGroup><PackageId>CircleAI.Legal</PackageId>
+    <Version>1.2.0</Version><Description>Circle AI legal domain assistant. Contract review, compliance guidance, legal research, and document drafting support.</Description></PropertyGroup><PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" /></ItemGroup>
 </Project>

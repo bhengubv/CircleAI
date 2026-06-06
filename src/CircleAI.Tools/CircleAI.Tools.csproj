@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Tools</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Function-calling bridge between Circle AI agents and the TheGeekNetwork API ecosystem (36 APIs, 1 600+ endpoints).</Description>
+    <Version>1.2.0</Version><Description>Function-calling bridge between Circle AI agents and the TheGeekNetwork API ecosystem (36 APIs, 1 600+ endpoints).</Description>
   </PropertyGroup>
 
 	<PropertyGroup>

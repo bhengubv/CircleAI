@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Languages.Language.Arabic</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Arabic language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for SA,EG,MA,AE.</Description>
+    <Version>1.2.0</Version><Description>Arabic language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for SA,EG,MA,AE.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

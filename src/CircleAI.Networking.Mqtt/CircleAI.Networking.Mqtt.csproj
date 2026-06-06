@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Mqtt</PackageId>
-    <Version>1.2.0</Version>
-    <Description>MQTT transport for Circle AI Networking. Pub/sub, QoS 0/1/2, retain — ideal for IoT sensors.</Description>
+    <Version>1.2.0</Version><Description>MQTT transport for Circle AI Networking. Pub/sub, QoS 0/1/2, retain — ideal for IoT sensors.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

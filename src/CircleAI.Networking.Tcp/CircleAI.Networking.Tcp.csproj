@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Tcp</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Raw TCP and UDP transports for Circle AI Networking. Low-level when needed.</Description>
+    <Version>1.2.0</Version><Description>Raw TCP and UDP transports for Circle AI Networking. Low-level when needed.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

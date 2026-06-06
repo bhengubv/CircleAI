@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Wearable</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Circle AI surface adapter for smartwatches and wearable devices.
+    <Version>1.2.0</Version><Description>Circle AI surface adapter for smartwatches and wearable devices.
 Injects biometric context (heart rate, steps, SpO₂) into the Companion session
 and enforces wearable-appropriate reply constraints.</Description>
   </PropertyGroup>

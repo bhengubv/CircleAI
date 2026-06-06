@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Security</PackageId>
-    <Version>1.2.0</Version>
-    <Description>
+    <Version>1.2.0</Version><Description>
       Transport-agnostic AI Security Layer for Circle AI.
       Trust scoring, threat detection, and security directives work across
       any network transport (WiFi, BLE, NearLink, HTTP, Aether mesh, etc.).

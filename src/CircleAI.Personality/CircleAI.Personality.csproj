@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Personality</PackageId>
-    <Version>1.2.0</Version>
-    <Description>User-declared persona artefact — structured identity declaration the user owns, edits, and exports. Complements CircleAI.Memory.PersonaState (AI's learned model of the user).</Description>
+    <Version>1.2.0</Version><Description>User-declared persona artefact — structured identity declaration the user owns, edits, and exports. Complements CircleAI.Memory.PersonaState (AI's learned model of the user).</Description>
   </PropertyGroup>
 
   <PropertyGroup>

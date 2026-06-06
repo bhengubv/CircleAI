@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.2.0</Version>
-    <Description>On-device LLM inference for Circle. llama.cpp P/Invoke layer with Qwen 3 chat generator. Native binaries supplied separately (see SETUP.md).</Description>
+    <Version>1.2.0</Version><Description>On-device LLM inference for Circle. llama.cpp P/Invoke layer with Qwen 3 chat generator. Native binaries supplied separately (see SETUP.md).</Description>
   </PropertyGroup>
 
   <PropertyGroup>

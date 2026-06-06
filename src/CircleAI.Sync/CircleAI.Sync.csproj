@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Sync</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Memory delta sync for Circle AI. Episodic memory, affect state, and persona deltas propagate across all devices via any transport (gRPC, mesh, DTN). This is the cross-device continuity layer.</Description>
+    <Version>1.2.0</Version><Description>Memory delta sync for Circle AI. Episodic memory, affect state, and persona deltas propagate across all devices via any transport (gRPC, mesh, DTN). This is the cross-device continuity layer.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

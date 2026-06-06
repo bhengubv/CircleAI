@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Languages.Language.Swahili</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Swahili language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for KE,TZ,UG.</Description>
+    <Version>1.2.0</Version><Description>Swahili language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for KE,TZ,UG.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

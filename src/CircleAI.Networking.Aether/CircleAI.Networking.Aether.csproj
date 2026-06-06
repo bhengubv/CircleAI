@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Aether</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Aether mesh implementation of CircleAI.Networking. Signal E2E, AODV routing, DTN store-and-forward, SOS flood. Wraps aether-protocol engine.</Description>
+    <Version>1.2.0</Version><Description>Aether mesh implementation of CircleAI.Networking. Signal E2E, AODV routing, DTN store-and-forward, SOS flood. Wraps aether-protocol engine.</Description>
   </PropertyGroup>
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <!-- net10.0 only — depends on CircleAI.Aether (net10.0 because
+         Aether.Core 1.0.1 on NuGet is net10.0-only). -->
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><PackageId>CircleAI.Commerce</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Circle AI e-commerce domain assistant. Listings, pricing, orders, suppliers, and marketplace analytics.</Description>
+    <Version>1.2.0</Version><Description>Circle AI e-commerce domain assistant. Listings, pricing, orders, suppliers, and marketplace analytics.</Description>
   </PropertyGroup>
   <PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" /></ItemGroup>

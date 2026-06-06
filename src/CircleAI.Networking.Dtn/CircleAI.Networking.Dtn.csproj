@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Networking.Dtn</PackageId>
-    <Version>1.2.0</Version>
-    <Description>DTN store-and-forward for Circle AI. 72hr TTL bundles with custody transfer over any transport. Delivers when a path exists.</Description>
+    <Version>1.2.0</Version><Description>DTN store-and-forward for Circle AI. 72hr TTL bundles with custody transfer over any transport. Delivers when a path exists.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

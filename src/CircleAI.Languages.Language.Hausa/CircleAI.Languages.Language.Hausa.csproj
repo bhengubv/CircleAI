@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Languages.Language.Hausa</PackageId>
-    <Version>1.2.0</Version>
-    <Description>Hausa language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for NG,NE,GH.</Description>
+    <Version>1.2.0</Version><Description>Hausa language pack for Circle AI. Idiomatic expressions, cultural context, and locale-specific prompt tuning for NG,NE,GH.</Description>
   </PropertyGroup>
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>

@@ -3,8 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Languages</PackageId>
-    <Version>1.2.0</Version>
-    <Description>
+    <Version>1.2.0</Version><Description>
       Language foundation for Circle AI. Language detection, BCP-47 normalisation,
       writing-system handling, and the registry of all supported languages.
       Foundation for CircleAI.Languages.Translation and per-language packs.
