@@ -13,7 +13,10 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- net10.0 — depends on CircleAI.Aether which depends on Aether.Core
+         (NuGet, net10.0-only). Previously this was net9.0 which silently
+         broke restore. Now matches its upstream. -->
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>

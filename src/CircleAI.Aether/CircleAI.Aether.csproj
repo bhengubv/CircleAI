@@ -7,7 +7,10 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- net10.0 matches Aether.Core so the bridge class can reference IAetherAiProvider directly. -->
+    <!-- net10.0 only — Aether.Core 1.0.1 on NuGet is net10.0 only.
+         Consumers that target net9.0 must reference this project conditionally,
+         e.g. via <ProjectReference Condition="'$(TargetFramework)'=='net10.0'" />.
+         See CircleAI.Tests.csproj for the pattern. -->
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

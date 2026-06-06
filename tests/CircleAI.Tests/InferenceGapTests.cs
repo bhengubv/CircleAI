@@ -9,39 +9,36 @@ namespace CircleAI.Tests;
 
 /// <summary>
 /// Smoke tests for Inference project gaps (2, 5, 7).
-/// These tests verify compilation and structure — they cannot call the native
-/// P/Invokes without a native library present.
+/// Verifies the MNN P/Invoke surface that replaced llama.cpp in 1.2.0 —
+/// reflection-based existence checks; no native library required.
 /// </summary>
 public sealed class InferenceGapTests
 {
-    // ── Gap 2: KV cache P/Invokes ─────────────────────────────────────────
+    // ── Gap 2: Session save/load P/Invokes (MNN) ──────────────────────────
 
     [Fact]
-    public void LlamaCppInterop_HasSessionPInvokes()
+    public void MnnInterop_HasSessionPInvokes()
     {
-        var t = typeof(LlamaCppInterop);
+        var t = typeof(MnnInterop);
 
-        Assert.NotNull(t.GetMethod("llama_state_get_size",
+        Assert.NotNull(t.GetMethod("mnn_llm_save_session",
             BindingFlags.Public | BindingFlags.Static));
 
-        Assert.NotNull(t.GetMethod("llama_state_get_data",
+        Assert.NotNull(t.GetMethod("mnn_llm_load_session",
             BindingFlags.Public | BindingFlags.Static));
 
-        Assert.NotNull(t.GetMethod("llama_state_set_data",
-            BindingFlags.Public | BindingFlags.Static));
-
-        Assert.NotNull(t.GetMethod("llama_state_save_file",
-            BindingFlags.Public | BindingFlags.Static));
-
-        Assert.NotNull(t.GetMethod("llama_state_load_file",
+        Assert.NotNull(t.GetMethod("mnn_llm_reset_session",
             BindingFlags.Public | BindingFlags.Static));
     }
 
     [Fact]
-    public void LlamaCppInterop_HasSaveAndLoadSessionHelpers()
+    public void MnnInterop_HasSaveAndLoadSessionHelpers()
     {
-        var t = typeof(LlamaCppInterop);
+        var t = typeof(MnnInterop);
 
+        // The high-level managed helpers exposed alongside the raw P/Invokes.
+        // SaveSession / LoadSession wrap mnn_llm_save_session / load_session
+        // and return bool for ergonomic error handling.
         Assert.NotNull(t.GetMethod("SaveSession",
             BindingFlags.Public | BindingFlags.Static));
 
@@ -49,20 +46,19 @@ public sealed class InferenceGapTests
             BindingFlags.Public | BindingFlags.Static));
     }
 
-    // ── Gap 7: Vision P/Invokes ───────────────────────────────────────────
+    // ── Gap 7: Vision P/Invokes (MNN) ─────────────────────────────────────
 
     [Fact]
-    public void LlamaCppInterop_HasLlavaPInvokes()
+    public void MnnInterop_HasVisionPInvokes()
     {
-        var t = typeof(LlamaCppInterop);
+        var t = typeof(MnnInterop);
 
-        Assert.NotNull(t.GetMethod("llava_image_embed_make_with_bytes",
+        // MNN's vision surface: image-handle free + streaming generate-with-image.
+        // (llava_* was the llama.cpp surface; replaced 1:1 by these.)
+        Assert.NotNull(t.GetMethod("mnn_llm_image_free",
             BindingFlags.Public | BindingFlags.Static));
 
-        Assert.NotNull(t.GetMethod("llava_image_embed_free",
-            BindingFlags.Public | BindingFlags.Static));
-
-        Assert.NotNull(t.GetMethod("llava_eval_image_embed",
+        Assert.NotNull(t.GetMethod("mnn_llm_generate_with_image_stream_ex",
             BindingFlags.Public | BindingFlags.Static));
     }
 

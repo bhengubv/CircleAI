@@ -457,7 +457,7 @@ internal sealed class FakeDeviceContext : IDeviceContext
     // Diagnostics (Mandate 1)
     public float? CpuUsagePercent      { get; set; }
     public long?  AvailableMemoryBytes { get; set; }
-    public ThermalState? ThermalState  { get; set; }
+    public CircleAI.Core.ThermalState? ThermalState  { get; set; }
     public long?  StorageFreeBytes     { get; set; }
     public DateTimeOffset? LastActiveUtc { get; set; }
 }
