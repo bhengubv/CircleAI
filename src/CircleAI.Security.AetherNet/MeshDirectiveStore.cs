@@ -18,7 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CircleAI.Aether;
 
-namespace CircleAI.Security.AetherMesh;
+namespace CircleAI.Security.AetherNet;
 
 /// <summary>
 /// Thread-safe in-memory registry of security directives received from the

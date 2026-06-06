@@ -2,10 +2,10 @@
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
-    <PackageId>CircleAI.Security.AetherMesh</PackageId>
+    <PackageId>CircleAI.Security.AetherNet</PackageId>
     <Version>1.0.0</Version>
     <Description>
-      AetherMesh-targeted security bridge for CircleAI. Two surfaces:
+      AetherNet-targeted security bridge for CircleAI. Two surfaces:
 
       • Mesh telemetry / intelligence — translates mesh events into transport-
         agnostic PeerSecurityEvents and adapts intelligence output to
@@ -16,7 +16,7 @@
         user blocked?" query for chat / API / moderation code. Wire via
         AddCircleAiMeshSecurity().
 
-      Renamed from CircleAI.Security.Aether 1.4.0 → CircleAI.Security.AetherMesh 1.0.0
+      Renamed from CircleAI.Security.Aether 1.4.0 → CircleAI.Security.AetherNet 1.0.0
       to be honest about the runtime it targets. CircleAI.Security.Aether 1.4.0
       remains the last build under the old name.
     </Description>

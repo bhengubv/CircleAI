@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using CircleAI.Networking;
 using CircleAI.Aether;
 
-namespace CircleAI.Networking.AetherMesh;
+namespace CircleAI.Networking.AetherNet;
 
 /// <summary>
 /// <see cref="IPeerDiscovery"/> using Aether presence beacons (Hello/HelloAck).

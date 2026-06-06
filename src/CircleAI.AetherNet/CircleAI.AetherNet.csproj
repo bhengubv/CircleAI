@@ -2,16 +2,16 @@
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
-    <PackageId>CircleAI.AetherMesh</PackageId>
+    <PackageId>CircleAI.AetherNet</PackageId>
     <Version>1.0.0</Version>
     <Description>
       The runtime adapter that bridges CircleAI.Aether contracts to the live
-      AetherMesh protocol. Implements IAetherContext (presence/capability),
+      AetherNet protocol. Implements IAetherContext (presence/capability),
       IAetherTelemetry (event fan-out from real mesh events), and
       ISecurityDirectiveConsumer (forwards AI-issued directives to
-      AetherMesh.Security's policy engine).
+      AetherNet.Security's policy engine).
 
-      Floats AetherMesh.* with Version="1.*" so patch/minor upstream releases
+      Floats AetherNet.* with Version="1.*" so patch/minor upstream releases
       flow through to consumers without re-pin.
     </Description>
   </PropertyGroup>
@@ -28,11 +28,11 @@
 
   <!-- Floating refs — track 1.x upstream automatically. -->
   <ItemGroup>
-    <PackageReference Include="AetherMesh.Core"      Version="1.*" />
-    <PackageReference Include="AetherMesh.Transport" Version="1.*" />
-    <PackageReference Include="AetherMesh.Security"  Version="1.*" />
-    <PackageReference Include="AetherMesh.Messaging" Version="1.*" />
-    <!-- Microsoft.Extensions.* come transitively via AetherMesh.Core 1.1.0
+    <PackageReference Include="AetherNet.Core"      Version="1.*" />
+    <PackageReference Include="AetherNet.Transport" Version="1.*" />
+    <PackageReference Include="AetherNet.Security"  Version="1.*" />
+    <PackageReference Include="AetherNet.Messaging" Version="1.*" />
+    <!-- Microsoft.Extensions.* come transitively via AetherNet.Core 1.1.0
          (10.0.2). No need to declare them here. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.*" />
   </ItemGroup>

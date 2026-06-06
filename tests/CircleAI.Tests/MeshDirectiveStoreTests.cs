@@ -1,5 +1,5 @@
 using CircleAI.Aether;
-using CircleAI.Security.AetherMesh;
+using CircleAI.Security.AetherNet;
 using Xunit;
 
 namespace CircleAI.Tests;

@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────
-// CircleAiAetherMeshAiProvider
+// CircleAiAetherNetAiProvider
 //
-// Plugs CircleAI's brain (IAetherIntelligence) into AetherMesh's
-// IAetherMeshAiProvider extension seat. AetherMesh's routing layer asks
+// Plugs CircleAI's brain (IAetherIntelligence) into AetherNet's
+// IAetherNetAiProvider extension seat. AetherNet's routing layer asks
 // for route advice, threat assessments, and network health; we forward
 // each call to CircleAI's intelligence surface and translate the result.
 //
@@ -14,17 +14,17 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AetherMesh.Extensibility;
-using AetherMesh.Protocol;
+using AetherNet.Extensibility;
+using AetherNet.Protocol;
 using CircleAI.Aether;
 
-namespace CircleAI.AetherMesh;
+namespace CircleAI.AetherNet;
 
 /// <summary>
-/// Bridges CircleAI's <see cref="IAetherIntelligence"/> to AetherMesh's
-/// <see cref="IAetherMeshAiProvider"/> extension seat.
+/// Bridges CircleAI's <see cref="IAetherIntelligence"/> to AetherNet's
+/// <see cref="IAetherNetAiProvider"/> extension seat.
 /// </summary>
-public sealed class CircleAiAetherMeshAiProvider : IAetherMeshAiProvider
+public sealed class CircleAiAetherNetAiProvider : IAetherNetAiProvider
 {
     private readonly IAetherIntelligence _intelligence;
     private static readonly IReadOnlyDictionary<string, double> _emptyBiases =
@@ -32,7 +32,7 @@ public sealed class CircleAiAetherMeshAiProvider : IAetherMeshAiProvider
     private static readonly IReadOnlyList<AiRouteSuggestion> _emptyRoutes =
         new List<AiRouteSuggestion>();
 
-    public CircleAiAetherMeshAiProvider(IAetherIntelligence intelligence)
+    public CircleAiAetherNetAiProvider(IAetherIntelligence intelligence)
     {
         ArgumentNullException.ThrowIfNull(intelligence);
         _intelligence = intelligence;
@@ -61,7 +61,7 @@ public sealed class CircleAiAetherMeshAiProvider : IAetherMeshAiProvider
     /// <inheritdoc/>
     /// <remarks>
     /// CircleAI does not yet model per-transport biases. Returning an empty
-    /// dictionary tells AetherMesh to use its built-in transport selector
+    /// dictionary tells AetherNet to use its built-in transport selector
     /// without AI adjustment — the correct fallback when no signal exists.
     /// </remarks>
     public Task<IReadOnlyDictionary<string, double>> GetTransportBiasesAsync(
@@ -97,9 +97,9 @@ public sealed class CircleAiAetherMeshAiProvider : IAetherMeshAiProvider
             health.GeneratedAt);
     }
 
-    // AetherMesh's AiThreatLevel only has 4 values (None, Low, Medium, High).
+    // AetherNet's AiThreatLevel only has 4 values (None, Low, Medium, High).
     // CircleAI's AetherThreatLevel has Critical. Fold Critical → High because
-    // that's the strongest signal AetherMesh's AI seat can carry.
+    // that's the strongest signal AetherNet's AI seat can carry.
     private static AiThreatLevel MapToMeshThreatLevel(AetherThreatLevel l) => l switch
     {
         AetherThreatLevel.None      => AiThreatLevel.None,

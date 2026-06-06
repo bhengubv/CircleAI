@@ -6,7 +6,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using CircleAI.Aether;
 using CircleAI.Security;
-using CircleAI.Security.AetherMesh;
+using CircleAI.Security.AetherNet;
 using Xunit;
 
 namespace CircleAI.Tests;

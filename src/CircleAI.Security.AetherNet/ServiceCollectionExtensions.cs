@@ -3,8 +3,8 @@
 //
 // Wires the mesh-directive subscription pipeline:
 //
-//   AetherMesh issues SecurityDirective
-//     → (CircleAI.Aether.AetherMesh adapter translates)
+//   AetherNet issues SecurityDirective
+//     → (CircleAI.Aether.AetherNet adapter translates)
 //     → CircleAI.Aether.ISecurityDirectiveConsumer
 //     → MeshDirectiveStore (records + expires)
 //     → MeshSecurityGate (queries: "is this user blocked?")
@@ -19,7 +19,7 @@ using CircleAI.Aether;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace CircleAI.Security.AetherMesh;
+namespace CircleAI.Security.AetherNet;
 
 /// <summary>
 /// DI wiring for the CircleAI mesh-security directive pipeline.

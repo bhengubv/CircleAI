@@ -1,4 +1,4 @@
-namespace CircleAI.Security.AetherMesh;
+namespace CircleAI.Security.AetherNet;
 
 using CircleAI.Aether;
 using CircleAI.Security;

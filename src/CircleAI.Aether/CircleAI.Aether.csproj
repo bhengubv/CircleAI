@@ -8,8 +8,8 @@
       Aether mesh contracts for CircleAI — pure abstractions, no external runtime
       dependency. Defines IAetherContext, IAetherIntelligence, IAetherTelemetry,
       IAISecurityLayer, IAuthChallenge and supporting event types. Implementations
-      ship in separate adapter packages (e.g. CircleAI.AetherMesh) that float
-      their AetherMesh version constraint — this package never tethers consumers
+      ship in separate adapter packages (e.g. CircleAI.AetherNet) that float
+      their AetherNet version constraint — this package never tethers consumers
       to a specific Aether protocol version.
     </Description>
   </PropertyGroup>
@@ -23,8 +23,8 @@
   <!--
     NO external dependencies. This is a pure contracts package.
     To wire a real mesh implementation, install an adapter:
-        dotnet add package CircleAI.AetherMesh
-    Adapters float their AetherMesh.* version with Version="1.*" so they pick
+        dotnet add package CircleAI.AetherNet
+    Adapters float their AetherNet.* version with Version="1.*" so they pick
     up upstream patch/minor releases without consumers needing to re-pin.
   -->
 
