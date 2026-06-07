@@ -133,6 +133,26 @@ public sealed class CompanionRuntimeTests
 
     // ── Tick loops actually tick ──────────────────────────────────────────
 
+    /// <summary>
+    /// Polls <paramref name="condition"/> every 50 ms until it returns true
+    /// or <paramref name="timeout"/> elapses. Returns true when the
+    /// condition was met before the timeout, false otherwise. Used in
+    /// timer-driven tests where the exact tick boundary isn't predictable —
+    /// the assertion is "this happened within a generous window", not "this
+    /// happened on a precise schedule".
+    /// </summary>
+    private static async Task<bool> WaitForAsync(
+        Func<bool> condition, TimeSpan timeout)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.Elapsed < timeout)
+        {
+            if (condition()) return true;
+            await Task.Delay(50).ConfigureAwait(false);
+        }
+        return condition();
+    }
+
     [Fact]
     public async Task DailyTickLoop_FiresWithinShortInterval()
     {
@@ -148,9 +168,10 @@ public sealed class CompanionRuntimeTests
         await rt.StartAsync(CancellationToken.None);
         try
         {
-            // Wait long enough for several ticks.
-            await Task.Delay(300);
-            Assert.Contains(SleepKind.Daily, c.Kinds);
+            // Generous polling window — tolerates slow CI / cold JIT.
+            var fired = await WaitForAsync(() => c.Kinds.Contains(SleepKind.Daily),
+                TimeSpan.FromSeconds(5));
+            Assert.True(fired, $"Daily tick did not fire within 5 s; saw {c.Kinds.Count} kinds total.");
         }
         finally { await rt.StopAsync(CancellationToken.None); }
     }
@@ -174,8 +195,9 @@ public sealed class CompanionRuntimeTests
         await rt.StartAsync(CancellationToken.None);
         try
         {
-            await Task.Delay(300);
-            Assert.True(sync.SyncCount >= 1, $"Expected at least 1 sync broadcast; got {sync.SyncCount}");
+            var fired = await WaitForAsync(() => sync.SyncCount >= 1,
+                TimeSpan.FromSeconds(5));
+            Assert.True(fired, $"Sync broadcast did not fire within 5 s; SyncCount={sync.SyncCount}.");
         }
         finally { await rt.StopAsync(CancellationToken.None); }
     }
