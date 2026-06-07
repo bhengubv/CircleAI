@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>1.3.1</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.1 wires MnnInferenceBridgeFactory through CircleAI.Inference 1.3.1's NativeRuntimePrep (flatten fetched MNN.dll next to mnnbridge.dll + preload + startup self-check), exposes the resolved native-lib paths through /v1/diagnostics, and registers a default INativeRuntimeStatus singleton. Operators see exactly where mnnbridge + MNN were resolved from without log diving. 1.3.0 added multi-file MNN bundle support.</Description>
+    <Version>1.3.2</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.2 picks up CircleAI.Inference 1.3.2 — linux-x64 native payload (libmnnbridge.so + libMNN.so) now propagates to the server's build output, so a Linux deployment finally has the libs it P/Invokes into. 1.3.1 wired NativeRuntimePrep + /v1/diagnostics native_runtime block.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

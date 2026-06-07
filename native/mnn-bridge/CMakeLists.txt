@@ -55,12 +55,21 @@ else()
 endif()
 
 if(NOT EXISTS "${MNN_LIB_FILE}" AND NOT WIN32 AND NOT APPLE)
-    # Some Linux bundles drop the x64 subdir.
-    file(GLOB MNN_SO_CANDIDATES "${MNN_ROOT}/lib/*/libMNN.so" "${MNN_ROOT}/lib/libMNN.so")
-    list(LENGTH MNN_SO_CANDIDATES MNN_SO_COUNT)
-    if(MNN_SO_COUNT GREATER 0)
-        list(GET MNN_SO_CANDIDATES 0 MNN_LIB_FILE)
-    endif()
+    # Some Linux bundles drop the x64 subdir, others ship Release/Debug
+    # split subdirs (lib/Release/libMNN.so + lib/Debug/libMNN.so). We
+    # always prefer the Release variant — a Debug libMNN linked into
+    # consumers' production binaries would silently regress perf by 5-20×.
+    file(GLOB MNN_SO_CANDIDATES
+         "${MNN_ROOT}/lib/Release/libMNN.so"
+         "${MNN_ROOT}/lib/x64/libMNN.so"
+         "${MNN_ROOT}/lib/libMNN.so"
+         "${MNN_ROOT}/lib/*/libMNN.so")
+    foreach(candidate ${MNN_SO_CANDIDATES})
+        if(EXISTS "${candidate}" AND NOT "${candidate}" MATCHES "/Debug/")
+            set(MNN_LIB_FILE "${candidate}")
+            break()
+        endif()
+    endforeach()
 endif()
 
 if(NOT EXISTS "${MNN_INCLUDE_DIR}/MNN/Tensor.hpp" AND
