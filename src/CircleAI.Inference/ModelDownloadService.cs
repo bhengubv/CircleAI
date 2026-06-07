@@ -47,6 +47,18 @@ public sealed class ModelDownloadService : IModelDownloadService
         _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _ownsHttpClient = ownsHttpClient;
 
+        // ModelScope's CDN (resolve/master URLs) returns 403 to clients with no
+        // User-Agent — so FallbackUrl in the catalog is unreachable without one.
+        // Setting a realistic UA on the owned HttpClient makes both PrimaryUrl
+        // and FallbackUrl work. Callers that pass their own HttpClient are
+        // expected to configure their own UA; we only touch ours.
+        if (ownsHttpClient && !_http.DefaultRequestHeaders.UserAgent.Any())
+        {
+            _http.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 CircleAI/1.0");
+        }
+
         Directory.CreateDirectory(_storageDirectory);
     }
 
@@ -221,8 +233,43 @@ public sealed class ModelDownloadService : IModelDownloadService
         var actualHash = await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false);
         var actualHex = Convert.ToHexString(actualHash);
 
-        return string.Equals(actualHex, expectedHex.ToUpperInvariant(),
+        // The registry pins SHA-256 in "sha256:<hex>" form (the conventional
+        // multihash-style prefix). Strip an algorithm prefix when present so
+        // both forms compare correctly. Without this strip, EVERY model
+        // download fails with a spurious mismatch — the compare sees
+        // "SHA256:<HEX>" vs "<HEX>" and rejects the file even though the
+        // bytes hash exactly to the pinned value.
+        var expectedNormalised = StripShaAlgorithmPrefix(expectedHex);
+
+        return string.Equals(actualHex, expectedNormalised,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns the hex portion of a checksum, stripping an optional leading
+    /// algorithm token of the form <c>sha256:</c>, <c>SHA-256:</c>, etc.
+    /// </summary>
+    internal static string StripShaAlgorithmPrefix(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        // Trim whitespace BEFORE inspecting so "  sha256:abc  " strips cleanly.
+        var trimmed = raw.Trim();
+        var colon = trimmed.IndexOf(':');
+        if (colon < 0) return trimmed;
+        // Only treat the token before ':' as an algorithm name when it is
+        // short and consists entirely of [A-Za-z0-9-_] — never throw away
+        // part of the hex.
+        var prefix = trimmed.AsSpan(0, colon);
+        if (prefix.Length is > 0 and <= 16)
+        {
+            bool isAlgName = true;
+            foreach (var c in prefix)
+            {
+                if (!(char.IsLetterOrDigit(c) || c == '-' || c == '_')) { isAlgName = false; break; }
+            }
+            if (isAlgName) return trimmed[(colon + 1)..].Trim();
+        }
+        return trimmed;
     }
 
     public void Dispose()

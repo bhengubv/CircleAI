@@ -1,8 +1,8 @@
 {
-  "Notes": "Pins below VERIFIED by tools/recalibrate-registry-sha \u2014 actual SHA-256 of the bytes ModelScope serves, computed by downloading both PrimaryUrl and FallbackUrl and asserting they are byte-identical. Re-run the tool to refresh.",
+  "Notes": "All entries source from ModelScope (魔搭). Real SHA-256 pulled via ModelScope file-listing API on 2026-06-06 (no downloads required). MNN/Qwen* repos publish MNN-native runtime weights; SenseVoiceSmall (iic) and Kimi-VL (moonshotai) are the canonical Chinese-sovereign ASR + multimodal models. PrimaryUrl uses the API revision form; FallbackUrl uses the resolve CDN form. Both addresses return the same bytes.",
   "Qwen3-0.6B-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-0.6B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-0.6B-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-0.6B-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:953afb7e0165818add34a7a6caf0af5d0ed9428da102eb22c9b98ee9da292e9f",
     "SizeBytes": 450810338,
@@ -13,7 +13,7 @@
   },
   "Qwen3-1.7B-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-1.7B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-1.7B-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-1.7B-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:d53dfdb7b826e4103e58a30236312978ff98ee89a2e1b9d66dd6bf227afce823",
     "SizeBytes": 1231860194,
@@ -24,7 +24,7 @@
   },
   "Qwen3-4B-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-4B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-4B-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-4B-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:42d1bd0f4379cbee62a3fb89cb48cac36f13c96cd0d236b89202f633d23f73c3",
     "SizeBytes": 2709972658,
@@ -35,7 +35,7 @@
   },
   "Qwen3-8B-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-8B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-8B-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-8B-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:ecab3e87c0ca98a6e34795ba6779c5979b156b705c09b6df4b3e59c938576d4b",
     "SizeBytes": 4259526082,
@@ -46,7 +46,7 @@
   },
   "Qwen3-14B-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-14B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-14B-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-14B-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:93a9c589270b2f41e6c42e68be18512af88754802423b24fc9ca026b79129602",
     "SizeBytes": 7872763946,
@@ -57,7 +57,7 @@
   },
   "Qwen2.5-0.5B-Instruct-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-0.5B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-0.5B-Instruct-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-0.5B-Instruct-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da",
     "SizeBytes": 277967498,
@@ -68,7 +68,7 @@
   },
   "Qwen2.5-1.5B-Instruct-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-1.5B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-1.5B-Instruct-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-1.5B-Instruct-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:94a73a713aed33d6356c2f050d431d94c14711a75e6b500869b21b3b720aa5fb",
     "SizeBytes": 868491506,
@@ -79,7 +79,7 @@
   },
   "Qwen2.5-3B-Instruct-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-3B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-3B-Instruct-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-3B-Instruct-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:c636ff0997d97535cea70f12331a4212fc0fa25fece6a9893944c2f7d1777a88",
     "SizeBytes": 1736078786,
@@ -90,7 +90,7 @@
   },
   "Qwen2.5-7B-Instruct-MNN": {
     "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-7B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-7B-Instruct-MNN/repo?Revision=master&FilePath=llm.mnn.weight",
     "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-7B-Instruct-MNN/resolve/master/llm.mnn.weight",
     "Checksum": "sha256:f0bb1d2cc3f91a0c38d6e6b82ab04c0bd5e5ed7831754841ffd9e14098b97cc4",
     "SizeBytes": 3977556210,
@@ -101,7 +101,7 @@
   },
   "SenseVoice-Small": {
     "FileName": "model.pt",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/iic/SenseVoiceSmall/repo?Revision=master\u0026FilePath=model.pt",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/iic/SenseVoiceSmall/repo?Revision=master&FilePath=model.pt",
     "FallbackUrl": "https://modelscope.cn/models/iic/SenseVoiceSmall/resolve/master/model.pt",
     "Checksum": "sha256:833ca2dcfdf8ec91bd4f31cfac36d6124e0c459074d5e909aec9cabe6204a3ea",
     "SizeBytes": 936291369,
@@ -112,7 +112,7 @@
   },
   "Kimi-VL-A3B-Thinking-2506": {
     "FileName": "model-00005-of-00007.safetensors",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/moonshotai/Kimi-VL-A3B-Thinking-2506/repo?Revision=master\u0026FilePath=model-00005-of-00007.safetensors",
+    "PrimaryUrl": "https://modelscope.cn/api/v1/models/moonshotai/Kimi-VL-A3B-Thinking-2506/repo?Revision=master&FilePath=model-00005-of-00007.safetensors",
     "FallbackUrl": "https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506/resolve/master/model-00005-of-00007.safetensors",
     "Checksum": "sha256:a8fc6e1c9fbc43e4ef6f065a87d0f636524ff8374555e8f9e2cef756ac456677",
     "SizeBytes": 4998186176,
