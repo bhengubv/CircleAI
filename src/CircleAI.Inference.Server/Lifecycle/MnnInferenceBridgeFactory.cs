@@ -41,6 +41,7 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
     private readonly INativeRuntimeFetcher _runtimeFetcher;
     private readonly ModelDownloadService _modelDownload;
     private readonly ModelRegistryService _modelRegistry;
+    private readonly INativeRuntimeStatus? _nativeStatus;
     private readonly ILogger<MnnInferenceBridgeFactory> _log;
 
     /// <summary>
@@ -53,7 +54,8 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
         INativeRuntimeFetcher runtimeFetcher,
         IOptions<InferenceServerOptions> options,
         ILogger<MnnInferenceBridgeFactory> log,
-        ModelRegistryService? modelRegistry = null)
+        ModelRegistryService? modelRegistry = null,
+        INativeRuntimeStatus? nativeStatus = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(runtimeFetcher);
@@ -64,6 +66,7 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
         _runtimeFetcher = runtimeFetcher;
         _log            = log;
         _modelRegistry  = modelRegistry ?? new ModelRegistryService();
+        _nativeStatus   = nativeStatus;
 
         var storageRoot = PathExpansion.ExpandUserPath(options.Value.ModelStorageRoot);
         Directory.CreateDirectory(storageRoot);
@@ -122,23 +125,35 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
                 $"required by model '{modelId}'. {ex.Message}", ex);
         }
 
-        // ── 4. Point the P/Invoke resolver at the directory containing MNN ─
+        // ── 4. Flatten + preload + self-check the native runtime ─────────
         //
-        // Alibaba bundles ship MNN at a deeply nested path (Windows:
+        // The fetched MNN bundle lands at a deeply nested path (Windows:
         // lib/x64/Release/Dynamic/MD/MNN.dll; macOS: MNN.framework/...).
-        // NativeRuntimeFetcher walked the tree and reports the real path
-        // in MnnCorePath — we use its containing directory so the resolver
-        // finds MNN without recursive scanning at P/Invoke time.
+        // mnnbridge.dll (CircleAI's shim) ships in the NuGet under
+        // runtimes/{RID}/native/ and is the FIRST library Windows loads
+        // when a P/Invoke for "mnnbridge" fires. Windows then resolves
+        // mnnbridge's transitive dep on MNN.dll using normal search order —
+        // which won't find the fetched (nested) MNN.dll unless we either
+        // copy MNN.dll next to mnnbridge.dll or preload it absolutely.
         //
-        // "mnnbridge" is NOT in this directory; it ships with the
-        // CircleAI.Inference NuGet's runtimes/{RID}/native/ folder and is
-        // resolved by NativeLibraryResolver via its assembly-relative
-        // fallback paths.
-        var mnnDirectory = Path.GetDirectoryName(runtimeInstall.MnnCorePath)
-            ?? throw new InvalidOperationException(
-                $"MNN core path '{runtimeInstall.MnnCorePath}' has no parent directory.");
-        NativeLibraryResolver.OverrideDirectory = mnnDirectory;
-        NativeLibraryResolver.EnsureRegistered();
+        // NativeRuntimePrep does both, registers the resolver, runs a
+        // self-check, and returns the resolved paths so /v1/diagnostics
+        // can surface them.
+        NativeRuntimePrep.NativeRuntimePaths paths;
+        try
+        {
+            paths = NativeRuntimePrep.PrepareForLoad(
+                runtimeInstall.MnnCorePath,
+                runtimeInstall.ExtractedRoot,
+                _log);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException(
+                $"CircleAI native runtime self-check failed for model '{modelId}' " +
+                $"on ({profile.Os}, {profile.Arch}, {backend}). {ex.Message}", ex);
+        }
+        _nativeStatus?.Update(paths);
 
         // ── 5. Ensure the model is on disk ────────────────────────────────
         // Bundle path (BundleFiles[] present): every file in the bundle is

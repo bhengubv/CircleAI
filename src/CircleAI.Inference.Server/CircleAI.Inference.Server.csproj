@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>1.3.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.0 ships MnnInferenceBridgeFactory wired for multi-file MNN bundles: bundle entries (the catalog's 9 Qwen-family MNN models) materialise as a per-model directory and QwenTextGenerator is pointed at config.json. Legacy single-file entries still work via the same factory.</Description>
+    <Version>1.3.1</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.1 wires MnnInferenceBridgeFactory through CircleAI.Inference 1.3.1's NativeRuntimePrep (flatten fetched MNN.dll next to mnnbridge.dll + preload + startup self-check), exposes the resolved native-lib paths through /v1/diagnostics, and registers a default INativeRuntimeStatus singleton. Operators see exactly where mnnbridge + MNN were resolved from without log diving. 1.3.0 added multi-file MNN bundle support.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

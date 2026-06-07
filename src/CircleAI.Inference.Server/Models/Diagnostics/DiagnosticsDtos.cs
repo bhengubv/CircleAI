@@ -31,6 +31,31 @@ public sealed class DiagnosticsResponse
 
     [JsonPropertyName("counters")]
     public CounterSnapshot Counters { get; set; } = new();
+
+    /// <summary>
+    /// Resolved native-library paths after the most recent bridge factory run.
+    /// <see langword="null"/> until the first model is loaded.
+    /// </summary>
+    [JsonPropertyName("native_runtime")]
+    public NativeRuntimePathsDto? NativeRuntime { get; set; }
+}
+
+/// <summary>
+/// Mirror of <see cref="CircleAI.Inference.NativeRuntimePrep.NativeRuntimePaths"/>
+/// for the diagnostics wire. Lets operators see exactly where mnnbridge + MNN
+/// were resolved from without grepping logs.
+/// </summary>
+public sealed class NativeRuntimePathsDto
+{
+    [JsonPropertyName("rid")]                    public string  Rid { get; set; } = "";
+    [JsonPropertyName("expected_native_dir")]    public string  ExpectedNativeDir { get; set; } = "";
+    [JsonPropertyName("mnnbridge_path")]         public string  MnnBridgePath { get; set; } = "";
+    [JsonPropertyName("mnnbridge_loaded")]       public bool    MnnBridgeLoaded { get; set; }
+    [JsonPropertyName("mnn_core_fetched_path")]  public string  MnnCoreFetchedPath { get; set; } = "";
+    [JsonPropertyName("mnn_core_flattened_path")]public string  MnnCoreFlattenedPath { get; set; } = "";
+    [JsonPropertyName("mnn_core_preloaded")]     public bool    MnnCorePreloaded { get; set; }
+    [JsonPropertyName("flatten_error")]          public string? FlattenError { get; set; }
+    [JsonPropertyName("preload_error")]          public string? PreloadError { get; set; }
 }
 
 /// <summary>Per-model summary used in diagnostics + the OpenAI <c>/v1/models</c> endpoint.</summary>

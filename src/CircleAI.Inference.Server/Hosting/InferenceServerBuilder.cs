@@ -56,6 +56,11 @@ public static class InferenceServerBuilder
         services.AddSingleton<IModelLifecycleManager, ModelLifecycleManager>();
         services.TryAddSingleton<IBridgeFactory, MnnInferenceBridgeFactory>();
 
+        // Surface the bridge factory's resolved native-runtime paths through
+        // /v1/diagnostics so DLL-not-found failures are debuggable from the
+        // wire without log diving. Updated each time a model is materialised.
+        services.TryAddSingleton<INativeRuntimeStatus, NativeRuntimeStatus>();
+
         // Companion session pipeline — same TryAdd pattern as IBridgeFactory.
         // Without these defaults the /v1/companion/turn handler can't bind
         // its resolver parameter and the host crashes at startup

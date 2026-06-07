@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
 using CircleAI.Inference.Server.Auth;
+using CircleAI.Inference.Server.Lifecycle;
 using CircleAI.Inference.Server.Models;
 using CircleAI.Inference.Server.Models.Diagnostics;
 using CircleAI.Inference.Server.Options;
@@ -52,6 +53,7 @@ public static class DiagnosticsEndpoint
         ServerCounters counters,
         ICapabilityProbe probe,
         IBackendSelector selector,
+        INativeRuntimeStatus nativeStatus,
         CancellationToken ct)
     {
         var profile = await probe.ProbeAsync(ct).ConfigureAwait(false);
@@ -80,8 +82,27 @@ public static class DiagnosticsEndpoint
                 ActiveRequests   = counters.ActiveRequests,
                 RejectedRequests = counters.RejectedRequests,
                 FailedRequests   = counters.FailedRequests,
-            }
+            },
+            NativeRuntime    = ToNativeRuntimeDto(nativeStatus.Latest),
         };
         return Results.Json(resp);
+    }
+
+    private static NativeRuntimePathsDto? ToNativeRuntimeDto(
+        CircleAI.Inference.NativeRuntimePrep.NativeRuntimePaths? paths)
+    {
+        if (paths is null) return null;
+        return new NativeRuntimePathsDto
+        {
+            Rid                  = paths.Rid,
+            ExpectedNativeDir    = paths.ExpectedNativeDir,
+            MnnBridgePath        = paths.MnnBridgePath,
+            MnnBridgeLoaded      = paths.MnnBridgeLoaded,
+            MnnCoreFetchedPath   = paths.MnnCoreFetchedPath,
+            MnnCoreFlattenedPath = paths.MnnCoreFlattenedPath,
+            MnnCorePreloaded     = paths.MnnCorePreloaded,
+            FlattenError         = paths.FlattenError,
+            PreloadError         = paths.PreloadError,
+        };
     }
 }
