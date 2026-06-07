@@ -86,9 +86,21 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
                 $"Model '{modelId}' is not in the embedded registry. " +
                 "Either add it to CircleAI.Core/Models/embedded_registry.json or pre-register the model file path via an alternative IBridgeFactory.");
 
-        if (!Uri.TryCreate(entry.Url, UriKind.Absolute, out var downloadUri))
+        Uri? downloadUri = null;
+        if (!entry.IsBundle)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Url) ||
+                !Uri.TryCreate(entry.Url, UriKind.Absolute, out downloadUri))
+                throw new InvalidOperationException(
+                    $"Registry entry for '{modelId}' has neither a BundleFiles array nor a valid Url. " +
+                    "Repopulate the registry with tools/recalibrate-registry-sha or pre-register a file path " +
+                    "via a custom IBridgeFactory.");
+        }
+        else if (string.IsNullOrWhiteSpace(entry.Repo))
+        {
             throw new InvalidOperationException(
-                $"Registry entry for '{modelId}' has an invalid Url: '{entry.Url}'.");
+                $"Registry entry for '{modelId}' has BundleFiles but no Repo path — bundle URLs cannot be built.");
+        }
 
         // ── 2 & 3. Probe host, fetch the right MNN runtime bundle ────────
         var profile = await _probe.ProbeAsync(ct).ConfigureAwait(false);
@@ -128,10 +140,31 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
         NativeLibraryResolver.OverrideDirectory = mnnDirectory;
         NativeLibraryResolver.EnsureRegistered();
 
-        // ── 5. Ensure the model file is on disk ───────────────────────────
-        var modelPath = await _modelDownload
-            .EnsureModelAsync(modelId, downloadUri, entry.Checksum, progress: null, ct)
-            .ConfigureAwait(false);
+        // ── 5. Ensure the model is on disk ────────────────────────────────
+        // Bundle path (BundleFiles[] present): every file in the bundle is
+        // fetched into a per-model directory. MNN-LLM's Llm::create() expects
+        // a config.json path; we pass <modelDir>/config.json.
+        // Legacy path: single weight file, pre-pointed by entry.Url.
+        string modelPath;
+        if (entry.IsBundle)
+        {
+            var bundleSpec = entry.BundleFiles!
+                .Select(f => new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes))
+                .ToList();
+            var modelDir = await _modelDownload
+                .EnsureBundleAsync(modelId, entry.Repo!, bundleSpec, progress: null, ct)
+                .ConfigureAwait(false);
+            modelPath = Path.Combine(modelDir, "config.json");
+            if (!File.Exists(modelPath))
+                throw new InvalidOperationException(
+                    $"Model '{modelId}' bundle is missing config.json after download. Bundle dir: '{modelDir}'.");
+        }
+        else
+        {
+            modelPath = await _modelDownload
+                .EnsureModelAsync(modelId, downloadUri!, entry.Checksum, progress: null, ct)
+                .ConfigureAwait(false);
+        }
 
         // ── 6. Construct the chat generator ───────────────────────────────
         // 4096 token context is the Qwen 3 family default. Hosts that want a

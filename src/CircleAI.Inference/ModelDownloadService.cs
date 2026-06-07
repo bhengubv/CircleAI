@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -12,9 +13,13 @@ namespace CircleAI.Inference;
 
 /// <summary>
 /// Default implementation of <see cref="IModelDownloadService"/>.
-/// Models are stored as <c>{storageDirectory}/{modelId}.gguf</c>.
+/// <para>
+/// Single-file entries land at <c>{storageDirectory}/{modelId}.gguf</c>;
+/// bundle entries land at <c>{storageDirectory}/{modelId}/</c> with every
+/// bundle file written under that directory.
+/// </para>
 /// </summary>
-public sealed class ModelDownloadService : IModelDownloadService
+public sealed class ModelDownloadService : IModelDownloadService, IDisposable
 {
     private const int ProgressChunkBytes = 1 * 1024 * 1024; // 1 MB
 
@@ -22,19 +27,9 @@ public sealed class ModelDownloadService : IModelDownloadService
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
 
-    /// <summary>
-    /// Creates a new instance using an internally managed <see cref="HttpClient"/>.
-    /// </summary>
-    /// <param name="storageDirectory">
-    /// Root directory where GGUF files are cached. Created if it does not exist.
-    /// </param>
     public ModelDownloadService(string storageDirectory)
         : this(storageDirectory, new HttpClient(), ownsHttpClient: true) { }
 
-    /// <summary>
-    /// Creates a new instance using a caller-supplied <see cref="HttpClient"/>.
-    /// The caller retains ownership and is responsible for disposing it.
-    /// </summary>
     public ModelDownloadService(string storageDirectory, HttpClient httpClient)
         : this(storageDirectory, httpClient, ownsHttpClient: false) { }
 
@@ -48,10 +43,10 @@ public sealed class ModelDownloadService : IModelDownloadService
         _ownsHttpClient = ownsHttpClient;
 
         // ModelScope's CDN (resolve/master URLs) returns 403 to clients with no
-        // User-Agent — so FallbackUrl in the catalog is unreachable without one.
-        // Setting a realistic UA on the owned HttpClient makes both PrimaryUrl
-        // and FallbackUrl work. Callers that pass their own HttpClient are
-        // expected to configure their own UA; we only touch ours.
+        // User-Agent — without one, FallbackUrl in the catalog is unreachable.
+        // Set a realistic UA on the owned HttpClient so both PrimaryUrl and
+        // FallbackUrl work. Callers that pass their own HttpClient are
+        // expected to configure their own UA.
         if (ownsHttpClient && !_http.DefaultRequestHeaders.UserAgent.Any())
         {
             _http.DefaultRequestHeaders.UserAgent.ParseAdd(
@@ -62,7 +57,8 @@ public sealed class ModelDownloadService : IModelDownloadService
         Directory.CreateDirectory(_storageDirectory);
     }
 
-    /// <inheritdoc/>
+    // ── Single-file (legacy) ─────────────────────────────────────────────
+
     public async Task<string> EnsureModelAsync(
         string modelId,
         Uri downloadUri,
@@ -73,9 +69,8 @@ public sealed class ModelDownloadService : IModelDownloadService
         ValidateModelId(modelId);
         ArgumentNullException.ThrowIfNull(downloadUri);
 
-        var filePath = GetFilePath(modelId);
+        var filePath = GetSingleFilePath(modelId);
 
-        // Fast path: file exists and hash matches.
         if (File.Exists(filePath) && expectedSha256 is not null)
         {
             if (await VerifySha256Async(filePath, expectedSha256, ct).ConfigureAwait(false))
@@ -83,90 +78,185 @@ public sealed class ModelDownloadService : IModelDownloadService
                 progress?.Report(1.0);
                 return filePath;
             }
-            // Hash mismatch — delete stale file and re-download.
             File.Delete(filePath);
         }
         else if (File.Exists(filePath) && expectedSha256 is null)
         {
-            // No hash supplied — trust the existing file.
             progress?.Report(1.0);
             return filePath;
         }
 
-        // Download the file.
         var tempPath = filePath + ".tmp";
         try
         {
             await DownloadToFileAsync(downloadUri, tempPath, progress, ct).ConfigureAwait(false);
 
-            // Verify SHA-256 when a digest was supplied.
             if (expectedSha256 is not null)
             {
-                bool valid = await VerifySha256Async(tempPath, expectedSha256, ct).ConfigureAwait(false);
-                if (!valid)
+                if (!await VerifySha256Async(tempPath, expectedSha256, ct).ConfigureAwait(false))
                 {
                     File.Delete(tempPath);
                     throw new InvalidOperationException(
-                        $"SHA-256 mismatch for model '{modelId}'. " +
-                        "The downloaded file has been deleted.");
+                        $"SHA-256 mismatch for model '{modelId}'. The downloaded file has been deleted.");
                 }
             }
 
-            // Atomically promote temp file.
-            if (File.Exists(filePath))
-                File.Delete(filePath);
+            if (File.Exists(filePath)) File.Delete(filePath);
             File.Move(tempPath, filePath);
         }
         catch
         {
-            // Clean up partial downloads on any failure.
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
+            if (File.Exists(tempPath)) File.Delete(tempPath);
             throw;
         }
-
         return filePath;
     }
 
-    /// <inheritdoc/>
+    // ── Bundle ────────────────────────────────────────────────────────────
+
+    public async Task<string> EnsureBundleAsync(
+        string modelId,
+        string repo,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        IProgress<double>? progress,
+        CancellationToken ct)
+    {
+        ValidateModelId(modelId);
+        if (string.IsNullOrWhiteSpace(repo))
+            throw new ArgumentException("Repo path is required for bundle entries.", nameof(repo));
+        ArgumentNullException.ThrowIfNull(bundleFiles);
+        if (bundleFiles.Count == 0)
+            throw new ArgumentException("Bundle file list must not be empty.", nameof(bundleFiles));
+
+        var modelDir = Path.Combine(_storageDirectory, modelId);
+        Directory.CreateDirectory(modelDir);
+
+        var totalBytes = 0L;
+        foreach (var f in bundleFiles) totalBytes += Math.Max(0, f.SizeBytes);
+        var doneBytes = 0L;
+
+        foreach (var file in bundleFiles)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(file.Name))
+                throw new InvalidOperationException(
+                    $"Bundle for '{modelId}' contains a file with no Name.");
+
+            var destPath = Path.Combine(modelDir, file.Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+
+            // Skip when cached + valid.
+            if (File.Exists(destPath) &&
+                await VerifySha256Async(destPath, file.Sha256, ct).ConfigureAwait(false))
+            {
+                doneBytes += file.SizeBytes;
+                ReportOverall(progress, doneBytes, totalBytes);
+                continue;
+            }
+            if (File.Exists(destPath)) File.Delete(destPath);
+
+            var tempPath = destPath + ".tmp";
+            try
+            {
+                IProgress<double>? perFile = progress is null
+                    ? null
+                    : new Progress<double>(p =>
+                        ReportOverall(progress, doneBytes + (long)(file.SizeBytes * p), totalBytes));
+
+                // PrimaryUrl (API form) → FallbackUrl (CDN form). Either one is the
+                // same bytes; we try both before giving up so a transient CDN hiccup
+                // doesn't kill an otherwise viable bundle download.
+                var primary = BuildPrimaryUrl(repo, file.Name);
+                var fallback = BuildFallbackUrl(repo, file.Name);
+                try
+                {
+                    await DownloadToFileAsync(primary, tempPath, perFile, ct).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                    await DownloadToFileAsync(fallback, tempPath, perFile, ct).ConfigureAwait(false);
+                }
+
+                if (!await VerifySha256Async(tempPath, file.Sha256, ct).ConfigureAwait(false))
+                {
+                    File.Delete(tempPath);
+                    throw new InvalidOperationException(
+                        $"SHA-256 mismatch for bundle file '{file.Name}' of model '{modelId}'. " +
+                        "The downloaded file has been deleted.");
+                }
+                if (File.Exists(destPath)) File.Delete(destPath);
+                File.Move(tempPath, destPath);
+                doneBytes += file.SizeBytes;
+                ReportOverall(progress, doneBytes, totalBytes);
+            }
+            catch
+            {
+                if (File.Exists(tempPath))
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
+                throw;
+            }
+        }
+
+        progress?.Report(1.0);
+        return modelDir;
+    }
+
+    private static Uri BuildPrimaryUrl(string repo, string fileName) =>
+        new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}");
+
+    private static Uri BuildFallbackUrl(string repo, string fileName) =>
+        new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}");
+
+    private static void ReportOverall(IProgress<double>? p, long done, long total)
+    {
+        if (p is null) return;
+        if (total <= 0) p.Report(0.0);
+        else p.Report(Math.Min(0.999, (double)done / total));
+    }
+
+    // ── Common ───────────────────────────────────────────────────────────
+
     public Task<bool> IsModelCachedAsync(string modelId, CancellationToken ct)
     {
         ValidateModelId(modelId);
         ct.ThrowIfCancellationRequested();
-        return Task.FromResult(File.Exists(GetFilePath(modelId)));
+        var singleFile = GetSingleFilePath(modelId);
+        if (File.Exists(singleFile)) return Task.FromResult(true);
+        var dir = Path.Combine(_storageDirectory, modelId);
+        return Task.FromResult(Directory.Exists(dir));
     }
 
-    /// <inheritdoc/>
     public Task DeleteModelAsync(string modelId, CancellationToken ct)
     {
         ValidateModelId(modelId);
         ct.ThrowIfCancellationRequested();
-
-        var filePath = GetFilePath(modelId);
-        if (File.Exists(filePath))
-            File.Delete(filePath);
-
+        var singleFile = GetSingleFilePath(modelId);
+        if (File.Exists(singleFile)) File.Delete(singleFile);
+        var dir = Path.Combine(_storageDirectory, modelId);
+        if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
     public ValueTask<long> GetAvailableDiskSpaceBytesAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-
-        // Resolve the absolute path so DriveInfo works correctly.
         var absoluteDir = Path.GetFullPath(_storageDirectory);
         var root = Path.GetPathRoot(absoluteDir)
-            ?? throw new InvalidOperationException(
-                $"Cannot determine drive root for '{absoluteDir}'.");
-
-        var drive = new DriveInfo(root);
-        return ValueTask.FromResult(drive.AvailableFreeSpace);
+            ?? throw new InvalidOperationException($"Cannot determine drive root for '{absoluteDir}'.");
+        return ValueTask.FromResult(new DriveInfo(root).AvailableFreeSpace);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    public void Dispose()
+    {
+        if (_ownsHttpClient) _http.Dispose();
+    }
 
-    private string GetFilePath(string modelId) =>
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    private string GetSingleFilePath(string modelId) =>
         Path.Combine(_storageDirectory, $"{modelId}.gguf");
 
     private static void ValidateModelId(string modelId)
@@ -176,23 +266,15 @@ public sealed class ModelDownloadService : IModelDownloadService
     }
 
     private async Task DownloadToFileAsync(
-        Uri uri,
-        string destPath,
-        IProgress<double>? progress,
-        CancellationToken ct)
+        Uri uri, string destPath, IProgress<double>? progress, CancellationToken ct)
     {
         using var response = await _http
             .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
-
         response.EnsureSuccessStatusCode();
 
         var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-
-        await using var contentStream = await response.Content
-            .ReadAsStreamAsync(ct)
-            .ConfigureAwait(false);
-
+        await using var contentStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         await using var fileStream = new FileStream(
             destPath, FileMode.Create, FileAccess.Write, FileShare.None,
             bufferSize: 81_920, useAsync: true);
@@ -202,29 +284,23 @@ public sealed class ModelDownloadService : IModelDownloadService
         long bytesUntilNextReport = ProgressChunkBytes;
         int read;
 
-        while ((read = await contentStream
-                   .ReadAsync(buffer, ct)
-                   .ConfigureAwait(false)) > 0)
+        while ((read = await contentStream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
         {
             await fileStream.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
             bytesRead += read;
             bytesUntilNextReport -= read;
-
             if (progress is not null && bytesUntilNextReport <= 0)
             {
                 var ratio = totalBytes > 0 ? (double)bytesRead / totalBytes : 0.0;
-                progress.Report(Math.Min(ratio, 0.999)); // Reserve 1.0 for completion.
+                progress.Report(Math.Min(ratio, 0.999));
                 bytesUntilNextReport = ProgressChunkBytes;
             }
         }
-
         progress?.Report(1.0);
     }
 
     private static async Task<bool> VerifySha256Async(
-        string filePath,
-        string expectedHex,
-        CancellationToken ct)
+        string filePath, string expectedHex, CancellationToken ct)
     {
         await using var stream = new FileStream(
             filePath, FileMode.Open, FileAccess.Read, FileShare.Read,
@@ -233,32 +309,24 @@ public sealed class ModelDownloadService : IModelDownloadService
         var actualHash = await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false);
         var actualHex = Convert.ToHexString(actualHash);
 
-        // The registry pins SHA-256 in "sha256:<hex>" form (the conventional
-        // multihash-style prefix). Strip an algorithm prefix when present so
-        // both forms compare correctly. Without this strip, EVERY model
-        // download fails with a spurious mismatch — the compare sees
-        // "SHA256:<HEX>" vs "<HEX>" and rejects the file even though the
-        // bytes hash exactly to the pinned value.
+        // The registry pins SHA-256 in "sha256:<hex>" form. Strip the prefix
+        // (and trim whitespace) before comparing. Without this, every model
+        // load fails with a spurious mismatch.
         var expectedNormalised = StripShaAlgorithmPrefix(expectedHex);
 
-        return string.Equals(actualHex, expectedNormalised,
-            StringComparison.OrdinalIgnoreCase);
+        return string.Equals(actualHex, expectedNormalised, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Returns the hex portion of a checksum, stripping an optional leading
-    /// algorithm token of the form <c>sha256:</c>, <c>SHA-256:</c>, etc.
+    /// Returns the hex portion of a SHA-256 checksum, stripping an optional
+    /// leading algorithm token of the form <c>sha256:</c>, <c>SHA-256:</c>, etc.
     /// </summary>
     internal static string StripShaAlgorithmPrefix(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
-        // Trim whitespace BEFORE inspecting so "  sha256:abc  " strips cleanly.
         var trimmed = raw.Trim();
         var colon = trimmed.IndexOf(':');
         if (colon < 0) return trimmed;
-        // Only treat the token before ':' as an algorithm name when it is
-        // short and consists entirely of [A-Za-z0-9-_] — never throw away
-        // part of the hex.
         var prefix = trimmed.AsSpan(0, colon);
         if (prefix.Length is > 0 and <= 16)
         {
@@ -270,11 +338,5 @@ public sealed class ModelDownloadService : IModelDownloadService
             if (isAlgName) return trimmed[(colon + 1)..].Trim();
         }
         return trimmed;
-    }
-
-    public void Dispose()
-    {
-        if (_ownsHttpClient)
-            _http.Dispose();
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -12,6 +13,12 @@ namespace CircleAI.Core
     public sealed class LocalModelLoader : IModelLoader
     {
         private const string RegistryResourceName = "CircleAI.Core.registry.json";
+
+        // For bundle entries we identify the model by the canonical weight file
+        // ("llm.mnn.weight"). It's present in every MNN-LLM model bundle and
+        // is the largest file (so a SHA-256 mismatch is the most diagnostic).
+        private const string BundleAnchorFileName = "llm.mnn.weight";
+
         private readonly HttpClient _httpClient = new();
         private readonly string _modelDir;
         private readonly Dictionary<string, ModelInfo> _modelRegistry;
@@ -34,11 +41,22 @@ namespace CircleAI.Core
             if (!_modelRegistry.TryGetValue(modelName, out var modelInfo))
                 throw new ArgumentException($"Model {modelName} not supported");
 
-            string localPath = Path.Combine(_modelDir, modelInfo.FileName);
+            // Bundle-shape entries route to MnnInferenceBridgeFactory's
+            // ModelDownloadService.EnsureBundleAsync. LocalModelLoader's
+            // single-file download path can't service a multi-file bundle.
+            if (modelInfo.IsBundle)
+            {
+                throw new InvalidOperationException(
+                    $"Model '{modelName}' is a multi-file bundle (registry entry has BundleFiles[]); " +
+                    "use ModelDownloadService.EnsureBundleAsync via MnnInferenceBridgeFactory instead. " +
+                    "LocalModelLoader.DownloadModelAsync only handles legacy single-file entries.");
+            }
+
+            string localPath = Path.Combine(_modelDir, modelInfo.FileName!);
 
             if (File.Exists(localPath))
             {
-                if (modelInfo.Checksum.StartsWith("sha256:TBD"))
+                if (modelInfo.Checksum is null || modelInfo.Checksum.StartsWith("sha256:TBD"))
                 {
                     Trace.TraceWarning(
                         "CircleAI: Model '{0}' has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
@@ -59,7 +77,7 @@ namespace CircleAI.Core
                 try
                 {
                     await DownloadFileAsync(url, localPath, progress ?? new Progress<float>());
-                    if (modelInfo.Checksum.StartsWith("sha256:TBD"))
+                    if (modelInfo.Checksum is null || modelInfo.Checksum.StartsWith("sha256:TBD"))
                     {
                         Trace.TraceWarning(
                             "CircleAI: Model '{0}' downloaded but has no verified checksum (sha256:TBD) — integrity check skipped. Update registry.json before production use.",
@@ -95,15 +113,36 @@ namespace CircleAI.Core
             if (!_modelRegistry.TryGetValue(modelName, out var modelInfo))
                 throw new FileNotFoundException($"Model {modelName} not found");
 
-            return Path.Combine(_modelDir, modelInfo.FileName);
+            if (modelInfo.IsBundle)
+            {
+                // Per-model directory layout — same shape ModelDownloadService.EnsureBundleAsync writes to.
+                return Path.Combine(_modelDir, modelName, BundleAnchorFileName);
+            }
+
+            return Path.Combine(_modelDir, modelInfo.FileName!);
         }
 
         public bool ModelExists(string modelName)
         {
             try
             {
+                if (!_modelRegistry.TryGetValue(modelName, out var modelInfo))
+                    return false;
+
                 var path = GetModelPath(modelName);
-                return File.Exists(path) && VerifyChecksum(path, _modelRegistry[modelName].Checksum);
+                if (!File.Exists(path))
+                    return false;
+
+                if (modelInfo.IsBundle)
+                {
+                    // Anchor file's expected SHA from the bundle's anchor entry.
+                    var anchor = modelInfo.BundleFiles?
+                        .FirstOrDefault(f => string.Equals(f.Name, BundleAnchorFileName, StringComparison.OrdinalIgnoreCase));
+                    if (anchor is null) return false;
+                    return VerifyChecksum(path, anchor.Sha256);
+                }
+
+                return modelInfo.Checksum is not null && VerifyChecksum(path, modelInfo.Checksum);
             }
             catch
             {
@@ -170,8 +209,15 @@ namespace CircleAI.Core
             using var sha256 = SHA256.Create();
             using var stream = File.OpenRead(filePath);
             var hashBytes = sha256.ComputeHash(stream);
-            var actualChecksum = "sha256:" + BitConverter.ToString(hashBytes).Replace("-", "").ToLower();
-            return actualChecksum == expectedChecksum;
+            var actualHex = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+
+            // Accept both "sha256:<hex>" and bare-hex forms — bundle entries store bare hex,
+            // legacy entries store "sha256:..." prefix.
+            var expected = expectedChecksum?.Trim() ?? string.Empty;
+            if (expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                expected = expected.Substring("sha256:".Length).Trim();
+
+            return string.Equals(expected, actualHex, StringComparison.OrdinalIgnoreCase);
         }
 
         public void Dispose()
@@ -181,14 +227,32 @@ namespace CircleAI.Core
             _disposed = true;
         }
 
-        private record ModelInfo(
-            string FileName,
-            string PrimaryUrl,
-            string FallbackUrl,
-            string Checksum,
-            long SizeBytes = 0,
-            string Version = "",
-            string Architecture = "",
-            string QuantizationType = "");
+        /// <summary>
+        /// Internal registry-row shape. Supports BOTH the legacy single-file
+        /// shape (FileName/PrimaryUrl/FallbackUrl/Checksum) AND the new bundle
+        /// shape (Repo + BundleFiles[]). Exactly one shape is populated per
+        /// entry; <see cref="IsBundle"/> selects which.
+        /// </summary>
+        private sealed record ModelInfo
+        {
+            // Legacy single-file shape (nullable so bundle entries deserialize cleanly).
+            public string? FileName { get; init; }
+            public string? PrimaryUrl { get; init; }
+            public string? FallbackUrl { get; init; }
+            public string? Checksum { get; init; }
+            public long SizeBytes { get; init; }
+            public string Version { get; init; } = "";
+            public string Architecture { get; init; } = "";
+            public string QuantizationType { get; init; } = "";
+
+            // Bundle shape.
+            public string? Repo { get; init; }
+            public long TotalBytes { get; init; }
+            public IReadOnlyList<BundleFileInfo>? BundleFiles { get; init; }
+
+            public bool IsBundle => BundleFiles is { Count: > 0 };
+        }
+
+        private sealed record BundleFileInfo(string Name, string Sha256, long SizeBytes);
     }
 }

@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.2.3</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.2.3 fixes the SHA-256 "sha256:" prefix-strip bug in ModelDownloadService.VerifySha256Async (every model load was failing with a spurious checksum mismatch) and sets a realistic User-Agent on the owned HttpClient so ModelScope's CDN no longer rejects FallbackUrl with 403. 1.2.2 shipped the Windows x64 mnnbridge.dll + MNN.dll inside the package at runtimes/win-x64/native/.</Description>
+    <Version>1.3.0</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.3.0 adds ModelDownloadService.EnsureBundleAsync — the multi-file MNN bundle downloader that fetches every file MNN-LLM needs (config.json, llm.mnn, llm.mnn.weight, tokenizer.txt, llm_config.json, configuration.json) into a per-model directory with Primary→Fallback URL fallback per file, atomic temp→move, cache reuse via SHA verify, and per-file SHA-256 verification. MnnInferenceBridgeFactory now routes bundle entries through EnsureBundleAsync and points QwenTextGenerator at the bundle's config.json. IModelDownloadService gains EnsureBundleAsync(modelId, repo, bundleFiles, progress, ct) + BundleFileSpec record. 1.2.3 fixed the SHA-256 "sha256:" prefix-strip bug + set a realistic User-Agent.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

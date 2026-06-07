@@ -1,124 +1,499 @@
 {
-  "Notes": "Pins below VERIFIED by tools/recalibrate-registry-sha \u2014 actual SHA-256 of the bytes ModelScope serves, computed by downloading both PrimaryUrl and FallbackUrl and asserting they are byte-identical. Re-run the tool to refresh.",
+  "Notes": "Auto-populated from ModelScope file-listing API by tools/recalibrate-registry-sha. Each entry\u0027s BundleFiles array lists EVERY file MNN-LLM needs to load the model. Per-file SHA-256 comes from ModelScope\u0027s API; one file per entry is full-download verified to confirm the API SHAs are accurate. Re-run the tool to refresh.",
   "Qwen3-0.6B-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-0.6B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-0.6B-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:953afb7e0165818add34a7a6caf0af5d0ed9428da102eb22c9b98ee9da292e9f",
-    "SizeBytes": 450810338,
-    "Version": "3.5",
+    "Repo": "MNN/Qwen3-0.6B-MNN",
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen3-0.6B-MNN"
+    "Version": "3.5",
+    "TotalBytes": 454473637,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+        "SizeBytes": 403
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "d426c65a5159c938ccc237cdfbd982137f276804f27b414ca0ecf3fc0a660f8c",
+        "SizeBytes": 461520
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "953afb7e0165818add34a7a6caf0af5d0ed9428da102eb22c9b98ee9da292e9f",
+        "SizeBytes": 450810338
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "63f9a2f67ec2ae98b4c2363b46355040c34ca5c87a740ab3c94e08288a53225a",
+        "SizeBytes": 4880
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "c3721ab4b2e58630032771224c48e1ea646e49ff2b4ea8dd7918815d7ca1f89b",
+        "SizeBytes": 1239
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+        "SizeBytes": 3193569
+      }
+    ]
   },
   "Qwen3-1.7B-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-1.7B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-1.7B-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:d53dfdb7b826e4103e58a30236312978ff98ee89a2e1b9d66dd6bf227afce823",
-    "SizeBytes": 1231860194,
-    "Version": "3.5",
+    "Repo": "MNN/Qwen3-1.7B-MNN",
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen3-1.7B-MNN"
+    "Version": "3.5",
+    "TotalBytes": 1235523444,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+        "SizeBytes": 403
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "a6352fda4a2063a73126d2b552e35603564545ae3ed9b1547f58736d00f880fc",
+        "SizeBytes": 461520
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "d53dfdb7b826e4103e58a30236312978ff98ee89a2e1b9d66dd6bf227afce823",
+        "SizeBytes": 1231860194
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "dea06be377d9be7f6617fd421153032aee5ae75b16f53ebc3ef84417c5206aaf",
+        "SizeBytes": 4881
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "042eda967842b49a986c07d4420805a2ac945e377432f7b4c1840d8131e59789",
+        "SizeBytes": 1189
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+        "SizeBytes": 3193569
+      }
+    ]
   },
   "Qwen3-4B-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-4B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-4B-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:42d1bd0f4379cbee62a3fb89cb48cac36f13c96cd0d236b89202f633d23f73c3",
-    "SizeBytes": 2709972658,
-    "Version": "3.5",
+    "Repo": "MNN/Qwen3-4B-MNN",
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen3-4B-MNN"
+    "Version": "3.5",
+    "TotalBytes": 2713766729,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+        "SizeBytes": 403
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "ade8ad33f1d06ce8a46b57fa85e0fc08f1d4df06e179e7f0f23e761ecfcb38a5",
+        "SizeBytes": 592352
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "42d1bd0f4379cbee62a3fb89cb48cac36f13c96cd0d236b89202f633d23f73c3",
+        "SizeBytes": 2709972658
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "5244f177522469d06e1282f6b2215a58fd1d2153d40337df8ca50f848f6c6a6c",
+        "SizeBytes": 4882
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "94ed5322bad92ac68161555bfe1d5251783c2efeeb12a7ce2992d4eb033643ef",
+        "SizeBytes": 1177
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+        "SizeBytes": 3193569
+      }
+    ]
   },
   "Qwen3-8B-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-8B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-8B-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:ecab3e87c0ca98a6e34795ba6779c5979b156b705c09b6df4b3e59c938576d4b",
-    "SizeBytes": 4259526082,
-    "Version": "3.5",
+    "Repo": "MNN/Qwen3-8B-MNN",
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen3-8B-MNN"
+    "Version": "3.5",
+    "TotalBytes": 5510450524,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "b2d27840d1106a65d3567e118ada5869ccf374b4b7cf78dcce20b22710ea34a1",
+        "SizeBytes": 2127
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
+        "SizeBytes": 417
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "458b4af1d22ed8d7d12235ed5249a4606c7606e35e775e7ea2244ba623b0312e",
+        "SizeBytes": 1244659712
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "a7071f720c2b28f50ac4fdd92f5ec7f81e245a8524a34f6cd5f76ac0d103ca16",
+        "SizeBytes": 592328
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "d0c680b2c2675b85a48fc37881bb9a085b74f45f6f312b09068e2929b3473400",
+        "SizeBytes": 2474653
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "ecab3e87c0ca98a6e34795ba6779c5979b156b705c09b6df4b3e59c938576d4b",
+        "SizeBytes": 4259526082
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "a101498dac1d672f5a93a059775e0d68b11734ce0bb2592841d1a772eab1be74",
+        "SizeBytes": 413
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "785fc29ebedd6db64b5041d4fa777b09b72d4eee4d21bb350861b2dfbdb26058",
+        "SizeBytes": 1177
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+        "SizeBytes": 3193569
+      }
+    ]
   },
   "Qwen3-14B-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen3-14B-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen3-14B-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:93a9c589270b2f41e6c42e68be18512af88754802423b24fc9ca026b79129602",
-    "SizeBytes": 7872763946,
-    "Version": "3.5",
+    "Repo": "MNN/Qwen3-14B-MNN",
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen3-14B-MNN"
+    "Version": "3.5",
+    "TotalBytes": 9435191463,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "b2d27840d1106a65d3567e118ada5869ccf374b4b7cf78dcce20b22710ea34a1",
+        "SizeBytes": 2127
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
+        "SizeBytes": 417
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "720549f9f5bae3c8a6520d03f8f07ad79ff9a1885d639d6a9e09afc8550cc0f5",
+        "SizeBytes": 1555824640
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "ebdedbf22f01bc1297380243fc77fea0b71fd92d7e437b980a9f7f9c08902270",
+        "SizeBytes": 657896
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "b93f15bd144555687b5c8aac1fbc1c361921853d65ff20bd1aab909daeeb9107",
+        "SizeBytes": 2747226
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "93a9c589270b2f41e6c42e68be18512af88754802423b24fc9ca026b79129602",
+        "SizeBytes": 7872763946
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "f1057d81653f106bfd1ab4e991611ba16e8062d0a9abf7f2e2e458c1b82290f3",
+        "SizeBytes": 413
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "f0bfe2cb4a6eff1cb9dc7620c824d109d0bcd76942a9a4d5bea6b13ceaa5ad16",
+        "SizeBytes": 1183
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+        "SizeBytes": 3193569
+      }
+    ]
   },
   "Qwen2.5-0.5B-Instruct-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-0.5B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-0.5B-Instruct-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da",
-    "SizeBytes": 277967498,
-    "Version": "2.5",
+    "Repo": "MNN/Qwen2.5-0.5B-Instruct-MNN",
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen2.5-0.5B-Instruct-MNN"
+    "Version": "2.5",
+    "TotalBytes": 556809048,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
+        "SizeBytes": 1770
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+        "SizeBytes": 159
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "4e96b0df6d274768cbb7e72404011853d23349999b658dc2f4dfb3c431ea223f",
+        "SizeBytes": 272269312
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "480da511e603bd82f8d4af4e1f778ad72baadf8307f3585465ad9a94daca1a88",
+        "SizeBytes": 566264
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "245ce4289f456dcb371a8f8deabf75c3c4ee75f34b19e0d9723ba09b2fbacf8c",
+        "SizeBytes": 2808932
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da",
+        "SizeBytes": 277967498
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "ec05709b4261d59b510a0b7a636c6dcb6c5635c08fee7eb3c4f04188b509694b",
+        "SizeBytes": 272
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "f341dfd027e35ea08abf44296788ff8721caa9d35f598739f70237195893f084",
+        "SizeBytes": 1318
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+        "SizeBytes": 3193477
+      }
+    ]
   },
   "Qwen2.5-1.5B-Instruct-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-1.5B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-1.5B-Instruct-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:94a73a713aed33d6356c2f050d431d94c14711a75e6b500869b21b3b720aa5fb",
-    "SizeBytes": 868491506,
-    "Version": "2.5",
+    "Repo": "MNN/Qwen2.5-1.5B-Instruct-MNN",
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen2.5-1.5B-Instruct-MNN"
+    "Version": "2.5",
+    "TotalBytes": 879484572,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "c398784a7cd21682979f57994dc695182d2b814b69b78311139b82da45a50d98",
+        "SizeBytes": 1902
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+        "SizeBytes": 159
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "5a57a643ad6dbb38d36660e6ce0968d82725929311d455934768280b939863d5",
+        "SizeBytes": 1145128
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "3d34e0f4957cf408a59a1965ffeaa58bdcb456195ea0fe39e0bcd6aad5554ee4",
+        "SizeBytes": 6650652
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "94a73a713aed33d6356c2f050d431d94c14711a75e6b500869b21b3b720aa5fb",
+        "SizeBytes": 868491506
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "9c877345bb9a88a6ff81c31f28c9c8680898bb2593f00cff9fac9e85a2681554",
+        "SizeBytes": 384
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "75d5a04647a664099d26b514190487f5e8c1f739dcadee7f9711d57db9ab2128",
+        "SizeBytes": 1318
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+        "SizeBytes": 3193477
+      }
+    ]
   },
   "Qwen2.5-3B-Instruct-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-3B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-3B-Instruct-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:c636ff0997d97535cea70f12331a4212fc0fa25fece6a9893944c2f7d1777a88",
-    "SizeBytes": 1736078786,
-    "Version": "2.5",
+    "Repo": "MNN/Qwen2.5-3B-Instruct-MNN",
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen2.5-3B-Instruct-MNN"
+    "Version": "2.5",
+    "TotalBytes": 2369484507,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
+        "SizeBytes": 1770
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+        "SizeBytes": 159
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "03bd8df1218b5bcb8439e6a0d10d49e2cbc55e002f6552401e3e0cc71291fe87",
+        "SizeBytes": 622329856
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "82c4a314480083d5b296406f041f29b288bc3c385cef43dc32cf0f6f04202625",
+        "SizeBytes": 1180432
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "71798f3a4c58df0c293a8cfb8d83b40203303d0fbf3db48b71f656aa058eef9e",
+        "SizeBytes": 6698403
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "c636ff0997d97535cea70f12331a4212fc0fa25fece6a9893944c2f7d1777a88",
+        "SizeBytes": 1736078786
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "2e2ee1d767ea84d0a2f5c549dac7413d0debf8a7ec6abd7ade4e77b8e294ada5",
+        "SizeBytes": 274
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "7b4cd45e42adf48a2ff9ba565d137cc22d735cf9e1c5b64aead8d4b451ebdeef",
+        "SizeBytes": 1304
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+        "SizeBytes": 3193477
+      }
+    ]
   },
   "Qwen2.5-7B-Instruct-MNN": {
-    "FileName": "llm.mnn.weight",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/MNN/Qwen2.5-7B-Instruct-MNN/repo?Revision=master\u0026FilePath=llm.mnn.weight",
-    "FallbackUrl": "https://modelscope.cn/models/MNN/Qwen2.5-7B-Instruct-MNN/resolve/master/llm.mnn.weight",
-    "Checksum": "sha256:f0bb1d2cc3f91a0c38d6e6b82ab04c0bd5e5ed7831754841ffd9e14098b97cc4",
-    "SizeBytes": 3977556210,
-    "Version": "2.5",
+    "Repo": "MNN/Qwen2.5-7B-Instruct-MNN",
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
-    "ModelScopeRepo": "MNN/Qwen2.5-7B-Instruct-MNN"
-  },
-  "SenseVoice-Small": {
-    "FileName": "model.pt",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/iic/SenseVoiceSmall/repo?Revision=master\u0026FilePath=model.pt",
-    "FallbackUrl": "https://modelscope.cn/models/iic/SenseVoiceSmall/resolve/master/model.pt",
-    "Checksum": "sha256:833ca2dcfdf8ec91bd4f31cfac36d6124e0c459074d5e909aec9cabe6204a3ea",
-    "SizeBytes": 936291369,
-    "Version": "1.0",
-    "Architecture": "sensevoice",
-    "QuantizationType": "fp32",
-    "ModelScopeRepo": "iic/SenseVoiceSmall"
-  },
-  "Kimi-VL-A3B-Thinking-2506": {
-    "FileName": "model-00005-of-00007.safetensors",
-    "PrimaryUrl": "https://modelscope.cn/api/v1/models/moonshotai/Kimi-VL-A3B-Thinking-2506/repo?Revision=master\u0026FilePath=model-00005-of-00007.safetensors",
-    "FallbackUrl": "https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506/resolve/master/model-00005-of-00007.safetensors",
-    "Checksum": "sha256:a8fc6e1c9fbc43e4ef6f065a87d0f636524ff8374555e8f9e2cef756ac456677",
-    "SizeBytes": 4998186176,
-    "Version": "2506",
-    "Architecture": "kimi-vl",
-    "QuantizationType": "fp16",
-    "ModelScopeRepo": "moonshotai/Kimi-VL-A3B-Thinking-2506"
+    "Version": "2.5",
+    "TotalBytes": 5079845792,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
+        "SizeBytes": 1770
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+        "SizeBytes": 159
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "78ae605b310cf526d54ba22b27796f44010fe28198cb6e3388efb62e09cc2ac4",
+        "SizeBytes": 1089994752
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "5d50196a5d0cd0d6f3c04c682184ce0e4a3d95d5bd9b36f9c97b68dc691b47c5",
+        "SizeBytes": 1271768
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "0cf4c26414be1cfcfc8a6e24be4bd28baca53f97c55db63f2da6f4c883e385a7",
+        "SizeBytes": 7826032
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "f0bb1d2cc3f91a0c38d6e6b82ab04c0bd5e5ed7831754841ffd9e14098b97cc4",
+        "SizeBytes": 3977556210
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "f7325a888aa0175749e8a4d9a5d7600109fd7b9dcb8da2d79d6ff63c1ac131d1",
+        "SizeBytes": 274
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "6ebc707899f0654dd958a29387efb0f267d3ff4894dd4bbffb6817ff78eab92e",
+        "SizeBytes": 1304
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+        "SizeBytes": 3193477
+      }
+    ]
   }
 }

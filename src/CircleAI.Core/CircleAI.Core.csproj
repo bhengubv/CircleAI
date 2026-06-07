@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Version>1.2.0</Version><Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache. 1.0.1 hardens the embedded-registry parser against non-object top-level fields (e.g. a free-text "Notes" entry coexisting with model entries).</Description>
+    <Version>1.3.0</Version><Description>On-device AI core for Circle. Model registry, downloader (ModelScope primary / ModelScope CDN fallback), and local cache. 1.3.0 introduces multi-file MNN bundle support: registry.json + embedded_registry.json now ship a per-entry BundleFiles array (every file MNN-LLM needs to load — config.json, llm.mnn, llm.mnn.weight, tokenizer, etc. — with per-file SHA-256). ModelEntry/ModelInfo gain Repo + TotalBytes + BundleFiles[]; legacy single-file fields remain nullable for backward-compatible deserialization. ModelDownloader rejects bundle entries with a clear "use ModelDownloadService.EnsureBundleAsync" message instead of a generic URL error. LocalModelLoader resolves bundle entries to a per-model subdir and verifies the llm.mnn.weight anchor file's SHA. Catalog is now 9 Qwen-family MNN bundles populated from ModelScope's file-listing API; non-MNN-loadable entries (SenseVoice, Kimi-VL) were dropped. Re-run tools/recalibrate-registry-sha to refresh.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -261,6 +261,10 @@ UpgradeLog*.htm
 ServiceFabricBackup/
 *.rptproj.bak
 
+# Recalibrator tool backups — registry.json.bak / embedded_registry.json.bak
+src/CircleAI.Core/*.json.bak
+src/CircleAI.Core/Models/*.json.bak
+
 # SQL Server files
 *.mdf
 *.ldf

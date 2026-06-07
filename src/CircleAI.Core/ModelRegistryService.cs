@@ -1,6 +1,7 @@
 using System.Security;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CircleAI.Core.Models
 {
@@ -26,7 +27,7 @@ namespace CircleAI.Core.Models
             using var stream = assembly.GetManifestResourceStream("CircleAI.Core.Models.embedded_registry.json");
             if (stream is not null)
             {
-                _embeddedRegistry = JsonSerializer.Deserialize<ModelRegistry>(stream);
+                _embeddedRegistry = JsonSerializer.Deserialize<ModelRegistry>(stream, JsonOpts);
             }
         }
 
@@ -48,7 +49,7 @@ namespace CircleAI.Core.Models
                 if (!VerifySignature(remoteJson))
                     throw new SecurityException("Invalid registry signature");
 
-                _remoteRegistry = JsonSerializer.Deserialize<ModelRegistry>(remoteJson);
+                _remoteRegistry = JsonSerializer.Deserialize<ModelRegistry>(remoteJson, JsonOpts);
                 await File.WriteAllTextAsync(_registryPath, remoteJson);
             }
             catch
@@ -63,6 +64,13 @@ namespace CircleAI.Core.Models
             var registry = _remoteRegistry ?? _embeddedRegistry;
             return registry?.Models.FirstOrDefault(m => m.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase));
         }
+
+        private static readonly JsonSerializerOptions JsonOpts = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+        };
 
         private static bool VerifySignature(string json)
         {
@@ -93,10 +101,44 @@ namespace CircleAI.Core.Models
         DateTime LastUpdated,
         List<ModelEntry> Models);
 
+    /// <summary>
+    /// One entry in the model catalog.
+    /// <para>
+    /// The legacy single-file shape (<see cref="Url"/> + <see cref="Checksum"/>) is
+    /// retained for backward compatibility. The new bundle shape uses
+    /// <see cref="Repo"/> + <see cref="BundleFiles"/> so MNN-LLM gets the
+    /// complete set of files it needs to load (config.json, llm.mnn,
+    /// llm.mnn.weight, tokenizer, etc.) — not just one weight.
+    /// </para>
+    /// </summary>
     public record ModelEntry(
         string Name,
         string Version,
         string Quantization,
-        string Url,
-        string Checksum);
+        string? Url = null,
+        string? Checksum = null)
+    {
+        /// <summary>ModelScope repo path (e.g. <c>MNN/Qwen3-0.6B-MNN</c>) for bundle entries.</summary>
+        public string? Repo { get; init; }
+
+        /// <summary>Sum of every <see cref="BundleFile.SizeBytes"/> when this is a bundle entry; 0 otherwise.</summary>
+        public long TotalBytes { get; init; }
+
+        /// <summary>
+        /// Bundle file list — populated for MNN-style multi-file models. Null
+        /// for legacy single-file entries that use <see cref="Url"/> +
+        /// <see cref="Checksum"/>.
+        /// </summary>
+        public IReadOnlyList<BundleFile>? BundleFiles { get; init; }
+
+        /// <summary>True when this entry is a bundle (must download every file in <see cref="BundleFiles"/>).</summary>
+        public bool IsBundle => BundleFiles is { Count: > 0 };
+    }
+
+    /// <summary>
+    /// One file inside a model bundle. SHA-256 is the value ModelScope's
+    /// file-listing API reports; the recalibration tool verifies a sample
+    /// by full download.
+    /// </summary>
+    public record BundleFile(string Name, string Sha256, long SizeBytes);
 }

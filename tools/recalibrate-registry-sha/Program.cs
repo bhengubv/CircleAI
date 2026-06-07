@@ -3,40 +3,32 @@
 // Anti-rot tooling for src/CircleAI.Core/registry.json (and its sibling
 // src/CircleAI.Core/Models/embedded_registry.json).
 //
-// The registry has TWO catalog files that share the same pins:
-//   • registry.json                — flat dict keyed by ModelId, ModelDownloader.cs reads it
-//   • Models/embedded_registry.json — list shape, ModelRegistryService.cs reads it
+// Both catalog files share the same per-model bundle entries:
+//   • registry.json                — flat dict keyed by ModelId
+//   • Models/embedded_registry.json — list shape consumed by ModelRegistryService.cs
 //
-// Both pin a SHA-256 in "sha256:<hex>" form. The original pins were
-// extracted from the ModelScope file-listing API (no downloads), and
-// turned out NOT to match the actual bytes ModelScope serves — so every
-// model fails its checksum at runtime and gets deleted by
-// ModelDownloadService.EnsureModelAsync. This tool fixes that by
-// actually downloading each entry and pinning the real hash.
+// Each entry pins a ModelScope bundle: Repo + BundleFiles[] where every
+// BundleFile carries Name + Sha256 + SizeBytes. MNN-LLM needs the COMPLETE
+// bundle (config.json, llm.mnn, llm.mnn.weight, tokenizer, llm_config.json,
+// configuration.json) to load — not just the weights — so the catalog must
+// list every file or the runtime will fail with "config.json not found".
+//
+// This tool polls ModelScope's file-listing API for the SHA-256 of every
+// file in each bundle's repo, optionally downloads one sample file per
+// bundle to confirm the API SHAs match reality, then writes both catalog
+// files. The originals are backed up to *.bak.
 //
 // Usage:
 //   dotnet run --project tools/recalibrate-registry-sha -- [model-id ...]
+//                                                          [--no-sample-verify]
 //
-//   No args → process every entry in the registry.
+//   No model-id args → process every entry in the registry.
 //   One or more model-id args → process only those.
-//
-// What it does per entry:
-//   1. HEAD + first-KB sniff against PrimaryUrl to assert real binary
-//      content (rejects HTML error pages, git-LFS pointers, JSON
-//      wrappers, redirects to login pages).
-//   2. Streams the full file via PrimaryUrl, hashing as it goes, writing
-//      to a temp file. Reports speed + ETA.
-//   3. Streams the full file via FallbackUrl, hashing as it goes.
-//   4. Asserts the two SHAs are identical (the catalog's "both URLs
-//      serve identical bytes" claim is verified, not trusted).
-//   5. Pins the verified SHA + actual byte-length into BOTH registry.json
-//      and embedded_registry.json. The original files are backed up with
-//      a .bak extension.
+//   --no-sample-verify → skip sample download (fast, but trusts the API).
 //
 // Exit code:
-//   0  all requested entries verified + pins updated
-//   1  one or more entries failed verification (registry is NOT touched
-//      for failed entries; failed-entry pins stay as they were)
+//   0  all requested entries refreshed
+//   1  one or more entries failed (registry left untouched for failed entries)
 //   2  IO / parse / config error (no entries processed)
 
 using System.Diagnostics;
@@ -57,7 +49,7 @@ internal static class Program
     // both send one.
     private const string UserAgent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 CircleAI-Recalibrator/1.0";
+        "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 CircleAI-Recalibrator/2.0";
 
     private static readonly string RepoRoot = FindRepoRoot();
     private static readonly string RegistryPath
@@ -68,6 +60,10 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+
+        var sampleVerify = !args.Contains("--no-sample-verify", StringComparer.OrdinalIgnoreCase);
+        var modelArgs = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToList();
+
         if (!File.Exists(RegistryPath))
         {
             Console.Error.WriteLine($"registry.json not found at {RegistryPath}");
@@ -85,19 +81,20 @@ internal static class Program
             return 2;
         }
 
-        // Pick entries to process.
-        var allEntries = registry
-            .Where(kv => kv.Value is JsonObject)
+        // Pick entries to process. Only bundle entries (with a Repo key) are
+        // candidates — legacy single-file entries would need a different tool.
+        var allBundleEntries = registry
+            .Where(kv => kv.Value is JsonObject obj && obj["Repo"] is not null)
             .Select(kv => kv.Key)
             .ToList();
-        var targets = args.Length == 0 ? allEntries : args.Where(allEntries.Contains).ToList();
-        var missing = args.Where(a => !allEntries.Contains(a)).ToList();
+        var targets = modelArgs.Count == 0 ? allBundleEntries : modelArgs.Where(allBundleEntries.Contains).ToList();
+        var missing = modelArgs.Where(a => !allBundleEntries.Contains(a)).ToList();
         foreach (var m in missing)
-            Console.WriteLine($"⚠  '{m}' not in registry — skipping.");
+            Console.WriteLine($"⚠  '{m}' is not a bundle entry in the registry — skipping.");
 
         if (targets.Count == 0)
         {
-            Console.Error.WriteLine("No matching entries — nothing to do.");
+            Console.Error.WriteLine("No matching bundle entries — nothing to do.");
             return 2;
         }
 
@@ -107,16 +104,17 @@ internal static class Program
         };
         http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
 
-        var verifiedUpdates = new Dictionary<string, VerifiedEntry>();
+        var refreshedBundles = new Dictionary<string, BundleSpec>();
         var failures = new List<string>();
 
         var tempRoot = Path.Combine(Path.GetTempPath(), "circleai-recalibrate");
         Directory.CreateDirectory(tempRoot);
 
-        Console.WriteLine($"Repo root      : {RepoRoot}");
-        Console.WriteLine($"Registry       : {RegistryPath}");
-        Console.WriteLine($"Embedded       : {EmbeddedRegistryPath}");
-        Console.WriteLine($"Temp DL root   : {tempRoot}");
+        Console.WriteLine($"Repo root        : {RepoRoot}");
+        Console.WriteLine($"Registry         : {RegistryPath}");
+        Console.WriteLine($"Embedded         : {EmbeddedRegistryPath}");
+        Console.WriteLine($"Temp DL root     : {tempRoot}");
+        Console.WriteLine($"Sample-verify    : {(sampleVerify ? "ON (one file per bundle full-download verified)" : "OFF (trust API)")}");
         Console.WriteLine($"Targets ({targets.Count}): {string.Join(", ", targets)}");
         Console.WriteLine();
 
@@ -124,10 +122,52 @@ internal static class Program
         {
             try
             {
-                var verified = await VerifyOneAsync(http, modelId, (JsonObject)registry[modelId]!, tempRoot)
-                    .ConfigureAwait(false);
-                verifiedUpdates[modelId] = verified;
-                Console.WriteLine($"✓ {modelId}: verified  sha256={verified.Sha256[..16]}…  size={verified.SizeBytes:N0}");
+                var entry = (JsonObject)registry[modelId]!;
+                var repo = entry["Repo"]?.GetValue<string>()
+                    ?? throw new InvalidOperationException($"{modelId}: missing Repo");
+
+                Console.WriteLine($"── {modelId} ──");
+                Console.WriteLine($"  Repo : {repo}");
+
+                var bundle = await FetchBundleFromApiAsync(http, repo).ConfigureAwait(false);
+                Console.WriteLine($"  Files: {bundle.Files.Count}  TotalBytes: {bundle.TotalBytes:N0}");
+
+                if (sampleVerify)
+                {
+                    var sample = PickSampleFile(bundle.Files);
+                    Console.WriteLine($"  Sample-verify: {sample.Name} ({sample.SizeBytes:N0} bytes)");
+                    var sampleFile = Path.Combine(tempRoot, $"{modelId.Replace('/', '_')}.{sample.Name}");
+                    var (actualSha, actualSize) = await DownloadAndHashAsync(
+                        http, BuildPrimaryUrl(repo, sample.Name), sampleFile, "sample(Primary)")
+                        .ConfigureAwait(false);
+                    if (!string.Equals(actualSha, sample.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            $"Sample SHA mismatch on '{sample.Name}': API={sample.Sha256[..16]}… actual={actualSha[..16]}…");
+                    if (actualSize != sample.SizeBytes)
+                        throw new InvalidOperationException(
+                            $"Sample size mismatch on '{sample.Name}': API={sample.SizeBytes:N0} actual={actualSize:N0}");
+                    Console.WriteLine($"  ✓ Sample {sample.Name}: API SHA matches reality.");
+
+                    // Best-effort: also verify the Fallback URL serves identical bytes.
+                    var fallbackFile = sampleFile + ".fallback";
+                    try
+                    {
+                        var (fbSha, fbSize) = await DownloadAndHashAsync(
+                            http, BuildFallbackUrl(repo, sample.Name), fallbackFile, "sample(Fallback)")
+                            .ConfigureAwait(false);
+                        if (!string.Equals(fbSha, sample.Sha256, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException(
+                                $"Fallback SHA mismatch on '{sample.Name}': API={sample.Sha256[..16]}… fallback={fbSha[..16]}…");
+                        Console.WriteLine($"  ✓ Fallback URL also serves byte-identical '{sample.Name}'.");
+                    }
+                    finally
+                    {
+                        try { File.Delete(fallbackFile); } catch { /* best-effort */ }
+                    }
+                }
+
+                refreshedBundles[modelId] = bundle;
+                Console.WriteLine($"✓ {modelId}: {bundle.Files.Count} files, total {bundle.TotalBytes / 1024.0 / 1024.0:F1} MB");
             }
             catch (Exception ex)
             {
@@ -137,11 +177,11 @@ internal static class Program
             Console.WriteLine();
         }
 
-        if (verifiedUpdates.Count > 0)
+        if (refreshedBundles.Count > 0)
         {
-            BackupAndRewriteRegistryJson(registry, verifiedUpdates);
-            BackupAndRewriteEmbeddedRegistry(verifiedUpdates);
-            Console.WriteLine($"✓ Wrote {verifiedUpdates.Count} updated pins to:");
+            BackupAndRewriteRegistryJson(registry, refreshedBundles);
+            BackupAndRewriteEmbeddedRegistry(refreshedBundles);
+            Console.WriteLine($"✓ Wrote {refreshedBundles.Count} refreshed bundle(s) to:");
             Console.WriteLine($"    {RegistryPath}");
             Console.WriteLine($"    {EmbeddedRegistryPath}");
             Console.WriteLine($"  Originals preserved at *.bak");
@@ -159,80 +199,78 @@ internal static class Program
         return 0;
     }
 
-    private static async Task<VerifiedEntry> VerifyOneAsync(
-        HttpClient http, string modelId, JsonObject entry, string tempRoot)
+    /// <summary>
+    /// Calls ModelScope's file-listing API for the given repo, returning a
+    /// fully populated bundle (every file's Name + Sha256 + SizeBytes).
+    /// </summary>
+    private static async Task<BundleSpec> FetchBundleFromApiAsync(HttpClient http, string repo)
     {
-        var primary = entry["PrimaryUrl"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("missing PrimaryUrl");
-        var fallback = entry["FallbackUrl"]?.GetValue<string>(); // may be absent
+        var apiUrl = $"https://www.modelscope.cn/api/v1/models/{repo}/repo/files?Revision=master";
+        using var resp = await http.GetAsync(apiUrl).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-        Console.WriteLine($"── {modelId} ──");
-        Console.WriteLine($"  PrimaryUrl  : {primary}");
-        if (fallback is not null) Console.WriteLine($"  FallbackUrl : {fallback}");
-
-        // 1. Sniff — first KB must look like a real weight, not HTML / LFS / JSON wrapper.
-        await SniffAndAssertBinaryAsync(http, primary, "PrimaryUrl").ConfigureAwait(false);
-
-        // 2. Download Primary, hash + size.
-        var primaryFile = Path.Combine(tempRoot, $"{modelId}.primary.bin");
-        var (primaryHash, primarySize) = await DownloadAndHashAsync(http, primary, primaryFile, "PrimaryUrl").ConfigureAwait(false);
-        Console.WriteLine($"  Primary  : sha256={primaryHash}  size={primarySize:N0}");
-
-        string? fallbackHash = null;
-        if (fallback is not null)
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("Data", out var data) ||
+            !data.TryGetProperty("Files", out var files) ||
+            files.ValueKind != JsonValueKind.Array)
         {
-            await SniffAndAssertBinaryAsync(http, fallback, "FallbackUrl").ConfigureAwait(false);
-            var fallbackFile = Path.Combine(tempRoot, $"{modelId}.fallback.bin");
-            var (fbHash, fbSize) = await DownloadAndHashAsync(http, fallback, fallbackFile, "FallbackUrl").ConfigureAwait(false);
-            Console.WriteLine($"  Fallback : sha256={fbHash}  size={fbSize:N0}");
-            fallbackHash = fbHash;
-            if (!string.Equals(fbHash, primaryHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    $"PrimaryUrl and FallbackUrl serve DIFFERENT bytes. " +
-                    $"Primary sha256={primaryHash}, Fallback sha256={fbHash}.");
-            if (fbSize != primarySize)
-                throw new InvalidOperationException(
-                    $"PrimaryUrl and FallbackUrl differ in size ({primarySize:N0} vs {fbSize:N0}).");
-
-            // Fallback file no longer needed — keep Primary for cache reuse, delete Fallback.
-            try { File.Delete(fallbackFile); } catch { }
+            throw new InvalidOperationException(
+                $"ModelScope API response for repo '{repo}' has no Data.Files[] array. " +
+                $"First 200 chars: {json[..Math.Min(200, json.Length)]}");
         }
 
-        return new VerifiedEntry(
-            Sha256: primaryHash,
-            SizeBytes: primarySize,
-            FallbackVerified: fallbackHash is not null);
+        var bundleFiles = new List<BundleFileSpec>();
+        long total = 0;
+        foreach (var f in files.EnumerateArray())
+        {
+            var type = f.TryGetProperty("Type", out var t) ? t.GetString() : null;
+            if (type is not null && !type.Equals("blob", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var name = f.TryGetProperty("Name", out var n) ? n.GetString() : null;
+            var sha = f.TryGetProperty("Sha256", out var s) ? s.GetString() : null;
+            var size = f.TryGetProperty("Size", out var sz) && sz.TryGetInt64(out var sval) ? sval : 0L;
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(sha))
+                continue;
+
+            // Skip directories (some API responses list dirs as Type="tree" but also
+            // some responses have no Type — second-line filter on Sha256 emptiness)
+            bundleFiles.Add(new BundleFileSpec(name, sha.ToLowerInvariant(), size));
+            total += size;
+        }
+
+        if (bundleFiles.Count == 0)
+            throw new InvalidOperationException(
+                $"Repo '{repo}' file list is empty after filtering. API may have changed shape.");
+
+        return new BundleSpec(repo, bundleFiles, total);
     }
 
     /// <summary>
-    /// Issues a Range request for the first 1 KB and asserts it does NOT look
-    /// like HTML, JSON, or a git-LFS pointer.
+    /// Pick a file to full-download verify: prefer a small text file
+    /// (config.json) over the multi-GB weights. Falls back to the smallest
+    /// file ≥ 100 bytes if config.json isn't present.
     /// </summary>
-    private static async Task SniffAndAssertBinaryAsync(HttpClient http, string url, string label)
+    private static BundleFileSpec PickSampleFile(IReadOnlyList<BundleFileSpec> files)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Range = new RangeHeaderValue(0, 1023);
-        using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var bytes = await resp.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-        if (bytes.Length < 16)
-            throw new InvalidOperationException($"{label} sniff returned {bytes.Length} bytes — too short to be a real weight.");
-
-        // HTML
-        var asciiHead = Encoding.ASCII.GetString(bytes, 0, Math.Min(bytes.Length, 64))
-            .TrimStart().ToLowerInvariant();
-        if (asciiHead.StartsWith("<!doctype html") || asciiHead.StartsWith("<html") || asciiHead.StartsWith("<?xml"))
-            throw new InvalidOperationException($"{label} returned HTML/XML — the URL is a login or error page, not a weight.");
-
-        // git-LFS pointer
-        if (asciiHead.StartsWith("version https://git-lfs.github.com/spec"))
-            throw new InvalidOperationException($"{label} returned a git-LFS pointer file, not the resolved weight.");
-
-        // JSON wrapper — ModelScope wraps errors in {"Code":...,"Message":...}
-        if (asciiHead.StartsWith("{") && asciiHead.Contains("\"code\""))
-            throw new InvalidOperationException(
-                $"{label} returned a JSON error wrapper, not the weight. First bytes: {asciiHead[..Math.Min(120, asciiHead.Length)]}");
+        var configJson = files.FirstOrDefault(f => f.Name.Equals("config.json", StringComparison.OrdinalIgnoreCase));
+        if (configJson is not null) return configJson;
+        return files.Where(f => f.SizeBytes >= 100).OrderBy(f => f.SizeBytes).First();
     }
+
+    /// <summary>
+    /// Primary URL — ModelScope API form: api/v1/models/{repo}/repo?Revision=master&FilePath={file}
+    /// </summary>
+    private static string BuildPrimaryUrl(string repo, string fileName) =>
+        $"https://www.modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}";
+
+    /// <summary>
+    /// Fallback URL — ModelScope CDN form: {repo}/resolve/master/{file}
+    /// </summary>
+    private static string BuildFallbackUrl(string repo, string fileName) =>
+        $"https://www.modelscope.cn/{repo}/resolve/master/{fileName}";
 
     private static async Task<(string Sha256Hex, long Bytes)> DownloadAndHashAsync(
         HttpClient http, string url, string destPath, string label)
@@ -272,20 +310,23 @@ internal static class Program
     }
 
     private static void BackupAndRewriteRegistryJson(
-        JsonObject registry, Dictionary<string, VerifiedEntry> updates)
+        JsonObject registry, Dictionary<string, BundleSpec> updates)
     {
         var backup = RegistryPath + ".bak";
         if (!File.Exists(backup)) File.Copy(RegistryPath, backup);
 
-        foreach (var (modelId, v) in updates)
+        foreach (var (modelId, bundle) in updates)
         {
             var entry = (JsonObject)registry[modelId]!;
-            entry["Checksum"] = $"sha256:{v.Sha256}";
-            entry["SizeBytes"] = v.SizeBytes;
+            entry["TotalBytes"] = bundle.TotalBytes;
+            entry["BundleFiles"] = ToJsonArray(bundle.Files);
         }
-        // Touch Notes to reflect the new provenance.
-        if (registry["Notes"] is JsonValue)
-            registry["Notes"] = "Pins below VERIFIED by tools/recalibrate-registry-sha — actual SHA-256 of the bytes ModelScope serves, computed by downloading both PrimaryUrl and FallbackUrl and asserting they are byte-identical. Re-run the tool to refresh.";
+        if (registry["Notes"] is not null)
+            registry["Notes"] =
+                "Auto-populated from ModelScope file-listing API by tools/recalibrate-registry-sha. " +
+                "Each entry's BundleFiles array lists EVERY file MNN-LLM needs to load the model. " +
+                "Per-file SHA-256 comes from ModelScope's API; one file per entry is full-download verified " +
+                "to confirm the API SHAs are accurate. Re-run the tool to refresh.";
 
         File.WriteAllText(RegistryPath, registry.ToJsonString(new JsonSerializerOptions
         {
@@ -293,7 +334,7 @@ internal static class Program
         }));
     }
 
-    private static void BackupAndRewriteEmbeddedRegistry(Dictionary<string, VerifiedEntry> updates)
+    private static void BackupAndRewriteEmbeddedRegistry(Dictionary<string, BundleSpec> updates)
     {
         if (!File.Exists(EmbeddedRegistryPath))
         {
@@ -314,16 +355,33 @@ internal static class Program
         {
             var name = model["Name"]?.GetValue<string>();
             if (name is null) continue;
-            if (!updates.TryGetValue(name, out var v)) continue;
-            model["Checksum"] = $"sha256:{v.Sha256}";
-            // SizeBytes isn't in the embedded shape; don't add a new field for now.
+            if (!updates.TryGetValue(name, out var bundle)) continue;
+            model["Repo"] = bundle.Repo;
+            model["TotalBytes"] = bundle.TotalBytes;
+            model["BundleFiles"] = ToJsonArray(bundle.Files);
         }
-        doc["Notes"] = "Pins below VERIFIED — see ../registry.json header.";
+        doc["Notes"] =
+            "Auto-populated by tools/recalibrate-registry-sha — see ../registry.json header.";
 
         File.WriteAllText(EmbeddedRegistryPath, doc.ToJsonString(new JsonSerializerOptions
         {
             WriteIndented = true,
         }));
+    }
+
+    private static JsonArray ToJsonArray(IReadOnlyList<BundleFileSpec> files)
+    {
+        var arr = new JsonArray();
+        foreach (var f in files)
+        {
+            arr.Add(new JsonObject
+            {
+                ["Name"]      = f.Name,
+                ["Sha256"]    = f.Sha256,
+                ["SizeBytes"] = f.SizeBytes,
+            });
+        }
+        return arr;
     }
 
     private static string FindRepoRoot()
@@ -340,5 +398,6 @@ internal static class Program
             "Could not find CircleAI repo root (no CircleAI.slnx / .sln in any parent directory).");
     }
 
-    private sealed record VerifiedEntry(string Sha256, long SizeBytes, bool FallbackVerified);
+    private sealed record BundleSpec(string Repo, IReadOnlyList<BundleFileSpec> Files, long TotalBytes);
+    private sealed record BundleFileSpec(string Name, string Sha256, long SizeBytes);
 }

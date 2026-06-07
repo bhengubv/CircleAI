@@ -66,6 +66,20 @@ namespace CircleAI.Core
             }
 
             Directory.CreateDirectory(localPath);
+
+            // Bundle entries (no FileName, no PrimaryUrl/FallbackUrl, but a
+            // Repo + BundleFiles array) cannot be serviced by this legacy
+            // single-file downloader. Steer callers to the right path
+            // instead of throwing the generic "no URL configured" message.
+            if (entry.IsBundle)
+            {
+                throw new InvalidOperationException(
+                    $"Model '{modelId}' is a multi-file MNN bundle (registry entry has BundleFiles[]). " +
+                    "Use CircleAI.Inference.ModelDownloadService.EnsureBundleAsync from " +
+                    "MnnInferenceBridgeFactory instead — this legacy single-file downloader " +
+                    "cannot fetch a multi-file bundle.");
+            }
+
             var targetFile = Path.Combine(localPath, entry.FileName);
 
             var candidates = BuildCandidateList(entry);
@@ -275,6 +289,7 @@ namespace CircleAI.Core
 
         private sealed record ModelEntry
         {
+            // Legacy single-file shape (nullable so bundle entries deserialize cleanly).
             [JsonPropertyName("FileName")] public string FileName { get; init; } = "";
             [JsonPropertyName("PrimaryUrl")] public string? PrimaryUrl { get; init; }
             [JsonPropertyName("FallbackUrl")] public string? FallbackUrl { get; init; }
@@ -283,6 +298,17 @@ namespace CircleAI.Core
             [JsonPropertyName("Version")] public string? Version { get; init; }
             [JsonPropertyName("Architecture")] public string? Architecture { get; init; }
             [JsonPropertyName("QuantizationType")] public string? QuantizationType { get; init; }
+
+            // Bundle shape (Repo + BundleFiles array). When present, signals
+            // that the multi-file MNN downloader (CircleAI.Inference) must be
+            // used instead of this legacy single-file downloader.
+            [JsonPropertyName("Repo")] public string? Repo { get; init; }
+            [JsonPropertyName("TotalBytes")] public long TotalBytes { get; init; }
+            [JsonPropertyName("BundleFiles")] public IReadOnlyList<BundleFileEntry>? BundleFiles { get; init; }
+
+            public bool IsBundle => BundleFiles is { Count: > 0 };
         }
+
+        private sealed record BundleFileEntry(string Name, string Sha256, long SizeBytes);
     }
 }

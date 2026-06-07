@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>1.2.1</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script.</Description>
+    <Version>1.3.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.0 ships MnnInferenceBridgeFactory wired for multi-file MNN bundles: bundle entries (the catalog's 9 Qwen-family MNN models) materialise as a per-model directory and QwenTextGenerator is pointed at config.json. Legacy single-file entries still work via the same factory.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
