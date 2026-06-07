@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using CircleAI.Companion;
 using CircleAI.Inference.Server.Auth;
 using CircleAI.Inference.Server.Endpoints;
 using CircleAI.Inference.Server.Lifecycle;
@@ -54,6 +55,15 @@ public static class InferenceServerBuilder
         // services.AddSingleton<IBridgeFactory, MyFactory>() AFTER calling this.
         services.AddSingleton<IModelLifecycleManager, ModelLifecycleManager>();
         services.TryAddSingleton<IBridgeFactory, MnnInferenceBridgeFactory>();
+
+        // Companion session pipeline — same TryAdd pattern as IBridgeFactory.
+        // Without these defaults the /v1/companion/turn handler can't bind
+        // its resolver parameter and the host crashes at startup
+        // (AuthorizationPolicyCache enumeration). Hosts that ship their own
+        // session-storage scheme (Redis, SQL, mesh-synced) override either
+        // type via services.AddSingleton<…>() before/after this call.
+        services.TryAddSingleton<ICompanionSessionFactory, CompanionSessionFactory>();
+        services.TryAddSingleton<ICompanionSessionResolver, InMemoryCompanionSessionResolver>();
 
         // CircleAI.Runtime wiring — paths are expanded at AddSingleton time so
         // the directories exist before any request lands.
