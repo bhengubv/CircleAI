@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>1.3.3</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.3 picks up CircleAI.Inference 1.3.3 — osx-arm64 native payload (libmnnbridge.dylib + libMNN.dylib) added. The server now runs on win-x64, linux-x64, and osx-arm64 without any manual native-lib copying.</Description>
+    <Version>1.3.4</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.3.4 picks up CircleAI.Inference 1.3.4 — adds osx-x64 + android-arm64. Server runs natively on 4 server platforms (win-x64, linux-x64, osx-arm64, osx-x64) and the SDK is consumable on android-arm64 from MAUI.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
