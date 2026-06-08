@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.3.5</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.3.5 adds android-arm (32-bit ARMv7) + ios-arm64 (static .a). 7 RIDs total: win-x64, linux-x64, osx-arm64, osx-x64, android-arm64, android-arm, ios-arm64. android-arm: libmnnbridge.so (1.2 MB ELF 32-bit ARM EABI5) + full companion .so set from Alibaba's armeabi-v7a Android MNN. ios-arm64: libmnnbridge.a (34 KB ar archive) + libMNN.a (10 MB, copied from Static/MNN.framework/MNN) — iOS prohibits dynamic library loading from the app sandbox, so the bridge ships as a static library for link-time integration via NativeReference in the consuming MAUI app. CMakeLists.txt iOS branch now respects BUILD_SHARED_LIBS=OFF + uses Static/MNN.framework (with flat Headers/) instead of Dynamic/MNN.framework/Versions/A/Headers. 1.3.4 added osx-x64 + android-arm64 + macOS codesigning.</Description>
+    <Version>1.3.6</Version><Description>On-device LLM inference for Circle. Alibaba MNN P/Invoke layer with Qwen 3 chat generator. 1.3.6 adds linux-arm64 by building MNN 3.5.0 from source (Alibaba doesn't ship a prebuilt). Cross-compiled on Ubuntu 24.04 x86_64 via aarch64-linux-gnu-g++ 13.3 toolchain in 20 minutes. Ships libmnnbridge.so (68 KB stripped, aarch64 ELF, 19 mnn_* symbols, DT_NEEDED for libllm.so + libMNN_Express.so + libMNN.so) + libMNN.so (3 MB), libllm.so (1.2 MB), libMNN_Express.so (987 KB). 8 RIDs total: win-x64, linux-x64, linux-arm64, osx-arm64, osx-x64, android-arm64, android-arm, ios-arm64. 1.3.5 added android-arm + ios-arm64.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
