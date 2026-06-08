@@ -1,280 +1,171 @@
-# Circle AI — 10-Language SDK
+# Circle AI
 
-[English](README.md) · [Français](docs/i18n/fr/README.md) · [Español](docs/i18n/es/README.md) · [العربية](docs/i18n/ar/README.md) · [中文简体](docs/i18n/zh-CN/README.md) · [日本語](docs/i18n/ja/README.md) · [Deutsch](docs/i18n/de/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md) · [한국어](docs/i18n/ko/README.md)
+On-device companion AI for the [Aether Protocol](https://github.com/bhengubv/aether-protocol)
+ecosystem. ~100 C# modules covering inference, multi-agent orchestration,
+memory + persona, voice, tooling, mesh transport, and 50+ domain adapters —
+plus an OpenAI-compatible **self-hosted inference server** you can drop
+behind a load balancer.
 
-The portable core of the Circle AI companion stack. Runs natively alongside every
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) node — wearable,
-phone, IoT, HarmonyOS — with no FFI overhead and no runtime bridging.
-
----
-
-## Portable Core (8 modules)
-
-| Module | Key types |
-|--------|-----------|
-| **models** | `ChatMessage`, `DownloadProgress` |
-| **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
-| **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47 tags), `WritingSystem` |
-| **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
-| **inference** | `GenerationOptions`, `IChatGenerator` |
-| **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
-| **sync** | `SyncDelta`, `SyncDeliveryMode`, `ISyncChannel` |
+> **Built around one architectural promise:** the SDK has zero model
+> knowledge. ModelScope's catalog is the source of truth, discovered at
+> runtime. A new Qwen / Kimi / DeepSeek variant lands on ModelScope, the
+> SDK picks it up on next refresh. **NuGet sleeps** — releases are for
+> SDK bugs and new runtime backends, not "we support a new model."
+>
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for why.
 
 ---
 
-## Language Quickstart
+## What's in here
 
-### C# (.NET)
+### 🧠 Inference
+
+The trinity every consumer binds to:
+
+| Type | Where | Purpose |
+|---|---|---|
+| `IChatGenerator` | `CircleAI.Inference` | The atomic seam: messages in, tokens out |
+| `IInferenceBridge` | `CircleAI.Hosting.InferenceBridge` | Lifecycle + descriptor wrapper around a generator |
+| `IAIService` | `CircleAI.Hosting` | The long-lived companion service — RAG, persona, tools, observers |
+
+Runtime: **Alibaba MNN** (Apache-2.0) on every platform. Models:
+**Qwen 3+, Kimi-VL, DeepSeek, GLM** — discovered through ModelScope, not
+pinned in source. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for
+the full Chinese-sovereign rationale.
+
+### 🖥️ `CircleAI.Inference.Server`
+
+OpenAI-compatible HTTP server. Endpoints: `/v1/chat/completions` (SSE
+streaming), `/v1/embeddings`, `/v1/companion/*`, `/v1/diagnostics`,
+`/v1/healthz`, `/v1/readyz`. JWT and API-key auth out of the box. Ships
+with a `Dockerfile`, a systemd unit, and a Windows-service install script.
+
+Drop it behind a load balancer and any OpenAI-SDK consumer talks to it
+unchanged.
+
+### 👥 Companion + Memory
+
+- **`CircleAI.Companion`** — long-running session loop with proactive turn
+  generation and mesh-state sync.
+- **`CircleAI.Memory`** — episodic memory + RAG context builder, persona
+  evolution, affect state, goal tracking, feedback signals.
+- **`CircleAI.Orchestration`** — multi-agent loop (`LokiOrchestrator`)
+  with quality gates and concurrent dispatch.
+
+### 🔧 Tools + Skills + Voice
+
+- **`CircleAI.Tools`** — `IToolBridge` for function calling. Built-in
+  `HttpToolBridge` maps REST APIs to tool definitions.
+- **`CircleAI.Skills`** — pluggable capability surface the model can
+  invoke contextually.
+- **`CircleAI.Voice`** — ONNX TTS / STT pipeline (the only ONNX dependency
+  in the codebase — text inference stays MNN).
+
+### 🕸️ Networking + Security
+
+- **`CircleAI.Networking.*`** — pluggable transports (HTTP / WebSocket /
+  AetherNet are production; BLE / DTN / NearLink are scaffolded).
+  `ITransportSelector` picks per-message based on connectivity, not by
+  consumer choice.
+- **`CircleAI.Security.*`** — mesh-directive-driven chat refusal,
+  AetherMesh bindings.
+
+### 🏛️ ≈50 domain adapters
+
+`CircleAI.Beauty`, `CircleAI.Construction`, `CircleAI.Faith`,
+`CircleAI.Family`, `CircleAI.Fitness`, `CircleAI.Food`,
+`CircleAI.Healthcare`, `CircleAI.RealEstate`, `CircleAI.Tourism`,
+`CircleAI.Tradesperson`, … — each provides domain-specific system-prompt
+context, knowledge facets, and lifecycle hooks. The companion engine
+loads only the adapters whose required sensors / UI fit the host device.
+
+---
+
+## Quick install — C# (.NET 9 / .NET 10)
 
 ```bash
-dotnet add package CircleAI.Core
+dotnet add package CircleAI.Inference.Server   # if you want the HTTP server
+dotnet add package CircleAI.Hosting             # if you want the in-process service
 ```
+
+### Zero-knob consumer
 
 ```csharp
-using CircleAI.Memory;
-using CircleAI.Languages;
+using CircleAI.Hosting;
 
-var state = new AffectState();
-state.ApplyPositiveSignal();
-Console.WriteLine(state.Engagement); // 0.52
+// The SDK figures out: which model fits this device, what context window
+// it can sustain, how many agents it can dispatch concurrently, which
+// KV-compression mode to use. The consumer only states intent.
+var ai = new AIService(new AIOptions
+{
+    SystemPrompt         = "You are B!, the helpful one.",
+    RequiredCapabilities = ChatCapability.Default | ChatCapability.Tools,
+});
 
-var lang = KnownLanguages.Zulu;
-Console.WriteLine(lang.BcpTag); // "zu"
+await ai.StartAsync();
+
+var answer = await ai.AskAsync("What's the capital of Morocco?");
+Console.WriteLine(answer);
 ```
+
+**That's it.** No `ModelId`. No `ContextSize`. No `MaxConcurrency`. The
+SDK probes the device, queries the ModelScope catalog, picks the
+highest-quality bundle that fits + satisfies the capability flags, and
+keeps that decision live as the catalog refreshes.
+
+For the full picture (overrides, injection points, observer events,
+bring-your-own-runtime), see [CONSUMING.md](CONSUMING.md).
 
 ---
 
-### Python
+## Self-hosted inference server
 
 ```bash
-pip install circle-ai-sdk
+docker run -d -p 5050:5050 \
+  -v ~/.circleai/models:/var/lib/circleai/models \
+  ghcr.io/bhengubv/circleai-inference-server:latest
 ```
-
-```python
-from circle_ai.memory import AffectState
-from circle_ai.languages import KnownLanguages
-
-state = AffectState()
-state.apply_positive_signal()
-print(state.engagement)  # 0.52
-
-reg = KnownLanguages()
-print(reg.find_by_bcp_tag("zu").english_name)  # Zulu
-```
-
----
-
-### TypeScript / Node.js
 
 ```bash
-npm install @bhengubv/circle-ai
+# Drop-in OpenAI replacement
+curl http://localhost:5050/v1/chat/completions \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Hi"}]}'
 ```
 
-```typescript
-import { AffectState, KnownLanguages } from '@bhengubv/circle-ai';
+`"model":"auto"` ⇒ `IModelSelector.BestFit(deviceProbe,
+ChatCapability.Default)`. The server picks; you don't.
 
-const state = new AffectState();
-state.applyPositiveSignal();
-console.log(state.engagement); // 0.52
-
-const reg = new KnownLanguages();
-console.log(reg.findByBcpTag('zu')?.englishName); // Zulu
-```
+Full deployment guide in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ---
 
-### Go
+## Sister repository — the 10-language portable kernel
 
-```bash
-go get github.com/bhengubv/CircleAI/go
-```
+The portable Circle AI kernel (AffectState math, KnownLanguages registry,
+ICompanionSession contracts) ships in **10 languages** so every Aether node
+can host the companion stack natively — C#, Python, TypeScript, Go, Kotlin,
+Swift, Rust, C, Android (Kotlin), HarmonyOS (ArkTS).
 
-```go
-import "github.com/bhengubv/CircleAI/go"
-
-state := circleai.NewAffectState()
-state.ApplyPositiveSignal()
-fmt.Println(state.Engagement) // 0.52
-
-lang := circleai.FindLanguage("zu")
-fmt.Println(lang.EnglishName) // Zulu
-```
-
----
-
-### Kotlin (JVM)
-
-```kotlin
-// build.gradle.kts
-implementation("com.bhengubv:circle-ai:0.1.0")
-```
-
-```kotlin
-import com.bhengubv.circleai.AffectState
-import com.bhengubv.circleai.KnownLanguages
-
-val state = AffectState()
-state.applyPositiveSignal()
-println(state.engagement) // 0.52
-
-println(KnownLanguages.findByBcpTag("zu")?.englishName) // Zulu
-```
-
----
-
-### Swift
-
-```swift
-// Package.swift
-.package(url: "https://github.com/bhengubv/CircleAI.git", from: "0.1.0")
-```
-
-```swift
-import CircleAI
-
-let state = AffectState()
-state.applyPositiveSignal()
-print(state.engagement) // 0.52
-
-let reg = KnownLanguages()
-print(reg.findByBcpTag("zu")?.englishName ?? "") // Zulu
-```
-
----
-
-### Rust
-
-```toml
-# Cargo.toml
-circle-ai = "0.1.0"
-```
-
-```rust
-use circle_ai::memory::AffectState;
-use circle_ai::languages::KnownLanguages;
-
-let mut state = AffectState::default();
-state.apply_positive_signal();
-println!("{}", state.engagement); // 0.52
-
-let lang = KnownLanguages::find_by_bcp_tag("zu").unwrap();
-println!("{}", lang.english_name); // Zulu
-```
-
----
-
-### C (CMake)
-
-```cmake
-# CMakeLists.txt
-FetchContent_Declare(circle_ai
-    GIT_REPOSITORY https://github.com/bhengubv/CircleAI.git
-    GIT_TAG        v0.1.0
-    SOURCE_SUBDIR  c
-)
-FetchContent_MakeAvailable(circle_ai)
-target_link_libraries(my_app circle_ai)
-```
-
-```c
-#include "circle_ai/circle_ai.h"
-
-ca_affect_state_t s = ca_affect_state_default();
-ca_affect_state_positive_signal(&s);
-printf("%.2f\n", s.engagement); /* 0.52 */
-
-const ca_language_tag_t* zu = ca_find_language("zu");
-printf("%s\n", zu->english_name); /* Zulu */
-```
-
----
-
-### Android (Kotlin)
-
-```kotlin
-// build.gradle.kts
-implementation("com.bhengubv:circle-ai-android:0.1.0")
-```
-
-```kotlin
-import com.bhengubv.circleai.AffectState
-import com.bhengubv.circleai.KnownLanguages
-
-val state = AffectState()
-state.applyPositiveSignal()
-Log.d("CircleAI", "Engagement: ${state.engagement}") // 0.52
-```
-
----
-
-### HarmonyOS / ArkTS
-
-```json5
-// oh-package.json5
-"dependencies": { "@bhengubv/circle-ai": "^0.1.0" }
-```
-
-```typescript
-import { AffectState, KnownLanguages } from '@bhengubv/circle-ai';
-
-const state = new AffectState();
-state.applyPositiveSignal();
-console.log(state.engagement); // 0.52
-```
-
----
-
-## AffectState — Cross-Language Math
-
-All 10 implementations produce identical float results (ε ≤ 1e-5).
-
-| Operation | Effect |
-|-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (clamped [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (clamped) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement and energy lerp toward 0.5 |
-
-Test vectors in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vectors). Validated by CI across all 10 languages.
-
----
-
-## Languages Registry (20 BCP-47 tags)
-
-`zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
-
----
-
-## Repository Layout
-
-```
-CircleAI/
-├── src/            C# reference implementation (CircleAI.*)
-├── tests/          C# test suite
-├── fixtures/       Cross-language test vectors (JSON)
-├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android library
-├── c/              Pure C99, CMake
-├── go/             Go module
-├── harmonyos/      ArkTS, OpenHarmony
-├── kotlin/         Kotlin/JVM
-├── python/         Python 3.12+
-├── rust/           Rust, Cargo
-├── swift/          Swift 5.9+, Swift Package Manager
-└── typescript/     TypeScript, npm
-```
-
----
-
-## CI
-
-| Workflow | Trigger |
-|----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | push/PR to master — runs all 10 test suites |
-| [Publish](.github/workflows/publish.yml) | git tag `v*.*.*` — publishes to NuGet, crates.io, PyPI, npm, GitHub Packages |
+The 10-language SDK lives alongside the C# framework in this repository.
+Per-language quickstarts: see [docs/quickstart/](docs/quickstart/).
 
 ---
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
+
+---
+
+## Pointers
+
+| Doc | Purpose |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Why ModelScope is the catalog and NuGet sleeps |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The full Chinese-sovereign stack rationale |
+| [CONSUMING.md](CONSUMING.md) | The trinity, the three injection points, worked example |
+| [SETUP.md](SETUP.md) | MNN native-runtime setup per platform |
+| [TODO.md](TODO.md) | Open work, current priorities |
+| [docs/quickstart/](docs/quickstart/) | Per-language quickstart for the portable kernel |
