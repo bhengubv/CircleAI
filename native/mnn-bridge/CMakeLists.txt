@@ -41,9 +41,20 @@ if(WIN32)
     set(MNN_INCLUDE_DIR "${MNN_ROOT}/include")
 elseif(APPLE)
     # macOS bundle: Dynamic/MNN.framework/Versions/A/{MNN, Headers}
-    set(MNN_FRAMEWORK   "${MNN_ROOT}/Dynamic/MNN.framework")
-    set(MNN_LIB_FILE    "${MNN_FRAMEWORK}")
-    set(MNN_INCLUDE_DIR "${MNN_FRAMEWORK}/Versions/A/Headers")
+    # iOS   bundle: Static/MNN.framework/{MNN, Headers}  (flat — no Versions/A)
+    # Static iOS / Catalyst static link must point at Static/.
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR BUILD_SHARED_LIBS STREQUAL "OFF")
+        set(MNN_FRAMEWORK "${MNN_ROOT}/Static/MNN.framework")
+    else()
+        set(MNN_FRAMEWORK "${MNN_ROOT}/Dynamic/MNN.framework")
+    endif()
+    set(MNN_LIB_FILE "${MNN_FRAMEWORK}")
+    # macOS frameworks nest under Versions/A; iOS frameworks are flat.
+    if(EXISTS "${MNN_FRAMEWORK}/Versions/A/Headers")
+        set(MNN_INCLUDE_DIR "${MNN_FRAMEWORK}/Versions/A/Headers")
+    else()
+        set(MNN_INCLUDE_DIR "${MNN_FRAMEWORK}/Headers")
+    endif()
 elseif(ANDROID)
     # Android bundle: jni/{abi}/libMNN.so
     set(MNN_LIB_FILE    "${MNN_ROOT}/jni/${ANDROID_ABI}/libMNN.so")
@@ -94,11 +105,21 @@ if(NOT EXISTS "${MNN_LIB_FILE}")
     message(FATAL_ERROR "MNN library not found at: ${MNN_LIB_FILE}")
 endif()
 
-# ── Shared library target ────────────────────────────────────────────────
+# ── Library target ───────────────────────────────────────────────────────
+# Shared by default. iOS builds with BUILD_SHARED_LIBS=OFF get a static
+# .a — iOS prohibits dlopen of bundled dynamic libraries from the app
+# sandbox, so the bridge MUST be link-time integrated by the consuming
+# MAUI app via NativeReference.
 
-add_library(mnnbridge SHARED
-    src/mnnbridge.cpp
-)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR BUILD_SHARED_LIBS STREQUAL "OFF")
+    add_library(mnnbridge STATIC
+        src/mnnbridge.cpp
+    )
+else()
+    add_library(mnnbridge SHARED
+        src/mnnbridge.cpp
+    )
+endif()
 
 target_include_directories(mnnbridge
     PUBLIC  include
@@ -119,9 +140,19 @@ if(WIN32)
     # Strip 'lib' prefix on Windows (CMake adds it on MinGW).
     set_target_properties(mnnbridge PROPERTIES PREFIX "")
 elseif(APPLE)
-    target_link_libraries(mnnbridge PRIVATE
-        "-framework MNN"
-        "-F${MNN_ROOT}/Dynamic")
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR BUILD_SHARED_LIBS STREQUAL "OFF")
+        # iOS static .a: the consuming MAUI app's link step pulls in MNN +
+        # its system frameworks (Metal, Foundation, CoreGraphics, …) via
+        # NativeReference. Our static shim therefore deliberately does NOT
+        # link MNN here — it only needs the headers for compile, not the
+        # symbols. Otherwise ld fails on Metal/ObjC symbols our shim
+        # doesn't reference but MNN's headers indirectly drag in.
+        # No target_link_libraries — static .a is just compiled .o output.
+    else()
+        target_link_libraries(mnnbridge PRIVATE
+            "-framework MNN"
+            "-F${MNN_ROOT}/Dynamic")
+    endif()
 elseif(ANDROID)
     target_link_libraries(mnnbridge PRIVATE
         "${MNN_LIB_FILE}"
