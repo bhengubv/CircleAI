@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Orchestration</PackageId>
-    <Version>1.2.0</Version><Description>Host-side loki-mode agent orchestration layer for Circle AI — spawns Engineering, Operations, and Review agent swarms, routes incident triggers, and enforces quality gates before deployment.</Description>
+    <Version>1.4.0</Version><Description>Host-side loki-mode agent orchestration layer for Circle AI — spawns Engineering, Operations, and Review agent swarms, routes incident triggers, and enforces quality gates before deployment. 1.4.0 fixes two LokiOrchestrator correctness gaps: SemaphoreSlim is now using-disposed per swarm run (was leaked one per RunSwarmAsync), and non-cancellation dispatcher exceptions are wrapped as AgentStatus.Failed SwarmResults so one bad handler no longer breaks the async iterator mid-stream. AgentSwarmConfig gains ForDevice(DeviceProbe) factory — MaxConcurrency sized by DeviceTierDefaults.MaxConcurrency(tier, cpuCores).</Description>
   </PropertyGroup>
 
   <PropertyGroup>

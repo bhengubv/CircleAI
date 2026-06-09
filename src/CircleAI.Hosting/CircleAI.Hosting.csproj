@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting</PackageId>
-    <Version>1.2.0</Version><Description>DI wiring, scheduled tasks, and proactive reasoning host for Circle AI agents.</Description>
+    <Version>1.4.0</Version><Description>DI wiring, scheduled tasks, and proactive reasoning host for Circle AI agents. 1.4.0 wires the P0 architectural shift end-to-end: AIOptions.ModelId / ContextSize / AgenticMaxIterations all nullable (default null = derive from device tier via IModelSelector + DeviceTierDefaults); AIOptions gains CatalogClient (opt-in ModelScope refresh) and RequiredCapabilities (Vision routes IChatGenerator to KimiVlGenerator). New AIService overload accepts IModelSelector; ResolveModelPathAsync auto-resolves ModelId via BestFit when null, emits IAIObserver.OnModelFetchingAsync before download with autoSelected flag. ServiceCollectionExtensions registers IDeviceContext (DefaultDeviceContext.Instance), ICatalogSignatureVerifier (NullCatalogSignatureVerifier fail-closed), ModelRegistryService, IModelSelector (DeviceAwareModelSelector), IPromptTemplateEngine — all via TryAdd so consumer overrides win.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
