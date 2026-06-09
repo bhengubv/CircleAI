@@ -100,6 +100,7 @@ public sealed class ModelScopeCatalogClient : IDisposable
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     private readonly ICatalogSignatureVerifier _verifier;
+    private readonly IDeviceContext? _deviceContext;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -113,24 +114,29 @@ public sealed class ModelScopeCatalogClient : IDisposable
     /// Construct with default options, an owned HttpClient, and the
     /// fail-closed <see cref="NullCatalogSignatureVerifier"/>.
     /// </summary>
-    public ModelScopeCatalogClient() : this(new ModelScopeCatalogOptions(), null, null) { }
+    public ModelScopeCatalogClient() : this(new ModelScopeCatalogOptions(), null, null, null) { }
 
     /// <summary>
     /// Construct with explicit options + optional caller-supplied
-    /// HttpClient + verifier. The client owns and disposes an
-    /// HttpClient only when one isn't supplied.
+    /// HttpClient + verifier + device context. The client owns and
+    /// disposes an HttpClient only when one isn't supplied. The optional
+    /// <paramref name="deviceContext"/> lets the client short-circuit
+    /// refresh attempts when the host reports no network connectivity —
+    /// the cache is returned untouched and no HTTPS roundtrip is wasted.
     /// </summary>
     public ModelScopeCatalogClient(
         ModelScopeCatalogOptions options,
         HttpClient? httpClient = null,
-        ICatalogSignatureVerifier? verifier = null)
+        ICatalogSignatureVerifier? verifier = null,
+        IDeviceContext? deviceContext = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _ownsHttp = httpClient is null;
         _http = httpClient ?? new HttpClient();
         if (_ownsHttp)
             _http.DefaultRequestHeaders.UserAgent.ParseAdd(_options.UserAgent);
-        _verifier = verifier ?? NullCatalogSignatureVerifier.Instance;
+        _verifier      = verifier ?? NullCatalogSignatureVerifier.Instance;
+        _deviceContext = deviceContext;
 
         Directory.CreateDirectory(_options.CacheDirectory);
     }
@@ -175,6 +181,12 @@ public sealed class ModelScopeCatalogClient : IDisposable
         ct.ThrowIfCancellationRequested();
         if (_options.Cadence == CatalogRefreshCadence.Never)  return Task.FromResult(false);
         if (_options.Cadence == CatalogRefreshCadence.Manual) return Task.FromResult(false);
+
+        // Connectivity gate: when the host reports "none" we skip the
+        // HTTPS roundtrip entirely. "online" / unknown / unset all pass.
+        var network = _deviceContext?.NetworkType;
+        if (string.Equals(network, "none", StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(false);
 
         if (!File.Exists(CacheFilePath)) return Task.FromResult(true);
 

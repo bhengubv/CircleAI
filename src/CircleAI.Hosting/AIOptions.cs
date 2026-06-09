@@ -128,6 +128,16 @@ public sealed class AIOptions
     /// </summary>
     public CircleAI.Core.Models.ModelScopeCatalogClient? CatalogClient { get; init; }
 
+    /// <summary>
+    /// Capabilities the consumer needs from the chat model. Passed verbatim
+    /// to <c>IModelSelector.BestFit</c> so the selector returns a model that
+    /// declares every requested flag. When <see cref="CircleAI.Inference.ChatCapability.Vision"/>
+    /// is requested the SDK wires <c>KimiVlGenerator</c> instead of
+    /// <c>QwenTextGenerator</c>. Default <see cref="CircleAI.Inference.ChatCapability.Default"/>.
+    /// </summary>
+    public CircleAI.Inference.ChatCapability RequiredCapabilities { get; init; }
+        = CircleAI.Inference.ChatCapability.Default;
+
     // ------------------------------------------------------------------
     // v2.0 — Memory / RAG
     // ------------------------------------------------------------------
