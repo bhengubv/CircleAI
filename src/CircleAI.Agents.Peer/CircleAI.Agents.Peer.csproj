@@ -3,10 +3,14 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Agents.Peer</PackageId>
-    <Version>1.2.0</Version><Description>
+    <Version>1.4.0</Version><Description>
       Agent-to-agent protocol over Aether mesh transport for Circle AI —
       one person's AI talks to another person's AI directly over BLE/Wi-Fi
-      Direct, no cloud.
+      Direct, no cloud. 1.4.0 adds AgentMessage.CorrelationId — distributed-
+      trace anchor (wire equivalent of HTTP X-Correlation-ID) for stitching
+      multi-hop agent exchanges. AgentMessage.Create synthesises a 32-char
+      Guid "N" form when the caller doesn't supply one, so every outbound
+      envelope carries SOME trace ID.
     </Description>
   </PropertyGroup>
 
