@@ -215,6 +215,7 @@ public static class ServiceCollectionExtensions
             var opts          = sp.GetRequiredService<AIOptions>();
             var modelLoader   = sp.GetService<IModelLoader>();
             var modelSelector = sp.GetService<IModelSelector>();
+            var modelRegistry = sp.GetService<ModelRegistryService>();
             var templateEngine= sp.GetService<IPromptTemplateEngine>();
             var deviceCtx     = sp.GetService<IDeviceContext>();
             var logger        = sp.GetService<ILogger<AIService>>();
@@ -229,7 +230,8 @@ public static class ServiceCollectionExtensions
                     threads:        opts.ThreadCount,
                     templateEngine: templateEngine);
 
-            return new AIService(opts, modelLoader, GeneratorFactory, modelSelector, logger);
+            return new AIService(
+                opts, modelLoader, GeneratorFactory, modelSelector, modelRegistry, logger);
         });
         services.AddSingleton<IAIService>(sp => sp.GetRequiredService<AIService>());
 

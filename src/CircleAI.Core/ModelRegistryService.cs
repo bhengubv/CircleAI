@@ -132,6 +132,120 @@ namespace CircleAI.Core.Models
             (_remoteRegistry ?? _embeddedRegistry)?.Models
                 ?? (IReadOnlyList<ModelEntry>)Array.Empty<ModelEntry>();
 
+        /// <summary>
+        /// Compare every installed model under <paramref name="storageDirectory"/>
+        /// against the active registry and surface anything that's drifted —
+        /// Version string mismatch, file SHA mismatch, or both. Hosts call
+        /// this on a cadence of their choosing (boot, daily timer, manual
+        /// "check for updates" button) and react to the returned list.
+        /// </summary>
+        /// <param name="storageDirectory">
+        /// Root directory where bundles are installed (one subdir per modelId,
+        /// containing the bundle files + <c>installed.json</c>). Same path
+        /// <c>ModelDownloadService</c> writes to.
+        /// </param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>
+        /// One <see cref="UpgradeInfo"/> per detected upgrade. Empty list
+        /// when everything installed is current OR no models are installed.
+        /// Never throws on individual model failures — best-effort.
+        /// </returns>
+        public virtual async Task<IReadOnlyList<UpgradeInfo>> CheckForUpgradesAsync(
+            string            storageDirectory,
+            CancellationToken ct = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(storageDirectory);
+            ct.ThrowIfCancellationRequested();
+
+            var upgrades = new List<UpgradeInfo>();
+            var now      = DateTimeOffset.UtcNow;
+
+            foreach (var entry in AllModels)
+            {
+                ct.ThrowIfCancellationRequested();
+                var modelDir = Path.Combine(storageDirectory, entry.Name);
+                if (!Directory.Exists(modelDir)) continue; // not installed — not an upgrade
+
+                var manifestPath = Path.Combine(modelDir, "installed.json");
+                InstalledManifest? manifest = null;
+                if (File.Exists(manifestPath))
+                {
+                    try
+                    {
+                        using var stream = File.OpenRead(manifestPath);
+                        manifest = JsonSerializer.Deserialize<InstalledManifest>(stream, JsonOpts);
+                    }
+                    catch
+                    {
+                        // Corrupt manifest — treat as missing.
+                        manifest = null;
+                    }
+                }
+
+                // No manifest but directory exists → pre-feature install. Surface
+                // as Unknown so hosts can decide to re-download.
+                if (manifest is null)
+                {
+                    upgrades.Add(new UpgradeInfo(
+                        ModelId:                entry.Name,
+                        InstalledVersion:       null,
+                        AvailableVersion:       entry.Version,
+                        Reason:                 UpgradeReason.Unknown,
+                        EstimatedDownloadBytes: entry.TotalBytes,
+                        DetectedAt:             now));
+                    continue;
+                }
+
+                var versionChanged = !string.Equals(manifest.Version, entry.Version, StringComparison.Ordinal);
+                var (shaChanged, driftBytes) = CompareBundleSha(manifest.Files, entry.BundleFiles);
+
+                if (!versionChanged && !shaChanged) continue; // up to date
+
+                var reason = (versionChanged, shaChanged) switch
+                {
+                    (true,  true)  => UpgradeReason.Both,
+                    (true,  false) => UpgradeReason.VersionChanged,
+                    (false, true)  => UpgradeReason.SHAChanged,
+                    _              => UpgradeReason.Unknown,
+                };
+
+                upgrades.Add(new UpgradeInfo(
+                    ModelId:                entry.Name,
+                    InstalledVersion:       manifest.Version,
+                    AvailableVersion:       entry.Version,
+                    Reason:                 reason,
+                    EstimatedDownloadBytes: driftBytes,
+                    DetectedAt:             now));
+            }
+
+            await Task.CompletedTask.ConfigureAwait(false);
+            return upgrades;
+        }
+
+        // Compare per-file SHA. Returns (any drift, sum-of-bytes for files
+        // that would re-download).
+        private static (bool DriftDetected, long Bytes) CompareBundleSha(
+            IReadOnlyList<BundleFile>? installed,
+            IReadOnlyList<BundleFile>? available)
+        {
+            if (available is null || available.Count == 0) return (false, 0);
+            var installedByName = (installed ?? Array.Empty<BundleFile>())
+                .ToDictionary(f => f.Name, StringComparer.Ordinal);
+
+            long bytes = 0;
+            bool drift = false;
+            foreach (var av in available)
+            {
+                if (!installedByName.TryGetValue(av.Name, out var inst) ||
+                    !string.Equals(inst.Sha256, av.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    drift = true;
+                    bytes += av.SizeBytes;
+                }
+            }
+            return (drift, bytes);
+        }
+
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
             PropertyNameCaseInsensitive = true,

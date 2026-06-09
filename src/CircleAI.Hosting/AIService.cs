@@ -43,6 +43,7 @@ public sealed class AIService : IAIService
     private readonly IModelLoader? _modelLoader;
     private readonly Func<string, IChatGenerator>? _generatorFactory;
     private readonly IModelSelector? _modelSelector;
+    private readonly CircleAI.Core.Models.ModelRegistryService? _modelRegistry;
     private readonly ILogger<AIService> _logger;
 
     // Resolved at StartAsync time so the rest of the lifecycle (download,
@@ -91,12 +92,57 @@ public sealed class AIService : IAIService
         Func<string, IChatGenerator>? generatorFactory,
         IModelSelector? modelSelector,
         ILogger<AIService>? logger = null)
+        : this(options, modelLoader, generatorFactory, modelSelector,
+               modelRegistry: null, logger) { }
+
+    /// <summary>
+    /// Constructs the service with an <see cref="IModelSelector"/> AND a
+    /// <see cref="CircleAI.Core.Models.ModelRegistryService"/>, enabling
+    /// upgrade detection via <see cref="CheckForUpgradesAsync"/>.
+    /// <c>ServiceCollectionExtensions</c> wires this overload by default.
+    /// </summary>
+    public AIService(
+        AIOptions                                       options,
+        IModelLoader?                                   modelLoader,
+        Func<string, IChatGenerator>?                   generatorFactory,
+        IModelSelector?                                 modelSelector,
+        CircleAI.Core.Models.ModelRegistryService?      modelRegistry,
+        ILogger<AIService>?                             logger = null)
     {
         _options          = options ?? throw new ArgumentNullException(nameof(options));
         _modelLoader      = modelLoader;
         _generatorFactory = generatorFactory;
         _modelSelector    = modelSelector;
+        _modelRegistry    = modelRegistry;
         _logger           = logger ?? NullLogger<AIService>.Instance;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CircleAI.Core.Models.UpgradeInfo>> CheckForUpgradesAsync(
+        CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        if (_modelRegistry is null
+            || string.IsNullOrWhiteSpace(_options.ModelStorageDirectory))
+        {
+            return Array.Empty<CircleAI.Core.Models.UpgradeInfo>();
+        }
+
+        try
+        {
+            return await _modelRegistry
+                .CheckForUpgradesAsync(_options.ModelStorageDirectory!, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Butler upgrade check failed; treating as no upgrades.");
+            return Array.Empty<CircleAI.Core.Models.UpgradeInfo>();
+        }
     }
 
     /// <inheritdoc />
@@ -158,6 +204,18 @@ public sealed class AIService : IAIService
             _logger.LogInformation("Butler service ready.");
 
             await FireObserverAsync(o => o.OnStartedAsync(ct), ct).ConfigureAwait(false);
+
+            // Opt-in upgrade check. Hosts that want this off explicitly disable
+            // CheckForUpgradesOnStart so the cold-start path stays fast.
+            if (_options.CheckForUpgradesOnStart)
+            {
+                var upgrades = await CheckForUpgradesAsync(ct).ConfigureAwait(false);
+                foreach (var u in upgrades)
+                {
+                    await FireObserverAsync(o => o.OnUpgradeAvailableAsync(u, ct), ct)
+                        .ConfigureAwait(false);
+                }
+            }
         }
         finally { _startGate.Release(); }
     }

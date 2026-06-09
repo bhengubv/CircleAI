@@ -169,6 +169,16 @@ public sealed class MnnInferenceBridgeFactory : IBridgeFactory, IDisposable
             var modelDir = await _modelDownload
                 .EnsureBundleAsync(modelId, entry.Repo!, bundleSpec, progress: null, ct)
                 .ConfigureAwait(false);
+
+            // Stamp installed.json so ModelRegistryService.CheckForUpgradesAsync
+            // can detect drift on subsequent runs. Best-effort — silent on failure.
+            if (_modelDownload is ModelDownloadService concrete)
+            {
+                await concrete.WriteInstalledManifestAsync(
+                    modelDir, modelId, entry.Version, entry.Repo, bundleSpec, ct)
+                    .ConfigureAwait(false);
+            }
+
             modelPath = Path.Combine(modelDir, "config.json");
             if (!File.Exists(modelPath))
                 throw new InvalidOperationException(

@@ -154,4 +154,21 @@ public interface IAIObserver
     /// <param name="ct">Cancellation token.</param>
     ValueTask OnModelFetchingAsync(string modelId, bool autoSelected, CancellationToken ct = default)
         => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Called when <see cref="AIService.CheckForUpgradesAsync"/> (or
+    /// <see cref="AIService.StartAsync"/> with
+    /// <see cref="AIOptions.CheckForUpgradesOnStart"/> enabled) detects a
+    /// model upgrade — Version drift, file SHA drift, or both — between
+    /// what's installed on disk and what the registry now advertises.
+    /// Fires once per detected upgrade. The SDK takes no action on its own;
+    /// hosts decide whether to surface a UI prompt, schedule a background
+    /// re-download, or ignore.
+    /// </summary>
+    /// <param name="upgrade">Details of the detected upgrade.</param>
+    /// <param name="ct">Cancellation token.</param>
+    ValueTask OnUpgradeAvailableAsync(
+        CircleAI.Core.Models.UpgradeInfo upgrade,
+        CancellationToken ct = default)
+        => ValueTask.CompletedTask;
 }

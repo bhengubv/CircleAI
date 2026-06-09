@@ -138,6 +138,28 @@ public sealed class AIOptions
     public CircleAI.Inference.ChatCapability RequiredCapabilities { get; init; }
         = CircleAI.Inference.ChatCapability.Default;
 
+    /// <summary>
+    /// When <c>true</c>, <see cref="AIService.StartAsync"/> runs
+    /// <see cref="AIService.CheckForUpgradesAsync"/> after resolving the model
+    /// and fires <see cref="IAIObserver.OnUpgradeAvailableAsync"/> once per
+    /// detected upgrade. Default <c>false</c> — startup stays as fast as
+    /// possible. Hosts that want explicit "check for updates" UI should
+    /// leave this off and call <c>CheckForUpgradesAsync</c> directly on a
+    /// cadence of their choice (boot, manual button, daily timer).
+    /// </summary>
+    public bool CheckForUpgradesOnStart { get; init; }
+
+    /// <summary>
+    /// Filesystem directory where downloaded model bundles live. Used by
+    /// <see cref="AIService.CheckForUpgradesAsync"/> to find the
+    /// <c>installed.json</c> manifests written at download time. When
+    /// <c>null</c> (default), upgrade detection is disabled — hosts that
+    /// want it should set this to the same path their
+    /// <c>IModelDownloadService</c> writes to (typically
+    /// <c>{ApplicationData}/CircleAI/models</c>).
+    /// </summary>
+    public string? ModelStorageDirectory { get; init; }
+
     // ------------------------------------------------------------------
     // v2.0 — Memory / RAG
     // ------------------------------------------------------------------
