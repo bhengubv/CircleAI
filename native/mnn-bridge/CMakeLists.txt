@@ -114,10 +114,12 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR BUILD_SHARED_LIBS STREQUAL "OFF")
     add_library(mnnbridge STATIC
         src/mnnbridge.cpp
+        src/turboquant.cpp
     )
 else()
     add_library(mnnbridge SHARED
         src/mnnbridge.cpp
+        src/turboquant.cpp
     )
 endif()
 
