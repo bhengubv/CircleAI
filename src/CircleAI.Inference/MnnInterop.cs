@@ -290,13 +290,17 @@ internal static partial class MnnInterop
         float* output,
         int maxDims);
 
-    // ── KV cache compression (Phase 4 — TurboQuant scaffolding) ──────────────
+    // ── KV cache compression (mnnbridge 1.2.0 — wired to MNN ATTENTION_OPTION) ──
     //
-    // The C ABI surface is stable as of mnnbridge 1.1.0. The native algorithm
-    // is NOT yet implemented — calls with non-zero mode currently return
-    // status code 2 (MNNBRIDGE_KV_NOT_IMPLEMENTED). The managed wrapper
-    // surfaces that as <see cref="KvCompressionApplyResult.NotImplemented"/>
-    // so hosts can react (log + fall back) without ambiguity.
+    // As of mnnbridge 1.2.0, non-zero modes translate to MNN's
+    // ATTENTION_OPTION runtime hint (CPUAttention.cpp). The mode is applied
+    // at load() time. Mapping:
+    //   Off (0)            -> attention_mode 8  (flash on, FP16 KV)
+    //   TurboQuant4Bit (1) -> attention_mode 14 (flash on, K+V TQ4)
+    //   TurboQuant3Bit (2) -> attention_mode 12 (flash on, K+V TQ3)
+    //   TurboQuant2Bit (3) -> attention_mode 12 (MNN has no native 2-bit; -> TQ3)
+    // KvCompressionApplyResult.NotImplemented stays for back-compat but is no
+    // longer returned by current mnnbridge builds.
 
     /// <summary>
     /// Sets the requested KV cache compression mode on a loaded handle.
@@ -316,6 +320,19 @@ internal static partial class MnnInterop
     public static partial int mnn_llm_get_kv_compression_mode(MnnModelHandle handle);
 
     // ── Convenience wrappers ──────────────────────────────────────────────────
+
+    // ── TurboQuant codec (parity surface) ────────────────────────────────────
+    //
+    // Round-trip a vector through the native TurboQuantCodec port that lives
+    // alongside mnnbridge. Used by tests to validate the managed
+    // CircleAI.Core.Compression.TurboQuantCodec produces numerically
+    // identical results to the C++ port.
+    [LibraryImport(LibraryName, EntryPoint = "mnn_turboquant_round_trip")]
+    public static unsafe partial int mnn_turboquant_round_trip(
+        float* vector,
+        int    dim,
+        int    bitsPerDim,
+        float* output);
 
     /// <summary>Save the KV-cache session. Returns <c>true</c> on success.</summary>
     public static bool SaveSession(MnnModelHandle handle, string path)
@@ -358,9 +375,10 @@ public enum KvCompressionApplyResult
     InvalidMode = 1,
 
     /// <summary>
-    /// Scaffolding only — the native attention path has not yet been ported
-    /// to honour TurboQuant. Mode is recorded but inference still runs at
-    /// FP16 KV cache. Treat as "configured, falling back to Off".
+    /// LEGACY (mnnbridge ≤ 1.1.0) — scaffolding-only response. As of
+    /// mnnbridge 1.2.0 the native path is wired through MNN's
+    /// ATTENTION_OPTION hint, so this status is no longer returned.
+    /// Kept for binary back-compat with older bridges.
     /// </summary>
     NotImplemented = 2,
 
@@ -371,8 +389,10 @@ public enum KvCompressionApplyResult
 /// <summary>
 /// Typed wrapper over the KV-compression C ABI so callers don't deal with
 /// raw integers. Internal because <see cref="MnnModelHandle"/> is internal.
-/// Phase 4.1 will expose a public Session.SetKvCompression once the native
-/// algorithm path is in place.
+/// As of mnnbridge 1.2.0, non-Off modes route through MNN's native
+/// ATTENTION_OPTION hint (TurboQuant TQ3/TQ4 attention path in
+/// <c>CPUAttention.cpp</c>) — actual KV compression takes effect at
+/// load() time.
 /// </summary>
 internal static class MnnKvCompression
 {

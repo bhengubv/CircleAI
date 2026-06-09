@@ -120,6 +120,30 @@ MNNBRIDGE_API int mnn_llm_load(mnn_llm_handle handle) {
     auto w = as_wrapper(handle);
     if (!w || !w->llm) return MNNBRIDGE_ERR_INVALID_HANDLE;
     try {
+        // KV cache compression: translate our SDK mode to MNN's attention_mode
+        // BEFORE load() so setRuntimeHint picks up the right ATTENTION_OPTION.
+        //   attention_mode encoding (from MNN's CPUAttention.cpp):
+        //     attention_mode / 8: flash attention bit (1 = on)
+        //     attention_mode % 8: 0 off | 1 K-i8 | 2 K+V-i8 | 3 K-TQ3 | 4 K+V-TQ3 | 5 K-TQ4 | 6 K+V-TQ4
+        //   Our SDK -> MNN mapping (always K+V, flash on):
+        //     Off (0)            -> 8  (flash on, no quant)
+        //     TurboQuant4Bit (1) -> 14 (flash on, K+V TQ4)
+        //     TurboQuant3Bit (2) -> 12 (flash on, K+V TQ3)
+        //     TurboQuant2Bit (3) -> 12 (MNN has no native 2-bit; closest = TQ3)
+        if (w->kv_compression_mode != 0) {
+            int attention_mode = 8; // default: flash on, no quant
+            switch (w->kv_compression_mode) {
+                case 1: attention_mode = 14; break; // K+V TQ4
+                case 2: attention_mode = 12; break; // K+V TQ3
+                case 3: attention_mode = 12; break; // 2-bit not native; nearest = TQ3
+                default: break;
+            }
+            std::string cfg = "{\"attention_mode\": " + std::to_string(attention_mode) + "}";
+            // set_config is best-effort; failure here is non-fatal (model will
+            // load at FP16). The C# layer can probe the post-load state.
+            w->llm->set_config(cfg);
+        }
+
         bool ok = w->llm->load();
         if (!ok) return MNNBRIDGE_ERR_LOAD_FAILED;
         w->loaded = true;
@@ -412,21 +436,46 @@ MNNBRIDGE_API int mnn_embed_get_dim(mnn_llm_handle handle) {
     return extract_int_from_config(w->llm.get(), "hidden_size", 0);
 }
 
-// ── KV cache compression (Phase 4 scaffolding) ──────────────────────────
+// ── KV cache compression (Phase 4 — wired to MNN's native TQ3/TQ4) ──────
 //
-// The native TurboQuant attention path is the Phase 4.1 workstream
-// (separate, 2–4 weeks of MNN attention-layer modifications). For now we
-// validate the requested mode, persist it on the wrapper, and return
-// MNNBRIDGE_KV_NOT_IMPLEMENTED so the C# layer can react (typically: log
-// a one-time warning and fall back to mode 0 inference).
+// MNN ships a native TurboQuant attention path under
+// source/backend/cpu/CPUAttention.cpp + compute/TurboQuant.hpp. It is
+// gated by the ATTENTION_OPTION runtime hint, which Llm::setRuntimeHint
+// reads from mConfig's "attention_mode" key (legacy: "quant_qkv").
+//
+// We expose the gate via this C ABI so the SDK doesn't need to author
+// model-bundle config edits to opt in. The mode persists on the wrapper
+// and is applied at load() time — see mnn_llm_load above for the
+// translation table.
+//
+// Returns MNNBRIDGE_OK (0) when the mode is recorded; the actual
+// behaviour shows up after the next load(). Reading back via
+// mnn_llm_get_kv_compression_mode returns the LAST-SET value, not
+// whether load has run yet.
 
 MNNBRIDGE_API int mnn_llm_set_kv_compression_mode(mnn_llm_handle handle, int mode) {
     auto w = as_wrapper(handle);
     if (!w) return MNNBRIDGE_ERR_INVALID_HANDLE;
     if (mode < 0 || mode > 3) return 1;  // invalid mode value
     w->kv_compression_mode = mode;
-    if (mode == 0) return 0; // off is always honourable
-    return MNNBRIDGE_KV_NOT_IMPLEMENTED;
+    // If load has already happened, push the new attention_mode via the
+    // runtime config update so a subsequent inference picks it up. Note:
+    // MNN may have already initialised the attention op with the old hint;
+    // in that case the change only takes effect after the next session
+    // (e.g. after reset_session or KV-cache reset). The C# layer should
+    // prefer set-mode BEFORE load for guaranteed application.
+    if (w->loaded && w->llm) {
+        int attention_mode = 8;
+        switch (mode) {
+            case 1: attention_mode = 14; break;
+            case 2: attention_mode = 12; break;
+            case 3: attention_mode = 12; break;
+            default: break;
+        }
+        std::string cfg = "{\"attention_mode\": " + std::to_string(attention_mode) + "}";
+        w->llm->set_config(cfg);
+    }
+    return MNNBRIDGE_OK;
 }
 
 MNNBRIDGE_API int mnn_llm_get_kv_compression_mode(mnn_llm_handle handle) {
@@ -435,10 +484,32 @@ MNNBRIDGE_API int mnn_llm_get_kv_compression_mode(mnn_llm_handle handle) {
     return w->kv_compression_mode;
 }
 
+// ── TurboQuant codec (parity surface) ────────────────────────────────────
+
+#include "turboquant.h"
+
+MNNBRIDGE_API int mnn_turboquant_round_trip(const float* vector,
+                                            int dim,
+                                            int bits_per_dim,
+                                            float* output) {
+    if (vector == nullptr || output == nullptr) return -1;
+    if (dim <= 1) return -2;
+    if (bits_per_dim < 1 || bits_per_dim > 8) return -3;
+    try {
+        auto rt = circleai::turboquant::round_trip(vector, dim, bits_per_dim);
+        std::memcpy(output, rt.data(), sizeof(float) * static_cast<size_t>(dim));
+        return 0;
+    } catch (...) {
+        return -4;
+    }
+}
+
 // ── Version ──────────────────────────────────────────────────────────────
 
 MNNBRIDGE_API const char* mnn_bridge_version(void) {
-    return "1.1.0-mnn3.5.0";
+    // 1.2.0 — KV compression wired through MNN's ATTENTION_OPTION hint
+    //          (was scaffolding-only / NotImplemented in 1.1.0).
+    return "1.2.0-mnn3.5.0";
 }
 
 // (Windows-specific includes moved to the top of this file so they're

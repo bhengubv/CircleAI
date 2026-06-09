@@ -210,6 +210,28 @@ MNNBRIDGE_API int mnn_llm_set_kv_compression_mode(
 // regardless of whether the native path actually honoured it.
 MNNBRIDGE_API int mnn_llm_get_kv_compression_mode(mnn_llm_handle handle);
 
+// ── TurboQuant codec (parity surface) ────────────────────────────────────
+//
+// The pure-C++ TurboQuantCodec port lives next to mnnbridge so the SDK
+// can validate that the managed CircleAI.Core.Compression.TurboQuantCodec
+// produces identical numerical results to the native implementation.
+// Exposed here so a P/Invoke test can drive a vector through the native
+// codec and compare against the managed reconstruction.
+//
+// This is NOT how the KV cache attention path runs — MNN has its own
+// native TurboQuant operator that the ATTENTION_OPTION runtime hint
+// activates (see mnn_llm_set_kv_compression_mode). These exports exist
+// purely for parity testing and possible future native embedding paths.
+//
+// Round-trips `vector` (length `dim`) through encode + decode at
+// `bits_per_dim` bits per dimension. Writes `dim` floats into `output`.
+// Returns 0 on success, negative on validation failure.
+MNNBRIDGE_API int mnn_turboquant_round_trip(
+    const float* vector,
+    int dim,
+    int bits_per_dim,
+    float* output);
+
 // ── Version ──────────────────────────────────────────────────────────────
 
 // Returns a static NUL-terminated string with the bridge's version, e.g.
