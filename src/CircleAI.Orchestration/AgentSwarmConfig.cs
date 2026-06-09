@@ -1,3 +1,5 @@
+using CircleAI.Core;
+
 namespace CircleAI.Orchestration;
 
 /// <summary>
@@ -34,4 +36,18 @@ public sealed record AgentSwarmConfig(
     /// review and security gates enforced.
     /// </summary>
     public static AgentSwarmConfig Default => new(4, TimeSpan.FromMinutes(5), true, true);
+
+    /// <summary>
+    /// Device-aware defaults: <see cref="MaxConcurrency"/> is sized via
+    /// <see cref="DeviceTierDefaults.MaxConcurrency"/> against the supplied
+    /// <see cref="DeviceProbe"/>; everything else matches <see cref="Default"/>.
+    /// Use this when the host has an <see cref="IDeviceContext"/> wired up
+    /// so wearables run 1 concurrent task while desktops use <c>cores − 2</c>.
+    /// </summary>
+    public static AgentSwarmConfig ForDevice(DeviceProbe probe) =>
+        new(
+            MaxConcurrency:                  DeviceTierDefaults.MaxConcurrency(probe.Classify(), probe.CpuCores),
+            TaskTimeout:                     TimeSpan.FromMinutes(5),
+            RequireReviewPassBeforeDeploy:   true,
+            RequireSecurityPassBeforeDeploy: true);
 }

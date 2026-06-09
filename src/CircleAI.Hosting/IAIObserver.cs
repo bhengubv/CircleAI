@@ -137,4 +137,21 @@ public interface IAIObserver
     /// </summary>
     ValueTask OnToolInvokedAsync(AIToolEvent @event, CancellationToken ct = default)
         => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Called once when <see cref="AIService.StartAsync"/> has resolved which
+    /// model to load — either from <see cref="AIOptions.ModelId"/> directly
+    /// or by asking an <c>IModelSelector</c> to pick one for the current
+    /// device. Fires before the actual file fetch / load so observers can
+    /// surface progress UI ("Fetching {modelId}…") before bytes move.
+    /// </summary>
+    /// <param name="modelId">The model the SDK is about to load.</param>
+    /// <param name="autoSelected">
+    /// <c>true</c> when the SDK chose this via <c>IModelSelector.BestFit</c>;
+    /// <c>false</c> when the consumer pinned it via <see cref="AIOptions.ModelId"/>
+    /// or <see cref="AIOptions.ModelPath"/>.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    ValueTask OnModelFetchingAsync(string modelId, bool autoSelected, CancellationToken ct = default)
+        => ValueTask.CompletedTask;
 }

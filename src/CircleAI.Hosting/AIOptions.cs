@@ -33,9 +33,12 @@ public sealed class AIOptions
 
     /// <summary>
     /// Logical model identifier passed to <see cref="CircleAI.Core.IModelLoader"/>
-    /// when <see cref="ModelPath"/> is <c>null</c>. Default <c>"Qwen3.6-35B-A3B-Q3"</c>.
+    /// when <see cref="ModelPath"/> is <c>null</c>. <c>null</c> (default) tells
+    /// the SDK to <c>BestFit</c> a model for the live device via the registered
+    /// <see cref="CircleAI.Inference.IModelSelector"/> — no consumer-side
+    /// hardcoded model family name required.
     /// </summary>
-    public string ModelId { get; init; } = "Qwen3.6-35B-A3B-Q3";
+    public string? ModelId { get; init; }
 
     /// <summary>
     /// Optional absolute path to a GGUF model file. If set, the service skips
@@ -61,10 +64,13 @@ public sealed class AIOptions
     public GenerationOptions? DefaultGenerationOptions { get; init; }
 
     /// <summary>
-    /// Maximum context window in tokens for the loaded model. Default 4096;
-    /// raise for longer conversations at the cost of RAM.
+    /// Maximum context window in tokens for the loaded model. <c>null</c>
+    /// (default) tells the SDK to derive the window from the device tier
+    /// (<see cref="CircleAI.Core.DeviceTierDefaults.ContextWindow"/>) — wearables
+    /// get 2K, phones 4K, tablets 8K, desktops 32K, workstations 131K. Set
+    /// explicitly to override.
     /// </summary>
-    public int ContextSize { get; init; } = 4096;
+    public int? ContextSize { get; init; }
 
     /// <summary>
     /// CPU threads dedicated to decode. <c>null</c> lets the inference layer
@@ -182,10 +188,13 @@ public sealed class AIOptions
 
     /// <summary>
     /// Maximum tool-call / re-prompt iterations in an agentic run.
-    /// Default 5. Set to 0 or 1 to disable agentic looping (single-turn
-    /// only). Only respected by <see cref="AIService.AgenticChatAsync"/>.
+    /// <c>null</c> (default) tells the SDK to derive from the live device
+    /// tier (<see cref="CircleAI.Core.DeviceTierDefaults.AgenticMaxIterations"/>) —
+    /// wearables 2, phones 3, tablets 5, desktops/workstations 10. Set to a
+    /// positive int to pin; set to <c>0</c> or <c>1</c> to disable looping.
+    /// Only respected by <see cref="AIService.AgenticChatAsync"/>.
     /// </summary>
-    public int AgenticMaxIterations { get; init; } = 5;
+    public int? AgenticMaxIterations { get; init; }
 
     // ------------------------------------------------------------------
     // HttpLoopbackEndpoint configuration

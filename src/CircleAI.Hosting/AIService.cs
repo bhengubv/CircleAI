@@ -42,7 +42,15 @@ public sealed class AIService : IAIService
     private readonly AIOptions _options;
     private readonly IModelLoader? _modelLoader;
     private readonly Func<string, IChatGenerator>? _generatorFactory;
+    private readonly IModelSelector? _modelSelector;
     private readonly ILogger<AIService> _logger;
+
+    // Resolved at StartAsync time so the rest of the lifecycle (download,
+    // generator factory, warmup) sees the same model the observer was told
+    // about. Cached so IsReady / ChatAsync don't re-select after a restart.
+    private string? _resolvedModelId;
+    private DeviceTier _resolvedDeviceTier = DeviceTier.Desktop;
+    private bool _autoSelected;
 
     private readonly SemaphoreSlim _startGate = new(1, 1);
     private CancellationTokenSource _shutdownCts = new();
@@ -69,11 +77,26 @@ public sealed class AIService : IAIService
         IModelLoader? modelLoader = null,
         Func<string, IChatGenerator>? generatorFactory = null,
         ILogger<AIService>? logger = null)
+        : this(options, modelLoader, generatorFactory, modelSelector: null, logger) { }
+
+    /// <summary>
+    /// Constructs the service with an <see cref="IModelSelector"/> so the SDK
+    /// can auto-resolve <see cref="AIOptions.ModelId"/> via <c>BestFit</c>
+    /// when the consumer leaves it null. <c>ServiceCollectionExtensions</c>
+    /// wires this overload by default.
+    /// </summary>
+    public AIService(
+        AIOptions options,
+        IModelLoader? modelLoader,
+        Func<string, IChatGenerator>? generatorFactory,
+        IModelSelector? modelSelector,
+        ILogger<AIService>? logger = null)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
-        _modelLoader = modelLoader;
+        _options          = options ?? throw new ArgumentNullException(nameof(options));
+        _modelLoader      = modelLoader;
         _generatorFactory = generatorFactory;
-        _logger = logger ?? NullLogger<AIService>.Instance;
+        _modelSelector    = modelSelector;
+        _logger           = logger ?? NullLogger<AIService>.Instance;
     }
 
     /// <inheritdoc />
@@ -103,11 +126,17 @@ public sealed class AIService : IAIService
             var modelPath = await ResolveModelPathAsync(ct).ConfigureAwait(false);
             _logger.LogInformation("Butler loading model from {ModelPath}", modelPath);
 
+            // Device-tier defaults: when ContextSize is left null, derive it
+            // from the resolved device tier (set in ResolveModelPathAsync
+            // when the selector ran; otherwise Desktop default).
+            var contextSize = _options.ContextSize
+                ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
+
             var generator = _generatorFactory is not null
                 ? _generatorFactory(modelPath)
                 : new QwenTextGenerator(
                     modelPath,
-                    contextSize: (uint)Math.Max(1, _options.ContextSize),
+                    contextSize: (uint)Math.Max(1, contextSize),
                     threads: _options.ThreadCount);
 
             if (generator is null)
@@ -337,7 +366,12 @@ public sealed class AIService : IAIService
         var generator = _generator
             ?? throw new InvalidOperationException("Butler is not ready.");
 
-        var maxIter = Math.Max(1, _options.AgenticMaxIterations);
+        // Pinned value wins; otherwise derive from the device tier resolved
+        // at StartAsync (defaults to Desktop when no selector ran).
+        var maxIter = Math.Max(
+            1,
+            _options.AgenticMaxIterations
+                ?? DeviceTierDefaults.AgenticMaxIterations(_resolvedDeviceTier));
         var effectiveOptions = options ?? _options.DefaultGenerationOptions;
 
         // Build conversation history with just the user turn.
@@ -515,12 +549,14 @@ public sealed class AIService : IAIService
 
     private async Task<string> ResolveModelPathAsync(CancellationToken ct)
     {
+        // 1. Explicit path wins — used by tests and devs pinning a local file.
         if (!string.IsNullOrWhiteSpace(_options.ModelPath))
         {
             if (!System.IO.File.Exists(_options.ModelPath))
                 throw new System.IO.FileNotFoundException(
                     "Configured AIOptions.ModelPath does not exist.",
                     _options.ModelPath);
+            _resolvedModelId = _options.ModelId; // may be null; downstream tolerates
             return _options.ModelPath!;
         }
 
@@ -528,16 +564,50 @@ public sealed class AIService : IAIService
             throw new InvalidOperationException(
                 "AIService needs either AIOptions.ModelPath or an IModelLoader.");
 
-        var existing = _modelLoader.GetModelPath(_options.ModelId);
+        // 2. Resolve ModelId — pinned by consumer, or auto-selected from the
+        //    live device when null. The directive's "infer from device, don't
+        //    ask the consumer" principle: consumer states intent (capabilities
+        //    via AIOptions, currently fixed to Default), SDK answers the model.
+        var modelId      = _options.ModelId;
+        var autoSelected = false;
+
+        if (string.IsNullOrWhiteSpace(modelId))
+        {
+            if (_modelSelector is null)
+                throw new InvalidOperationException(
+                    "AIOptions.ModelId is null and no IModelSelector is registered. " +
+                    "Either pin ModelId / ModelPath, or call AddCircleAI which wires " +
+                    "DeviceAwareModelSelector by default.");
+
+            var deviceCtx = _options.DeviceContext ?? DefaultDeviceContext.Instance;
+            var probe     = deviceCtx is DefaultDeviceContext ddc
+                ? ddc.BuildProbe()
+                : DeviceProbe.Snapshot(); // generic context — probe from runtime
+            var selection = _modelSelector.BestFit(probe, ChatCapability.Default);
+
+            modelId             = selection.ModelId;
+            _resolvedDeviceTier = selection.Tier;
+            autoSelected        = true;
+        }
+
+        _resolvedModelId = modelId;
+        _autoSelected    = autoSelected;
+        await FireObserverAsync(
+            o => o.OnModelFetchingAsync(modelId!, autoSelected, ct), ct)
+            .ConfigureAwait(false);
+
+        // 3. Already on disk? Use it.
+        var existing = _modelLoader.GetModelPath(modelId!);
         if (!string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing))
             return existing;
 
+        // 4. Fetch via the loader.
         ct.ThrowIfCancellationRequested();
-        _logger.LogInformation("Butler downloading model {ModelId}", _options.ModelId);
-        var downloaded = await _modelLoader.DownloadModelAsync(_options.ModelId).ConfigureAwait(false);
+        _logger.LogInformation("Butler downloading model {ModelId}", modelId);
+        var downloaded = await _modelLoader.DownloadModelAsync(modelId!).ConfigureAwait(false);
         if (string.IsNullOrEmpty(downloaded) || !System.IO.File.Exists(downloaded))
             throw new InvalidOperationException(
-                $"Model loader returned an invalid path for '{_options.ModelId}'.");
+                $"Model loader returned an invalid path for '{modelId}'.");
         return downloaded;
     }
 
