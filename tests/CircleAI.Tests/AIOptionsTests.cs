@@ -13,10 +13,12 @@ public sealed class AIOptionsTests
     {
         var opts = new AIOptions();
 
-        Assert.Equal("Qwen3.6-35B-A3B-Q3", opts.ModelId);
+        // P1: ModelId + ContextSize default null so the SDK auto-resolves
+        // from the live device via IModelSelector + DeviceTierDefaults.
+        Assert.Null(opts.ModelId);
         Assert.Null(opts.ModelPath);
         Assert.Contains("B!", opts.SystemPrompt);
-        Assert.Equal(4096, opts.ContextSize);
+        Assert.Null(opts.ContextSize);
         Assert.Null(opts.ThreadCount);
         Assert.True(opts.WarmOnStart);
         Assert.Equal(0, opts.LoopbackPort);
@@ -131,8 +133,8 @@ public sealed class AIOptionsTests
         // Feedback
         Assert.Null(opts.FeedbackStore);
 
-        // Agentic loop
-        Assert.Equal(5, opts.AgenticMaxIterations);
+        // Agentic loop — P1: null default means "derive from device tier".
+        Assert.Null(opts.AgenticMaxIterations);
     }
 
     // ------------------------------------------------------------------
