@@ -57,7 +57,7 @@ public sealed class LokiOrchestrator
         IEnumerable<AgentTask> tasks,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var semaphore = new SemaphoreSlim(_config.MaxConcurrency);
+        using var semaphore = new SemaphoreSlim(_config.MaxConcurrency);
         var pending = tasks.ToList();
         var running = new List<Task<SwarmResult>>(pending.Count);
 
@@ -108,6 +108,19 @@ public sealed class LokiOrchestrator
                 AgentStatus.Failed,
                 "Task timed out.",
                 new[] { "[HIGH] Task exceeded configured timeout." },
+                DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            // A dispatcher exception used to propagate out and break the
+            // swarm enumeration mid-stream. Wrap it as a failed SwarmResult
+            // so the remaining tasks still surface to the caller.
+            return new SwarmResult(
+                task.Id,
+                task.Role,
+                AgentStatus.Failed,
+                $"Dispatcher threw: {ex.GetType().Name}: {ex.Message}",
+                new[] { $"[HIGH] {ex.GetType().Name}: {ex.Message}" },
                 DateTimeOffset.UtcNow);
         }
         finally
