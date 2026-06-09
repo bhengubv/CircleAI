@@ -28,6 +28,89 @@ namespace CircleAI.Inference
             IReadOnlyList<ChatMessage> messages,
             GenerationOptions? options = null,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// Structured-response variant: returns the assistant reply alongside
+        /// token counts, finish reason, and latency. Default implementation
+        /// wraps <see cref="GenerateAsync"/> with an approximate token count
+        /// (word split) and <see cref="FinishReason.Stop"/>; native generators
+        /// override to report the exact native-reported values.
+        /// </summary>
+        async Task<ChatResponse> GenerateResponseAsync(
+            IReadOnlyList<ChatMessage> messages,
+            GenerationOptions? options = null,
+            CancellationToken ct = default)
+        {
+            var started = Environment.TickCount64;
+            var text    = await GenerateAsync(messages, options, ct).ConfigureAwait(false);
+            var latency = TimeSpan.FromMilliseconds(Environment.TickCount64 - started);
+
+            // Approximate token count for the fallback default — generators
+            // that can report real counts override the whole method.
+            var tokensIn  = ApproximateTokens(messages);
+            var tokensOut = ApproximateTokens(text);
+
+            return new ChatResponse(
+                Text:         text,
+                TokensIn:     tokensIn,
+                TokensOut:    tokensOut,
+                Latency:      latency,
+                FinishReason: FinishReason.Stop);
+        }
+
+        private static int ApproximateTokens(IReadOnlyList<ChatMessage> messages)
+        {
+            var total = 0;
+            foreach (var m in messages) total += ApproximateTokens(m.Content);
+            return total;
+        }
+
+        private static int ApproximateTokens(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            // Crude approximation — 1 token ≈ 4 chars in English. Replaced
+            // by native count in implementations that have one.
+            return Math.Max(1, text.Length / 4);
+        }
+    }
+
+    /// <summary>
+    /// Structured response from <see cref="IChatGenerator.GenerateResponseAsync"/>.
+    /// Carries the generated text alongside the metadata callers need for
+    /// rate-limiting, billing, telemetry, and trace stitching.
+    /// </summary>
+    /// <param name="Text">The assistant's reply.</param>
+    /// <param name="TokensIn">
+    /// Input prompt token count. Approximate for generators that don't
+    /// expose a native count; exact when the native bridge reports one.
+    /// </param>
+    /// <param name="TokensOut">Output token count. Same accuracy caveat.</param>
+    /// <param name="Latency">Total wall-clock time for the call.</param>
+    /// <param name="FinishReason">Why generation stopped.</param>
+    public sealed record ChatResponse(
+        string       Text,
+        int          TokensIn,
+        int          TokensOut,
+        TimeSpan     Latency,
+        FinishReason FinishReason);
+
+    /// <summary>Why a generation call stopped emitting tokens.</summary>
+    public enum FinishReason
+    {
+        /// <summary>Hit a stop sequence (e.g. <c>&lt;|im_end|&gt;</c>) — normal completion.</summary>
+        Stop           = 0,
+
+        /// <summary>Hit <see cref="GenerationOptions.MaxTokens"/>.</summary>
+        Length         = 1,
+
+        /// <summary>The cancellation token fired.</summary>
+        Cancelled      = 2,
+
+        /// <summary>Native generation reported an error before a stop sequence fired.</summary>
+        Error          = 3,
+
+        /// <summary>Native bridge didn't surface a finish reason; treat as <see cref="Stop"/>.</summary>
+        Unknown        = 4,
     }
 
     /// <summary>
