@@ -583,7 +583,7 @@ public sealed class AIService : IAIService
             var probe     = deviceCtx is DefaultDeviceContext ddc
                 ? ddc.BuildProbe()
                 : DeviceProbe.Snapshot(); // generic context — probe from runtime
-            var selection = _modelSelector.BestFit(probe, ChatCapability.Default);
+            var selection = _modelSelector.BestFit(probe, _options.RequiredCapabilities);
 
             modelId             = selection.ModelId;
             _resolvedDeviceTier = selection.Tier;

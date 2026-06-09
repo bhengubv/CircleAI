@@ -32,9 +32,18 @@ namespace CircleAI.Inference
 
     /// <summary>
     /// A single message in a chat history. <see cref="Role"/> is one of
-    /// <c>"system"</c>, <c>"user"</c>, or <c>"assistant"</c>.
+    /// <c>"system"</c>, <c>"user"</c>, <c>"assistant"</c>, or <c>"tool"</c>.
     /// </summary>
-    public sealed record ChatMessage(string Role, string Content);
+    public sealed record ChatMessage(string Role, string Content)
+    {
+        /// <summary>
+        /// Optional raw image bytes (JPEG / PNG / WebP) attached to this turn.
+        /// Consumed by <c>KimiVlGenerator</c> (or any vision-capable
+        /// <see cref="IChatGenerator"/>); text-only generators ignore it.
+        /// <c>null</c> for plain text turns.
+        /// </summary>
+        public byte[]? ImageBytes { get; init; }
+    }
 
     /// <summary>
     /// Knobs for a single generation call.
