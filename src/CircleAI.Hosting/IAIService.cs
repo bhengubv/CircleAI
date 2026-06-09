@@ -93,4 +93,19 @@ public interface IAIService : IAsyncDisposable
     /// used to evolve the persona over time.
     /// </summary>
     Task SubmitFeedbackAsync(FeedbackSignal signal, CancellationToken ct = default);
+
+    /// <summary>
+    /// Walks every installed model under
+    /// <see cref="AIOptions.ModelStorageDirectory"/> and compares it against
+    /// the current registry, returning one
+    /// <see cref="CircleAI.Core.Models.UpgradeInfo"/> per detected
+    /// upgrade — Version drift, file SHA drift, or both. Hosts call this
+    /// on their own cadence (boot, "check for updates" button, daily
+    /// timer). Empty list when everything is current OR when
+    /// <see cref="AIOptions.ModelStorageDirectory"/> is unset.
+    /// </summary>
+    Task<IReadOnlyList<CircleAI.Core.Models.UpgradeInfo>> CheckForUpgradesAsync(
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<CircleAI.Core.Models.UpgradeInfo>>(
+            Array.Empty<CircleAI.Core.Models.UpgradeInfo>());
 }

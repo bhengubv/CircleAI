@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.4.1</Version><Description>On-device LLM inference for Circle. 1.4.1 finishes the KV-cache compression path: KvCompressionMode (Off / TurboQuant4Bit / TurboQuant3Bit / TurboQuant2Bit) now routes through MNN's native TQ3/TQ4 attention quantization via the ATTENTION_OPTION runtime hint (CPUAttention.cpp). Modes are applied at load() time via Llm::set_config; mnnbridge bumped to 1.2.0 (was 1.1.0). Also adds C++ TurboQuant codec port (turboquant.cpp) for native embedding compression and parity testing — round-trip matches managed CircleAI.Core.Compression.TurboQuantCodec within 1e-2. New mnn_turboquant_round_trip C ABI export proves parity. All 8 RIDs rebuilt with the new code: win-x64, linux-x64, linux-arm64, osx-arm64, osx-x64, android-arm64, android-arm, ios-arm64.</Description>
+    <Version>1.5.0</Version><Description>On-device LLM inference for Circle. 1.5.0 adds ModelDownloadService.WriteInstalledManifestAsync — stamps installed.json into every downloaded bundle directory so ModelRegistryService.CheckForUpgradesAsync (1.5.0 in Core) can detect Version/SHA drift on later runs. Carries forward 1.4.1's KV-cache compression: KvCompressionMode wired through MNN's native TQ3/TQ4 attention quantization via the ATTENTION_OPTION runtime hint, plus the C++ TurboQuant codec port for parity testing. mnnbridge 1.2.0 native payload unchanged from 1.4.1 — 8 RIDs (win-x64, linux-x64, linux-arm64, osx-arm64, osx-x64, android-arm64, android-arm, ios-arm64).</Description>
   </PropertyGroup>
 
   <PropertyGroup>

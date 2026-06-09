@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Version>1.4.0</Version><Description>On-device AI core for Circle. 1.4.0 ships the P0 atomic shift — catalog-driven, device-inferred SDK. New: ModelScopeCatalogClient (live ModelScope catalog with disk cache, OnStartup/Daily/Manual/Never cadence, connectivity gate skips HTTPS when host reports offline), ICatalogSignatureVerifier (fail-closed NullCatalogSignatureVerifier default), DeviceProbe + DefaultDeviceContext (moved into Core — RAM/storage/CPU/GPU/thermal/connectivity snapshot with Wearable/Phone/Tablet/Desktop/Workstation tier classification), DeviceTierDefaults (ContextWindow 2K-131K, MaxConcurrency 1-min(16,cores-2), AgenticMaxIterations 2-10 per tier). ModelRegistryService primes from catalog client when supplied; AllModels is now virtual. ModelEntry adds MinRamGb, MinStorageGb, Capabilities[], QualityRank for device-fit ranking.</Description>
+    <Version>1.5.0</Version><Description>On-device AI core for Circle. 1.5.0 adds upgrade-detection: UpgradeInfo record + UpgradeReason enum (VersionChanged / SHAChanged / Both / Unknown) + InstalledManifest record. ModelRegistryService.CheckForUpgradesAsync(storageDirectory) walks every installed model, compares the on-disk installed.json against the active registry (Version string + per-file SHA), and returns one UpgradeInfo per detected drift. Hosts subscribe via IAIObserver.OnUpgradeAvailableAsync — the SDK never auto-applies. Carries forward 1.4.0's catalog-driven SDK foundations: ModelScopeCatalogClient, signature verifier, DeviceProbe + DefaultDeviceContext, DeviceTierDefaults, capability + RAM + storage ranking on ModelEntry.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

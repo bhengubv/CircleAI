@@ -6,8 +6,10 @@ using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Core.Models;
 
 namespace CircleAI.Inference;
 
@@ -203,6 +205,70 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         progress?.Report(1.0);
         return modelDir;
     }
+
+    /// <summary>
+    /// Stamps an <c>installed.json</c> file in <paramref name="modelDir"/>
+    /// describing what's now on disk. Read later by
+    /// <see cref="ModelRegistryService.CheckForUpgradesAsync"/> to detect
+    /// drift against the live registry.
+    /// <para>
+    /// Call this immediately after a successful
+    /// <see cref="EnsureBundleAsync"/> when you have the model's Version
+    /// string available (typically from the <see cref="ModelEntry"/> the
+    /// download was driven by). Best-effort — silent failures are
+    /// swallowed so a manifest hiccup never breaks a working install.
+    /// </para>
+    /// </summary>
+    /// <param name="modelDir">Absolute path returned by <see cref="EnsureBundleAsync"/>.</param>
+    /// <param name="modelId">Model identifier (must match the registry's <see cref="ModelEntry.Name"/>).</param>
+    /// <param name="version">Version string from the registry entry.</param>
+    /// <param name="repo">ModelScope repo path (e.g. <c>MNN/Qwen3-0.6B-MNN</c>).</param>
+    /// <param name="bundleFiles">The same file list passed to <see cref="EnsureBundleAsync"/>.</param>
+    public async Task WriteInstalledManifestAsync(
+        string                       modelDir,
+        string                       modelId,
+        string                       version,
+        string?                      repo,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        CancellationToken            ct = default)
+    {
+        try
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelDir);
+            ArgumentException.ThrowIfNullOrWhiteSpace(modelId);
+            ArgumentNullException.ThrowIfNull(bundleFiles);
+
+            long totalBytes = 0;
+            var files = new List<BundleFile>(bundleFiles.Count);
+            foreach (var f in bundleFiles)
+            {
+                files.Add(new BundleFile(f.Name, f.Sha256, f.SizeBytes));
+                totalBytes += Math.Max(0, f.SizeBytes);
+            }
+
+            var manifest = new InstalledManifest(
+                ModelId:        modelId,
+                Version:        version ?? string.Empty,
+                Repo:           repo,
+                TotalBytes:     totalBytes,
+                Files:          files,
+                InstalledAtUtc: DateTimeOffset.UtcNow);
+
+            var path = Path.Combine(modelDir, "installed.json");
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ManifestJsonOpts);
+            await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort. A missing manifest just downgrades CheckForUpgradesAsync
+            // to UpgradeReason.Unknown — never a hard failure.
+        }
+    }
+
+    private static readonly JsonSerializerOptions ManifestJsonOpts = new()
+    {
+        WriteIndented = true,
+    };
 
     private static Uri BuildPrimaryUrl(string repo, string fileName) =>
         new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}");
