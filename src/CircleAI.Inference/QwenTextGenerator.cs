@@ -41,6 +41,8 @@ public sealed class QwenTextGenerator : IChatGenerator
 
     private readonly MnnModelHandle _model;
     private readonly int _maxNewTokens;
+    private readonly IPromptTemplateEngine? _templateEngine;
+    private readonly string? _modelDirectory;
 
     private bool _disposed;
 
@@ -60,6 +62,28 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// <exception cref="System.IO.FileNotFoundException">Model file not found.</exception>
     /// <exception cref="InvalidOperationException">Native load failed.</exception>
     public QwenTextGenerator(string modelPath, uint contextSize = 4096, int? threads = null)
+        : this(modelPath, contextSize, threads, templateEngine: null) { }
+
+    /// <summary>
+    /// Loads a model and uses the supplied <see cref="IPromptTemplateEngine"/>
+    /// to render chat history through the model's own <c>chat_template</c>
+    /// (read from <c>tokenizer_config.json</c> in the model's directory). This
+    /// is the catalog-driven path — new model families that publish a
+    /// chat_template work without any SDK code change.
+    /// </summary>
+    /// <param name="modelPath">Absolute path to the model file.</param>
+    /// <param name="contextSize">Maximum context window in tokens.</param>
+    /// <param name="threads">CPU thread count (<c>null</c> for MNN default).</param>
+    /// <param name="templateEngine">
+    /// Prompt template engine to use, or <c>null</c> to fall back to the
+    /// hardcoded Qwen ChatML builder. Resolved via DI when registered
+    /// through <c>AddCircleAI</c>.
+    /// </param>
+    public QwenTextGenerator(
+        string                   modelPath,
+        uint                     contextSize,
+        int?                     threads,
+        IPromptTemplateEngine?   templateEngine)
     {
         if (string.IsNullOrWhiteSpace(modelPath))
             throw new ArgumentException("Model path is required.", nameof(modelPath));
@@ -91,6 +115,8 @@ public sealed class QwenTextGenerator : IChatGenerator
 
         _model = handle;
         _maxNewTokens = (int)Math.Min(contextSize, int.MaxValue);
+        _templateEngine = templateEngine;
+        _modelDirectory = System.IO.Path.GetDirectoryName(modelPath);
     }
 
     /// <inheritdoc />
@@ -127,7 +153,12 @@ public sealed class QwenTextGenerator : IChatGenerator
             AllowSynchronousContinuations = false,
         });
 
-        var prompt = BuildQwenChatPrompt(messages);
+        // Catalog-driven: render through the model's own chat_template
+        // when the engine + bundle directory are available. Falls back
+        // to the hardcoded Qwen ChatML builder otherwise.
+        var prompt = (_templateEngine is not null && !string.IsNullOrEmpty(_modelDirectory))
+            ? _templateEngine.Render(_modelDirectory!, messages, addGenerationPrompt: true)
+            : BuildQwenChatPrompt(messages);
         var stopSequences = (options.StopSequences is { Length: > 0 }
             ? options.StopSequences
             : DefaultStopSequences);

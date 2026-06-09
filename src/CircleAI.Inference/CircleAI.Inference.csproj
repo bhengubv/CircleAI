@@ -18,6 +18,16 @@
 		<ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
 	</ItemGroup>
 
+	<!-- Jinja2-compatible template engine for catalog-driven chat_template
+	     rendering. Each model on ModelScope ships its own chat_template
+	     in tokenizer_config.json; PromptTemplateEngine renders messages
+	     through it so the SDK never hardcodes ChatML format. Scriban is
+	     the fastest .NET Jinja2-compatible renderer (Sandcastle's
+	     benchmark). Pure managed, no native deps. -->
+	<ItemGroup>
+		<PackageReference Include="Scriban" Version="7.2.4" />
+	</ItemGroup>
+
 	<!-- Native runtime payload. The SDK's default item glob excludes
 	     runtimes/** from auto-pack, so we explicitly add anything under
 	     runtimes/{RID}/native/ to the package at the matching path AND

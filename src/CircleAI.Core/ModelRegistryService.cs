@@ -5,15 +5,32 @@ using System.Text.Json.Serialization;
 
 namespace CircleAI.Core.Models
 {
-    public sealed class ModelRegistryService : IDisposable
+    public class ModelRegistryService : IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly string _registryPath;
         private ModelRegistry? _embeddedRegistry;
         private ModelRegistry? _remoteRegistry;
+        private readonly ModelScopeCatalogClient? _catalogClient;
         private bool _disposed;
 
         public ModelRegistryService(string? registryUrl = null)
+            : this(catalogClient: null, registryUrl: registryUrl) { }
+
+        /// <summary>
+        /// Construct with an explicit <see cref="ModelScopeCatalogClient"/>.
+        /// When supplied, the catalog client's cache becomes the primary
+        /// source for <see cref="AllModels"/> + <see cref="GetLatestModel"/>;
+        /// the embedded registry resource degrades to a final offline
+        /// fallback only.
+        /// </summary>
+        /// <param name="catalogClient">
+        /// Caller-owned catalog client. When <c>null</c>, the service
+        /// loads only from the embedded registry — same behaviour as
+        /// every release before the catalog client landed.
+        /// </param>
+        /// <param name="registryUrl">Legacy signed-registry URL (currently unused — see <c>CheckForUpdatesAsync</c>).</param>
+        public ModelRegistryService(ModelScopeCatalogClient? catalogClient, string? registryUrl = null)
         {
             _httpClient = new HttpClient();
             _registryPath = Path.Combine(
@@ -22,12 +39,48 @@ namespace CircleAI.Core.Models
                 "Models",
                 "remote_registry.json");
 
+            _catalogClient = catalogClient;
+
             // Load embedded registry (fallback). Stream may be null if the resource is not embedded.
             var assembly = typeof(ModelRegistryService).Assembly;
             using var stream = assembly.GetManifestResourceStream("CircleAI.Core.Models.embedded_registry.json");
             if (stream is not null)
             {
                 _embeddedRegistry = JsonSerializer.Deserialize<ModelRegistry>(stream, JsonOpts);
+            }
+
+            // If a catalog client was supplied, preload whatever is on disk
+            // synchronously so AllModels works without an awaitable. Live
+            // refresh happens via PrimeFromCatalogAsync.
+            if (_catalogClient is not null)
+            {
+                try { _remoteRegistry = _catalogClient.LoadFromDisk(); }
+                catch { /* fall back to embedded */ }
+            }
+        }
+
+        /// <summary>
+        /// Refresh the cached catalog from the ModelScope API when a
+        /// catalog client is configured. Safe to call on a cold cache
+        /// (populates it) or a warm cache (refreshes per cadence). On
+        /// any failure, keeps the existing cache / embedded registry.
+        /// Never throws.
+        /// </summary>
+        public async Task PrimeFromCatalogAsync(CancellationToken ct = default)
+        {
+            if (_catalogClient is null) return;
+            try
+            {
+                var registry = await _catalogClient
+                    .GetCachedCatalogAsync(acceptStaleOnError: true, ct)
+                    .ConfigureAwait(false);
+                if (registry is not null) _remoteRegistry = registry;
+            }
+            catch
+            {
+                // Honour the directive: "Bad signature / network error →
+                // keep using cached catalog, raise observer event."
+                // Observer wiring is forthcoming.
             }
         }
 
@@ -64,6 +117,20 @@ namespace CircleAI.Core.Models
             var registry = _remoteRegistry ?? _embeddedRegistry;
             return registry?.Models.FirstOrDefault(m => m.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase));
         }
+
+        /// <summary>
+        /// Every entry currently in the active registry (remote when present,
+        /// embedded otherwise). Returns an empty list when no registry loaded.
+        /// <para>
+        /// Consumers that need to discover what's available — selectors,
+        /// diagnostics endpoints, recalibrators — should walk this instead
+        /// of maintaining their own name lists. New entries surface here as
+        /// soon as the registry is refreshed; no SDK release required.
+        /// </para>
+        /// </summary>
+        public virtual IReadOnlyList<ModelEntry> AllModels =>
+            (_remoteRegistry ?? _embeddedRegistry)?.Models
+                ?? (IReadOnlyList<ModelEntry>)Array.Empty<ModelEntry>();
 
         private static readonly JsonSerializerOptions JsonOpts = new()
         {
@@ -133,6 +200,43 @@ namespace CircleAI.Core.Models
 
         /// <summary>True when this entry is a bundle (must download every file in <see cref="BundleFiles"/>).</summary>
         public bool IsBundle => BundleFiles is { Count: > 0 };
+
+        // ------------------------------------------------------------------
+        // Device-fit metadata (consumed by IModelSelector — see
+        // CircleAI.Inference.DeviceAwareModelSelector). Defaults below
+        // intentionally permissive so older registry entries that haven't
+        // been re-stamped still load and rank somewhere in the middle.
+        // ------------------------------------------------------------------
+
+        /// <summary>
+        /// Minimum device RAM in gigabytes required for this model to load
+        /// without thrashing. The selector skips entries whose
+        /// <see cref="MinRamGb"/> exceeds the device's available RAM.
+        /// Default <c>0</c> means "no minimum stated."
+        /// </summary>
+        public double MinRamGb { get; init; }
+
+        /// <summary>
+        /// Minimum free storage in gigabytes required to keep the bundle on
+        /// disk after download. Default <c>0</c> means "no minimum stated."
+        /// </summary>
+        public double MinStorageGb { get; init; }
+
+        /// <summary>
+        /// Capabilities this model satisfies — parsed by
+        /// <see cref="CircleAI.Inference.ChatCapability"/>. Valid labels:
+        /// <c>Default</c>, <c>Tools</c>, <c>Vision</c>, <c>LongContext</c>,
+        /// <c>Reasoning</c>. An empty list is treated as
+        /// <c>Default</c> only.
+        /// </summary>
+        public IReadOnlyList<string>? Capabilities { get; init; }
+
+        /// <summary>
+        /// Higher = better answer quality at full precision. Used as the
+        /// primary ranking key when multiple entries satisfy the device +
+        /// capability gates. Default <c>0</c>.
+        /// </summary>
+        public int QualityRank { get; init; }
     }
 
     /// <summary>

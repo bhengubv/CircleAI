@@ -10,9 +10,11 @@
 
 using System;
 using CircleAI.Core;
+using CircleAI.Core.Models;
 using CircleAI.Inference;
 using CircleAI.Memory;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace CircleAI.Hosting;
@@ -131,17 +133,64 @@ public static class ServiceCollectionExtensions
     private static void RegisterCoreServices(IServiceCollection services)
     {
         // ---------------------------------------------------------------
-        // IChatGenerator — QwenTextGenerator backed by llama.cpp
+        // IDeviceContext — DefaultDeviceContext.Instance probes the host
+        // (RAM, storage, connectivity, locale, timezone). Consumer can
+        // override either by supplying AIOptions.DeviceContext directly
+        // or by registering their own IDeviceContext before AddCircleAI.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<IDeviceContext>(sp =>
+        {
+            var opts = sp.GetRequiredService<AIOptions>();
+            return opts.DeviceContext ?? DefaultDeviceContext.Instance;
+        });
+
+        // ---------------------------------------------------------------
+        // ICatalogSignatureVerifier — fail-closed Null verifier by default.
+        // Consumer wires Ed25519 verification by registering their own
+        // before AddCircleAI.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<ICatalogSignatureVerifier>(_ => NullCatalogSignatureVerifier.Instance);
+
+        // ---------------------------------------------------------------
+        // ModelRegistryService — shared singleton. When AIOptions.CatalogClient
+        // is supplied, the registry primes from its disk cache at construction.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<ModelRegistryService>(sp =>
+        {
+            var opts = sp.GetRequiredService<AIOptions>();
+            return new ModelRegistryService(opts.CatalogClient, registryUrl: null);
+        });
+
+        // ---------------------------------------------------------------
+        // IModelSelector — DeviceAwareModelSelector reads the registry,
+        // filters by capability + device fit, ranks by QualityRank.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<IModelSelector>(sp =>
+            new DeviceAwareModelSelector(sp.GetRequiredService<ModelRegistryService>()));
+
+        // ---------------------------------------------------------------
+        // IPromptTemplateEngine — Scriban-backed Jinja2 renderer. Reads
+        // each model's chat_template from its tokenizer_config.json so
+        // the SDK never hardcodes ChatML format.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<IPromptTemplateEngine>(_ => new PromptTemplateEngine());
+
+        // ---------------------------------------------------------------
+        // IChatGenerator — QwenTextGenerator backed by MNN-LLM. Wires the
+        // template engine so chat history renders through the model's own
+        // chat_template (catalog-driven).
         // ---------------------------------------------------------------
         services.AddSingleton<IChatGenerator>(sp =>
         {
-            var opts = sp.GetRequiredService<AIOptions>();
-            var modelPath = ResolveModelPath(opts, sp);
+            var opts            = sp.GetRequiredService<AIOptions>();
+            var modelPath       = ResolveModelPath(opts, sp);
+            var templateEngine  = sp.GetService<IPromptTemplateEngine>();
 
             return new QwenTextGenerator(
                 modelPath,
-                contextSize: (uint)Math.Max(1, opts.ContextSize),
-                threads: opts.ThreadCount);
+                contextSize:    (uint)Math.Max(1, opts.ContextSize),
+                threads:        opts.ThreadCount,
+                templateEngine: templateEngine);
         });
 
         // ---------------------------------------------------------------

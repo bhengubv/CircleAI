@@ -113,6 +113,15 @@ public sealed class AIOptions
     /// </summary>
     public IDeviceContext? DeviceContext { get; init; }
 
+    /// <summary>
+    /// Optional ModelScope catalog client. When supplied, the registry
+    /// service primes from the catalog's disk cache at construction and
+    /// <c>PrimeFromCatalogAsync</c> refreshes per the client's cadence.
+    /// <c>null</c> (default) keeps the SDK on the embedded registry only —
+    /// the catalog stays offline.
+    /// </summary>
+    public CircleAI.Core.Models.ModelScopeCatalogClient? CatalogClient { get; init; }
+
     // ------------------------------------------------------------------
     // v2.0 — Memory / RAG
     // ------------------------------------------------------------------
