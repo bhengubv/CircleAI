@@ -176,10 +176,10 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IPromptTemplateEngine>(_ => new PromptTemplateEngine());
 
         // ---------------------------------------------------------------
-        // IChatGenerator — QwenTextGenerator backed by MNN-LLM. Wires the
-        // template engine so chat history renders through the model's own
-        // chat_template (catalog-driven). Context size derives from device
-        // tier when AIOptions.ContextSize is left null.
+        // IChatGenerator — vision-capable Kimi-VL when RequiredCapabilities
+        // declares Vision, otherwise QwenTextGenerator. Both share the
+        // PromptTemplateEngine (catalog-driven chat_template). Context
+        // size derives from device tier when AIOptions.ContextSize is null.
         // ---------------------------------------------------------------
         services.AddSingleton<IChatGenerator>(sp =>
         {
@@ -187,10 +187,20 @@ public static class ServiceCollectionExtensions
             var modelPath       = ResolveModelPath(opts, sp);
             var templateEngine  = sp.GetService<IPromptTemplateEngine>();
             var deviceCtx       = sp.GetService<IDeviceContext>();
+            var contextSize     = (uint)ResolveContextSize(opts, deviceCtx);
+
+            if (opts.RequiredCapabilities.HasFlag(ChatCapability.Vision))
+            {
+                return new KimiVlGenerator(
+                    modelPath,
+                    contextSize:    contextSize,
+                    threads:        opts.ThreadCount,
+                    templateEngine: templateEngine);
+            }
 
             return new QwenTextGenerator(
                 modelPath,
-                contextSize:    (uint)ResolveContextSize(opts, deviceCtx),
+                contextSize:    contextSize,
                 threads:        opts.ThreadCount,
                 templateEngine: templateEngine);
         });
@@ -284,7 +294,7 @@ public static class ServiceCollectionExtensions
             var probe     = deviceCtx is DefaultDeviceContext ddc
                 ? ddc.BuildProbe()
                 : DeviceProbe.Snapshot();
-            var selection = selector.BestFit(probe, ChatCapability.Default);
+            var selection = selector.BestFit(probe, opts.RequiredCapabilities);
             var path      = loader.GetModelPath(selection.ModelId);
             if (!string.IsNullOrEmpty(path))
                 return path;
