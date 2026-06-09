@@ -178,38 +178,48 @@ public static class ServiceCollectionExtensions
         // ---------------------------------------------------------------
         // IChatGenerator — QwenTextGenerator backed by MNN-LLM. Wires the
         // template engine so chat history renders through the model's own
-        // chat_template (catalog-driven).
+        // chat_template (catalog-driven). Context size derives from device
+        // tier when AIOptions.ContextSize is left null.
         // ---------------------------------------------------------------
         services.AddSingleton<IChatGenerator>(sp =>
         {
             var opts            = sp.GetRequiredService<AIOptions>();
             var modelPath       = ResolveModelPath(opts, sp);
             var templateEngine  = sp.GetService<IPromptTemplateEngine>();
+            var deviceCtx       = sp.GetService<IDeviceContext>();
 
             return new QwenTextGenerator(
                 modelPath,
-                contextSize:    (uint)Math.Max(1, opts.ContextSize),
+                contextSize:    (uint)ResolveContextSize(opts, deviceCtx),
                 threads:        opts.ThreadCount,
                 templateEngine: templateEngine);
         });
 
         // ---------------------------------------------------------------
-        // AIService — singleton, also exposed as IAIService
+        // AIService — singleton, also exposed as IAIService. Receives the
+        // selector so it can auto-resolve ModelId at StartAsync time when
+        // the consumer leaves AIOptions.ModelId null.
         // ---------------------------------------------------------------
         services.AddSingleton<AIService>(sp =>
         {
-            var opts = sp.GetRequiredService<AIOptions>();
-            var modelLoader = sp.GetService<IModelLoader>();
-            var logger = sp.GetService<ILogger<AIService>>();
+            var opts          = sp.GetRequiredService<AIOptions>();
+            var modelLoader   = sp.GetService<IModelLoader>();
+            var modelSelector = sp.GetService<IModelSelector>();
+            var templateEngine= sp.GetService<IPromptTemplateEngine>();
+            var deviceCtx     = sp.GetService<IDeviceContext>();
+            var logger        = sp.GetService<ILogger<AIService>>();
 
-            // Provide a generator factory so AIService can lazy-load via DI.
+            // Generator factory so AIService can lazy-load via DI with the
+            // resolved model path. Context size resolved per-call so a
+            // device tier change between Start cycles is honoured.
             IChatGenerator GeneratorFactory(string path) =>
                 new QwenTextGenerator(
                     path,
-                    contextSize: (uint)Math.Max(1, opts.ContextSize),
-                    threads: opts.ThreadCount);
+                    contextSize:    (uint)ResolveContextSize(opts, deviceCtx),
+                    threads:        opts.ThreadCount,
+                    templateEngine: templateEngine);
 
-            return new AIService(opts, modelLoader, GeneratorFactory, logger);
+            return new AIService(opts, modelLoader, GeneratorFactory, modelSelector, logger);
         });
         services.AddSingleton<IAIService>(sp => sp.GetRequiredService<AIService>());
 
@@ -247,6 +257,9 @@ public static class ServiceCollectionExtensions
     /// Resolves the model path from <see cref="AIOptions.ModelPath"/> (explicit)
     /// or falls back to <see cref="IModelLoader.GetModelPath"/> using
     /// <see cref="AIOptions.ModelId"/>. Returns a non-null path or throws.
+    /// When both are null AIService takes over selector-driven resolution at
+    /// StartAsync time, so this helper is only invoked for the standalone
+    /// IChatGenerator registration (which needs a path up front).
     /// </summary>
     private static string ResolveModelPath(AIOptions opts, IServiceProvider sp)
     {
@@ -254,17 +267,48 @@ public static class ServiceCollectionExtensions
         if (!string.IsNullOrWhiteSpace(opts.ModelPath))
             return opts.ModelPath!;
 
-        // Fall back to the model loader (if registered).
+        // Pinned ModelId via loader.
         var loader = sp.GetService<IModelLoader>();
-        if (loader is not null)
+        if (loader is not null && !string.IsNullOrWhiteSpace(opts.ModelId))
         {
             var path = loader.GetModelPath(opts.ModelId);
             if (!string.IsNullOrEmpty(path))
                 return path;
         }
 
+        // Auto-select via IModelSelector (preserves SDK-knows-nothing default).
+        var selector = sp.GetService<IModelSelector>();
+        if (selector is not null && loader is not null)
+        {
+            var deviceCtx = sp.GetService<IDeviceContext>() ?? DefaultDeviceContext.Instance;
+            var probe     = deviceCtx is DefaultDeviceContext ddc
+                ? ddc.BuildProbe()
+                : DeviceProbe.Snapshot();
+            var selection = selector.BestFit(probe, ChatCapability.Default);
+            var path      = loader.GetModelPath(selection.ModelId);
+            if (!string.IsNullOrEmpty(path))
+                return path;
+        }
+
         throw new InvalidOperationException(
-            $"Cannot resolve model path. Set AIOptions.ModelPath explicitly or " +
-            $"register an IModelLoader that knows model '{opts.ModelId}'.");
+            "Cannot resolve model path. Set AIOptions.ModelPath, pin AIOptions.ModelId " +
+            "with a registered IModelLoader, or rely on the default IModelSelector + " +
+            "IModelLoader pair (registered by AddCircleAI).");
+    }
+
+    /// <summary>
+    /// Resolves the context window: explicit <see cref="AIOptions.ContextSize"/>
+    /// wins; otherwise falls back to <see cref="DeviceTierDefaults.ContextWindow"/>
+    /// using the registered <see cref="IDeviceContext"/>.
+    /// </summary>
+    private static int ResolveContextSize(AIOptions opts, IDeviceContext? deviceCtx)
+    {
+        if (opts.ContextSize is int explicitSize and > 0)
+            return explicitSize;
+
+        var probe = deviceCtx is DefaultDeviceContext ddc
+            ? ddc.BuildProbe()
+            : DeviceProbe.Snapshot();
+        return DeviceTierDefaults.ContextWindow(probe.Classify());
     }
 }
