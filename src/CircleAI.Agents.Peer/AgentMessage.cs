@@ -64,6 +64,18 @@ public sealed record AgentMessage(
 )
 {
     /// <summary>
+    /// Correlation ID for distributed-trace stitching. Set on the first
+    /// envelope of a logical exchange; downstream replies must echo the
+    /// same value so a multi-hop sequence can be tied together in
+    /// telemetry. <c>null</c> when the sender didn't supply one — bridges
+    /// that need a trace ID may synthesise one before forwarding.
+    /// <para>
+    /// Wire equivalent: HTTP <c>X-Correlation-ID</c> header.
+    /// </para>
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>
     /// Creates a new <see cref="AgentMessage"/> with a freshly-generated
     /// <see cref="Id"/> and a <see cref="SentAt"/> stamped at UTC now.
     /// </summary>
@@ -73,12 +85,22 @@ public sealed record AgentMessage(
     /// <param name="contentType">Media type for <paramref name="payload"/>.</param>
     /// <param name="payload">Opaque payload bytes.</param>
     /// <param name="signature">Signature over <paramref name="payload"/>.</param>
+    /// <param name="correlationId">
+    /// Optional trace correlation token. When <c>null</c> the constructor
+    /// synthesises one from <see cref="Guid.NewGuid"/> so every outbound
+    /// envelope carries SOME trace anchor — distributed traces always
+    /// stitch even when the caller forgets.
+    /// </param>
     public static AgentMessage Create(
         AgentMessageKind kind,
         string fromUhid,
         string toUhid,
         string contentType,
         byte[] payload,
-        byte[] signature) =>
-        new(Guid.NewGuid(), kind, fromUhid, toUhid, contentType, payload, signature, DateTimeOffset.UtcNow);
+        byte[] signature,
+        string? correlationId = null) =>
+        new(Guid.NewGuid(), kind, fromUhid, toUhid, contentType, payload, signature, DateTimeOffset.UtcNow)
+        {
+            CorrelationId = correlationId ?? Guid.NewGuid().ToString("n"),
+        };
 }
