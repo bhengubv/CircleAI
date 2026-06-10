@@ -6,13 +6,21 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::excessive_precision)]
 
+pub mod agents;
+pub mod catalog;
 pub mod companion;
+pub mod device;
+pub mod hosting;
 pub mod identity;
 pub mod inference;
 pub mod languages;
 pub mod memory;
 pub mod models;
+pub mod models_v15;
+pub mod prompt;
+pub mod registry;
 pub mod security;
+pub mod selector;
 pub mod sync;
 pub mod tools;
 
