@@ -1,3 +1,17 @@
-from .inference import GenerationOptions, IChatGenerator
+from .inference import (
+    ChatCapability,
+    GenerationOptions,
+    IChatGenerator,
+    IModelSelector,
+    ModelSelection,
+    generate_response_async,
+)
 
-__all__ = ["GenerationOptions", "IChatGenerator"]
+__all__ = [
+    "ChatCapability",
+    "GenerationOptions",
+    "IChatGenerator",
+    "IModelSelector",
+    "ModelSelection",
+    "generate_response_async",
+]
