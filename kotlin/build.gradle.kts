@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.bhengubv"
-version = project.findProperty("version")?.takeIf { it != "unspecified" } ?: "0.1.0"
+version = project.findProperty("version")?.takeIf { it != "unspecified" } ?: "1.5.0"
 
 repositories {
     mavenCentral()
@@ -13,10 +13,10 @@ repositories {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.11.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 
 tasks.test {
