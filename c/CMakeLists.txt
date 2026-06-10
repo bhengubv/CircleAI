@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(circle_ai VERSION 0.1.0 LANGUAGES C)
+project(circle_ai VERSION 1.5.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -13,10 +13,17 @@ add_library(circle_ai STATIC
     src/tools.c
     src/sync.c
     src/security.c
+    # 1.5.0 surface
+    src/device.c
+    src/selector.c
+    src/registry.c
+    src/prompt.c
+    src/agents_v15.c
+    src/hosting.c
 )
 target_include_directories(circle_ai PUBLIC include)
 
-# security.c uses BCryptGenRandom on Windows
+# security.c + agents_v15.c use BCryptGenRandom on Windows
 if(WIN32)
     target_link_libraries(circle_ai PUBLIC bcrypt)
 endif()
