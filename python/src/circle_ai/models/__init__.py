@@ -1,3 +1,21 @@
-from .models import ChatMessage, DownloadProgress
+from .models import (
+    BundleFile,
+    ChatMessage,
+    ChatResponse,
+    DownloadProgress,
+    FinishReason,
+    InstalledManifest,
+    UpgradeInfo,
+    UpgradeReason,
+)
 
-__all__ = ["ChatMessage", "DownloadProgress"]
+__all__ = [
+    "BundleFile",
+    "ChatMessage",
+    "ChatResponse",
+    "DownloadProgress",
+    "FinishReason",
+    "InstalledManifest",
+    "UpgradeInfo",
+    "UpgradeReason",
+]
