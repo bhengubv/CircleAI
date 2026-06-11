@@ -84,14 +84,28 @@ internal sealed class MnnImageHandle : SafeHandle
 /// <summary>
 /// Callback invoked per output token fragment during streaming generation.
 /// </summary>
-/// <param name="token">UTF-8 text fragment. May be <c>null</c> / empty on flush signals.</param>
+/// <param name="token">
+/// Raw pointer to a NUL-terminated UTF-8 byte sequence owned by the native
+/// bridge. May be <c>null</c> on flush signals. The pointer is only valid
+/// for the duration of the callback — decode immediately via
+/// <c>Marshal.PtrToStringUTF8((IntPtr)token)</c>; do not store the pointer.
+/// </param>
 /// <param name="isDone">Non-zero when the generation sequence has ended (EOS or stop sequence).</param>
 /// <param name="userData">
 /// Opaque pointer passed through unchanged from the generate call.
 /// Use <see cref="System.Runtime.InteropServices.GCHandle"/> to carry managed state.
 /// </param>
-[UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-internal delegate void MnnTokenCallback(string? token, int isDone, IntPtr userData);
+/// <remarks>
+/// <para>
+/// This delegate's parameter list MUST be fully blittable because the assembly
+/// has <c>[DisableRuntimeMarshalling]</c> applied (see <c>AssemblyInfo.cs</c>).
+/// A managed <c>string</c> here would have no marshaller and corrupt the
+/// stack when the native bridge invokes the callback. The CA1420 analyzer
+/// is upgraded to an error in the csproj to prevent regressions.
+/// </para>
+/// </remarks>
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal unsafe delegate void MnnTokenCallback(byte* token, int isDone, IntPtr userData);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P/Invoke entry points

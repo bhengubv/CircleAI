@@ -12,6 +12,12 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<LangVersion>latest</LangVersion>
+
+		<!-- CA1420 (runtime-marshalling required) becomes an error so a future
+		     edit to MnnInterop's delegates/P-Invokes cannot reintroduce the
+		     [DisableRuntimeMarshalling] fatal-stack-corruption bug that
+		     manifested as a 0xC0000005 on the first streamed token. -->
+		<WarningsAsErrors>$(WarningsAsErrors);CA1420</WarningsAsErrors>
 	</PropertyGroup>
 
 	<ItemGroup>
