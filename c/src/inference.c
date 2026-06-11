@@ -14,4 +14,5 @@ void ca_generation_options_init(ca_generation_options_t *opts) {
     opts->top_p       = -1.0f;
     opts->stream      = 0;
     opts->system_prompt[0] = '\0';
+    opts->include_reasoning = 1;  /* default: surface reasoning_content */
 }

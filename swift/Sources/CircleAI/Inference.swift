@@ -29,13 +29,27 @@ public struct GenerationOptions: Sendable {
     /// Optional substrings that will end generation when matched in emitted output.
     public var stopSequences: [String]?
 
+    /// Whether to surface the model's reasoning trace (Qwen3
+    /// `<think>…</think>`) on the call. Default `true`.
+    ///
+    /// When `true` the generator separates reasoning from the final answer:
+    /// `ChatResponse.reasoningContent` gets the reasoning, `ChatResponse.text`
+    /// gets the answer. Streaming callers see fragments tagged with
+    /// `ChatFragmentKind.reasoning`.
+    ///
+    /// When `false` the generator still RUNS reasoning (this is per-call
+    /// output gating, NOT a thinking disable) but the reasoning text is
+    /// dropped — only the final answer reaches the caller.
+    public var includeReasoning: Bool
+
     public init(
         maxTokens: Int = 512,
         temperature: Float = 0.7,
         topP: Float = 0.9,
         topK: Int = 40,
         seed: Int? = nil,
-        stopSequences: [String]? = nil
+        stopSequences: [String]? = nil,
+        includeReasoning: Bool = true
     ) {
         self.maxTokens = maxTokens
         self.temperature = temperature
@@ -43,6 +57,7 @@ public struct GenerationOptions: Sendable {
         self.topK = topK
         self.seed = seed
         self.stopSequences = stopSequences
+        self.includeReasoning = includeReasoning
     }
 }
 
@@ -59,8 +74,41 @@ public protocol IChatGenerator: AnyObject {
 
     /// Streams the assistant reply token-by-token (or piece-by-piece) as it is
     /// decoded. Each yielded string is the next chunk — callers concatenate in order.
+    /// Content only — any reasoning inside `<think>…</think>` is filtered out.
+    /// Use `streamFragments` when you also need the reasoning stream.
     func stream(
         messages: [ChatMessage],
         options: GenerationOptions?
     ) -> AsyncStream<String>
+
+    /// Fragment-aware streaming variant. Yields each piece tagged as either
+    /// `.content` or `.reasoning` so the caller can route the model's
+    /// `<think>` block into a separate `reasoning_content` field (o1 /
+    /// DeepSeek style).
+    ///
+    /// Default implementation wraps `stream` and tags every chunk as
+    /// `.content`; generators that surface reasoning override this method.
+    func streamFragments(
+        messages: [ChatMessage],
+        options: GenerationOptions?
+    ) -> AsyncStream<ChatFragment>
+}
+
+extension IChatGenerator {
+    public func streamFragments(
+        messages: [ChatMessage],
+        options: GenerationOptions?
+    ) -> AsyncStream<ChatFragment> {
+        let inner = self.stream(messages: messages, options: options)
+        return AsyncStream { continuation in
+            let task = Task {
+                for await chunk in inner {
+                    if Task.isCancelled { break }
+                    continuation.yield(ChatFragment(kind: .content, text: chunk))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }

@@ -25,6 +25,11 @@ pub enum FinishReason {
 }
 
 /// Structured generation result.
+///
+/// `reasoning_content` is the chain-of-thought emitted by reasoning models
+/// (Qwen3 / DeepSeek-R1 / o1) inside `<think>…</think>`. `None` when the
+/// model emitted no reasoning or `GenerationOptions::include_reasoning`
+/// was `false`. Tags themselves are stripped — only the text content.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub text: String,
@@ -33,6 +38,8 @@ pub struct ChatResponse {
     /// Optional tokens-generated count (None if the generator can't report).
     #[serde(rename = "tokensGenerated", skip_serializing_if = "Option::is_none")]
     pub tokens_generated: Option<i32>,
+    #[serde(rename = "reasoningContent", skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
 }
 
 impl ChatResponse {
@@ -41,7 +48,42 @@ impl ChatResponse {
             text: text.into(),
             finish_reason,
             tokens_generated: None,
+            reasoning_content: None,
         }
+    }
+
+    pub fn with_reasoning(mut self, reasoning: impl Into<String>) -> Self {
+        self.reasoning_content = Some(reasoning.into());
+        self
+    }
+}
+
+/// Kind of fragment a streaming generator emits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatFragmentKind {
+    /// Part of the user-facing answer (goes into `content`).
+    Content,
+    /// Part of the model's reasoning trace (goes into `reasoning_content`).
+    Reasoning,
+}
+
+/// A single fragment yielded by streaming generators.
+/// Tagged so the caller can route the model's `<think>` block into a
+/// separate `reasoning_content` field (o1 / DeepSeek style).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatFragment {
+    pub kind: ChatFragmentKind,
+    pub text: String,
+}
+
+impl ChatFragment {
+    pub fn content(text: impl Into<String>) -> Self {
+        Self { kind: ChatFragmentKind::Content, text: text.into() }
+    }
+
+    pub fn reasoning(text: impl Into<String>) -> Self {
+        Self { kind: ChatFragmentKind::Reasoning, text: text.into() }
     }
 }
 

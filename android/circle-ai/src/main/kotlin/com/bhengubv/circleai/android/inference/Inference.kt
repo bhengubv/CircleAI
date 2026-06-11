@@ -11,8 +11,11 @@
 
 package com.bhengubv.circleai.android.inference
 
+import com.bhengubv.circleai.android.models.ChatFragment
+import com.bhengubv.circleai.android.models.ChatFragmentKind
 import com.bhengubv.circleai.android.models.ChatMessage
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 // ---------------------------------------------------------------------------
 // GenerationOptions
@@ -35,7 +38,21 @@ data class GenerationOptions(
      */
     val stopSequences: List<String> = emptyList(),
     /** Optional system prompt to prepend before the conversation messages. */
-    val systemPrompt: String = ""
+    val systemPrompt: String = "",
+    /**
+     * Whether to surface the model's reasoning trace (Qwen3
+     * `<think>…</think>`) on the call.
+     *
+     * When `true` (default) the generator separates reasoning from the final
+     * answer: `ChatResponse.reasoningContent` gets the reasoning,
+     * `ChatResponse.text` gets the answer. Streaming callers see fragments
+     * tagged with `ChatFragmentKind.REASONING`.
+     *
+     * When `false` the generator still runs reasoning (this is per-call output
+     * gating, NOT a thinking disable) but the reasoning text is dropped — only
+     * the final answer reaches the caller. Use this for JSON-strict consumers.
+     */
+    val includeReasoning: Boolean = true,
 )
 
 // ---------------------------------------------------------------------------
@@ -58,10 +75,27 @@ interface IChatGenerator : AutoCloseable {
     /**
      * Streams the assistant reply token-by-token (or piece-by-piece) as it is
      * decoded. Each emitted string is the next chunk to append to the output —
-     * callers should concatenate them in order.
+     * callers should concatenate them in order. Content only — any reasoning
+     * inside `<think>…</think>` is filtered out. Use [streamFragmentsAsync]
+     * when you also need the reasoning stream.
      */
     fun streamAsync(
         messages: List<ChatMessage>,
         opts: GenerationOptions = GenerationOptions()
     ): Flow<String>
+
+    /**
+     * Fragment-aware streaming variant. Yields each piece tagged as either
+     * [ChatFragmentKind.CONTENT] or [ChatFragmentKind.REASONING] so the caller
+     * can route the model's `<think>` block into a separate `reasoning_content`
+     * field (o1 / DeepSeek style).
+     *
+     * Default implementation wraps [streamAsync] and tags every chunk as
+     * `CONTENT`; generators that surface reasoning override this method.
+     */
+    fun streamFragmentsAsync(
+        messages: List<ChatMessage>,
+        opts: GenerationOptions = GenerationOptions()
+    ): Flow<ChatFragment> =
+        streamAsync(messages, opts).map { ChatFragment(ChatFragmentKind.CONTENT, it) }
 }

@@ -3,14 +3,16 @@
 // Ported from CircleAI.Inference (C#) at version 1.5.0.
 
 import {
+  ChatFragment,
+  ChatFragmentKind,
   ChatMessage,
   ChatResponse,
   FinishReason,
 } from "../models/index.js";
 
 // Re-export so callers can import from inference if they prefer.
-export type { ChatMessage, ChatResponse };
-export { FinishReason };
+export type { ChatFragment, ChatMessage, ChatResponse };
+export { ChatFragmentKind, FinishReason };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GenerationOptions
@@ -35,6 +37,20 @@ export interface GenerationOptions {
    * emitted output (e.g. role-tag boundaries).
    */
   readonly stopSequences?: string[];
+  /**
+   * Whether to surface the model's reasoning trace (Qwen3
+   * `<think>…</think>`) on the call. Default `true`.
+   *
+   * When `true` the generator separates reasoning from the final answer:
+   * `ChatResponse.reasoningContent` gets the reasoning, `ChatResponse.text`
+   * gets the answer. Streaming callers see fragments tagged with
+   * `ChatFragmentKind.Reasoning`.
+   *
+   * When `false` the generator still RUNS reasoning (this is per-call output
+   * gating, NOT a thinking disable) but the reasoning text is dropped — only
+   * the final answer reaches the caller. Use this for JSON-strict consumers.
+   */
+  readonly includeReasoning?: boolean;
 }
 
 /** Default generation options, matching C# defaults. */
@@ -45,6 +61,7 @@ export const DEFAULT_GENERATION_OPTIONS: Required<
   temperature: 0.7,
   topP: 0.9,
   topK: 40,
+  includeReasoning: true,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,12 +84,27 @@ export interface IChatGenerator {
   /**
    * Streams the assistant reply token-by-token (or piece-by-piece) as
    * it is decoded. Each yielded string is the next chunk to append to
-   * the output — callers should concatenate them in order.
+   * the output — callers should concatenate them in order. Content only —
+   * any reasoning inside `<think>…</think>` is filtered out. Use
+   * `streamFragmentsAsync` when you also need the reasoning stream.
    */
   streamAsync(
     messages: readonly ChatMessage[],
     options?: GenerationOptions,
   ): AsyncGenerator<string>;
+
+  /**
+   * Optional fragment-aware streaming variant. Yields each piece tagged as
+   * either Content or Reasoning so the caller can route the model's
+   * `<think>` block into a separate `reasoning_content` field (o1 / DeepSeek
+   * style). Implementations that don't surface reasoning may omit this
+   * method — use the free `streamFragmentsAsync` helper below as a fallback
+   * that wraps `streamAsync` and tags every chunk as Content.
+   */
+  streamFragmentsAsync?(
+    messages: readonly ChatMessage[],
+    options?: GenerationOptions,
+  ): AsyncGenerator<ChatFragment>;
 
   /** Dispose native resources held by this generator. */
   dispose(): void;
@@ -105,7 +137,31 @@ export async function generateResponseAsync(
     tokensOut: approxTokens(text),
     latencyMs,
     finishReason: FinishReason.Stop,
+    reasoningContent: null,
   };
+}
+
+/**
+ * Wraps `IChatGenerator.streamAsync` into the fragment-tagged stream.
+ *
+ * Default helper: yields each chunk from `streamAsync` tagged as
+ * `ChatFragmentKind.Content`. Generators that surface reasoning should
+ * implement `streamFragmentsAsync` on themselves and interleave
+ * `Reasoning` fragments — this helper does NOT split `<think>` tags (that
+ * requires generator-level token routing).
+ */
+export async function* streamFragmentsAsync(
+  generator: IChatGenerator,
+  messages: readonly ChatMessage[],
+  options?: GenerationOptions,
+): AsyncGenerator<ChatFragment> {
+  if (generator.streamFragmentsAsync) {
+    yield* generator.streamFragmentsAsync(messages, options);
+    return;
+  }
+  for await (const chunk of generator.streamAsync(messages, options)) {
+    yield { kind: ChatFragmentKind.Content, text: chunk };
+  }
 }
 
 function approxTokens(text: string | undefined): number {

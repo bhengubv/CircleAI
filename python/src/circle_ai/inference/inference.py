@@ -22,7 +22,13 @@ from typing import (
     runtime_checkable,
 )
 
-from ..models.models import ChatMessage, ChatResponse, FinishReason
+from ..models.models import (
+    ChatFragment,
+    ChatFragmentKind,
+    ChatMessage,
+    ChatResponse,
+    FinishReason,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..device.device_probe import DeviceProbe, DeviceTier
@@ -41,6 +47,20 @@ class GenerationOptions:
     top_k: int = 40
     seed: Optional[int] = None
     stop_sequences: Optional[list[str]] = None
+
+    include_reasoning: bool = True
+    """Whether to surface the model's reasoning trace (Qwen3
+    ``<think>…</think>``) on the call.
+
+    When ``True`` (default) the generator separates reasoning from the final
+    answer: ``ChatResponse.reasoning_content`` gets the reasoning,
+    ``ChatResponse.text`` gets the answer. Streaming callers see fragments
+    tagged with ``ChatFragmentKind.REASONING``.
+
+    When ``False`` the generator still RUNS reasoning (this is per-call output
+    gating, NOT a thinking disable) but the reasoning text is dropped — only
+    the final answer reaches the caller. Use this for JSON-strict consumers.
+    """
 
 
 # ── IChatGenerator ───────────────────────────────────────────────────────
@@ -63,7 +83,10 @@ class IChatGenerator(Protocol):
         messages: list[ChatMessage],
         options: Optional[GenerationOptions] = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream the assistant reply chunk-by-chunk."""
+        """Stream the assistant reply chunk-by-chunk. Content only — any
+        reasoning emitted inside ``<think>…</think>`` is filtered out. Use
+        :func:`stream_fragments_async` when you also need the reasoning stream.
+        """
         ...
 
 
@@ -77,7 +100,8 @@ async def generate_response_async(
     Python's Protocol doesn't support default method implementations the way
     C# default-interface-methods do, so this is exposed as a free function.
     Native generators may shadow it with a method that reports exact token
-    counts from the inference engine — this default approximates.
+    counts and surfaces ``ChatResponse.reasoning_content`` — this default
+    approximates and leaves reasoning_content as ``None``.
     """
     started = time.monotonic()
     text = await generator.generate_async(messages, options)
@@ -92,7 +116,25 @@ async def generate_response_async(
         tokens_out=tokens_out,
         latency_ms=latency_ms,
         finish_reason=FinishReason.STOP,
+        reasoning_content=None,
     )
+
+
+async def stream_fragments_async(
+    generator: IChatGenerator,
+    messages: list[ChatMessage],
+    options: Optional[GenerationOptions] = None,
+) -> AsyncGenerator[ChatFragment, None]:
+    """Wrap IChatGenerator.stream_async into the fragment-tagged stream.
+
+    Default helper: yields each chunk from ``stream_async`` tagged as
+    ``ChatFragmentKind.CONTENT``. Generators that surface reasoning must
+    expose their own ``stream_fragments_async`` method that interleaves
+    ``REASONING`` fragments — this helper does NOT split ``<think>`` tags
+    (that requires generator-level token routing).
+    """
+    async for chunk in generator.stream_async(messages, options):
+        yield ChatFragment(kind=ChatFragmentKind.CONTENT, text=chunk)
 
 
 def _approx_tokens(text: Optional[str]) -> int:

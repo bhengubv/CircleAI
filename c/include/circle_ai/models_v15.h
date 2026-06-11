@@ -27,13 +27,41 @@ typedef enum {
 
 /* ---------------------------------------------------------------------------
  * Structured chat response
+ *
+ * reasoning_content is the chain-of-thought emitted by reasoning models
+ * (Qwen3 / DeepSeek-R1 / o1) inside <think>...</think>. NULL when the model
+ * emitted no reasoning or ca_generation_options.include_reasoning was 0.
+ * Tags themselves are stripped — only the text content.
  * --------------------------------------------------------------------------- */
 
 typedef struct {
-    const char        *text;             /* UTF-8, caller owns */
+    const char        *text;              /* UTF-8, caller owns */
     ca_finish_reason_t finish_reason;
-    int32_t            tokens_generated; /* -1 = unknown */
+    int32_t            tokens_generated;  /* -1 = unknown */
+    const char        *reasoning_content; /* UTF-8, caller owns; NULL when absent */
 } ca_chat_response_t;
+
+/* ---------------------------------------------------------------------------
+ * Chat fragment (streaming router output)
+ * --------------------------------------------------------------------------- */
+
+typedef enum {
+    /* Part of the user-facing answer (goes into "content"). */
+    CA_CHAT_FRAGMENT_CONTENT   = 0,
+    /* Part of the model's reasoning trace (goes into "reasoning_content"). */
+    CA_CHAT_FRAGMENT_REASONING = 1
+} ca_chat_fragment_kind_t;
+
+/*
+ * One fragment yielded by a streaming generator. Tagged so callers can
+ * route the model's <think> block into a separate reasoning_content field
+ * (o1 / DeepSeek style). text is UTF-8 and lives for the duration of the
+ * callback only — copy it if you need to retain it.
+ */
+typedef struct {
+    ca_chat_fragment_kind_t kind;
+    const char             *text;
+} ca_chat_fragment_t;
 
 /* ---------------------------------------------------------------------------
  * Bundle file (one file inside a model bundle)
