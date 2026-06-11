@@ -1,5 +1,7 @@
 from .models import (
     BundleFile,
+    ChatFragment,
+    ChatFragmentKind,
     ChatMessage,
     ChatResponse,
     DownloadProgress,
@@ -11,6 +13,8 @@ from .models import (
 
 __all__ = [
     "BundleFile",
+    "ChatFragment",
+    "ChatFragmentKind",
     "ChatMessage",
     "ChatResponse",
     "DownloadProgress",

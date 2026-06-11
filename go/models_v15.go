@@ -37,12 +37,37 @@ const (
 
 // ChatResponse is the structured response from GenerateResponse.
 // Carries the text alongside token counts, latency, and finish reason.
+//
+// ReasoningContent is the chain-of-thought emitted by reasoning models
+// (Qwen3 / DeepSeek-R1 / o1) inside <think>…</think>. Empty when the
+// model emitted no reasoning or GenerationOptions.IncludeReasoning was
+// false. Tags themselves are stripped — only the text content.
 type ChatResponse struct {
-	Text         string
-	TokensIn     int
-	TokensOut    int
-	Latency      time.Duration
-	FinishReason FinishReason
+	Text             string
+	TokensIn         int
+	TokensOut        int
+	Latency          time.Duration
+	FinishReason     FinishReason
+	ReasoningContent string
+}
+
+// ChatFragmentKind classifies a fragment a streaming generator emits.
+type ChatFragmentKind int
+
+const (
+	// ChatFragmentContent is part of the user-facing answer (goes into "content").
+	ChatFragmentContent ChatFragmentKind = 0
+	// ChatFragmentReasoning is part of the model's reasoning trace
+	// (goes into "reasoning_content").
+	ChatFragmentReasoning ChatFragmentKind = 1
+)
+
+// ChatFragment is one fragment yielded by IChatGenerator.StreamFragments.
+// Tagged so callers can route the model's <think> block into a separate
+// reasoning_content field (o1 / DeepSeek style).
+type ChatFragment struct {
+	Kind ChatFragmentKind
+	Text string
 }
 
 // BundleFile is one file inside a model bundle.

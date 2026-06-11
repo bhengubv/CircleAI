@@ -16,6 +16,11 @@ enum class FinishReason {
 /**
  * Structured response from IChatGenerator.generateResponse.
  * Carries text + token counts + latency + finish reason.
+ *
+ * `reasoningContent` is the chain-of-thought emitted by reasoning models
+ * (Qwen3 / DeepSeek-R1 / o1) inside `<think>…</think>`. `null` when the
+ * model emitted no reasoning or `GenerationOptions.includeReasoning` was
+ * `false`. Tags themselves are stripped — only the text content.
  */
 data class ChatResponse(
     val text: String,
@@ -23,6 +28,25 @@ data class ChatResponse(
     val tokensOut: Int,
     val latencyMs: Double,
     val finishReason: FinishReason = FinishReason.STOP,
+    val reasoningContent: String? = null,
+)
+
+/** Kind of fragment a streaming generator emits. */
+enum class ChatFragmentKind {
+    /** Part of the user-facing answer (goes into `content`). */
+    CONTENT,
+    /** Part of the model's reasoning trace (goes into `reasoning_content`). */
+    REASONING,
+}
+
+/**
+ * A single fragment yielded by `IChatGenerator.streamFragmentsAsync`.
+ * Tagged so the caller can route the model's `<think>` block into a
+ * separate `reasoning_content` field (o1 / DeepSeek style).
+ */
+data class ChatFragment(
+    val kind: ChatFragmentKind,
+    val text: String,
 )
 
 /** One file inside a model bundle. */

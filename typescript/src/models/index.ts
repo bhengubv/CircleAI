@@ -50,6 +50,11 @@ export enum FinishReason {
  * Carries the generated text alongside token counts, latency, and finish
  * reason — the metadata callers need for rate-limiting, billing, telemetry,
  * and trace stitching.
+ *
+ * `reasoningContent` is the chain-of-thought emitted by reasoning models
+ * (Qwen3 / DeepSeek-R1 / o1) inside `<think>…</think>`. `null` when the
+ * model emitted no reasoning or `GenerationOptions.includeReasoning` was
+ * `false`. Tags themselves are stripped — only the text content.
  */
 export interface ChatResponse {
   readonly text: string;
@@ -57,6 +62,27 @@ export interface ChatResponse {
   readonly tokensOut: number;
   readonly latencyMs: number;
   readonly finishReason: FinishReason;
+  readonly reasoningContent?: string | null;
+}
+
+// ── ChatFragment / ChatFragmentKind ───────────────────────────────────────
+
+/** Kind of fragment a streaming generator emits. */
+export enum ChatFragmentKind {
+  /** Part of the user-facing answer (goes into `content`). */
+  Content   = 0,
+  /** Part of the model's reasoning trace (goes into `reasoning_content`). */
+  Reasoning = 1,
+}
+
+/**
+ * A single fragment yielded by IChatGenerator.streamFragments.
+ * Tagged so the caller can route the model's `<think>` block into a
+ * separate `reasoning_content` field (o1 / DeepSeek style).
+ */
+export interface ChatFragment {
+  readonly kind: ChatFragmentKind;
+  readonly text: string;
 }
 
 // ── BundleFile / InstalledManifest / UpgradeInfo ──────────────────────────

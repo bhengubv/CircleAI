@@ -13,12 +13,38 @@ export enum FinishReason {
   Unknown = 5,
 }
 
-/** Structured generation result. */
+/**
+ * Structured generation result.
+ *
+ * `reasoningContent` is the chain-of-thought emitted by reasoning models
+ * (Qwen3 / DeepSeek-R1 / o1) inside `<think>…</think>`. `null` when the
+ * model emitted no reasoning or `GenerationOptions.includeReasoning` was
+ * `false`. Tags themselves are stripped — only the text content.
+ */
 export interface ChatResponse {
   readonly text: string;
   readonly finishReason: FinishReason;
   /** Optional tokens-generated count. null when the generator can't report. */
   readonly tokensGenerated: number | null;
+  readonly reasoningContent?: string | null;
+}
+
+/** Kind of fragment a streaming generator emits. */
+export enum ChatFragmentKind {
+  /** Part of the user-facing answer (goes into `content`). */
+  Content   = 0,
+  /** Part of the model's reasoning trace (goes into `reasoning_content`). */
+  Reasoning = 1,
+}
+
+/**
+ * A single fragment yielded by a streaming generator. Tagged so the caller
+ * can route the model's `<think>` block into a separate `reasoning_content`
+ * field (o1 / DeepSeek style).
+ */
+export interface ChatFragment {
+  readonly kind: ChatFragmentKind;
+  readonly text: string;
 }
 
 /** One file inside a model bundle, with its expected hash. */

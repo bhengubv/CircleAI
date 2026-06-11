@@ -16,25 +16,54 @@ public enum FinishReason: Int, Sendable {
 
 /// Structured response from `IChatGenerator.generateResponse`.
 /// Carries text + token counts + latency + finish reason.
+///
+/// `reasoningContent` is the chain-of-thought emitted by reasoning models
+/// (Qwen3 / DeepSeek-R1 / o1) inside `<think>…</think>`. `nil` when the
+/// model emitted no reasoning or `GenerationOptions.includeReasoning` was
+/// `false`. Tags themselves are stripped — only the text content.
 public struct ChatResponse: Sendable, Equatable {
     public let text: String
     public let tokensIn: Int
     public let tokensOut: Int
     public let latencyMs: Double
     public let finishReason: FinishReason
+    public let reasoningContent: String?
 
     public init(
         text: String,
         tokensIn: Int,
         tokensOut: Int,
         latencyMs: Double,
-        finishReason: FinishReason = .stop
+        finishReason: FinishReason = .stop,
+        reasoningContent: String? = nil
     ) {
         self.text = text
         self.tokensIn = tokensIn
         self.tokensOut = tokensOut
         self.latencyMs = latencyMs
         self.finishReason = finishReason
+        self.reasoningContent = reasoningContent
+    }
+}
+
+/// Kind of fragment a streaming generator emits.
+public enum ChatFragmentKind: Int, Sendable {
+    /// Part of the user-facing answer (goes into `content`).
+    case content = 0
+    /// Part of the model's reasoning trace (goes into `reasoning_content`).
+    case reasoning = 1
+}
+
+/// A single fragment yielded by `IChatGenerator.streamFragments`.
+/// Tagged so the caller can route the model's `<think>` block into a
+/// separate `reasoning_content` field (o1 / DeepSeek style).
+public struct ChatFragment: Sendable, Equatable {
+    public let kind: ChatFragmentKind
+    public let text: String
+
+    public init(kind: ChatFragmentKind, text: String) {
+        self.kind = kind
+        self.text = text
     }
 }
 

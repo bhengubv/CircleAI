@@ -70,6 +70,11 @@ class ChatResponse:
     Carries the generated text alongside token counts, latency, and finish
     reason — the metadata callers need for rate-limiting, billing, telemetry,
     and trace stitching.
+
+    `reasoning_content` is the chain-of-thought emitted by reasoning models
+    (Qwen3 / DeepSeek-R1 / o1) inside ``<think>…</think>``. ``None`` when the
+    model emitted no reasoning or ``GenerationOptions.include_reasoning`` was
+    ``False``. Tags themselves are stripped — only the text content.
     """
 
     text: str
@@ -77,6 +82,36 @@ class ChatResponse:
     tokens_out: int
     latency_ms: float
     finish_reason: FinishReason = FinishReason.STOP
+    reasoning_content: Optional[str] = None
+
+
+# ── ChatFragment / ChatFragmentKind ────────────────────────────────────────
+
+
+class ChatFragmentKind(IntEnum):
+    """Kind of fragment a streaming generator emits.
+
+    Mirrors CircleAI.Inference.ChatFragmentKind.
+    """
+
+    CONTENT = 0
+    """Part of the user-facing answer (goes into ``content``)."""
+
+    REASONING = 1
+    """Part of the model's reasoning trace (goes into ``reasoning_content``)."""
+
+
+@dataclass(frozen=True)
+class ChatFragment:
+    """A single fragment yielded by IChatGenerator.stream_fragments_async.
+
+    Each fragment is tagged so the caller can route the model's
+    ``<think>`` block into a separate ``reasoning_content`` field
+    (o1 / DeepSeek style).
+    """
+
+    kind: ChatFragmentKind
+    text: str
 
 
 # ── BundleFile / InstalledManifest / UpgradeInfo ───────────────────────────

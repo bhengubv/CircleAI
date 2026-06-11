@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 // Re-export the shared ChatMessage so callers can use `inference::ChatMessage`.
 pub use crate::models::ChatMessage;
+pub use crate::models_v15::{ChatFragment, ChatFragmentKind};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GenerationOptions
@@ -34,7 +35,23 @@ pub struct GenerationOptions {
 
     /// Optional substrings that end generation when matched in emitted output.
     pub stop_sequences: Option<Vec<String>>,
+
+    /// Whether to surface the model's reasoning trace (Qwen3
+    /// `<think>…</think>`) on the call. Default `true`.
+    ///
+    /// When `true` the generator separates reasoning from the final answer:
+    /// `ChatResponse.reasoning_content` gets the reasoning, `ChatResponse.text`
+    /// gets the answer. Streaming callers see fragments tagged with
+    /// `ChatFragmentKind::Reasoning`.
+    ///
+    /// When `false` the generator still RUNS reasoning (this is per-call
+    /// output gating, NOT a thinking disable) but the reasoning text is
+    /// dropped — only the final answer reaches the caller.
+    #[serde(default = "default_include_reasoning")]
+    pub include_reasoning: bool,
 }
+
+fn default_include_reasoning() -> bool { true }
 
 impl Default for GenerationOptions {
     fn default() -> Self {
@@ -45,6 +62,7 @@ impl Default for GenerationOptions {
             top_k: 40,
             seed: None,
             stop_sequences: None,
+            include_reasoning: true,
         }
     }
 }
@@ -84,9 +102,33 @@ pub trait IChatGenerator {
         opts: Option<&GenerationOptions>,
     ) -> Result<String, Self::Error>;
 
+    /// Streams the assistant reply as decoded chunks. Content only — any
+    /// reasoning inside `<think>…</think>` is filtered out. Use
+    /// `stream_fragments` when you also need the reasoning stream.
     fn stream(
         &self,
         messages: &[ChatMessage],
         opts: Option<&GenerationOptions>,
     ) -> Result<Box<dyn Iterator<Item = Result<String, Self::Error>>>, Self::Error>;
+
+    /// Fragment-aware streaming variant. Yields each piece tagged as either
+    /// [`ChatFragmentKind::Content`] or [`ChatFragmentKind::Reasoning`] so the
+    /// caller can route the model's `<think>` block into a separate
+    /// `reasoning_content` field (o1 / DeepSeek style).
+    ///
+    /// Default implementation wraps [`Self::stream`] and tags every chunk as
+    /// `Content`; generators that surface reasoning override this method.
+    fn stream_fragments(
+        &self,
+        messages: &[ChatMessage],
+        opts: Option<&GenerationOptions>,
+    ) -> Result<Box<dyn Iterator<Item = Result<ChatFragment, Self::Error>>>, Self::Error>
+    where
+        Self::Error: 'static,
+    {
+        let inner = self.stream(messages, opts)?;
+        Ok(Box::new(
+            inner.map(|item| item.map(ChatFragment::content)),
+        ))
+    }
 }
