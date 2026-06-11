@@ -190,7 +190,7 @@ public sealed class KimiVlGenerator : IChatGenerator
     // Internals
     // ────────────────────────────────────────────────────────────────────
 
-    private void RunVisionGeneration(
+    private unsafe void RunVisionGeneration(
         string                prompt,
         byte[]                imageBytes,
         GenerationOptions     options,
@@ -199,12 +199,9 @@ public sealed class KimiVlGenerator : IChatGenerator
         CancellationToken     ct)
     {
         MnnImageHandle imageHandle;
-        unsafe
+        fixed (byte* p = imageBytes)
         {
-            fixed (byte* p = imageBytes)
-            {
-                imageHandle = MnnInterop.mnn_llm_image_from_bytes(p, imageBytes.Length);
-            }
+            imageHandle = MnnInterop.mnn_llm_image_from_bytes(p, imageBytes.Length);
         }
 
         if (imageHandle.IsInvalid)
@@ -218,9 +215,20 @@ public sealed class KimiVlGenerator : IChatGenerator
         try
         {
             var emitted = new StringBuilder();
-            MnnTokenCallback callback = (token, isDone, _) =>
+
+            // The native callback must remain alive for the duration of the call.
+            // The surrounding synchronous P/Invoke keeps the delegate reachable
+            // for the entire native call via the JIT-emitted reverse-pinvoke
+            // thunk. The assembly has [DisableRuntimeMarshalling], so the
+            // delegate's parameter list must be blittable (byte*); the runtime
+            // cannot marshal a managed string here.
+            MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
             {
                 if (ct.IsCancellationRequested) return;
+
+                var token = tokenPtr == null
+                    ? null
+                    : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
                 if (string.IsNullOrEmpty(token)) return;
 
                 emitted.Append(token);
@@ -261,7 +269,7 @@ public sealed class KimiVlGenerator : IChatGenerator
         }
     }
 
-    private void RunTextGeneration(
+    private unsafe void RunTextGeneration(
         string                prompt,
         GenerationOptions     options,
         string[]              stopSequences,
@@ -269,9 +277,17 @@ public sealed class KimiVlGenerator : IChatGenerator
         CancellationToken     ct)
     {
         var emitted = new StringBuilder();
-        MnnTokenCallback callback = (token, isDone, _) =>
+
+        // See RunVisionGeneration above for why the delegate parameter is byte*
+        // and why the local delegate variable keeps the callback alive for the
+        // duration of the synchronous P/Invoke.
+        MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
         {
             if (ct.IsCancellationRequested) return;
+
+            var token = tokenPtr == null
+                ? null
+                : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
             if (string.IsNullOrEmpty(token)) return;
 
             emitted.Append(token);

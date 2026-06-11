@@ -199,7 +199,7 @@ public sealed class QwenTextGenerator : IChatGenerator
     // Internals
     // ──────────────────────────────────────────────────────────────────────────
 
-    private void RunGeneration(
+    private unsafe void RunGeneration(
         string prompt,
         GenerationOptions options,
         string[] stopSequences,
@@ -209,12 +209,22 @@ public sealed class QwenTextGenerator : IChatGenerator
         // Accumulate output for stop-sequence scanning.
         var emitted = new StringBuilder();
 
-        // The native callback must remain alive for the duration of the call;
-        // storing it in a local satisfies that contract without GCHandle pinning
-        // since the lambda captures no GC-moveable pointers.
-        MnnTokenCallback callback = (token, isDone, _) =>
+        // The native callback must remain alive for the duration of the call.
+        // Storing it in a local satisfies that contract because the surrounding
+        // synchronous P/Invoke keeps the delegate reachable for the entire
+        // native call — the JIT-emitted reverse-pinvoke thunk holds a strong
+        // reference until mnn_llm_generate_stream_ex returns.
+        //
+        // Token bytes are decoded inside the callback. The assembly has
+        // [DisableRuntimeMarshalling] so the delegate parameter must be
+        // blittable (byte*); we cannot let the runtime marshal a string here.
+        MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
         {
             if (ct.IsCancellationRequested) return;
+
+            var token = tokenPtr == null
+                ? null
+                : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
 
             if (!string.IsNullOrEmpty(token))
             {
