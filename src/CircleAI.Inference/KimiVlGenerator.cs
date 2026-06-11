@@ -31,14 +31,20 @@ namespace CircleAI.Inference;
 /// </summary>
 public sealed class KimiVlGenerator : IChatGenerator
 {
-    private const string ImStart = "<|im_start|>";
-    private const string ImEnd   = "<|im_end|>";
-    private static readonly string[] DefaultStopSequences = [ImEnd, ImStart];
+    private const string ImStart   = "<|im_start|>";
+    private const string ImEnd     = "<|im_end|>";
+    private const string EndOfText = "<|endoftext|>";
+    private static readonly string[] DefaultStopSequences = [ImEnd, ImStart, EndOfText];
 
     private readonly MnnModelHandle _model;
     private readonly int _maxNewTokens;
     private readonly IPromptTemplateEngine? _templateEngine;
     private readonly string? _modelDirectory;
+
+    // Per-handle serialization — mnnbridge.h:22-24 declares concurrent calls
+    // on the same handle UB. Pool handles in the bridge factory if higher
+    // concurrency is required.
+    private readonly SemaphoreSlim _generationLock = new(initialCount: 1, maxCount: 1);
 
     private bool _disposed;
 
@@ -126,12 +132,25 @@ public sealed class KimiVlGenerator : IChatGenerator
         GenerationOptions? options = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        await foreach (var f in StreamFragmentsAsync(messages, options, ct).ConfigureAwait(false))
+        {
+            if (f.Kind == ChatFragmentKind.Content && !string.IsNullOrEmpty(f.Text))
+                yield return f.Text;
+        }
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<ChatFragment> StreamFragmentsAsync(
+        IReadOnlyList<ChatMessage> messages,
+        GenerationOptions? options = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
         ArgumentNullException.ThrowIfNull(messages);
         ThrowIfDisposed();
 
         options ??= new GenerationOptions();
 
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+        var channel = Channel.CreateUnbounded<ChatFragment>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = true,
@@ -145,19 +164,19 @@ public sealed class KimiVlGenerator : IChatGenerator
         var stopSequences = (options.StopSequences is { Length: > 0 }
             ? options.StopSequences
             : DefaultStopSequences);
+        var includeReasoning = options.IncludeReasoning;
 
-        // Find the latest message carrying ImageBytes — that's the vision
-        // turn for this exchange. If none, fall through to text-only.
         var imageBytes = messages.LastOrDefault(m => m.ImageBytes is { Length: > 0 })?.ImageBytes;
 
-        var work = Task.Run(() =>
+        var work = Task.Run(async () =>
         {
+            await _generationLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 if (imageBytes is { Length: > 0 })
-                    RunVisionGeneration(prompt, imageBytes, options, stopSequences, channel.Writer, ct);
+                    RunVisionGeneration(prompt, imageBytes, options, stopSequences, includeReasoning, channel.Writer, ct);
                 else
-                    RunTextGeneration(prompt, options, stopSequences, channel.Writer, ct);
+                    RunTextGeneration(prompt, options, stopSequences, includeReasoning, channel.Writer, ct);
 
                 channel.Writer.TryComplete();
             }
@@ -169,12 +188,44 @@ public sealed class KimiVlGenerator : IChatGenerator
             {
                 channel.Writer.TryComplete(ex);
             }
+            finally
+            {
+                _generationLock.Release();
+            }
         }, ct);
 
-        await foreach (var piece in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            yield return piece;
+        await foreach (var f in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            yield return f;
 
         await work.ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<ChatResponse> GenerateResponseAsync(
+        IReadOnlyList<ChatMessage> messages,
+        GenerationOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        ThrowIfDisposed();
+
+        var started = Environment.TickCount64;
+        var content   = new StringBuilder();
+        var reasoning = new StringBuilder();
+
+        await foreach (var f in StreamFragmentsAsync(messages, options, ct).ConfigureAwait(false))
+        {
+            if (f.Kind == ChatFragmentKind.Reasoning) reasoning.Append(f.Text);
+            else                                      content.Append(f.Text);
+        }
+
+        return new ChatResponse(
+            Text:             content.ToString(),
+            TokensIn:         0,
+            TokensOut:        0,
+            Latency:          TimeSpan.FromMilliseconds(Environment.TickCount64 - started),
+            FinishReason:     FinishReason.Stop,
+            ReasoningContent: reasoning.Length == 0 ? null : reasoning.ToString());
     }
 
     /// <inheritdoc />
@@ -183,6 +234,7 @@ public sealed class KimiVlGenerator : IChatGenerator
         if (_disposed) return;
         _disposed = true;
         _model.Dispose();
+        _generationLock.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -191,17 +243,23 @@ public sealed class KimiVlGenerator : IChatGenerator
     // ────────────────────────────────────────────────────────────────────
 
     private unsafe void RunVisionGeneration(
-        string                prompt,
-        byte[]                imageBytes,
-        GenerationOptions     options,
-        string[]              stopSequences,
-        ChannelWriter<string> writer,
-        CancellationToken     ct)
+        string                       prompt,
+        byte[]                       imageBytes,
+        GenerationOptions            options,
+        string[]                     stopSequences,
+        bool                         includeReasoning,
+        ChannelWriter<ChatFragment>  writer,
+        CancellationToken            ct)
     {
+        // Reset KV state so this call is independent of any prior generation.
+        MnnInterop.mnn_llm_reset_session(_model);
+
         MnnImageHandle imageHandle;
         fixed (byte* p = imageBytes)
         {
-            imageHandle = MnnInterop.mnn_llm_image_from_bytes(p, imageBytes.Length);
+            // mnnbridge.h: mnn_llm_image_from_bytes(data, size, mime_utf8) — mime
+            // is advisory; null lets the bridge sniff the magic bytes.
+            imageHandle = MnnInterop.mnn_llm_image_from_bytes(p, imageBytes.Length, mime: null);
         }
 
         if (imageHandle.IsInvalid)
@@ -214,54 +272,38 @@ public sealed class KimiVlGenerator : IChatGenerator
 
         try
         {
-            var emitted = new StringBuilder();
-
-            // The native callback must remain alive for the duration of the call.
-            // The surrounding synchronous P/Invoke keeps the delegate reachable
-            // for the entire native call via the JIT-emitted reverse-pinvoke
-            // thunk. The assembly has [DisableRuntimeMarshalling], so the
-            // delegate's parameter list must be blittable (byte*); the runtime
-            // cannot marshal a managed string here.
-            MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
+            var sink = new MnnTokenSink
             {
-                if (ct.IsCancellationRequested) return;
-
-                var token = tokenPtr == null
-                    ? null
-                    : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
-                if (string.IsNullOrEmpty(token)) return;
-
-                emitted.Append(token);
-
-                if (TryFindStopSequence(emitted, stopSequences, out int stopAt))
-                {
-                    var prior = emitted.ToString(0, stopAt);
-                    var alreadyLen = emitted.Length - token.Length;
-                    if (stopAt > alreadyLen)
-                    {
-                        var tail = prior[alreadyLen..];
-                        if (tail.Length > 0)
-                            writer.TryWrite(tail);
-                    }
-                    return;
-                }
-
-                writer.TryWrite(token);
+                Model            = _model,
+                Pending          = new List<byte>(8),
+                Emitted          = new StringBuilder(),
+                StopSequences    = stopSequences,
+                Writer           = writer,
+                Ct               = ct,
+                IncludeReasoning = includeReasoning,
             };
+            var sinkHandle = GCHandle.Alloc(sink);
+            try
+            {
+                int maxTokens = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
 
-            float temperature = options.Temperature > 0f ? options.Temperature : 0f;
-            float topP        = options.TopP is > 0f and < 1f ? options.TopP : 1f;
-            int   topK        = options.TopK > 0 ? options.TopK : 0;
-            uint  seed        = options.Seed.HasValue ? unchecked((uint)options.Seed.Value) : 0u;
-            int   maxTokens   = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
+                ct.ThrowIfCancellationRequested();
 
-            ct.ThrowIfCancellationRequested();
+                // mnnbridge.h: (handle, image, prompt, max_new_tokens, cb, user_data) — note
+                // that image precedes the prompt and there are NO per-call sampling knobs.
+                int rc = MnnInterop.mnn_llm_generate_with_image_stream_ex(
+                    _model, imageHandle, prompt, maxTokens,
+                    &MnnTokenRouter.OnTokenNative, GCHandle.ToIntPtr(sinkHandle));
 
-            int rc = MnnInterop.mnn_llm_generate_with_image_stream_ex(
-                _model, prompt, imageHandle, maxTokens, temperature, topP, topK, seed, callback, IntPtr.Zero);
+                if (rc < 0)
+                    throw new InvalidOperationException($"MNN vision generation failed with code {rc}.");
 
-            if (rc < 0)
-                throw new InvalidOperationException($"MNN vision generation failed with code {rc}.");
+                MnnTokenRouter.DrainRemainder(sink);
+            }
+            finally
+            {
+                sinkHandle.Free();
+            }
         }
         finally
         {
@@ -270,70 +312,46 @@ public sealed class KimiVlGenerator : IChatGenerator
     }
 
     private unsafe void RunTextGeneration(
-        string                prompt,
-        GenerationOptions     options,
-        string[]              stopSequences,
-        ChannelWriter<string> writer,
-        CancellationToken     ct)
+        string                       prompt,
+        GenerationOptions            options,
+        string[]                     stopSequences,
+        bool                         includeReasoning,
+        ChannelWriter<ChatFragment>  writer,
+        CancellationToken            ct)
     {
-        var emitted = new StringBuilder();
+        // State isolation — same rationale as the text generator.
+        MnnInterop.mnn_llm_reset_session(_model);
 
-        // See RunVisionGeneration above for why the delegate parameter is byte*
-        // and why the local delegate variable keeps the callback alive for the
-        // duration of the synchronous P/Invoke.
-        MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
+        var sink = new MnnTokenSink
         {
-            if (ct.IsCancellationRequested) return;
-
-            var token = tokenPtr == null
-                ? null
-                : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
-            if (string.IsNullOrEmpty(token)) return;
-
-            emitted.Append(token);
-
-            if (TryFindStopSequence(emitted, stopSequences, out int stopAt))
-            {
-                var prior = emitted.ToString(0, stopAt);
-                var alreadyLen = emitted.Length - token.Length;
-                if (stopAt > alreadyLen)
-                {
-                    var tail = prior[alreadyLen..];
-                    if (tail.Length > 0)
-                        writer.TryWrite(tail);
-                }
-                return;
-            }
-
-            writer.TryWrite(token);
+            Model            = _model,
+            Pending          = new List<byte>(8),
+            Emitted          = new StringBuilder(),
+            StopSequences    = stopSequences,
+            Writer           = writer,
+            Ct               = ct,
+            IncludeReasoning = includeReasoning,
         };
+        var sinkHandle = GCHandle.Alloc(sink);
 
-        float temperature = options.Temperature > 0f ? options.Temperature : 0f;
-        float topP        = options.TopP is > 0f and < 1f ? options.TopP : 1f;
-        int   topK        = options.TopK > 0 ? options.TopK : 0;
-        uint  seed        = options.Seed.HasValue ? unchecked((uint)options.Seed.Value) : 0u;
-        int   maxTokens   = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
-
-        ct.ThrowIfCancellationRequested();
-
-        int rc = MnnInterop.mnn_llm_generate_stream_ex(
-            _model, prompt, maxTokens, temperature, topP, topK, seed, callback, IntPtr.Zero);
-
-        if (rc < 0)
-            throw new InvalidOperationException($"MNN text generation failed with code {rc}.");
-    }
-
-    private static bool TryFindStopSequence(StringBuilder buffer, string[] stops, out int index)
-    {
-        var text = buffer.ToString();
-        index = int.MaxValue;
-        foreach (var stop in stops)
+        try
         {
-            if (string.IsNullOrEmpty(stop)) continue;
-            int found = text.IndexOf(stop, StringComparison.Ordinal);
-            if (found >= 0 && found < index) index = found;
+            int maxTokens = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
+
+            ct.ThrowIfCancellationRequested();
+
+            int rc = MnnInterop.mnn_llm_generate_stream_ex(
+                _model, prompt, maxTokens, &MnnTokenRouter.OnTokenNative, GCHandle.ToIntPtr(sinkHandle));
+
+            if (rc < 0)
+                throw new InvalidOperationException($"MNN text generation failed with code {rc}.");
+
+            MnnTokenRouter.DrainRemainder(sink);
         }
-        return index != int.MaxValue;
+        finally
+        {
+            sinkHandle.Free();
+        }
     }
 
     private void ThrowIfDisposed()

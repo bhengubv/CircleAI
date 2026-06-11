@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting.InferenceBridge</PackageId>
-    <Version>1.2.0</Version><Description>Cross-OS LLM inference daemon contract for Circle AI — one model loaded once per device, shared by every app via OS-specific IPC. Ship-once, run-everywhere.</Description>
+    <Version>1.3.0</Version><Description>Cross-OS LLM inference daemon contract for Circle AI — one model loaded once per device, shared by every app via OS-specific IPC. 1.3.0 adds InferenceResponse.ReasoningText, IInferenceBridge.StreamFragmentsAsync, and InferenceFragment / InferenceFragmentKind so callers can route reasoning models' &lt;think&gt;…&lt;/think&gt; into a separate reasoning_content field (DeepSeek-R1 / o1 style). Backward-compatible — every new method has a default impl that wraps the existing stream as Content-only.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

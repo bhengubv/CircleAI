@@ -34,15 +34,26 @@ namespace CircleAI.Inference;
 public sealed class QwenTextGenerator : IChatGenerator
 {
     // ChatML role tags used by Qwen 1.5 / 2 / 3 / Qwen-VL family.
-    private const string ImStart = "<|im_start|>";
-    private const string ImEnd   = "<|im_end|>";
+    private const string ImStart    = "<|im_start|>";
+    private const string ImEnd      = "<|im_end|>";
+    // Qwen3 also emits the GPT-2-style end-of-text marker when continuing past
+    // </think>; without it in the stop list the literal "<|endoftext|>" leaks
+    // into the content channel.
+    private const string EndOfText  = "<|endoftext|>";
 
-    private static readonly string[] DefaultStopSequences = [ImEnd, ImStart];
+    private static readonly string[] DefaultStopSequences = [ImEnd, ImStart, EndOfText];
 
     private readonly MnnModelHandle _model;
     private readonly int _maxNewTokens;
     private readonly IPromptTemplateEngine? _templateEngine;
     private readonly string? _modelDirectory;
+
+    // The native mnnbridge contract states that "concurrent calls on the SAME
+    // handle are undefined behaviour" (mnnbridge.h:22-24). The server may
+    // dispatch multiple /v1/chat/completions requests against a single handle,
+    // so we serialize generation at the generator level. Pool handles in the
+    // bridge factory if higher concurrency is needed.
+    private readonly SemaphoreSlim _generationLock = new(initialCount: 1, maxCount: 1);
 
     private bool _disposed;
 
@@ -141,12 +152,28 @@ public sealed class QwenTextGenerator : IChatGenerator
         GenerationOptions? options = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        // Filter the fragment stream down to content-only — reasoning is
+        // dropped for back-compat with callers that only know about
+        // <c>StreamAsync</c> (the legacy contract).
+        await foreach (var f in StreamFragmentsAsync(messages, options, ct).ConfigureAwait(false))
+        {
+            if (f.Kind == ChatFragmentKind.Content && !string.IsNullOrEmpty(f.Text))
+                yield return f.Text;
+        }
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<ChatFragment> StreamFragmentsAsync(
+        IReadOnlyList<ChatMessage> messages,
+        GenerationOptions? options = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
         ArgumentNullException.ThrowIfNull(messages);
         ThrowIfDisposed();
 
         options ??= new GenerationOptions();
 
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
+        var channel = Channel.CreateUnbounded<ChatFragment>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = true,
@@ -162,12 +189,18 @@ public sealed class QwenTextGenerator : IChatGenerator
         var stopSequences = (options.StopSequences is { Length: > 0 }
             ? options.StopSequences
             : DefaultStopSequences);
+        var includeReasoning = options.IncludeReasoning;
 
-        var work = Task.Run(() =>
+        var work = Task.Run(async () =>
         {
+            // Per-handle serialization (mnnbridge.h:22-24 — concurrent calls
+            // on the same handle are undefined behaviour). Await with the
+            // caller's cancellation so a queued request can be cancelled
+            // before it starts running.
+            await _generationLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                RunGeneration(prompt, options, stopSequences, channel.Writer, ct);
+                RunGeneration(prompt, options, stopSequences, includeReasoning, channel.Writer, ct);
                 channel.Writer.TryComplete();
             }
             catch (OperationCanceledException oce)
@@ -178,12 +211,46 @@ public sealed class QwenTextGenerator : IChatGenerator
             {
                 channel.Writer.TryComplete(ex);
             }
+            finally
+            {
+                _generationLock.Release();
+            }
         }, ct);
 
-        await foreach (var piece in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            yield return piece;
+        await foreach (var f in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            yield return f;
 
         await work.ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<ChatResponse> GenerateResponseAsync(
+        IReadOnlyList<ChatMessage> messages,
+        GenerationOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        ThrowIfDisposed();
+
+        var started = Environment.TickCount64;
+        var content   = new StringBuilder();
+        var reasoning = new StringBuilder();
+
+        await foreach (var f in StreamFragmentsAsync(messages, options, ct).ConfigureAwait(false))
+        {
+            if (f.Kind == ChatFragmentKind.Reasoning) reasoning.Append(f.Text);
+            else                                      content.Append(f.Text);
+        }
+
+        var latency = TimeSpan.FromMilliseconds(Environment.TickCount64 - started);
+
+        return new ChatResponse(
+            Text:             content.ToString(),
+            TokensIn:         0,           // MNN does not surface a per-call prompt token count yet.
+            TokensOut:        0,           // Streaming count not yet aggregated; bridge estimates.
+            Latency:          latency,
+            FinishReason:     FinishReason.Stop,
+            ReasoningContent: reasoning.Length == 0 ? null : reasoning.ToString());
     }
 
     /// <inheritdoc />
@@ -192,6 +259,7 @@ public sealed class QwenTextGenerator : IChatGenerator
         if (_disposed) return;
         _disposed = true;
         _model.Dispose();
+        _generationLock.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -203,66 +271,48 @@ public sealed class QwenTextGenerator : IChatGenerator
         string prompt,
         GenerationOptions options,
         string[] stopSequences,
-        ChannelWriter<string> writer,
+        bool includeReasoning,
+        ChannelWriter<ChatFragment> writer,
         CancellationToken ct)
     {
-        // Accumulate output for stop-sequence scanning.
-        var emitted = new StringBuilder();
+        // Stateless generation: clear KV cache + sliding-window history before every call.
+        // The OpenAI-compatible /v1/chat/completions contract is multi-turn-via-replay
+        // (clients send the full message history), so server-side memory between calls
+        // would replay the prior request's tokens — which we observed on the shared handle.
+        MnnInterop.mnn_llm_reset_session(_model);
 
-        // The native callback must remain alive for the duration of the call.
-        // Storing it in a local satisfies that contract because the surrounding
-        // synchronous P/Invoke keeps the delegate reachable for the entire
-        // native call — the JIT-emitted reverse-pinvoke thunk holds a strong
-        // reference until mnn_llm_generate_stream_ex returns.
-        //
-        // Token bytes are decoded inside the callback. The assembly has
-        // [DisableRuntimeMarshalling] so the delegate parameter must be
-        // blittable (byte*); we cannot let the runtime marshal a string here.
-        MnnTokenCallback callback = (byte* tokenPtr, int isDone, IntPtr _) =>
+        var sink = new MnnTokenSink
         {
-            if (ct.IsCancellationRequested) return;
-
-            var token = tokenPtr == null
-                ? null
-                : Marshal.PtrToStringUTF8((IntPtr)tokenPtr);
-
-            if (!string.IsNullOrEmpty(token))
-            {
-                emitted.Append(token);
-
-                // Stop-sequence safety check: MNN-LLM will stop on <|im_end|>
-                // natively, but we guard here in case the model omits it.
-                if (TryFindStopSequence(emitted, stopSequences, out int stopAt))
-                {
-                    // Emit the text before the stop marker, then bail.
-                    var prior = emitted.ToString(0, stopAt);
-                    var alreadyLen = emitted.Length - token.Length;
-                    if (stopAt > alreadyLen)
-                    {
-                        var tail = prior[alreadyLen..];
-                        if (tail.Length > 0)
-                            writer.TryWrite(tail);
-                    }
-                    return; // Don't write anything further.
-                }
-
-                writer.TryWrite(token);
-            }
+            Model            = _model,
+            Pending          = new List<byte>(8),
+            Emitted          = new StringBuilder(),
+            StopSequences    = stopSequences,
+            Writer           = writer,
+            Ct               = ct,
+            IncludeReasoning = includeReasoning,
         };
+        var sinkHandle = GCHandle.Alloc(sink);
 
-        float temperature = options.Temperature > 0f ? options.Temperature : 0f;
-        float topP        = options.TopP is > 0f and < 1f ? options.TopP : 1f;
-        int   topK        = options.TopK > 0 ? options.TopK : 0;
-        uint  seed        = options.Seed.HasValue ? unchecked((uint)options.Seed.Value) : 0u;
-        int   maxTokens   = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
+        try
+        {
+            int maxTokens = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
 
-        ct.ThrowIfCancellationRequested();
+            ct.ThrowIfCancellationRequested();
 
-        int rc = MnnInterop.mnn_llm_generate_stream_ex(
-            _model, prompt, maxTokens, temperature, topP, topK, seed, callback, IntPtr.Zero);
+            // mnnbridge.h: (handle, prompt, max_new_tokens, cb, user_data). MNN samples
+            // using the model's config.json defaults — no per-call sampling knobs.
+            int rc = MnnInterop.mnn_llm_generate_stream_ex(
+                _model, prompt, maxTokens, &MnnTokenRouter.OnTokenNative, GCHandle.ToIntPtr(sinkHandle));
 
-        if (rc < 0)
-            throw new InvalidOperationException($"MNN generation failed with code {rc}.");
+            if (rc < 0)
+                throw new InvalidOperationException($"MNN generation failed with code {rc}.");
+
+            MnnTokenRouter.DrainRemainder(sink);
+        }
+        finally
+        {
+            sinkHandle.Free();
+        }
     }
 
     /// <summary>
@@ -285,56 +335,19 @@ public sealed class QwenTextGenerator : IChatGenerator
     }
 
     /// <summary>
-    /// Drains complete UTF-8 codepoints from the pending byte buffer.
-    /// Kept for compatibility with existing tests; streaming now receives
-    /// pre-decoded strings from MNN so this path is rarely exercised.
+    /// Drains complete UTF-8 codepoints from the pending byte buffer. Forwards
+    /// to <see cref="MnnTokenRouter.TryDrainUtf8"/> — kept here for test
+    /// back-compat (<c>QwenTextGeneratorTests</c> calls this name).
     /// </summary>
     internal static bool TryDrainUtf8(List<byte> pending, out string decoded)
-    {
-        if (pending.Count == 0)
-        {
-            decoded = string.Empty;
-            return false;
-        }
+        => MnnTokenRouter.TryDrainUtf8(pending, out decoded);
 
-        int safeLen = pending.Count;
-        for (int i = pending.Count - 1; i >= 0 && i >= pending.Count - 4; i--)
-        {
-            byte b = pending[i];
-            if ((b & 0x80) == 0) break;
-            if ((b & 0xC0) == 0xC0)
-            {
-                int needed = (b & 0xE0) == 0xC0 ? 2
-                           : (b & 0xF0) == 0xE0 ? 3
-                           : (b & 0xF8) == 0xF0 ? 4
-                           : 1;
-                int have = pending.Count - i;
-                if (have < needed) safeLen = i;
-                break;
-            }
-        }
-
-        if (safeLen == 0) { decoded = string.Empty; return false; }
-
-        var arr = new byte[safeLen];
-        pending.CopyTo(0, arr, 0, safeLen);
-        pending.RemoveRange(0, safeLen);
-        decoded = Encoding.UTF8.GetString(arr);
-        return decoded.Length > 0;
-    }
-
+    /// <summary>
+    /// Forwards to <see cref="MnnTokenRouter.TryFindStopSequence"/> — kept here
+    /// for test back-compat.
+    /// </summary>
     internal static bool TryFindStopSequence(StringBuilder sb, string[] stops, out int index)
-    {
-        var s = sb.ToString();
-        foreach (var stop in stops)
-        {
-            if (string.IsNullOrEmpty(stop)) continue;
-            int idx = s.IndexOf(stop, StringComparison.Ordinal);
-            if (idx >= 0) { index = idx; return true; }
-        }
-        index = -1;
-        return false;
-    }
+        => MnnTokenRouter.TryFindStopSequence(sb, stops, out index);
 
     private void ThrowIfDisposed()
     {

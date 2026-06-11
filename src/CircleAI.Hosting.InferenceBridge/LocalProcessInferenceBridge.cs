@@ -150,13 +150,21 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
 
         var sw = Stopwatch.StartNew();
         string output;
+        string? reasoning = null;
         InferenceStatus status;
         string? failureMessage = null;
 
         try
         {
-            output = await _chatGenerator.GenerateAsync(messages, options, ct).ConfigureAwait(false);
-            status = DetermineStatus(output, request);
+            // Use the structured-response path so generators that surface a
+            // reasoning trace (Qwen3 <think>…</think>) populate ReasoningContent
+            // separately from the user-facing answer.
+            var response = await _chatGenerator
+                .GenerateResponseAsync(messages, options, ct)
+                .ConfigureAwait(false);
+            output    = response.Text;
+            reasoning = response.ReasoningContent;
+            status    = DetermineStatus(output, request);
         }
         catch (OperationCanceledException)
         {
@@ -191,7 +199,8 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
             Status: status,
             InferenceMillis: sw.Elapsed.TotalMilliseconds,
             FailureMessage: failureMessage,
-            CompletedAt: DateTimeOffset.UtcNow);
+            CompletedAt: DateTimeOffset.UtcNow,
+            ReasoningText: reasoning);
     }
 
     /// <inheritdoc/>
@@ -244,6 +253,50 @@ public sealed class LocalProcessInferenceBridge : CircleAIComponentBase, IInfere
             // completion in a single chunk so callers always see ≥ 1 token.
             var full = await _chatGenerator.GenerateAsync(messages, options, ct).ConfigureAwait(false);
             yield return full;
+        }
+    }
+
+    /// <inheritdoc/>
+    public IAsyncEnumerable<InferenceFragment> StreamFragmentsAsync(
+        InferenceRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return RunStreamAsync<InferenceFragment>(
+            "StreamFragmentsAsync",
+            innerCt => StreamFragmentsImplAsync(request, innerCt),
+            ct,
+            correlationId: request.Id.ToString("N"));
+    }
+
+    private async IAsyncEnumerable<InferenceFragment> StreamFragmentsImplAsync(
+        InferenceRequest request,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        if (!string.Equals(_descriptor.ModelId, request.ModelId, StringComparison.Ordinal))
+        {
+            yield break;
+        }
+
+        var messages = new[] { new ChatMessage("user", request.Prompt) };
+        var options = new GenerationOptions
+        {
+            MaxTokens = request.MaxOutputTokens,
+            Temperature = request.Temperature,
+            TopP = request.TopP,
+            StopSequences = request.StopSequences.Count == 0
+                ? null
+                : request.StopSequences.ToArray(),
+        };
+
+        await foreach (var f in _chatGenerator
+            .StreamFragmentsAsync(messages, options, ct)
+            .ConfigureAwait(false))
+        {
+            var kind = f.Kind == ChatFragmentKind.Reasoning
+                ? InferenceFragmentKind.Reasoning
+                : InferenceFragmentKind.Content;
+            yield return new InferenceFragment(kind, f.Text);
         }
     }
 

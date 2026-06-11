@@ -49,6 +49,15 @@ public sealed class ChatCompletionMessage
 
     [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    /// <summary>
+    /// Chain-of-thought trace from reasoning models (Qwen3 <c>&lt;think&gt;</c>,
+    /// DeepSeek-R1, o1). Matches DeepSeek's <c>reasoning_content</c> shape.
+    /// Omitted from JSON when <c>null</c> so non-reasoning models stay byte-stable.
+    /// </summary>
+    [JsonPropertyName("reasoning_content")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasoningContent { get; set; }
 }
 
 /// <summary>OpenAI-shaped successful chat completion response.</summary>
@@ -135,8 +144,19 @@ public sealed class ChatCompletionStreamChoice
 public sealed class ChatCompletionDelta
 {
     [JsonPropertyName("role")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Role { get; set; }
 
     [JsonPropertyName("content")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Content { get; set; }
+
+    /// <summary>
+    /// Reasoning fragment from chain-of-thought models. Streams as a separate
+    /// delta field (DeepSeek-R1 / o1 style) so JSON consumers reading
+    /// <c>content</c> never see <c>&lt;think&gt;</c> tags.
+    /// </summary>
+    [JsonPropertyName("reasoning_content")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ReasoningContent { get; set; }
 }

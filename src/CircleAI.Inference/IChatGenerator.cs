@@ -22,7 +22,10 @@ namespace CircleAI.Inference
         /// <summary>
         /// Streams the assistant reply token-by-token (or piece-by-piece) as
         /// it is decoded. Each yielded string is the next chunk to append to
-        /// the output — callers should concatenate them in order.
+        /// the output — callers should concatenate them in order. Content
+        /// only — any reasoning emitted inside <c>&lt;think&gt;…&lt;/think&gt;</c>
+        /// is filtered out. Use <see cref="StreamFragmentsAsync"/> when you
+        /// also need the reasoning stream.
         /// </summary>
         IAsyncEnumerable<string> StreamAsync(
             IReadOnlyList<ChatMessage> messages,
@@ -30,11 +33,31 @@ namespace CircleAI.Inference
             CancellationToken ct = default);
 
         /// <summary>
+        /// Fragment-aware streaming variant. Yields each piece tagged as either
+        /// <see cref="ChatFragmentKind.Content"/> or
+        /// <see cref="ChatFragmentKind.Reasoning"/> so the caller can route the
+        /// model's <c>&lt;think&gt;</c> block into a separate
+        /// <c>reasoning_content</c> field (o1 / DeepSeek style). Default
+        /// implementation wraps <see cref="StreamAsync"/> and tags every chunk
+        /// as <see cref="ChatFragmentKind.Content"/>; generators that surface
+        /// reasoning override.
+        /// </summary>
+        async IAsyncEnumerable<ChatFragment> StreamFragmentsAsync(
+            IReadOnlyList<ChatMessage> messages,
+            GenerationOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await foreach (var chunk in StreamAsync(messages, options, ct).ConfigureAwait(false))
+                yield return new ChatFragment(ChatFragmentKind.Content, chunk);
+        }
+
+        /// <summary>
         /// Structured-response variant: returns the assistant reply alongside
         /// token counts, finish reason, and latency. Default implementation
         /// wraps <see cref="GenerateAsync"/> with an approximate token count
         /// (word split) and <see cref="FinishReason.Stop"/>; native generators
-        /// override to report the exact native-reported values.
+        /// override to report the exact native-reported values (and to surface
+        /// <see cref="ChatResponse.ReasoningContent"/>).
         /// </summary>
         async Task<ChatResponse> GenerateResponseAsync(
             IReadOnlyList<ChatMessage> messages,
@@ -79,7 +102,7 @@ namespace CircleAI.Inference
     /// Carries the generated text alongside the metadata callers need for
     /// rate-limiting, billing, telemetry, and trace stitching.
     /// </summary>
-    /// <param name="Text">The assistant's reply.</param>
+    /// <param name="Text">The assistant's reply (content only — reasoning excluded).</param>
     /// <param name="TokensIn">
     /// Input prompt token count. Approximate for generators that don't
     /// expose a native count; exact when the native bridge reports one.
@@ -87,12 +110,37 @@ namespace CircleAI.Inference
     /// <param name="TokensOut">Output token count. Same accuracy caveat.</param>
     /// <param name="Latency">Total wall-clock time for the call.</param>
     /// <param name="FinishReason">Why generation stopped.</param>
+    /// <param name="ReasoningContent">
+    /// Optional chain-of-thought emitted by reasoning models inside
+    /// <c>&lt;think&gt;…&lt;/think&gt;</c> (Qwen3, DeepSeek, o1-style). <c>null</c>
+    /// when the model emitted no reasoning or
+    /// <see cref="GenerationOptions.IncludeReasoning"/> was <c>false</c>. The
+    /// <c>&lt;think&gt;</c> tags themselves are stripped — the value is the
+    /// text content only.
+    /// </param>
     public sealed record ChatResponse(
         string       Text,
         int          TokensIn,
         int          TokensOut,
         TimeSpan     Latency,
-        FinishReason FinishReason);
+        FinishReason FinishReason,
+        string?      ReasoningContent = null);
+
+    /// <summary>Kind of fragment a streaming generator emits.</summary>
+    public enum ChatFragmentKind
+    {
+        /// <summary>Part of the user-facing answer (goes into <c>content</c>).</summary>
+        Content   = 0,
+        /// <summary>Part of the model's reasoning trace (goes into <c>reasoning_content</c>).</summary>
+        Reasoning = 1,
+    }
+
+    /// <summary>
+    /// A single fragment emitted by <see cref="IChatGenerator.StreamFragmentsAsync"/>.
+    /// </summary>
+    /// <param name="Kind">Which sink this fragment belongs to.</param>
+    /// <param name="Text">The decoded fragment text.</param>
+    public readonly record struct ChatFragment(ChatFragmentKind Kind, string Text);
 
     /// <summary>Why a generation call stopped emitting tokens.</summary>
     public enum FinishReason
@@ -153,5 +201,25 @@ namespace CircleAI.Inference
         /// emitted output (e.g. role-tag boundaries).
         /// </summary>
         public string[]? StopSequences { get; init; }
+
+        /// <summary>
+        /// Whether to surface the model's reasoning trace (Qwen3
+        /// <c>&lt;think&gt;…&lt;/think&gt;</c>) on the call.
+        /// <para>
+        /// When <c>true</c> (default) the generator separates reasoning from
+        /// the final answer: <see cref="ChatResponse.ReasoningContent"/> gets
+        /// the reasoning, <see cref="ChatResponse.Text"/> gets the answer.
+        /// Streaming callers see fragments tagged with
+        /// <see cref="ChatFragmentKind.Reasoning"/>.
+        /// </para>
+        /// <para>
+        /// When <c>false</c> the generator still <i>runs</i> reasoning (this
+        /// is per-call output gating, NOT a thinking disable) but the
+        /// reasoning text is dropped — only the final answer reaches the
+        /// caller. Use this for JSON-strict consumers that cannot tolerate
+        /// surface-level reasoning.
+        /// </para>
+        /// </summary>
+        public bool IncludeReasoning { get; init; } = true;
     }
 }

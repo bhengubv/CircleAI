@@ -41,6 +41,12 @@ public enum InferenceStatus
 /// <see cref="InferenceStatus.Failed"/>; otherwise <c>null</c>.
 /// </param>
 /// <param name="CompletedAt">UTC timestamp when the call terminated.</param>
+/// <param name="ReasoningText">
+/// Optional chain-of-thought emitted by reasoning models (Qwen3 / DeepSeek /
+/// o1) inside <c>&lt;think&gt;…&lt;/think&gt;</c>. Bridges that don't surface
+/// reasoning leave this <c>null</c>; the chat-completions endpoint maps it
+/// to the OpenAI-compatible <c>reasoning_content</c> field.
+/// </param>
 public sealed record InferenceResponse(
     Guid RequestId,
     string ModelId,
@@ -50,4 +56,5 @@ public sealed record InferenceResponse(
     InferenceStatus Status,
     double InferenceMillis,
     string? FailureMessage,
-    DateTimeOffset CompletedAt);
+    DateTimeOffset CompletedAt,
+    string? ReasoningText = null);

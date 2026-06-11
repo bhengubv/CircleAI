@@ -132,7 +132,12 @@ public static class ChatCompletionsEndpoint
                 new()
                 {
                     Index = 0,
-                    Message = new ChatCompletionMessage { Role = "assistant", Content = resp.OutputText },
+                    Message = new ChatCompletionMessage
+                    {
+                        Role             = "assistant",
+                        Content          = resp.OutputText,
+                        ReasoningContent = resp.ReasoningText,
+                    },
                     FinishReason = MapFinish(resp.Status),
                 }
             },
@@ -172,15 +177,18 @@ public static class ChatCompletionsEndpoint
 
         try
         {
-            await foreach (var chunk in bridge.StreamCompletionAsync(request, ct).ConfigureAwait(false))
+            await foreach (var f in bridge.StreamFragmentsAsync(request, ct).ConfigureAwait(false))
             {
-                if (string.IsNullOrEmpty(chunk)) continue;
+                if (string.IsNullOrEmpty(f.Text)) continue;
+                var delta = f.Kind == InferenceFragmentKind.Reasoning
+                    ? new ChatCompletionDelta { ReasoningContent = f.Text }
+                    : new ChatCompletionDelta { Content = f.Text };
                 await sse.WriteAsync(new ChatCompletionStreamChunk
                 {
                     Id = id, Created = created, Model = body.Model,
                     Choices = new List<ChatCompletionStreamChoice>
                     {
-                        new() { Index = 0, Delta = new ChatCompletionDelta { Content = chunk } }
+                        new() { Index = 0, Delta = delta }
                     },
                 }, ct).ConfigureAwait(false);
             }

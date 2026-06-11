@@ -78,34 +78,24 @@ internal sealed class MnnImageHandle : SafeHandle
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Streaming callback
+// Streaming callback contract
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// <summary>
-/// Callback invoked per output token fragment during streaming generation.
-/// </summary>
-/// <param name="token">
-/// Raw pointer to a NUL-terminated UTF-8 byte sequence owned by the native
-/// bridge. May be <c>null</c> on flush signals. The pointer is only valid
-/// for the duration of the callback — decode immediately via
-/// <c>Marshal.PtrToStringUTF8((IntPtr)token)</c>; do not store the pointer.
-/// </param>
-/// <param name="isDone">Non-zero when the generation sequence has ended (EOS or stop sequence).</param>
-/// <param name="userData">
-/// Opaque pointer passed through unchanged from the generate call.
-/// Use <see cref="System.Runtime.InteropServices.GCHandle"/> to carry managed state.
-/// </param>
-/// <remarks>
-/// <para>
-/// This delegate's parameter list MUST be fully blittable because the assembly
-/// has <c>[DisableRuntimeMarshalling]</c> applied (see <c>AssemblyInfo.cs</c>).
-/// A managed <c>string</c> here would have no marshaller and corrupt the
-/// stack when the native bridge invokes the callback. The CA1420 analyzer
-/// is upgraded to an error in the csproj to prevent regressions.
-/// </para>
-/// </remarks>
-[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-internal unsafe delegate void MnnTokenCallback(byte* token, int isDone, IntPtr userData);
+//
+// Per mnnbridge.h the native callback shape is:
+//
+//   typedef int (*mnn_token_callback)(int token_id, void* user_data);
+//
+// It receives an integer token ID (NOT a string), and returns 0 to continue
+// or non-zero to stop. Managed callers pass an [UnmanagedCallersOnly] static
+// function pointer (delegate*unmanaged[Cdecl]<int, IntPtr, int>) and carry
+// per-call state through user_data via a GCHandle. There is no managed
+// delegate type for this callback — the assembly has [DisableRuntimeMarshalling]
+// so we must use a raw function pointer.
+//
+// Historically (pre-fix) the bindings declared a 3-arg `void(string, int, IntPtr)`
+// delegate plus four phantom sampling parameters; that mismatch crashed the
+// bridge with 0xC0000005 on the first emitted token because the function-
+// pointer argument landed in the wrong stack slot.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // P/Invoke entry points
@@ -189,45 +179,45 @@ internal static partial class MnnInterop
     // ── Text inference ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Synchronous (non-streaming) generation with sampling parameters.
-    /// Writes the full response into <paramref name="output"/>.
-    /// For UI use, prefer <see cref="mnn_llm_generate_stream_ex"/>.
+    /// Synchronous (non-streaming) generation. Per mnnbridge.h the native signature is
+    /// <c>int mnn_llm_generate_ex(handle, const char* prompt, int max_new_tokens,
+    /// char* out_buf_utf8, int buf_size)</c>. Returns bytes written (excluding the
+    /// trailing NUL), or a negative error code. There are NO per-call sampling knobs —
+    /// MNN samples using the model's config.json defaults. (The previous 9-arg binding
+    /// declared phantom temperature/topP/topK/seed parameters that the native bridge never
+    /// had; the resulting argument-count mismatch is the same class of bug that crashed
+    /// the streaming path with 0xC0000005.)
     /// </summary>
-    /// <param name="temperature">Sampling temperature. 0.0 = greedy.</param>
-    /// <param name="topP">Nucleus sampling p. 1.0 = disabled.</param>
-    /// <param name="topK">Top-K sampling. 0 = disabled.</param>
-    /// <param name="seed">RNG seed. 0 = use MNN internal RNG.</param>
-    /// <returns>Number of characters written, or negative on error.</returns>
     [LibraryImport(LibraryName, EntryPoint = "mnn_llm_generate_ex", StringMarshalling = StringMarshalling.Utf8)]
     public static unsafe partial int mnn_llm_generate_ex(
         MnnModelHandle handle,
         string prompt,
-        byte* output,
-        int maxOutputLen,
         int maxNewTokens,
-        float temperature,
-        float topP,
-        int topK,
-        uint seed);
+        byte* output,
+        int bufSize);
 
     /// <summary>
-    /// Streaming generation with sampling parameters.
-    /// Calls <paramref name="callback"/> once per output token fragment.
-    /// When <c>isDone != 0</c> the sequence has ended (EOS or stop token).
-    /// <paramref name="userData"/> is passed through to the callback unchanged;
-    /// use a pinned <see cref="System.Runtime.InteropServices.GCHandle"/> for managed state.
+    /// Streaming text generation. Per mnnbridge.h the native signature is
+    /// <c>int mnn_llm_generate_stream_ex(handle, const char* prompt,
+    /// int max_new_tokens, mnn_token_callback cb, void* user_data)</c>: FIVE
+    /// parameters and a <c>int (*)(int token_id, void* user_data)</c> callback that
+    /// receives an integer token id (NOT a string) and returns 0 to continue or
+    /// non-zero to stop.
+    /// <para>
+    /// The callback is passed as an <see cref="UnmanagedCallersOnlyAttribute"/> static
+    /// function pointer (the assembly sets <c>[DisableRuntimeMarshalling]</c>), and
+    /// per-call state travels through <paramref name="userData"/> via a
+    /// <see cref="GCHandle"/>. Per-call sampling knobs are not exposed by this entry
+    /// point; MNN uses the model's config.json defaults.
+    /// </para>
     /// </summary>
     /// <returns>Total tokens generated, or negative on error.</returns>
     [LibraryImport(LibraryName, EntryPoint = "mnn_llm_generate_stream_ex", StringMarshalling = StringMarshalling.Utf8)]
-    public static partial int mnn_llm_generate_stream_ex(
+    public static unsafe partial int mnn_llm_generate_stream_ex(
         MnnModelHandle handle,
         string prompt,
         int maxNewTokens,
-        float temperature,
-        float topP,
-        int topK,
-        uint seed,
-        MnnTokenCallback callback,
+        delegate* unmanaged[Cdecl]<int, IntPtr, int> callback,
         IntPtr userData);
 
     // ── KV-cache / session state ──────────────────────────────────────────────
@@ -252,33 +242,37 @@ internal static partial class MnnInterop
     // ── Vision (Kimi-VL / Qwen-VL) ───────────────────────────────────────────
 
     /// <summary>
-    /// Creates an image embedding from raw bytes (JPEG, PNG, or WebP).
-    /// Used with Kimi-VL-A3B-Thinking-2506 and Qwen-VL vision models.
-    /// Returns an invalid handle on failure.
+    /// Creates an image embedding from raw bytes (JPEG, PNG, or WebP). Per mnnbridge.h the
+    /// native signature is <c>mnn_image_handle mnn_llm_image_from_bytes(const unsigned char*
+    /// data, int size, const char* mime_utf8)</c>. <paramref name="mime"/> is advisory and
+    /// may be <c>null</c>. Returns an invalid handle on failure.
     /// </summary>
-    [LibraryImport(LibraryName, EntryPoint = "mnn_llm_image_from_bytes")]
-    public static unsafe partial MnnImageHandle mnn_llm_image_from_bytes(byte* data, int len);
+    [LibraryImport(LibraryName, EntryPoint = "mnn_llm_image_from_bytes", StringMarshalling = StringMarshalling.Utf8)]
+    public static unsafe partial MnnImageHandle mnn_llm_image_from_bytes(byte* data, int size, string? mime);
 
     /// <summary>Frees a vision image embedding.</summary>
     [LibraryImport(LibraryName, EntryPoint = "mnn_llm_image_free")]
     public static partial void mnn_llm_image_free(IntPtr handle);
 
     /// <summary>
-    /// Streaming multimodal generation. Encodes <paramref name="image"/> into
-    /// the context alongside the text prompt, then streams output tokens via
-    /// <paramref name="callback"/>. Requires a vision model (type == 1).
+    /// Streaming multimodal generation. Per mnnbridge.h the native signature is
+    /// <c>int mnn_llm_generate_with_image_stream_ex(handle, image, const char* prompt,
+    /// int max_new_tokens, mnn_token_callback cb, void* user_data)</c>: SIX parameters
+    /// (image precedes the prompt) and the same <c>int (*)(int token_id, void* user_data)</c>
+    /// callback as the text path. Same calling convention as
+    /// <see cref="mnn_llm_generate_stream_ex"/> — the callback is an
+    /// <see cref="UnmanagedCallersOnlyAttribute"/> static function pointer; per-call
+    /// state travels through <paramref name="userData"/> via a <see cref="GCHandle"/>.
+    /// Per-call sampling knobs are not exposed; MNN uses config.json defaults.
     /// </summary>
+    /// <returns>Total tokens generated, or negative on error.</returns>
     [LibraryImport(LibraryName, EntryPoint = "mnn_llm_generate_with_image_stream_ex", StringMarshalling = StringMarshalling.Utf8)]
-    public static partial int mnn_llm_generate_with_image_stream_ex(
+    public static unsafe partial int mnn_llm_generate_with_image_stream_ex(
         MnnModelHandle handle,
-        string prompt,
         MnnImageHandle image,
+        string prompt,
         int maxNewTokens,
-        float temperature,
-        float topP,
-        int topK,
-        uint seed,
-        MnnTokenCallback callback,
+        delegate* unmanaged[Cdecl]<int, IntPtr, int> callback,
         IntPtr userData);
 
     // ── Embeddings ────────────────────────────────────────────────────────────
