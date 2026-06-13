@@ -31,16 +31,16 @@ public struct GenerationOptions: Sendable {
 
     /// Whether to surface the model's reasoning trace (Qwen3
     /// `<think>…</think>`) on the call. Default `true`.
-    ///
-    /// When `true` the generator separates reasoning from the final answer:
-    /// `ChatResponse.reasoningContent` gets the reasoning, `ChatResponse.text`
-    /// gets the answer. Streaming callers see fragments tagged with
-    /// `ChatFragmentKind.reasoning`.
-    ///
-    /// When `false` the generator still RUNS reasoning (this is per-call
-    /// output gating, NOT a thinking disable) but the reasoning text is
-    /// dropped — only the final answer reaches the caller.
     public var includeReasoning: Bool
+
+    /// (RT-11) Declarative power budget for this call. Default
+    /// `PowerBudget.normal` auto-downgrades to `.low` below 15% battery.
+    /// Pass `.none` to opt out.
+    public var budget: PowerBudget
+
+    /// (RT-06) Whether the runtime should consult the cross-session prefix
+    /// cache for a warm (modelId, systemPrompt) snapshot. Default `false`.
+    public var usePrefixCache: Bool
 
     public init(
         maxTokens: Int = 512,
@@ -49,7 +49,9 @@ public struct GenerationOptions: Sendable {
         topK: Int = 40,
         seed: Int? = nil,
         stopSequences: [String]? = nil,
-        includeReasoning: Bool = true
+        includeReasoning: Bool = true,
+        budget: PowerBudget = .normal,
+        usePrefixCache: Bool = false
     ) {
         self.maxTokens = maxTokens
         self.temperature = temperature
@@ -58,7 +60,21 @@ public struct GenerationOptions: Sendable {
         self.seed = seed
         self.stopSequences = stopSequences
         self.includeReasoning = includeReasoning
+        self.budget = budget
+        self.usePrefixCache = usePrefixCache
     }
+}
+
+/// Per-call power budget. Mirrors CircleAI.Inference.PowerBudget.
+public enum PowerBudget: Int, Sendable {
+    /// Opt out — honour maxTokens literally.
+    case none = 0
+    /// ~64 token cap; prefers TQ4 KV; smaller model in chain when configured.
+    case low = 1
+    /// Default. ~512 token cap. Auto-downgrades to .low below 15% battery.
+    case normal = 2
+    /// ~2048 token cap; full FP16 KV. Auto-throttles on thermal warnings.
+    case high = 3
 }
 
 // MARK: - IChatGenerator
@@ -92,6 +108,15 @@ public protocol IChatGenerator: AnyObject {
         messages: [ChatMessage],
         options: GenerationOptions?
     ) -> AsyncStream<ChatFragment>
+
+    /// (RT-02) Save the current model session to `path`. Returns `true` on
+    /// success. Default implementation returns `false`; native generators
+    /// override.
+    func saveSession(path: String) async throws -> Bool
+
+    /// (RT-02) Load a previously-saved session from `path`. Returns `true`
+    /// on success. Default implementation returns `false`.
+    func loadSession(path: String) async throws -> Bool
 }
 
 extension IChatGenerator {
@@ -111,4 +136,7 @@ extension IChatGenerator {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+
+    public func saveSession(path: String) async throws -> Bool { false }
+    public func loadSession(path: String) async throws -> Bool { false }
 }

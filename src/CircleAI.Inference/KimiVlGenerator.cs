@@ -238,6 +238,26 @@ public sealed class KimiVlGenerator : IChatGenerator
         GC.SuppressFinalize(this);
     }
 
+    /// <inheritdoc />
+    public async Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ThrowIfDisposed();
+        await _generationLock.WaitAsync(ct).ConfigureAwait(false);
+        try   { return MnnInterop.SaveSession(_model, path); }
+        finally { _generationLock.Release(); }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ThrowIfDisposed();
+        await _generationLock.WaitAsync(ct).ConfigureAwait(false);
+        try   { return MnnInterop.LoadSession(_model, path); }
+        finally { _generationLock.Release(); }
+    }
+
     // ────────────────────────────────────────────────────────────────────
     // Internals
     // ────────────────────────────────────────────────────────────────────

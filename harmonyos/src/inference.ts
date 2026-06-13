@@ -29,17 +29,30 @@ export interface GenerationOptions {
   /**
    * Whether to surface the model's reasoning trace (Qwen3
    * `<think>…</think>`) on the call. Default `true`.
-   *
-   * When `true` the generator separates reasoning from the final answer:
-   * `ChatResponse.reasoningContent` gets the reasoning, `ChatResponse.text`
-   * gets the answer. Streaming callers see fragments tagged with
-   * `ChatFragmentKind.Reasoning`.
-   *
-   * When `false` the generator still RUNS reasoning (this is per-call output
-   * gating, NOT a thinking disable) but the reasoning text is dropped — only
-   * the final answer reaches the caller.
    */
   readonly includeReasoning?: boolean;
+  /**
+   * (RT-11) Declarative power budget for this call. Default
+   * `PowerBudget.Normal` auto-downgrades to `Low` below 15% battery.
+   */
+  readonly budget?: PowerBudget;
+  /**
+   * (RT-06) Whether the runtime should consult the cross-session prefix
+   * cache. Default `false`.
+   */
+  readonly usePrefixCache?: boolean;
+}
+
+/** Per-call power budget. Mirrors CircleAI.Inference.PowerBudget. */
+export enum PowerBudget {
+  /** Opt out — honour maxTokens literally. */
+  None   = 0,
+  /** ~64 token cap; prefers TQ4 KV; smaller model in chain. */
+  Low    = 1,
+  /** Default. ~512 token cap. Auto-downgrades to Low below 15% battery. */
+  Normal = 2,
+  /** ~2048 token cap; full FP16 KV. Auto-throttles on thermal warnings. */
+  High   = 3,
 }
 
 /**
@@ -77,6 +90,19 @@ export abstract class IChatGenerator {
       yield { kind: ChatFragmentKind.Content, text: chunk };
     }
   }
+
+  /**
+   * (RT-02) Save the current model session to `path`. Returns `true` on
+   * success. Default implementation returns `false`; native generators
+   * (MNN-backed) override.
+   */
+  async saveSessionAsync(_path: string): Promise<boolean> { return false; }
+
+  /**
+   * (RT-02) Load a previously-saved session from `path`. Returns `true` on
+   * success. Default implementation returns `false`.
+   */
+  async loadSessionAsync(_path: string): Promise<boolean> { return false; }
 
   abstract dispose(): void;
 }

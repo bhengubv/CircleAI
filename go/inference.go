@@ -51,7 +51,32 @@ type GenerationOptions struct {
 	// only the final answer reaches the caller. Use this for JSON-strict
 	// consumers.
 	IncludeReasoning bool
+
+	// Budget (RT-11) is the declarative per-call power budget. The runtime
+	// maps it to a max-tokens cap and (eventually) model size. Default
+	// PowerBudgetNormal auto-downgrades to PowerBudgetLow below 15% battery.
+	Budget PowerBudget
+
+	// UsePrefixCache (RT-06): whether the runtime should consult the
+	// cross-session prefix cache for a warm (modelId, systemPrompt) snapshot
+	// before resetting the model handle. Default false.
+	UsePrefixCache bool
 }
+
+// PowerBudget — per-call power budget. The runtime maps it to a max-tokens
+// cap and (when fallback chains are configured) into a model-size pick.
+type PowerBudget int
+
+const (
+	// PowerBudgetNone — opt out of automatic budget control. Honour MaxTokens literally.
+	PowerBudgetNone PowerBudget = 0
+	// PowerBudgetLow — ~64 token cap, prefers TQ4 KV, smaller model in chain.
+	PowerBudgetLow PowerBudget = 1
+	// PowerBudgetNormal — default. ~512 token cap. Auto-downgrades to Low below 15% battery.
+	PowerBudgetNormal PowerBudget = 2
+	// PowerBudgetHigh — ~2048 token cap, full FP16 KV. Auto-throttles on thermal warnings.
+	PowerBudgetHigh PowerBudget = 3
+)
 
 // DefaultGenerationOptions returns a GenerationOptions with sensible defaults.
 func DefaultGenerationOptions() GenerationOptions {
@@ -61,7 +86,17 @@ func DefaultGenerationOptions() GenerationOptions {
 		TopP:             0.9,
 		TopK:             40,
 		IncludeReasoning: true,
+		Budget:           PowerBudgetNormal,
+		UsePrefixCache:   false,
 	}
+}
+
+// SessionPersistence is an optional extension implemented by generators
+// (typically MNN-backed) that can snapshot their KV state to disk. RT-02
+// surface — used to survive Android/iOS OOM kills.
+type SessionPersistence interface {
+	SaveSession(path string) (bool, error)
+	LoadSession(path string) (bool, error)
 }
 
 // ---------------------------------------------------------------------------

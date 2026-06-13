@@ -42,18 +42,32 @@ data class GenerationOptions(
     /**
      * Whether to surface the model's reasoning trace (Qwen3
      * `<think>…</think>`) on the call.
-     *
-     * When `true` (default) the generator separates reasoning from the final
-     * answer: `ChatResponse.reasoningContent` gets the reasoning,
-     * `ChatResponse.text` gets the answer. Streaming callers see fragments
-     * tagged with `ChatFragmentKind.REASONING`.
-     *
-     * When `false` the generator still runs reasoning (this is per-call output
-     * gating, NOT a thinking disable) but the reasoning text is dropped — only
-     * the final answer reaches the caller. Use this for JSON-strict consumers.
      */
     val includeReasoning: Boolean = true,
+    /**
+     * (RT-11) Declarative power budget for this call. Default
+     * [PowerBudget.NORMAL] auto-downgrades to [PowerBudget.LOW] below 15%
+     * battery. Pass [PowerBudget.NONE] to opt out.
+     */
+    val budget: PowerBudget = PowerBudget.NORMAL,
+    /**
+     * (RT-06) Whether the runtime should consult the cross-session prefix
+     * cache. Default `false`.
+     */
+    val usePrefixCache: Boolean = false,
 )
+
+/** Per-call power budget. Mirrors CircleAI.Inference.PowerBudget. */
+enum class PowerBudget {
+    /** Opt out — honour maxTokens literally. */
+    NONE,
+    /** ~64 token cap; prefers TQ4 KV; smaller model in chain. */
+    LOW,
+    /** Default. ~512 token cap. Auto-downgrades to LOW below 15% battery. */
+    NORMAL,
+    /** ~2048 token cap; full FP16 KV. Auto-throttles on thermal warnings. */
+    HIGH,
+}
 
 // ---------------------------------------------------------------------------
 // IChatGenerator
@@ -98,4 +112,10 @@ interface IChatGenerator : AutoCloseable {
         opts: GenerationOptions = GenerationOptions()
     ): Flow<ChatFragment> =
         streamAsync(messages, opts).map { ChatFragment(ChatFragmentKind.CONTENT, it) }
+
+    /** (RT-02) Save the current model session to [path]. Default returns `false`. */
+    suspend fun saveSessionAsync(path: String): Boolean = false
+
+    /** (RT-02) Load a previously-saved session from [path]. Default returns `false`. */
+    suspend fun loadSessionAsync(path: String): Boolean = false
 }

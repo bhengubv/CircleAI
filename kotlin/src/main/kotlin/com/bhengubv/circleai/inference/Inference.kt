@@ -98,4 +98,18 @@ interface IChatGenerator : AutoCloseable {
         opts: GenerationOptions = GenerationOptions()
     ): Flow<ChatFragment> =
         streamAsync(messages, opts).map { ChatFragment(ChatFragmentKind.CONTENT, it) }
+
+    /**
+     * (RT-02) Save the current model session to [path]. Returns `true` on
+     * success. Default implementation returns `false`; native generators
+     * (MNN-backed) override.
+     */
+    suspend fun saveSessionAsync(path: String): Boolean = false
+
+    /**
+     * (RT-02) Load a previously-saved session from [path]. Returns `true` on
+     * success. Default implementation returns `false`; native generators
+     * (MNN-backed) override.
+     */
+    suspend fun loadSessionAsync(path: String): Boolean = false
 }

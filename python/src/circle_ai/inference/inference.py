@@ -22,6 +22,8 @@ from typing import (
     runtime_checkable,
 )
 
+from enum import IntEnum
+
 from ..models.models import (
     ChatFragment,
     ChatFragmentKind,
@@ -29,6 +31,30 @@ from ..models.models import (
     ChatResponse,
     FinishReason,
 )
+
+
+# ── PowerBudget (RT-11) ───────────────────────────────────────────────────
+
+
+class PowerBudget(IntEnum):
+    """Per-call power budget — how much device energy this generation is worth.
+
+    Mirrors CircleAI.Inference.PowerBudget. The runtime translates the budget
+    into a per-call max-tokens cap (and, when fallback chains exist, into a
+    model-size pick).
+    """
+
+    NONE = 0
+    """Opt out of automatic budget control — honour max_tokens literally."""
+
+    LOW = 1
+    """Battery-conscious. ~64 token cap, prefers TQ4 KV, smaller model in chain."""
+
+    NORMAL = 2
+    """Default balanced behaviour. ~512 token cap. Auto-downgrades to LOW below 15% battery."""
+
+    HIGH = 3
+    """Quality-first. ~2048 token cap, full FP16 KV. Auto-throttles on thermal warnings."""
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..device.device_probe import DeviceProbe, DeviceTier
@@ -62,6 +88,19 @@ class GenerationOptions:
     the final answer reaches the caller. Use this for JSON-strict consumers.
     """
 
+    budget: PowerBudget = PowerBudget.NORMAL
+    """(RT-11) Declarative power budget. The runtime maps it to a max-tokens
+    cap and (eventually) model size. NORMAL auto-downgrades to LOW when battery
+    is below 15%. Use NONE to honour max_tokens literally.
+    """
+
+    use_prefix_cache: bool = False
+    """(RT-06) Whether the runtime should consult the cross-session prefix
+    cache for a warm (model_id, system_prompt) snapshot before resetting the
+    model handle. First call populates; subsequent calls reload it instead of
+    running the system-prompt prefill.
+    """
+
 
 # ── IChatGenerator ───────────────────────────────────────────────────────
 
@@ -88,6 +127,20 @@ class IChatGenerator(Protocol):
         :func:`stream_fragments_async` when you also need the reasoning stream.
         """
         ...
+
+    async def save_session_async(self, path: str) -> bool:
+        """(RT-02) Save the current model session to ``path``. Returns
+        ``True`` on success. Default protocol contract returns ``False`` —
+        native generators (MNN-backed) override.
+        """
+        return False
+
+    async def load_session_async(self, path: str) -> bool:
+        """(RT-02) Load a previously-saved session from ``path``. Returns
+        ``True`` on success. Default protocol contract returns ``False`` —
+        native generators (MNN-backed) override.
+        """
+        return False
 
 
 async def generate_response_async(

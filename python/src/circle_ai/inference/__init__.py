@@ -6,6 +6,7 @@ from .inference import (
     IChatGenerator,
     IModelSelector,
     ModelSelection,
+    PowerBudget,
     generate_response_async,
     stream_fragments_async,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "IChatGenerator",
     "IModelSelector",
     "ModelSelection",
+    "PowerBudget",
     "generate_response_async",
     "stream_fragments_async",
 ]

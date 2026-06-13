@@ -19,6 +19,21 @@ export { ChatFragmentKind, FinishReason };
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Per-call power budget — how much device energy this generation is worth.
+ * Mirrors CircleAI.Inference.PowerBudget.
+ */
+export enum PowerBudget {
+  /** Opt out of automatic budget control — honour maxTokens literally. */
+  None   = 0,
+  /** ~64 token cap; prefers TQ4 KV; smaller model in chain when configured. */
+  Low    = 1,
+  /** Default. ~512 token cap. Auto-downgrades to Low below 15% battery. */
+  Normal = 2,
+  /** ~2048 token cap; full FP16 KV. Auto-throttles on thermal warnings. */
+  High   = 3,
+}
+
+/**
  * Knobs for a single generation call.
  */
 export interface GenerationOptions {
@@ -51,6 +66,18 @@ export interface GenerationOptions {
    * the final answer reaches the caller. Use this for JSON-strict consumers.
    */
   readonly includeReasoning?: boolean;
+  /**
+   * (RT-11) Declarative power budget for this call. The runtime maps the
+   * budget to context size, KV compression, decode token limit. Defaults to
+   * `PowerBudget.Normal`. Pass `PowerBudget.None` to opt out.
+   */
+  readonly budget?: PowerBudget;
+  /**
+   * (RT-06) Whether the runtime should consult the cross-session prefix
+   * cache for a warm `(modelId, systemPrompt)` snapshot before resetting
+   * the model handle. Default `false`.
+   */
+  readonly usePrefixCache?: boolean;
 }
 
 /** Default generation options, matching C# defaults. */
@@ -62,6 +89,8 @@ export const DEFAULT_GENERATION_OPTIONS: Required<
   topP: 0.9,
   topK: 40,
   includeReasoning: true,
+  budget: PowerBudget.Normal,
+  usePrefixCache: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +134,18 @@ export interface IChatGenerator {
     messages: readonly ChatMessage[],
     options?: GenerationOptions,
   ): AsyncGenerator<ChatFragment>;
+
+  /**
+   * (RT-02) Save the current model session to `path`. Returns `true` on
+   * success. Default contract returns `false`; native generators override.
+   */
+  saveSessionAsync?(path: string): Promise<boolean>;
+
+  /**
+   * (RT-02) Load a previously-saved session from `path`. Returns `true` on
+   * success. Default contract returns `false`; native generators override.
+   */
+  loadSessionAsync?(path: string): Promise<boolean>;
 
   /** Dispose native resources held by this generator. */
   dispose(): void;

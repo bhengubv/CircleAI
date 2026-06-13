@@ -38,17 +38,33 @@ pub struct GenerationOptions {
 
     /// Whether to surface the model's reasoning trace (Qwen3
     /// `<think>…</think>`) on the call. Default `true`.
-    ///
-    /// When `true` the generator separates reasoning from the final answer:
-    /// `ChatResponse.reasoning_content` gets the reasoning, `ChatResponse.text`
-    /// gets the answer. Streaming callers see fragments tagged with
-    /// `ChatFragmentKind::Reasoning`.
-    ///
-    /// When `false` the generator still RUNS reasoning (this is per-call
-    /// output gating, NOT a thinking disable) but the reasoning text is
-    /// dropped — only the final answer reaches the caller.
     #[serde(default = "default_include_reasoning")]
     pub include_reasoning: bool,
+
+    /// (RT-11) Declarative per-call power budget. The runtime maps the
+    /// budget to a max-tokens cap and (eventually) model size.
+    #[serde(default)]
+    pub budget: PowerBudget,
+
+    /// (RT-06) Whether the runtime should consult the cross-session prefix
+    /// cache for a warm `(model_id, system_prompt)` snapshot. Default `false`.
+    #[serde(default)]
+    pub use_prefix_cache: bool,
+}
+
+/// Per-call power budget. Mirrors CircleAI.Inference.PowerBudget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerBudget {
+    /// Opt out — honour `max_tokens` literally.
+    None,
+    /// ~64 token cap; prefers TQ4 KV; smaller model in chain when configured.
+    Low,
+    /// Default. ~512 token cap. Auto-downgrades to Low below 15% battery.
+    #[default]
+    Normal,
+    /// ~2048 token cap; full FP16 KV. Auto-throttles on thermal warnings.
+    High,
 }
 
 fn default_include_reasoning() -> bool { true }
@@ -63,6 +79,8 @@ impl Default for GenerationOptions {
             seed: None,
             stop_sequences: None,
             include_reasoning: true,
+            budget: PowerBudget::Normal,
+            use_prefix_cache: false,
         }
     }
 }
@@ -130,5 +148,17 @@ pub trait IChatGenerator {
         Ok(Box::new(
             inner.map(|item| item.map(ChatFragment::content)),
         ))
+    }
+
+    /// (RT-02) Save the current model session to `path`. Returns `Ok(true)`
+    /// on success. Default returns `Ok(false)`; native generators override.
+    fn save_session(&self, _path: &str) -> Result<bool, Self::Error> {
+        Ok(false)
+    }
+
+    /// (RT-02) Load a previously-saved session from `path`. Returns
+    /// `Ok(true)` on success. Default returns `Ok(false)`.
+    fn load_session(&self, _path: &str) -> Result<bool, Self::Error> {
+        Ok(false)
     }
 }

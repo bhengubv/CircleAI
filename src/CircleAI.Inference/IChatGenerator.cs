@@ -52,6 +52,35 @@ namespace CircleAI.Inference
         }
 
         /// <summary>
+        /// (RT-02) Save the current model session — KV cache + history — to
+        /// <paramref name="path"/> so the conversation can survive an OOM kill
+        /// and resume later via <see cref="LoadSessionAsync"/>. The on-disk
+        /// format is owned by the underlying inference engine; treat the path
+        /// as opaque.
+        /// <para>
+        /// Default implementation throws <see cref="NotSupportedException"/>.
+        /// Native generators (Qwen, KimiVl) override to call the MNN session
+        /// primitives under their per-handle serialisation lock. Returns
+        /// <c>true</c> on success.
+        /// </para>
+        /// </summary>
+        Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+            => throw new NotSupportedException(
+                $"{GetType().Name} does not implement SaveSessionAsync. " +
+                "Use QwenTextGenerator or KimiVlGenerator for MNN-backed snapshot.");
+
+        /// <summary>
+        /// (RT-02) Load a previously-saved session from <paramref name="path"/>.
+        /// Replaces the current session state. Default implementation throws
+        /// <see cref="NotSupportedException"/>; native generators override.
+        /// Returns <c>true</c> on success.
+        /// </summary>
+        Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+            => throw new NotSupportedException(
+                $"{GetType().Name} does not implement LoadSessionAsync. " +
+                "Use QwenTextGenerator or KimiVlGenerator for MNN-backed snapshot.");
+
+        /// <summary>
         /// Structured-response variant: returns the assistant reply alongside
         /// token counts, finish reason, and latency. Default implementation
         /// wraps <see cref="GenerateAsync"/> with an approximate token count
@@ -221,5 +250,34 @@ namespace CircleAI.Inference
         /// </para>
         /// </summary>
         public bool IncludeReasoning { get; init; } = true;
+
+        /// <summary>
+        /// (RT-11) Declarative power budget for this call. The runtime maps
+        /// the budget to context size, KV compression, decode token limit,
+        /// and (when fallback chains are configured) model size. Default
+        /// <see cref="PowerBudget.Normal"/> auto-downgrades to <c>Low</c>
+        /// when battery is below 15%.
+        /// <para>
+        /// Pass <see cref="PowerBudget.None"/> to opt out of automatic
+        /// budget control and have the runtime honour
+        /// <see cref="MaxTokens"/> literally.
+        /// </para>
+        /// </summary>
+        public PowerBudget Budget { get; init; } = PowerBudget.Normal;
+
+        /// <summary>
+        /// (RT-06) Whether the runtime should consult the cross-session
+        /// prefix cache for a warm (modelId, systemPrompt) snapshot before
+        /// resetting the model handle. Default <c>false</c> — opt in per
+        /// call when the system prompt is stable across chats and you want
+        /// sub-200 ms first-token latency.
+        /// <para>
+        /// The first call with <c>UsePrefixCache = true</c> for a given
+        /// (modelId, systemPrompt) populates the cache; subsequent calls
+        /// reload it instead of running the prefill. Cache lives at
+        /// <c>%LOCALAPPDATA%/CircleAI/prefix-cache/</c>.
+        /// </para>
+        /// </summary>
+        public bool UsePrefixCache { get; init; } = false;
     }
 }

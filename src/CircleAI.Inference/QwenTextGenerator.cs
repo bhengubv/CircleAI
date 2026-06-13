@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -47,6 +48,8 @@ public sealed class QwenTextGenerator : IChatGenerator
     private readonly int _maxNewTokens;
     private readonly IPromptTemplateEngine? _templateEngine;
     private readonly string? _modelDirectory;
+    private readonly string  _modelPath;
+    private readonly PrefixCacheService _prefixCache;
 
     // The native mnnbridge contract states that "concurrent calls on the SAME
     // handle are undefined behaviour" (mnnbridge.h:22-24). The server may
@@ -128,6 +131,8 @@ public sealed class QwenTextGenerator : IChatGenerator
         _maxNewTokens = (int)Math.Min(contextSize, int.MaxValue);
         _templateEngine = templateEngine;
         _modelDirectory = System.IO.Path.GetDirectoryName(modelPath);
+        _modelPath = modelPath;
+        _prefixCache = PrefixCacheService.Default;
     }
 
     /// <inheritdoc />
@@ -173,6 +178,23 @@ public sealed class QwenTextGenerator : IChatGenerator
 
         options ??= new GenerationOptions();
 
+        // RT-11: translate the declarative PowerBudget into a per-call token
+        // cap. KV-mode preferences are advisory (current MNN builds set the
+        // mode at load time) but the token cap takes effect immediately.
+        var resolvedBudget = PowerBudgetPolicy.Resolve(
+            budget:              options.Budget,
+            requestedMaxTokens:  options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
+
+        // RT-06: derive the prefix-cache key from (modelPath, systemPrompt).
+        // If the caller opted in and the cache has a warm snapshot, the
+        // native side will skip the system-prompt prefill.
+        string? prefixCacheKey = null;
+        if (options.UsePrefixCache)
+        {
+            var systemPrompt = ExtractSystemPrompt(messages);
+            prefixCacheKey = PrefixCacheService.KeyFor(_modelPath, systemPrompt);
+        }
+
         var channel = Channel.CreateUnbounded<ChatFragment>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -200,7 +222,8 @@ public sealed class QwenTextGenerator : IChatGenerator
             await _generationLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                RunGeneration(prompt, options, stopSequences, includeReasoning, channel.Writer, ct);
+                RunGeneration(prompt, resolvedBudget.MaxTokens, stopSequences, includeReasoning,
+                              prefixCacheKey, channel.Writer, ct);
                 channel.Writer.TryComplete();
             }
             catch (OperationCanceledException oce)
@@ -269,17 +292,31 @@ public sealed class QwenTextGenerator : IChatGenerator
 
     private unsafe void RunGeneration(
         string prompt,
-        GenerationOptions options,
+        int maxTokens,
         string[] stopSequences,
         bool includeReasoning,
+        string? prefixCacheKey,
         ChannelWriter<ChatFragment> writer,
         CancellationToken ct)
     {
-        // Stateless generation: clear KV cache + sliding-window history before every call.
-        // The OpenAI-compatible /v1/chat/completions contract is multi-turn-via-replay
-        // (clients send the full message history), so server-side memory between calls
-        // would replay the prior request's tokens — which we observed on the shared handle.
-        MnnInterop.mnn_llm_reset_session(_model);
+        // RT-06: prefix-cache check BEFORE reset. If we have a cached session
+        // for this (modelId, systemPrompt) pair, load it — the system prefill
+        // is already baked in. Otherwise fall through to the legacy reset path.
+        bool loadedFromCache = false;
+        if (prefixCacheKey is not null && File.Exists(_prefixCache.PathFor(prefixCacheKey)))
+        {
+            loadedFromCache = MnnInterop.LoadSession(_model, _prefixCache.PathFor(prefixCacheKey));
+            if (loadedFromCache) _prefixCache.Touch(prefixCacheKey);
+        }
+
+        if (!loadedFromCache)
+        {
+            // Stateless generation: clear KV cache + sliding-window history before every call.
+            // The OpenAI-compatible /v1/chat/completions contract is multi-turn-via-replay
+            // (clients send the full message history), so server-side memory between calls
+            // would replay the prior request's tokens — which we observed on the shared handle.
+            MnnInterop.mnn_llm_reset_session(_model);
+        }
 
         var sink = new MnnTokenSink
         {
@@ -295,7 +332,7 @@ public sealed class QwenTextGenerator : IChatGenerator
 
         try
         {
-            int maxTokens = Math.Max(1, options.MaxTokens > 0 ? options.MaxTokens : _maxNewTokens);
+            maxTokens = Math.Max(1, maxTokens);
 
             ct.ThrowIfCancellationRequested();
 
@@ -308,11 +345,67 @@ public sealed class QwenTextGenerator : IChatGenerator
                 throw new InvalidOperationException($"MNN generation failed with code {rc}.");
 
             MnnTokenRouter.DrainRemainder(sink);
+
+            // RT-06: populate the prefix cache after a successful generation.
+            // The snapshot includes the system prompt's prefill + this turn's
+            // prefill — slightly more than just-system, but close enough to
+            // skip the bulk of the cost on the next chat with the same system.
+            if (prefixCacheKey is not null && !loadedFromCache)
+            {
+                try
+                {
+                    MnnInterop.SaveSession(_model, _prefixCache.PathFor(prefixCacheKey));
+                    _ = _prefixCache.EvictIfNeededAsync(ct);
+                }
+                catch { /* best-effort cache write */ }
+            }
         }
         finally
         {
             sinkHandle.Free();
         }
+    }
+
+    /// <summary>
+    /// Extracts the first system-role message's content from the conversation,
+    /// or <c>null</c> if no system message is present. The prefix cache keys
+    /// on the system prompt's text.
+    /// </summary>
+    private static string? ExtractSystemPrompt(IReadOnlyList<ChatMessage> messages)
+    {
+        foreach (var m in messages)
+        {
+            if (string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
+                return m.Content;
+        }
+        return null;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ThrowIfDisposed();
+        // Serialise against ongoing generations on this handle.
+        await _generationLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return MnnInterop.SaveSession(_model, path);
+        }
+        finally { _generationLock.Release(); }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ThrowIfDisposed();
+        await _generationLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return MnnInterop.LoadSession(_model, path);
+        }
+        finally { _generationLock.Release(); }
     }
 
     /// <summary>
