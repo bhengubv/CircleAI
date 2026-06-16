@@ -112,6 +112,27 @@ public sealed class DeviceAwareModelSelector : IModelSelector
     // names in source code.
     private IEnumerable<ModelEntry> EnumerateEntries() => _registry.AllModels;
 
+    /// <inheritdoc/>
+    public IReadOnlyList<string> ChainFor(string headModelId)
+    {
+        if (string.IsNullOrWhiteSpace(headModelId)) return Array.Empty<string>();
+
+        var lookup = EnumerateEntries()
+            .ToDictionary(e => e.Name, StringComparer.OrdinalIgnoreCase);
+
+        if (!lookup.ContainsKey(headModelId)) return Array.Empty<string>();
+
+        var seen  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var chain = new List<string>();
+        var cursor = headModelId;
+        while (!string.IsNullOrWhiteSpace(cursor) && seen.Add(cursor) && lookup.TryGetValue(cursor, out var entry))
+        {
+            chain.Add(entry.Name);
+            cursor = entry.FallbackModelId ?? string.Empty;
+        }
+        return chain;
+    }
+
     private static bool SatisfiesCapability(ModelEntry entry, ChatCapability required)
     {
         if (required == ChatCapability.None) return true;

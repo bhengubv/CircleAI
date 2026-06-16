@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>1.7.0</Version><Description>On-device LLM inference for Circle. 1.7.0 starts the "cheap-phone tier" runtime program: GenerationOptions.Budget (PowerBudget.None|Low|Normal|High) so the caller declares how much energy a call is worth and the runtime caps tokens + KV mode + decode strategy; IChatGenerator.SaveSessionAsync/LoadSessionAsync so conversations survive Android/iOS OOM kills; GenerationOptions.UsePrefixCache + new PrefixCacheService — system-prompt prefill is snapshotted on first use and reloaded on every subsequent chat, dropping first-token latency to sub-200 ms. All additions are default-impl back-compat. Carries forward 1.6.0's MNN ABI fix, per-handle serialisation, reset-session, and &lt;think&gt;→reasoning_content router. mnnbridge 1.2.0 native payload unchanged.</Description>
+    <Version>2.0.0</Version><Description>On-device LLM inference for Circle — 2.0.0 ships RT-08 fallback chain: IModelSelector.ChainFor(modelId) walks ModelEntry.FallbackModelId transitively, returning [head, smaller, smaller, …] for the brownout hot-swap path (RT-04). DeviceAwareModelSelector implements the walk against the embedded catalog (Qwen3 14B→8B→4B→1.7B→0.6B; Qwen2.5 7B→3B→1.5B→0.5B). Carries forward 1.7.0's PowerBudget, IChatGenerator.SaveSessionAsync/LoadSessionAsync, GenerationOptions.UsePrefixCache, and the &lt;think&gt;→reasoning_content router. mnnbridge 1.2.0 native payload unchanged — RT-01 tiered KV / RT-03 mmap / RT-05 speculative decode ship in 2.1.0 with the next native cross-build.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

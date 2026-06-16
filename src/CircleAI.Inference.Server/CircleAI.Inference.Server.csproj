@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>1.5.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script. 1.5.0 picks up CircleAI.Inference 1.7.0 — the "cheap-phone tier" release with PowerBudget per-call energy control, IChatGenerator session snapshot/restore to survive OOM kills, and the cross-session prefix cache that drops first-token latency on repeat chats. Server API surface unchanged; the wins are transparent to /v1/chat/completions consumers.</Description>
+    <Version>2.0.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. 2.0.0 picks up CircleAI.Inference / Hosting 2.0.0 — the fallback chain (RT-08) + brownout (RT-04) release. Server API surface unchanged; behaviour benefits transparently. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting</PackageId>
-    <Version>1.5.0</Version><Description>DI wiring, scheduled tasks, and proactive reasoning host for Circle AI agents. 1.5.0 adds upgrade-detection plumbing: IAIObserver.OnUpgradeAvailableAsync default method (non-breaking), IAIService.CheckForUpgradesAsync host-driven API, AIOptions.CheckForUpgradesOnStart (default false) and AIOptions.ModelStorageDirectory. When the flag is set, AIService.StartAsync fires one observer event per detected upgrade after the model loads. New AIService overload accepts ModelRegistryService for upgrade detection; ServiceCollectionExtensions wires it. Carries forward 1.4.0's device-inferred defaults: AIOptions.ModelId / ContextSize / AgenticMaxIterations nullable, CatalogClient opt-in, RequiredCapabilities (Vision routes to KimiVlGenerator).</Description>
+    <Version>2.0.0</Version><Description>DI wiring + proactive reasoning host for Circle AI — 2.0.0 ships RT-04 brownout and the RT-08 fallback chain. IMemoryPressureSource (Normal/Trim/Critical) + IAIObserver.OnBrownoutAsync + AIService.BrownoutAsync(reason) hot-swap the running generator down the chain (e.g. Qwen3-8B → Qwen3-4B → Qwen3-1.7B → Qwen3-0.6B) when Android onTrimMemory critical fires. Generations drain gracefully before the swap. Carries forward 1.5.0's upgrade-detection plumbing and 1.4.0's device-inferred defaults.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

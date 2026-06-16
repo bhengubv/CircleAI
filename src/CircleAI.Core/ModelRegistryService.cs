@@ -351,6 +351,22 @@ namespace CircleAI.Core.Models
         /// capability gates. Default <c>0</c>.
         /// </summary>
         public int QualityRank { get; init; }
+
+        /// <summary>
+        /// (RT-08) Smaller-family entry the runtime should hot-swap to when
+        /// memory pressure forces a brownout. Empty / unknown name = chain
+        /// terminator. Walked transitively by
+        /// <c>IModelSelector.ChainFor(modelId)</c>. Default <c>null</c>.
+        /// </summary>
+        public string? FallbackModelId { get; init; }
+
+        /// <summary>
+        /// (RT-04) Best-effort runtime-RSS estimate when loaded with
+        /// default KV mode. Drives the brownout trigger and prefetch sizing.
+        /// Default <c>0</c> = unknown; callers fall back to
+        /// <see cref="TotalBytes"/>.
+        /// </summary>
+        public long MemoryHintBytes { get; init; }
     }
 
     /// <summary>

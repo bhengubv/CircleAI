@@ -60,6 +60,10 @@ public sealed class AIService : IAIService
     private bool _started;
     private bool _disposed;
 
+    // RT-04 — brownout plumbing
+    private readonly IMemoryPressureSource? _pressureSource;
+    private IDisposable? _pressureSub;
+
     // v2.0 — lazy runtime state
     private PersonaState? _personaCache;
     private RagContextBuilder? _ragBuilder;
@@ -108,12 +112,29 @@ public sealed class AIService : IAIService
         IModelSelector?                                 modelSelector,
         CircleAI.Core.Models.ModelRegistryService?      modelRegistry,
         ILogger<AIService>?                             logger = null)
+        : this(options, modelLoader, generatorFactory, modelSelector,
+               modelRegistry, memoryPressureSource: null, logger) { }
+
+    /// <summary>
+    /// (RT-04) Construct with a memory-pressure source. When the source
+    /// raises <see cref="MemoryPressureLevel.Critical"/> the service hot-swaps
+    /// the running generator to the next entry in the fallback chain.
+    /// </summary>
+    public AIService(
+        AIOptions                                       options,
+        IModelLoader?                                   modelLoader,
+        Func<string, IChatGenerator>?                   generatorFactory,
+        IModelSelector?                                 modelSelector,
+        CircleAI.Core.Models.ModelRegistryService?      modelRegistry,
+        IMemoryPressureSource?                          memoryPressureSource,
+        ILogger<AIService>?                             logger = null)
     {
         _options          = options ?? throw new ArgumentNullException(nameof(options));
         _modelLoader      = modelLoader;
         _generatorFactory = generatorFactory;
         _modelSelector    = modelSelector;
         _modelRegistry    = modelRegistry;
+        _pressureSource   = memoryPressureSource;
         _logger           = logger ?? NullLogger<AIService>.Instance;
     }
 
@@ -203,6 +224,17 @@ public sealed class AIService : IAIService
             _started = true;
             _logger.LogInformation("Butler service ready.");
 
+            // RT-04 — subscribe to platform pressure source. Critical → brownout.
+            if (_pressureSource is not null && _pressureSub is null)
+            {
+                _pressureSub = _pressureSource.Subscribe(async (_, next) =>
+                {
+                    if (next == MemoryPressureLevel.Critical)
+                        await BrownoutAsync(BrownoutReason.MemoryPressure, CancellationToken.None)
+                            .ConfigureAwait(false);
+                });
+            }
+
             await FireObserverAsync(o => o.OnStartedAsync(ct), ct).ConfigureAwait(false);
 
             // Opt-in upgrade check. Hosts that want this off explicitly disable
@@ -258,6 +290,96 @@ public sealed class AIService : IAIService
             }
         }
         finally { _startGate.Release(); }
+    }
+
+    // ------------------------------------------------------------------
+    // RT-04 — Brownout: hot-swap to next-smaller fallback under pressure
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Hot-swap the running generator to the next entry in its fallback
+    /// chain. Drains the current generation gracefully (via shutdownCts
+    /// cancellation), disposes the generator, resolves + loads the
+    /// fallback, fires <see cref="IAIObserver.OnBrownoutAsync"/>.
+    /// No-op when not started, when no fallback exists, or when no
+    /// selector/registry is wired. Safe to call concurrently.
+    /// </summary>
+    public async Task<bool> BrownoutAsync(
+        BrownoutReason    reason,
+        CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        if (!_started || _generator is null) return false;
+        if (_modelSelector is null || string.IsNullOrWhiteSpace(_resolvedModelId))
+        {
+            _logger.LogDebug("Brownout requested ({Reason}) but no selector or no resolved model — skipped.", reason);
+            return false;
+        }
+
+        var from = _resolvedModelId!;
+        var chain = _modelSelector.ChainFor(from);
+        var idx = -1;
+        for (var i = 0; i < chain.Count; i++)
+            if (string.Equals(chain[i], from, StringComparison.OrdinalIgnoreCase)) { idx = i; break; }
+        if (idx < 0 || idx + 1 >= chain.Count)
+        {
+            _logger.LogDebug("Brownout requested ({Reason}) but no fallback available from '{From}'.", reason, from);
+            return false;
+        }
+        var to = chain[idx + 1];
+
+        await _startGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (string.Equals(_resolvedModelId, to, StringComparison.OrdinalIgnoreCase)) return false;
+
+            _logger.LogInformation("Brownout ({Reason}): swapping {From} -> {To}", reason, from, to);
+
+            // Cancel in-flight generations so they drain.
+            try { _shutdownCts.Cancel(); } catch { /* already disposed */ }
+
+            if (_generator is IAsyncDisposable adisp) await adisp.DisposeAsync().ConfigureAwait(false);
+            else _generator?.Dispose();
+            _generator = null;
+
+            var old = _shutdownCts;
+            _shutdownCts = new CancellationTokenSource();
+            try { old.Dispose(); } catch { }
+
+            _resolvedModelId = to;
+
+            string modelPath;
+            if (_modelLoader is not null)
+            {
+                var existing = _modelLoader.GetModelPath(to);
+                modelPath = !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing)
+                    ? existing
+                    : await _modelLoader.DownloadModelAsync(to).ConfigureAwait(false);
+                if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))
+                    throw new InvalidOperationException($"Brownout target '{to}' resolution failed.");
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    "Brownout requires an IModelLoader to fetch the fallback bundle.");
+            }
+
+            var contextSize = _options.ContextSize
+                ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
+
+            var generator = _generatorFactory is not null
+                ? _generatorFactory(modelPath)
+                : new QwenTextGenerator(
+                    modelPath,
+                    contextSize: (uint)Math.Max(1, contextSize),
+                    threads: _options.ThreadCount);
+            _generator = generator;
+        }
+        finally { _startGate.Release(); }
+
+        await FireObserverAsync(o => o.OnBrownoutAsync(from, to, reason, ct), ct)
+            .ConfigureAwait(false);
+        return true;
     }
 
     // ------------------------------------------------------------------
@@ -577,6 +699,7 @@ public sealed class AIService : IAIService
         _disposed = true;
 
         try { _shutdownCts.Cancel(); } catch { /* already disposed */ }
+        try { _pressureSub?.Dispose(); } catch { /* swallow */ } finally { _pressureSub = null; }
 
         // Persist persona before teardown.
         await TrySavePersonaAsync().ConfigureAwait(false);

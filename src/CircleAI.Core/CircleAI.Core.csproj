@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Version>1.5.0</Version><Description>On-device AI core for Circle. 1.5.0 adds upgrade-detection: UpgradeInfo record + UpgradeReason enum (VersionChanged / SHAChanged / Both / Unknown) + InstalledManifest record. ModelRegistryService.CheckForUpgradesAsync(storageDirectory) walks every installed model, compares the on-disk installed.json against the active registry (Version string + per-file SHA), and returns one UpgradeInfo per detected drift. Hosts subscribe via IAIObserver.OnUpgradeAvailableAsync — the SDK never auto-applies. Carries forward 1.4.0's catalog-driven SDK foundations: ModelScopeCatalogClient, signature verifier, DeviceProbe + DefaultDeviceContext, DeviceTierDefaults, capability + RAM + storage ranking on ModelEntry.</Description>
+    <Version>2.0.0</Version><Description>On-device AI core for Circle — 2.0.0 ships the managed-side of the "cheap-phone tier" runtime program. ModelEntry gains FallbackModelId (RT-08 chain-head) and MemoryHintBytes (RT-04 brownout sizing); the embedded registry stamps both across Qwen3 (14B→8B→4B→1.7B→0.6B) and Qwen2.5 (7B→3B→1.5B→0.5B) families. Carries forward 1.5.0's upgrade-detection plumbing and 1.4.0's catalog-driven foundations.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

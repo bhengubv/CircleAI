@@ -51,4 +51,24 @@ public interface IModelSelector
     /// diagnostics endpoints that list "what could run here."
     /// </summary>
     IReadOnlyList<ModelSelection> AllCandidates(DeviceProbe probe);
+
+    /// <summary>
+    /// (RT-08) Walk the <c>FallbackModelId</c> chain rooted at
+    /// <paramref name="headModelId"/>. Returns the head first, then every
+    /// smaller fallback in descending quality order. Self-references and
+    /// cycles short-circuit. Used by the brownout swap (RT-04).
+    /// </summary>
+    /// <param name="headModelId">Chain-head model identifier.</param>
+    /// <returns>
+    /// At least one entry (the head). Empty if the head is not in the
+    /// registry.
+    /// </returns>
+    IReadOnlyList<string> ChainFor(string headModelId)
+    {
+        // Default impl: head only, no fallbacks. Concrete selectors that
+        // back onto a registry override this to walk FallbackModelId.
+        return string.IsNullOrWhiteSpace(headModelId)
+            ? Array.Empty<string>()
+            : new[] { headModelId };
+    }
 }

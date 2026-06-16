@@ -171,4 +171,36 @@ public interface IAIObserver
         CircleAI.Core.Models.UpgradeInfo upgrade,
         CancellationToken ct = default)
         => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// (RT-04) Called when the runtime hot-swaps from one model in the
+    /// fallback chain to the next under memory pressure. The current
+    /// generation drains gracefully first.
+    /// </summary>
+    /// <param name="from">Model the runtime was running.</param>
+    /// <param name="to">Model the runtime swapped to (smaller).</param>
+    /// <param name="reason">Why the swap fired.</param>
+    /// <param name="ct">Cancellation token.</param>
+    ValueTask OnBrownoutAsync(
+        string                     from,
+        string                     to,
+        BrownoutReason             reason,
+        CancellationToken          ct = default)
+        => ValueTask.CompletedTask;
+}
+
+/// <summary>
+/// (RT-04) Why a brownout swap fired. Sized so future causes (thermal,
+/// battery-floor) can be added without breaking ABI.
+/// </summary>
+public enum BrownoutReason
+{
+    /// <summary>OS-reported memory pressure (Android onTrimMemory critical / iOS memory warning).</summary>
+    MemoryPressure = 0,
+    /// <summary>Battery dropped below the brownout floor — typically 10 %.</summary>
+    BatteryFloor   = 1,
+    /// <summary>Thermal throttle declared the runtime must downshift.</summary>
+    ThermalCritical = 2,
+    /// <summary>Application requested the swap explicitly (e.g. test, manual UI toggle).</summary>
+    Manual         = 3,
 }

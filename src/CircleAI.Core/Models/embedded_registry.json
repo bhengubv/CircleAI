@@ -10,6 +10,8 @@
       "Repo": "MNN/Qwen3-0.6B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 454473637,
+      "QualityRank": 6,
+      "MemoryHintBytes": 636000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -60,6 +62,9 @@
       "Repo": "MNN/Qwen3-1.7B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 1235523444,
+      "QualityRank": 8,
+      "FallbackModelId": "Qwen3-0.6B-MNN",
+      "MemoryHintBytes": 1730000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -110,6 +115,9 @@
       "Repo": "MNN/Qwen3-4B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 2713766729,
+      "QualityRank": 10,
+      "FallbackModelId": "Qwen3-1.7B-MNN",
+      "MemoryHintBytes": 3800000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -160,6 +168,9 @@
       "Repo": "MNN/Qwen3-8B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 5510450524,
+      "QualityRank": 12,
+      "FallbackModelId": "Qwen3-4B-MNN",
+      "MemoryHintBytes": 7700000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -220,6 +231,9 @@
       "Repo": "MNN/Qwen3-14B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 9435191463,
+      "QualityRank": 14,
+      "FallbackModelId": "Qwen3-8B-MNN",
+      "MemoryHintBytes": 13200000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -280,6 +294,8 @@
       "Repo": "MNN/Qwen2.5-0.5B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 556809048,
+      "QualityRank": 5,
+      "MemoryHintBytes": 780000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -340,6 +356,9 @@
       "Repo": "MNN/Qwen2.5-1.5B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 879484572,
+      "QualityRank": 7,
+      "FallbackModelId": "Qwen2.5-0.5B-Instruct-MNN",
+      "MemoryHintBytes": 1230000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -395,6 +414,9 @@
       "Repo": "MNN/Qwen2.5-3B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 2369484507,
+      "QualityRank": 9,
+      "FallbackModelId": "Qwen2.5-1.5B-Instruct-MNN",
+      "MemoryHintBytes": 3300000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -455,6 +477,9 @@
       "Repo": "MNN/Qwen2.5-7B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 5079845792,
+      "QualityRank": 11,
+      "FallbackModelId": "Qwen2.5-3B-Instruct-MNN",
+      "MemoryHintBytes": 7100000000,
       "BundleFiles": [
         {
           "Name": ".gitattributes",
