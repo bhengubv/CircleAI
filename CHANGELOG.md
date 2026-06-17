@@ -105,6 +105,17 @@ Tracking the items still in flight for the **"Native lift + HNSW"** release.
 
 - **RT-09b turbovec HNSW backend (managed + win-x64 + osx-* native).**
   See `[2.0.1]` above for the partial native ship.
+- **RT-07 Predictive warmup pool.** `CircleAI.Hosting.Warmup` —
+  `IRequestPredictor` + `HistogramRequestPredictor` (per-minute EWMA
+  over rolling 7-day window) + `PredictiveWarmupOptions` +
+  `PredictiveWarmupController`. Background loop polls the predictor at
+  a configurable interval (default 30 s); when forecast
+  `ProbabilityOfArrival × Confidence` clears the threshold (default
+  0.5), calls the new `IAIService.PrewarmAsync` (default-impl on
+  interface; concrete override in `AIService` re-runs the existing
+  warm-up generation). Throttled by `MinTimeBetweenWarmups` (default
+  5 min). All local-only — no telemetry, no upload. 7 new tests pass
+  on net9.0 + net10.0.
 
 ### Pending
 

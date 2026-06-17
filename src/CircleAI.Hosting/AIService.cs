@@ -792,6 +792,14 @@ public sealed class AIService : IAIService
         return downloaded;
     }
 
+    /// <inheritdoc/>
+    public async Task PrewarmAsync(CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        if (!_started) { await StartAsync(ct).ConfigureAwait(false); return; }
+        await WarmUpAsync(ct).ConfigureAwait(false);
+    }
+
     private async Task WarmUpAsync(CancellationToken ct)
     {
         var generator = _generator;

@@ -108,4 +108,14 @@ public interface IAIService : IAsyncDisposable
         CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<CircleAI.Core.Models.UpgradeInfo>>(
             Array.Empty<CircleAI.Core.Models.UpgradeInfo>());
+
+    /// <summary>
+    /// (RT-07) Pre-warm the loaded generator without going through a full
+    /// user-facing call. Drives a single short generation to ensure model
+    /// weights are paged in and the KV-cache scratchpad is allocated.
+    /// No-op when the service hasn't started yet. Default implementation
+    /// calls <see cref="StartAsync"/> (which already includes warmup
+    /// when configured).
+    /// </summary>
+    Task PrewarmAsync(CancellationToken ct = default) => StartAsync(ct);
 }
