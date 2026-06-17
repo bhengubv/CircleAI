@@ -4,6 +4,48 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] — 2026-06-17
+
+Managed-only point release: tool-catalog contract skeleton (composio
+pattern-port, MIT). Lets downstream consumers (circle-concierge,
+Observer's IObserverTool wiring) start building `IToolProvider`
+implementations against a stable contract while 2.5.0 brings the full
+catalog (semantic search + bundled SaaS integrations + optional
+Composio adapter).
+
+### Added
+
+- **`CircleAI.Hosting.Tools` namespace.** Contracts + default in-memory
+  implementation, fresh Apache 2.0 code (composio architecture is the
+  reference; we don't vendor their SDK).
+  - `ToolDescriptor` record — Name / Description / Provider / JsonSchema /
+    AuthScheme / Tags / Examples.
+  - `ToolExecutionResult` record — Success / Result / Error / DurationMs.
+  - `IToolCatalog` — Upsert / Get / List / Search / ListByProvider.
+  - `IToolProvider` — DiscoverAsync + IsAvailableAsync (vendor / MCP /
+    AetherNet / optional Composio adapter).
+  - `IToolExecutor` — schema-validated dispatch surface.
+  - `InMemoryToolCatalog` — keyword-substring search with
+    name-weighted scoring; thread-safe via `ConcurrentDictionary`.
+  - `ToolCatalogExtensions.ImportFromAsync` — drain any provider's
+    discovery into a catalog (call once at startup).
+
+Semantic search and the bundled clean-room SaaS integrations (Gmail,
+Slack, GitHub, Drive, Discord) land with 2.5.0; the optional
+`CircleAI.Tools.Composio` adapter ships as a separate companion
+package.
+
+### Versions
+
+All 8 packages bumped uniformly to **2.0.3**.
+
+### Tests
+
+7 new (Upsert / Remove / List sort / ListByProvider / Search ranking /
+Search topK / ImportFromAsync).
+
+---
+
 ## [2.0.2] — 2026-06-17
 
 Managed-only point release: skill-pack auto-import on host start.
