@@ -139,35 +139,85 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
-## [Unreleased — 2.1.0 in progress]
+## [2.1.0] — 2026-06-17
 
-Tracking the items still in flight for the **"Native lift + HNSW"** release.
+**"Native lift + HNSW (managed half)"** — ships every item that has
+landed without native mnnbridge C++ work. The native-attention items
+(RT-01 / RT-03 / RT-05) and RT-14 airllm move to **2.1.1**, which gates
+on a focused mnnbridge cross-build session. The catalog additions
+(Qwen3-Coder / DeepSeek-Coder-V2-Lite) gate on the recalibrator + bundle
+downloads and ship in **2.1.2** when both finish.
 
-### Done
+### Added
 
-- **RT-09b turbovec HNSW backend (managed + win-x64 + osx-* native).**
-  See `[2.0.1]` above for the partial native ship.
-- **RT-07 Predictive warmup pool.** `CircleAI.Hosting.Warmup` —
-  `IRequestPredictor` + `HistogramRequestPredictor` (per-minute EWMA
-  over rolling 7-day window) + `PredictiveWarmupOptions` +
-  `PredictiveWarmupController`. Background loop polls the predictor at
-  a configurable interval (default 30 s); when forecast
-  `ProbabilityOfArrival × Confidence` clears the threshold (default
-  0.5), calls the new `IAIService.PrewarmAsync` (default-impl on
-  interface; concrete override in `AIService` re-runs the existing
-  warm-up generation). Throttled by `MinTimeBetweenWarmups` (default
-  5 min). All local-only — no telemetry, no upload. 7 new tests pass
-  on net9.0 + net10.0.
+- **RT-07 Predictive warmup pool.** New `CircleAI.Hosting.Warmup`
+  namespace:
+  - `IRequestPredictor` + `ArrivalForecast` record (probability /
+    expected count / confidence).
+  - `HistogramRequestPredictor` — per-minute EWMA over rolling 7-day
+    window; Poisson-tail probability; confidence rises with sample
+    count.
+  - `PredictiveWarmupOptions` — Enabled / PollInterval / ForecastWindow
+    / WarmupThreshold / MinTimeBetweenWarmups.
+  - `PredictiveWarmupController` — background loop polls the predictor
+    every 30 s by default; when `ProbabilityOfArrival × Confidence`
+    clears the threshold, calls `IAIService.PrewarmAsync`. Throttled
+    by `MinTimeBetweenWarmups`. All local-only — no telemetry, no
+    upload.
+  - `IAIService.PrewarmAsync` — new method with default impl that
+    calls `StartAsync`; concrete `AIService` overrides to re-run the
+    existing warm-up generation when already started.
 
-### Pending
+- **RT-09b turbovec HNSW backend — 7 of 8 RIDs shipped.** Native
+  `turbovecbridge` cdylib now ships for:
+  - `win-x64` (MinGW, since 2.0.0)
+  - `osx-arm64` (MacInCloud, since 2.0.1)
+  - `osx-x64` (MacInCloud, since 2.0.1)
+  - `linux-x64` (.201, this release — patched away the
+    optional OpenBLAS dep)
+  - `ios-arm64` (MacInCloud + Xcode iOS SDK, this release)
+  - `android-arm64` (MacInCloud + NDK r26d, this release)
+  - `android-x64` (MacInCloud + NDK r26d, this release)
+  
+  Only `linux-arm64` remains — pending an ARM Linux box / qemu-user
+  setup. Ships in **2.1.1**.
 
-- RT-01 Tiered KV cache (FP16 / TQ3 / TQ2 per-token mode) — **needs
-  C++ source work in mnnbridge.cpp**; cross-build comes after.
-- RT-03 mmap weight loading — **needs C++ source work**.
-- RT-05 Speculative decoding — **needs C++ source work**.
-- RT-07 Predictive warmup pool — managed.
-- Catalog additions — Qwen3-Coder / DeepSeek-Coder-V2-Lite / Qwen3-Draft.
-- Turbovec cross-build: linux-x64, linux-arm64, android-arm64, android-x64, ios-arm64.
+### Carries forward
+
+- 2.0.3 Tools.Catalog contract skeleton (`IToolDescriptor` /
+  `IToolCatalog` / `IToolProvider` / `IToolExecutor` /
+  `InMemoryToolCatalog`) — pattern-port from composio under Apache 2.0.
+- 2.0.2 skill-pack auto-import (~2,090 hosted skills across 6
+  default-enabled packs).
+- 2.0.1 SkillPackLoader + Generative UI plug point + Mesh capability
+  discovery v1.
+- 2.0.0 RT-04 brownout + RT-08 fallback chain + RT-09 embeddings store.
+
+### Deferred (no scope cuts — just sequencing)
+
+| Item | New target | Reason |
+|---|---|---|
+| RT-01 Tiered KV cache | 2.1.1 | Needs C++ in `native/mnn-bridge/src/mnnbridge.cpp` |
+| RT-03 mmap weight loading | 2.1.1 | Needs C++ patch to `MNN::Express::Module::load` |
+| RT-05 Speculative decoding | 2.1.1 | New mnnbridge entrypoint required |
+| RT-14 airllm layer-stream | 2.1.1 | Algorithmic port + native MNN extension |
+| shard pattern-port (RT-01 alt) | 2.1.1 | Same MNN attention-path work |
+| Catalog: Qwen3-Coder / DeepSeek-Coder-V2-Lite / Qwen3-Draft | 2.1.2 | Recalibrator runs + multi-GB bundle downloads |
+| Turbovec `linux-arm64` | 2.1.1 | Needs ARM Linux host or qemu-user (sudo blocked on .201) |
+
+### Versions
+
+All 8 packages bumped uniformly to **2.1.0**. Native `turbovecbridge`
+cdylib unchanged from 2.0.x (still ABI v1).
+
+### Tests
+
+29 new tests across the 2.0.x → 2.1.0 ladder (12 SkillPack* + 8
+JsonRender + 8 MeshCapabilityRegistry + 5 SkillPackAutoImporter + 7
+PredictiveWarmup + 7 InMemoryToolCatalog + others). Full suite passes
+on net9.0 + net10.0.
+
+---
 
 ---
 

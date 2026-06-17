@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Embeddings.Local</PackageId>
-    <Version>2.0.3</Version>
+    <Version>2.1.0</Version>
     <Description>(RT-09) On-device embedding store with built-in RAG primitive for CircleAI. 2.0.2 is a no-API-change refresh aligned with the 2.0.2 bundle. Carries forward 2.0.1's macOS turbovec dylibs (osx-arm64 + osx-x64) alongside win-x64 — 3 of 8 RIDs. Linux/Android/iOS queued for 2.1.0.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;llm;circle-ai;embeddings;rag;turboquant;on-device</PackageTags>

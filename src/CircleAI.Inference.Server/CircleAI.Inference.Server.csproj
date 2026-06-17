@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>2.0.3</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. 2.0.2 picks up CircleAI.Skills 2.0.2 — skill-pack auto-import on host start. Server API surface unchanged. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz.</Description>
+    <Version>2.1.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. 2.0.2 picks up CircleAI.Skills 2.0.2 — skill-pack auto-import on host start. Server API surface unchanged. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
