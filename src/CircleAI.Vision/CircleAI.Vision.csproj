@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Vision</PackageId>
+    <Version>2.2.0</Version>
+    <Description>(2.2.0) Vision-pack contract surface for CircleAI. IComputerVisionRuntime + IFaceDetector + IFaceEmbedder + IFaceLivenessDetector + IDocumentVerifier + IPlateRecognizer + IBluetoothAnomalyDetector. Null implementations ship out of the box; real backends — compv (CV foundation), facex (face stack), FaceLivenessDetection-SDK, KYC-Documents-Verif-SDK, ultimateALPR-SDK, Bluehound — land in 2.2.1 when the C++ SDKs are vendored under native/&lt;sdk&gt;/. Letting integrators (PhonePin biometric auth, Sdpkt wallet KYC, TagMe / Panik vehicle features, AetherNet adversary detection) build against the surface today.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;vision;face;biometric;kyc;alpr;bluetooth;on-device</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

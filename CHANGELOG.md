@@ -139,6 +139,46 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.2.0] — 2026-06-17
+
+**"Vision pack — contract surface"**. New `CircleAI.Vision` package
+ships every IFace* / IDocumentVerifier / IPlateRecognizer /
+IBluetoothAnomalyDetector interface plus fail-closed Null
+implementations. Real backends — compv (CV foundation), facex, the
+FaceLivenessDetection-SDK, KYC-Documents-Verif-SDK, ultimateALPR-SDK,
+Bluehound — land in **2.2.1** when the C++ SDKs are vendored under
+`native/<sdk>/`. Lets the integrators (PhonePin biometric auth, Sdpkt
+wallet KYC, TagMe / Panik vehicle features, AetherNet adversary
+detection) build against the surface today.
+
+### Added
+
+- **New package: `CircleAI.Vision`**.
+  - Primitives — `BoundingBox`, `LandmarkPoint`, `DetectedFace`,
+    `FaceEmbedding`, `LivenessResult`, `DocumentField`,
+    `DocumentVerificationResult`, `PlateRecognitionResult`,
+    `BluetoothAnomaly`.
+  - Contracts — `IComputerVisionRuntime`, `IFaceDetector`,
+    `IFaceEmbedder`, `IFaceLivenessDetector`, `IDocumentVerifier`,
+    `IPlateRecognizer`, `IBluetoothAnomalyDetector`.
+  - Null implementations — fail-closed defaults for every contract
+    (`Null*` singletons / `new NullFaceEmbedder(dim)` for the
+    parameterised case). Liveness + DocumentVerifier return
+    `IsLive: false` / `IsValid: false` with explanatory warnings so
+    nothing "passes" on absence-of-backend.
+
+### Versions
+
+All 9 packages bumped uniformly to **2.2.0**: Core / Inference /
+Hosting / Hosting.InferenceBridge / Inference.Server /
+Embeddings.Local / Skills / AetherNet / **Vision (new)**.
+
+### Tests
+
+8 new contract tests; full suite passes on net9.0 + net10.0.
+
+---
+
 ## [2.1.0] — 2026-06-17
 
 **"Native lift + HNSW (managed half)"** — ships every item that has
