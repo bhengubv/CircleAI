@@ -1,22 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <PackageId>CircleAI.Visualization</PackageId>
+    <PackageId>CircleAI.CodeUnderstanding</PackageId>
     <Version>3.0.0</Version>
-    <Description>(2.8.0) Visualization contracts — superset (BI dashboards) + scalar (API docs) + webstudio (low-code web UI). IDashboardDefinition + IApiDocBuilder + ISiteBuilder.</Description>
+    <Description>(3.0.0) Code-understanding contract surface — Understand-Anything pattern. ICodeIndexer + ICodeSearch + ISymbolGraph. Cornerstone of the "drop CircleAI in to replace Claude Code / Codex / Cursor" pitch.</Description>
     <Authors>The Geek Network</Authors>
-    <PackageTags>ai;circle-ai;viz;superset;scalar;webstudio</PackageTags>
+    <PackageTags>ai;circle-ai;code;ast;symbols;ide</PackageTags>
   </PropertyGroup>
-
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>
-
 </Project>

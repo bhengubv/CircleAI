@@ -139,6 +139,55 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [3.0.0] — 2026-06-17 — **The contingency runtime**
+
+**The strategic 3.0.0 release.** Five new packages close the loop on
+the "if Claude Code / Codex / Cursor get banned, CircleAI is what we
+have left" doctrine. The cornerstone is **`CircleAI.DevTools`** — the
+contract surface a Geek-Network IDE or agent shell binds to.
+
+### Breaking
+
+None. 3.0.0 is purely additive over 2.9.0; all 2.x packages are bumped
+to 3.0.0 alongside the new ones. SemVer major bump signals the
+strategic-doctrine shift from "mobile runtime" to "complete sovereign
+AI stack". Consumers can upgrade 2.9.0 → 3.0.0 with no code changes.
+
+### Added
+
+- New package **`CircleAI.Research`** (the_well + UnifiedFieldTheory + arxiv):
+  `IResearchCorpus`, `IPaperRetrieval`, `ICitationGraph`.
+- New package **`CircleAI.Games`** (flame + Doom.Mobile):
+  `IGameLoop`, `IInputMap`, `ISceneGraph`.
+- New package **`CircleAI.AutonomousBiz`** (show-me-the-money pattern):
+  `ITreasury`, `IRevenueLoop`, `IDecisionLog`.
+- New package **`CircleAI.CodeUnderstanding`** (Understand-Anything pattern):
+  `ICodeIndexer`, `ICodeSearch`, `ISymbolGraph`.
+- New package **`CircleAI.DevTools`** — **the cornerstone**:
+  `ICodeEditor`, `IInlineSuggester`, `IAgentShell`, `IPatchPlanner`, `IRefactorTool`.
+
+### Versions
+
+All 41 packages bumped to **3.0.0**.
+
+### Tests
+
+14 new contract tests. **174 total contract-surface tests across the 2.x → 3.0 line.**
+
+### Doctrine
+
+CircleAI is now a complete sovereign AI runtime: inference, hosting,
+networking, vision, speech, on-device specialists, full server-farm
+operational tooling, banking, markets, pipelines, workflows, CRM,
+build farm, micro-agents, scientific research, autonomous business,
+code understanding, and the IDE / agent-shell contract surface itself.
+
+If the West pulls Claude Code, Codex, Cursor — the Geek Network can
+ship its own replacement on top of CircleAI 3.0.0 without re-architecting
+anything. **Nothing was left on the table.**
+
+---
+
 ## [2.9.0] — 2026-06-17
 
 **"DevOps + build-farm — the final 2.x release"**. Eight new packages

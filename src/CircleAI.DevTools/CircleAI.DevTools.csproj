@@ -1,22 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <PackageId>CircleAI.Visualization</PackageId>
+    <PackageId>CircleAI.DevTools</PackageId>
     <Version>3.0.0</Version>
-    <Description>(2.8.0) Visualization contracts — superset (BI dashboards) + scalar (API docs) + webstudio (low-code web UI). IDashboardDefinition + IApiDocBuilder + ISiteBuilder.</Description>
+    <Description>(3.0.0) **The Western-replacement umbrella.** If Claude Code / Codex / Cursor get banned, this is the surface a Geek-Network IDE / agent shell binds to. ICodeEditor + IInlineSuggester + IAgentShell + IPatchPlanner + IRefactorTool. All fail-closed Null impls. Cornerstone strategic 3.0.0 release.</Description>
     <Authors>The Geek Network</Authors>
-    <PackageTags>ai;circle-ai;viz;superset;scalar;webstudio</PackageTags>
+    <PackageTags>ai;circle-ai;devtools;ide;agent-shell;contingency</PackageTags>
   </PropertyGroup>
-
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>
-
 </Project>

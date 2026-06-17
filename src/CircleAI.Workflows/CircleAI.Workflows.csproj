@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Workflows</PackageId>
-    <Version>2.9.0</Version>
+    <Version>3.0.0</Version>
     <Description>(2.8.0) Durable workflow contracts — restate + automatisch + paca patterns. IWorkflowDefinition + IWorkflowRunner + IWorkflowState (durable checkpoint store).</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;workflows;restate;automatisch;paca;durable</PackageTags>

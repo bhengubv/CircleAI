@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server.Enterprise</PackageId>
-    <Version>2.9.0</Version>
+    <Version>3.0.0</Version>
     <Description>(2.7.0) Server-farm tier contracts. Extends the existing CircleAI.Inference.Server with multi-tenant routing, gRPC streaming, batch scheduling, model sharding, and a cross-tier offload (RT-12 v2) where phones borrow from the server farm. Null impls degrade to single-tenant. Real backends in 2.7.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;server;enterprise;multi-tenant;grpc;sharding</PackageTags>
