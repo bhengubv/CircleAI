@@ -11,7 +11,7 @@
 // Windows falls through to ndarray's pure-Rust matrixmultiply fallback.
 fn main() {
     match std::env::var("CARGO_CFG_TARGET_OS").as_deref() {
-        Ok("linux") => println!("cargo:rustc-link-lib=openblas"),
+        Ok("linux") => {} /* patched 2026-06-17: ship without system openblas */,
         Ok("macos") => println!("cargo:rustc-link-lib=framework=Accelerate"),
         _ => {}
     }

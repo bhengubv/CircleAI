@@ -27,6 +27,10 @@ faer = "0.20"
 [target.'cfg(target_os = "macos")'.dependencies]
 ndarray = { version = "0.17", features = ["blas"] }
 
-[target.'cfg(target_os = "linux")'.dependencies]
-ndarray = { version = "0.17", features = ["blas"] }
+# [target.'cfg(target_os = "linux")'.dependencies]              # patched 2026-06-17
+# ndarray = { version = "0.17", features = ["blas"] }            # OpenBLAS install needs sudo
+#                                                                # on the .201 build box;
+#                                                                # we ship without system BLAS
+#                                                                # on Linux. faer's internal
+#                                                                # SIMD path covers our workloads.
 
