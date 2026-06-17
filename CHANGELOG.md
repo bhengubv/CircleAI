@@ -139,6 +139,39 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.3.0] — 2026-06-17
+
+**"Speech + OCR pack — contract surface"**. New `CircleAI.Speech`
+package: `ISpeechRecognizer` (ASR) + `ISpeechSynthesizer` (TTS) +
+`IWakeWordDetector` (KWS for "Hey B") + `IOpticalCharacterRecognizer`
+(OCR). Null implementations ship out of the box. Real backends —
+FunASR + yapsnap + ChatTTS + Hey-Snips-pattern KWS + PaddleOCR — land
+in **2.3.1**.
+
+### Added
+
+- New package **`CircleAI.Speech`**:
+  - Primitives — `TranscribedSegment`, `TranscriptionResult`,
+    `SynthesisResult`, `OcrResult`, `OcrTextBlock`, `WakeWordEvent`.
+  - Contracts — `ISpeechRecognizer`, `ISpeechSynthesizer`,
+    `IWakeWordDetector`, `IOpticalCharacterRecognizer`.
+  - Null implementations — fail-closed defaults; recogniser returns
+    empty text, synthesiser returns zero-length buffer, OCR returns
+    empty blocks, wake detector subscribes successfully but never
+    fires.
+
+### Versions
+
+All 10 packages bumped to **2.3.0**: Core / Inference / Hosting /
+Hosting.InferenceBridge / Inference.Server / Embeddings.Local /
+Skills / AetherNet / Vision / **Speech (new)**.
+
+### Tests
+
+6 new contract tests.
+
+---
+
 ## [2.2.0] — 2026-06-17
 
 **"Vision pack — contract surface"**. New `CircleAI.Vision` package
