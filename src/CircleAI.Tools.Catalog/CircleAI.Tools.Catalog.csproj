@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Tools.Catalog</PackageId>
+    <Version>2.5.0</Version>
+    <Description>(2.5.0) Tool-catalog full surface — composio pattern-port. Persistent provider directory + semantic search hook + connector / credential / oauth descriptor / quota / namespace primitives. Builds on the lightweight `IToolCatalog` shipped in 2.0.3 inside CircleAI.Hosting; the full package adds the missing "+1000 tools" surface so an integrator can build a Composio-class catalog. Real providers (Gmail / Slack / Linear / Stripe / Notion) land in 2.5.1.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;tools;catalog;composio;mcp;connectors</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

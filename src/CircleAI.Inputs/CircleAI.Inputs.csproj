@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Inputs</PackageId>
+    <Version>2.5.0</Version>
+    <Description>(2.5.0) Input-adapter contract surface — bring any payload (URL, file, video, terminal-cast) into a model-ready text/embedding stream. IWebScraper (ConvertX-pattern), IStealthHttpClient (Scrapling-pattern; Cloudflare-aware HTTPS without fingerprint leakage), IVideoIngest (openvid), IMcpWebScrape (MCP-side web scraping), ITerminalCast (ASCILINE-pattern, asciinema-compatible). Null implementations ship; real backends land in 2.5.1.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;inputs;scraping;video;terminal;mcp</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -139,6 +139,48 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.5.0] — 2026-06-17
+
+**"Tools.Catalog full + Inputs + Spatial"**. Three new packages.
+Tools.Catalog adds the missing "+1000 tools" surface around the
+lightweight `IToolCatalog` shipped in 2.0.3 — provider directory,
+credential store, OAuth2 flow driver, quota guard, namespace store.
+Inputs covers URL / HTTPS / video / MCP-side scrape / terminal-cast.
+Spatial covers map tiles / radar / sky / 3D-scenes.
+
+### Added
+
+- New package **`CircleAI.Tools.Catalog`** (composio pattern-port):
+  - `IProviderCatalog` (list / get / semantic search)
+  - `ICredentialStore`
+  - `IOAuth2FlowDriver`
+  - `IQuotaGuard`
+  - `IToolNamespaceStore`
+- New package **`CircleAI.Inputs`**:
+  - `IWebScraper` (ConvertX pattern)
+  - `IStealthHttpClient` (Scrapling pattern)
+  - `IVideoIngest` (openvid)
+  - `IMcpWebScrape`
+  - `ITerminalCast` (ASCILINE pattern)
+- New package **`CircleAI.Spatial`**:
+  - `IGeoTileSource` (deck.gl + cesium)
+  - `IRadarReadout` (RADAR)
+  - `ISkyTracker` (skylight)
+  - `I3DSceneRenderer` (flame + anime)
+
+### Versions
+
+All 14 packages bumped to **2.5.0**: Core / Inference / Hosting /
+Hosting.InferenceBridge / Inference.Server / Embeddings.Local /
+Skills / AetherNet / Vision / Speech / Domain / **Tools.Catalog (new)** /
+**Inputs (new)** / **Spatial (new)**.
+
+### Tests
+
+12 new contract tests.
+
+---
+
 ## [2.4.0] — 2026-06-17
 
 **"Domain specialists — contract surface"**. New `CircleAI.Domain` pack
