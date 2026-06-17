@@ -24,6 +24,10 @@ using CircleAI.Core;
 #if ANDROID || IOS || MACCATALYST || WINDOWS
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Networking;
+// Disambiguate from CircleAI.Core.Connectivity — same pattern as
+// `using MauiPermissions = Microsoft.Maui.ApplicationModel.Permissions`
+// documented in CLAUDE.md.
+using MauiConnectivity = Microsoft.Maui.Networking.Connectivity;
 #endif
 
 namespace CircleAI.Maui
@@ -151,7 +155,7 @@ namespace CircleAI.Maui
 #if ANDROID || IOS || MACCATALYST || WINDOWS
                 try
                 {
-                    var access = Connectivity.Current.NetworkAccess;
+                    var access = MauiConnectivity.Current.NetworkAccess;
 
                     if (access == NetworkAccess.None)                return "none";
                     if (access == NetworkAccess.Local)               return "local";
@@ -159,7 +163,7 @@ namespace CircleAI.Maui
                     if (access == NetworkAccess.Unknown)             return null;
 
                     // Internet — inspect the active connection profiles.
-                    var profiles = Connectivity.Current.ConnectionProfiles;
+                    var profiles = MauiConnectivity.Current.ConnectionProfiles;
 
                     foreach (var profile in profiles)
                     {
