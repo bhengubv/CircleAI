@@ -6,7 +6,7 @@ using System;
 using System.Threading.Tasks;
 using CircleAI.ModelAlignment;
 using CircleAI.Observer;
-using CircleAI.Guardrails;
+using CircleAI.ContentPolicy;
 using Xunit;
 
 namespace CircleAI.Tests;

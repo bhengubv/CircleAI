@@ -1,22 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <PackageId>CircleAI.Spatial</PackageId>
+    <PackageId>CircleAI.MediaHub</PackageId>
     <Version>3.0.1</Version>
-    <Description>(3.0.1) Spatial / geo contract surface — let an AI talk about places. IGeoTileSource (deck.gl + cesium), IRadarReadout (RADAR), I3DSceneRenderer (flame + anime), ISkyTracker (skylight) — null implementations ship; real backends land in 2.5.1 when the underlying JS / native libs are bridged.</Description>
+    <Description>(3.0.1) Media-serving contracts — pms-docker-plex + beatsync patterns. IMediaLibrary + ISyncedPlayback. Renamed from CircleAI.MediaServer 3.0.0 — that package ID exists on nuget.org but is a dead-end; nothing newer will ship under that ID. New consumers: `dotnet add package CircleAI.MediaHub`.</Description>
     <Authors>The Geek Network</Authors>
-    <PackageTags>ai;circle-ai;spatial;geo;maps;radar;sky;3d</PackageTags>
+    <PackageTags>ai;circle-ai;media-hub;plex;beatsync</PackageTags>
   </PropertyGroup>
-
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>
-
 </Project>

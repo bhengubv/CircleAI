@@ -9,7 +9,7 @@ using CircleAI.BuildFarm;
 using CircleAI.DepBot;
 using CircleAI.Distribution;
 using CircleAI.DocAnalytics;
-using CircleAI.MediaServer;
+using CircleAI.MediaHub;
 using CircleAI.MicroAgents;
 using CircleAI.Testing;
 using CircleAI.WindowsAutomation;

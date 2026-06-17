@@ -38,7 +38,7 @@
     <ProjectReference Include="..\..\src\CircleAI.Inputs\CircleAI.Inputs.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Spatial\CircleAI.Spatial.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Observer\CircleAI.Observer.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Guardrails\CircleAI.Guardrails.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.ContentPolicy\CircleAI.ContentPolicy.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.ModelAlignment\CircleAI.ModelAlignment.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference.Server.Enterprise\CircleAI.Inference.Server.Enterprise.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Observability\CircleAI.Observability.csproj" />
@@ -56,7 +56,7 @@
     <ProjectReference Include="..\..\src\CircleAI.DocAnalytics\CircleAI.DocAnalytics.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Testing\CircleAI.Testing.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Distribution\CircleAI.Distribution.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.MediaServer\CircleAI.MediaServer.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.MediaHub\CircleAI.MediaHub.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.WindowsAutomation\CircleAI.WindowsAutomation.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.MicroAgents\CircleAI.MicroAgents.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Research\CircleAI.Research.csproj" />

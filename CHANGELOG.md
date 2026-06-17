@@ -139,6 +139,25 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [3.0.1] — 2026-06-17 — **Naming + metadata cleanup**
+
+### Renamed
+
+- **`CircleAI.MediaServer` → `CircleAI.MediaHub`** (Plex + beatsync media-server contracts).
+- **`CircleAI.Guardrails` → `CircleAI.ContentPolicy`** (Sponsio refusal/audit/injection contracts).
+
+Both old names existed only as a workaround for collisions with the v1.2.0 personal-safety / content-production domain packs (`CircleAI.Safety`, `CircleAI.Media`). `CircleAI.MediaServer 3.0.0` and `CircleAI.Guardrails 3.0.0` are on nuget.org and stay there (the API key scope is push-only — no unlist), but nothing newer ships under those IDs. New consumers: `dotnet add package CircleAI.MediaHub`, `dotnet add package CircleAI.ContentPolicy`.
+
+### Fixed
+
+- Description-prefix drift across all 41 csprojs — every `(2.X.0)` historical prefix tag in the `<Description>` field normalized to `(3.0.1)`.
+
+### Versions
+
+All 41 packages bumped to **3.0.1**.
+
+---
+
 ## [3.0.0] — 2026-06-17 — **The contingency runtime**
 
 **The strategic 3.0.0 release.** Five new packages close the loop on

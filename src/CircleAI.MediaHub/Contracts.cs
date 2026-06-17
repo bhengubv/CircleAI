@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.MediaServer;
+namespace CircleAI.MediaHub;
 
 public sealed record MediaItem(string ItemId, string Title, string Kind, TimeSpan Duration, string MimeType);
 public sealed record PlaybackPosition(string ItemId, TimeSpan Position, DateTimeOffset AtUtc);

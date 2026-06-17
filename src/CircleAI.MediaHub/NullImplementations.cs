@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.MediaServer;
+namespace CircleAI.MediaHub;
 
 public sealed class NullMediaLibrary : IMediaLibrary
 {

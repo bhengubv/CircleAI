@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.WindowsAutomation</PackageId>
-    <Version>3.0.0</Version>
-    <Description>(2.9.0) Windows-automation contracts — mcp-windows-automation pattern. IUiAutomationDriver lets a model drive the Windows desktop.</Description>
+    <Version>3.0.1</Version>
+    <Description>(3.0.1) Windows-automation contracts — mcp-windows-automation pattern. IUiAutomationDriver lets a model drive the Windows desktop.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;windows;automation;mcp</PackageTags>
   </PropertyGroup>

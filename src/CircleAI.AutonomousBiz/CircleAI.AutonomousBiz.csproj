@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.AutonomousBiz</PackageId>
-    <Version>3.0.0</Version>
-    <Description>(3.0.0) Autonomous-business contract surface — show-me-the-money pattern. ITreasury + IRevenueLoop + IDecisionLog. Lets a host run an AI-managed micro-business with auditable money flow.</Description>
+    <Version>3.0.1</Version>
+    <Description>(3.0.1) Autonomous-business contract surface — show-me-the-money pattern. ITreasury + IRevenueLoop + IDecisionLog. Lets a host run an AI-managed micro-business with auditable money flow.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;autonomous;business;agents</PackageTags>
   </PropertyGroup>

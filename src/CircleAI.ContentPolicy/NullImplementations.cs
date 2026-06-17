@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Guardrails;
+namespace CircleAI.ContentPolicy;
 
 public sealed class NullContentFilter : IContentFilter
 {

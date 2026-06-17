@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Banking</PackageId>
-    <Version>3.0.0</Version>
-    <Description>(2.8.0) Banking contract surface — drives the AI when it operates inside a banking stack. IAccountReader (OBP-API pattern), ILedgerWriter (fineract pattern), IPaymentProcessor (hyperswitch pattern). Null impls fail-closed. Real backends 2.8.1.</Description>
+    <Version>3.0.1</Version>
+    <Description>(3.0.1) Banking contract surface — drives the AI when it operates inside a banking stack. IAccountReader (OBP-API pattern), ILedgerWriter (fineract pattern), IPaymentProcessor (hyperswitch pattern). Null impls fail-closed. Real backends 2.8.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;banking;obp;fineract;hyperswitch</PackageTags>
   </PropertyGroup>

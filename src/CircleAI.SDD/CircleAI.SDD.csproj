@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.SDD</PackageId>
-    <Version>3.0.0</Version>
-    <Description>(2.7.0) Spec-Driven Development contracts — github/spec-kit pattern-port. ISpecificationStore + ISpecificationValidator + ISpecToScaffold codegen hook. Lets a host hand the AI a spec document and get a compilable scaffold back. Null impls degrade to no-op. Real backends in 2.7.1.</Description>
+    <Version>3.0.1</Version>
+    <Description>(3.0.1) Spec-Driven Development contracts — github/spec-kit pattern-port. ISpecificationStore + ISpecificationValidator + ISpecToScaffold codegen hook. Lets a host hand the AI a spec document and get a compilable scaffold back. Null impls degrade to no-op. Real backends in 2.7.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;sdd;spec-kit;codegen;scaffolding</PackageTags>
   </PropertyGroup>
