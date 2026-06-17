@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting</PackageId>
-    <Version>2.0.1</Version><Description>DI wiring + proactive reasoning host for Circle AI — 2.0.1 adds the Generative UI plug point: CircleAI.Hosting.GenerativeUI exposes IGenerativeUIRenderer + UiCatalogs.Default (card/list/button/textBlock/image) + JsonRenderParser (strict catalog-validated JSON→UiComponent tree) + DescribeCatalogForPrompt (system-prompt snippet generator). Pattern adopted from bhengubv/json-render — LLM emits JSON, parser validates, host renders into MAUI/HTML/terminal. Carries forward 2.0.0's RT-04 brownout + RT-08 fallback chain.</Description>
+    <Version>2.0.2</Version><Description>DI wiring + proactive reasoning host for Circle AI — 2.0.2 is a no-API-change refresh aligned with the 2.0.2 bundle (skill-pack auto-import lives in CircleAI.Skills). Carries forward 2.0.1's Generative UI plug point and 2.0.0's RT-04 brownout + RT-08 fallback chain.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

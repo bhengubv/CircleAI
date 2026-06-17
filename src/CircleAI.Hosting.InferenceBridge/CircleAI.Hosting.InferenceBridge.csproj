@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting.InferenceBridge</PackageId>
-    <Version>2.0.1</Version><Description>Cross-OS LLM inference daemon contract for Circle AI. 2.0.1 picks up CircleAI.Inference 2.0.1. Bridge surface unchanged.</Description>
+    <Version>2.0.2</Version><Description>Cross-OS LLM inference daemon contract for Circle AI. 2.0.2 picks up CircleAI.Inference 2.0.2. Bridge surface unchanged.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

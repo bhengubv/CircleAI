@@ -4,6 +4,50 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] — 2026-06-17
+
+Managed-only point release: skill-pack auto-import on host start.
+
+### Added
+
+- **`SkillPackSource`** — declarative source record (Name / RepoUrl /
+  GitRef / License / SkillSubdir / EstimatedSkillCount /
+  IsDefaultEnabled / DefaultTags).
+- **`KnownSkillPacks`** — default catalogue of 8 packs:
+  - `bhengubv/awesome-agent-skills` (1000+, Apache 2.0)
+  - `mukul975/Anthropic-Cybersecurity-Skills` (754, Apache 2.0 — MITRE / NIST / ATLAS / D3FEND / AI RMF)
+  - `mukul975/Privacy-Data-Protection-Skills` (282, Apache 2.0 — GDPR / CCPA / EU AI Act / HIPAA / LGPD / PIPL / DPDP)
+  - `bhengubv/Claude-BugHunter` (51, Apache 2.0)
+  - `bhengubv/last30days-skill` (1, MIT)
+  - `bhengubv/eduba-brand` (1, pattern-port — Eduba brand voice + tokens)
+  - `bhengubv/career-ops` (14, MIT — default-disabled, awaits 2.0.3 format adapter)
+  - `bhengubv/build-your-own-x` (educational corpus — default-disabled, awaits synthesiser)
+- **`IPackDownloader`** + `HttpPackDownloader` — GitHub-tarball fetcher
+  using `System.Formats.Tar`. Caches under
+  `%LOCALAPPDATA%/CircleAI/skill-packs/` with a configurable TTL
+  (default 7 days). Tests substitute `FakePackDownloader`.
+- **`SkillPackSourcesOptions`** + **`SkillPackAutoImporter`** —
+  `ImportEnabledAsync(onError, ct)` walks every default-enabled or
+  explicitly-enabled pack, calls `SkillPackLoader.ImportAsync`, returns
+  one `SkillPackManifest` per successfully-imported pack. Per-pack
+  failure surfaces through `onError`; the rest still import.
+
+### Compatibility
+
+Non-breaking. The auto-importer is opt-in — existing 2.0.1 callers that
+don't construct a `SkillPackAutoImporter` see no behaviour change.
+
+### Versions
+
+All 8 packages bumped uniformly to **2.0.2**.
+
+### Tests
+
+5 new tests (12 total in the SkillPack* suite). Full suite stays green
+on net9.0 + net10.0.
+
+---
+
 ## [2.0.1] — 2026-06-17
 
 Managed-only point release covering the three 2.0.x follow-up items
