@@ -1,0 +1,19 @@
+[package]
+name = "turbovecbridge"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "C ABI bridge over turbovec for CircleAI.Embeddings.Local"
+
+[lib]
+name = "turbovecbridge"
+crate-type = ["cdylib"]
+
+[dependencies]
+turbovec = { path = "vendor/turbovec" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = "debuginfo"

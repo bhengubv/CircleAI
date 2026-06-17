@@ -4,6 +4,34 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased — 2.1.0 in progress]
+
+Tracking the items shipping in the **"Native lift + HNSW"** release.
+Code lands on master incrementally; the version bump + tag + GitHub
+release + NuGet push happen together once every 2.1.0 item is in.
+
+### Done
+
+- **RT-09b turbovec HNSW backend.** New `IEmbeddingIndex` interface
+  in `CircleAI.Embeddings.Local` + `TurboVecEmbeddingIndex` impl
+  backed by the vendored turbovec Rust crate via the new
+  `turbovecbridge` cdylib. New `HnswEmbeddingStore` honours the
+  existing `ICircleEmbeddingStore` contract and routes search through
+  turbovec's SIMD-blocked LUT path. Native lib loads on win-x64;
+  Linux/Mac/Android/iOS cross-builds queued for the next build-server
+  session. 11 new tests pass on net9.0 + net10.0.
+
+### Pending
+
+- RT-01 Tiered KV cache (FP16 / TQ3 / TQ2 per-token mode) — mnnbridge native.
+- RT-03 mmap weight loading — mnnbridge native.
+- RT-05 Speculative decoding — mnnbridge native.
+- RT-07 Predictive warmup pool — managed.
+- Catalog additions — Qwen3-Coder / DeepSeek-Coder-V2-Lite / Qwen3-Draft.
+- Turbovec cross-build: linux-x64, linux-arm64, osx-x64, osx-arm64, android-arm64, android-x64, ios-arm64.
+
+---
+
 ## [2.0.0] — 2026-06-16
 
 The first major bump in the runtime-2.0 programme. 2.0.0 lands the managed

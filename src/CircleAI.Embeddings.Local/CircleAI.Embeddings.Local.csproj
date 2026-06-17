@@ -13,11 +13,27 @@
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>
+
+  <!-- Native turbovecbridge cdylib for the RT-09b HNSW backend. Same
+       pattern as CircleAI.Inference: anything under runtimes/{RID}/native/
+       gets packed at the matching package path AND copied to the
+       consumer's bin/{tfm}/runtimes/{RID}/native/ at build time. -->
+  <ItemGroup>
+    <None Include="runtimes/**/*.*" Pack="true" PackagePath="runtimes/">
+      <Link>runtimes/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <EnableRuntimeIdentifierChecking>false</EnableRuntimeIdentifierChecking>
+  </PropertyGroup>
 
 </Project>

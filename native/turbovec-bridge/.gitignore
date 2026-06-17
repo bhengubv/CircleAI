@@ -1,0 +1,3 @@
+# Rust build artifacts — large, regenerable.
+target/
+# Note: Cargo.lock IS committed for this crate (cdylib end-product → pin deps for reproducible builds).
