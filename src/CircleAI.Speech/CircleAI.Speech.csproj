@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Speech</PackageId>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <Description>(2.3.0) Speech + OCR contract surface for CircleAI. ISpeechRecognizer (ASR) + ISpeechSynthesizer (TTS) + IWakeWordDetector (KWS, e.g. "Hey B") + IOpticalCharacterRecognizer (OCR). Null implementations ship out of the box; real backends — FunASR (Alibaba, Apache 2.0) for ASR, ChatTTS for TTS, Hey-Snips-pattern KWS, PaddleOCR (Baidu, Apache 2.0), plus yapsnap (Apache 2.0) as an ASR supplement — land in 2.3.1 when the runtimes are vendored. Wires B! Butler voice surface end-to-end on-device.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;speech;asr;tts;ocr;wake-word;on-device</PackageTags>

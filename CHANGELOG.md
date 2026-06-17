@@ -139,6 +139,39 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.8.0] — 2026-06-17
+
+**"Server domain packs"**. Seven new packages — banking, markets,
+pipelines, workflows, visualization, collaboration, CRM. Lets a host
+build an AI that operates inside its line-of-business stack.
+
+### Added
+
+- New package **`CircleAI.Banking`** (OBP-API + fineract + hyperswitch):
+  `IAccountReader`, `ILedgerWriter`, `IPaymentProcessor`.
+- New package **`CircleAI.Markets`** (OpenBB + StockSharp):
+  `IMarketDataFeed`, `IInstrumentCatalog`, `IOrderRouter`.
+- New package **`CircleAI.Pipelines`** (etl + airbyte + mysql-mcp + postgres-mcp):
+  `IPipelineSource`, `IPipelineSink`, `IPipelineExecutor`, `IDatabaseQueryTool`.
+- New package **`CircleAI.Workflows`** (restate + automatisch + paca):
+  `IWorkflowDefinitionStore`, `IWorkflowRunner`, `IWorkflowState`.
+- New package **`CircleAI.Visualization`** (superset + scalar + webstudio):
+  `IDashboardDefinitionStore`, `IApiDocBuilder`, `ISiteBuilder`.
+- New package **`CircleAI.Collaboration`** (mattermost pattern-port):
+  `IChannelStore`, `IMessageStore`, `IPresence`.
+- New package **`CircleAI.CRM`** (twenty pattern-port):
+  `IContactStore`, `IDealPipeline`, `IActivityLog`.
+
+### Versions
+
+All 28 packages bumped to **2.8.0**.
+
+### Tests
+
+14 new contract tests.
+
+---
+
 ## [2.7.0] — 2026-06-17
 
 **"Server-farm tier"**. Four new packages bring the runtime to the

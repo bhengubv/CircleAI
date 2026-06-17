@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Guardrails</PackageId>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <Description>(2.6.0) Safety-guardrails contracts — pattern-adoption of Sponsio. Separate from the personal-safety domain pack `CircleAI.Safety`. IContentFilter (pre-completion guardrails) + IRefusalPolicy + IPromptInjectionDetector (second-order attacks via RAG/web/tool output) + ISafetyAuditLog. Null impls fail-closed (treat everything as refused, log nothing). Real backends in 2.6.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;guardrails;refusal;safety;sponsio</PackageTags>

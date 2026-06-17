@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Inputs</PackageId>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <Description>(2.5.0) Input-adapter contract surface — bring any payload (URL, file, video, terminal-cast) into a model-ready text/embedding stream. IWebScraper (ConvertX-pattern), IStealthHttpClient (Scrapling-pattern; Cloudflare-aware HTTPS without fingerprint leakage), IVideoIngest (openvid), IMcpWebScrape (MCP-side web scraping), ITerminalCast (ASCILINE-pattern, asciinema-compatible). Null implementations ship; real backends land in 2.5.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;inputs;scraping;video;terminal;mcp</PackageTags>
