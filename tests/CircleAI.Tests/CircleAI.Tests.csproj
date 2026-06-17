@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\CircleAI.Embeddings.Local\CircleAI.Embeddings.Local.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Vision\CircleAI.Vision.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Speech\CircleAI.Speech.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Domain\CircleAI.Domain.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />

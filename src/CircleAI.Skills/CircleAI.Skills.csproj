@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Skills</PackageId>
-    <Version>2.3.0</Version><Description>Skill dispatch and execution pipeline for Circle AI on-device agents — 2.0.2 adds skill-pack auto-import. SkillPackSource declares a remote pack (RepoUrl/GitRef/License/SkillSubdir); KnownSkillPacks ships 8 defaults (awesome-agent-skills, Anthropic-Cybersecurity-Skills, Privacy-Data-Protection-Skills, Claude-BugHunter, last30days-skill, eduba-brand, career-ops, build-your-own-x). HttpPackDownloader fetches GitHub tarballs under %LOCALAPPDATA%/CircleAI/skill-packs/; SkillPackAutoImporter orchestrates download + import with per-pack error isolation. Carries forward 2.0.1's SkillPackLoader. Version aligned with 2.0.2 SDK bundle.</Description>
+    <Version>2.4.0</Version><Description>Skill dispatch and execution pipeline for Circle AI on-device agents — 2.0.2 adds skill-pack auto-import. SkillPackSource declares a remote pack (RepoUrl/GitRef/License/SkillSubdir); KnownSkillPacks ships 8 defaults (awesome-agent-skills, Anthropic-Cybersecurity-Skills, Privacy-Data-Protection-Skills, Claude-BugHunter, last30days-skill, eduba-brand, career-ops, build-your-own-x). HttpPackDownloader fetches GitHub tarballs under %LOCALAPPDATA%/CircleAI/skill-packs/; SkillPackAutoImporter orchestrates download + import with per-pack error isolation. Carries forward 2.0.1's SkillPackLoader. Version aligned with 2.0.2 SDK bundle.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -139,6 +139,39 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.4.0] — 2026-06-17
+
+**"Domain specialists — contract surface"**. New `CircleAI.Domain` pack
+covering 9 specialist plug points: Food (EPICure), Finance (quant-mind),
+FinancialAgent (dexter), Presentations (presenton), JobSearch
+(career-ops → TheJobCenter), Memory.MemPalace, Memory.HippoRAG (NeurIPS
+'24 / ICML '25), Swarm (MiroFish over AetherNet), Identity.LoRA (RT-10).
+Null implementations ship out of the box. Real backends land in 2.4.1.
+
+### Added
+
+- New package **`CircleAI.Domain`**:
+  - Food — `IFoodEmbeddings` (EPICure)
+  - Finance — `IFinanceRetrieval` (quant-mind), `IFinancialAgent` (dexter)
+  - Presentations — `IPresentationGenerator` (presenton)
+  - Job search — `IJobSearchPipeline` (career-ops; powers TheJobCenter)
+  - Memory — `IMemPalaceStore`, `IHippoRagStore`
+  - Swarm — `ISwarmCoordinator` (MiroFish over AetherNet)
+  - Identity — `IPersonalLoRA` (RT-10, conditional)
+  - Null implementations for all 9; fail-safe defaults.
+
+### Versions
+
+All 11 packages bumped to **2.4.0**: Core / Inference / Hosting /
+Hosting.InferenceBridge / Inference.Server / Embeddings.Local /
+Skills / AetherNet / Vision / Speech / **Domain (new)**.
+
+### Tests
+
+9 new contract tests.
+
+---
+
 ## [2.3.0] — 2026-06-17
 
 **"Speech + OCR pack — contract surface"**. New `CircleAI.Speech`
