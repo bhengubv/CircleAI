@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Observer</PackageId>
+    <Version>2.6.0</Version>
+    <Description>(2.6.0) On-device observation loop — pattern-ported from bhengubv/Observer (AGPL upstream → rewritten fresh under Apache 2.0 to keep the "drop CircleAI in" pitch license-clean). ISensor (camera / mic / location / phone-state) + IObservationLoop (perceive → reason → act tick) + IObservationToolbox (tool registration). Null impls ship; real sensors land in 2.6.1 when MAUI-platform bridges are wired.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;observer;sensors;perception;agent-loop;on-device</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

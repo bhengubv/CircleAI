@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.AetherNet</PackageId>
-    <Version>2.5.0</Version>
+    <Version>2.6.0</Version>
     <Description>
       The runtime adapter that bridges CircleAI.Aether contracts to the live
       AetherNet protocol. 2.0.1 adds (RT-12 v1) MeshCapabilityAdvertisement +

@@ -139,6 +139,51 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.6.0] — 2026-06-17
+
+**"Observer + Guardrails + ModelAlignment"**. Three new packages.
+
+**Observer** is a pattern-port of `bhengubv/Observer` (AGPL upstream
+→ rewritten fresh under Apache 2.0 per the
+`feedback_no_license_means_pattern_port.md` rule). On-device
+perceive-reason-act loop with pluggable sensors and a tool registry.
+
+**Guardrails** is a Sponsio-pattern-adoption — separate from the
+existing personal-safety domain pack `CircleAI.Safety`. Naming chosen
+to avoid collision with the v1.2.0 `CircleAI.Safety` domain package.
+
+**ModelAlignment** is an OBLITERATUS pattern-port: targeted
+abliteration toolkit + audit-publish-gate so abliterated weights
+cannot be accidentally shipped upstream.
+
+### Added
+
+- New package **`CircleAI.Observer`** (Apache 2.0 fresh write):
+  - `ISensor` (camera / mic / GPS / phone-state)
+  - `IObservationToolbox` (in-memory default ships)
+  - `IObservationLoop` (perceive → reason → act tick)
+- New package **`CircleAI.Guardrails`** (Sponsio pattern-adoption):
+  - `IContentFilter` + `IRefusalPolicy` + `IPromptInjectionDetector`
+  - `ISafetyAuditLog`
+  - All Null impls fail-closed.
+- New package **`CircleAI.ModelAlignment`** (OBLITERATUS pattern-port):
+  - `IAlignmentToolkit` (apply / revert / list)
+  - `IAlignmentAuditor` (asserts ok-to-publish)
+
+### Versions
+
+All 17 packages bumped to **2.6.0**: Core / Inference / Hosting /
+Hosting.InferenceBridge / Inference.Server / Embeddings.Local /
+Skills / AetherNet / Vision / Speech / Domain / Tools.Catalog /
+Inputs / Spatial / **Observer (new)** / **Guardrails (new)** /
+**ModelAlignment (new)**.
+
+### Tests
+
+10 new contract tests.
+
+---
+
 ## [2.5.0] — 2026-06-17
 
 **"Tools.Catalog full + Inputs + Spatial"**. Three new packages.

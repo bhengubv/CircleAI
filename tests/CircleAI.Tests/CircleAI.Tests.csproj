@@ -37,6 +37,9 @@
     <ProjectReference Include="..\..\src\CircleAI.Tools.Catalog\CircleAI.Tools.Catalog.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inputs\CircleAI.Inputs.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Spatial\CircleAI.Spatial.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Observer\CircleAI.Observer.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Guardrails\CircleAI.Guardrails.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.ModelAlignment\CircleAI.ModelAlignment.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />

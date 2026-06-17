@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.ModelAlignment</PackageId>
+    <Version>2.6.0</Version>
+    <Description>(2.6.0) Model-alignment / abliteration contract surface — pattern-port of OBLITERATUS. IAlignmentToolkit lets a host run targeted abliteration on a downloaded model (e.g. remove refusals that don't apply on private on-device deployments), IAlignmentProfile captures a reversible alignment delta, IAlignmentAuditor enforces "do not ship abliterated weights upstream". Null impls fail-closed.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;alignment;abliteration;refusal;model-surgery</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

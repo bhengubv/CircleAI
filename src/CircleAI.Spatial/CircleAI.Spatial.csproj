@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Spatial</PackageId>
-    <Version>2.5.0</Version>
+    <Version>2.6.0</Version>
     <Description>(2.5.0) Spatial / geo contract surface — let an AI talk about places. IGeoTileSource (deck.gl + cesium), IRadarReadout (RADAR), I3DSceneRenderer (flame + anime), ISkyTracker (skylight) — null implementations ship; real backends land in 2.5.1 when the underlying JS / native libs are bridged.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;spatial;geo;maps;radar;sky;3d</PackageTags>
