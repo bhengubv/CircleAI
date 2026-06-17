@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.DocAnalytics</PackageId>
+    <Version>2.9.0</Version>
+    <Description>(2.9.0) Document-analytics contracts — papermark pattern. IDocumentTracker + IDocumentInsights.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;docs;papermark;analytics</PackageTags>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+</Project>

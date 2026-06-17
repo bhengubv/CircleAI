@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Collaboration</PackageId>
-    <Version>2.8.0</Version>
+    <Version>2.9.0</Version>
     <Description>(2.8.0) Collaboration contracts — mattermost pattern-port (AGPL upstream → fresh Apache 2.0 surface here). IChannel, IMessageStore, IPresence. Null impls fail-closed (nothing posted).</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;collaboration;chat;mattermost</PackageTags>

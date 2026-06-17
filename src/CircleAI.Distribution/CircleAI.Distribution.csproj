@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Distribution</PackageId>
+    <Version>2.9.0</Version>
+    <Description>(2.9.0) Distribution contracts — FileSync pattern. Lets a host distribute models / skill packs / app updates over AetherNet without a central origin. IFileSync + IPeerAdvertiser.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;distribution;filesync;aethernet</PackageTags>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+</Project>

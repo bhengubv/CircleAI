@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting</PackageId>
-    <Version>2.8.0</Version><Description>DI wiring + proactive reasoning host for Circle AI — 2.0.3 adds the CircleAI.Hosting.Tools namespace: ToolDescriptor + IToolCatalog + IToolProvider + IToolExecutor + InMemoryToolCatalog (keyword-substring search) + ToolCatalogExtensions.ImportFromAsync. Pattern-port skeleton from composio (MIT) under Apache 2.0; downstream consumers (circle-concierge, Observer's IObserverTool) can build IToolProvider impls now. Full catalog (semantic search + bundled SaaS integrations) lands in 2.5.0. Carries forward 2.0.1's Generative UI plug point and 2.0.0's RT-04 brownout + RT-08 fallback chain.</Description>
+    <Version>2.9.0</Version><Description>DI wiring + proactive reasoning host for Circle AI — 2.0.3 adds the CircleAI.Hosting.Tools namespace: ToolDescriptor + IToolCatalog + IToolProvider + IToolExecutor + InMemoryToolCatalog (keyword-substring search) + ToolCatalogExtensions.ImportFromAsync. Pattern-port skeleton from composio (MIT) under Apache 2.0; downstream consumers (circle-concierge, Observer's IObserverTool) can build IToolProvider impls now. Full catalog (semantic search + bundled SaaS integrations) lands in 2.5.0. Carries forward 2.0.1's Generative UI plug point and 2.0.0's RT-04 brownout + RT-08 fallback chain.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.BuildFarm</PackageId>
+    <Version>2.9.0</Version>
+    <Description>(2.9.0) Build-farm contracts — OSX-KVM + macos patterns for running Apple-platform CI without dedicated Mac mini. IBuildAgentPool + IBuildJob + IBuildArtifactStore.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;buildfarm;osx-kvm;ci</PackageTags>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+</Project>

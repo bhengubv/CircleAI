@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Visualization</PackageId>
-    <Version>2.8.0</Version>
+    <Version>2.9.0</Version>
     <Description>(2.8.0) Visualization contracts — superset (BI dashboards) + scalar (API docs) + webstudio (low-code web UI). IDashboardDefinition + IApiDocBuilder + ISiteBuilder.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;viz;superset;scalar;webstudio</PackageTags>

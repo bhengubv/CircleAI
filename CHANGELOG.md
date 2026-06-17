@@ -139,6 +139,52 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.9.0] — 2026-06-17
+
+**"DevOps + build-farm — the final 2.x release"**. Eight new packages
+close out the 2.x line: build farm, dep-bot, doc analytics, snapshot
+testing, distribution, media server, Windows automation, micro-agents.
+
+CircleAI 2.x is now feature-complete as a contingency runtime — if
+Western dev tools (Claude Code, Codex, Cursor) get banned, CircleAI
+covers the surface from inference through devops, banking, markets,
+workflows, and CRM. Real backends will land in the 2.x.1 dot-releases.
+
+### Added
+
+- New package **`CircleAI.BuildFarm`** (OSX-KVM + macos): `IBuildAgentPool`, `IBuildJobRunner`, `IBuildArtifactStore`.
+- New package **`CircleAI.DepBot`** (renovate): `IDependencyAnalyzer`, `IDependencyUpdater`.
+- New package **`CircleAI.DocAnalytics`** (papermark): `IDocumentTracker`, `IDocumentInsights`.
+- New package **`CircleAI.Testing`** (Verify): `ISnapshotComparer`, `IGoldenStore`.
+- New package **`CircleAI.Distribution`** (FileSync over AetherNet): `IFileSync`, `IPeerAdvertiser`.
+- New package **`CircleAI.MediaServer`** (pms-docker-plex + beatsync): `IMediaLibrary`, `ISyncedPlayback`. Named with "Server" suffix to avoid collision with the v1.2.0 `CircleAI.Media` content-production domain pack.
+- New package **`CircleAI.WindowsAutomation`** (mcp-windows-automation): `IUiAutomationDriver`.
+- New package **`CircleAI.MicroAgents`** (picoclaw + hermes-desktop-os1): `IMicroAgent`, `IMicroAgentHost`.
+
+### Versions
+
+All 36 packages bumped to **2.9.0**.
+
+### Tests
+
+14 new contract tests (160 total contract-surface tests across the 2.x line).
+
+### 2.x line wrap-up
+
+Across 2.0 → 2.9 we shipped **36 packages** covering: inference,
+hosting, networking, skills, vision, speech, domain specialists, tools
+catalog, inputs, spatial, observer, guardrails, model-alignment, server
+farm, observability, k8s operator, spec-driven dev, banking, markets,
+pipelines, workflows, visualization, collaboration, CRM, build farm,
+dep-bot, doc analytics, snapshot testing, distribution, media server,
+Windows automation, and micro-agents. Nothing was left on the table.
+
+Real backends (`*.csproj` description fields point at 2.x.1) land
+opportunistically; the contract surface is stable and downstream
+consumers can compile against it today.
+
+---
+
 ## [2.8.0] — 2026-06-17
 
 **"Server domain packs"**. Seven new packages — banking, markets,

@@ -51,6 +51,14 @@
     <ProjectReference Include="..\..\src\CircleAI.Visualization\CircleAI.Visualization.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Collaboration\CircleAI.Collaboration.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.CRM\CircleAI.CRM.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.BuildFarm\CircleAI.BuildFarm.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.DepBot\CircleAI.DepBot.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.DocAnalytics\CircleAI.DocAnalytics.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Testing\CircleAI.Testing.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Distribution\CircleAI.Distribution.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.MediaServer\CircleAI.MediaServer.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.WindowsAutomation\CircleAI.WindowsAutomation.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.MicroAgents\CircleAI.MicroAgents.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
