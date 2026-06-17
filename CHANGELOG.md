@@ -139,6 +139,43 @@ MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
 
 ---
 
+## [2.7.0] — 2026-06-17
+
+**"Server-farm tier"**. Four new packages bring the runtime to the
+"CTO/CIO can deploy this in our datacenter" doctrine — multi-tenant
+routing, gRPC + batch + sharding contracts, OTel observability,
+k8s operator (kagent), and spec-driven scaffolding.
+
+### Added
+
+- New package **`CircleAI.Inference.Server.Enterprise`**:
+  - `ITenantRouter` (per-tenant quotas + node choice)
+  - `IBatchScheduler` (coalesce small requests)
+  - `IModelShardPlanner` (very-large-model sharding)
+  - `ICrossTierOffload` (RT-12 v2 — phone borrows server brain)
+  - `ServerTier` enum (SingleNode / Server / ServerFarm)
+- New package **`CircleAI.Observability`**:
+  - `IMetricSink` (OTel + Prometheus)
+  - `ITraceSink` (OTel spans)
+  - `IDashboardPublisher` (Grafana + claude-team-dashboard)
+- New package **`CircleAI.Operator`** (kagent pattern):
+  - `IModelOperator` (reconcile CRDs)
+  - `IDeploymentObserver` (lifecycle events)
+- New package **`CircleAI.SDD`** (spec-kit pattern-port):
+  - `ISpecificationStore`
+  - `ISpecificationValidator`
+  - `ISpecToScaffold` (codegen)
+
+### Versions
+
+All 21 packages bumped to **2.7.0**.
+
+### Tests
+
+12 new contract tests.
+
+---
+
 ## [2.6.0] — 2026-06-17
 
 **"Observer + Guardrails + ModelAlignment"**. Three new packages.
