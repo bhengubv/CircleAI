@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference.Server</PackageId>
-    <Version>2.0.0</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. 2.0.0 picks up CircleAI.Inference / Hosting 2.0.0 — the fallback chain (RT-08) + brownout (RT-04) release. Server API surface unchanged; behaviour benefits transparently. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script.</Description>
+    <Version>2.0.1</Version><Description>OpenAI-compatible hosted inference server over CircleAI.Hosting.InferenceBridge. 2.0.1 picks up CircleAI.Inference / Hosting 2.0.1 — Skills harness + Generative UI + Mesh discovery bundle. Server API surface unchanged. Endpoints: /v1/chat/completions (SSE streaming), /v1/embeddings, /v1/companion/*, /v1/diagnostics, /v1/healthz, /v1/readyz. JWT and API-key auth out of the box. Ships Dockerfile, systemd unit, and a Windows-service install script.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

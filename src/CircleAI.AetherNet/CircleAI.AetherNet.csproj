@@ -3,16 +3,21 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.AetherNet</PackageId>
-    <Version>1.1.0</Version>
+    <Version>2.0.1</Version>
     <Description>
       The runtime adapter that bridges CircleAI.Aether contracts to the live
-      AetherNet protocol. Implements IAetherContext (presence/capability),
-      IAetherTelemetry (event fan-out from real mesh events), and
-      ISecurityDirectiveConsumer (forwards AI-issued directives to
-      AetherNet.Security's policy engine).
+      AetherNet protocol. 2.0.1 adds (RT-12 v1) MeshCapabilityAdvertisement +
+      IMeshCapabilityRegistry + InMemoryMeshCapabilityRegistry +
+      IMeshCapabilityBroadcaster + NullMeshCapabilityBroadcaster. Peers
+      publish loaded-model availability ("Qwen3-1.7B with 2048 free KV tokens
+      on a Phone tier"); registry queries by model + min-free-KV + staleness.
+      Contracts only; AetherNet transport binding lands with v2 actual
+      offload in 2.7.0. Also: IAetherContext, IAetherTelemetry,
+      ISecurityDirectiveConsumer (unchanged from 1.1.0).
 
       Floats AetherNet.* with Version="1.*" so patch/minor upstream releases
-      flow through to consumers without re-pin.
+      flow through to consumers without re-pin. Version aligned with 2.0.1
+      SDK bundle.
     </Description>
   </PropertyGroup>
 

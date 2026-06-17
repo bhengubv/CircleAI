@@ -3,8 +3,8 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Embeddings.Local</PackageId>
-    <Version>2.0.0</Version>
-    <Description>(RT-09) On-device embedding store with built-in RAG primitive for CircleAI. Bring your own encoder via IEmbeddingEncoder (or wire your favourite sentence-transformer); the store handles add/search/persist. Vectors are TurboQuant-compressed at 4-bits-per-dim (~8× shrink vs FP32) so a phone can hold ~250K paragraphs in 1 GB. Brute-force cosine for v1; HNSW upgrade in 2.1.0. SemVer-pinned to CircleAI.Core 2.0.0.</Description>
+    <Version>2.0.1</Version>
+    <Description>(RT-09) On-device embedding store with built-in RAG primitive for CircleAI. 2.0.1 adds the macOS native dylibs for the turbovec HNSW backend (osx-arm64 + osx-x64) alongside the existing win-x64 — IEmbeddingIndex plug point + TurboVecEmbeddingIndex + HnswEmbeddingStore now work on 3 of 8 RIDs. Brute-force InMemoryEmbeddingStore unchanged. Linux/Android/iOS cross-builds queued for 2.1.0.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;llm;circle-ai;embeddings;rag;turboquant;on-device</PackageTags>
   </PropertyGroup>

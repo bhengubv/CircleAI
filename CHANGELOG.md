@@ -4,31 +4,73 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] — 2026-06-17
+
+Managed-only point release covering the three 2.0.x follow-up items
+from the runtime-2.0 roadmap, plus the macOS native dylibs for RT-09b.
+
+### Added
+
+- **(2.0.1) Skill pack harness.** `CircleAI.Skills` gains
+  `SkillPackLoader` — Claude Code-format `SKILL.md` parser + importer
+  over the existing `ISkillStore`. Compatible with
+  `bhengubv/Claude-BugHunter` (51 hunting skills) and
+  `bhengubv/awesome-agent-skills` (1000+ community skills). Walks a
+  pack directory recursively, parses YAML frontmatter + markdown body,
+  stamps a `pack:<name>` tag, returns a `SkillPackManifest`.
+
+- **(2.0.2) Generative UI plug point.** `CircleAI.Hosting.GenerativeUI`
+  exposes `IGenerativeUIRenderer` + a strict catalog-validated
+  `JsonRenderParser`. Pattern adopted from `bhengubv/json-render`: the
+  LLM emits a JSON tree, the parser validates against a `UiCatalog`
+  (card / list / button / textBlock / image by default), the host
+  renders into native UI (MAUI controls, HTML, terminal, etc.).
+  Includes a `DescribeCatalogForPrompt` helper that produces the
+  system-prompt constraints.
+
+- **(2.0.3 / RT-12 v1) Mesh capability discovery.**
+  `CircleAI.AetherNet` gains `MeshCapabilityAdvertisement` +
+  `IMeshCapabilityRegistry` + `InMemoryMeshCapabilityRegistry`. Peers
+  publish what they have loaded ("Qwen3-1.7B with 2048 free KV tokens
+  on a Phone tier"); the registry queries by model + min-free-KV +
+  staleness. v1 is contracts + in-memory; the AetherNet transport
+  binding lands with RT-12 v2 actual offload in 2.7.0.
+
+- **(RT-09b cross-build progress)** `turbovecbridge` Rust cdylib now
+  ships for `osx-arm64` + `osx-x64` in addition to `win-x64` (3 of 8
+  RIDs). Linux + Android + iOS queued for the next build-server pass.
+
+### Changed
+
+- All 8 packages bumped uniformly to **2.0.1**: Core, Inference,
+  Hosting, Hosting.InferenceBridge, Inference.Server, Embeddings.Local,
+  Skills, AetherNet.
+
+### Tests
+
+23 new tests (7 SkillPackLoader + 8 JsonRenderParser + 8
+MeshCapabilityRegistry). Full suite stays green on net9.0 + net10.0.
+
+---
+
 ## [Unreleased — 2.1.0 in progress]
 
-Tracking the items shipping in the **"Native lift + HNSW"** release.
-Code lands on master incrementally; the version bump + tag + GitHub
-release + NuGet push happen together once every 2.1.0 item is in.
+Tracking the items still in flight for the **"Native lift + HNSW"** release.
 
 ### Done
 
-- **RT-09b turbovec HNSW backend.** New `IEmbeddingIndex` interface
-  in `CircleAI.Embeddings.Local` + `TurboVecEmbeddingIndex` impl
-  backed by the vendored turbovec Rust crate via the new
-  `turbovecbridge` cdylib. New `HnswEmbeddingStore` honours the
-  existing `ICircleEmbeddingStore` contract and routes search through
-  turbovec's SIMD-blocked LUT path. Native lib loads on win-x64;
-  Linux/Mac/Android/iOS cross-builds queued for the next build-server
-  session. 11 new tests pass on net9.0 + net10.0.
+- **RT-09b turbovec HNSW backend (managed + win-x64 + osx-* native).**
+  See `[2.0.1]` above for the partial native ship.
 
 ### Pending
 
-- RT-01 Tiered KV cache (FP16 / TQ3 / TQ2 per-token mode) — mnnbridge native.
-- RT-03 mmap weight loading — mnnbridge native.
-- RT-05 Speculative decoding — mnnbridge native.
+- RT-01 Tiered KV cache (FP16 / TQ3 / TQ2 per-token mode) — **needs
+  C++ source work in mnnbridge.cpp**; cross-build comes after.
+- RT-03 mmap weight loading — **needs C++ source work**.
+- RT-05 Speculative decoding — **needs C++ source work**.
 - RT-07 Predictive warmup pool — managed.
 - Catalog additions — Qwen3-Coder / DeepSeek-Coder-V2-Lite / Qwen3-Draft.
-- Turbovec cross-build: linux-x64, linux-arm64, osx-x64, osx-arm64, android-arm64, android-x64, ios-arm64.
+- Turbovec cross-build: linux-x64, linux-arm64, android-arm64, android-x64, ios-arm64.
 
 ---
 
