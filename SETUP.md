@@ -9,12 +9,19 @@ Two binaries are required at runtime:
 | `MNN` core (`MNN.dll` / `libMNN.so` / `libMNN.dylib` / `libMNN.a`) | Alibaba's MNN runtime |
 
 > **You do not normally need to do anything from this page.**
-> `CircleAI.Inference` 1.3.6+ ships the prebuilt natives for **win-x64,
-> linux-x64, linux-arm64, osx-arm64, osx-x64, android-arm64, android-arm,
-> ios-arm64** under `runtimes/{rid}/native/` inside the NuGet package.
-> `dotnet build` lays them next to your binary automatically and
-> `NativeRuntimePrep` (in `CircleAI.Inference`) preloads them on first
-> P/Invoke. If load works, this page is just history.
+> `CircleAI.Inference` 3.0.1 ships the prebuilt natives for **8 RIDs**:
+> `win-x64`, `linux-x64`, `linux-arm64`, `osx-arm64`, `osx-x64`,
+> `android-arm`, `android-arm64`, `ios-arm64` under
+> `runtimes/{rid}/native/` inside the NuGet package. `dotnet build`
+> lays them next to your binary automatically and `NativeRuntimePrep`
+> (in `CircleAI.Inference`) preloads them on first P/Invoke. If load
+> works, this page is just history.
+>
+> Separately, `CircleAI.Embeddings.Local` 3.0.1 ships the **TurboVec**
+> SIMD vector backend's natives for **7 RIDs**: `win-x64`, `linux-x64`,
+> `osx-arm64`, `osx-x64`, `android-arm64`, `android-x64`, `ios-arm64`.
+> Same auto-resolution path — same diagnostics surface — but the
+> source tree is `native/turbovec/` rather than `native/mnn-bridge/`.
 >
 > Read on only if you need to:
 >
@@ -140,8 +147,9 @@ If chat completion fails with `Unable to load DLL 'mnnbridge'`:
    the expected mnnbridge path, the fetched MNN core path, and any
    flatten / preload error.
 2. If `expected_mnnbridge: (MISSING)` — your build didn't propagate
-   `runtimes/{rid}/native/`. Check the CircleAI.Inference NuGet
-   reference is `1.3.1+`.
+   `runtimes/{rid}/native/`. Check the `CircleAI.Inference` NuGet
+   reference is `3.0.1` or any release in the 1.3.1 → 3.0.1 line that
+   carries the native runtime layout.
 3. If `expected_mnnbridge: (exists)` but bridge_loaded is false — most
    likely a missing OS dep. On Windows, install the
    "Visual C++ 2015-2022 Redistributable (x64)." On Linux, check

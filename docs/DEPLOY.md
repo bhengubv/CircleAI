@@ -12,7 +12,7 @@ the host process detects which lifecycle to honour at startup.
 
 ```bash
 docker build -f src/CircleAI.Inference.Server/Dockerfile \
-  -t circleai/inference-server:1.2.0 .
+  -t circleai/inference-server:3.0.1 .
 ```
 
 ### Run
@@ -20,20 +20,31 @@ docker build -f src/CircleAI.Inference.Server/Dockerfile \
 ```bash
 docker run --rm -d \
   --name circleai-inference-server \
-  -p 8080:8080 \
+  -p 5050:5050 \
   -v circleai-data:/data \
-  -e ASPNETCORE_URLS=http://+:8080 \
+  -e ASPNETCORE_URLS=http://+:5050 \
   -e CircleAIServer__RuntimeCacheRoot=/data/runtime \
   -e CircleAIServer__ModelStorageRoot=/data/models \
   -e CircleAIServer__Auth__ApiKey__Keys__0='<your-api-key>' \
-  circleai/inference-server:1.2.0
+  circleai/inference-server:3.0.1
+```
+
+Or pull from GHCR (published with every release):
+
+```bash
+docker run --rm -d \
+  --name circleai-inference-server \
+  -p 5050:5050 \
+  -v circleai-data:/data \
+  -e CircleAIServer__Auth__ApiKey__Keys__0='<your-api-key>' \
+  ghcr.io/bhengubv/circleai-inference-server:latest
 ```
 
 Health probe:
 
 ```bash
-curl http://localhost:8080/v1/healthz   # {"status":"alive","at":...}
-curl http://localhost:8080/v1/readyz    # 503 until at least one model loaded
+curl http://localhost:5050/v1/healthz   # {"status":"alive","at":...}
+curl http://localhost:5050/v1/readyz    # 503 until at least one model loaded
 ```
 
 ### Kubernetes
@@ -51,8 +62,8 @@ spec:
     spec:
       containers:
         - name: server
-          image: circleai/inference-server:1.2.0
-          ports: [{ containerPort: 8080 }]
+          image: ghcr.io/bhengubv/circleai-inference-server:3.0.1
+          ports: [{ containerPort: 5050 }]
           envFrom:
             - secretRef: { name: circleai-keys }
           env:
@@ -61,11 +72,11 @@ spec:
           volumeMounts:
             - { mountPath: /data, name: circleai-data }
           livenessProbe:
-            httpGet: { path: /v1/healthz, port: 8080 }
+            httpGet: { path: /v1/healthz, port: 5050 }
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            httpGet: { path: /v1/readyz, port: 8080 }
+            httpGet: { path: /v1/readyz, port: 5050 }
             initialDelaySeconds: 5
             periodSeconds: 5
           resources:
@@ -86,10 +97,10 @@ into the option tree.
 Run with the NVIDIA Container Toolkit:
 
 ```bash
-docker run --rm --gpus all -p 8080:8080 \
+docker run --rm --gpus all -p 5050:5050 \
   -v circleai-data:/data \
   -e CircleAIServer__RuntimeCacheRoot=/data/runtime \
-  circleai/inference-server:1.2.0
+  circleai/inference-server:3.0.1
 ```
 
 `CapabilityProbe` then sees the GPU through `nvidia-smi`, picks the
@@ -129,7 +140,7 @@ sudo systemctl enable --now circleai-inference-server
 ```bash
 sudo systemctl status circleai-inference-server
 sudo journalctl -u circleai-inference-server -f
-curl http://localhost:8080/v1/healthz
+curl http://localhost:5050/v1/healthz
 ```
 
 ### Customise
@@ -187,7 +198,7 @@ that to change API keys / paths:
 ```powershell
 $svc  = 'HKLM:\SYSTEM\CurrentControlSet\Services\CircleAI.Inference.Server'
 $envv = @(
-  "ASPNETCORE_URLS=http://0.0.0.0:8080",
+  "ASPNETCORE_URLS=http://0.0.0.0:5050",
   "ASPNETCORE_ENVIRONMENT=Production",
   "CircleAIServer__RuntimeCacheRoot=C:\ProgramData\CircleAI\runtime",
   "CircleAIServer__ModelStorageRoot=C:\ProgramData\CircleAI\models",
@@ -210,7 +221,7 @@ Restart-Service CircleAI.Inference.Server
 Hosted clients hit `/v1/admin/models/load`:
 
 ```bash
-curl -X POST http://localhost:8080/v1/admin/models/load \
+curl -X POST http://localhost:5050/v1/admin/models/load \
   -H "X-CircleAI-Api-Key: <your-api-key>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -230,14 +241,14 @@ ship their own (typically wrapping a model-cache + Mnnbridge factory).
 Unload:
 
 ```bash
-curl -X DELETE http://localhost:8080/v1/admin/models/qwen3-7b \
+curl -X DELETE http://localhost:5050/v1/admin/models/qwen3-7b \
   -H "X-CircleAI-Api-Key: <your-api-key>"
 ```
 
 Diagnostics:
 
 ```bash
-curl http://localhost:8080/v1/diagnostics \
+curl http://localhost:5050/v1/diagnostics \
   -H "X-CircleAI-Api-Key: <your-api-key>"
 ```
 

@@ -1,3 +1,8 @@
+> **This file is the frozen 2.0.0 release-notes record.** For every
+> release since (2.0.1 → 3.0.1), see [CHANGELOG.md](CHANGELOG.md) —
+> that is the authoritative version history. This file stays as the
+> historical 2.0.0 marker.
+
 # CircleAI 2.0.0 — "Fallback chain + brownout + RAG"
 
 **Released:** 2026-06-16

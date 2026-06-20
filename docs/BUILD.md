@@ -23,28 +23,32 @@ dotnet restore CircleAI.sln
 dotnet build CircleAI.sln -c Release
 ```
 
-The solution is large (≈ 80 projects including language ports and
-domain verticals). Expect a 1–2 minute restore the first time, then
-~30 seconds for incremental builds.
+The solution is large (**132 csprojs** under `src/` — 42 on the 3.0.1
+contract line, 6 mid-line foundation packages, 84 on the 1.2.0
+companion + adapter line — plus ~30 test projects under `tests/` and 9
+language-port directories under `python/`, `typescript/`, `go/`,
+`kotlin/`, `swift/`, `rust/`, `c/`, `android/`, `harmonyos/`). Expect a
+1–2 minute restore the first time, then ~30 seconds for incremental
+builds.
 
 ## 3. Run the test suites
 
-```bash
-# Core + cross-cutting suites
-dotnet test tests/CircleAI.Runtime.Tests          -c Release  # 42 tests
-dotnet test tests/CircleAI.Inference.Server.Tests -c Release  # 33 tests
-dotnet test tests/CircleAI.Security.Tests         -c Release  # 40 tests
-dotnet test tests/CircleAI.Personality.Tests      -c Release  # 26 tests
-dotnet test tests/CircleAI.Knowledge.Tests        -c Release  # 26 tests
-dotnet test tests/CircleAI.Hosting.InferenceBridge.Tests -c Release  # 18 tests
-dotnet test tests/CircleAI.Federation.Tests       -c Release  # 15 tests
-dotnet test tests/CircleAI.Agents.Peer.Tests      -c Release  # 12 tests
-dotnet test tests/CircleAI.Simulation.Tests       -c Release  # 50 tests
-dotnet test tests/CircleAI.Wearable.Biosignals.Tests -c Release  # 20 tests
-dotnet test tests/CircleAI.Memory.Tests           -c Release  # 6 tests
+The full suite covers ~30 test projects across runtime, server,
+hosting, security, personality, knowledge, federation, agents,
+simulation, wearable / biosignals, memory, and each of the new 3.0
+pillar contract surfaces (Vision, Speech, Spatial, Banking, …).
 
-# Everything at once
+```bash
+# Everything at once — recommended
 dotnet test CircleAI.sln -c Release
+
+# Or run one project at a time
+dotnet test tests/CircleAI.Runtime.Tests             -c Release
+dotnet test tests/CircleAI.Inference.Server.Tests    -c Release
+dotnet test tests/CircleAI.Hosting.InferenceBridge.Tests -c Release
+# …etc.
+
+# Pass --verbosity normal for the per-project test counts.
 ```
 
 If a test project fails to restore due to a sibling project's missing

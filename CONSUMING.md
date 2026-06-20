@@ -199,20 +199,43 @@ curl http://localhost:5050/v1/chat/completions \
 | Long-context model | `AIOptions.RequiredCapabilities = ChatCapability.LongContext` | — |
 | Vision model | `AIOptions.RequiredCapabilities = ChatCapability.Vision` | — |
 | Tool-use model | `AIOptions.RequiredCapabilities = ChatCapability.Tools` | — |
+| Declarative energy ceiling per call | `GenerateAsync(..., budget: PowerBudget.Low \| Normal \| High)` | — |
+| Survive OOM kill — auto-snapshot | `AIOptions.AutoSnapshotOnPause = true` | — |
+| Manual snapshot + restore | `await generator.SaveSessionAsync(path)` / `LoadSessionAsync(path)` | — |
 | Bring your own runtime | — | `IBridgeFactory` |
 | Bring your own model storage | `AIOptions.ModelStorageDir` | `IModelLoader` |
 | Bring your own tools | `AIOptions.ToolBridge` | `IToolBridge` |
 | Watch lifecycle / inference / tool events | `AIOptions.Observer` | `IAIObserver` |
-| Wire sensors (GPS, battery, …) | `AIOptions.DeviceContext` | `IDeviceContext` |
+| Watch upgrade availability | — | `IAIObserver.OnUpgradeAvailableAsync` |
+| Wire sensors (GPS, battery, thermal, …) | `AIOptions.DeviceContext` | `IDeviceContext` |
 | Add persistent memory | `AIOptions.EpisodicMemory` | `IEpisodicMemoryStore` |
+| Add HippoRAG-style multi-hop recall | — | `CircleAI.Domain.IHippoRagStore` |
 | Add persistent persona | `AIOptions.PersonaStore` | `IPersonaStore` |
 | Add user feedback signals | `AIOptions.FeedbackStore` | `IFeedbackStore` |
 | Add affect / goal tracking | `AIOptions.AffectStore` / `GoalStore` | corresponding interfaces |
-| Add voice (wake-word / STT / TTS) | `AIOptions.Voice` | — |
+| Add voice (wake-word / STT / TTS) | `AIOptions.Voice` | `CircleAI.Speech` (`IWakeWordDetector`, `ISpeechRecognizer`, `ISpeechSynthesizer`) |
+| Add face / liveness / document / plate detection | — | `CircleAI.Vision` (`IFaceDetector`, `IFaceLivenessDetector`, `IDocumentVerifier`, `IPlateRecognizer`) |
+| Add tool-catalog with OAuth providers | — | `CircleAI.Tools.Catalog` (`IProviderCatalog`, `ICredentialStore`, `IOAuth2FlowDriver`, `IQuotaGuard`) |
+| Add perceive-reason-act loop | — | `CircleAI.Observer` (`ISensor`, `IObservationToolbox`, `IObservationLoop`) |
+| Add safety / refusal / prompt-injection detection | — | `CircleAI.ContentPolicy` (`IContentFilter`, `IRefusalPolicy`, `IPromptInjectionDetector`, `ISafetyAuditLog`) |
+| Add observability (metrics / traces / dashboards) | — | `CircleAI.Observability` (`IMetricSink`, `ITraceSink`, `IDashboardPublisher`) |
+| Cross-tier offload (phone borrows server brain) | — | `CircleAI.AetherNet` `ICrossTierOffload` (RT-12 v2) |
 | Cloud fallback when local fails | `AIOptions.CloudFallbackEnabled = true` + `CloudFallbackEndpoint` | — |
 
 The full `AIOptions` surface is documented in
 [`src/CircleAI.Hosting/AIOptions.cs`](src/CircleAI.Hosting/AIOptions.cs).
+
+### Beyond the trinity — the 3.0 pillar packages
+
+The cookbook above mixes core hosting (`CircleAI.Hosting`) with the
+3.0 pillar packages. Pillar packages each ship one focused contract
+surface with fail-closed Null implementations — you install the
+package, register a real backend, and your `IAIService` gains the
+capability. Each pillar's `Contracts.cs` is the authoritative interface
+list; the [README](README.md) groups them by purpose with one-line
+descriptions. Most pillars (`CircleAI.Vision`, `CircleAI.Speech`,
+`CircleAI.Spatial`, `CircleAI.Domain`, `CircleAI.Banking`, …) declare
+contracts now; real backends land in dot releases.
 
 ---
 

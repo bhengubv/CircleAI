@@ -1,11 +1,30 @@
 # CircleAI — Architecture
 
-Last refreshed: 2026-06-05.
+Last refreshed: 2026-06-18. Current line: **`3.0.1`**.
 
 CircleAI is a portable, on-device + server AI SDK built around a single
 inference seam, an Alibaba-MNN execution backend, and Qwen-family models
 hosted on ModelScope. This document is the source of truth for those
 decisions and the contracts that hold the rest of the codebase together.
+
+---
+
+## 0. The 3.0 doctrine
+
+The 1.x and 2.x lines built a complete on-device + server AI runtime.
+3.0 reframes the same codebase as a **sovereign-stack contingency**:
+
+> *If Claude Code / Codex / Cursor get pulled from a market, CircleAI
+> is the substrate a Geek-Network IDE / agent shell binds to instead.
+> The cornerstone is `CircleAI.DevTools` — `ICodeEditor`,
+> `IInlineSuggester`, `IAgentShell`, `IPatchPlanner`, `IRefactorTool`.
+> Contracts ship today; implementations land in 3.0.x dot releases.*
+
+This document captures the architectural decisions that hold across
+both framings. The newer 3.0 contract surfaces (vision, speech, spatial,
+banking, markets, workflows, devtools, etc.) sit on top of the inference
+seam described in § 2 — they extend the codebase without changing the
+foundational design.
 
 ---
 
@@ -67,39 +86,90 @@ Windows) wrap a `LocalProcessInferenceBridge` running inside a daemon.
 
 ## 3. Package map
 
+CircleAI ships **132 csprojs** across three version tracks. The README
+has the authoritative per-package list with descriptions; this section
+captures the structural shape.
+
+### Track 1 — 3.0 contract line (`3.0.1`)
+
+**42 packages.** The trinity + the new sovereign-stack contract
+surfaces. Most are contract + null-impl; backends land in dot releases.
+
 ```
-CircleAI.Core               primitives — ComponentBase, Diagnostics (Activity+Meter),
-                            audit sink, tenant context, [CircleAIVerificationStatus] attribute
-CircleAI.Inference          IChatGenerator, MnnInterop, QwenTextGenerator,
-                            ModelDownloadService, ModelDescriptor types
-CircleAI.Embeddings         ITextEmbedder, MnnEmbeddingBackend
-CircleAI.Hosting            high-level IAIService composition, voice options
-CircleAI.Hosting.InferenceBridge
-                            IInferenceBridge, DeviceCapabilities,
-                            LocalProcessInferenceBridge
-CircleAI.Runtime            CapabilityProbe (Windows/Linux/macOS/Android),
-                            BackendSelector (CPU/CUDA/Vulkan/Metal/Ascend/…),
-                            NativeRuntimeFetcher (on-demand MNN bundles
-                            from ModelScope/Alibaba)
-CircleAI.Inference.Server   OpenAI-compatible ASP.NET Core minimal API:
-                            /v1/chat/completions (SSE), /v1/embeddings,
-                            /v1/companion/*, /v1/diagnostics, /v1/admin/*
-CircleAI.Companion          ICompanionSession + state composer
-CircleAI.Memory             Episodic memory, affect state, RAG context builder
-CircleAI.Personality        Persona provider (file-backed)
-CircleAI.Knowledge          File-system knowledge store + RAG retrieval
-CircleAI.Security           AnomalySignal, ISecurityWatchdog, RedactedEvidenceJsonConverter,
-                            IAnomalyEventDispatcher (verify+dedup+invoke)
-CircleAI.Federation         In-memory federation aggregator, FederationRound,
-                            IFederationDeltaDispatcher
-CircleAI.Simulation         Knowledge-graph extractor, network-health simulator
-CircleAI.Agents.Peer        Mesh agent peer protocol + AgentBus
-CircleAI.Wearable.Biosignals BiosignalAffectMapper / Aggregator / NullSource
+Core hosting        Core, Inference, Hosting, Hosting.InferenceBridge,
+                    Inference.Server, Inference.Server.Enterprise,
+                    Maui, Skills, Embeddings.Local, AetherNet
+Domain consolidator Domain — 9 plug-points (MemPalace, HippoRAG, Swarm,
+                    Identity.LoRA, Food, Finance, FinancialAgent,
+                    Presentations, JobSearch) in one NuGet ID
+Vision              Vision (7 interfaces — CV runtime, face stack, doc
+                    + plate verify, BLE anomaly)
+Speech              Speech (4 interfaces — ASR, TTS, wake word, OCR)
+Spatial             Spatial (4 interfaces — tile source, radar, sky,
+                    3D scene)
+Inputs + tools      Inputs, Tools.Catalog
+Safety + alignment  ContentPolicy (was Guardrails), ModelAlignment
+Observation + ops   Observer, Observability, Operator, SDD
+Business apps       Banking, Markets, Pipelines, Workflows,
+                    Visualization, Collaboration, CRM
+DevOps              BuildFarm, DepBot, DocAnalytics, Testing,
+                    Distribution, MediaHub (was MediaServer),
+                    WindowsAutomation, MicroAgents
+3.0 cornerstones    DevTools, Research, Games, AutonomousBiz,
+                    CodeUnderstanding
 ```
 
+### Track 2 — Mature foundation (`1.0.0` – `1.5.0`)
+
+**6 packages.** Working production substrate the 3.0 contracts sit on.
+Not stale — implementations live here.
+
+```
+Memory               1.3.0   Episodic + persona + affect + goal +
+                             feedback stores. Hierarchical sleep-cycle
+                             consolidator. Multimodal compression.
+Orchestration        1.4.0   Host-side loki-mode agent orchestration
+                             (`LokiOrchestrator`).
+Agents.Peer          1.4.0   Peer-agent envelope + AgentBus correlation.
+Aether               1.3.0   Aether-protocol contracts. Floats
+                             upstream `bhengubv/aether-protocol`.
+Security.AetherNet   1.1.0   AetherMesh.Security floating adapter.
+Networking.AetherNet 1.0.0   AetherMesh.Transport floating adapter.
+```
+
+### Track 3 — Companion + adapters (`1.2.0`)
+
+**84 packages.** Original 1.x companion stack and its lifestyle adapter
+family. Working code; no version bump because the 3.0 ship added new
+contract surfaces on top rather than re-stamping the base.
+
+```
+Companion core    Companion, Tools, Voice, Personality, Security,
+                  Embeddings (older predecessor to Embeddings.Local)
+Utilities         Search, Knowledge, Identity, Sync, Federation,
+                  Runtime, Desktop, Web, Ambient, Accessibility
+Networking        Networking + 9 transports (Http, WebSocket, Grpc,
+                  Tcp, Mqtt, WiFi, Bluetooth, NearLink, Dtn)
+Commerce          Commerce, Commerce.Accounting, Commerce.Finance,
+                  Commerce.Integration.PayFast,
+                  Commerce.Integration.Xero
+Languages         Languages + Languages.Language + Languages.Translation
+                  + 8 specific language adapters (Afrikaans, Amharic,
+                  Arabic, Hausa, Portuguese, Sesotho, Swahili, isiZulu)
+Lifestyle (~50)   Beauty, Faith, Fitness, Healthcare, RealEstate,
+                  Tourism, Tradesperson, Elderly, Kids, Parenting,
+                  Pets, Sports, … (full list under `src/`)
+```
+
+### Cross-language portable kernel
+
 10-language ports (Rust / Go / Python / TypeScript / Kotlin / Swift / C /
-Android / HarmonyOS-ArkTS) sit alongside under `rust/`, `go/`, … each
-implementing the same 8 portable modules. See `docs/CONTRACTS.md`.
+Android / HarmonyOS-ArkTS) sit alongside the C# tree under `rust/`,
+`go/`, `python/`, `typescript/`, `kotlin/`, `swift/`, `c/`, `android/`,
+`harmonyos/`. Each implements the same 8 portable modules
+(`models`, `memory`, `identity`, `languages`, `companion`, `inference`,
+`tools`, `sync`). The cross-language contract specification lives in
+[CONTRACTS.md](CONTRACTS.md).
 
 ---
 

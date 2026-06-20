@@ -150,11 +150,11 @@ Both old names existed only as a workaround for collisions with the v1.2.0 perso
 
 ### Fixed
 
-- Description-prefix drift across all 41 csprojs — every `(2.X.0)` historical prefix tag in the `<Description>` field normalized to `(3.0.1)`.
+- Description-prefix drift across all 42 csprojs — every `(2.X.0)` historical prefix tag in the `<Description>` field normalized to `(3.0.1)`.
 
 ### Versions
 
-All 41 packages bumped to **3.0.1**.
+All 42 packages bumped to **3.0.1**.
 
 ---
 
