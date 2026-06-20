@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Core</PackageId>
-    <Version>3.0.1</Version><Description>On-device AI core for Circle — 2.0.2 is a no-API-change refresh aligned with the 2.0.2 SDK bundle (skill-pack auto-import). Carries forward 2.0.0's RT-08 fallback chain stamping and RT-04 brownout sizing on ModelEntry.</Description>
+    <Version>3.1.0</Version><Description>On-device AI core for Circle — 2.0.2 is a no-API-change refresh aligned with the 2.0.2 SDK bundle (skill-pack auto-import). Carries forward 2.0.0's RT-08 fallback chain stamping and RT-04 brownout sizing on ModelEntry.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Operator</PackageId>
-    <Version>3.0.1</Version>
+    <Version>3.1.0</Version>
     <Description>(3.0.1) Kubernetes-operator contracts — kagent pattern. IModelOperator + IDeploymentObserver. Lets a host run CircleAI inside k8s and reconcile model lifecycle (download, load, brownout, swap) against CRDs. Null impls degrade to in-proc lifecycle. Real backends in 2.7.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;operator;kubernetes;kagent;crd</PackageTags>

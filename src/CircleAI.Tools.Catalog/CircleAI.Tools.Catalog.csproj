@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Tools.Catalog</PackageId>
-    <Version>3.0.1</Version>
+    <Version>3.1.0</Version>
     <Description>(3.0.1) Tool-catalog full surface — composio pattern-port. Persistent provider directory + semantic search hook + connector / credential / oauth descriptor / quota / namespace primitives. Builds on the lightweight `IToolCatalog` shipped in 2.0.3 inside CircleAI.Hosting; the full package adds the missing "+1000 tools" surface so an integrator can build a Composio-class catalog. Real providers (Gmail / Slack / Linear / Stripe / Notion) land in 2.5.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;tools;catalog;composio;mcp;connectors</PackageTags>

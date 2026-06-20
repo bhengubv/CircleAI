@@ -367,6 +367,16 @@ namespace CircleAI.Core.Models
         /// <see cref="TotalBytes"/>.
         /// </summary>
         public long MemoryHintBytes { get; init; }
+
+        /// <summary>
+        /// (3.1.0) Minimum device VRAM in gigabytes required for this model
+        /// to load on the GPU/NPU. Used by the BestFit selector to gate
+        /// VRAM-bound models (notably <c>ChatCapability.Video</c> entries
+        /// like CogVideoX-2B which need ≥ 6 GB even quantised). <c>null</c>
+        /// = no VRAM requirement stated; the model is presumed to run on
+        /// the CPU path. Text-only models leave this null.
+        /// </summary>
+        public double? MinVramGb { get; init; }
     }
 
     /// <summary>

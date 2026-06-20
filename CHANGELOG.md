@@ -4,6 +4,85 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-06-18 — **Video pillar foundation**
+
+Adds a new contract surface — `CircleAI.Video` — for short-form
+text-to-video generation, plus the device-fit gates that let the
+BestFit selector surface video-capable models *only* on devices that
+can actually run them.
+
+The driving use case is **txtMe Video Mail**: sender video-calls, no
+answer, types a text message; the recipient's on-device B! (where
+capable) renders the message as a short styled video — public-domain
+or original-character voice — and plays it back. On phones that can't
+honour the GPU budget, the toggle is hidden entirely; on phones with
+a desktop peer reachable over AetherNet, the work is offloaded via
+the RT-12 v2 cross-tier path that shipped in 2.7.0.
+
+### Added
+
+- New package **`CircleAI.Video`** (contracts only). Three interfaces:
+  - `IVideoGenerator` — text + optional style + optional reference
+    frame + optional audio track → short video (`mp4`).
+  - `IStyleScript` — rewrite a user message in a chosen style's voice
+    using the existing `IChatGenerator`. No new model needed for this
+    leg — pure system-prompt work.
+  - `IStyleReference` — registry of registered styles (public-domain
+    illustrations, original-character renders, genre presets). Drives
+    the host's style-picker UI and the generator's grounding lookup.
+- Primitives — `StyleId`, `VideoResolution` (P480 / P720 / P1080),
+  `StyleReferenceFrame`, `StyleAttribution`, `StyleReference`,
+  `AudioTrack`, `VideoGenerationRequest` / `VideoGenerationResult`,
+  `StyleScriptRequest` / `StyleScriptResult`.
+- Null implementations — `NullVideoGenerator`, `NullStyleScript`,
+  `InMemoryStyleReference`. The InMemoryStyleReference is genuinely
+  production-suitable; the other two fail closed (empty result,
+  pass-through text).
+- **`ChatCapability.Video`** flag in `CircleAI.Inference`. Consumers
+  declare `RequiredCapabilities |= ChatCapability.Video` and the
+  selector finds an entry that satisfies it AND fits the device.
+- **`ModelEntry.MinVramGb`** (nullable `double`) in
+  `CircleAI.Core.ModelRegistryService`. Video models declare it;
+  text-only models leave it null. Selector filters out entries the
+  device can't satisfy.
+- **`DeviceProbe.VramGb`** (nullable `double`) in `CircleAI.Core`.
+  Populated by platform adapters (Metal device query on Apple, NVML
+  on CUDA, Vulkan memory props on AMD/Intel, ActivityManager-derived
+  on Android). The `Snapshot()` factory grew a new optional
+  `vramGbOverride` parameter so wiring a host probe is one line.
+
+### Real backends — shipping in 3.1.x
+
+- **CogVideoX-2B** (THUDM / Zhipu AI) — 2B params, 6-second clips at
+  720×480, INT8/FP8 quantisable, lives on ModelScope. Apache-2.0
+  compatible. Same Chinese-sovereign family as Qwen/MNN. ONNX → MNN
+  conversion is the inflight work.
+- **LTX-Video distilled-2B** (Lightricks) — runner-up; faster than
+  CogVideoX on the same hardware. Image-to-video mode built-in.
+
+### Why the gate matters
+
+CogVideoX-2B needs ~6 GB VRAM quantised. A phone has 2–8 GB *system*
+RAM total. The MinVramGb gate is what makes the difference between
+"feature is hidden on this device" and "feature crashes on first
+tap." It's the same pattern as `MinRamGb` did for the text models —
+just on a different memory axis.
+
+### Versions
+
+All 43 packages bumped to **3.1.0** (the 42 from the 3.0.1 line plus
+the new `CircleAI.Video`).
+
+### Tests
+
+13 new contract-surface tests in
+`tests/CircleAI.Tests/Circle31ContractTests.cs` covering the three
+null implementations, the in-memory style catalogue, the new
+capability flag, and the new MinVramGb / VramGb fields on
+ModelEntry and DeviceProbe.
+
+---
+
 ## [2.0.3] — 2026-06-17
 
 Managed-only point release: tool-catalog contract skeleton (composio

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.MicroAgents</PackageId>
-    <Version>3.0.1</Version>
+    <Version>3.1.0</Version>
     <Description>(3.0.1) Micro-agent contracts — picoclaw + hermes-desktop-os1 patterns. IMicroAgent + IMicroAgentHost. Tiny, focused agents that compose into larger workflows.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;micro-agents;picoclaw;hermes</PackageTags>

@@ -88,6 +88,19 @@ public sealed record DeviceProbe(
     Connectivity  Connectivity)
 {
     /// <summary>
+    /// (3.1.0) Detected GPU/NPU memory in gigabytes. <c>null</c> means
+    /// "unknown" — typical when the GPU is <see cref="GpuKind.None"/> or
+    /// the host hasn't wired a probe that can query the GPU. Set by
+    /// platform adapters (Metal device query on Apple, NVML on CUDA,
+    /// Vulkan VkPhysicalDeviceMemoryProperties on Vulkan/AMD/Intel,
+    /// <c>ActivityManager.getMemoryInfo()</c>-derived approximation on
+    /// Android). Consumed by <c>IModelSelector.BestFit</c> to gate
+    /// VRAM-bound entries — notably the <c>ChatCapability.Video</c>
+    /// catalogue.
+    /// </summary>
+    public double? VramGb { get; init; }
+
+    /// <summary>
     /// Build a probe from runtime facts. Free, allocation-light, callable
     /// per-startup. <paramref name="modelCacheDirectory"/> defaults to
     /// <c>AppContext.BaseDirectory</c> — pass an explicit path when the
@@ -96,7 +109,8 @@ public sealed record DeviceProbe(
     public static DeviceProbe Snapshot(
         string?  modelCacheDirectory = null,
         GpuKind? gpuOverride         = null,
-        ThermalClass? thermalOverride = null)
+        ThermalClass? thermalOverride = null,
+        double?  vramGbOverride      = null)
     {
         var gcInfo = GC.GetGCMemoryInfo();
         var ram = Math.Max(0L, gcInfo.TotalAvailableMemoryBytes);
@@ -131,7 +145,10 @@ public sealed record DeviceProbe(
             Gpu:               gpuOverride ?? GpuKind.None,
             CpuCores:          Math.Max(1, Environment.ProcessorCount),
             Thermal:           thermal,
-            Connectivity:      conn);
+            Connectivity:      conn)
+        {
+            VramGb = vramGbOverride,
+        };
     }
 
     /// <summary>

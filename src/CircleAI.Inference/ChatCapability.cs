@@ -35,4 +35,12 @@ public enum ChatCapability
 
     /// <summary>Model has an explicit "thinking" mode (Qwen3 reasoning variants).</summary>
     Reasoning = 1 << 4,
+
+    /// <summary>
+    /// (3.1.0) Model generates short videos from a text prompt
+    /// (CogVideoX-2B, LTX-Video distilled-2B). Selector also checks the
+    /// new <c>ModelEntry.MinVramGb</c> against the device's reported
+    /// VRAM — Video models gate harder than text models.
+    /// </summary>
+    Video = 1 << 5,
 }
