@@ -4,6 +4,91 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-06-22 — **HER / Jarvis lift — companion substrate**
+
+Seven new packages port working backends from CircleUp + Concierge into
+the CircleAI substrate so any consumer can light up a HER- / Jarvis-class
+companion experience without re-deriving the protocol scaffolding. Every
+new package ships contracts + null + real backends + a fail-soft DI path.
+
+### Added
+
+- **`CircleAI.Companion.Proactive`** — generic proactive scheduler lifted
+  from CircleUp's workflow engine (vault coupling stripped). 5-field cron
+  expression parser, per-(context, id) last-run tracking,
+  `IProactiveTaskSource` / `IProactiveTaskRunner` /
+  `IProactiveScheduler` abstractions, in-memory + delegate impls, plus
+  an `IHostedService` that ticks every minute and refreshes every five.
+- **`CircleAI.Hosting.CloudFallback`** — multi-provider chat fallback
+  (lift of Concierge's working OpenAI / Anthropic / Gemini runtimes).
+  SSE streaming, fail-soft "not configured" sentinel frame, and a
+  composite `CloudFallbackChain` that walks providers in order, skipping
+  the unconfigured ones and falling through on mid-stream failure.
+- **`CircleAI.Speech.Cloud`** — cloud voice loop. OpenAI Whisper
+  recognizer (PCM-16 mono wrapped in a WAV envelope so Whisper accepts
+  it), OpenAI TTS synthesizer with `response_format=pcm` honouring the
+  `SynthesisResult.AudioPcm16Mono` contract, plus a generic regex
+  `KeywordVoiceIntentRouter` lifted from CircleUp (vault-specific
+  intents stripped, host-supplied intent list).
+- **`CircleAI.Vision.Cloud`** — cloud image generation. New
+  `IImageGenerator` contract (CircleAI.Vision is detection-only). DALL-E
+  + Stability AI implementations lifted from Concierge, plus an
+  `ImageGeneratorFallbackChain`.
+- **`CircleAI.Plugins`** — plugin host + marketplace + lifecycle, lifted
+  from CircleUp. Per-plugin collectible `AssemblyLoadContext`, JSON
+  registry with declarative `workspace.read` / `workspace.write` /
+  `events.subscribe` permissions, marketplace catalog, hot-reload via
+  `ReloadAsync`. CircleUp's vault-specific event bus generalised to a
+  string-keyed `IPluginEvents`.
+- **`CircleAI.Hosting.Mcp`** — MCP (Model Context Protocol) JSON-RPC 2.0
+  endpoint lifted from CircleUp's `MapMcpApi`. Vault tool surface
+  generalised: hosts register `IMcpTool` + `IMcpResourceProvider` via
+  DI, the substrate handles `initialize` / `tools/list` / `tools/call` /
+  `resources/list` / `resources/read`. Single + batch requests; pure-DI
+  `DispatchAsync` entry point makes it testable without ASP.NET Core.
+- **`CircleAI.Hosting.Multiplayer`** — SignalR collaboration hub lifted
+  from CircleUp's `CollabHub`. "Note" generalised to "document";
+  `IOwnerProvider` replaced with `IMultiplayerPeerIdentity`. Per-doc
+  rooms with last-writer-wins on the body, live cursor positions, and
+  presence. Covers the 95 % case without a CRDT port.
+
+### Changed
+
+- Version-aligned every 3.x package from 3.1.0 → 3.2.0 (50 packages).
+- Fixed a latent DI bug in
+  `CircleAI.Hosting.CloudFallback.ServiceCollectionExtensions`: the
+  options factory was being registered as `Func<IServiceProvider, T>`
+  instead of `T`, so `Add*ChatGenerator` calls would have failed at
+  resolution time. Unwrapped via `sp => optionsFactory(sp)` for OpenAI,
+  Anthropic, Gemini; same pattern applied to `Speech.Cloud` and
+  `Vision.Cloud`.
+
+### Tests
+
+- `Circle32ProactiveTests` — 20 tests covering cron parsing,
+  refresh / tick / event / RunById paths, multi-tenant context separation.
+- `Circle32CloudFallbackTests` — 11 tests covering each provider's
+  metadata + fail-soft no-key behaviour + chain skipping / sentinel
+  detection / order preservation.
+- `Circle32SpeechCloudTests` — 14 tests covering Whisper + TTS
+  fail-soft, PCM defaults, regex intent matching, capture extraction,
+  trim + implicit-group filtering.
+- `Circle32VisionCloudTests` — 13 tests covering each generator's
+  metadata + fail-soft + null + fallback chain configuration paths.
+- `Circle32PluginsTests` — 18 tests covering events pub/sub + dispose,
+  registry round-trip + persistence + permission grant/revoke + uninstall,
+  marketplace parsing, permissioned context gating, loader empty-folder
+  safety.
+- `Circle32McpTests` — 15 tests covering initialize, notifications,
+  tools/list, tools/call (success + tool-level error + unknown +
+  missing-name), resources/list + read (success + unknown scheme +
+  missing uri + not-found), unknown method, malformed request.
+- `Circle32MultiplayerTests` — 9 tests covering guest identity defaults
+  + colour stability + uniqueness + default value, static rev/peers
+  helpers.
+
+All 100 new tests pass on both `net9.0` and `net10.0`.
+
 ## [3.1.0] — 2026-06-18 — **Video pillar foundation**
 
 Adds a new contract surface — `CircleAI.Video` — for short-form

@@ -33,7 +33,14 @@
     <ProjectReference Include="..\..\src\CircleAI.Embeddings.Local\CircleAI.Embeddings.Local.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Vision\CircleAI.Vision.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Video\CircleAI.Video.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Companion.Proactive\CircleAI.Companion.Proactive.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Hosting.CloudFallback\CircleAI.Hosting.CloudFallback.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Speech\CircleAI.Speech.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Speech.Cloud\CircleAI.Speech.Cloud.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Vision.Cloud\CircleAI.Vision.Cloud.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Plugins\CircleAI.Plugins.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Hosting.Mcp\CircleAI.Hosting.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Hosting.Multiplayer\CircleAI.Hosting.Multiplayer.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Domain\CircleAI.Domain.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Tools.Catalog\CircleAI.Tools.Catalog.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inputs\CircleAI.Inputs.csproj" />

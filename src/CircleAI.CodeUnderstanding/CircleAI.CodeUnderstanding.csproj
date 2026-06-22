@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.CodeUnderstanding</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Code-understanding contract surface — Understand-Anything pattern. ICodeIndexer + ICodeSearch + ISymbolGraph. Cornerstone of the "drop CircleAI in to replace Claude Code / Codex / Cursor" pitch.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;code;ast;symbols;ide</PackageTags>

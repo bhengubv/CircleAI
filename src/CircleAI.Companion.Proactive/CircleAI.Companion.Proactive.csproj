@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Companion.Proactive</PackageId>
+    <Version>3.2.0</Version>
+    <Description>(3.2.0) Proactive scheduling for CircleAI companions — cron + event triggers fire `IProactiveTask`s through a host-supplied `IProactiveTaskRunner`. Closes the HER "Samantha mentions things you didn't ask about" gap. Pattern lifted from CircleUp's working `VaultWorkflowScheduler` + `WorkflowSchedulerBackgroundService` with vault coupling abstracted away — consumer brings their own task source (vault, DB, in-memory) and runner (workflow engine, skill dispatcher, plain delegate). Includes a 5-field `CronExpression` parser (no external scheduling SDK).</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;companion;proactive;scheduling;cron;workflows</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

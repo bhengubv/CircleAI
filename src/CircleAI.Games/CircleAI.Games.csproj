@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Games</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Game-runtime contracts — flame + Doom.Mobile patterns. IGameLoop + IInputMap + ISceneGraph. Lets a host wire CircleAI into a game-engine event loop for NPC dialog / dynamic content / co-pilot play.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;games;flame;doom</PackageTags>

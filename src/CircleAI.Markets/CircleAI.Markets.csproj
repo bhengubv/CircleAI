@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Markets</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Markets contract surface — OpenBB + StockSharp pattern. IMarketDataFeed + IInstrumentCatalog + IOrderRouter. Null impls fail-closed (no orders placed). Real backends 2.8.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;markets;openbb;stocksharp;trading</PackageTags>

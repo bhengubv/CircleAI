@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Vision.Cloud</PackageId>
+    <Version>3.2.0</Version>
+    <Description>(3.2.0) Cloud-backed image-generation pillar — IImageGenerator contract + OpenAI DALL-E + Stability AI implementations (direct lifts of Concierge's working OpenAiImageRuntime + StabilityImageRuntime). CircleAI.Vision is detection-only; this is its generation counterpart. Fail-soft when API keys are missing so a chain of providers can fall through.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;vision;image-generation;dall-e;stability;cloud</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

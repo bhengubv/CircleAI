@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Hosting.CloudFallback</PackageId>
+    <Version>3.2.0</Version>
+    <Description>(3.2.0) Cloud chat-runtime backends for CircleAI — BYO-API-key OpenAI Chat Completions, Anthropic Messages, and Google Gemini, each implementing the same `IChatGenerator` the on-device backends do. Plus `CloudFallbackChain`: a generator that tries an ordered list of generators and falls through on failure (e.g. on-device first, OpenAI second, Anthropic third). Lifted from Concierge's working multi-provider stack — same SSE streaming, same options shape, same fail-soft behaviour when keys are missing. Closes the HER-class "AI just keeps working" gap regardless of network state.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;hosting;cloud;openai;anthropic;gemini;fallback;chat</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+  </ItemGroup>
+
+</Project>

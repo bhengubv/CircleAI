@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Speech.Cloud</PackageId>
+    <Version>3.2.0</Version>
+    <Description>(3.2.0) Cloud-backed implementations of CircleAI.Speech contracts — OpenAI Whisper ISpeechRecognizer + OpenAI TTS ISpeechSynthesizer (response_format=pcm so the result satisfies the PCM-16 mono contract). Plus a generic regex-based IVoiceIntentRouter (lifted from CircleUp's KeywordVoiceCommandRouter, vault-specific patterns stripped — consumer supplies intent definitions). Gives every CircleAI consumer a working voice loop today, until the on-device FunASR / ChatTTS backends ship in 2.3.1.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;speech;whisper;tts;openai;voice-intent;cloud</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Speech\CircleAI.Speech.csproj" />
+  </ItemGroup>
+
+</Project>

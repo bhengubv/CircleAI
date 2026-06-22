@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Pipelines</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Data-pipeline contract surface — etl + airbyte + mysql-mcp + postgres-mcp patterns. IPipelineSource, IPipelineSink, IPipelineExecutor, IDatabaseQueryTool. Null impls degrade gracefully.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;pipelines;etl;airbyte;mcp</PackageTags>

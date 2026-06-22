@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.DevTools</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) **The Western-replacement umbrella.** If Claude Code / Codex / Cursor get banned, this is the surface a Geek-Network IDE / agent shell binds to. ICodeEditor + IInlineSuggester + IAgentShell + IPatchPlanner + IRefactorTool. All fail-closed Null impls. Cornerstone strategic 3.0.0 release.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;devtools;ide;agent-shell;contingency</PackageTags>

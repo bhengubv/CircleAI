@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.DepBot</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Dependency-bot contracts — renovate pattern. IDependencyAnalyzer + IDependencyUpdater.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;depbot;renovate;deps</PackageTags>

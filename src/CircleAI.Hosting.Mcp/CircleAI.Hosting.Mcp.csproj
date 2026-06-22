@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Hosting.Mcp</PackageId>
+    <Version>3.2.0</Version>
+    <Description>(3.2.0) MCP (Model Context Protocol) JSON-RPC 2.0 endpoint mapping for ASP.NET Core hosts. Lift from CircleUp's MapMcpApi — vault-specific tool surface generalised: hosts register IMcpTool implementations + IMcpResourceProvider via DI, the substrate handles initialize / notifications/initialized / tools/list / tools/call / resources/list / resources/read dispatch. Single + batch JSON-RPC support.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;mcp;model-context-protocol;json-rpc;aspnetcore</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

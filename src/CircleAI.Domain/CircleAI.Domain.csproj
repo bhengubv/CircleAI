@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Domain</PackageId>
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Description>(3.0.1) Domain-specialist contract surface for CircleAI. IFoodEmbeddings (EPICure-backed), IFinanceRetrieval (quant-mind), IFinancialAgent (dexter), IPresentationGenerator (presenton), IJobSearchPipeline (career-ops, TheJobCenter target), IMemPalaceStore + IHippoRagStore (memory upgrades), ISwarmCoordinator (MiroFish over AetherNet), IPersonalLoRA (RT-10 conditional). Null implementations ship out of the box; real backends land in 2.4.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;domain;food;finance;memory;swarm;lora;on-device</PackageTags>
