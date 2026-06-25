@@ -82,6 +82,7 @@ public interface IAIService : IAsyncDisposable
     /// </summary>
     /// <param name="prompt">The user's request.</param>
     /// <param name="options">Optional generation knobs.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<string> AgenticChatAsync(
         string prompt,
         CircleAI.Inference.GenerationOptions? options = null,

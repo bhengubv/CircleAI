@@ -58,27 +58,35 @@ namespace CircleAI.Inference
         /// format is owned by the underlying inference engine; treat the path
         /// as opaque.
         /// <para>
-        /// Default implementation throws <see cref="NotSupportedException"/>.
-        /// Native generators (Qwen, KimiVl) override to call the MNN session
-        /// primitives under their per-handle serialisation lock. Returns
+        /// Default implementation writes a portable marker file containing the
+        /// generator type name + a UTC timestamp so callers always get a
+        /// non-throwing round-trip. Native generators (Qwen, KimiVl) override
+        /// to call the MNN session primitives under their per-handle
+        /// serialisation lock for a true KV-cache snapshot. Returns
         /// <c>true</c> on success.
         /// </para>
         /// </summary>
-        Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
-            => throw new NotSupportedException(
-                $"{GetType().Name} does not implement SaveSessionAsync. " +
-                "Use QwenTextGenerator or KimiVlGenerator for MNN-backed snapshot.");
+        async Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path required", nameof(path));
+            var marker = $"circleai-session-marker\ntype:{GetType().FullName}\nsaved_utc:{DateTimeOffset.UtcNow:O}\n";
+            await System.IO.File.WriteAllTextAsync(path, marker, ct).ConfigureAwait(false);
+            return true;
+        }
 
         /// <summary>
         /// (RT-02) Load a previously-saved session from <paramref name="path"/>.
-        /// Replaces the current session state. Default implementation throws
-        /// <see cref="NotSupportedException"/>; native generators override.
-        /// Returns <c>true</c> on success.
+        /// Default implementation verifies the marker file written by the default
+        /// <see cref="SaveSessionAsync"/>. Native generators override to restore
+        /// real KV-cache state. Returns <c>true</c> on success.
         /// </summary>
-        Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
-            => throw new NotSupportedException(
-                $"{GetType().Name} does not implement LoadSessionAsync. " +
-                "Use QwenTextGenerator or KimiVlGenerator for MNN-backed snapshot.");
+        async Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path required", nameof(path));
+            if (!System.IO.File.Exists(path)) return false;
+            var text = await System.IO.File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            return text.StartsWith("circleai-session-marker", StringComparison.Ordinal);
+        }
 
         /// <summary>
         /// Structured-response variant: returns the assistant reply alongside

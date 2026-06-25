@@ -43,7 +43,7 @@ public sealed class DesktopCompanionAdapter : ICompanionSession
     public Task<string> SendAsync(string message, CancellationToken ct = default)
         => _inner.SendAsync(EnrichMessage(message), ct);
     public IAsyncEnumerable<string> StreamAsync(
-        string message, [EnumeratorCancellation] CancellationToken ct = default)
+        string message, CancellationToken ct = default)
         => _inner.StreamAsync(EnrichMessage(message), ct);
     public Task<string> AgentAsync(string instruction, CancellationToken ct = default)
         => _inner.AgentAsync(EnrichMessage(instruction), ct);
@@ -64,4 +64,17 @@ public sealed class DesktopCompanionAdapter : ICompanionSession
         }
         return sb.ToString().TrimEnd();
     }
+
+    public Task<string> DiagnoseSlowdownAsync(string symptoms, string systemSpecs, CancellationToken ct=default)
+        => _inner.AgentAsync($"Diagnose desktop slowdown: {symptoms} on {systemSpecs}. Top 5 suspect causes + how to verify each in 60 seconds.", ct);
+
+    public Task<string> WriteShortcutCheatsheetAsync(string appName, string proficiencyLevel, CancellationToken ct=default)
+        => _inner.AgentAsync($"Write a one-page keyboard shortcut cheatsheet for {appName}, {proficiencyLevel} user. Group by action category.", ct);
+
+    public Task<string> AutomateRepetitiveTaskAsync(string taskDescription, string preferredTool, CancellationToken ct=default)
+        => _inner.AgentAsync($"Suggest automation for: {taskDescription} using {preferredTool}. Step-by-step + edge cases.", ct);
+
+    public Task<string> DesignWorkspaceLayoutAsync(string monitorCount, string primaryWorkflow, CancellationToken ct=default)
+        => _inner.AgentAsync($"Design a {monitorCount}-monitor workspace layout for: {primaryWorkflow}. Apps per screen, hotkey conventions, eye-line ergonomics.", ct);
+
 }

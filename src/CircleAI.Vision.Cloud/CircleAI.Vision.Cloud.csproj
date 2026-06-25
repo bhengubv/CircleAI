@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Vision.Cloud</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.2.0) Cloud-backed image-generation pillar — IImageGenerator contract + OpenAI DALL-E + Stability AI implementations (direct lifts of Concierge's working OpenAiImageRuntime + StabilityImageRuntime). CircleAI.Vision is detection-only; this is its generation counterpart. Fail-soft when API keys are missing so a chain of providers can fall through.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;vision;image-generation;dall-e;stability;cloud</PackageTags>

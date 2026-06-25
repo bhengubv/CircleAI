@@ -38,3 +38,43 @@ public sealed class GeminiChatOptions
     public float  Temperature { get; init; } = 0.7f;
     public int    MaxOutputTokens { get; init; } = 1024;
 }
+
+/// <summary>(3.3.0) Groq Chat Completions options. OpenAI-compatible at <c>/openai/v1/chat/completions</c>.</summary>
+public sealed class GroqChatOptions
+{
+    public Uri    BaseAddress { get; init; } = new("https://api.groq.com");
+    public string? ApiKey      { get; init; }
+    public string Model       { get; init; } = "llama-3.3-70b-versatile";
+    public float  Temperature { get; init; } = 0.7f;
+    public int    MaxTokens   { get; init; } = 1024;
+}
+
+/// <summary>(3.3.0) Cerebras options. OpenAI-compatible at <c>/v1/chat/completions</c>.</summary>
+public sealed class CerebrasChatOptions
+{
+    public Uri    BaseAddress { get; init; } = new("https://api.cerebras.ai");
+    public string? ApiKey      { get; init; }
+    public string Model       { get; init; } = "llama3.3-70b";
+    public float  Temperature { get; init; } = 0.7f;
+    public int    MaxTokens   { get; init; } = 1024;
+}
+
+/// <summary>(3.3.0) Together AI options. OpenAI-compatible at <c>/v1/chat/completions</c>.</summary>
+public sealed class TogetherChatOptions
+{
+    public Uri    BaseAddress { get; init; } = new("https://api.together.xyz");
+    public string? ApiKey      { get; init; }
+    public string Model       { get; init; } = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+    public float  Temperature { get; init; } = 0.7f;
+    public int    MaxTokens   { get; init; } = 1024;
+}
+
+/// <summary>(3.3.0) DeepSeek options. OpenAI-compatible at <c>/v1/chat/completions</c>.</summary>
+public sealed class DeepSeekChatOptions
+{
+    public Uri    BaseAddress { get; init; } = new("https://api.deepseek.com");
+    public string? ApiKey      { get; init; }
+    public string Model       { get; init; } = "deepseek-chat";
+    public float  Temperature { get; init; } = 0.7f;
+    public int    MaxTokens   { get; init; } = 1024;
+}

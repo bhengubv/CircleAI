@@ -21,10 +21,29 @@ public sealed class SwahiliLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Swahili-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Habari",
-        ["goodbye"] = "Usiku mwema",
+        ["hello"]            = "Habari",
+        ["hello (informal)"] = "Mambo",
+        ["good morning"]     = "Habari ya asubuhi",
+        ["good evening"]     = "Habari ya jioni",
+        ["goodbye"]          = "Kwaheri",
+        ["goodbye (sleep)"]  = "Usiku mwema",
+        ["thank you"]        = "Asante",
+        ["thank you (very)"] = "Asante sana",
+        ["please"]           = "Tafadhali",
+        ["yes"]              = "Ndio",
+        ["no"]               = "Hapana",
+        ["how are you"]      = "Habari yako",
+        ["I am fine"]        = "Nzuri",
+        ["sorry"]            = "Pole",
+        ["family"]           = "familia",
+        ["love"]             = "upendo",
+        ["water"]            = "maji",
+        ["food"]             = "chakula",
+        ["mother"]           = "mama",
+        ["father"]           = "baba",
+        ["child"]            = "mtoto",
+        ["friend"]           = "rafiki",
+        ["no problem"]       = "Hakuna matata",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

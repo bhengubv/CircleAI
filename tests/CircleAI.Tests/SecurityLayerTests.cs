@@ -731,7 +731,7 @@ public sealed class AetherIntelligenceAdapterTests
 
         var svc        = BuildSvc(reg);
         var assessment = await svc.AssessThreatAsync("n");
-        Assert.True(assessment.Indicators.Contains("repeated-auth-attempts"));
+        Assert.Contains("repeated-auth-attempts", assessment.Indicators);
     }
 
     [Fact] public async Task RoutingAdvice_TrustedDest_DirectPath()

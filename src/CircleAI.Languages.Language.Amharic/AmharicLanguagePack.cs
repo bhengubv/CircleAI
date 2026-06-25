@@ -21,10 +21,26 @@ public sealed class AmharicLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Amharic-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "ጤና ይስጥልኝ",
-        ["goodbye"] = "መልካም ምሽት",
+        ["hello"]            = "ሰላም",
+        ["hello (respectful)"] = "ጤና ይስጥልኝ",
+        ["good morning"]     = "እንደምን አደርክ",
+        ["good evening"]     = "መልካም ምሽት",
+        ["goodbye"]          = "ቻው",
+        ["thank you"]        = "አመሰግናለሁ",
+        ["please"]           = "እባክህ",
+        ["yes"]              = "አዎ",
+        ["no"]               = "አይ",
+        ["sorry"]            = "ይቅርታ",
+        ["how are you"]      = "እንዴት ነህ",
+        ["I am fine"]        = "ደህና ነኝ",
+        ["water"]            = "ውሃ",
+        ["food"]             = "ምግብ",
+        ["family"]           = "ቤተሰብ",
+        ["friend"]           = "ጓደኛ",
+        ["love"]             = "ፍቅር",
+        ["mother"]           = "እናት",
+        ["father"]           = "አባት",
+        ["child"]            = "ልጅ",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

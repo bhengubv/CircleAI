@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Video</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.1.0) Text-to-video + style-script + style-reference contract surface for CircleAI. IVideoGenerator + IStyleScript + IStyleReference. Null implementations ship out of the box; real backends — CogVideoX-2B (THUDM, ModelScope-hosted, 2B params, INT8/FP8 quantisable) and LTX-Video distilled-2B (Lightricks) — land in 3.1.x as ONNX→MNN conversion completes. Driving use case: txtMe Video Mail — recipient's on-device B! renders the sender's text message as a short styled video (genre styles + public-domain or original-character references), gated on device VRAM via the BestFit selector's new MinVramGb dimension.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;video;text-to-video;style-transfer;on-device;cogvideox;ltx-video</PackageTags>

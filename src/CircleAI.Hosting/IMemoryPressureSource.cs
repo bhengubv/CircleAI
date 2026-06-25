@@ -29,8 +29,8 @@ public enum MemoryPressureLevel
 
 /// <summary>
 /// (RT-04) A platform-published memory-pressure signal. Implementations
-/// raise <see cref="PressureChanged"/> on a worker thread; subscribers
-/// must be thread-safe.
+/// notify subscribers (registered via <see cref="Subscribe"/>) on a worker
+/// thread; subscribers must be thread-safe.
 /// </summary>
 public interface IMemoryPressureSource
 {

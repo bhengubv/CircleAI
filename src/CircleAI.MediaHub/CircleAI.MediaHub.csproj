@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.MediaHub</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.0.1) Media-serving contracts — pms-docker-plex + beatsync patterns. IMediaLibrary + ISyncedPlayback. Renamed from CircleAI.MediaServer 3.0.0 — that package ID exists on nuget.org but is a dead-end; nothing newer will ship under that ID. New consumers: `dotnet add package CircleAI.MediaHub`.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;media-hub;plex;beatsync</PackageTags>

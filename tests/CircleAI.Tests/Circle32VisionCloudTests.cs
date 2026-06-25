@@ -145,7 +145,7 @@ public sealed class Circle32VisionCloudTests
     {
         var r = new ImageGenerationRequest("hello");
         Assert.Equal(1024, r.Size);
-        Assert.Equal(1, r.Count);
+        Assert.Equal(1, r.Count);  // r.Count is an int property on the request record — not collection.Count
         Assert.Null(r.NegativePrompt);
         Assert.Null(r.Style);
     }

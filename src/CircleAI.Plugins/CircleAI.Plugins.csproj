@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Plugins</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.2.0) Plugin host + marketplace + lifecycle for the CircleAI substrate. Direct lift from CircleUp's plugin system — vault-specific events stripped, replaced with a generic string-keyed event bus. Per-plugin AssemblyLoadContext (collectible) lets two plugins ship conflicting dep versions. Declarative permissions are gated by a PermissionedPluginContext wrapper, mirroring the CircleUp UX where users review what a plugin asked for before granting.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;plugins;marketplace;extensibility;assemblyloadcontext</PackageTags>

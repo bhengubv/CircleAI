@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Companion</PackageId>
-    <Version>1.2.0</Version><Description>
+    <Version>1.3.0</Version><Description>
       Circle AI Companion — the HER + JARVIS concierge persona. Knows who you are,
       remembers everything across all devices, speaks your language, feels your mood,
       adapts its personality, initiates contact, and acts in the world.
@@ -20,6 +20,9 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
+    <ProjectReference Include="..\CircleAI.Integration\CircleAI.Integration.csproj" />
+    <ProjectReference Include="..\CircleAI.Domain\CircleAI.Domain.csproj" />
     <ProjectReference Include="..\CircleAI.Identity\CircleAI.Identity.csproj" />
     <ProjectReference Include="..\CircleAI.Sync\CircleAI.Sync.csproj" />
     <ProjectReference Include="..\CircleAI.Languages\CircleAI.Languages.csproj" />
@@ -28,7 +31,11 @@
     <ProjectReference Include="..\CircleAI.Tools\CircleAI.Tools.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
+    <ProjectReference Include="..\CircleAI.SelfBench\CircleAI.SelfBench.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

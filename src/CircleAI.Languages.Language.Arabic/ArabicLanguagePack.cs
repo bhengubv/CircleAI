@@ -21,10 +21,26 @@ public sealed class ArabicLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Arabic-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "صباح الخير",
-        ["goodbye"] = "مساء الخير",
+        ["hello"]            = "مرحبا",
+        ["peace be upon you"]= "السلام عليكم",
+        ["good morning"]     = "صباح الخير",
+        ["good evening"]     = "مساء الخير",
+        ["goodbye"]          = "مع السلامة",
+        ["thank you"]        = "شكرا",
+        ["please"]           = "من فضلك",
+        ["yes"]              = "نعم",
+        ["no"]               = "لا",
+        ["sorry"]            = "آسف",
+        ["how are you"]      = "كيف حالك",
+        ["I am fine"]        = "أنا بخير",
+        ["water"]            = "ماء",
+        ["food"]             = "طعام",
+        ["family"]           = "عائلة",
+        ["friend"]           = "صديق",
+        ["love"]             = "حب",
+        ["mother"]           = "أم",
+        ["father"]           = "أب",
+        ["child"]            = "طفل",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

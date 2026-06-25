@@ -15,27 +15,20 @@ namespace CircleAI.Memory.Sync;
 /// <summary>
 /// A single syncable item — the smallest unit the engine moves between peers.
 /// </summary>
+/// <param name="EntityType">Logical type — e.g. "PersonaState", "CoreMemory", "DailyMemorySummary".</param>
+/// <param name="EntityId">Identifier within the type — e.g. a user ID, a GUID-N format string.</param>
+/// <param name="Version">HLC-produced monotonic version stamp.</param>
+/// <param name="IsTombstone">True when this entry represents a deletion. Payload is empty in that case.</param>
+/// <param name="ContentHash">SHA-256 hex of <see cref="Payload"/> — content tiebreaker when versions collide.</param>
+/// <param name="Payload">Opaque payload — type-specific JSON or any string the adapter chose.</param>
+/// <param name="SourceNodeId">Identifier of the node that authored this version (for debugging + provenance).</param>
+/// <param name="AuthoredAt">UTC wall-clock when authored — for human-facing display, not for ordering.</param>
 public sealed record SyncableEntry(
-    /// <summary>Logical type — e.g. "PersonaState", "CoreMemory", "DailyMemorySummary".</summary>
     string EntityType,
-
-    /// <summary>Identifier within the type — e.g. a user ID, a GUID-N format string.</summary>
     string EntityId,
-
-    /// <summary>HLC-produced monotonic version stamp.</summary>
     long Version,
-
-    /// <summary>True when this entry represents a deletion. Payload is empty in that case.</summary>
     bool IsTombstone,
-
-    /// <summary>SHA-256 hex of <see cref="Payload"/> — content tiebreaker when versions collide.</summary>
     string ContentHash,
-
-    /// <summary>Opaque payload — type-specific JSON or any string the adapter chose.</summary>
     string Payload,
-
-    /// <summary>Identifier of the node that authored this version (for debugging + provenance).</summary>
     string SourceNodeId,
-
-    /// <summary>UTC wall-clock when authored — for human-facing display, not for ordering.</summary>
     DateTimeOffset AuthoredAt);

@@ -16,7 +16,7 @@ public sealed class CommerceIntegrationXeroCompanionAdapter : ICompanionSession
     public event EventHandler<CompanionProactiveEvent>? ProactiveMessageReady
     { add => _inner.ProactiveMessageReady += value; remove => _inner.ProactiveMessageReady -= value; }
     public Task<string> SendAsync(string message, CancellationToken ct = default) => _inner.SendAsync(Enrich(message), ct);
-    public IAsyncEnumerable<string> StreamAsync(string message, [EnumeratorCancellation] CancellationToken ct = default) => _inner.StreamAsync(Enrich(message), ct);
+    public IAsyncEnumerable<string> StreamAsync(string message, CancellationToken ct = default) => _inner.StreamAsync(Enrich(message), ct);
     public Task<string> AgentAsync(string instruction, CancellationToken ct = default) => _inner.AgentAsync(Enrich(instruction), ct);
     private static string Enrich(string m) => $"{CommerceIntegrationXeroDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> ExplainXeroCodeAsync(string transactionCode, CancellationToken ct = default)
@@ -25,4 +25,17 @@ public sealed class CommerceIntegrationXeroCompanionAdapter : ICompanionSession
         => _inner.AgentAsync($"Troubleshoot this Xero bank feed error and provide resolution steps:\n{feedError}", ct);
     public Task<string> GenerateXeroReportingGuideAsync(string businessType, CancellationToken ct = default)
         => _inner.AgentAsync($"Generate a Xero reporting guide for a {businessType}. Include recommended reports, frequency, and key metrics to track.", ct);
+
+    public Task<string> MapTransactionToXeroAsync(string transactionDescription, CancellationToken ct=default)
+        => _inner.AgentAsync($"Map this transaction to a Xero entry: {transactionDescription}. Pick contact, account code, tax rate; output the API payload outline.", ct);
+
+    public Task<string> ResolveXeroErrorAsync(string xeroErrorJson, CancellationToken ct=default)
+        => _inner.AgentAsync($"Resolve this Xero API error: {xeroErrorJson}. Explain the root cause + the exact fix (header, scope, validation, etc.).", ct);
+
+    public Task<string> GenerateXeroReportPromptAsync(string reportType, string period, CancellationToken ct=default)
+        => _inner.AgentAsync($"Generate the Xero report request for a {reportType} for {period}. Include endpoint, query params, response fields to surface.", ct);
+
+    public Task<string> MapVatToXeroTaxRateAsync(string countryIso, string supplyType, CancellationToken ct=default)
+        => _inner.AgentAsync($"Map this VAT context to the correct Xero tax-rate code: country {countryIso}, supply {supplyType}. Show the code + a one-line justification.", ct);
+
 }

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Integration.Calendar</PackageId>
+    <Version>3.3.0</Version>
+    <Description>Calendar integrations for Circle AI — Google Calendar, Microsoft Graph (Outlook), and generic CalDAV.</Description>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Integration\CircleAI.Integration.csproj" />
+  </ItemGroup>
+</Project>

@@ -10,8 +10,19 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{LogisticsDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> OptimiseRouteAsync(string origin,string destinations,string constraints,CancellationToken ct=default)=>_i.AgentAsync($"Optimise delivery routes from {origin} to: {destinations}. Constraints: {constraints}. Minimise total distance and time while respecting load limits and delivery windows.",ct);
-    public Task<string> PrepareCustomsDocAsync(string shipmentDetails,string incoterm,CancellationToken ct=default)=>_i.AgentAsync($"Prepare a customs documentation checklist for: {shipmentDetails}. Incoterm: {incoterm}. Include required forms, HS codes guidance, and SARS requirements.",ct);}
+    public Task<string> PrepareCustomsDocAsync(string shipmentDetails,string incoterm,CancellationToken ct=default)=>_i.AgentAsync($"Prepare a customs documentation checklist for: {shipmentDetails}. Incoterm: {incoterm}. Include required forms, HS codes guidance, and SARS requirements.",ct);
+
+    public Task<string> DraftCustomsDeclarationAsync(string goodsDescription, string fromCountry, string toCountry, CancellationToken ct=default)
+        => _i.AgentAsync($"Draft a customs declaration outline for: {goodsDescription} from {fromCountry} to {toCountry}. HS code lookup, duty, docs list.", ct);
+
+    public Task<string> DiagnoseDelayAsync(string shipmentDetails, string delayCause, CancellationToken ct=default)
+        => _i.AgentAsync($"Diagnose this shipment delay: {shipmentDetails}, cause: {delayCause}. List recovery options + customer comms template.", ct);
+
+    public Task<string> PlanWarehouseSlottingAsync(string skuVelocityList, string warehouseLayout, CancellationToken ct=default)
+        => _i.AgentAsync($"Plan warehouse slotting for SKUs: {skuVelocityList} in layout: {warehouseLayout}. Optimise for pick-distance + ergonomics.", ct);
+
+}

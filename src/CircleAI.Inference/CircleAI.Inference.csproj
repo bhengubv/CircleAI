@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>3.2.0</Version><Description>On-device LLM inference for Circle — 2.0.2 is a no-API-change refresh aligned with the 2.0.2 bundle. Carries forward 2.0.0's RT-08 fallback chain, 1.7.0's PowerBudget / snapshot-restore / prefix-cache, and the &lt;think&gt;→reasoning_content router. mnnbridge 1.2.0 native payload unchanged.</Description>
+    <Version>3.3.0</Version><Description>On-device LLM inference for Circle — 2.0.2 is a no-API-change refresh aligned with the 2.0.2 bundle. Carries forward 2.0.0's RT-08 fallback chain, 1.7.0's PowerBudget / snapshot-restore / prefix-cache, and the &lt;think&gt;→reasoning_content router. mnnbridge 1.2.0 native payload unchanged.</Description>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -32,6 +32,8 @@
 	     benchmark). Pure managed, no native deps. -->
 	<ItemGroup>
 		<PackageReference Include="Scriban" Version="7.2.4" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
 	</ItemGroup>
 
 	<!-- Native runtime payload. The SDK's default item glob excludes

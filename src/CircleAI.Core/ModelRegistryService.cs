@@ -12,7 +12,21 @@ namespace CircleAI.Core.Models
         private ModelRegistry? _embeddedRegistry;
         private ModelRegistry? _remoteRegistry;
         private readonly ModelScopeCatalogClient? _catalogClient;
+        private readonly byte[]? _signingPublicKey;
         private bool _disposed;
+
+        /// <summary>
+        /// (3.3.0) Override to provide a registry-signing public key in
+        /// SubjectPublicKeyInfo DER form (ECDSA P-256). Hosts that want
+        /// to enable remote registry updates supply the corresponding
+        /// public-key bytes for the keypair that signs their
+        /// <c>registry.json.sig</c> sidecar.
+        /// </summary>
+        public ModelRegistryService(byte[]? signingPublicKeyDer, string? registryUrl = null)
+            : this(catalogClient: null, registryUrl: registryUrl)
+        {
+            _signingPublicKey = signingPublicKeyDer;
+        }
 
         public ModelRegistryService(string? registryUrl = null)
             : this(catalogClient: null, registryUrl: registryUrl) { }
@@ -97,9 +111,20 @@ namespace CircleAI.Core.Models
 
                 var response = await _httpClient.GetAsync(registryUrl);
                 response.EnsureSuccessStatusCode();
-
                 var remoteJson = await response.Content.ReadAsStringAsync();
-                if (!VerifySignature(remoteJson))
+
+                // Fetch the detached signature from the sidecar URL.
+                var sigUrl = registryUrl + ".sig";
+                using var sigResp = await _httpClient.GetAsync(sigUrl);
+                if (!sigResp.IsSuccessStatusCode)
+                    throw new SecurityException("Missing registry signature sidecar");
+
+                var sigBase64 = (await sigResp.Content.ReadAsStringAsync()).Trim();
+                byte[] signature;
+                try { signature = Convert.FromBase64String(sigBase64); }
+                catch { throw new SecurityException("Malformed signature"); }
+
+                if (!VerifySignature(remoteJson, signature))
                     throw new SecurityException("Invalid registry signature");
 
                 _remoteRegistry = JsonSerializer.Deserialize<ModelRegistry>(remoteJson, JsonOpts);
@@ -253,20 +278,38 @@ namespace CircleAI.Core.Models
             AllowTrailingCommas = true,
         };
 
-        private static bool VerifySignature(string json)
+        /// <summary>
+        /// (3.3.0) Verify <paramref name="json"/> against
+        /// <paramref name="signature"/> using ECDSA P-256 / SHA-256
+        /// against the host-supplied public key. Returns <c>false</c>
+        /// when no key is configured — same fail-closed behaviour as
+        /// "no signature trusted by default", so the caller falls back
+        /// to the embedded registry.
+        /// </summary>
+        private bool VerifySignature(string json, byte[] signature)
         {
-            // SECURITY: Signature verification infrastructure is not yet in place.
-            // Throwing here causes CheckForUpdatesAsync's catch block to fall back
-            // to the embedded registry, ensuring that no unsigned remote payload
-            // (including one from a MITM or a compromised server) can ever be
-            // deserialised and used as a source of model URLs.
-            //
-            // TODO: Replace with ECDSA / Ed25519 verification once the signing key
-            //       and registry-signing workflow are established.  Until then remote
-            //       registry updates are intentionally blocked.
-            throw new NotSupportedException(
-                "Remote registry signature verification is not yet implemented. " +
-                "Remote updates are blocked until cryptographic signing is in place.");
+            if (_signingPublicKey is null || _signingPublicKey.Length == 0) return false;
+            if (signature is null || signature.Length == 0) return false;
+
+            try
+            {
+                using var ecdsa = ECDsa.Create();
+                ecdsa.ImportSubjectPublicKeyInfo(_signingPublicKey, out _);
+                var data = System.Text.Encoding.UTF8.GetBytes(json);
+
+                // Accept either IEEE P1363 (r||s concat) or DER. Try IEEE first
+                // because that's the OpenSSL default for ecdsa --raw output;
+                // fall back to DER (the .NET default).
+                if (ecdsa.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation))
+                {
+                    return true;
+                }
+                return ecdsa.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+            }
+            catch (CryptographicException)
+            {
+                return false;
+            }
         }
 
         public void Dispose()

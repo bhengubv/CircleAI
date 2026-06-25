@@ -15,10 +15,24 @@ public sealed class RetailCompanionAdapter : ICompanionSession {
     public event EventHandler<CompanionProactiveEvent>? ProactiveMessageReady
     { add=>_i.ProactiveMessageReady+=value; remove=>_i.ProactiveMessageReady-=value; }
     public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-    public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+    public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
     public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
     private static string E(string m)=>$"{RetailDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> AnalyseStockHealthAsync(string sku, int onHand, int weeklySales, CancellationToken ct=default)
         =>_i.AgentAsync($"Analyse stock health for SKU {sku}: {onHand} units on hand, {weeklySales} weekly sales. Recommend reorder point, safety stock, and EOQ.",ct);
     public Task<string> PlanPromotionAsync(string objective, string constraints, CancellationToken ct=default)
-        =>_i.AgentAsync($"Plan a retail promotion. Objective: {objective}. Constraints: {constraints}. Include mechanics, discount level, marketing channels, and success metrics.",ct);}
+        =>_i.AgentAsync($"Plan a retail promotion. Objective: {objective}. Constraints: {constraints}. Include mechanics, discount level, marketing channels, and success metrics.",ct);
+
+    public Task<string> OptimiseProductMixAsync(string topSellersJson, string slowMoversJson, CancellationToken ct=default)
+        => _i.AgentAsync($"Recommend product mix changes from sellers: {topSellersJson} and slow: {slowMoversJson}. Cover ranging, replenishment, markdown.", ct);
+
+    public Task<string> DesignPromotionAsync(string goal, string category, decimal budget, CancellationToken ct=default)
+        => _i.AgentAsync($"Design a {goal} promotion for {category} on {budget} budget. Mechanic, channel mix, expected lift, guardrails.", ct);
+
+    public Task<string> HandleStockoutAsync(string sku, string demandSignal, int leadTimeDays, CancellationToken ct=default)
+        => _i.AgentAsync($"Handle stockout of {sku} (demand: {demandSignal}, lead {leadTimeDays}d). Recovery options + customer comms.", ct);
+
+    public Task<string> ReviewDailyTradingAsync(string salesByCategory, decimal targetRevenue, CancellationToken ct=default)
+        => _i.AgentAsync($"Review today's trading: {salesByCategory} vs target {targetRevenue}. Wins, misses, tomorrow's adjustments.", ct);
+
+}

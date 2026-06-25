@@ -73,4 +73,164 @@ public static class SpeechCloudServiceCollectionExtensions
             _ => new KeywordVoiceIntentRouter(intents, fallbackIntentName));
         return services;
     }
+
+    // ====================================================================
+    // (3.3.0) Five additional cloud STT backends — one of these registers
+    // as ISpeechRecognizer (last writer wins) when called solo. Compose
+    // with AddOpenAiSpeechRecognizer + a router for multi-vendor failover.
+    // ====================================================================
+
+    /// <summary>(3.3.0) Register the Deepgram STT recognizer.</summary>
+    public static IServiceCollection AddDeepgramSpeechRecognizer(
+        this IServiceCollection                 services,
+        Func<IServiceProvider, DeepgramOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<DeepgramSpeechRecognizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<DeepgramOptions>().BaseAddress);
+        services.AddSingleton<ISpeechRecognizer>(sp => sp.GetRequiredService<DeepgramSpeechRecognizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the AssemblyAI STT recognizer.</summary>
+    public static IServiceCollection AddAssemblyAiSpeechRecognizer(
+        this IServiceCollection                  services,
+        Func<IServiceProvider, AssemblyAiOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<AssemblyAiSpeechRecognizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<AssemblyAiOptions>().BaseAddress);
+        services.AddSingleton<ISpeechRecognizer>(sp => sp.GetRequiredService<AssemblyAiSpeechRecognizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Google Cloud STT recognizer.</summary>
+    public static IServiceCollection AddGoogleSpeechRecognizer(
+        this IServiceCollection                    services,
+        Func<IServiceProvider, GoogleSpeechOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<GoogleSpeechRecognizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<GoogleSpeechOptions>().BaseAddress);
+        services.AddSingleton<ISpeechRecognizer>(sp => sp.GetRequiredService<GoogleSpeechRecognizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Azure STT recognizer.</summary>
+    public static IServiceCollection AddAzureSpeechRecognizer(
+        this IServiceCollection                   services,
+        Func<IServiceProvider, AzureSpeechOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<AzureSpeechRecognizer>((sp, c) =>
+        {
+            var o = sp.GetRequiredService<AzureSpeechOptions>();
+            if (o.BaseAddress is not null) c.BaseAddress = o.BaseAddress;
+        });
+        services.AddSingleton<ISpeechRecognizer>(sp => sp.GetRequiredService<AzureSpeechRecognizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Cartesia STT recognizer.</summary>
+    public static IServiceCollection AddCartesiaSpeechRecognizer(
+        this IServiceCollection                   services,
+        Func<IServiceProvider, CartesiaSttOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<CartesiaSpeechRecognizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<CartesiaSttOptions>().BaseAddress);
+        services.AddSingleton<ISpeechRecognizer>(sp => sp.GetRequiredService<CartesiaSpeechRecognizer>());
+        return services;
+    }
+
+    // ====================================================================
+    // (3.3.0) Six additional cloud TTS backends. Combine with the existing
+    // OpenAI TTS to make 7. Last-write-wins on ISpeechSynthesizer.
+    // ====================================================================
+
+    /// <summary>(3.3.0) Register the ElevenLabs TTS synthesizer.</summary>
+    public static IServiceCollection AddElevenLabsSpeechSynthesizer(
+        this IServiceCollection                  services,
+        Func<IServiceProvider, ElevenLabsOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<ElevenLabsSpeechSynthesizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<ElevenLabsOptions>().BaseAddress);
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<ElevenLabsSpeechSynthesizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Cartesia Sonic TTS synthesizer.</summary>
+    public static IServiceCollection AddCartesiaSpeechSynthesizer(
+        this IServiceCollection                   services,
+        Func<IServiceProvider, CartesiaTtsOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<CartesiaSpeechSynthesizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<CartesiaTtsOptions>().BaseAddress);
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<CartesiaSpeechSynthesizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Deepgram Aura TTS synthesizer.</summary>
+    public static IServiceCollection AddDeepgramSpeechSynthesizer(
+        this IServiceCollection                   services,
+        Func<IServiceProvider, DeepgramTtsOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<DeepgramSpeechSynthesizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<DeepgramTtsOptions>().BaseAddress);
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<DeepgramSpeechSynthesizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Azure TTS synthesizer.</summary>
+    public static IServiceCollection AddAzureSpeechSynthesizer(
+        this IServiceCollection                services,
+        Func<IServiceProvider, AzureTtsOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<AzureSpeechSynthesizer>((sp, c) =>
+        {
+            var o = sp.GetRequiredService<AzureTtsOptions>();
+            if (o.BaseAddress is not null) c.BaseAddress = o.BaseAddress;
+        });
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<AzureSpeechSynthesizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Google Cloud TTS synthesizer.</summary>
+    public static IServiceCollection AddGoogleSpeechSynthesizer(
+        this IServiceCollection                services,
+        Func<IServiceProvider, GoogleTtsOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<GoogleSpeechSynthesizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<GoogleTtsOptions>().BaseAddress);
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<GoogleSpeechSynthesizer>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register the Play.HT TTS synthesizer.</summary>
+    public static IServiceCollection AddPlayHtSpeechSynthesizer(
+        this IServiceCollection             services,
+        Func<IServiceProvider, PlayHtOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<PlayHtSpeechSynthesizer>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<PlayHtOptions>().BaseAddress);
+        services.AddSingleton<ISpeechSynthesizer>(sp => sp.GetRequiredService<PlayHtSpeechSynthesizer>());
+        return services;
+    }
 }

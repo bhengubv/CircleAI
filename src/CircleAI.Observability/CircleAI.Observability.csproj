@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Observability</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.0.1) Observability contracts — OTel traces, Prometheus metrics, Grafana dashboards, claude-team-dashboard. IMetricSink + ITraceSink + IDashboardPublisher. Null impls drop all signals (safe default). Real backends in 2.7.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;observability;otel;prometheus;grafana</PackageTags>

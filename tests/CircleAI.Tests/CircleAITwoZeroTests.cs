@@ -218,7 +218,7 @@ public sealed class InMemoryEmbeddingStoreTests
     {
         await using var store = new InMemoryEmbeddingStore(new HashEncoder(16));
         await store.AddAsync(new EmbeddingDocument("x", "delete me"));
-        Assert.Equal(1, store.Count);
+        Assert.Equal(1, store.Count);  // store.Count is an int property — not collection.Count
         Assert.True(await store.RemoveAsync("x"));
         Assert.Equal(0, store.Count);
         Assert.False(await store.RemoveAsync("x"));

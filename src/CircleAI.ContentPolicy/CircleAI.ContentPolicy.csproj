@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.ContentPolicy</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.0.1) Content-policy / refusal contracts — pattern-adoption of Sponsio. Distinct from the v1.2.0 CircleAI.Safety personal-safety domain pack. IContentFilter (pre-completion guardrails) + IRefusalPolicy + IPromptInjectionDetector (second-order attacks via RAG/web/tool output) + ISafetyAuditLog. Null impls fail-closed (treat everything as refused, log nothing). Real backends in 3.0.2. Renamed from CircleAI.Guardrails 3.0.0 — that package ID exists on nuget.org but is a dead-end; nothing newer will ship under that ID. New consumers: `dotnet add package CircleAI.ContentPolicy`.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;content-policy;refusal;safety;sponsio</PackageTags>

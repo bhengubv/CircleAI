@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Integration.News</PackageId>
+    <Version>3.3.0</Version>
+    <Description>External knowledge ingestion for Circle AI — RSS, NewsAPI/GNews, Bluesky firehose, Mastodon stream.</Description>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Integration\CircleAI.Integration.csproj" />
+  </ItemGroup>
+</Project>

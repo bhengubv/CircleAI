@@ -1,9 +1,9 @@
 // AetherAIObserver.cs
 //
-// Thin IAIObserver -> ICircleAetherTransport bridge.
-// No real Aether dependency is taken here — the transport interface is
-// defined inline so this file compiles without the Aether SDK installed.
-// Swap the stub interface for the real one when the Aether SDK is available.
+// (3.3.0) IAIObserver bridge that publishes butler events onto the
+// CircleAether mesh transport. The transport contract lives in this
+// assembly — host packages (CircleAI.AetherNet, CircleAI.Networking.*)
+// implement it directly. There is no separate Aether SDK to bind to.
 
 using System;
 using System.Text.Json;
@@ -13,8 +13,10 @@ using System.Threading.Tasks;
 namespace CircleAI.Hosting;
 
 /// <summary>
-/// Publish/subscribe transport abstraction for CircleAether mesh.
-/// Swap this stub for the real Aether SDK interface when available.
+/// (3.3.0) Publish/subscribe transport contract for the CircleAether
+/// mesh. Host packages register an implementation (e.g. AetherNet,
+/// Bluetooth, NearLink, gRPC) and this is the contract the observer
+/// publishes butler events through.
 /// </summary>
 public interface ICircleAetherTransport
 {

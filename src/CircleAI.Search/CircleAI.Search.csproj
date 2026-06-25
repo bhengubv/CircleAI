@@ -15,8 +15,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="sqlite-net-pcl" Version="1.8.116" />
-		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.0" />
+		<PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
+		<!-- 2.1.11 bumps the native binary past GHSA-2m69-gcr7-jv3q (SQLite buffer over-read). -->
+		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
 	</ItemGroup>
 
 	<PropertyGroup>

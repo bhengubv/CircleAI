@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Telephony.Telnyx</PackageId>
+    <Version>3.3.0</Version>
+    <Description>(3.3.0) Telnyx carrier adapter for CircleAI.Telephony. Number search + purchase + assignment, Call Control App webhook configuration, outbound dial with Media Streaming, hang up, cold transfer — all via Telnyx v2 REST API (Bearer-token auth). Media-stream WebSocket plumbing is host-supplied via the shared IMediaStream contract. Fail-soft when API key missing.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;telephony;voice;phone;carrier;telnyx</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Telephony\CircleAI.Telephony.csproj" />
+  </ItemGroup>
+
+</Project>

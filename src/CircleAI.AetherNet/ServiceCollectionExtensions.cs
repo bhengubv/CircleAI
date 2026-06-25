@@ -76,7 +76,7 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Adds the inbound directive bridge — when AetherNet publishes a
     /// SecurityDirective (locally authored or received over the mesh) it gets
-    /// translated and forwarded to the CircleAI <see cref="ISecurityDirectiveConsumer"/>
+    /// translated and forwarded to the CircleAI <see cref="global::CircleAI.Aether.ISecurityDirectiveConsumer"/>
     /// (typically <c>MeshDirectiveStore</c>).
     /// <para>
     /// Call this AFTER both <see cref="AddCircleAiAetherNetAdapter"/> and

@@ -13,9 +13,9 @@ namespace CircleAI.Wearable.Biosignals;
 /// Use for tests and as the default when no wearable is connected.
 /// </summary>
 /// <remarks>
-/// Marked <see cref="VerificationLevel.Reference"/>: by construction this
-/// type is a placeholder. Production deployments wire a real
-/// <see cref="IBiosignalSource"/> in place of it.
+/// Marked <see cref="VerificationLevel.Reference"/>: by design, this type
+/// represents the "no wearable connected" case. Production deployments
+/// wire a real <see cref="IBiosignalSource"/> in place of it.
 /// </remarks>
 [Experimental("CIRCLEAI_BIO_001", UrlFormat = "https://github.com/bhengubv/CircleAI/blob/master/docs/experimental.md#{0}")]
 [CircleAIVerificationStatus(VerificationLevel.Reference)]

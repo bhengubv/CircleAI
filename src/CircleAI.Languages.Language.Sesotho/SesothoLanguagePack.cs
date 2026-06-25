@@ -21,10 +21,25 @@ public sealed class SesothoLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Sesotho-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Dumela",
-        ["goodbye"] = "Robala hantle",
+        ["hello"]            = "Dumela",
+        ["hello (plural)"]   = "Dumelang",
+        ["goodbye"]          = "Sala hantle",
+        ["goodbye (sleep)"]  = "Robala hantle",
+        ["thank you"]        = "Kea leboha",
+        ["please"]           = "Ka kopo",
+        ["yes"]              = "E",
+        ["no"]               = "Che",
+        ["how are you"]      = "O phela joang",
+        ["I am fine"]        = "Ke phela hantle",
+        ["sorry"]            = "Tshwarelo",
+        ["family"]           = "lelapa",
+        ["love"]             = "lerato",
+        ["water"]            = "metsi",
+        ["food"]             = "dijo",
+        ["mother"]           = "'me",
+        ["father"]           = "ntate",
+        ["child"]            = "ngwana",
+        ["friend"]           = "motswalle",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

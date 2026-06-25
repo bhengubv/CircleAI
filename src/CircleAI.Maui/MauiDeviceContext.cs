@@ -90,7 +90,7 @@ namespace CircleAI.Maui
 
         /// <inheritdoc />
         /// <remarks>
-        /// <see cref="IBattery.ChargeLevel"/> returns a <c>double</c> in the
+        /// MAUI <c>Battery.Default.ChargeLevel</c> returns a <c>double</c> in the
         /// range [0.0, 1.0]; we narrow to <c>float</c> here.  Returns
         /// <c>null</c> on simulators or when the platform throws.
         /// </remarks>

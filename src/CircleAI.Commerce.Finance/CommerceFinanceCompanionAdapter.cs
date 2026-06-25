@@ -16,7 +16,7 @@ public sealed class CommerceFinanceCompanionAdapter : ICompanionSession
     public event EventHandler<CompanionProactiveEvent>? ProactiveMessageReady
     { add => _inner.ProactiveMessageReady += value; remove => _inner.ProactiveMessageReady -= value; }
     public Task<string> SendAsync(string message, CancellationToken ct = default) => _inner.SendAsync(Enrich(message), ct);
-    public IAsyncEnumerable<string> StreamAsync(string message, [EnumeratorCancellation] CancellationToken ct = default) => _inner.StreamAsync(Enrich(message), ct);
+    public IAsyncEnumerable<string> StreamAsync(string message, CancellationToken ct = default) => _inner.StreamAsync(Enrich(message), ct);
     public Task<string> AgentAsync(string instruction, CancellationToken ct = default) => _inner.AgentAsync(Enrich(instruction), ct);
     private static string Enrich(string m) => $"{CommerceFinanceDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> ForecastCashFlowAsync(string financials, int weeksAhead, CancellationToken ct = default)
@@ -25,4 +25,17 @@ public sealed class CommerceFinanceCompanionAdapter : ICompanionSession
         => _inner.AgentAsync($"Recommend a debt structure for a business needing {amount:C}. Context:\n{context}\nCompare term loans, revolving credit, and invoice financing.", ct);
     public Task<string> ReviewCreditApplicationAsync(string applicationData, CancellationToken ct = default)
         => _inner.AgentAsync($"Review this credit application and identify strengths, weaknesses, and risk factors:\n{applicationData}", ct);
+
+    public Task<string> GenerateAgingReportAsync(string outstandingInvoices, CancellationToken ct=default)
+        => _inner.AgentAsync($"Generate an aging report from: {outstandingInvoices}. Bucket 0-30/31-60/61-90/90+, name the worst offenders, suggest collection actions.", ct);
+
+    public Task<string> PrepareInvoiceFollowUpAsync(string customerName, decimal amount, int daysOverdue, CancellationToken ct=default)
+        => _inner.AgentAsync($"Draft a follow-up message to {customerName} for {amount} due {daysOverdue} days. Tone: firm but relationship-preserving.", ct);
+
+    public Task<string> EvaluateCreditAsync(string customerSummary, decimal proposedLimit, CancellationToken ct=default)
+        => _inner.AgentAsync($"Evaluate credit-worthiness of {customerSummary} for a {proposedLimit} limit. Recommend approve/decline + conditions.", ct);
+
+    public Task<string> ForecastCashFlowAsync(string outstandingInvoices, string upcomingExpenses, int horizonDays, CancellationToken ct=default)
+        => _inner.AgentAsync($"Forecast cash flow for next {horizonDays} days from invoices: {outstandingInvoices} and expenses: {upcomingExpenses}. Flag squeeze points.", ct);
+
 }

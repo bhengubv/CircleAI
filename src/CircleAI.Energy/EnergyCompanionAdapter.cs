@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{EnergyDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> SizeSolarSystemAsync(string monthlyConsumptionKwh,string location,bool gridTied,CancellationToken ct=default)=>_i.AgentAsync($"Size a solar PV system for {monthlyConsumptionKwh} kWh/month in {location}. Grid-tied: {gridTied}. Include panel capacity, inverter size, battery sizing (if off-grid), estimated generation, and payback period.",ct);
-    public Task<string> AnalyseTariffAsync(string tariffSchedule,string consumptionProfile,CancellationToken ct=default)=>_i.AgentAsync($"Analyse this tariff schedule for cost optimisation opportunities:\n{tariffSchedule}\nConsumption profile:\n{consumptionProfile}\nRecommend demand management and TOU strategies.",ct);}
+    public Task<string> AnalyseTariffAsync(string tariffSchedule,string consumptionProfile,CancellationToken ct=default)=>_i.AgentAsync($"Analyse this tariff schedule for cost optimisation opportunities:\n{tariffSchedule}\nConsumption profile:\n{consumptionProfile}\nRecommend demand management and TOU strategies.",ct);
+
+    public Task<string> OptimiseTariffChoiceAsync(string usagePattern, string availableTariffs, CancellationToken ct=default)
+        => _i.AgentAsync($"Recommend the best tariff for usage {usagePattern} from: {availableTariffs}. Show annual cost compare + breakeven assumptions.", ct);
+
+    public Task<string> ExplainBillSpikeAsync(string priorBill, string currentBill, string conditions, CancellationToken ct=default)
+        => _i.AgentAsync($"Explain bill change from {priorBill} to {currentBill}. Conditions: {conditions}. Cover usage, tariff, weather, meter issues.", ct);
+
+    public Task<string> PlanSolarSizingAsync(string averageDailyKwh, string roofOrientation, string budget, CancellationToken ct=default)
+        => _i.AgentAsync($"Size a solar PV system for {averageDailyKwh} kWh/day, {roofOrientation}, budget {budget}. Output panels, inverter, battery, payback years.", ct);
+
+    public Task<string> DraftLoadSheddingPlanAsync(string householdSize, string criticalLoads, CancellationToken ct=default)
+        => _i.AgentAsync($"Draft a load-shedding plan for {householdSize}-person home, critical: {criticalLoads}. Cover backup priority, run-time budget, safety.", ct);
+
+}

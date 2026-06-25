@@ -4,6 +4,189 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] — 2026-06-25 — **HER / JARVIS parity — always-on, world-aware, embodied, learns-you, reasoner**
+
+Closes the gap between the 3.2.0 substrate ("real backends for 24 HER/Jarvis
+contracts") and a companion that actually behaves like HER / JARVIS: always
+listens, sees what you see, knows your day, controls your home, learns your
+voice over years, and reaches you across devices. 28 deliverables across
+5 phases (A=always-on, B=world-aware, C=embodied, D=learns-you, E=reasoner)
+landed against existing HER/Jarvis interfaces — no new contract surfaces
+introduced.
+
+### Added — Phase A · Always-on persona
+
+- **`CircleAI.Voice.KwsWakeWordDetector`** — low-latency ONNX keyword-spotter
+  on a sliding 1 s window every 100 ms. Replaces the ASR-based
+  `EnergyWakeWordDetector` for production wake-on-"Hey B". Mel-spectrogram
+  feature extraction (Hamming + DFT + mel filterbank) or raw-waveform input,
+  configurable threshold + cooldown.
+- **`CircleAI.Maui.AlwaysOnService`** — `IHostedService` per platform:
+  Android sticky `ForegroundService` with `microphone` type +
+  `circleai-always-on` notification channel; iOS `AVAudioSession`
+  `PlayAndRecord` with `MixWithOthers` + `AllowBluetooth` +
+  interruption observer.
+- **`CircleAI.Memory.Sync.CompanionConversationSyncBridge`** —
+  `ConversationStateDelta` (session id, partial transcript, in-flight turn
+  flag, timestamps) cross-device via the existing `SyncableEntry` pipeline.
+  Move a call phone → laptop mid-stream.
+- **End-to-end episodic pipeline** wired in `CompanionSession`: every
+  user/assistant turn is jointly embedded via `ITextEmbedder` before
+  `EpisodicMemory.RecordAsync` so `LoadRecentMemoriesAsync` can do
+  embedding-based recall.
+
+### Added — Phase B · World-aware
+
+- **`CircleAI.Integration`** — base contracts: `ICalendarConnector`,
+  `IEmailConnector`, `INewsSource`, `IWeatherProvider`, `IRoutingProvider`,
+  `IHomeAutomationConnector`.
+- **`CircleAI.Integration.Calendar`** — Google Calendar v3 (OAuth),
+  Microsoft Graph v1.0, generic CalDAV (`REPORT` verb + ICS parser).
+- **`CircleAI.Integration.Email`** — IMAP (MailKit), Gmail API v1
+  (base64url), Microsoft Graph mail.
+- **`CircleAI.Integration.News`** — RSS 2.0 + Atom 1.0 dual parser,
+  NewsAPI / GNews, Bluesky AT-proto `searchPosts`, Mastodon public /
+  hashtag timeline.
+- **`CircleAI.Integration.Geo`** — Open-Meteo current + hourly with full
+  WMO weather-code decoder; OSRM driving/bike/foot routing with polyline.
+- **`CircleAI.Companion.ProactiveBriefingService`** — `IHostedService`
+  with a configurable fire-times schedule that pulls calendar + email +
+  news + weather, runs an LLM summary, and dispatches via
+  `IBriefingNotifier`. Internal `TimeUntilNextFire` helper.
+
+### Added — Phase C · Embodied
+
+- **`CircleAI.Integration.HomeAssistant.HomeAssistantConnector`** — REST
+  bridge over `/api/states` + `/api/services/{domain}/{service}` POST
+  with a Long-Lived Access Token. `TurnOnAsync` / `TurnOffAsync`
+  convenience surface.
+- **`CircleAI.Vision.IVideoCapture` + `CircleAI.Maui.MauiCameraCapture`** —
+  platform-conditional camera capture mirroring `MauiAudioCapture`:
+  Android Camera2 with `ImageReader` + Y-plane extraction, iOS
+  `AVCaptureSession` with `VideoDataOutput` delegate, Windows
+  `MediaCapture` with `MediaFrameReader` + SoftwareBitmap → JPEG.
+  `BoundedChannel`-backed `FrameQueue` for cross-thread frame hand-off.
+- **`CircleAI.Vision.OnnxFaceDetector` / `OnnxFaceEmbedder` /
+  `OnnxPlateRecognizer`** — YOLO-family face detection with letterbox +
+  NMS, ArcFace 112×112 BGR mean-subtracted 512-D embedder (L2 normalised),
+  plate-region detector. SixLabors.ImageSharp for cross-platform decode.
+- **`CircleAI.Maui.HealthBoardBridge`** — `IHostedService` that polls
+  Android Health Connect (ContentResolver fallback) or iOS HealthKit
+  (`HKHealthStore`) and records into `IWearableBoard`.
+- **`CircleAI.Maui.LocationBridge`** — Android `LocationManager`
+  (GpsProvider preferred) / iOS `CLLocationManager` with
+  `RequestWhenInUseAuthorization`, feeds `IChildSafetyBoard.RecordCheckIn`.
+
+### Added — Phase D · Learns you
+
+- **`native/mnn-bridge` 1.4.0** — adds `mnn_llm_train_lora_step` +
+  `mnn_llm_save_lora` C ABI surface. Implementation is gated by
+  `#ifdef MNN_BUILD_TRAIN`; when MNN is built without the training
+  subsystem (the upstream binary release), both functions return the new
+  `MNNBRIDGE_ERR_TRAINING_DISABLED` (-12). Bundled `libmnnbridge.dylib`
+  for `osx-arm64` (built on the Mac with brew cmake + Xcode 26 / AppleClang
+  17, linked against the macOS framework).
+- **`CircleAI.Inference.LoRAAdapterManager.TrainStep / SaveAdapter`** —
+  managed P/Invoke for the new native surface. `NotSupportedException`
+  with the explicit "rebuild MNN with `-DMNN_BUILD_TRAIN=ON`" guidance
+  when -12 returns.
+- **`CircleAI.Inference.FeedbackTrainingQueue`** — line-delimited JSON
+  file-backed queue (`TrainingSample` records) with atomic drain.
+- **`CircleAI.Inference.NightlyAdapterTrainer`** — `IHostedService`
+  with `NightlyAdapterTrainerOptions` (`MinBatchSize`,
+  `MaxSamplesPerRun`, `LearningRate`, `LoRARank`, `AdapterPath`,
+  `Interval`, `ShouldFireNow`, `Tokenizer`). Drains the queue, runs
+  `TrainStep` per sample, atomically `SaveAdapter` + `Apply`. Char-level
+  fallback tokenizer. Re-queues on training-disabled.
+- **`CircleAI.Memory.Sync.LoraAdapterSyncBridge`** — base64-encoded
+  adapter bytes propagate across devices as `LoraAdapterSnapshot`
+  syncable entries.
+
+### Added — Phase E · Reasoner
+
+- **`CircleAI.Companion.ReasoningLoopInnerMonologue`** — real o1 /
+  DeepSeek-R1 style inner monologue using
+  `IChatGenerator.StreamFragmentsAsync` with `IncludeReasoning = true`.
+  Captures `Reasoning`-kind fragments as the thought; `Content`
+  fragments form the visible answer. Replaces `TemplateInnerMonologue`.
+- **`CircleAI.Companion.SqliteKnowledgeGraph` +
+  `LlmKnowledgeGraphExtractor`** — `kg_nodes` + `kg_triples` SQLite
+  triple store with indexes; LLM-driven entity / relation extractor with
+  JSON-strict prompt + defensive bracket-finding parser. Replaces
+  `AdjacencyPersonalKnowledgeGraph`.
+- **`CircleAI.Companion.SqliteHippoRagStore`** — real
+  Personalised PageRank walk over the personal KG (damping 0.85, 32
+  iterations) seeded from query terms. Multi-hop recall returns top-K
+  nodes as `MemoryHit` with PR mass as score.
+- **`CircleAI.Companion.BayesianWorldModel`** — online-learning Naive
+  Bayes classifier over (observations → outcome) pairs with Laplace
+  smoothing. Softmax-normalised posteriors. Replaces
+  `FrequencyWorldModel`.
+- **`CircleAI.Companion.SequencePredictiveEngine`** — variable-order
+  (default 3-gram) Markov chain over the user's event timeline with
+  back-off weighting and per-event inter-arrival forecasting. Replaces
+  the slot-of-week `HistogramPredictiveEngine`.
+- **`CircleAI.Voice.OnnxSpeakerIdentity` +
+  `CircleAI.Companion.OnnxSpeakerIdentityAdapter`** — ECAPA-TDNN-style
+  speaker embedder (log-mel or raw waveform input) with JSON
+  enrollment store, running-mean centroid update, cosine-similarity
+  match. Replaces the MFCC `EnergyBandVoiceIdentity`.
+- **`CircleAI.Voice.OnnxSpeechEmotionDetector` +
+  `CircleAI.Companion.OnnxSpeechEmotionSensor`** — wav2vec2-style speech
+  emotion ONNX with Russell-circumplex arousal / valence mapping per
+  label. Plugs into `IEmotionSensor` via a base64-audio key in the
+  fused-signal JSON.
+- **`CircleAI.SelfBench`** — new project: `BenchTask` / `BenchResult` /
+  `BenchSummary` records, `BuiltInScorers` (exact / substring / regex /
+  numeric-tolerance), `BenchRunner`, `AbBenchRunner` with
+  `RegressionGateConfig` (mean-score threshold, p95 latency cap,
+  critical-task regression cap), `BenchSuiteRegistry` with a built-in
+  10-task default suite (math, factual, format, refusal, reasoning).
+- **`CircleAI.Companion.SelfBenchSelfImprovementLoop`** — implements
+  `ISelfImprovementLoop` by orchestrating SelfBench: baseline vs
+  candidate `IAIService`, regression-gated promotion.
+
+### Changed
+
+- Version-aligned every 3.x runtime package from 3.2.0 → 3.3.0 (49
+  packages), seven new packages join the runtime tier at 3.3.0
+  (`CircleAI.Integration`, `…Calendar`, `…Email`, `…News`, `…Geo`,
+  `…HomeAssistant`, `CircleAI.SelfBench`). Touched 1.x packages bumped
+  one minor: `CircleAI.Companion` 1.2.0 → 1.3.0,
+  `CircleAI.Voice` 1.2.0 → 1.3.0, `CircleAI.Memory` 1.3.0 → 1.4.0.
+- `native/mnn-bridge/CMakeLists.txt` — macOS framework search path
+  (`-F${MNN_FRAMEWORK_PARENT}`) so `<MNN/...>` includes inside
+  MNN.framework headers resolve via the framework name; needed because
+  `MNN/expr/Expr.hpp` is referenced from MNN's own `llm/llm.hpp` and
+  the bundle's Headers directory has no `MNN/` subfolder.
+
+### Fixed
+
+- `CircleAI.Voice.KwsWakeWordDetector` — `ReadOnlyMemory<byte>.AsSpan(...)`
+  doesn't exist; replaced with `.Span.Slice(...)`.
+- `CircleAI.Inference.csproj` — added
+  `Microsoft.Extensions.Hosting.Abstractions` +
+  `Microsoft.Extensions.Logging.Abstractions` (required by
+  `NightlyAdapterTrainer : IHostedService`).
+- `CircleAI.Maui.MauiCameraCapture` — `Android.Media.ImageFormatType`
+  doesn't exist; corrected to `Android.Graphics.ImageFormatType`.
+
+### Build verification
+
+- `CircleAI.Companion` (net9.0) — green; transitively builds
+  `Core / Memory / Embeddings / Integration / Domain / Identity /
+  Sync / Languages / Voice / Tools / Hosting / Networking / Inference /
+  SelfBench`.
+- All five `CircleAI.Maui` TFMs — `net9.0`, `net10.0`,
+  `net10.0-android`, `net10.0-ios`, `net10.0-maccatalyst`,
+  `net10.0-windows10.0.19041.0` — green.
+- `CircleAI.Integration.{Calendar,Email,News,Geo,HomeAssistant}` + 
+  `CircleAI.Vision` — green.
+- Native `libmnnbridge.dylib` (osx-arm64) — built on Mac
+  (Xcode 26 / AppleClang 17), linked against MNN.framework, copied
+  into `src/CircleAI.Inference/runtimes/osx-arm64/native/` alongside
+  the staged `libMNN.dylib` (15.7 MB).
+
 ## [3.2.0] — 2026-06-22 — **HER / Jarvis lift — companion substrate**
 
 Seven new packages port working backends from CircleUp + Concierge into

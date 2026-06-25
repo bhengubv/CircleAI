@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.CRM</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.0.1) CRM contract surface — twenty pattern-port. IContactStore + IDealPipeline + IActivityLog. Null impls fail-closed (no data persisted).</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;crm;twenty;contacts;deals</PackageTags>

@@ -34,7 +34,7 @@ await app.RunAsync();
 
 /// <summary>
 /// Top-level <c>Program</c> entry point — needs to be public so the test
-/// project's <see cref="Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory{TEntryPoint}"/>
+/// project's <c>Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory&lt;TEntryPoint&gt;</c>
 /// can bind to it. The body lives in the file's top-level statements above;
 /// this partial just opens the visibility surface.
 /// </summary>

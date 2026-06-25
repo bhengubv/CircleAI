@@ -4,9 +4,11 @@
 // from the DI container. Callers only need the factory — they never
 // construct CompanionSession directly.
 
+using CircleAI.Embeddings;
 using CircleAI.Hosting;
 using CircleAI.Identity;
 using CircleAI.Memory;
+using CircleAI.Memory.Sync;
 using CircleAI.Sync;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -73,7 +75,9 @@ public sealed class CompanionSessionFactory : ICompanionSessionFactory
             affect:   _services.GetService<IAffectStore>(),
             goals:    _services.GetService<IGoalStore>(),
             sync:     _services.GetService<IMemorySyncService>(),
-            proactive:_services.GetService<IProactiveReasoningService>()
+            proactive:_services.GetService<IProactiveReasoningService>(),
+            embedder: _services.GetService<ITextEmbedder>(),
+            conversationSync: _services.GetService<CompanionConversationSyncBridge>()
         );
     }
 }

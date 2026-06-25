@@ -100,6 +100,97 @@ public sealed record WakeWordEvent(
     float          Confidence,
     DateTimeOffset DetectedAtUtc);
 
+/// <summary>(3.3.0) Acoustic echo canceller — subtracts the far-end reference from the near-end mic input.</summary>
+public interface IEchoCanceller
+{
+    /// <summary>Backend self-identification — "nlms" / "webrtc-aec3" / "null".</summary>
+    string BackendId { get; }
+
+    /// <summary>
+    /// Cancel echo of <paramref name="farEndReference"/> out of
+    /// <paramref name="nearEndMicrophone"/>. Writes the result into
+    /// <paramref name="destination"/>. Both inputs must be the same
+    /// sample rate and length (PCM-16 mono).
+    /// </summary>
+    int Cancel(
+        ReadOnlySpan<byte> nearEndMicrophone,
+        ReadOnlySpan<byte> farEndReference,
+        int                sampleRateHz,
+        Span<byte>         destination);
+
+    /// <summary>Reset adaptive-filter state at the start of a new call.</summary>
+    void Reset();
+}
+
+/// <summary>(3.3.0) Audio noise reducer — cleans a frame of PCM-16 mono audio.</summary>
+public interface INoiseReducer
+{
+    /// <summary>Backend self-identification — "krisp" / "deepfilternet" / "passthrough" / "null".</summary>
+    string BackendId { get; }
+
+    /// <summary>True when the underlying model / runtime is available.</summary>
+    bool IsAvailable { get; }
+
+    /// <summary>
+    /// Reduce noise in <paramref name="audioPcm16Mono"/> and write into
+    /// <paramref name="destination"/>. The destination buffer must be at
+    /// least as long as the input. Returns the number of bytes written.
+    /// </summary>
+    int Reduce(ReadOnlySpan<byte> audioPcm16Mono, int sampleRateHz, Span<byte> destination);
+}
+
+/// <summary>(3.3.0) Verdict on whether a partial transcript represents a finished thought.</summary>
+/// <param name="IsComplete">True if the speaker likely finished their turn.</param>
+/// <param name="Confidence">0..1 confidence.</param>
+/// <param name="WaitMoreMs">If <c>IsComplete=false</c>, how many extra ms to wait before re-asking.</param>
+public sealed record EndOfTurnResult(bool IsComplete, float Confidence, int WaitMoreMs);
+
+/// <summary>
+/// (3.3.0) Decide whether the caller has finished their turn given the
+/// latest partial transcript + the trailing-silence duration. VAD says
+/// "they're silent now"; this says "they're DONE."
+/// </summary>
+public interface IEndOfTurnDetector
+{
+    /// <summary>Backend self-identification — "rules" / "smart-turn-v2" / "null".</summary>
+    string BackendId { get; }
+
+    /// <summary>Classify the current state.</summary>
+    EndOfTurnResult Predict(string partialTranscript, TimeSpan trailingSilence);
+
+    /// <summary>Reset internal state at the start of a fresh turn.</summary>
+    void Reset();
+}
+
+/// <summary>(3.3.0) One verdict from a voice-activity detector.</summary>
+/// <param name="IsSpeech">True if this frame contains speech.</param>
+/// <param name="SpeechProbability">0..1 confidence the frame is speech.</param>
+/// <param name="Offset">Frame start offset relative to the stream start.</param>
+public sealed record VadFrameResult(bool IsSpeech, float SpeechProbability, TimeSpan Offset);
+
+/// <summary>
+/// (3.3.0) Voice-activity detector. Implementations classify each
+/// 10-30 ms audio frame as speech or silence so a voice loop knows
+/// when the caller has started/stopped talking.
+/// </summary>
+public interface IVoiceActivityDetector
+{
+    /// <summary>Backend self-identification — "energy" / "silero" / "null".</summary>
+    string BackendId { get; }
+
+    /// <summary>Speech probability threshold for <see cref="VadFrameResult.IsSpeech"/>.</summary>
+    float SpeechThreshold { get; }
+
+    /// <summary>Classify one frame of PCM-16 mono audio.</summary>
+    VadFrameResult Classify(
+        ReadOnlySpan<byte> audioPcm16Mono,
+        int                sampleRateHz,
+        TimeSpan           offset);
+
+    /// <summary>Reset any internal hangover state at the start of a fresh utterance.</summary>
+    void Reset();
+}
+
 /// <summary>(2.3.0) Read text out of an image.</summary>
 public interface IOpticalCharacterRecognizer
 {

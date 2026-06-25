@@ -41,7 +41,7 @@ public interface ICompanionSession : IAsyncDisposable
     /// </summary>
     IAsyncEnumerable<string> StreamAsync(
         string message,
-        [EnumeratorCancellation] CancellationToken ct = default);
+        CancellationToken ct = default);
 
     /// <summary>
     /// Agentic mode: sends the instruction, detects tool calls in the reply,

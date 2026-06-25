@@ -250,11 +250,14 @@ public sealed class MauiAudioCapture : IAudioCapture, IAsyncDisposable
         }
 
 #else
+        // Synthesise an async iterator body that throws before yielding.
         await Task.CompletedTask.ConfigureAwait(false);
         throw new PlatformNotSupportedException(
             "MauiAudioCapture.CaptureAsync is not supported on net9.0. " +
             "Use NullAudioCapture in headless / test targets.");
-        yield break; // Unreachable — required by the compiler for async iterator method.
+#pragma warning disable CS0162 // unreachable yield is intentional — needed to make the method an async iterator
+        yield break;
+#pragma warning restore CS0162
 #endif
     }
 

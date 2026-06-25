@@ -18,6 +18,10 @@ public static class CloudFallbackServiceCollectionExtensions
         public const string OpenAi    = "openai";
         public const string Anthropic = "anthropic";
         public const string Gemini    = "gemini";
+        public const string Groq      = "groq";
+        public const string Cerebras  = "cerebras";
+        public const string Together  = "together";
+        public const string DeepSeek  = "deepseek";
     }
 
     /// <summary>
@@ -89,6 +93,62 @@ public static class CloudFallbackServiceCollectionExtensions
         Func<IServiceProvider, IEnumerable<IChatGenerator>> chainFactory)
     {
         services.AddSingleton(sp => new CloudFallbackChain(chainFactory(sp)));
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register Groq (OpenAI-compatible, very low latency).</summary>
+    public static IServiceCollection AddGroqChatGenerator(
+        this IServiceCollection              services,
+        Func<IServiceProvider, GroqChatOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<GroqChatGenerator>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<GroqChatOptions>().BaseAddress);
+        services.AddKeyedSingleton<IChatGenerator>(ProviderIds.Groq,
+            (sp, _) => sp.GetRequiredService<GroqChatGenerator>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register Cerebras (OpenAI-compatible).</summary>
+    public static IServiceCollection AddCerebrasChatGenerator(
+        this IServiceCollection                  services,
+        Func<IServiceProvider, CerebrasChatOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<CerebrasChatGenerator>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<CerebrasChatOptions>().BaseAddress);
+        services.AddKeyedSingleton<IChatGenerator>(ProviderIds.Cerebras,
+            (sp, _) => sp.GetRequiredService<CerebrasChatGenerator>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register Together AI (OpenAI-compatible).</summary>
+    public static IServiceCollection AddTogetherChatGenerator(
+        this IServiceCollection                  services,
+        Func<IServiceProvider, TogetherChatOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<TogetherChatGenerator>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<TogetherChatOptions>().BaseAddress);
+        services.AddKeyedSingleton<IChatGenerator>(ProviderIds.Together,
+            (sp, _) => sp.GetRequiredService<TogetherChatGenerator>());
+        return services;
+    }
+
+    /// <summary>(3.3.0) Register DeepSeek (OpenAI-compatible).</summary>
+    public static IServiceCollection AddDeepSeekChatGenerator(
+        this IServiceCollection                  services,
+        Func<IServiceProvider, DeepSeekChatOptions> optionsFactory)
+    {
+        ArgumentNullException.ThrowIfNull(optionsFactory);
+        services.AddSingleton(sp => optionsFactory(sp));
+        services.AddHttpClient<DeepSeekChatGenerator>((sp, c) =>
+            c.BaseAddress = sp.GetRequiredService<DeepSeekChatOptions>().BaseAddress);
+        services.AddKeyedSingleton<IChatGenerator>(ProviderIds.DeepSeek,
+            (sp, _) => sp.GetRequiredService<DeepSeekChatGenerator>());
         return services;
     }
 }

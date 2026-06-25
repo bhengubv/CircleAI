@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Companion.Proactive</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.2.0) Proactive scheduling for CircleAI companions — cron + event triggers fire `IProactiveTask`s through a host-supplied `IProactiveTaskRunner`. Closes the HER "Samantha mentions things you didn't ask about" gap. Pattern lifted from CircleUp's working `VaultWorkflowScheduler` + `WorkflowSchedulerBackgroundService` with vault coupling abstracted away — consumer brings their own task source (vault, DB, in-memory) and runner (workflow engine, skill dispatcher, plain delegate). Includes a 5-field `CronExpression` parser (no external scheduling SDK).</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;companion;proactive;scheduling;cron;workflows</PackageTags>

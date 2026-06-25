@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{MediaDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> CreateContentBriefAsync(string topic,string audience,string platform,CancellationToken ct=default)=>_i.AgentAsync($"Create a detailed content brief for {platform}: Topic: {topic}. Target audience: {audience}. Include angle, key messages, SEO keywords, call to action, and production notes.",ct);
-    public Task<string> AnalyseAudienceDataAsync(string analyticsData,CancellationToken ct=default)=>_i.AgentAsync($"Analyse this audience/analytics data and provide actionable content strategy recommendations:\n{analyticsData}",ct);}
+    public Task<string> AnalyseAudienceDataAsync(string analyticsData,CancellationToken ct=default)=>_i.AgentAsync($"Analyse this audience/analytics data and provide actionable content strategy recommendations:\n{analyticsData}",ct);
+
+    public Task<string> DraftPressReleaseAsync(string announcement, string audience, CancellationToken ct=default)
+        => _i.AgentAsync($"Draft a press release on: {announcement} for {audience}. AP style, inverted pyramid, quote from leadership, boilerplate.", ct);
+
+    public Task<string> SuggestThumbnailConceptsAsync(string videoTopic, string channelStyle, CancellationToken ct=default)
+        => _i.AgentAsync($"Suggest 3 thumbnail concepts for a video on '{videoTopic}' in {channelStyle} style. Hook, composition, text.", ct);
+
+    public Task<string> StructureNarrativeAsync(string topic, string format, int durationMinutes, CancellationToken ct=default)
+        => _i.AgentAsync($"Structure a {durationMinutes}-min {format} on '{topic}'. Hook, beats, payoff, CTA.", ct);
+
+    public Task<string> WriteCaptionAsync(string mediaDescription, string platform, string voice, CancellationToken ct=default)
+        => _i.AgentAsync($"Write a {platform} caption for: {mediaDescription}. Voice: {voice}. Optimise for platform's algorithm + accessibility.", ct);
+
+}

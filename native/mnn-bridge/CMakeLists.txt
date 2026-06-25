@@ -55,6 +55,11 @@ elseif(APPLE)
     else()
         set(MNN_INCLUDE_DIR "${MNN_FRAMEWORK}/Headers")
     endif()
+    # Inside MNN.framework, headers `#include <MNN/expr/Expr.hpp>` even
+    # though no `MNN/` subdir exists under Headers/. The framework idiom is
+    # to resolve `<FrameworkName/...>` against the FRAMEWORK's parent dir
+    # via -F. Capture that parent so the target can add -F<parent>.
+    get_filename_component(MNN_FRAMEWORK_PARENT "${MNN_FRAMEWORK}" DIRECTORY)
 elseif(ANDROID)
     # Android bundle: jni/{abi}/libMNN.so
     set(MNN_LIB_FILE    "${MNN_ROOT}/jni/${ANDROID_ABI}/libMNN.so")
@@ -132,6 +137,14 @@ target_include_directories(mnnbridge
         # regardless; we just need the header to compile.
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mnn-llm/include"
 )
+
+# On macOS, MNN's own headers use `<MNN/expr/Expr.hpp>` — i.e. the
+# framework-name prefix. That convention only resolves when the FRAMEWORK's
+# parent directory is on the framework search path. Adding -F lets the
+# compiler find `MNN.framework/Headers/...` via `<MNN/...>`.
+if(APPLE AND DEFINED MNN_FRAMEWORK_PARENT)
+    target_compile_options(mnnbridge PRIVATE "-F${MNN_FRAMEWORK_PARENT}")
+endif()
 
 target_compile_definitions(mnnbridge PRIVATE MNNBRIDGE_EXPORTS)
 

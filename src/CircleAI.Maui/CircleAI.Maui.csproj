@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Maui</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.0.1) .NET MAUI platform adapter for Circle AI. On-device inference on Android, iOS, macOS Catalyst, and Windows. 3.0.1 fixes the long-standing `Connectivity` ambiguity between CircleAI.Core and Microsoft.Maui.Networking by aliasing the MAUI type as MauiConnectivity — matches the existing MauiPermissions alias precedent in CLAUDE.md.</Description>
   </PropertyGroup>
 
@@ -54,6 +54,12 @@
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <!-- IAudioCapture, AudioFormat used by MauiAudioCapture (all TFMs) -->
     <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!-- IVideoCapture used by MauiCameraCapture (all TFMs) -->
+    <ProjectReference Include="..\CircleAI.Vision\CircleAI.Vision.csproj" />
+    <!-- IWearableBoard used by HealthBoardBridge -->
+    <ProjectReference Include="..\CircleAI.Wearable\CircleAI.Wearable.csproj" />
+    <!-- ChildSafetyBoard receives location check-ins from LocationBridge -->
+    <ProjectReference Include="..\CircleAI.Safety.Child\CircleAI.Safety.Child.csproj" />
   </ItemGroup>
 
 </Project>

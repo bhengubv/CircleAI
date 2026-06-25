@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{CommunityDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> PlanCommunityEventAsync(string eventType,string size,string budget,CancellationToken ct=default)=>_i.AgentAsync($"Plan a community {eventType} for {size} people. Budget: {budget}. Include logistics checklist, volunteer roles, publicity plan, and risk management.",ct);
-    public Task<string> WriteAdvocacyLetterAsync(string issue,string authority,CancellationToken ct=default)=>_i.AgentAsync($"Write a compelling advocacy letter about {issue} to {authority}. Include evidence, community impact, and specific ask.",ct);}
+    public Task<string> WriteAdvocacyLetterAsync(string issue,string authority,CancellationToken ct=default)=>_i.AgentAsync($"Write a compelling advocacy letter about {issue} to {authority}. Include evidence, community impact, and specific ask.",ct);
+
+    public Task<string> WriteAnnouncementAsync(string groupName, string subject, string callToAction, CancellationToken ct=default)
+        => _i.AgentAsync($"Write a community announcement for {groupName} about '{subject}'. CTA: {callToAction}. Warm, concise, 80 words.", ct);
+
+    public Task<string> DraftConflictMediationOpenerAsync(string conflictSummary, string partiesInvolved, CancellationToken ct=default)
+        => _i.AgentAsync($"Draft a mediator-style opener for: {conflictSummary} involving {partiesInvolved}. Acknowledge feelings, set ground rules, propose next step.", ct);
+
+    public Task<string> DesignVolunteerCampaignAsync(string need, int peopleNeeded, string when, CancellationToken ct=default)
+        => _i.AgentAsync($"Design a volunteer drive: need {need}, {peopleNeeded} people, {when}. Cover signup channel, shift design, recognition, retention.", ct);
+
+    public Task<string> WriteCommunityNewsletterAsync(string highlights, string upcoming, CancellationToken ct=default)
+        => _i.AgentAsync($"Write a 200-word community newsletter. Highlights: {highlights}. Upcoming: {upcoming}. Friendly, scan-friendly.", ct);
+
+}

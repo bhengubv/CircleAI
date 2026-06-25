@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{RealEstateDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> ComparePropertiesAsync(string prop1,string prop2,CancellationToken ct=default)=>_i.AgentAsync($"Compare these two properties and recommend which offers better investment value:\nProperty 1:\n{prop1}\nProperty 2:\n{prop2}",ct);
-    public Task<string> DraftLeaseAsync(string landlordName,string tenantName,string address,decimal monthlyRent,int months,CancellationToken ct=default)=>_i.AgentAsync($"Draft a residential lease agreement. Landlord: {landlordName}. Tenant: {tenantName}. Property: {address}. Rent: {monthlyRent:C}/month. Term: {months} months. Include deposit, maintenance, and termination clauses per Rental Housing Act.",ct);}
+    public Task<string> DraftLeaseAsync(string landlordName,string tenantName,string address,decimal monthlyRent,int months,CancellationToken ct=default)=>_i.AgentAsync($"Draft a residential lease agreement. Landlord: {landlordName}. Tenant: {tenantName}. Property: {address}. Rent: {monthlyRent:C}/month. Term: {months} months. Include deposit, maintenance, and termination clauses per Rental Housing Act.",ct);
+
+    public Task<string> ValuePropertyAsync(string propertyDescription, string suburb, string comparableSales, CancellationToken ct=default)
+        => _i.AgentAsync($"Estimate value for {propertyDescription} in {suburb}. Comps: {comparableSales}. Range, drivers, market caveats.", ct);
+
+    public Task<string> DraftListingAsync(string propertyDescription, string targetBuyer, CancellationToken ct=default)
+        => _i.AgentAsync($"Draft a property listing for {propertyDescription} targeting {targetBuyer}. Headline, hero paragraph, features, lifestyle close.", ct);
+
+    public Task<string> AnalyseOfferAsync(string offerAmount, string listingPrice, string marketConditions, CancellationToken ct=default)
+        => _i.AgentAsync($"Analyse offer {offerAmount} vs list {listingPrice} in market: {marketConditions}. Counter strategy, negotiation levers.", ct);
+
+    public Task<string> PrepareViewingAsync(string propertyType, string targetSegment, CancellationToken ct=default)
+        => _i.AgentAsync($"Plan an open viewing for {propertyType} aimed at {targetSegment}. Staging, route, FAQs, follow-up cadence.", ct);
+
+}

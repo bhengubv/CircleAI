@@ -5,11 +5,11 @@ using CircleAI.Networking;
 namespace CircleAI.Networking.Bluetooth;
 
 /// <summary>
-/// Stub <see cref="INetworkTransport"/> for BLE GATT.
-/// Full implementation requires platform-specific BLE APIs
-/// (Windows.Devices.Bluetooth on Windows, CoreBluetooth on iOS/macOS,
-///  BluetoothGatt on Android via MAUI).
-/// This base provides the contract; platform adapters inject the real GATT operations.
+/// (3.3.0) <see cref="INetworkTransport"/> over BLE GATT. Platform
+/// adapters (Windows.Devices.Bluetooth on Windows, CoreBluetooth on
+/// iOS/macOS, BluetoothGatt on Android via MAUI, BlueZ DBus on Linux)
+/// implement <see cref="IBleGattAdapter"/>; this transport wires the
+/// adapter to the channel-based receive loop.
 /// </summary>
 public sealed class BluetoothNetworkTransport : INetworkTransport
 {

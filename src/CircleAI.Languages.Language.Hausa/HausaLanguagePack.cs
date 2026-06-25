@@ -21,10 +21,27 @@ public sealed class HausaLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Hausa-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Barka da safe",
-        ["goodbye"] = "Sai anjima",
+        ["hello"]            = "Sannu",
+        ["good morning"]     = "Barka da safe",
+        ["good afternoon"]   = "Barka da rana",
+        ["good evening"]     = "Barka da yamma",
+        ["goodbye"]          = "Sai anjima",
+        ["see you later"]    = "Sai gobe",
+        ["thank you"]        = "Na gode",
+        ["please"]           = "Don Allah",
+        ["yes"]              = "Eh",
+        ["no"]               = "A'a",
+        ["sorry"]            = "Yi hakuri",
+        ["how are you"]      = "Yaya kake",
+        ["I am fine"]        = "Lafiya lau",
+        ["water"]            = "ruwa",
+        ["food"]             = "abinci",
+        ["family"]           = "iyali",
+        ["friend"]           = "aboki",
+        ["love"]             = "kauna",
+        ["mother"]           = "uwa",
+        ["father"]           = "uba",
+        ["child"]            = "yaro",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

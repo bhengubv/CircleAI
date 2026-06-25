@@ -199,6 +199,7 @@ public sealed class MauiInferenceService : IDisposable
     private void StartAndroidForegroundNotification()
     {
         var context = Android.App.Application.Context;
+        if (context is null) return;
         var manager = NotificationManagerCompat.From(context);
 
         // Create the notification channel (no-op on older API levels).
@@ -214,13 +215,14 @@ public sealed class MauiInferenceService : IDisposable
             manager.CreateNotificationChannel(channel);
         }
 
-        var notification = new NotificationCompat.Builder(context, ChannelId)
+        var builder = new NotificationCompat.Builder(context, ChannelId)
             .SetContentTitle("B! is thinking…")
             .SetContentText("Running inference in the background")
             .SetSmallIcon(Android.Resource.Drawable.StatNotifyMore)
             .SetOngoing(true)      // sticky — user cannot swipe away
-            .SetSilent(true)
-            .Build()!;
+            .SetSilent(true);
+        var notification = builder.Build();
+        if (notification is null) return;
 
         manager.Notify(NotificationId, notification);
         _logger.LogDebug("[MauiInferenceService] Android inference notification posted.");
@@ -231,6 +233,7 @@ public sealed class MauiInferenceService : IDisposable
         try
         {
             var context = Android.App.Application.Context;
+            if (context is null) return;
             var manager = NotificationManagerCompat.From(context);
             manager.Cancel(NotificationId);
             _logger.LogDebug("[MauiInferenceService] Android inference notification cancelled.");

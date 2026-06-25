@@ -179,7 +179,7 @@ MNNBRIDGE_API int mnn_llm_generate_with_image_stream_ex(
 // models). <0 on error.
 MNNBRIDGE_API int mnn_embed_get_dim(mnn_llm_handle handle);
 
-// ── KV cache compression (Phase 4 — TurboQuant) ─────────────────────────
+// ── KV cache compression (RT-01 — TurboQuant via MNN ATTENTION_OPTION) ──
 //
 // Mode encoding:
 //   0 = off (full FP16 KV cache, default)
@@ -187,19 +187,17 @@ MNNBRIDGE_API int mnn_embed_get_dim(mnn_llm_handle handle);
 //   2 = TurboQuant 3-bit per channel
 //   3 = TurboQuant 2-bit per channel
 //
-// SCAFFOLDING (mnnbridge 1.1.0): the C ABI surface is stable; the native
-// side currently records the requested mode and returns
-// MNNBRIDGE_KV_NOT_IMPLEMENTED (=2) until the TurboQuant attention path
-// lands (tracked as Phase 4.1 — separate workstream, 2–4 weeks of
-// native MNN attention-layer modifications). Callers should treat
-// MNNBRIDGE_KV_NOT_IMPLEMENTED as "configured, but the current build
-// can't honour it — falling back to mode 0".
+// As of mnnbridge 1.2.0 this is wired to MNN's native ATTENTION_OPTION
+// runtime hint and applied at load() / reset_session() time.
 //
 // Returns:
-//   0  = success (mode applied at inference time)
+//   0  = success
 //   1  = invalid mode value
-//   2  = MNNBRIDGE_KV_NOT_IMPLEMENTED — native algorithm not yet ported
 //   <0 = handle invalid
+//
+// The MNNBRIDGE_KV_NOT_IMPLEMENTED constant is retained as 2 for ABI
+// compatibility with 1.1.x callers but is no longer returned by the 1.2.0+
+// implementation.
 #define MNNBRIDGE_KV_NOT_IMPLEMENTED 2
 MNNBRIDGE_API int mnn_llm_set_kv_compression_mode(
     mnn_llm_handle handle,
@@ -231,6 +229,52 @@ MNNBRIDGE_API int mnn_turboquant_round_trip(
     int dim,
     int bits_per_dim,
     float* output);
+
+// ── RT-03: mmap weight loading ────────────────────────────────────────────
+//
+// Set to 1 to memory-map model weights on load (lets multiple processes
+// share weight pages). Apply BEFORE mnn_llm_load. Returns 0 on success,
+// negative on invalid handle.
+MNNBRIDGE_API int mnn_llm_set_mmap_mode(mnn_llm_handle handle, int on);
+MNNBRIDGE_API int mnn_llm_get_mmap_mode(mnn_llm_handle handle);
+
+// ── RT-10: LoRA adapter apply / unapply ───────────────────────────────────
+//
+// Apply a LoRA adapter (rank-decomposed weight delta) on top of the loaded
+// base model. The adapter takes effect on the NEXT generation. Returns 0
+// on success, MNNBRIDGE_ERR_INVALID_HANDLE / MNNBRIDGE_ERR_INVALID_ARG on
+// failure.
+MNNBRIDGE_API int mnn_llm_apply_lora(mnn_llm_handle handle, const char* adapter_path_utf8);
+
+// Remove any applied LoRA adapter. Safe to call when no adapter is active.
+MNNBRIDGE_API int mnn_llm_unapply_lora(mnn_llm_handle handle);
+
+// Read the currently-applied LoRA adapter path. Returns bytes written
+// (excluding NUL), 0 if no adapter is applied, or a negative number whose
+// absolute value is the required buffer size when buf_size is too small.
+MNNBRIDGE_API int mnn_llm_get_lora(mnn_llm_handle handle, char* out_buf_utf8, int buf_size);
+
+// ── RT-10 training (Phase D1, mnnbridge 1.4.0+) ─────────────────────────
+//
+// Run one gradient step against the LoRA adapter weights using a single
+// (input_tokens, target_tokens) batch. Requires MNN compiled with
+// MNN_BUILD_TRAIN=ON; without it returns MNNBRIDGE_ERR_TRAINING_DISABLED.
+//
+// out_loss receives the scalar cross-entropy loss for the batch.
+
+#define MNNBRIDGE_ERR_TRAINING_DISABLED -12
+
+MNNBRIDGE_API int mnn_llm_train_lora_step(
+    mnn_llm_handle handle,
+    const int*     input_tokens,  int input_len,
+    const int*     target_tokens, int target_len,
+    float          learning_rate,
+    int            lora_rank,
+    float*         out_loss);
+
+// Persist the currently-attached LoRA adapter weights to disk so a future
+// mnn_llm_apply_lora() call can reload them.
+MNNBRIDGE_API int mnn_llm_save_lora(mnn_llm_handle handle, const char* adapter_path_utf8);
 
 // ── Version ──────────────────────────────────────────────────────────────
 

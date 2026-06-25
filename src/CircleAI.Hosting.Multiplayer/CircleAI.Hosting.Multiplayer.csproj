@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Hosting.Multiplayer</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.2.0) SignalR-based multiplayer collaboration hub for the CircleAI substrate. Lift from CircleUp's CollabHub — "note" generalised to "document", IOwnerProvider replaced with a host-supplied IMultiplayerPeerIdentity. Per-doc rooms with last-writer-wins on the body + live cursor positions + presence. Covers the 95% case of "two people in the same doc at the same time" without paying the cost of a real CRDT port.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;multiplayer;signalr;collaboration;presence;lww</PackageTags>

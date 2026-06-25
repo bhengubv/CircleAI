@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{KidsDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> HelpHomeworkAsync(string subject,string grade,string question,CancellationToken ct=default)=>_i.AgentAsync($"Help a Grade {grade} learner with {subject} homework. Question: {question}. Guide with Socratic questions rather than giving the answer directly. Keep explanation simple and encouraging.",ct);
-    public Task<string> TellStoryAsync(string theme,string characters,string ageGroup,CancellationToken ct=default)=>_i.AgentAsync($"Tell a short, imaginative story for age group {ageGroup}. Theme: {theme}. Characters: {characters}. Keep it age-appropriate, with a positive lesson at the end.",ct);}
+    public Task<string> TellStoryAsync(string theme,string characters,string ageGroup,CancellationToken ct=default)=>_i.AgentAsync($"Tell a short, imaginative story for age group {ageGroup}. Theme: {theme}. Characters: {characters}. Keep it age-appropriate, with a positive lesson at the end.",ct);
+
+    public Task<string> DesignActivityAsync(string ageBand, int minutes, string interests, CancellationToken ct=default)
+        => _i.AgentAsync($"Design a {minutes}-minute activity for {ageBand} with interests: {interests}. Materials, steps, learning value, mess level.", ct);
+
+    public Task<string> ExplainHardConceptAsync(string concept, string ageBand, CancellationToken ct=default)
+        => _i.AgentAsync($"Explain '{concept}' to {ageBand}. Use one analogy from their world, one example they've seen, one question to check understanding.", ct);
+
+    public Task<string> ScreenContentAsync(string contentTitle, string ageBand, CancellationToken ct=default)
+        => _i.AgentAsync($"Screen '{contentTitle}' for {ageBand}: themes, violence/language/scary moments, talk-after questions, age verdict.", ct);
+
+    public Task<string> HandleBigFeelingAsync(string ageBand, string situation, CancellationToken ct=default)
+        => _i.AgentAsync($"Coach a parent through helping a {ageBand} with big feelings about: {situation}. Validate-name-co-regulate script.", ct);
+
+}

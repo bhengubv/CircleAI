@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Telephony</PackageId>
+    <Version>3.3.0</Version>
+    <Description>(3.3.0) Carrier-agnostic telephony contracts for CircleAI — inbound + outbound voice calls, number provisioning, call lifecycle, DTMF, call transfer. The substrate every consumer (txtMe, Panik, salon receptionist, debt-collection AI) talks to so it doesn't have to know whether the call is on Twilio, Telnyx, or Plivo. Provider adapters ship as CircleAI.Telephony.Twilio / .Telnyx / .Plivo. Null implementation included for test-host scenarios.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;telephony;voice;phone;carrier;twilio;telnyx;plivo</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+</Project>

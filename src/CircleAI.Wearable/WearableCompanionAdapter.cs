@@ -37,7 +37,7 @@ public sealed class WearableCompanionAdapter : ICompanionSession
         => _inner.SendAsync(EnrichMessage(message), ct);
 
     public IAsyncEnumerable<string> StreamAsync(
-        string message, [EnumeratorCancellation] CancellationToken ct = default)
+        string message, CancellationToken ct = default)
         => _inner.StreamAsync(EnrichMessage(message), ct);
 
     public Task<string> AgentAsync(string instruction, CancellationToken ct = default)
@@ -59,4 +59,17 @@ public sealed class WearableCompanionAdapter : ICompanionSession
         if (ctx.IsWorkoutActive)          sb.Append("Workout:active ");
         return sb.ToString().TrimEnd();
     }
+
+    public Task<string> InterpretReadingsAsync(string metric, string sampleData, string baseline, CancellationToken ct=default)
+        => _inner.AgentAsync($"Interpret wearable {metric} from samples: {sampleData} vs baseline: {baseline}. Signal vs noise, what to do.", ct);
+
+    public Task<string> CorrelateWithBehaviourAsync(string metric, string behaviourLog, CancellationToken ct=default)
+        => _inner.AgentAsync($"Correlate {metric} trend with behaviour log: {behaviourLog}. Hypotheses + experiment to test the strongest one.", ct);
+
+    public Task<string> SuggestTrackingExperimentAsync(string goal, string availableMetrics, CancellationToken ct=default)
+        => _inner.AgentAsync($"Suggest a 2-week tracking experiment for goal '{goal}' using metrics: {availableMetrics}. Protocol + success criteria.", ct);
+
+    public Task<string> ExplainBatterySavingsAsync(string deviceModel, string currentBatteryPct, string usagePattern, CancellationToken ct=default)
+        => _inner.AgentAsync($"Suggest battery savings for {deviceModel} at {currentBatteryPct}% with usage: {usagePattern}. Ranked by impact.", ct);
+
 }

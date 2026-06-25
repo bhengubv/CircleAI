@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Memory</PackageId>
-    <Version>1.3.0</Version><Description>On-device episodic + multimodal memory, affect state, context window management, hierarchical sleep-cycle consolidation, TurboQuant compression, cross-device sync, and the CompanionRuntime orchestrator for Circle AI agents.</Description>
+    <Version>1.4.0</Version><Description>On-device episodic + multimodal memory, affect state, context window management, hierarchical sleep-cycle consolidation, TurboQuant compression, cross-device sync, and the CompanionRuntime orchestrator for Circle AI agents.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

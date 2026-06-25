@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Speech.Cloud</PackageId>
-    <Version>3.2.0</Version>
+    <Version>3.3.0</Version>
     <Description>(3.2.0) Cloud-backed implementations of CircleAI.Speech contracts — OpenAI Whisper ISpeechRecognizer + OpenAI TTS ISpeechSynthesizer (response_format=pcm so the result satisfies the PCM-16 mono contract). Plus a generic regex-based IVoiceIntentRouter (lifted from CircleUp's KeywordVoiceCommandRouter, vault-specific patterns stripped — consumer supplies intent definitions). Gives every CircleAI consumer a working voice loop today, until the on-device FunASR / ChatTTS backends ship in 2.3.1.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;speech;whisper;tts;openai;voice-intent;cloud</PackageTags>

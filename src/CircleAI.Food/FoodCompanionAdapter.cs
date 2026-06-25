@@ -10,8 +10,22 @@ public Task SignalFeedbackAsync(bool p,string?n=null,CancellationToken ct=defaul
 public ValueTask DisposeAsync()=>_i.DisposeAsync();
 public event EventHandler<CompanionProactiveEvent>?ProactiveMessageReady{add=>_i.ProactiveMessageReady+=value;remove=>_i.ProactiveMessageReady-=value;}
 public Task<string> SendAsync(string m,CancellationToken ct=default)=>_i.SendAsync(E(m),ct);
-public IAsyncEnumerable<string> StreamAsync(string m,[EnumeratorCancellation]CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
+public IAsyncEnumerable<string> StreamAsync(string m,CancellationToken ct=default)=>_i.StreamAsync(E(m),ct);
 public Task<string> AgentAsync(string m,CancellationToken ct=default)=>_i.AgentAsync(E(m),ct);
 private static string E(string m)=>$"{FoodDomainContext.SystemPromptSnippet}\n\n{m}";
     public Task<string> CreateRecipeAsync(string ingredients,string dietary,string difficulty,CancellationToken ct=default)=>_i.AgentAsync($"Create a recipe using: {ingredients}. Dietary requirements: {dietary}. Difficulty: {difficulty}. Include prep time, cook time, step-by-step method, and nutritional estimate.",ct);
-    public Task<string> PlanMealsAsync(string days,string people,string dietary,string budget,CancellationToken ct=default)=>_i.AgentAsync($"Plan {days} days of meals for {people} people. Dietary: {dietary}. Budget: {budget}. Include breakfast, lunch, dinner, and a shopping list.",ct);}
+    public Task<string> PlanMealsAsync(string days,string people,string dietary,string budget,CancellationToken ct=default)=>_i.AgentAsync($"Plan {days} days of meals for {people} people. Dietary: {dietary}. Budget: {budget}. Include breakfast, lunch, dinner, and a shopping list.",ct);
+
+    public Task<string> SuggestRecipeFromPantryAsync(string availableIngredients, string dietNotes, CancellationToken ct=default)
+        => _i.AgentAsync($"Suggest 3 recipes using mostly: {availableIngredients}. Dietary: {dietNotes}. Pick varied techniques + cuisines.", ct);
+
+    public Task<string> EstimateNutritionAsync(string recipeIngredients, int servings, CancellationToken ct=default)
+        => _i.AgentAsync($"Estimate nutrition per serving for {servings}-serving recipe: {recipeIngredients}. Output kcal, P/F/C, sodium, fibre.", ct);
+
+    public Task<string> SubstituteIngredientAsync(string ingredient, string reason, CancellationToken ct=default)
+        => _i.AgentAsync($"Suggest 3 substitutes for {ingredient} (reason: {reason}). For each: ratio, flavour impact, technique tweak.", ct);
+
+    public Task<string> PlanShoppingListAsync(string weeklyMealPlan, CancellationToken ct=default)
+        => _i.AgentAsync($"Convert this meal plan to a shopping list grouped by store aisle: {weeklyMealPlan}. Aggregate quantities.", ct);
+
+}

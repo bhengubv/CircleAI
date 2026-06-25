@@ -136,7 +136,7 @@ public sealed class SkillPackAutoImporterTests
             manifests = await new SkillPackAutoImporter(store, options, downloader)
                 .ImportEnabledAsync();
             Assert.Single(manifests);
-            Assert.Equal(1, (await store.ListAsync()).Count);
+            Assert.Single(await store.ListAsync());
         }
         finally { if (Directory.Exists(pkDisabled)) Directory.Delete(pkDisabled, recursive: true); }
     }

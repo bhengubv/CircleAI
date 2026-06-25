@@ -23,7 +23,7 @@ public sealed class InMemoryToolCatalogTests
         var c = new InMemoryToolCatalog();
         await c.UpsertAsync(Sample("a"));
         await c.UpsertAsync(Sample("a", desc: "updated"));
-        Assert.Equal(1, c.Count);
+        Assert.Equal(1, c.Count);  // c.Count is an int property on the catalog — not collection.Count
         var t = await c.GetAsync("a");
         Assert.Equal("updated", t!.Description);
     }

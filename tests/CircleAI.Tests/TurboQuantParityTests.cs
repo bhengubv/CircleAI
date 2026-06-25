@@ -110,7 +110,7 @@ public sealed class TurboQuantParityTests
         // Box-Muller over a SplitMix64 — same recipe as the codec's own RNG.
         // Used to fabricate a deterministic but realistic-looking input.
         var v = new float[dim];
-        ulong state = (ulong)seed | (ulong)seed << 32;
+        ulong state = (uint)seed | ((ulong)(uint)seed << 32);
         bool haveSpare = false;
         double spare = 0;
         for (int i = 0; i < dim; i++)

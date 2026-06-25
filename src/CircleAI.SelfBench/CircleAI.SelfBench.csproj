@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.SelfBench</PackageId>
+    <Version>3.3.0</Version>
+    <Description>
+      Circle AI SelfBench — the lm-evaluation-harness-style benchmark suite + A/B
+      runner + regression gate that powers Phase E7 self-improvement.
+      Bench tasks live as JSON + a tiny scoring function; the A/B runner pits a
+      baseline AIService against a candidate (e.g. one with a freshly-trained
+      LoRA adapter) and refuses to promote the candidate if any critical metric
+      regresses.
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

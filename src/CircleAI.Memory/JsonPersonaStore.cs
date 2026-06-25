@@ -16,7 +16,7 @@ namespace CircleAI.Memory
 {
     /// <summary>
     /// <see cref="IPersonaStore"/> that persists each <see cref="PersonaState"/>
-    /// as a JSON file in <paramref name="directory"/>, one file per
+    /// as a JSON file under the constructor-supplied directory, one file per
     /// <c>UserId</c> (safe filename derived from the ID).
     /// </summary>
     public sealed class JsonPersonaStore : IPersonaStore

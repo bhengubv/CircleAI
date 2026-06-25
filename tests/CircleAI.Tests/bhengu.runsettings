@@ -3,6 +3,6 @@
   <RunConfiguration>
     <!-- Prevents vstest from timing out on first connection.            -->
     <!-- Matches the VSTEST_CONNECTION_TIMEOUT=180 env var workaround.  -->
-    <TestSessionTimeout>180000</TestSessionTimeout>
+    <TestSessionTimeout>900000</TestSessionTimeout>
   </RunConfiguration>
 </RunSettings>

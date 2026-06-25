@@ -21,10 +21,26 @@ public sealed class AfrikaansLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Afrikaans-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Goeie môre",
-        ["goodbye"] = "Totsiens",
+        ["hello"]            = "Hallo",
+        ["good morning"]     = "Goeie môre",
+        ["good afternoon"]   = "Goeie middag",
+        ["good evening"]     = "Goeie naand",
+        ["goodbye"]          = "Totsiens",
+        ["thank you"]        = "Dankie",
+        ["please"]           = "Asseblief",
+        ["yes"]              = "Ja",
+        ["no"]               = "Nee",
+        ["sorry"]            = "Jammer",
+        ["how are you"]      = "Hoe gaan dit",
+        ["I am fine"]        = "Dit gaan goed",
+        ["water"]            = "water",
+        ["food"]             = "kos",
+        ["family"]           = "familie",
+        ["friend"]           = "vriend",
+        ["love"]             = "liefde",
+        ["mother"]           = "ma",
+        ["father"]           = "pa",
+        ["child"]            = "kind",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

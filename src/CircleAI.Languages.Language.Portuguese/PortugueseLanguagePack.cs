@@ -21,10 +21,28 @@ public sealed class PortugueseLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add Portuguese-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Bom dia",
-        ["goodbye"] = "Boa noite",
+        ["hello"]        = "Olá",
+        ["good morning"] = "Bom dia",
+        ["good afternoon"] = "Boa tarde",
+        ["good evening"] = "Boa noite",
+        ["goodbye"]      = "Adeus",
+        ["see you later"]= "Até logo",
+        ["thank you"]    = "Obrigado",
+        ["thank you (f)"]= "Obrigada",
+        ["please"]       = "Por favor",
+        ["sorry"]        = "Desculpe",
+        ["yes"]          = "Sim",
+        ["no"]           = "Não",
+        ["how are you"]  = "Como está",
+        ["I am fine"]    = "Estou bem",
+        ["water"]        = "água",
+        ["food"]         = "comida",
+        ["family"]       = "família",
+        ["friend"]       = "amigo",
+        ["love"]         = "amor",
+        ["mother"]       = "mãe",
+        ["father"]       = "pai",
+        ["child"]        = "criança",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Integration.HomeAssistant</PackageId>
+    <Version>3.3.0</Version>
+    <Description>HomeAssistant REST client for Circle AI — turn on / off / call service against any HA-managed entity (lights, switches, locks, scenes, scripts).</Description>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Integration\CircleAI.Integration.csproj" />
+  </ItemGroup>
+</Project>

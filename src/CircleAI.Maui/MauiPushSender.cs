@@ -74,7 +74,7 @@ public sealed class MauiPushSender : IPushNotificationSender
     /// </para>
     /// <para>
     /// The method schedules the notification and returns immediately
-    /// (fire-and-forget, matching <see cref="PushButlerObserver"/> usage).
+    /// (fire-and-forget, matching the push-observer pattern used elsewhere).
     /// </para>
     /// </remarks>
     public Task SendAsync(
@@ -119,6 +119,7 @@ public sealed class MauiPushSender : IPushNotificationSender
     private static void SendAndroid(string title, string body)
     {
         var context = Android.App.Application.Context;
+        if (context is null) return;
         var manager = NotificationManagerCompat.From(context);
 
         // Ensure the response channel exists.
@@ -138,7 +139,8 @@ public sealed class MauiPushSender : IPushNotificationSender
             .SetContentText(body)
             .SetSmallIcon(Android.Resource.Drawable.StatNotifyMore)
             .SetAutoCancel(true)
-            .Build()!;
+            .Build();
+        if (notification is null) return;
 
         manager.Notify(notificationId, notification);
     }

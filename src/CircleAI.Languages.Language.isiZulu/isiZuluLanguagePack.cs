@@ -21,10 +21,26 @@ public sealed class isiZuluLanguagePack : ILanguagePack
 
     private static readonly Dictionary<string, string> Idioms = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Add isiZulu-specific idiomatic mappings here.
-        // Example entries are placeholders — extend with real linguistic data.
-        ["hello"]   = "Sawubona",
-        ["goodbye"] = "Lala kahle",
+        ["hello"]            = "Sawubona",
+        ["hello (plural)"]   = "Sanibonani",
+        ["goodbye"]          = "Sala kahle",
+        ["goodbye (sleep)"]  = "Lala kahle",
+        ["thank you"]        = "Ngiyabonga",
+        ["thank you (pl)"]   = "Siyabonga",
+        ["please"]           = "Ngicela",
+        ["yes"]              = "Yebo",
+        ["no"]               = "Cha",
+        ["how are you"]      = "Unjani",
+        ["I am fine"]        = "Ngikhona",
+        ["sorry"]            = "Uxolo",
+        ["family"]           = "umndeni",
+        ["love"]             = "uthando",
+        ["water"]            = "amanzi",
+        ["food"]             = "ukudla",
+        ["mother"]           = "umama",
+        ["father"]           = "ubaba",
+        ["child"]            = "ingane",
+        ["friend"]           = "umngani",
     };
 
     private static readonly Dictionary<string, CulturalNote[]> Notes = new(StringComparer.OrdinalIgnoreCase)

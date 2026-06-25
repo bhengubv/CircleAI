@@ -17,7 +17,7 @@ public sealed class VoiceOptions
     /// Target sample rate for microphone capture, in Hz.
     /// Default <c>16000</c> (16 kHz) — the format required by most open-source
     /// ASR engines (Sherpa-onnx, Vosk) and by the canonical
-    /// <see cref="CircleAI.Voice.AudioFormat.Pcm16Mono16k"/> format.
+    /// CircleAI.Voice.AudioFormat.Pcm16Mono16k format.
     /// </summary>
     public int SampleRateHz { get; set; } = 16_000;
 

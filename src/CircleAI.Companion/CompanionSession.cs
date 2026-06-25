@@ -14,9 +14,11 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using CircleAI.Embeddings;
 using CircleAI.Hosting;
 using CircleAI.Inference;
 using CircleAI.Memory;
+using CircleAI.Memory.Sync;
 using CircleAI.Sync;
 
 namespace CircleAI.Companion;
@@ -37,6 +39,9 @@ public sealed class CompanionSession : ICompanionSession
     private readonly IGoalStore?                 _goals;
     private readonly IMemorySyncService?         _sync;
     private readonly IProactiveReasoningService? _proactive;
+    private readonly ITextEmbedder?              _embedder;
+    private readonly CompanionConversationSyncBridge? _conversationSync;
+    private readonly DateTimeOffset               _sessionStartedAtUtc = DateTimeOffset.UtcNow;
 
     // ── Session state ─────────────────────────────────────────────────────
 
@@ -69,7 +74,9 @@ public sealed class CompanionSession : ICompanionSession
         IAffectStore?               affect    = null,
         IGoalStore?                 goals     = null,
         IMemorySyncService?         sync      = null,
-        IProactiveReasoningService? proactive = null)
+        IProactiveReasoningService? proactive = null,
+        ITextEmbedder?              embedder  = null,
+        CompanionConversationSyncBridge? conversationSync = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identityId);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
@@ -84,6 +91,8 @@ public sealed class CompanionSession : ICompanionSession
         _goals    = goals;
         _sync     = sync;
         _proactive = proactive;
+        _embedder = embedder;
+        _conversationSync = conversationSync;
 
         _context = new CompanionContext(
             IdentityId:           identityId,
@@ -128,7 +137,13 @@ public sealed class CompanionSession : ICompanionSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        _history.Add(new CompanionTurn("user", message, DateTimeOffset.UtcNow));
+        var turnStarted = DateTimeOffset.UtcNow;
+        _history.Add(new CompanionTurn("user", message, turnStarted));
+
+        // (Phase A2) Publish in-flight turn marker so peer devices can
+        // observe / take over.
+        await PublishConversationDeltaAsync(message, assistantSoFar: "", turnStarted,
+            isComplete: false, ct).ConfigureAwait(false);
 
         var reply = _ai is not null
             ? await _ai.ChatAsync(BuildMessages(BuildSystemPrompt()), ct: ct)
@@ -137,6 +152,8 @@ public sealed class CompanionSession : ICompanionSession
 
         _history.Add(new CompanionTurn("assistant", reply, DateTimeOffset.UtcNow));
         await PersistAndSyncTurnAsync(message, reply, ct).ConfigureAwait(false);
+        await PublishConversationDeltaAsync(message, reply, turnStarted,
+            isComplete: true, ct).ConfigureAwait(false);
         return reply;
     }
 
@@ -147,28 +164,72 @@ public sealed class CompanionSession : ICompanionSession
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        _history.Add(new CompanionTurn("user", message, DateTimeOffset.UtcNow));
+        var turnStarted = DateTimeOffset.UtcNow;
+        _history.Add(new CompanionTurn("user", message, turnStarted));
+
+        // (Phase A2) Publish in-flight turn marker so peer devices can pick up streaming.
+        await PublishConversationDeltaAsync(message, assistantSoFar: "", turnStarted,
+            isComplete: false, ct).ConfigureAwait(false);
 
         if (_ai is null)
         {
             const string offline = "[Companion offline — AI service not available]";
             _history.Add(new CompanionTurn("assistant", offline, DateTimeOffset.UtcNow));
+            await PublishConversationDeltaAsync(message, offline, turnStarted,
+                isComplete: true, ct).ConfigureAwait(false);
             yield return offline;
             yield break;
         }
 
         var sb = new StringBuilder();
+        var lastBroadcast = DateTimeOffset.UtcNow;
         await foreach (var token in _ai.StreamAsync(BuildMessages(BuildSystemPrompt()), ct: ct)
                                        .ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
             sb.Append(token);
             yield return token;
+
+            // Throttle handoff broadcasts to every 250ms so peers see streaming
+            // progress without flooding the sync channel.
+            var now = DateTimeOffset.UtcNow;
+            if (now - lastBroadcast >= TimeSpan.FromMilliseconds(250))
+            {
+                await PublishConversationDeltaAsync(message, sb.ToString(), turnStarted,
+                    isComplete: false, ct).ConfigureAwait(false);
+                lastBroadcast = now;
+            }
         }
 
         var reply = sb.ToString();
         _history.Add(new CompanionTurn("assistant", reply, DateTimeOffset.UtcNow));
         await PersistAndSyncTurnAsync(message, reply, ct).ConfigureAwait(false);
+        await PublishConversationDeltaAsync(message, reply, turnStarted,
+            isComplete: true, ct).ConfigureAwait(false);
+    }
+
+    private async Task PublishConversationDeltaAsync(
+        string userMessage, string assistantSoFar, DateTimeOffset startedUtc,
+        bool isComplete, CancellationToken ct)
+    {
+        if (_conversationSync is null) return;
+        try
+        {
+            await _conversationSync.PublishAsync(
+                new ConversationStateDelta(
+                    SessionId:      SessionId,
+                    UserText:       userMessage,
+                    AssistantText:  assistantSoFar,
+                    IsTurnComplete: isComplete,
+                    StartedAtUtc:   startedUtc,
+                    UpdatedAtUtc:   DateTimeOffset.UtcNow),
+                ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[CompanionSession] conversation-sync publish failed: {ex.Message}");
+        }
     }
 
     public async Task<string> AgentAsync(string instruction, CancellationToken ct = default)
@@ -222,6 +283,17 @@ public sealed class CompanionSession : ICompanionSession
 
         if (_sync is not null)
             await _sync.StopReceivingAsync().ConfigureAwait(false);
+
+        // (Phase A2) Tell peers the session is gone so they can clean shadow state.
+        if (_conversationSync is not null)
+        {
+            try { await _conversationSync.TerminateAsync(SessionId).ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[CompanionSession] conversation-sync terminate failed: {ex.Message}");
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -344,13 +416,36 @@ public sealed class CompanionSession : ICompanionSession
         if (_episodic is null) return [];
         try
         {
-            var entries = await _episodic.GetRecentAsync(count: 5, ct).ConfigureAwait(false);
+            // (Phase A1) When we have both an embedder AND a non-empty last user
+            // turn, anchor recall by semantic similarity to what the user just
+            // said. Otherwise fall back to recency.
+            var lastUserTurn = _history.LastOrDefault(t => t.Role == "user");
+            IReadOnlyList<EpisodicMemoryEntry> entries;
+            if (_embedder is not null && lastUserTurn is not null)
+            {
+                float[]? queryEmbedding = null;
+                try { queryEmbedding = await _embedder.GenerateAsync(lastUserTurn.Content, ct).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[CompanionSession] recall-query embed failed: {ex.Message}");
+                }
+                entries = await _episodic.SearchAsync(queryEmbedding, topK: 5, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                entries = await _episodic.GetRecentAsync(count: 5, ct).ConfigureAwait(false);
+            }
             return entries
                 .Select(e =>
                     $"[{e.RecordedAtUtc:yyyy-MM-dd}] {e.UserText.Truncate(80)}")
                 .ToList();
         }
-        catch { return []; }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CompanionSession] LoadRecentMemoriesAsync failed: {ex.Message}");
+            return [];
+        }
     }
 
     private async Task<IReadOnlyList<string>> LoadActiveGoalsAsync(CancellationToken ct)
@@ -373,16 +468,39 @@ public sealed class CompanionSession : ICompanionSession
     {
         if (_episodic is not null)
         {
+            // (Phase A1) When an ITextEmbedder is wired, compute the joint
+            // user+assistant embedding on the spot so the SQLite store can
+            // do cosine retrieval instead of pure recency fallback.
+            float[]? embedding = null;
+            if (_embedder is not null)
+            {
+                try
+                {
+                    embedding = await _embedder.GenerateAsync(
+                        userMessage + "\n\n" + reply, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[CompanionSession] embedding generation failed for session {SessionId}: {ex.Message}");
+                }
+            }
+
             var entry = new EpisodicMemoryEntry
             {
                 UserText      = userMessage,
                 AssistantText = reply,
                 AppContext    = $"companion:{Interface}:{SessionId}",
-                RecordedAtUtc = DateTimeOffset.UtcNow
+                RecordedAtUtc = DateTimeOffset.UtcNow,
+                Embedding     = embedding,
             };
 
             try { await _episodic.AddAsync(entry, ct).ConfigureAwait(false); }
-            catch { /* Memory is best-effort. */ }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[CompanionSession] episodic persist failed for session {SessionId}: {ex.Message}");
+            }
         }
 
         if (_sync is not null)
