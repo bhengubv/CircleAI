@@ -15,7 +15,7 @@
       offload in 2.7.0. Also: IAetherContext, IAetherTelemetry,
       ISecurityDirectiveConsumer (unchanged from 1.1.0).
 
-      Floats AetherNet.* with Version="1.*" so patch/minor upstream releases
+      Floats AetherNet.* with Version="2.*" so patch/minor upstream releases
       flow through to consumers without re-pin. Version aligned with 2.0.1
       SDK bundle.
     </Description>
@@ -32,12 +32,12 @@
     <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
   </ItemGroup>
 
-  <!-- Floating refs — track 1.x upstream automatically. -->
+  <!-- Floating refs — track 2.x upstream automatically. -->
   <ItemGroup>
-    <PackageReference Include="AetherNet.Core"      Version="1.*" />
-    <PackageReference Include="AetherNet.Transport" Version="1.*" />
-    <PackageReference Include="AetherNet.Security"  Version="1.*" />
-    <PackageReference Include="AetherNet.Messaging" Version="1.*" />
+    <PackageReference Include="AetherNet.Core"      Version="2.*" />
+    <PackageReference Include="AetherNet.Transport" Version="2.*" />
+    <PackageReference Include="AetherNet.Security"  Version="2.*" />
+    <PackageReference Include="AetherNet.Messaging" Version="2.*" />
     <!-- Microsoft.Extensions.* come transitively via AetherNet.Core 1.1.0
          (10.0.2). No need to declare them here. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.*" />
