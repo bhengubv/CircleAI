@@ -99,6 +99,10 @@ public sealed class QwenTextGenerator : IChatGenerator
         int?                     threads,
         IPromptTemplateEngine?   templateEngine)
     {
+        // Ensure P/Invoke can find mnnbridge + its MNN core before the first
+        // native call — works even on a bare `new QwenTextGenerator(path)`.
+        NativeLibraryResolver.EnsureRegistered();
+
         if (string.IsNullOrWhiteSpace(modelPath))
             throw new ArgumentException("Model path is required.", nameof(modelPath));
 

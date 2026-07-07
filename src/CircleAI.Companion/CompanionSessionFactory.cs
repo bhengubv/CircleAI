@@ -77,7 +77,10 @@ public sealed class CompanionSessionFactory : ICompanionSessionFactory
             sync:     _services.GetService<IMemorySyncService>(),
             proactive:_services.GetService<IProactiveReasoningService>(),
             embedder: _services.GetService<ITextEmbedder>(),
-            conversationSync: _services.GetService<CompanionConversationSyncBridge>()
+            conversationSync: _services.GetService<CompanionConversationSyncBridge>(),
+            recall:   _services.GetService<IRecall>(),
+            encoder:  _services.GetService<CompanionMemoryEncoder>(),
+            beliefs:  _services.GetService<SelfBeliefStore>()
         );
     }
 }

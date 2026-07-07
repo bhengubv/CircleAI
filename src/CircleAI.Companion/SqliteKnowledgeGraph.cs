@@ -78,7 +78,7 @@ public sealed class SqliteKnowledgeGraph : IPersonalKnowledgeGraph, IDisposable
         cmd.Parameters.AddWithValue("$id",   node.Id);
         cmd.Parameters.AddWithValue("$kind", node.Kind);
         cmd.Parameters.AddWithValue("$name", node.Name);
-        cmd.Parameters.AddWithValue("$props", SerialiseProps(node.Properties));
+        cmd.Parameters.AddWithValue("$props", (object?)SerialiseProps(node.Properties) ?? DBNull.Value);
         cmd.ExecuteNonQuery();
         return ValueTask.CompletedTask;
     }

@@ -167,9 +167,21 @@ public sealed class PromptTemplateEngine : IPromptTemplateEngine
 
     private static TokenizerConfig LoadTokenizerConfig(string modelDirectory)
     {
-        var path = Path.Combine(modelDirectory, "tokenizer_config.json");
-        if (!File.Exists(path))
-            return new TokenizerConfig(null, null, null);
+        // 1. HuggingFace-style tokenizer_config.json (chat_template at root).
+        var hf = TryReadTokenizerConfig(Path.Combine(modelDirectory, "tokenizer_config.json"));
+        if (!string.IsNullOrWhiteSpace(hf.ChatTemplate)) return hf;
+
+        // 2. MNN-style llm_config.json — MNN model bundles ship the chat_template
+        //    under a "jinja" object here, NOT in tokenizer_config.json.
+        var mnn = TryReadMnnJinja(Path.Combine(modelDirectory, "llm_config.json"));
+        if (!string.IsNullOrWhiteSpace(mnn.ChatTemplate)) return mnn;
+
+        return hf;   // possibly all-null → canonical ChatML fallback is used
+    }
+
+    private static TokenizerConfig TryReadTokenizerConfig(string path)
+    {
+        if (!File.Exists(path)) return new TokenizerConfig(null, null, null);
         try
         {
             using var stream = File.OpenRead(path);
@@ -180,9 +192,26 @@ public sealed class PromptTemplateEngine : IPromptTemplateEngine
                 BosToken:     root.TryGetProperty("bos_token",     out var b)  ? b.GetString()  : null,
                 EosToken:     root.TryGetProperty("eos_token",     out var e)  ? e.GetString()  : null);
         }
-        catch
+        catch { return new TokenizerConfig(null, null, null); }
+    }
+
+    private static TokenizerConfig TryReadMnnJinja(string path)
+    {
+        if (!File.Exists(path)) return new TokenizerConfig(null, null, null);
+        try
         {
+            using var stream = File.OpenRead(path);
+            using var doc    = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("jinja", out var jinja) &&
+                jinja.ValueKind == JsonValueKind.Object)
+            {
+                return new TokenizerConfig(
+                    ChatTemplate: jinja.TryGetProperty("chat_template", out var ct) ? ct.GetString() : null,
+                    BosToken:     null,
+                    EosToken:     jinja.TryGetProperty("eos", out var e) ? e.GetString() : null);
+            }
             return new TokenizerConfig(null, null, null);
         }
+        catch { return new TokenizerConfig(null, null, null); }
     }
 }

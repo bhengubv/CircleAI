@@ -15,6 +15,7 @@
 // MNN releases (pre-built): https://github.com/alibaba/MNN/releases
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -64,13 +65,22 @@ public static class NativeLibraryResolver
         }
 
         // 2. Standard runtimes/{RID}/native/ layout (NuGet / desktop deployment).
-        var rid = RuntimeInformation.RuntimeIdentifier;
-        if (!string.IsNullOrWhiteSpace(rid))
+        //    RuntimeInformation.RuntimeIdentifier can be MORE specific than the
+        //    folder that shipped (e.g. "win10-x64" vs "win-x64"), so try the
+        //    specific RID first, then the portable RID.
+        var assemblyDir = Path.GetDirectoryName(assembly.Location) ?? AppContext.BaseDirectory;
+        foreach (var rid in CandidateRids())
         {
-            var assemblyDir = Path.GetDirectoryName(assembly.Location) ?? AppContext.BaseDirectory;
-            var candidate = Path.Combine(assemblyDir, "runtimes", rid, "native", nativeFileName);
-            if (File.Exists(candidate) &&
-                NativeLibrary.TryLoad(candidate, out var handle))
+            var nativeDir = Path.Combine(assemblyDir, "runtimes", rid, "native");
+            var candidate = Path.Combine(nativeDir, nativeFileName);
+            if (!File.Exists(candidate)) continue;
+
+            // Preload the MNN core from the same directory so mnnbridge's transitive
+            // dependency on it resolves even where the OS would not search the loaded
+            // DLL's own directory.
+            PreloadCoreBeside(nativeDir);
+
+            if (NativeLibrary.TryLoad(candidate, out var handle))
                 return handle;
         }
 
@@ -88,6 +98,45 @@ public static class NativeLibraryResolver
             return baseDirHandle;
 
         return nint.Zero; // Fall back to default OS resolution.
+    }
+
+    /// <summary>
+    /// Native-runtime RIDs to try, most specific first: the process RID
+    /// (may be "win10-x64") then the portable RID ("win-x64") that ships in the
+    /// <c>runtimes/</c> folder.
+    /// </summary>
+    private static IEnumerable<string> CandidateRids()
+    {
+        var specific = RuntimeInformation.RuntimeIdentifier;
+        if (!string.IsNullOrWhiteSpace(specific)) yield return specific;
+
+        var os = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "win"
+               : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "osx"
+               : "linux";
+        var arch = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.X64   => "x64",
+            Architecture.Arm64 => "arm64",
+            Architecture.X86   => "x86",
+            Architecture.Arm   => "arm",
+            _                  => "x64",
+        };
+        var portable = $"{os}-{arch}";
+        if (!string.Equals(portable, specific, StringComparison.OrdinalIgnoreCase))
+            yield return portable;
+    }
+
+    /// <summary>Best-effort preload of the MNN core sitting next to mnnbridge.</summary>
+    private static void PreloadCoreBeside(string nativeDir)
+    {
+        var core = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "MNN.dll"
+                 : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "libMNN.dylib"
+                 : "libMNN.so";
+        var path = Path.Combine(nativeDir, core);
+        if (File.Exists(path))
+        {
+            try { NativeLibrary.TryLoad(path, out _); } catch { /* best-effort */ }
+        }
     }
 
     private static string? GetNativeFileName(string libraryName)

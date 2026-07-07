@@ -11,9 +11,11 @@
 //  Acts in the world      → IAIService.AgenticChatAsync → IToolBridge
 //  Follows you everywhere → IMemorySyncService broadcasts deltas cross-device
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using CircleAI.Domain;
 using CircleAI.Embeddings;
 using CircleAI.Hosting;
 using CircleAI.Inference;
@@ -41,6 +43,9 @@ public sealed class CompanionSession : ICompanionSession
     private readonly IProactiveReasoningService? _proactive;
     private readonly ITextEmbedder?              _embedder;
     private readonly CompanionConversationSyncBridge? _conversationSync;
+    private readonly IRecall?                     _recall;
+    private readonly CompanionMemoryEncoder?      _encoder;
+    private readonly SelfBeliefStore?             _beliefs;
     private readonly DateTimeOffset               _sessionStartedAtUtc = DateTimeOffset.UtcNow;
 
     // ── Session state ─────────────────────────────────────────────────────
@@ -76,7 +81,10 @@ public sealed class CompanionSession : ICompanionSession
         IMemorySyncService?         sync      = null,
         IProactiveReasoningService? proactive = null,
         ITextEmbedder?              embedder  = null,
-        CompanionConversationSyncBridge? conversationSync = null)
+        CompanionConversationSyncBridge? conversationSync = null,
+        IRecall?                    recall    = null,
+        CompanionMemoryEncoder?     encoder   = null,
+        SelfBeliefStore?            beliefs   = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(identityId);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
@@ -93,6 +101,9 @@ public sealed class CompanionSession : ICompanionSession
         _proactive = proactive;
         _embedder = embedder;
         _conversationSync = conversationSync;
+        _recall = recall;
+        _encoder = encoder;
+        _beliefs = beliefs;
 
         _context = new CompanionContext(
             IdentityId:           identityId,
@@ -103,6 +114,7 @@ public sealed class CompanionSession : ICompanionSession
             AffectSummary:        string.Empty,
             RecentMemorySnippets: [],
             ActiveGoals:          [],
+            UserFacts:            [],
             ContextBuiltAt:       DateTimeOffset.UtcNow
         );
 
@@ -128,6 +140,7 @@ public sealed class CompanionSession : ICompanionSession
             AffectSummary        = await LoadAffectSummaryAsync(ct).ConfigureAwait(false),
             RecentMemorySnippets = await LoadRecentMemoriesAsync(ct).ConfigureAwait(false),
             ActiveGoals          = await LoadActiveGoalsAsync(ct).ConfigureAwait(false),
+            UserFacts            = LoadUserFacts(),
             ContextBuiltAt       = DateTimeOffset.UtcNow
         };
     }
@@ -359,6 +372,14 @@ public sealed class CompanionSession : ICompanionSession
             sb.AppendLine();
         }
 
+        if (ctx.UserFacts.Count > 0)
+        {
+            sb.AppendLine("[What you know about the user — their own facts only; if a fact is not listed here, you do not know it about them]");
+            foreach (var f in ctx.UserFacts)
+                sb.AppendLine($"- {f}");
+            sb.AppendLine();
+        }
+
         if (ctx.ActiveGoals.Count > 0)
         {
             sb.AppendLine("[Active goals]");
@@ -413,6 +434,11 @@ public sealed class CompanionSession : ICompanionSession
 
     private async Task<IReadOnlyList<string>> LoadRecentMemoriesAsync(CancellationToken ct)
     {
+        // (M1) When fused associative recall is wired, it supersedes the flat
+        // episodic path. Absent it, behaviour is exactly as before.
+        if (_recall is not null)
+            return await LoadRecentMemoriesFusedAsync(ct).ConfigureAwait(false);
+
         if (_episodic is null) return [];
         try
         {
@@ -448,6 +474,50 @@ public sealed class CompanionSession : ICompanionSession
         }
     }
 
+    // (M1) Fused associative recall path — episodic similarity + graph association,
+    // merged by Reciprocal Rank Fusion. Best-effort: any failure falls back to empty
+    // so a recall problem never breaks a turn.
+    private async Task<IReadOnlyList<string>> LoadRecentMemoriesFusedAsync(CancellationToken ct)
+    {
+        try
+        {
+            var lastUserTurn = _history.LastOrDefault(t => t.Role == "user");
+            var query = lastUserTurn?.Content ?? string.Empty;
+
+            float[]? queryEmbedding = null;
+            if (_embedder is not null && !string.IsNullOrWhiteSpace(query))
+            {
+                try { queryEmbedding = await _embedder.GenerateAsync(query, ct).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[CompanionSession] fused-recall embed failed: {ex.Message}");
+                }
+            }
+
+            var hits = await _recall!.RecallAsync(query, queryEmbedding, topK: 5, ct).ConfigureAwait(false);
+            return hits.Select(FormatMemoryHit).ToList();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CompanionSession] LoadRecentMemoriesFusedAsync failed: {ex.Message}");
+            return [];
+        }
+    }
+
+    private static string FormatMemoryHit(MemoryHit hit)
+    {
+        var text = hit.Item.Text.Truncate(80);
+        if (hit.Item.Metadata is not null
+            && hit.Item.Metadata.TryGetValue("recordedAt", out var iso)
+            && DateTimeOffset.TryParse(
+                   iso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when))
+        {
+            return $"[{when:yyyy-MM-dd}] {text}";
+        }
+        return text;
+    }
+
     private async Task<IReadOnlyList<string>> LoadActiveGoalsAsync(CancellationToken ct)
     {
         if (_goals is null) return [];
@@ -459,6 +529,16 @@ public sealed class CompanionSession : ICompanionSession
         catch { return []; }
     }
 
+    // (M2) The user's OWN facts, attribution-filtered — never a third party's.
+    // This is what lets the live model answer about the user without ever
+    // concluding "you are diabetic" from "my mother is diabetic".
+    private IReadOnlyList<string> LoadUserFacts()
+    {
+        if (_beliefs is null) return [];
+        try { return _beliefs.SelfFacts().Select(b => b.Object).ToList(); }
+        catch { return []; }
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Private — persistence + sync
     // ─────────────────────────────────────────────────────────────────────
@@ -466,6 +546,10 @@ public sealed class CompanionSession : ICompanionSession
     private async Task PersistAndSyncTurnAsync(
         string userMessage, string reply, CancellationToken ct)
     {
+        // (M1) Fill the memory graph from this turn, off the hot path — the reply is
+        // already produced and returned; encoding never blocks or delays it.
+        _encoder?.Enqueue(userMessage, reply, Guid.NewGuid().ToString("N"));
+
         if (_episodic is not null)
         {
             // (Phase A1) When an ITextEmbedder is wired, compute the joint

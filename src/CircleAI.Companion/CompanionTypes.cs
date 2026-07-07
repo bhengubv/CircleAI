@@ -52,6 +52,7 @@ public sealed record CompanionContext(
     string AffectSummary,
     IReadOnlyList<string> RecentMemorySnippets,
     IReadOnlyList<string> ActiveGoals,
+    IReadOnlyList<string> UserFacts,
     DateTimeOffset ContextBuiltAt
 );
 

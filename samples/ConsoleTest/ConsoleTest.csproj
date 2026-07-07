@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Companion\CircleAI.Companion.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

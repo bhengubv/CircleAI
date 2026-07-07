@@ -60,17 +60,17 @@ public sealed class SqliteHippoRagStore : IHippoRagStore
         var triples = _kg.AllTriples();
         if (triples.Count == 0) return ValueTask.FromResult<IReadOnlyList<MemoryHit>>(Array.Empty<MemoryHit>());
 
-        var outgoing = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var outgoing = new Dictionary<string, List<(string Nbr, float Conf)>>(StringComparer.Ordinal);
         var allNodes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var t in triples)
         {
             allNodes.Add(t.Subject); allNodes.Add(t.Object);
             if (!outgoing.TryGetValue(t.Subject, out var list))
             {
-                list = new List<string>();
+                list = new List<(string, float)>();
                 outgoing[t.Subject] = list;
             }
-            list.Add(t.Object);
+            list.Add((t.Object, t.Confidence));
         }
 
         // Seed personalisation vector from query terms that appear as nodes.
@@ -79,7 +79,11 @@ public sealed class SqliteHippoRagStore : IHippoRagStore
             .Select(t => t.ToLowerInvariant())
             .ToHashSet();
         var seedNodes = allNodes.Where(n => queryTerms.Contains(n.ToLowerInvariant())).ToList();
-        if (seedNodes.Count == 0) seedNodes = allNodes.Take(Math.Min(8, allNodes.Count)).ToList();  // fallback: uniform damping
+        // No query term touches the graph → there is no genuine association. Return
+        // nothing rather than fabricating one from arbitrary nodes; the episodic path
+        // still covers recency/similarity. Precision over noise.
+        if (seedNodes.Count == 0)
+            return ValueTask.FromResult<IReadOnlyList<MemoryHit>>(Array.Empty<MemoryHit>());
 
         var rank = allNodes.ToDictionary(n => n, _ => 0.0, StringComparer.Ordinal);
         var seedMass = 1.0 / seedNodes.Count;
@@ -102,14 +106,27 @@ public sealed class SqliteHippoRagStore : IHippoRagStore
                     foreach (var seed in seedNodes) next[seed] += _damping * mass / seedNodes.Count;
                     continue;
                 }
-                var share = _damping * mass / nbrs.Count;
-                foreach (var nbr in nbrs) next[nbr] += share;
+                // Confidence-weighted spread: a high-confidence edge carries more of the
+                // walk's mass than a low-confidence (guessed) one, so a shaky belief does
+                // not steer recall like a stated fact. With equal confidences this reduces
+                // to the plain 1/count split.
+                var totalConf = 0f;
+                foreach (var (_, conf) in nbrs) totalConf += conf;
+                foreach (var (nbr, conf) in nbrs)
+                {
+                    var weight = totalConf > 0f ? (double)conf / totalConf : 1.0 / nbrs.Count;
+                    next[nbr] += _damping * mass * weight;
+                }
             }
             rank = next;
         }
 
+        // The seed nodes ARE the query's own terms — they are not recalled memories.
+        // Exclude them so recall returns the associated nodes the walk reached, not
+        // the query echoed back.
+        var seedSet = new HashSet<string>(seedNodes, StringComparer.Ordinal);
         var hits = rank
-            .Where(kv => kv.Value > 0)
+            .Where(kv => kv.Value > 0 && !seedSet.Contains(kv.Key))
             .OrderByDescending(kv => kv.Value)
             .Take(topK)
             .Select(kv =>
