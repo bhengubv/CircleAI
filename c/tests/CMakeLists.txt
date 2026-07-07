@@ -19,3 +19,12 @@ add_circle_test(test_identity)
 add_circle_test(test_anomaly_signal)
 add_circle_test(test_affect_vad)
 add_circle_test(test_upgrade)
+
+# memory-brain port
+add_circle_test(test_episodic_store)
+add_circle_test(test_knowledge_graph)
+add_circle_test(test_fused_recall)
+add_circle_test(test_kg_extractor)
+add_circle_test(test_belief_integrity)
+add_circle_test(test_memory_encoder)
+add_circle_test(test_companion_session)

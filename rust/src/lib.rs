@@ -7,6 +7,7 @@
 #![allow(clippy::excessive_precision)]
 
 pub mod agents;
+pub mod brain;
 pub mod catalog;
 pub mod companion;
 pub mod device;

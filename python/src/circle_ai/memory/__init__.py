@@ -10,6 +10,18 @@ from .stores import (
     IGoalStore,
     IPersonaStore,
 )
+from .in_memory_episodic_store import InMemoryEpisodicStore
+from .graph import (
+    IHippoRagStore,
+    InMemoryHippoRagStore,
+    InMemoryKnowledgeGraph,
+    KnowledgeNode,
+    KnowledgeTriple,
+    MemoryHit,
+    MemoryItem,
+)
+from .extractor import HeuristicKnowledgeGraphExtractor, IKnowledgeGraphExtractor
+from .recall import FusedRecall, FusedRecallOptions, IRecall
 
 __all__ = [
     "AffectState",
@@ -26,4 +38,18 @@ __all__ = [
     "IFeedbackStore",
     "IGoalStore",
     "IPersonaStore",
+    # memory-brain
+    "InMemoryEpisodicStore",
+    "IHippoRagStore",
+    "InMemoryHippoRagStore",
+    "InMemoryKnowledgeGraph",
+    "KnowledgeNode",
+    "KnowledgeTriple",
+    "MemoryHit",
+    "MemoryItem",
+    "HeuristicKnowledgeGraphExtractor",
+    "IKnowledgeGraphExtractor",
+    "FusedRecall",
+    "FusedRecallOptions",
+    "IRecall",
 ]

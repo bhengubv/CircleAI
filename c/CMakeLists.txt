@@ -20,6 +20,9 @@ add_library(circle_ai STATIC
     src/prompt.c
     src/agents_v15.c
     src/hosting.c
+    # memory-brain port
+    src/memory_brain.c
+    src/companion_brain.c
 )
 target_include_directories(circle_ai PUBLIC include)
 

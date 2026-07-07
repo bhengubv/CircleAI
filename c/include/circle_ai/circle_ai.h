@@ -25,4 +25,8 @@
 #include "agents.h"
 #include "hosting.h"
 
+/* memory-brain port */
+#include "memory_brain.h"
+#include "companion_brain.h"
+
 #endif /* CIRCLE_AI_H */
