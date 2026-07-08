@@ -271,3 +271,37 @@ export interface IModelSelector {
   /** Every selection candidate in registry order — diagnostics use. */
   allCandidates(probe: DeviceProbe): readonly ModelSelection[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inference runtime — additional ported modules
+// ─────────────────────────────────────────────────────────────────────────────
+
+// KvCompressionMode + PowerBudgetPolicy (PowerBudget.cs / MnnInterop.cs)
+export * from "./power_budget.js";
+
+// <think> reasoning router + UTF-8 draining (MnnTokenRouter.cs)
+export * from "./token_router.js";
+
+// Concrete deterministic IChatGenerator (QwenTextGenerator/KimiVlGenerator stand-in)
+export * from "./generator.js";
+
+// Cross-session prefix cache (PrefixCacheService.cs)
+export * from "./prefix_cache.js";
+
+// Context-window budget manager (ContextWindowBudgetManager.cs)
+export * from "./context_budget.js";
+
+// Model download service (IModelDownloadService.cs / ModelDownloadService.cs)
+export * from "./download.js";
+
+// Layer-by-layer streaming inference (LayerStreamingInference.cs)
+export * from "./layer_streaming.js";
+
+// Feedback training queue (FeedbackTrainingQueue.cs)
+export * from "./feedback_training.js";
+
+// Nightly LoRA adapter trainer + adapter manager (NightlyAdapterTrainer.cs)
+export * from "./nightly_trainer.js";
+
+// Vision input container (VisionInput.cs)
+export * from "./vision.js";

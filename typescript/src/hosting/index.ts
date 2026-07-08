@@ -1,108 +1,176 @@
 // hosting/index.ts
 //
-// IAIObserver + AIOptions — port of CircleAI.Hosting.
+// Barrel for the CircleAI.Hosting runtime + sub-hosts ported to TypeScript.
+// The runtime core (service, options, observers, endpoints, scheduling, cron,
+// triggers, thermal, memory-pressure, warmup, tool catalog, generative UI,
+// cloud fallback, background worker, skills, voice) plus the four sub-host
+// projects (CloudFallback, InferenceBridge, Mcp, Multiplayer).
 
-import type { ModelScopeCatalogClient } from "../catalog/index.js";
-import type { IDeviceContext } from "../device/index.js";
-import { ChatCapability } from "../inference/index.js";
-import type {
-  ChatResponse,
-  UpgradeInfo,
-} from "../models/index.js";
+// ── Observers + event records + push/aether bridges ────────────────────────────
+export {
+  BrownoutReason,
+  AIObserverBase,
+  PushAIObserver,
+  AetherAIObserver,
+} from "./observers.js";
+export type {
+  IAIObserver,
+  AIChatEvent,
+  AIStreamEvent,
+  AIToolEvent,
+  IPushNotificationSender,
+  ICircleAetherTransport,
+} from "./observers.js";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IAIObserver
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Options ────────────────────────────────────────────────────────────────────
+export { DEFAULT_AI_OPTIONS, generateRandomToken } from "./options.js";
+export type { AIOptions } from "./options.js";
 
-/**
- * Observer for AIService lifecycle + inference events.
- * Mirrors CircleAI.Hosting.IAIObserver. All methods are optional; the
- * AIObserverBase no-op class is the practical "default implementation"
- * equivalent of the C# default-interface-method pattern.
- */
-export interface IAIObserver {
-  onStartedAsync?(): Promise<void>;
-  onStoppedAsync?(): Promise<void>;
-  onChatCompletedAsync?(response: ChatResponse): Promise<void>;
-  onStreamStartedAsync?(modelId: string): Promise<void>;
-  onStreamCompletedAsync?(modelId: string, tokenCount: number): Promise<void>;
-  onToolInvokedAsync?(toolName: string, success: boolean): Promise<void>;
+// ── Tool bridge ─────────────────────────────────────────────────────────────────
+export { NullToolBridge } from "./tool_bridge.js";
+export type { IToolBridge } from "./tool_bridge.js";
 
-  onModelFetchingAsync?(modelId: string, autoSelected: boolean): Promise<void>;
-  onUpgradeAvailableAsync?(upgrade: UpgradeInfo): Promise<void>;
-}
+// ── Voice ────────────────────────────────────────────────────────────────────────
+export { DEFAULT_VOICE_OPTIONS } from "./voice.js";
+export type { VoiceOptions } from "./voice.js";
 
-/** No-op base class. Subclass and override only what you care about. */
-export class AIObserverBase implements IAIObserver {
-  async onStartedAsync(): Promise<void> {}
-  async onStoppedAsync(): Promise<void> {}
-  async onChatCompletedAsync(_response: ChatResponse): Promise<void> {}
-  async onStreamStartedAsync(_modelId: string): Promise<void> {}
-  async onStreamCompletedAsync(
-    _modelId: string,
-    _tokenCount: number,
-  ): Promise<void> {}
-  async onToolInvokedAsync(_toolName: string, _success: boolean): Promise<void> {}
-  async onModelFetchingAsync(
-    _modelId: string,
-    _autoSelected: boolean,
-  ): Promise<void> {}
-  async onUpgradeAvailableAsync(_upgrade: UpgradeInfo): Promise<void> {}
-}
+// ── Skills (enrichment seam) ──────────────────────────────────────────────────────
+export {
+  SkillSource,
+  InMemorySkillStore,
+  SkillContextBuilder,
+} from "./skills.js";
+export type {
+  ISkillStore,
+  SkillSummary,
+  SkillDetail,
+  SkillDraft,
+} from "./skills.js";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// AIOptions
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Service ───────────────────────────────────────────────────────────────────────
+export { AIService } from "./service.js";
+export type { IAIService, IFallbackChainModelSelector } from "./service.js";
 
-/** Host configuration for AIService. */
-export interface AIOptions {
-  // Model selection
-  /** When null/undefined, the SDK auto-resolves via IModelSelector + DeviceProbe. */
-  readonly modelId?: string | null;
-  /** Explicit model file path — bypasses the registry. */
-  readonly modelPath?: string | null;
+// ── Endpoints + HTTP transport seam ─────────────────────────────────────────────
+export {
+  InProcessEndpoint,
+  HttpLoopbackEndpoint,
+  LoopbackHttpTransport,
+  AIHttpClient,
+} from "./endpoints.js";
+export type {
+  IAIEndpoint,
+  IHttpTransport,
+  HttpResponse,
+} from "./endpoints.js";
 
-  // Inference
-  readonly systemPrompt?: string;
-  /** When undefined, derived from DeviceTierDefaults.contextWindow(tier). */
-  readonly contextSize?: number;
-  readonly threadCount?: number;
-  readonly warmOnStart?: boolean;
+// ── Cloud proxy + fallback wrapper ───────────────────────────────────────────────
+export { AIApiClient } from "./ai_api_client.js";
+export { FallbackAIService } from "./fallback_service.js";
+export type { RamProbe } from "./fallback_service.js";
 
-  // Sensorium
-  readonly deviceContext?: IDeviceContext;
+// ── Background worker ─────────────────────────────────────────────────────────────
+export { BackgroundInferenceWorker } from "./background_worker.js";
 
-  // Catalog
-  /** When supplied, the registry primes from disk + refreshes per cadence. */
-  readonly catalogClient?: ModelScopeCatalogClient;
+// ── Cron parser ───────────────────────────────────────────────────────────────────
+export { getNextOccurrence, CronScheduleError } from "./cron_schedule_parser.js";
 
-  /** Capabilities the model must declare. Selector filters by these. */
-  readonly requiredCapabilities?: number;
+// ── Cron job models ─────────────────────────────────────────────────────────────
+export {
+  DeliveryTargetValues,
+  CronJobStateValues,
+  cronJob,
+} from "./cron_job_models.js";
+export type { DeliveryTarget, CronJobState, CronJob } from "./cron_job_models.js";
 
-  // Agentic
-  /** When undefined, derived from DeviceTierDefaults.agenticMaxIterations(tier). */
-  readonly agenticMaxIterations?: number;
+// ── Scheduled task store + service ──────────────────────────────────────────────
+export { InMemoryScheduledTaskStore } from "./scheduled_store.js";
+export type { IScheduledTaskStore } from "./scheduled_store.js";
+export { ScheduledAIService } from "./scheduled.js";
+export type {
+  JobCompletedEventArgs,
+  JobCompletedHandler,
+} from "./scheduled.js";
 
-  // Observer
-  readonly observer?: IAIObserver;
+// ── Triggers ───────────────────────────────────────────────────────────────────
+export { ScheduleTrigger, IdleTrigger } from "./triggers.js";
+export type { ITriggerCondition, ProactiveContext } from "./triggers.js";
 
-  // Upgrade detection
-  /**
-   * When true, AIService.start() runs checkForUpgrades after model load
-   * and fires observer events per upgrade.
-   */
-  readonly checkForUpgradesOnStart?: boolean;
+// ── Proactive reasoning ─────────────────────────────────────────────────────────
+export { ProactiveReasoningService } from "./proactive_reasoning.js";
+export type {
+  IProactiveReasoningService,
+  ProactiveMessageEventArgs,
+  ProactiveMessageHandler,
+} from "./proactive_reasoning.js";
 
-  /** Where downloaded bundles live. Required for upgrade detection. */
-  readonly modelStorageDirectory?: string;
-}
+// ── Thermal ─────────────────────────────────────────────────────────────────────
+export { ThermalState, ThermalThrottleService } from "./thermal.js";
+export type {
+  IThermalThrottleService,
+  ThermalSampler,
+  ThermalStateHandler,
+} from "./thermal.js";
 
-/** Default AIOptions. Everything-null until the host overrides. */
-export const DEFAULT_AI_OPTIONS: AIOptions = {
-  modelId: null,
-  modelPath: null,
-  systemPrompt: "You are B!, a helpful on-device assistant.",
-  warmOnStart: true,
-  requiredCapabilities: ChatCapability.Default,
-  checkForUpgradesOnStart: false,
-};
+// ── Memory pressure ──────────────────────────────────────────────────────────────
+export {
+  MemoryPressureLevel,
+  NullMemoryPressureSource,
+  ManualMemoryPressureSource,
+} from "./memory_pressure.js";
+export type {
+  IMemoryPressureSource,
+  MemoryPressureHandler,
+} from "./memory_pressure.js";
+
+// ── Predictive warmup ─────────────────────────────────────────────────────────────
+export {
+  HistogramRequestPredictor,
+  PredictiveWarmupController,
+  DEFAULT_PREDICTIVE_WARMUP_OPTIONS,
+} from "./warmup.js";
+export type {
+  IRequestPredictor,
+  ArrivalForecast,
+  PredictiveWarmupOptions,
+} from "./warmup.js";
+
+// ── Tool catalog ─────────────────────────────────────────────────────────────────
+export { InMemoryToolCatalog, importFromAsync } from "./tool_catalog.js";
+export type {
+  ToolDescriptor,
+  ToolExecutionResult,
+  IToolCatalog,
+  IToolProvider,
+  IToolExecutor,
+} from "./tool_catalog.js";
+
+// ── Generative UI ─────────────────────────────────────────────────────────────────
+export {
+  UiCatalogs,
+  RecordingGenerativeUIRenderer,
+  JsonRenderError,
+  parseRender,
+  describeCatalogForPrompt,
+} from "./generative_ui.js";
+export type {
+  UiComponent,
+  UiCatalogEntry,
+  IGenerativeUIRenderer,
+} from "./generative_ui.js";
+
+// ── Sub-host: CloudFallback ─────────────────────────────────────────────────────
+export * from "./cloud_fallback/index.js";
+
+// ── Sub-host: InferenceBridge ────────────────────────────────────────────────────
+// NOTE: CircleAI.Hosting.InferenceBridge (IInferenceBridge, ModelDescriptor,
+// ModelFormat, InferenceStatus, InferenceRequest/Response,
+// LocalProcessInferenceBridge, InferenceFragment[Kind], DeviceCapabilities) is
+// already ported at parity in ../inference/server/bridge.ts and barrel-exported
+// via ./inference/server/index.js — not re-ported here to avoid a duplicate.
+
+// ── Sub-host: Mcp ─────────────────────────────────────────────────────────────────
+export * from "./mcp/index.js";
+
+// ── Sub-host: Multiplayer ────────────────────────────────────────────────────────
+export * from "./multiplayer/index.js";

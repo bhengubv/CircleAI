@@ -9,11 +9,13 @@
 import type {
   EpisodicMemoryEntry,
   FeedbackSignal,
+  Goal,
   IEpisodicMemoryStore,
   IFeedbackStore,
+  IGoalStore,
   IPersonaStore,
 } from "./index.js";
-import { FeedbackPolarity, PersonaState } from "./index.js";
+import { FeedbackPolarity, GoalStatus, PersonaState } from "./index.js";
 
 /**
  * In-memory {@link IEpisodicMemoryStore}. Capacity is capped (FIFO eviction) to
@@ -148,5 +150,43 @@ export class InMemoryFeedbackStore implements IFeedbackStore {
     if (this.signals.length === 0) return null;
     const pos = this.signals.filter((s) => s.polarity === FeedbackPolarity.Positive).length;
     return pos / this.signals.length;
+  }
+}
+
+/**
+ * In-memory {@link IGoalStore}. Ported from Circle.AI.Memory
+ * (InMemoryGoalStore) — the C# reference. Keyed by goal id (the natural key).
+ * All data is lost when the process exits; use a persistent backend for
+ * durability.
+ */
+export class InMemoryGoalStore implements IGoalStore {
+  private readonly goals = new Map<string, Goal>();
+
+  async listAsync(userId: string): Promise<readonly Goal[]> {
+    if (!userId || userId.trim().length === 0) throw new Error("userId required");
+    return [...this.goals.values()].filter((g) => g.userId === userId);
+  }
+
+  async getAsync(id: string): Promise<Goal | null> {
+    if (!id || id.trim().length === 0) throw new Error("id required");
+    return this.goals.get(id) ?? null;
+  }
+
+  async upsertAsync(goal: Goal): Promise<Goal> {
+    if (!goal) throw new Error("goal required");
+    this.goals.set(goal.id, goal);
+    return goal;
+  }
+
+  async deleteAsync(id: string): Promise<void> {
+    if (!id || id.trim().length === 0) throw new Error("id required");
+    this.goals.delete(id);
+  }
+
+  async getActiveAsync(userId: string): Promise<readonly Goal[]> {
+    if (!userId || userId.trim().length === 0) throw new Error("userId required");
+    return [...this.goals.values()].filter(
+      (g) => g.userId === userId && g.status === GoalStatus.Active,
+    );
   }
 }

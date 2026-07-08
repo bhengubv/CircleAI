@@ -117,3 +117,16 @@ export const SyncDomainKeys = {
 } as const;
 
 export type SyncDomainKey = typeof SyncDomainKeys[keyof typeof SyncDomainKeys];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MemorySyncService — push/receive orchestrator (CircleAI.Sync).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  MemorySyncService,
+  JsonEpisodicDeltaCodec,
+} from "./memory_sync_service.js";
+export type {
+  IMemorySyncService,
+  IEpisodicDeltaCodec,
+} from "./memory_sync_service.js";

@@ -5,6 +5,41 @@
 import { AffectState } from "../memory/index.js";
 import { FacialMetricMatrix, FaceExpressionClassification } from "../tools/index.js";
 
+// ── HER/Jarvis contracts + deterministic in-memory implementations ───────────
+// (HerJarvisContracts.cs + HerJarvisRealImplementations.cs + IVoiceListener.cs +
+//  VoiceCompanionListener.cs + SelfBenchSelfImprovementLoop.cs)
+export * from "./herjarvis/index.js";
+
+// ── External capability registry (CapabilityRegistry.cs) ─────────────────────
+export * from "./capability_registry.js";
+
+// ── Companion session factory (CompanionSessionFactory.cs) ───────────────────
+export * from "./session_factory.js";
+
+// ── Proactive briefing service (ProactiveBriefingService.cs) ─────────────────
+// Named re-exports (NOT `export *`) so the briefing module's local `ChatMessage`
+// stub — which duplicates the real one in ../models — does not collide in the
+// package barrel. The connector record/interface names are briefing-local and
+// distinct from any existing package export.
+export {
+  ProactiveBriefingService,
+  DEFAULT_FIRE_TIMES_UTC_MINUTES,
+} from "./proactive_briefing.js";
+export type {
+  IBriefingNotifier,
+  ProactiveBriefingOptions,
+  ProactiveBriefingDeps,
+  ICalendarConnector,
+  IEmailConnector,
+  INewsSource,
+  IWeatherProvider,
+  IAIService as IBriefingAIService,
+  CalendarEvent as BriefingCalendarEvent,
+  EmailMessage as BriefingEmailMessage,
+  NewsItem as BriefingNewsItem,
+  WeatherSample as BriefingWeatherSample,
+} from "./proactive_briefing.js";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // InterfaceKind enum
 // ─────────────────────────────────────────────────────────────────────────────
