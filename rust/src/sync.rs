@@ -36,6 +36,9 @@ impl SyncDomainKeys {
     pub const PERSONA: &'static str = "persona";
     pub const GOALS: &'static str = "goals";
     pub const FEEDBACK: &'static str = "feedback";
+    // Additional well-known keys from the C# `CircleAI.Sync.SyncDomainKeys`.
+    pub const SKILLS: &'static str = "skills";
+    pub const PREFERENCES: &'static str = "preferences";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -108,4 +111,75 @@ pub trait ISyncChannel {
         owner_id: &str,
     ) -> Result<Box<dyn Iterator<Item = Result<SyncDelta, Self::Error>>>, Self::Error>;
     fn get_last_sequence(&self, owner_id: &str, domain_key: &str) -> Result<i64, Self::Error>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SyncPrimitives — version-vector merge + last-writer-wins reconciliation.
+// Port of C# `CircleAI.Sync/SyncPrimitives.cs`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+use std::collections::HashMap;
+
+/// A per-node logical clock map. 1:1 with the C# `VersionVector` record.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionVector {
+    pub clocks: HashMap<String, i64>,
+}
+
+impl VersionVector {
+    pub fn new(clocks: HashMap<String, i64>) -> Self {
+        Self { clocks }
+    }
+}
+
+/// Shared sync-state helpers. 1:1 with the C# static `SyncReconciliation`.
+pub struct SyncReconciliation;
+
+impl SyncReconciliation {
+    /// Element-wise `max` over the union of both vectors' keys.
+    pub fn merge(a: &VersionVector, b: &VersionVector) -> VersionVector {
+        let mut merged: HashMap<String, i64> = HashMap::new();
+        for k in a.clocks.keys().chain(b.clocks.keys()) {
+            if merged.contains_key(k) {
+                continue;
+            }
+            let av = a.clocks.get(k).copied().unwrap_or(0);
+            let bv = b.clocks.get(k).copied().unwrap_or(0);
+            merged.insert(k.clone(), av.max(bv));
+        }
+        VersionVector::new(merged)
+    }
+
+    /// True when `a` dominates `b` — every component `>=` and at least one `>`.
+    pub fn a_dominates_b(a: &VersionVector, b: &VersionVector) -> bool {
+        let mut any_strictly_greater = false;
+        let mut seen: std::collections::HashSet<&String> = std::collections::HashSet::new();
+        for k in a.clocks.keys().chain(b.clocks.keys()) {
+            if !seen.insert(k) {
+                continue;
+            }
+            let av = a.clocks.get(k).copied().unwrap_or(0);
+            let bv = b.clocks.get(k).copied().unwrap_or(0);
+            if av < bv {
+                return false;
+            }
+            if av > bv {
+                any_strictly_greater = true;
+            }
+        }
+        any_strictly_greater
+    }
+
+    /// Last-writer-wins: returns the later `(timestamp, value)`. Ties go to `a`
+    /// (matching the C# `a.At >= b.At` predicate).
+    pub fn last_writer_wins<T: Clone>(
+        a: (DateTime<Utc>, T),
+        b: (DateTime<Utc>, T),
+    ) -> (DateTime<Utc>, T) {
+        if a.0 >= b.0 {
+            a
+        } else {
+            b
+        }
+    }
 }

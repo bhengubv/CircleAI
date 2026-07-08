@@ -1,15 +1,42 @@
-//! inference.rs
+//! inference — CircleAI.Inference runtime (Rust port).
 //!
-//! ChatMessage (inference-layer), GenerationOptions, and IChatGenerator trait.
+//! Core chat-generation surface plus the runtime gaps ported from
+//! `CircleAI.Inference`:
+//!   - [`ChatMessage`] / [`GenerationOptions`] / [`PowerBudget`] / [`IChatGenerator`]
+//!   - [`chat_generator`]: inference-specific [`chat_generator::ChatResponse`] +
+//!     [`chat_generator::FinishReason`] + [`chat_generator::DeterministicChatGenerator`]
+//!     (a deterministic local generator standing in for QwenTextGenerator /
+//!     KimiVlGenerator)
+//!   - [`capability`]: [`capability::ChatCapability`] + [`capability::VisionInput`]
+//!   - [`context_budget`]: [`context_budget::ContextWindowBudgetManager`]
+//!   - [`prefix_cache`]: [`prefix_cache::PrefixCacheService`]
+//!   - [`download_service`]: [`download_service::IModelDownloadService`] +
+//!     [`download_service::ModelDownloadService`]
+//!   - [`feedback_queue`]: [`feedback_queue::IFeedbackTrainingQueue`] + queue
+//!   - [`nightly_trainer`]: [`nightly_trainer::NightlyAdapterTrainer`]
+//!   - [`layer_streaming`]: [`layer_streaming::ILayerStreamingRunner`] +
+//!     orchestrator
+//!   - [`kv_compression`]: [`kv_compression::KvCompressionMode`] + apply +
+//!     [`kv_compression::PowerBudgetPolicy`]
 //!
-//! Note: `models::ChatMessage` is the shared primitive; this module re-exports
-//! it as `ChatMessage` for convenience and adds `GenerationOptions`.
+//! External/native/disk dependencies are injected behind traits with
+//! deterministic in-memory defaults, per the no-real-IO porting brief.
 
 use serde::{Deserialize, Serialize};
 
 // Re-export the shared ChatMessage so callers can use `inference::ChatMessage`.
 pub use crate::models::ChatMessage;
 pub use crate::models_v15::{ChatFragment, ChatFragmentKind};
+
+pub mod capability;
+pub mod chat_generator;
+pub mod context_budget;
+pub mod download_service;
+pub mod feedback_queue;
+pub mod kv_compression;
+pub mod layer_streaming;
+pub mod nightly_trainer;
+pub mod prefix_cache;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GenerationOptions
@@ -67,7 +94,9 @@ pub enum PowerBudget {
     High,
 }
 
-fn default_include_reasoning() -> bool { true }
+fn default_include_reasoning() -> bool {
+    true
+}
 
 impl Default for GenerationOptions {
     fn default() -> Self {
@@ -145,9 +174,7 @@ pub trait IChatGenerator {
         Self::Error: 'static,
     {
         let inner = self.stream(messages, opts)?;
-        Ok(Box::new(
-            inner.map(|item| item.map(ChatFragment::content)),
-        ))
+        Ok(Box::new(inner.map(|item| item.map(ChatFragment::content))))
     }
 
     /// (RT-02) Save the current model session to `path`. Returns `Ok(true)`

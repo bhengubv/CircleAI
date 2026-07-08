@@ -830,6 +830,38 @@ impl PersonaConsolidationStore for InMemoryPersonaStore {
     }
 }
 
+// The same in-memory store also satisfies the sync `IPersonaStore` trait from
+// `stores.rs` — 1:1 with the C# `InMemoryPersonaStore : IPersonaStore`. `save`
+// stamps `last_updated_at` like the C# `SaveAsync` does, and (matching the C#
+// `LoadAsync`) `load` inserts a fresh default persona for an unknown user so
+// repeated loads are stable.
+impl super::stores::IPersonaStore for InMemoryPersonaStore {
+    type Error = BrainError;
+
+    fn load(&self, user_id: &str) -> Result<PersonaState, BrainError> {
+        if user_id.trim().is_empty() {
+            return Err(BrainError::new("userId required"));
+        }
+        let mut store = self.store.lock().unwrap();
+        if let Some(existing) = store.get(user_id) {
+            return Ok(existing.clone());
+        }
+        let fresh = PersonaState::new(user_id);
+        store.insert(user_id.to_string(), fresh.clone());
+        Ok(fresh)
+    }
+
+    fn save(&mut self, persona: &PersonaState) -> Result<(), BrainError> {
+        let mut stamped = persona.clone();
+        stamped.last_updated_at = Utc::now();
+        self.store
+            .lock()
+            .unwrap()
+            .insert(stamped.user_id.clone(), stamped);
+        Ok(())
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // IMemorySummarizer + HeuristicSummarizer
 // ─────────────────────────────────────────────────────────────────────────────

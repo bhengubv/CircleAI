@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
 use uuid::Uuid;
 
 use super::affect_state::AffectState;
@@ -338,4 +339,108 @@ pub trait IGoalStore {
     fn upsert(&mut self, goal: Goal) -> Result<Goal, Self::Error>;
     fn delete(&mut self, id: &str) -> Result<(), Self::Error>;
     fn get_active(&self, user_id: &str) -> Result<Vec<Goal>, Self::Error>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-memory sync stores (ports of the C# InMemoryPersonaStore / InMemoryGoalStore)
+// ─────────────────────────────────────────────────────────────────────────────
+
+use crate::brain::BrainError;
+use crate::memory::goal::GoalStatus;
+
+/// Thread-safe in-memory [`IGoalStore`]. 1:1 with the C# `InMemoryGoalStore`.
+/// All data is lost when the process exits. Insertion order is preserved so
+/// `list` / `get_active` are deterministic (the C# `ConcurrentDictionary.Values`
+/// order is unspecified; keeping insertion order is a strict superset).
+#[derive(Debug, Default)]
+pub struct InMemoryGoalStore {
+    // (insertion-ordered id list, id -> goal)
+    inner: Mutex<GoalStoreInner>,
+}
+
+#[derive(Debug, Default)]
+struct GoalStoreInner {
+    order: Vec<String>,
+    goals: HashMap<String, Goal>,
+}
+
+impl InMemoryGoalStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn upsert_inner(&self, goal: Goal) -> Goal {
+        let mut inner = self.inner.lock().unwrap();
+        if !inner.goals.contains_key(&goal.id) {
+            inner.order.push(goal.id.clone());
+        }
+        inner.goals.insert(goal.id.clone(), goal.clone());
+        goal
+    }
+
+    fn delete_inner(&self, id: &str) {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.goals.remove(id).is_some() {
+            inner.order.retain(|x| x != id);
+        }
+    }
+
+    fn list_inner(&self, user_id: &str) -> Vec<Goal> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .order
+            .iter()
+            .filter_map(|id| inner.goals.get(id))
+            .filter(|g| g.user_id == user_id)
+            .cloned()
+            .collect()
+    }
+
+    fn active_inner(&self, user_id: &str) -> Vec<Goal> {
+        let inner = self.inner.lock().unwrap();
+        inner
+            .order
+            .iter()
+            .filter_map(|id| inner.goals.get(id))
+            .filter(|g| g.user_id == user_id && g.status == GoalStatus::Active)
+            .cloned()
+            .collect()
+    }
+}
+
+impl IGoalStore for InMemoryGoalStore {
+    type Error = BrainError;
+
+    fn list(&self, user_id: &str) -> Result<Vec<Goal>, BrainError> {
+        if user_id.trim().is_empty() {
+            return Err(BrainError::new("userId required"));
+        }
+        Ok(self.list_inner(user_id))
+    }
+
+    fn get(&self, id: &str) -> Result<Option<Goal>, BrainError> {
+        if id.trim().is_empty() {
+            return Err(BrainError::new("id required"));
+        }
+        Ok(self.inner.lock().unwrap().goals.get(id).cloned())
+    }
+
+    fn upsert(&mut self, goal: Goal) -> Result<Goal, BrainError> {
+        Ok(self.upsert_inner(goal))
+    }
+
+    fn delete(&mut self, id: &str) -> Result<(), BrainError> {
+        if id.trim().is_empty() {
+            return Err(BrainError::new("id required"));
+        }
+        self.delete_inner(id);
+        Ok(())
+    }
+
+    fn get_active(&self, user_id: &str) -> Result<Vec<Goal>, BrainError> {
+        if user_id.trim().is_empty() {
+            return Err(BrainError::new("userId required"));
+        }
+        Ok(self.active_inner(user_id))
+    }
 }

@@ -3,6 +3,7 @@
 
 pub mod affect_state;
 pub mod affect_vad;
+pub mod companion_sync;
 pub mod compression;
 pub mod consolidation;
 pub mod episodic;
@@ -14,6 +15,7 @@ pub mod llm_extractor;
 pub mod multimodal;
 pub mod rag;
 pub mod recall;
+pub mod runtime;
 pub mod stores;
 
 // Re-export everything that the top-level lib.rs and existing tests expect at
@@ -24,7 +26,7 @@ pub use goal::{Goal, GoalPriority, GoalStatus};
 pub use stores::{
     AffectStore, EpisodicMemoryEntry, EpisodicMemoryStore, FeedbackPolarity, FeedbackSignal,
     FeedbackStore, GoalStore, IAffectStore, IEpisodicMemoryStore, IFeedbackStore, IGoalStore,
-    IPersonaStore, PersonaState, PersonaStore,
+    InMemoryGoalStore, IPersonaStore, PersonaState, PersonaStore,
 };
 
 // Memory-brain concretes (in-memory port of the C#/TS/Go reference).
@@ -59,6 +61,21 @@ pub use compression::{
     CompressedMultimodalMemoryStore, EmbeddingPayloadCodec, OrthogonalRotation, TurboQuantCodec,
     TurboQuantPayload, COMPRESSED_TAG_KEY, MAGIC, ROTATION_SEED,
 };
+
+// Companion-state cross-device sync layer (in-memory port of the C#
+// `CircleAI.Memory/Sync/` reference).
+pub use companion_sync::{
+    base64_decode, base64_encode, CompanionConversationSyncBridge, CompanionStateSyncEngine,
+    ConversationStateDelta, EnvelopeHandler, HybridLogicalClock, ICompanionStateChannel,
+    ICompanionStateSyncEngine, ISyncableEntryStore, InMemorySyncableEntryStore,
+    InProcessCompanionStateChannel, InProcessSyncHub, LoraAdapterSnapshot, LoraAdapterSyncBridge,
+    PersonaStateSyncBridge, RequestItem, StateVectorEntry, Subscription, SyncEnvelope,
+    SyncEnvelopeKind, SyncableEntry, CONVERSATION_STATE_ENTITY_TYPE, LORA_ADAPTER_ENTITY_TYPE,
+    PERSONA_STATE_ENTITY_TYPE,
+};
+
+// Memory pipeline runtime (in-memory port of the C# `CircleAI.Memory/Runtime/`).
+pub use runtime::{CompanionRuntime, CompanionRuntimeOptions};
 
 // Hierarchical memory consolidation — the "sleep cycle" engine (in-memory port
 // of the C#/TS reference).
