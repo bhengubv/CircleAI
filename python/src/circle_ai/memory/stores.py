@@ -4,7 +4,7 @@ from typing import Optional, Protocol, runtime_checkable
 
 from .affect_state import AffectState
 from .episodic_memory import EpisodicMemoryEntry
-from .feedback_signal import FeedbackSignal
+from .feedback_signal import FeedbackPolarity, FeedbackSignal
 from .goal import Goal
 from .persona_state import PersonaState
 
@@ -142,3 +142,57 @@ class IPersonaStore(Protocol):
     ) -> None:
         """Persist the persona (crash-safe)."""
         ...
+
+
+class InMemoryFeedbackStore:
+    """In-memory :class:`IFeedbackStore`. Ported from CircleAI.Memory
+    (InMemoryFeedbackStore) — the C# reference — and mirrors the TypeScript
+    reference (memory/stores.ts).
+
+    Data is lost on process exit; for tests and headless CLI use. Capacity is
+    capped (FIFO eviction). Satisfies the ``IFeedbackStore`` Protocol above
+    structurally.
+    """
+
+    def __init__(self, max_signals: int = 10_000) -> None:
+        """
+        :param max_signals: Cap on stored signals; when exceeded the oldest are
+            evicted (FIFO). Default 10000. Must be positive.
+        """
+        if max_signals <= 0:
+            raise ValueError("max_signals must be positive")
+        self._max_signals = max_signals
+        self._signals: list[FeedbackSignal] = []
+
+    async def add_async(
+        self, signal: FeedbackSignal, *, ct: Optional[object] = None
+    ) -> None:
+        """Record a new signal; evict the oldest (FIFO) when over capacity."""
+        if signal is None:
+            raise ValueError("signal required")
+        self._signals.append(signal)
+        while len(self._signals) > self._max_signals:
+            self._signals.pop(0)
+
+    async def get_recent_async(
+        self, count: int = 50, *, ct: Optional[object] = None
+    ) -> list[FeedbackSignal]:
+        """Return the *count* most recent signals, newest-first."""
+        return sorted(
+            self._signals, key=lambda s: s.recorded_at_utc, reverse=True
+        )[:count]
+
+    async def count_async(self, *, ct: Optional[object] = None) -> int:
+        """Total number of signals stored."""
+        return len(self._signals)
+
+    async def positive_ratio_async(
+        self, *, ct: Optional[object] = None
+    ) -> Optional[float]:
+        """Fraction of stored signals that are Positive (0.0–1.0); None when empty."""
+        if len(self._signals) == 0:
+            return None
+        pos = sum(
+            1 for s in self._signals if s.polarity == FeedbackPolarity.POSITIVE
+        )
+        return pos / len(self._signals)

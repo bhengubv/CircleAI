@@ -32,3 +32,9 @@ add_circle_test(test_companion_session)
 # LLM extractor + consolidation subsystem
 add_circle_test(test_llm_extractor)
 add_circle_test(test_consolidation)
+
+# memory subsystems port — feedback / RAG / multimodal / compression
+add_circle_test(test_feedback_analyser)
+add_circle_test(test_rag)
+add_circle_test(test_multimodal)
+add_circle_test(test_compression)

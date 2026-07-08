@@ -3,12 +3,16 @@
 
 pub mod affect_state;
 pub mod affect_vad;
+pub mod compression;
 pub mod consolidation;
 pub mod episodic;
 pub mod extractor;
+pub mod feedback_analyser;
 pub mod goal;
 pub mod graph;
 pub mod llm_extractor;
+pub mod multimodal;
+pub mod rag;
 pub mod recall;
 pub mod stores;
 
@@ -34,6 +38,27 @@ pub use recall::{FusedRecall, FusedRecallOptions, IRecall};
 
 // LLM-backed knowledge-graph extractor (in-memory port of the C#/TS reference).
 pub use llm_extractor::{parse_triples, LlmKnowledgeGraphExtractor};
+
+// Feedback analyser + in-memory feedback store (in-memory port of the C#/TS reference).
+pub use feedback_analyser::{FeedbackAnalyser, InMemoryFeedbackStore, PersonaAdaptation};
+
+// RAG context assembly (in-memory port of the C#/TS reference).
+pub use rag::{ITextEmbedder, RagContextBuilder, RagEpisodicStore, RagPipelineBuilder};
+
+// Multimodal semantic memory (in-memory port of the C#/TS reference).
+pub use multimodal::{
+    compute_sha256, CaptionResult, HeuristicMultimodalCaptioner, IMultimodalCaptioner,
+    IMultimodalMemoryStore, InMemoryMultimodalMemoryStore, IngestOptions, IngestionResult,
+    MediaModality, MultimodalMemoryEntry, MultimodalMemoryIngester,
+};
+
+// TurboQuant compression + compressed store decorators (byte-identical wire
+// format across every SDK language — in-memory port of the C#/TS reference).
+pub use compression::{
+    BetaCodebook, BetaLloydMaxCodebook, BitPacker, CompressedEpisodicMemoryStore,
+    CompressedMultimodalMemoryStore, EmbeddingPayloadCodec, OrthogonalRotation, TurboQuantCodec,
+    TurboQuantPayload, COMPRESSED_TAG_KEY, MAGIC, ROTATION_SEED,
+};
 
 // Hierarchical memory consolidation — the "sleep cycle" engine (in-memory port
 // of the C#/TS reference).

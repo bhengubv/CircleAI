@@ -33,4 +33,10 @@
 #include "llm_extractor.h"
 #include "consolidation.h"
 
+/* memory subsystems port — feedback / RAG / multimodal / compression */
+#include "feedback_analyser.h"
+#include "rag.h"
+#include "multimodal.h"
+#include "compression.h"
+
 #endif /* CIRCLE_AI_H */

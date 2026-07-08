@@ -97,3 +97,43 @@ public final class InMemoryPersonaStore: IPersonaStore, @unchecked Sendable {
         put(persona)
     }
 }
+
+/// In-memory `IFeedbackStore`. Ported from Circle.AI.Memory
+/// (InMemoryFeedbackStore) — the C# reference. Data is lost on process exit;
+/// for tests and headless CLI use. Capacity is capped (FIFO eviction).
+public final class InMemoryFeedbackStore: IFeedbackStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var signals: [FeedbackSignal] = []
+    private let maxSignals: Int
+
+    /// - Parameter maxSignals: Cap on stored signals; when exceeded the oldest
+    ///   are evicted (FIFO). Default 10000.
+    public init(maxSignals: Int = 10_000) {
+        precondition(maxSignals > 0, "maxSignals must be positive")
+        self.maxSignals = maxSignals
+    }
+
+    public func add(_ signal: FeedbackSignal) async throws {
+        lock.lock(); defer { lock.unlock() }
+        signals.append(signal)
+        while signals.count > maxSignals { signals.removeFirst() }
+    }
+
+    public func getRecent(count: Int) async throws -> [FeedbackSignal] {
+        lock.lock(); let snapshot = signals; lock.unlock()
+        let sorted = snapshot.sorted { $0.recordedAt > $1.recordedAt }
+        return Array(sorted.prefix(count))
+    }
+
+    public func count() async throws -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return signals.count
+    }
+
+    public func positiveRatio() async throws -> Double? {
+        lock.lock(); defer { lock.unlock() }
+        if signals.isEmpty { return nil }
+        let pos = signals.filter { $0.polarity == .positive }.count
+        return Double(pos) / Double(signals.count)
+    }
+}

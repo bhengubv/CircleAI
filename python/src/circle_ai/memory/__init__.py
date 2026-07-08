@@ -8,9 +8,35 @@ from .stores import (
     IEpisodicMemoryStore,
     IFeedbackStore,
     IGoalStore,
+    InMemoryFeedbackStore,
     IPersonaStore,
 )
 from .in_memory_episodic_store import InMemoryEpisodicStore
+from .feedback_analyser import FeedbackAnalyser, PersonaAdaptation
+from .rag import ITextEmbedder, RagContextBuilder, RagPipelineBuilder
+from .multimodal import (
+    CaptionResult,
+    HeuristicMultimodalCaptioner,
+    IMultimodalCaptioner,
+    IMultimodalMemoryStore,
+    InMemoryMultimodalMemoryStore,
+    IngestionResult,
+    MediaModality,
+    MultimodalMemoryEntry,
+    MultimodalMemoryIngester,
+)
+from .compression import (
+    BetaCodebook,
+    BetaLloydMaxCodebook,
+    BitPacker,
+    COMPRESSED_TAG_KEY,
+    CompressedEpisodicMemoryStore,
+    CompressedMultimodalMemoryStore,
+    EmbeddingPayloadCodec,
+    OrthogonalRotation,
+    TurboQuantCodec,
+    TurboQuantPayload,
+)
 from .graph import (
     IHippoRagStore,
     InMemoryHippoRagStore,
@@ -66,6 +92,35 @@ __all__ = [
     "IFeedbackStore",
     "IGoalStore",
     "IPersonaStore",
+    "InMemoryFeedbackStore",
+    # feedback analyser
+    "FeedbackAnalyser",
+    "PersonaAdaptation",
+    # rag
+    "ITextEmbedder",
+    "RagContextBuilder",
+    "RagPipelineBuilder",
+    # multimodal
+    "CaptionResult",
+    "HeuristicMultimodalCaptioner",
+    "IMultimodalCaptioner",
+    "IMultimodalMemoryStore",
+    "InMemoryMultimodalMemoryStore",
+    "IngestionResult",
+    "MediaModality",
+    "MultimodalMemoryEntry",
+    "MultimodalMemoryIngester",
+    # compression
+    "BetaCodebook",
+    "BetaLloydMaxCodebook",
+    "BitPacker",
+    "COMPRESSED_TAG_KEY",
+    "CompressedEpisodicMemoryStore",
+    "CompressedMultimodalMemoryStore",
+    "EmbeddingPayloadCodec",
+    "OrthogonalRotation",
+    "TurboQuantCodec",
+    "TurboQuantPayload",
     # memory-brain
     "InMemoryEpisodicStore",
     "IHippoRagStore",

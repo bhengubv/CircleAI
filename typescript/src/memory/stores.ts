@@ -6,8 +6,14 @@
 // later slice. The algorithms (cosine similarity, recency fallback, FIFO cap)
 // are identical to the reference.
 
-import type { EpisodicMemoryEntry, IEpisodicMemoryStore, IPersonaStore } from "./index.js";
-import { PersonaState } from "./index.js";
+import type {
+  EpisodicMemoryEntry,
+  FeedbackSignal,
+  IEpisodicMemoryStore,
+  IFeedbackStore,
+  IPersonaStore,
+} from "./index.js";
+import { FeedbackPolarity, PersonaState } from "./index.js";
 
 /**
  * In-memory {@link IEpisodicMemoryStore}. Capacity is capped (FIFO eviction) to
@@ -101,5 +107,46 @@ export class InMemoryPersonaStore implements IPersonaStore {
   async saveAsync(persona: PersonaState): Promise<void> {
     if (!persona) throw new Error("persona required");
     this.store.set(persona.userId, persona);
+  }
+}
+
+/**
+ * In-memory {@link IFeedbackStore}. Ported from Circle.AI.Memory
+ * (InMemoryFeedbackStore) — the C# reference. Data is lost on process exit;
+ * for tests and headless CLI use. Capacity is capped (FIFO eviction).
+ */
+export class InMemoryFeedbackStore implements IFeedbackStore {
+  private readonly maxSignals: number;
+  private readonly signals: FeedbackSignal[] = [];
+
+  /**
+   * @param maxSignals Cap on stored signals; when exceeded the oldest are
+   *   evicted (FIFO). Default 10000.
+   */
+  constructor(maxSignals = 10_000) {
+    if (maxSignals <= 0) throw new RangeError("maxSignals must be positive");
+    this.maxSignals = maxSignals;
+  }
+
+  async addAsync(signal: FeedbackSignal): Promise<void> {
+    if (!signal) throw new Error("signal required");
+    this.signals.push(signal);
+    while (this.signals.length > this.maxSignals) this.signals.shift();
+  }
+
+  async getRecentAsync(count = 50): Promise<readonly FeedbackSignal[]> {
+    return [...this.signals]
+      .sort((a, b) => b.recordedAtUtc.getTime() - a.recordedAtUtc.getTime())
+      .slice(0, count);
+  }
+
+  async countAsync(): Promise<number> {
+    return this.signals.length;
+  }
+
+  async positiveRatioAsync(): Promise<number | null> {
+    if (this.signals.length === 0) return null;
+    const pos = this.signals.filter((s) => s.polarity === FeedbackPolarity.Positive).length;
+    return pos / this.signals.length;
   }
 }

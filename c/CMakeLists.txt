@@ -26,6 +26,11 @@ add_library(circle_ai STATIC
     # LLM extractor + consolidation subsystem
     src/llm_extractor.c
     src/consolidation.c
+    # memory subsystems port — feedback / RAG / multimodal / compression
+    src/feedback_analyser.c
+    src/rag.c
+    src/multimodal.c
+    src/compression.c
 )
 target_include_directories(circle_ai PUBLIC include)
 
