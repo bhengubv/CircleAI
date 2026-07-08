@@ -39,15 +39,22 @@ const (
 // ---------------------------------------------------------------------------
 
 // SyncDomainKeys holds the well-known domain key strings for SyncDelta.
-// Custom domains may use any string not in this list.
+// Custom domains may use any string not in this list. Mirrors the C#
+// CircleAI.Sync.SyncDomainKeys constants.
 var SyncDomainKeys = struct {
 	MemoryEpisodic string
 	AffectState    string
 	Persona        string
+	Goals          string
+	Skills         string
+	Preferences    string
 }{
 	MemoryEpisodic: "memory.episodic",
 	AffectState:    "affect.state",
 	Persona:        "persona",
+	Goals:          "goals",
+	Skills:         "skills",
+	Preferences:    "preferences",
 }
 
 // ---------------------------------------------------------------------------

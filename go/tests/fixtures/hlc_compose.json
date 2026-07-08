@@ -1,0 +1,10 @@
+{
+  "description": "HybridLogicalClock.Compose/Decompose vectors: version = (physicalMs<<16)|((logical&0x3FF)<<6)|(nodeShortId&0x3F).",
+  "vectors": [
+    { "id": "zero-node-zero-logical", "physicalMs": 1, "logical": 0, "nodeShortId": 7, "version": 65543 },
+    { "id": "small", "physicalMs": 1000, "logical": 5, "nodeShortId": 3, "version": 65536323 },
+    { "id": "epoch-ms-min", "physicalMs": 1751932800000, "logical": 0, "nodeShortId": 0, "version": 114814667980800000 },
+    { "id": "epoch-ms-max-fields", "physicalMs": 1751932800000, "logical": 1023, "nodeShortId": 63, "version": 114814667980865535 },
+    { "id": "arbitrary", "physicalMs": 42, "logical": 17, "nodeShortId": 21, "version": 2753621 }
+  ]
+}

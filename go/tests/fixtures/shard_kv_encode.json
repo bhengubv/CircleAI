@@ -1,0 +1,17 @@
+{
+  "description": "ShardKvCodec.Encode K-path wire bytes (ported from ShardKvCodec.cs). With identity-top-rank axes and zero centre: centred=k, FWHT, project onto top kRank axes, scale=maxAbs/127, int8-quantise. CompressedK = [float32 scale LE][kRank int8]. Ground-truth derived independently from the C# algorithm. V index is codeword 0 (single nearest) so idxBytes and layout are exercised too.",
+  "cases": [
+    {
+      "id": "identity-axes-4x2",
+      "kDim": 4,
+      "kRank": 2,
+      "vDim": 2,
+      "vCodewords": 4,
+      "k": [0.5, -0.25, 0.125, 0.0],
+      "scale": 0.0068897638,
+      "projected": [0.375, 0.875],
+      "encodedK_hex": "87c3e13b367f",
+      "encodedV_len": 1
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "description": "InMemorySyncableEntryStore apply rules: higher Version wins; on tie a tombstone beats a non-tombstone; else higher ContentHash (ordinal) wins.",
+  "cases": [
+    {
+      "id": "higher-version-wins",
+      "existing": { "version": 10, "isTombstone": false, "contentHash": "aaaa" },
+      "incoming": { "version": 20, "isTombstone": false, "contentHash": "0000" },
+      "applied": true
+    },
+    {
+      "id": "lower-version-loses",
+      "existing": { "version": 20, "isTombstone": false, "contentHash": "0000" },
+      "incoming": { "version": 10, "isTombstone": false, "contentHash": "ffff" },
+      "applied": false
+    },
+    {
+      "id": "tie-tombstone-beats-live",
+      "existing": { "version": 15, "isTombstone": false, "contentHash": "ffff" },
+      "incoming": { "version": 15, "isTombstone": true, "contentHash": "0000" },
+      "applied": true
+    },
+    {
+      "id": "tie-live-loses-to-existing-tombstone",
+      "existing": { "version": 15, "isTombstone": true, "contentHash": "0000" },
+      "incoming": { "version": 15, "isTombstone": false, "contentHash": "ffff" },
+      "applied": false
+    },
+    {
+      "id": "tie-higher-contenthash-wins",
+      "existing": { "version": 15, "isTombstone": false, "contentHash": "aaaa" },
+      "incoming": { "version": 15, "isTombstone": false, "contentHash": "bbbb" },
+      "applied": true
+    },
+    {
+      "id": "tie-lower-contenthash-loses",
+      "existing": { "version": 15, "isTombstone": false, "contentHash": "bbbb" },
+      "incoming": { "version": 15, "isTombstone": false, "contentHash": "aaaa" },
+      "applied": false
+    },
+    {
+      "id": "tie-equal-contenthash-no-apply",
+      "existing": { "version": 15, "isTombstone": false, "contentHash": "cccc" },
+      "incoming": { "version": 15, "isTombstone": false, "contentHash": "cccc" },
+      "applied": false
+    }
+  ]
+}

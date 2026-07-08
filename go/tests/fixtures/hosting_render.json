@@ -1,0 +1,48 @@
+{
+  "description": "JsonRenderParser.Parse against the default catalog. `json` is the model-emitted tree; expected describes the parsed root. Number values distinguish int64 vs float64 per ToManaged.",
+  "cases": [
+    {
+      "id": "simple-textblock",
+      "json": "{\"kind\":\"textBlock\",\"properties\":{\"text\":\"Hello\",\"markdown\":true}}",
+      "strict": true,
+      "expectKind": "textBlock",
+      "expectProps": { "text": "Hello", "markdown": true }
+    },
+    {
+      "id": "button-with-action",
+      "json": "{\"kind\":\"button\",\"properties\":{\"label\":\"Go\",\"action\":\"submit\"}}",
+      "strict": true,
+      "expectKind": "button",
+      "expectProps": { "label": "Go", "action": "submit" }
+    },
+    {
+      "id": "card-with-children",
+      "json": "{\"kind\":\"card\",\"properties\":{\"title\":\"T\"},\"children\":[{\"kind\":\"textBlock\",\"properties\":{\"text\":\"body\"}}]}",
+      "strict": true,
+      "expectKind": "card",
+      "expectProps": { "title": "T" },
+      "expectChildKinds": ["textBlock"]
+    },
+    {
+      "id": "case-insensitive-kind",
+      "json": "{\"kind\":\"BUTTON\",\"properties\":{\"label\":\"X\",\"action\":\"a\"}}",
+      "strict": true,
+      "expectKind": "BUTTON",
+      "expectProps": { "label": "X", "action": "a" }
+    },
+    {
+      "id": "unknown-kind-lenient",
+      "json": "{\"kind\":\"widget\",\"properties\":{}}",
+      "strict": false,
+      "expectKind": "textBlock",
+      "expectProps": { "text": "[unknown kind 'widget']", "markdown": false }
+    }
+  ],
+  "errorCases": [
+    { "id": "unknown-kind-strict", "json": "{\"kind\":\"widget\"}", "strict": true },
+    { "id": "undeclared-property-strict", "json": "{\"kind\":\"button\",\"properties\":{\"nope\":1}}", "strict": true },
+    { "id": "children-not-allowed-strict", "json": "{\"kind\":\"button\",\"properties\":{\"label\":\"x\",\"action\":\"y\"},\"children\":[{\"kind\":\"textBlock\"}]}", "strict": true },
+    { "id": "missing-kind", "json": "{\"properties\":{}}", "strict": true },
+    { "id": "not-an-object", "json": "[1,2,3]", "strict": true }
+  ]
+}
