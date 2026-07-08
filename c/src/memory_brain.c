@@ -615,7 +615,18 @@ void ca_episodic_entry_free(ca_episodic_entry_t *e) {
     free(e->assistant_text);
     free(e->app_context);
     free(e->embedding);
+    ca_free_kv(e->tag_keys, e->tag_values, e->tag_count);
     memset(e, 0, sizeof(*e));
+}
+
+const char *ca_episodic_entry_get_tag(const ca_episodic_entry_t *entry, const char *key) {
+    if (!entry || !key) return NULL;
+    for (size_t i = 0; i < entry->tag_count; ++i) {
+        if (entry->tag_keys[i] && strcmp(entry->tag_keys[i], key) == 0) {
+            return entry->tag_values[i];
+        }
+    }
+    return NULL;
 }
 
 void ca_episodic_entry_free_array(ca_episodic_entry_t *entries, size_t count) {
@@ -636,6 +647,13 @@ static void ca_episodic_copy(ca_episodic_entry_t *dst, const ca_episodic_entry_t
         if (dst->embedding) {
             memcpy(dst->embedding, src->embedding, src->embedding_len * sizeof(float));
             dst->embedding_len = src->embedding_len;
+        }
+    }
+    if (src->tag_count > 0) {
+        if (ca_dup_kv((const char *const *)src->tag_keys,
+                      (const char *const *)src->tag_values, src->tag_count,
+                      &dst->tag_keys, &dst->tag_values)) {
+            dst->tag_count = src->tag_count;
         }
     }
 }

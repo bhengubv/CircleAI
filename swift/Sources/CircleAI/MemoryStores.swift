@@ -64,3 +64,36 @@ func cosineDot(_ a: [Float], _ b: [Float]) -> Float {
     for i in 0..<a.count { dot += a[i] * b[i] }
     return dot
 }
+
+/// In-memory `IPersonaStore`. Keyed by userId; `load` returns a fresh default
+/// `PersonaState` (stamped with the requested userId) when no persona has been
+/// persisted for that user. Ported from Circle.AI.Memory — the C# reference.
+public final class InMemoryPersonaStore: IPersonaStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var store: [String: PersonaState] = [:]
+
+    public init() {}
+
+    // Synchronous, lock-guarded accessors — safe to call from async contexts
+    // (the lock is never held across an await).
+    private func fetch(_ userId: String) -> PersonaState? {
+        lock.lock(); defer { lock.unlock() }
+        return store[userId]
+    }
+
+    private func put(_ persona: PersonaState) {
+        lock.lock(); defer { lock.unlock() }
+        store[persona.userId] = persona
+    }
+
+    public func load(userId: String) async throws -> PersonaState {
+        if let existing = fetch(userId) { return existing }
+        let fresh = PersonaState()
+        fresh.userId = userId
+        return fresh
+    }
+
+    public func save(_ persona: PersonaState) async throws {
+        put(persona)
+    }
+}

@@ -29,4 +29,8 @@
 #include "memory_brain.h"
 #include "companion_brain.h"
 
+/* LLM extractor + consolidation subsystem */
+#include "llm_extractor.h"
+#include "consolidation.h"
+
 #endif /* CIRCLE_AI_H */

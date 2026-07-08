@@ -23,6 +23,9 @@ add_library(circle_ai STATIC
     # memory-brain port
     src/memory_brain.c
     src/companion_brain.c
+    # LLM extractor + consolidation subsystem
+    src/llm_extractor.c
+    src/consolidation.c
 )
 target_include_directories(circle_ai PUBLIC include)
 

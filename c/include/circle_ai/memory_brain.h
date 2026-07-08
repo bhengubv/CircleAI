@@ -168,11 +168,21 @@ typedef struct {
     char   *app_context;    /* owned, or NULL */
     float  *embedding;      /* owned, or NULL; L2-normalised */
     size_t  embedding_len;
+    /* Optional free-form tags (parallel key/value arrays; mirrors the C#/TS
+     * EpisodicMemoryEntry.Tags map). tag_count == 0 means "no tags". Recognised
+     * by consolidation: "topic" and "topics" (pipe-delimited). */
+    char  **tag_keys;       /* owned array, or NULL */
+    char  **tag_values;     /* owned array, or NULL */
+    size_t  tag_count;
 } ca_episodic_entry_t;
 
 /* Free the contents of an entry (not the struct). NULL-safe. */
 void ca_episodic_entry_free(ca_episodic_entry_t *entry);
 void ca_episodic_entry_free_array(ca_episodic_entry_t *entries, size_t count);
+
+/* Look up a tag value by key (case-sensitive). Returns a borrowed pointer into
+ * the entry, or NULL if absent. */
+const char *ca_episodic_entry_get_tag(const ca_episodic_entry_t *entry, const char *key);
 
 typedef struct ca_episodic_store ca_episodic_store_t;
 

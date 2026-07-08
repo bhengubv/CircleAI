@@ -28,3 +28,7 @@ add_circle_test(test_kg_extractor)
 add_circle_test(test_belief_integrity)
 add_circle_test(test_memory_encoder)
 add_circle_test(test_companion_session)
+
+# LLM extractor + consolidation subsystem
+add_circle_test(test_llm_extractor)
+add_circle_test(test_consolidation)

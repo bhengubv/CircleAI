@@ -6,7 +6,8 @@
 // later slice. The algorithms (cosine similarity, recency fallback, FIFO cap)
 // are identical to the reference.
 
-import type { EpisodicMemoryEntry, IEpisodicMemoryStore } from "./index.js";
+import type { EpisodicMemoryEntry, IEpisodicMemoryStore, IPersonaStore } from "./index.js";
+import { PersonaState } from "./index.js";
 
 /**
  * In-memory {@link IEpisodicMemoryStore}. Capacity is capped (FIFO eviction) to
@@ -79,4 +80,26 @@ function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
   return dot;
+}
+
+/**
+ * In-memory {@link IPersonaStore}. Keyed by userId; {@link loadAsync} returns a
+ * fresh default {@link PersonaState} (stamped with the requested userId) when no
+ * persona has been persisted for that user.
+ */
+export class InMemoryPersonaStore implements IPersonaStore {
+  private readonly store = new Map<string, PersonaState>();
+
+  async loadAsync(userId: string): Promise<PersonaState> {
+    const existing = this.store.get(userId);
+    if (existing) return existing;
+    const fresh = new PersonaState();
+    fresh.userId = userId;
+    return fresh;
+  }
+
+  async saveAsync(persona: PersonaState): Promise<void> {
+    if (!persona) throw new Error("persona required");
+    this.store.set(persona.userId, persona);
+  }
 }
