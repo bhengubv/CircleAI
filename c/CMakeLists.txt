@@ -31,6 +31,37 @@ add_library(circle_ai STATIC
     src/rag.c
     src/multimodal.c
     src/compression.c
+    # companion reasoning core — world model / predictive / inner monologue / theory of mind
+    src/companion_reason.c
+    # HER/Jarvis companion cognition + proactive substrate
+    src/herjarvis.c
+    src/capability_registry.c
+    src/proactive.c
+    src/proactive_briefing.c
+    src/companion_session_factory.c
+    # memory sync + runtime + sync service port
+    src/companion_sync.c
+    src/goal_store.c
+    src/companion_runtime.c
+    src/memory_sync_service.c
+    # Core model-management runtime + facade + tenant/audit + ShardKvCodec + embeddings
+    src/model_runtime.c
+    src/circle_engine.c
+    src/tenant_audit.c
+    src/shard_kv.c
+    src/embedding_store.c
+    # Inference runtime + server (CircleAI.Inference / .Server / .Server.Enterprise)
+    src/inference_rt.c
+    src/inference_server.c
+    src/inference_server_enterprise.c
+    # Hosting runtime + sub-hosts (CircleAI.Hosting / .CloudFallback / .InferenceBridge / .Mcp / .Multiplayer)
+    src/host_ai.c
+    src/host_cron.c
+    src/host_tools_ui.c
+    src/host_cloud.c
+    src/host_bridge.c
+    src/host_mcp.c
+    src/host_multiplayer.c
 )
 target_include_directories(circle_ai PUBLIC include)
 

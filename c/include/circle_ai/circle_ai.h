@@ -39,4 +39,56 @@
 #include "multimodal.h"
 #include "compression.h"
 
+/* companion reasoning core — world model / predictive / inner monologue / theory of mind */
+#include "companion_reason.h"
+
+/* HER/Jarvis companion cognition — remaining contracts + real impls */
+#include "herjarvis.h"
+
+/* external capability absorption registry */
+#include "capability_registry.h"
+
+/* proactive scheduling substrate — cron + scheduler + sources/runners */
+#include "proactive.h"
+
+/* proactive briefing service + companion session factory */
+#include "proactive_briefing.h"
+#include "companion_session_factory.h"
+
+/* companion-state sync layer — HLC, syncable store, channel, engine, bridges */
+#include "companion_sync.h"
+
+/* full Goal record + IGoalStore (rich, distinct from models.h fixture goal) */
+#include "goal_store.h"
+
+/* memory pipeline host runtime */
+#include "companion_runtime.h"
+
+/* CircleAI.Sync — MemorySyncService + SyncDelta seam + reconciliation */
+#include "memory_sync_service.h"
+
+/* Core model-management runtime — loader / manager / downloader / sources /
+ * SafeModelHandle + facade + tenant/audit + ShardKvCodec + embeddings */
+#include "model_runtime.h"
+#include "circle_engine.h"
+#include "tenant_audit.h"
+#include "shard_kv.h"
+#include "embedding_store.h"
+
+/* Inference runtime + server (CircleAI.Inference / .Inference.Server /
+ * .Inference.Server.Enterprise) */
+#include "inference_rt.h"
+#include "inference_server.h"
+#include "inference_server_enterprise.h"
+
+/* Hosting runtime + sub-hosts (CircleAI.Hosting / .CloudFallback /
+ * .InferenceBridge / .Mcp / .Multiplayer) */
+#include "host_ai.h"
+#include "host_cron.h"
+#include "host_tools_ui.h"
+#include "host_cloud.h"
+#include "host_bridge.h"
+#include "host_mcp.h"
+#include "host_multiplayer.h"
+
 #endif /* CIRCLE_AI_H */
