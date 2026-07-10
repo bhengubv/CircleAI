@@ -75,3 +75,60 @@ add_circle_test(test_host_cloud)
 add_circle_test(test_host_bridge)
 add_circle_test(test_host_mcp)
 add_circle_test(test_host_multiplayer)
+
+# Security peer-intelligence pipeline — watchdog + peer trust layer
+add_circle_test(test_watchdog)
+add_circle_test(test_peer_security)
+
+# Aether contracts + AetherNet bindings (CircleAI.Aether / .AetherNet / .Security.AetherNet)
+add_circle_test(test_aether)
+add_circle_test(test_mesh_capability)
+add_circle_test(test_aethernet_security)
+
+# Safety guardrails + alignment + safety-domain boards (CircleAI.ContentPolicy / .ModelAlignment / .Safety / .Safety.Child)
+add_circle_test(test_content_policy)
+add_circle_test(test_model_alignment)
+add_circle_test(test_safety)
+add_circle_test(test_safety_child)
+
+# CircleAI.Networking — unified transport abstraction + in-memory impls
+add_circle_test(test_networking)
+
+# CircleAI.Networking transports A — AetherNet / Bluetooth / DTN / gRPC / HTTP
+add_circle_test(test_net_aether)
+add_circle_test(test_net_bluetooth)
+add_circle_test(test_net_dtn)
+add_circle_test(test_net_grpc)
+add_circle_test(test_net_http)
+
+# CircleAI.Networking transports B — Mqtt / NearLink / Tcp / WebSocket / WiFi
+add_circle_test(test_net_mqtt)
+add_circle_test(test_net_nearlink)
+add_circle_test(test_net_tcp)
+add_circle_test(test_net_websocket)
+add_circle_test(test_net_wifi)
+
+# CircleAI.Speech / .Speech.Cloud / .Voice — ASR/TTS/wake-word/VAD/AEC/denoise +
+# intent router + voice pipeline
+add_circle_test(test_speech)
+add_circle_test(test_speech_cloud)
+add_circle_test(test_voice)
+
+# CircleAI.Vision / .Vision.Cloud / .Video — vision detection + media generation
+add_circle_test(test_vision)
+add_circle_test(test_vision_cloud)
+add_circle_test(test_video)
+
+# CircleAI.Media / .MediaHub — asset catalog + media-server (item library +
+# synced-playback pub/sub)
+add_circle_test(test_media)
+
+# CircleAI.Realtime / .Realtime.Cloud — streaming realtime-AI loopback
+# session/service + injected transport factory
+add_circle_test(test_realtime)
+
+# CircleAI.Telephony (+ .Twilio / .Telnyx / .Plivo) — carrier-agnostic telephony
+# contracts + DtmfToneGenerator + Test/Media call sessions + inbound dispatcher +
+# tool registry + Null/Fallback carriers, and the three carrier bindings driven
+# over a deterministic fake HTTP transport
+add_circle_test(test_telephony)

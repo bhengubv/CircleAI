@@ -62,6 +62,58 @@ add_library(circle_ai STATIC
     src/host_bridge.c
     src/host_mcp.c
     src/host_multiplayer.c
+    # Security peer-intelligence pipeline — local immune system + peer trust layer
+    src/watchdog.c
+    src/peer_security.c
+    # Aether contracts + AetherNet bindings (CircleAI.Aether / .AetherNet / .Security.AetherNet)
+    src/aether.c
+    src/mesh_capability.c
+    src/aethernet_security.c
+    # Safety guardrails + alignment + safety-domain boards (CircleAI.ContentPolicy / .ModelAlignment / .Safety / .Safety.Child)
+    src/content_policy.c
+    src/model_alignment.c
+    src/safety.c
+    src/safety_child.c
+    # CircleAI.Networking — unified transport abstraction + in-memory impls
+    src/networking.c
+    # CircleAI.Networking transports A — AetherNet / Bluetooth / DTN / gRPC / HTTP
+    src/net_sync_delta.c
+    src/net_aether.c
+    src/net_bluetooth.c
+    src/net_dtn.c
+    src/net_grpc.c
+    src/net_http.c
+    # CircleAI.Networking transports B — Mqtt / NearLink / Tcp / WebSocket / WiFi
+    src/net_mqtt.c
+    src/net_nearlink.c
+    src/net_tcp.c
+    src/net_websocket.c
+    src/net_wifi.c
+    # CircleAI.Speech / .Speech.Cloud / .Voice — ASR/TTS/wake-word/VAD/AEC/denoise
+    # + intent router + voice pipeline (deterministic in-memory impls)
+    src/speech.c
+    src/speech_cloud.c
+    src/voice.c
+    # CircleAI.Vision / .Vision.Cloud / .Video — vision detection + media generation
+    # (native CV + HTTP image/video generators injected behind vtable seams)
+    src/vision.c
+    src/vision_cloud.c
+    src/video.c
+    # CircleAI.Media / .MediaHub — asset catalog + media-server (item library +
+    # synced-playback pub/sub) — and CircleAI.Realtime / .Realtime.Cloud — the
+    # streaming realtime-AI surface (loopback session/service + injected transport)
+    src/media.c
+    src/realtime.c
+    # CircleAI.Telephony (+ .Twilio / .Telnyx / .Plivo) — carrier-agnostic
+    # telephony contract surface (primitives, DtmfToneGenerator, IMediaStream,
+    # ICallSession, IInboundCallDispatcher, IToolCallRegistry, ITelephonyCarrier
+    # + Null/Fallback) and the three real carrier bindings over an injected HTTP
+    # transport (no real network)
+    src/telephony.c
+    src/telephony_carrier_util.c
+    src/telephony_twilio.c
+    src/telephony_telnyx.c
+    src/telephony_plivo.c
 )
 target_include_directories(circle_ai PUBLIC include)
 
