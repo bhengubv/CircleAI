@@ -117,6 +117,18 @@ public protocol IChatGenerator: AnyObject {
     /// (RT-02) Load a previously-saved session from `path`. Returns `true`
     /// on success. Default implementation returns `false`.
     func loadSession(path: String) async throws -> Bool
+
+    /// Structured-response variant: the assistant reply alongside token counts,
+    /// finish reason, and latency. Default implementation (in the extension
+    /// below) wraps `generate` with an approximate token count and `.stop`;
+    /// native / deterministic generators override to report exact values and to
+    /// surface `ChatResponse.reasoningContent`. A protocol requirement (not just
+    /// an extension) so the override is dynamically dispatched — matching the
+    /// C# `GenerateResponseAsync` virtual method.
+    func generateResponse(
+        messages: [ChatMessage],
+        options: GenerationOptions?
+    ) async throws -> ChatResponse
 }
 
 extension IChatGenerator {
@@ -139,4 +151,24 @@ extension IChatGenerator {
 
     public func saveSession(path: String) async throws -> Bool { false }
     public func loadSession(path: String) async throws -> Bool { false }
+
+    /// Default structured-response: wraps `generate` with an approximate token
+    /// count (1 token ≈ 4 chars) and `.stop`. Overridden by generators that can
+    /// report real counts (e.g. `LocalChatGenerator`).
+    public func generateResponse(
+        messages: [ChatMessage],
+        options: GenerationOptions?
+    ) async throws -> ChatResponse {
+        let started = Date()
+        let text = try await generate(messages: messages, options: options)
+        let latencyMs = Date().timeIntervalSince(started) * 1000.0
+        let tokensIn = LocalChatGenerator.approximateTokens(messages)
+        let tokensOut = LocalChatGenerator.approximateTokens(text)
+        return ChatResponse(
+            text: text,
+            tokensIn: tokensIn,
+            tokensOut: tokensOut,
+            latencyMs: latencyMs,
+            finishReason: .stop)
+    }
 }

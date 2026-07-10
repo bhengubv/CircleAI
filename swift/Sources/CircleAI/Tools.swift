@@ -68,14 +68,17 @@ public struct ToolResult: @unchecked Sendable {
     public var toolName: String
     public var success: Bool
     /// The return value (any JSON-compatible type). nil on failure.
-    public var result: (any Sendable)?
+    /// Held as `Any?` (not `any Sendable`) so a deserialized JSON value can be
+    /// carried through without a marker-protocol cast; the struct is
+    /// `@unchecked Sendable` to vouch for it. Mirrors the C# `object?` shape.
+    public var result: Any?
     /// Error message when success == false.
     public var error: String?
 
     public init(
         toolName: String,
         success: Bool,
-        result: (any Sendable)? = nil,
+        result: Any? = nil,
         error: String? = nil
     ) {
         self.toolName = toolName
@@ -90,7 +93,7 @@ public struct ToolResult: @unchecked Sendable {
     }
 
     /// Convenience factory for a successful tool result.
-    public static func ok(toolName: String, result: (any Sendable)? = nil) -> ToolResult {
+    public static func ok(toolName: String, result: Any? = nil) -> ToolResult {
         ToolResult(toolName: toolName, success: true, result: result)
     }
 }

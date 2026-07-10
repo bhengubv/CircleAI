@@ -137,3 +137,41 @@ public final class InMemoryFeedbackStore: IFeedbackStore, @unchecked Sendable {
         return Double(pos) / Double(signals.count)
     }
 }
+
+/// In-memory `IGoalStore`. Keyed by goal id; `list`/`getActive` filter by
+/// userId. `upsert` inserts or replaces and returns the stored goal (a value
+/// type, so callers get the canonical copy back). Ported from Circle.AI.Memory
+/// — the C# reference. In-memory; persistence is a later slice.
+public final class InMemoryGoalStore: IGoalStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var goals: [String: Goal] = [:]
+
+    public init() {}
+
+    public func list(userId: String) async throws -> [Goal] {
+        lock.lock(); defer { lock.unlock() }
+        return goals.values.filter { $0.userId == userId }
+    }
+
+    public func get(id: String) async throws -> Goal? {
+        lock.lock(); defer { lock.unlock() }
+        return goals[id]
+    }
+
+    @discardableResult
+    public func upsert(_ goal: Goal) async throws -> Goal {
+        lock.lock(); defer { lock.unlock() }
+        goals[goal.id] = goal
+        return goal
+    }
+
+    public func delete(id: String) async throws {
+        lock.lock(); defer { lock.unlock() }
+        goals[id] = nil
+    }
+
+    public func getActive(userId: String) async throws -> [Goal] {
+        lock.lock(); defer { lock.unlock() }
+        return goals.values.filter { $0.userId == userId && $0.status == .active }
+    }
+}

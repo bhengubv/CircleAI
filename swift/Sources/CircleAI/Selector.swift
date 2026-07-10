@@ -16,6 +16,8 @@ public struct ChatCapability: OptionSet, Sendable, Equatable {
     public static let vision = ChatCapability(rawValue: 4)
     public static let longContext = ChatCapability(rawValue: 8)
     public static let reasoning = ChatCapability(rawValue: 16)
+    /// (3.1.0) Model generates short videos from a text prompt.
+    public static let video = ChatCapability(rawValue: 32)
 }
 
 public struct ModelSelection: Sendable, Equatable {
