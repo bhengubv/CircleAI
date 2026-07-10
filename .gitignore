@@ -365,3 +365,12 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd*.json.bak
+build-parity/
+c/build-parity/
+**/target/
+**/node_modules/
+**/.build/
+**/__pycache__/
+kotlin/build/
+kotlin/.gradle/
+*.mnn
