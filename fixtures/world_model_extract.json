@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "input": "{\u0022a\u0022:\u0022x\u0022,\u0022b\u0022:\u0022y\u0022}",
+      "expected": [
+        "a=x",
+        "b=y"
+      ]
+    },
+    {
+      "input": "{\u0022n\u0022:42,\u0022f\u0022:3.5,\u0022b\u0022:true,\u0022z\u0022:false}",
+      "expected": [
+        "n=42",
+        "f=3.5",
+        "b=True",
+        "z=False"
+      ]
+    },
+    {
+      "input": "{\u0022nul\u0022:null}",
+      "expected": [
+        "nul="
+      ]
+    },
+    {
+      "input": "[1,2]",
+      "expected": []
+    },
+    {
+      "input": "garbage",
+      "expected": []
+    }
+  ]
+}

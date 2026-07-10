@@ -1,0 +1,41 @@
+{
+  "_comment": "Cross-language vectors for KeywordEmotionSensor.Sense. Weighted arousal/valence over keyword hits; top label = highest match count (first-defined wins ties). Patterns: joy(0.8,0.9) anger(0.9,-0.8) sad(0.3,-0.7) fear(0.85,-0.6) surprise(0.7,0.3) calm(0.1,0.5). No hit => neutral(0,0). epsilon=1e-9.",
+  "epsilon": 1e-9,
+  "cases": [
+    {
+      "id": "no_keyword_neutral",
+      "fusedJson": "{\"text\":\"the meeting is at noon\"}",
+      "expectedLabel": "neutral",
+      "expectedArousal": 0.0,
+      "expectedValence": 0.0
+    },
+    {
+      "id": "single_joy",
+      "fusedJson": "{\"text\":\"I feel so happy today\"}",
+      "expectedLabel": "joy",
+      "expectedArousal": 0.8,
+      "expectedValence": 0.9
+    },
+    {
+      "id": "single_anger",
+      "fusedJson": "I am furious and annoyed",
+      "expectedLabel": "anger",
+      "expectedArousal": 0.9,
+      "expectedValence": -0.8
+    },
+    {
+      "id": "two_joy_one_sad_top_joy",
+      "fusedJson": "happy joy but a little sad",
+      "expectedLabel": "joy",
+      "expectedArousal": 0.6333333333333333,
+      "expectedValence": 0.36666666666666664
+    },
+    {
+      "id": "calm_only",
+      "fusedJson": "everything is calm and peaceful and relaxed",
+      "expectedLabel": "calm",
+      "expectedArousal": 0.1,
+      "expectedValence": 0.5
+    }
+  ]
+}

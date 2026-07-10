@@ -1,0 +1,41 @@
+{
+  "epsilon": 1E-09,
+  "cases": [
+    {
+      "target": "alice",
+      "interactionHistoryJson": "Alice thinks the deadline is unrealistic. She believes the team needs more time. She also wants a raise.",
+      "expectedLikelyBeliefJson": "{\u0022thinks:the deadline is unrealistic\u0022:0.7,\u0022believes:the team needs more time\u0022:0.9090909090909091,\u0022wants:a raise\u0022:0.5833333333333334}",
+      "expectedConfidence": 0.4384848484848485
+    },
+    {
+      "target": "bob",
+      "interactionHistoryJson": "Bob fears the launch will fail! He hopes it succeeds; he thinks marketing is weak.",
+      "expectedLikelyBeliefJson": "{\u0022fears:the launch will fail\u0022:0.7,\u0022hopes:it succeeds\u0022:0.6363636363636364,\u0022thinks:marketing is weak\u0022:0.5833333333333334}",
+      "expectedConfidence": 0.38393939393939397
+    },
+    {
+      "target": "carol",
+      "interactionHistoryJson": "Carol believes X. Carol believes X. Carol believes X.",
+      "expectedLikelyBeliefJson": "{\u0022believes:X\u0022:2.7424242424242427}",
+      "expectedConfidence": 0.5484848484848486
+    },
+    {
+      "target": "dave",
+      "interactionHistoryJson": "Dave is happy today. Nothing to infer here.",
+      "expectedLikelyBeliefJson": "{}",
+      "expectedConfidence": 0
+    },
+    {
+      "target": "erin",
+      "interactionHistoryJson": "Erin wants tea \u0026 coffee \u003Cboth\u003E.",
+      "expectedLikelyBeliefJson": "{\u0022wants:tea \\u0026 coffee \\u003Cboth\\u003E\u0022:0.7}",
+      "expectedConfidence": 0.13999999999999999
+    },
+    {
+      "target": "frank",
+      "interactionHistoryJson": "",
+      "expectedLikelyBeliefJson": "{}",
+      "expectedConfidence": 0
+    }
+  ]
+}

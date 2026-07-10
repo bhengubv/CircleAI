@@ -1,0 +1,94 @@
+{
+  "_comment": "Cross-language vectors for CronExpression (5-field: minute hour dom month dow; dow 0=Sun..6=Sat; dom AND dow both match). All times UTC, RFC3339. next = first match strictly after 'after'. matches[] assert exact Matches(moment) booleans.",
+  "parse_ok": [
+    "* * * * *",
+    "0 6 * * *",
+    "30 6,18 * * *",
+    "*/15 * * * *",
+    "0 9 * * 1-5",
+    "0 0 1 1 *"
+  ],
+  "parse_error": [
+    "* * * *",
+    "* * * * * *",
+    "60 * * * *",
+    "* 24 * * *",
+    "0 0 0 1 *",
+    "0 0 32 1 *",
+    "0 0 1 13 *",
+    "0 0 1 1 7",
+    "5-1 * * * *",
+    "*/0 * * * *",
+    "abc * * * *"
+  ],
+  "next": [
+    {
+      "id": "every_minute",
+      "expr": "* * * * *",
+      "after": "2026-07-08T10:00:30Z",
+      "expected": "2026-07-08T10:01:00Z"
+    },
+    {
+      "id": "top_of_hour",
+      "expr": "0 * * * *",
+      "after": "2026-07-08T10:15:00Z",
+      "expected": "2026-07-08T11:00:00Z"
+    },
+    {
+      "id": "daily_0600",
+      "expr": "0 6 * * *",
+      "after": "2026-07-08T10:00:00Z",
+      "expected": "2026-07-09T06:00:00Z"
+    },
+    {
+      "id": "twice_daily_before_first",
+      "expr": "30 6,18 * * *",
+      "after": "2026-07-08T05:00:00Z",
+      "expected": "2026-07-08T06:30:00Z"
+    },
+    {
+      "id": "twice_daily_between",
+      "expr": "30 6,18 * * *",
+      "after": "2026-07-08T06:30:00Z",
+      "expected": "2026-07-08T18:30:00Z"
+    },
+    {
+      "id": "step_15",
+      "expr": "*/15 * * * *",
+      "after": "2026-07-08T10:07:00Z",
+      "expected": "2026-07-08T10:15:00Z"
+    },
+    {
+      "id": "weekday_0900_from_saturday",
+      "expr": "0 9 * * 1-5",
+      "after": "2026-07-11T12:00:00Z",
+      "expected": "2026-07-13T09:00:00Z"
+    },
+    {
+      "id": "new_year_midnight",
+      "expr": "0 0 1 1 *",
+      "after": "2026-07-08T00:00:00Z",
+      "expected": "2027-01-01T00:00:00Z"
+    }
+  ],
+  "matches": [
+    {
+      "id": "weekday_match_wed",
+      "expr": "0 9 * * 1-5",
+      "moment": "2026-07-08T09:00:00Z",
+      "expected": true
+    },
+    {
+      "id": "weekday_no_match_sunday",
+      "expr": "0 9 * * 1-5",
+      "moment": "2026-07-12T09:00:00Z",
+      "expected": false
+    },
+    {
+      "id": "dom_and_dow_must_both_hold",
+      "expr": "0 0 8 * 0",
+      "moment": "2026-07-08T00:00:00Z",
+      "expected": false
+    }
+  ]
+}

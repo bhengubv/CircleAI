@@ -1,0 +1,24 @@
+{
+  "_comment": "Cross-language assertions for ExternalCapabilityRegistry. Order-sensitive: 'ids' must equal All in order. 'byPackage' asserts membership counts. 'find' asserts case-insensitive lookup + a spot-check field.",
+  "expectedCount": 30,
+  "ids": [
+    "claude-mem", "Amphion", "superpowers", "GitNexus", "PhoneHarness", "yapsnap",
+    "json-render", "last30days", "gstack", "Sponsio", "aimangastudio",
+    "ai-resume-analyzer", "Agent-Reach", "career-ops", "presenton",
+    "show-me-the-money", "Understand-Anything", "dexter", "quant-mind",
+    "Anthropic-Cybersecurity-Skills", "HippoRAG", "Observer AI", "Bluehound",
+    "skylight", "turbovec", "flame", "kagent", "airllm", "shard", "awesome-design-md"
+  ],
+  "byPackage": [
+    { "package": "CircleAI.Speech", "count": 2, "ids": ["Amphion", "yapsnap"] },
+    { "package": "CircleAI.Games", "count": 2, "ids": ["aimangastudio", "flame"] },
+    { "package": "CircleAI.Inference", "count": 2, "ids": ["airllm", "shard"] },
+    { "package": "CircleAI.CodeUnderstanding", "count": 2, "ids": ["GitNexus", "Understand-Anything"] },
+    { "package": "CircleAI.NonExistent", "count": 0, "ids": [] }
+  ],
+  "find": [
+    { "query": "hipporag", "found": true, "id": "HippoRAG", "license": "MIT", "strategy": "wrap", "targetPackage": "CircleAI.Memory.HippoRAG" },
+    { "query": "CLAUDE-MEM", "found": true, "id": "claude-mem", "license": "MIT", "strategy": "pattern-port", "targetPackage": "CircleAI.Memory" },
+    { "query": "does-not-exist", "found": false }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "epsilon": 1E-09,
+  "nowUtc": "2026-01-05T08:00:00.0000000\u002B00:00",
+  "cases": [
+    {
+      "description": "horizon 120m from Mon 08:00Z",
+      "horizonMinutes": 120,
+      "expected": [
+        {
+          "description": "standup",
+          "expectedByUtc": "2026-01-05T09:00:00.0000000\u002B00:00",
+          "probability": 2
+        },
+        {
+          "description": "coffee",
+          "expectedByUtc": "2026-01-05T09:00:00.0000000\u002B00:00",
+          "probability": 1.5
+        }
+      ]
+    },
+    {
+      "description": "horizon 60m from Mon 08:00Z",
+      "horizonMinutes": 60,
+      "expected": [
+        {
+          "description": "coffee",
+          "expectedByUtc": "2026-01-05T08:30:00.0000000\u002B00:00",
+          "probability": 1.25
+        },
+        {
+          "description": "standup",
+          "expectedByUtc": "2026-01-05T08:30:00.0000000\u002B00:00",
+          "probability": 1
+        }
+      ]
+    },
+    {
+      "description": "horizon 30m from Mon 08:00Z",
+      "horizonMinutes": 30,
+      "expected": [
+        {
+          "description": "coffee",
+          "expectedByUtc": "2026-01-05T08:15:00.0000000\u002B00:00",
+          "probability": 1
+        }
+      ]
+    }
+  ]
+}

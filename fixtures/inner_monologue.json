@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "contextJson": "{\u0022error\u0022:\u0022disk full\u0022,\u0022code\u0022:500}",
+      "expectedSummary": "error : disk full , code :500",
+      "expectedDirection": "diagnose the failure first"
+    },
+    {
+      "contextJson": "{\u0022goal\u0022:\u0022ship release\u0022,\u0022eta\u0022:\u0022friday\u0022}",
+      "expectedSummary": "goal : ship release , eta : friday",
+      "expectedDirection": "advance toward the stated goal"
+    },
+    {
+      "contextJson": "{\u0022user\u0022:\u0022asked about pricing\u0022}",
+      "expectedSummary": "user : asked about pricing",
+      "expectedDirection": "respond to the user"
+    },
+    {
+      "contextJson": "{\u0022weather\u0022:\u0022sunny\u0022,\u0022temp\u0022:25}",
+      "expectedSummary": "weather : sunny , temp :25",
+      "expectedDirection": "gather more context"
+    },
+    {
+      "contextJson": "{\u0022a\u0022:1,\u0022b\u0022:2,\u0022c\u0022:3,\u0022d\u0022:4,\u0022e\u0022:5,\u0022f\u0022:6,\u0022g\u0022:7,\u0022h\u0022:8,\u0022i\u0022:9,\u0022j\u0022:10,\u0022k\u0022:11,\u0022l\u0022:12,\u0022m\u0022:13}",
+      "expectedSummary": "a :1, b :2, c :3, d :4, e :5, f :6,",
+      "expectedDirection": "gather more context"
+    },
+    {
+      "contextJson": "plain text no json",
+      "expectedSummary": "plain text no json",
+      "expectedDirection": "gather more context"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "_comment": "Cross-language vectors for TfEpisodicMemory. Recall scores episodes by term-overlap: score = sum over shared terms (len>=2, case-insensitive, split on non-alphanumeric) of q_tf * d_tf. Ordered desc, take N. Episodes indexed on Title + ' ' + ContentJson. NOTE: results with EQUAL scores have implementation-defined relative order (map iteration), so 'expectedIds' is asserted as a SET unless 'ordered' is true (used only when the top scores are strictly distinct).",
+  "episodes": [
+    { "id": "e1", "title": "Dentist appointment", "contentJson": "{\"note\":\"see the dentist dentist on friday about a filling\"}" },
+    { "id": "e2", "title": "Grocery run", "contentJson": "{\"note\":\"buy milk bread and eggs at the grocery store\"}" },
+    { "id": "e3", "title": "Checkup follow-up", "contentJson": "{\"note\":\"one dentist follow-up next month\"}" },
+    { "id": "e4", "title": "Gym session", "contentJson": "{\"note\":\"leg day at the gym\"}" }
+  ],
+  "recalls": [
+    {
+      "id": "dentist_ranks_both_ordered",
+      "query": "dentist",
+      "take": 10,
+      "ordered": true,
+      "expectedIds": ["e1", "e3"]
+    },
+    {
+      "id": "grocery_single",
+      "query": "grocery milk",
+      "take": 10,
+      "ordered": false,
+      "expectedIds": ["e2"]
+    },
+    {
+      "id": "no_overlap_empty",
+      "query": "spaceship rocket",
+      "take": 10,
+      "ordered": false,
+      "expectedIds": []
+    },
+    {
+      "id": "take_limits_to_top",
+      "query": "dentist",
+      "take": 1,
+      "ordered": true,
+      "expectedIds": ["e1"]
+    }
+  ]
+}

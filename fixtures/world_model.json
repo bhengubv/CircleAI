@@ -1,0 +1,64 @@
+{
+  "epsilon": 1E-09,
+  "cases": [
+    {
+      "description": "rain likely from grey\u002Bhigh",
+      "scenarioJson": "{\u0022sky\u0022:\u0022grey\u0022,\u0022humidity\u0022:\u0022high\u0022}",
+      "expectedOutcome": "rain",
+      "expectedProbability": 0.8,
+      "expectedSupporters": [
+        "sky=grey",
+        "humidity=high"
+      ]
+    },
+    {
+      "description": "sunny from blue",
+      "scenarioJson": "{\u0022sky\u0022:\u0022blue\u0022}",
+      "expectedOutcome": "sunny",
+      "expectedProbability": 1,
+      "expectedSupporters": [
+        "sky=blue"
+      ]
+    },
+    {
+      "description": "no evidence -\u003E unknown 0.5",
+      "scenarioJson": "{\u0022planet\u0022:\u0022mars\u0022}",
+      "expectedOutcome": "unknown",
+      "expectedProbability": 0.5,
+      "expectedSupporters": []
+    },
+    {
+      "description": "non-object -\u003E unknown 0.5",
+      "scenarioJson": "[1,2,3]",
+      "expectedOutcome": "unknown",
+      "expectedProbability": 0.5,
+      "expectedSupporters": []
+    },
+    {
+      "description": "bad json -\u003E unknown 0.5",
+      "scenarioJson": "{not json",
+      "expectedOutcome": "unknown",
+      "expectedProbability": 0.5,
+      "expectedSupporters": []
+    },
+    {
+      "description": "numeric\u002Bbool values stringify",
+      "scenarioJson": "{\u0022traffic\u0022:\u0022heavy\u0022}",
+      "expectedOutcome": "late",
+      "expectedProbability": 1,
+      "expectedSupporters": [
+        "traffic=heavy"
+      ]
+    },
+    {
+      "description": "mixed match uses combined tally",
+      "scenarioJson": "{\u0022sky\u0022:\u0022blue\u0022,\u0022traffic\u0022:\u0022heavy\u0022}",
+      "expectedOutcome": "sunny",
+      "expectedProbability": 0.75,
+      "expectedSupporters": [
+        "sky=blue",
+        "traffic=heavy"
+      ]
+    }
+  ]
+}
