@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -52,3 +53,35 @@ class ToolResult:
     def failure(tool_name: str, error: str) -> "ToolResult":
         """Convenience factory for a failed tool result."""
         return ToolResult(tool_name=tool_name, success=False, error=error)
+
+
+class IToolBridge(ABC):
+    """Bridge between the local LLM and host/network tool APIs.
+
+    Implementations route tool calls to the appropriate client (HTTP,
+    in-process service, etc.). Mirrors ``CircleAI.Tools.IToolBridge``.
+    """
+
+    @property
+    @abstractmethod
+    def available_tools(self) -> list[ToolDefinition]:
+        """Synchronous list of tools exposed by this bridge."""
+        ...
+
+    @abstractmethod
+    async def invoke_async(
+        self,
+        invocation: ToolInvocation,
+        *,
+        ct: Optional[object] = None,
+    ) -> ToolResult:
+        """Execute a tool call and return the result."""
+        ...
+
+    async def get_available_tools_async(
+        self, *, ct: Optional[object] = None
+    ) -> list[ToolDefinition]:
+        """Return tools, optionally querying the remote service. Default
+        returns :attr:`available_tools` (the C# default-interface-method).
+        """
+        return self.available_tools

@@ -76,6 +76,29 @@ from .consolidation import (
     monday_of,
     month_first_day_of,
 )
+# ── sync (companion-state convergent sync layer) ──────────────────────────────
+from .sync import (
+    CompanionConversationSyncBridge,
+    CompanionStateSyncEngine,
+    ConversationStateDelta,
+    HybridLogicalClock,
+    ICompanionStateChannel,
+    ICompanionStateSyncEngine,
+    ISyncableEntryStore,
+    InMemorySyncableEntryStore,
+    InProcessCompanionStateChannel,
+    InProcessSyncHub,
+    LoraAdapterSnapshot,
+    LoraAdapterSyncBridge,
+    PersonaStateSyncBridge,
+    RequestItem,
+    StateVectorEntry,
+    SyncEnvelope,
+    SyncEnvelopeKind,
+    SyncableEntry,
+)
+# ── runtime (memory-pipeline host orchestrator) ───────────────────────────────
+from .runtime import CompanionRuntime, CompanionRuntimeOptions
 
 __all__ = [
     "AffectState",
@@ -163,4 +186,26 @@ __all__ = [
     "day_key_of",
     "monday_of",
     "month_first_day_of",
+    # sync
+    "HybridLogicalClock",
+    "SyncableEntry",
+    "SyncEnvelope",
+    "SyncEnvelopeKind",
+    "StateVectorEntry",
+    "RequestItem",
+    "ISyncableEntryStore",
+    "InMemorySyncableEntryStore",
+    "ICompanionStateChannel",
+    "InProcessCompanionStateChannel",
+    "InProcessSyncHub",
+    "ICompanionStateSyncEngine",
+    "CompanionStateSyncEngine",
+    "PersonaStateSyncBridge",
+    "LoraAdapterSnapshot",
+    "LoraAdapterSyncBridge",
+    "CompanionConversationSyncBridge",
+    "ConversationStateDelta",
+    # runtime
+    "CompanionRuntime",
+    "CompanionRuntimeOptions",
 ]
