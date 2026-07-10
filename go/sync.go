@@ -1,6 +1,11 @@
 // sync.go
 //
-// SyncDeliveryMode, SyncDomainKeys, SyncDelta, ISyncChannel.
+// Ports the CircleAI.Networking cross-device continuity primitives:
+//   NetworkTypes.cs   -> SyncDeliveryMode (enum)
+//   SyncDomainKeys    -> SyncDomainKeys well-known constants
+//   SyncDelta.cs      -> SyncDelta (incl. optional SchedulingHint advisory)
+//   SchedulingHint.cs -> SchedulingHint
+//   ISyncChannel.cs   -> ISyncChannel
 //
 // The cross-device continuity primitive. Pushes memory/state deltas across
 // whatever transport is available: gRPC over 5G, BLE mesh via a neighbour,
@@ -58,6 +63,32 @@ var SyncDomainKeys = struct {
 }
 
 // ---------------------------------------------------------------------------
+// SchedulingHint — SchedulingHint.cs
+// ---------------------------------------------------------------------------
+
+// SchedulingHint is advisory scheduling information attached to a SyncDelta by
+// the Circle AI reasoning layer. The Aether transport is free to disregard these
+// hints — they are never a correctness constraint, only a performance advisory —
+// but honouring them minimises unnecessary wakeups and battery drain on
+// constrained devices. Ports the C# `sealed record SchedulingHint`.
+type SchedulingHint struct {
+	// PreferredPeerIds are device IDs strongly preferred as the first delivery
+	// targets (typically recently-active or nearby peers, derived from affect
+	// state or episodic memory). Empty means "no preference".
+	PreferredPeerIds []string
+
+	// SuggestedWindowUtc is the earliest UTC timestamp at which the transport
+	// should attempt delivery. When nil, the delta should be forwarded
+	// immediately; used to batch non-urgent syncs outside peak windows.
+	SuggestedWindowUtc *time.Time
+
+	// ConfidenceScore is how confident the AI layer is that these hints are
+	// accurate, in [0.0, 1.0]. Below 0.5 is a weak advisory (apply normal
+	// routing); above 0.8 is a strong advisory.
+	ConfidenceScore float32
+}
+
+// ---------------------------------------------------------------------------
 // SyncDelta
 // ---------------------------------------------------------------------------
 
@@ -93,6 +124,11 @@ type SyncDelta struct {
 
 	// CreatedAt is the UTC time when this delta was created.
 	CreatedAt time.Time
+
+	// SchedulingHint is an optional AI-layer routing advisory. nil means no
+	// hint (the C# `SchedulingHint? SchedulingHint = null` default). The
+	// transport may honour or ignore it; it is never a correctness constraint.
+	SchedulingHint *SchedulingHint
 }
 
 // ---------------------------------------------------------------------------
