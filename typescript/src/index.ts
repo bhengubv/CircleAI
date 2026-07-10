@@ -63,3 +63,22 @@ export * from "./embeddings/local/index.js";
 // companion session resolver, native-runtime status, bridge factory, in-memory
 // endpoint handlers, and the enterprise tenant/batch/shard/offload tier.
 export * from "./inference/server/index.js";
+
+// CircleAI.Aether — the one-way Aether↔BhenguAI boundary: telemetry events +
+// surface, presence/capability (IAetherContext), intelligence output
+// (IAetherIntelligence), the AI security-layer contract (IAISecurityLayer +
+// SecurityDirective), and the auth-challenge contract (IAuthChallenge), plus
+// deterministic in-memory implementations of each.
+export * from "./aether/index.js";
+
+// CircleAI.AetherNet — mesh capability discovery (RT-12 v1): advertisement
+// record, IMeshCapabilityRegistry + in-memory impl, and the broadcaster contract
+// (null + registry-backed loopback).
+export * from "./aethernet/index.js";
+
+// CircleAI.Security.AetherNet — AetherNet-specific security bindings: enum
+// mapper, MeshDirectiveStore + MeshSecurityGate, the AetherSecurityBridge
+// (IAISecurityLayer over SecurityLayerService), AetherIntelligenceAdapter
+// (IAetherIntelligence over PeerIntelligenceService), and the
+// MeshGatedCompanionSession decorator.
+export * from "./security/aethernet/index.js";
