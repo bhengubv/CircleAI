@@ -6,10 +6,13 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::excessive_precision)]
 
+pub mod aether;
+pub mod aethernet;
 pub mod agents;
 pub mod brain;
 pub mod catalog;
 pub mod companion;
+pub mod content_policy;
 pub mod device;
 pub mod embeddings;
 pub mod embeddings_local;
@@ -23,13 +26,19 @@ pub mod inference;
 pub mod inference_server;
 pub mod languages;
 pub mod memory;
+pub mod model_alignment;
 pub mod model_runtime;
 pub mod models;
 pub mod models_v15;
+pub mod networking;
+pub mod networking_transports;
 pub mod proactive;
 pub mod prompt;
 pub mod registry;
+pub mod safety;
+pub mod safety_child;
 pub mod security;
+pub mod security_aethernet;
 pub mod selector;
 pub mod sync;
 pub mod sync_service;
@@ -120,12 +129,88 @@ pub use memory::{
     PersonaStateSyncBridge, RequestItem, StateVectorEntry, SyncEnvelope, SyncEnvelopeKind,
     SyncableEntry,
 };
-pub use security::{AnomalySignal, ThreatVector};
+// CircleAI.Security — local immune system + transport-agnostic peer security
+// pipeline (flat access).
+pub use security::{
+    confidence_band, hash_redacted, redact_evidence, serialize_redacted, to_redacted_json,
+    AnomalyDispatchOutcome, AnomalyDispatchResult, AnomalySignal, DefaultAnomalyEventDispatcher,
+    DefaultSecurityWatchdog, DirectivePublisher, DirectiveSubscription, IAnomalyEventDispatcher,
+    IPeerDirectiveConsumer, IPeerIntelligence, IPeerSecurityEventFeed, IPeerSecurityLayer,
+    ISecurityWatchdog, KeyRingError, NodeTrustEntry, NodeTrustRegistry, PeerDirective,
+    PeerDirectiveKind, PeerIntelligenceService, PeerNetworkHealthReport, PeerRoutingAdvice,
+    PeerSecurityEvent, PeerSecurityEventKind, PeerSecurityPosture, PeerThreatAssessment,
+    PeerThreatLevel, PeerTrustScoreUpdate, SecurityCheckpoint, SecurityLayerService,
+    SecurityOptions, SecurityResponse, SecurityResponseKind, ThreatDetector, ThreatVector,
+    UhidKeyRing, RECOVERY_INTERVAL_SECONDS,
+};
 pub use models::{ChatMessage, DownloadProgress};
 pub use sync::{
     SyncDeliveryMode, SyncDelta, SyncDomainKeys, SyncReconciliation, VersionVector,
 };
 pub use sync_service::{IMemorySyncService, MemorySyncError, MemorySyncService};
+
+// CircleAI.Networking — the transport ABSTRACTION the 10 concrete transports
+// implement (flat access). `SyncDeliveryMode` is reused from `sync` (same type),
+// so it is not re-exported here; the networking `SyncDelta` (which carries a
+// `SchedulingHint`) is re-exported as `NetworkSyncDelta` to avoid clashing with
+// the `sync::SyncDelta` already re-exported above.
+pub use networking::{
+    BuiltPolicy, CascadeTransportSelector, ChannelSubscription, ConnectivityState, ContextHandler,
+    DefaultNetworkPolicy, DiscoverySubscription, IConnectivityMonitor, IMeshNetwork,
+    IMessageChannel, INetworkPolicy, INetworkTransport, IPayloadOptimiser, IPeerDiscovery,
+    ISyncChannel as INetworkSyncChannel, ITransportSelector, InMemoryMeshNetwork,
+    InMemoryMessageBus, InMemoryMessageChannel, InMemoryNetworkTransport, InMemoryPeerDiscovery,
+    InMemorySyncChannel, ManualConnectivityMonitor, MessageChannelError, MessagePriority,
+    NetworkContext, NetworkPayload, NetworkPolicyBuilder, PayloadHandler, PeerHandler, PeerInfo,
+    PeerRole, RlePayloadOptimiser, SchedulingHint, SyncDelta as NetworkSyncDelta, TransportError,
+    TransportKind, TransportSubscription, WatchSubscription, DEFAULT_CASCADE,
+};
+
+// CircleAI.Networking.{AetherNet,Bluetooth,Dtn,Grpc,Http} — concrete transports
+// implementing the networking core `INetworkTransport` (flat access). Wave
+// "Networking transports A". Each ports one C# transport package; the socket /
+// native / mesh / cloud dependency is injected behind a trait with a working
+// in-memory implementation. Wave "Networking transports B" adds
+// Mqtt/NearLink/Tcp/WebSocket/WiFi under the same discipline.
+pub use networking_transports::{
+    // AetherNet
+    AetherAvailability, AetherHopTelemetry, AetherNetworkTransport, AetherPacketSummary,
+    AetherPeer, AetherPeerDiscovery, AetherPeerKind, AetherSyncChannel, FixedAetherAvailability,
+    IAetherRouter, InMemoryAetherNetRegistry, InMemoryAetherRouter, AETHER_DTN_DEFAULT_TTL,
+    // Bluetooth
+    BluetoothCapabilityProfile, BluetoothCapabilityProfiles, BluetoothConnectionState,
+    BluetoothEndpointDescriptor, BluetoothNetworkTransport, BluetoothThroughputSample,
+    IBleGattAdapter, InMemoryBleGattAdapter, InMemoryBluetoothTransportRegistry, InboundSink,
+    // Dtn
+    DtnBundle, DtnCustodyRecord, DtnPriority, DtnSyncChannel, InMemoryDtnBundleStore,
+    DTN_DEFAULT_TTL,
+    // Grpc
+    GrpcCallSummary, GrpcChannelDescriptor, GrpcChannelState, GrpcNetworkTransport,
+    GrpcRetryPolicies, GrpcRetryPolicy, IGrpcChannel, InMemoryGrpcCallMetrics, InMemoryGrpcChannel,
+    GRPC_SEND_NOT_SUPPORTED,
+    // Http
+    HttpCacheKey, HttpEndpointDescriptor, HttpNetworkTransport, HttpPostRequest, HttpPostResult,
+    HttpRequestSummary, HttpSendError, HttpStatusFamily, IHttpMessageSender,
+    InMemoryHttpMessageSender, InMemoryHttpRequestMetrics,
+    // Mqtt (Wave B)
+    IMqttClient, InMemoryMqttBroker, InMemoryMqttClient, MqttClientDescriptor, MqttInboundSink,
+    MqttNetworkTransport, MqttPublish, MqttQos, MqttRetainedMessage, MqttTopicDescriptor,
+    // NearLink (Wave B)
+    INearLinkAdapter, InMemoryNearLinkAdapter, InMemoryNearLinkRegistry, NearLinkDevice,
+    NearLinkInboundSink, NearLinkPairingState, NearLinkPowerProfile, NearLinkSession,
+    NearLinkThroughputSample, NearLinkTransport,
+    // Tcp (Wave B)
+    ITcpConnection, InMemoryTcpConnection, InMemoryTcpConnectionRegistry, TcpConnectionState,
+    TcpEndpointDescriptor, TcpInboundSink, TcpKnownPorts, TcpNetworkTransport, TcpThroughputSample,
+    // WebSocket (Wave B)
+    IWebSocket, InMemoryWebSocket, InMemoryWebSocketSessionRegistry, WebSocketEndpointDescriptor,
+    WebSocketFrameSummary, WebSocketInboundSink, WebSocketLinkState, WebSocketMessageType,
+    WebSocketTransport,
+    // WiFi (Wave B)
+    IWiFiDatagramSocket, InMemoryWiFiDatagramSocket, WiFiDatagram, WiFiInboundSink,
+    WiFiNetworkTransport, WiFiPeerDiscovery, BEACON_MAGIC, BROADCAST_ADDR, DATA_PORT,
+    DISCOVERY_PORT,
+};
 pub use tools::{ToolDefinition, ToolInvocation, ToolParameter, ToolResult};
 
 // CircleAI.Core model-management runtime (flat access). `DownloadProgress` is
@@ -211,4 +296,75 @@ pub use hosting_mcp::{
 pub use hosting_multiplayer::{
     colour_for, EditOutcome, GuestPeerIdentity, HubBroadcast, IMultiplayerPeerIdentity,
     MultiplayerHub, PeerState,
+};
+
+// CircleAI.Aether — the five one-way BhenguAI ↔ Aether mesh contracts (flat
+// access). The aether `DirectiveSubscription` is re-exported as
+// `AetherDirectiveSubscription` to avoid clashing with the peer-security
+// `security::DirectiveSubscription`.
+pub use aether::{
+    AetherInstallLevel, AetherNetworkEvent, AetherNetworkEventKind, AetherNodeEvent,
+    AetherNodeEventKind, AetherNodeHealth, AetherRouteEvent, AetherRouteEventKind,
+    AetherSecurityEvent, AetherSecurityEventKind, AetherThreatLevel, AetherTransportEvent,
+    AetherTransportEventKind, AetherTransportKind, AetherVersion, AuthChallengeReason,
+    AuthChallengeResult, AuthMethod, IAISecurityLayer, IAetherContext, IAetherIntelligence,
+    IAetherTelemetry, IAetherTelemetryObserver, IAuthChallenge, ISecurityDirectiveConsumer,
+    InMemoryAISecurityLayer, InMemoryAetherIntelligence, InMemoryAetherTelemetry,
+    NetworkHealthReport, NullAetherTelemetry, PolicyAuthChallenge, RoutingAdvice,
+    SecurityDirective, SecurityDirectiveKind, SecurityPosture, StaticAetherContext,
+    TelemetrySubscription, ThreatAssessment, TrustScoreUpdate,
+};
+pub use aether::security_layer::DirectiveSubscription as AetherDirectiveSubscription;
+
+// CircleAI.AetherNet — mesh capability discovery + CircleAI ↔ AetherNet adapters
+// (flat access). Mesh-side `AetherNet*` boundary types stay under
+// `aethernet::mesh_extensibility::` to keep the flat namespace focused.
+pub use aethernet::{
+    AetherNetCompanionStateChannel, AetherNetContextAdapter, AetherNetDirectiveSink,
+    AetherNetInboundDirectiveBridge, AetherNetTelemetryAdapter, AiNetworkHealthReport,
+    AiRouteSuggestion, AiThreatLevel, CircleAiAetherNetAiProvider, IAetherNetAiProvider,
+    IAetherNetTelemetry, IMeshCapabilityBroadcaster, IMeshCapabilityRegistry,
+    IMeshSecurityDirectiveConsumer, IMessagingService, InMemoryMeshCapabilityRegistry,
+    InMemoryMeshTelemetry, InMemoryMessagingService, MeshCapabilityAdvertisement, MeshMessage,
+    MeshPacket, MeshSecurityDirective, MeshSecurityDirectiveKind, MessageStatus,
+    NullMeshCapabilityBroadcaster, RecordingMeshDirectiveConsumer, CURRENT_PROTOCOL_VERSION,
+};
+
+// CircleAI.Security.AetherNet — AetherNet-specific security bindings (flat
+// access).
+pub use security_aethernet::{
+    to_security_directive_kind, AetherIntelligenceAdapter, AetherSecurityBridge, GateDecision,
+    MeshDirectiveStore, MeshGatedCompanionSession, MeshGatedError, MeshSecurityBlockedError,
+    MeshSecurityGate,
+};
+
+// CircleAI.ContentPolicy — safety guardrails: content filter, refusal policy,
+// prompt-injection detector, safety audit log (flat access).
+pub use content_policy::{
+    CommonKeywordRules, IContentFilter, IPromptInjectionDetector, IRefusalPolicy, ISafetyAuditLog,
+    KeywordContentFilter, KeywordPromptInjectionDetector, KeywordRule, NullContentFilter,
+    NullPromptInjectionDetector, NullRefusalPolicy, NullSafetyAuditLog, SafetyAuditEntry,
+    SafetyFinding, SafetyVerdict, ThresholdRefusalPolicy,
+};
+
+// CircleAI.ModelAlignment — targeted-abliteration toolkit + publish auditor
+// (flat access).
+pub use model_alignment::{
+    AlignmentError, AlignmentProfile, AlignmentResult, IAlignmentAuditor, IAlignmentToolkit,
+    InMemoryAlignmentToolkit, NullAlignmentAuditor, NullAlignmentToolkit,
+    RefuseAlignedPublishAuditor,
+};
+
+// CircleAI.Safety — personal-safety domain pack: incident/hazard/contact board
+// + domain context + companion adapter (flat access).
+pub use safety::{
+    EmergencyContact, Hazard, ISafetyBoard, Incident, IncidentSeverity, InMemorySafetyBoard,
+    SafetyCompanionAdapter, SafetyDomainContext,
+};
+
+// CircleAI.Safety.Child — child-safeguarding domain pack: trusted-adult ring /
+// geofence / check-in board + domain context + companion adapter (flat access).
+pub use safety_child::{
+    haversine_meters, CheckIn, Geofence, IChildSafetyBoard, InMemoryChildSafetyBoard,
+    SafetyChildCompanionAdapter, SafetyChildDomainContext, TrustedAdult,
 };
