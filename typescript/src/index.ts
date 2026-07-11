@@ -121,6 +121,25 @@ export type {
 export type { HttpResponse } from "./hosting/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Voice — the on-device voice stack: AudioFormat, wake-word detection
+// (Null / energy-ASR / ONNX-KWS), voice-activity detection (Null / energy-RMS),
+// speech-to-text (Null / Whisper over an injected whisper.cpp context), text-to-
+// speech (Null / ONNX VITS), speaker identity + speech-emotion recognition (ONNX),
+// and the composed VoicePipeline. The ONNX runtime and whisper.cpp native deps
+// are injected behind IOnnxSession / IWhisperContext (deterministic, no native lib),
+// mirroring the embeddings backend-injection convention.
+//
+// NOTE: CircleAI.Voice's `TranscriptionResult` and `TranscribedEventArgs` collide
+// by name with the narrow briefing-subset variants that CircleAI.Companion.HerJarvis
+// already exports at the package root (its VoiceCompanionListener bridge). Under
+// `export *` TypeScript elides the ambiguous names, so the full CircleAI.Voice
+// definitions — the authoritative ones — are re-asserted below as the canonical
+// package-root binding; the companion subsets remain reachable via the ./companion
+// subpath. Mirrors the existing IAIService / Account / Activity disambiguation.
+export * from "./voice/index.js";
+export type { TranscriptionResult, TranscribedEventArgs } from "./voice/index.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Domain boards A — health / finance / legal / edu / commerce
 // Each is an I<Domain>Board + record types + a deterministic in-memory impl,
 // plus the vertical's static <Domain>DomainContext. Faithful ports of the
