@@ -98,6 +98,12 @@ pub mod wearable_biosignals;
 pub mod personality;
 // CircleAI.Federation — federated-learning round bookkeeping + averaging.
 pub mod federation;
+// CircleAI.Skills — persistent skill store + SKILL.md pack loader/importer.
+pub mod skills;
+// CircleAI.Distribution — file-sync contracts + 77 ubiquity rails.
+pub mod distribution;
+// CircleAI.Vision — face / document / plate / BLE contracts + ONNX backends.
+pub mod vision;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{
@@ -728,4 +734,111 @@ pub use ambient::{
 pub use wearable_biosignals::{
     BiosignalAffectMapper, BiosignalAggregator, BiosignalKind, BiosignalSample, BiosignalSnapshot,
     BiosignalStats, IBiosignalSource, NullBiosignalSource, RecordedBiosignalSource,
+};
+
+// CircleAI.Skills — persistent skill store + SKILL.md pack loader/importer (flat
+// access). `generate_slug`, `parse_skill_file`, `build_tarball_url`,
+// `sanitize_pack_name` are the free functions ported from C# static helpers.
+pub use skills::{
+    build_tarball_url, generate_slug, parse_skill_file, sanitize_pack_name, FileSkillStore,
+    ISkillStore, IPackDownloader, InMemorySkillStore, KnownSkillPacks, LocalCachePackDownloader,
+    ParsedSkill, SkillContextBuilder, SkillDetail, SkillDraft, SkillError, SkillPackAutoImporter,
+    SkillPackLoader, SkillPackManifest, SkillPackSource, SkillPackSourcesOptions, SkillSource,
+    SkillSummary,
+};
+
+// CircleAI.Distribution — file-sync contracts + the 77 ubiquity rails (flat
+// access). The ubiquity surface lived in the sibling C# namespace
+// `CircleAI.Distribution.Ubiquity`; it is inlined in `distribution.rs` and
+// re-exported flat here.
+pub use distribution::{
+    // Contracts + null impls
+    DistributionError, FileMetadata, IFileSync, IPeerAdvertiser, NullFileSync, NullPeerAdvertiser,
+    Peer,
+    // Distribution rails
+    AppStorePackage, DefaultCarrierPreloadCatalog, DefaultLinuxRepoFanout,
+    DefaultOemPreloadCatalog, DefaultPwaFallback, DefaultSideloadChannel, DeltaUpdate,
+    IAppStoreSubmitter, ICarrierPreloadCatalog, ILinuxRepoFanout, IOemPreloadCatalog, IPwaFallback,
+    ISideloadChannel, ISignedDeltaUpdater,
+    // Onboarding rails
+    DefaultAiPersonalityWizard, HouseholdMember, IAiPersonalityWizard, IFamilyOnboarding,
+    INoManualFirstRun, IPersonalDataImport, IPhonePinBiometricOnboarding, IVoiceLedSetup,
+    OnboardingSession, PersonalityChoice,
+    // Trust rails
+    DefaultBugBountyChannel, DefaultComplianceCertifications, DefaultPrivacyRegulationCompliance,
+    DefaultThirdPartySecurityAuditPublisher, DefaultVerifiablePrivacyProof, IBugBountyChannel,
+    IComplianceCertifications, IPerCallTransparency, IPrivacyRegulationCompliance,
+    IThirdPartySecurityAuditPublisher, IVerifiablePrivacyProof, TransparencyReceipt,
+    // Pricing rails
+    DefaultCarrierRevenueShare, DefaultPluginMarketplaceRevenueShare, DefaultPricingMatrix,
+    ICarrierRevenueShare, IPluginMarketplaceRevenueShare, IPricingMatrix, PricingTier,
+    // Localisation rails
+    DefaultCrossBorderCorridors, DefaultCulturalGreetings, DefaultCulturalNameRecogniser,
+    DefaultCurrencyFormatter, DefaultIndigenousKnowledgeProtocols, DefaultPhoneNumberFormatter,
+    DefaultSaServiceConnectors, ICrossBorderCorridors, ICulturalGreetings, ICulturalNameRecogniser,
+    ICurrencyFormatter, IIndigenousKnowledgeProtocols, IPhoneNumberFormatter, ISaServiceConnectors,
+    // Hardware rails
+    DefaultKaiOsSupport, DefaultLowCpuOptimization, DefaultLowRamPhoneSupport,
+    DefaultOfflineQueuedOperation, DefaultSmsFallback, DefaultUssdFallback, IKaiOsSupport,
+    ILowCpuOptimization, ILowRamPhoneSupport, IOfflineQueuedOperation, ISmsFallback, IUssdFallback,
+    SmsSent,
+    // Services rails
+    DefaultAccountingConnectorRegistry, DefaultBankingConnectorRegistry,
+    DefaultCalendarConnectorRegistry, DefaultCrmConnectorRegistry, DefaultEmailConnectorRegistry,
+    DefaultTelegramIntegration, DefaultWhatsAppIntegration, IAccountingConnectorRegistry,
+    IBankingConnectorRegistry, ICalendarConnectorRegistry, ICrmConnectorRegistry,
+    IEmailConnectorRegistry, ITelegramIntegration, IWhatsAppIntegration, TelegramOut, WhatsAppOut,
+    // Regulator rails
+    DefaultGlobalRegulatorEngagement, DefaultIcasaApprovalStatus, DefaultLawfulInterceptCompliance,
+    DefaultSarbSandboxStatus, DefaultTaxInvoiceRegistry, IGlobalRegulatorEngagement,
+    IIcasaApprovalStatus, ILawfulInterceptCompliance, ISarbSandboxStatus, ITaxInvoiceRegistry,
+    // Recovery rails
+    DefaultAccountCompromiseRecovery, DefaultDataPortabilityExport, DefaultInheritanceProtocol,
+    DefaultLostDeviceFlow, DefaultVerifiableWipe, IAccountCompromiseRecovery,
+    IDataPortabilityExport, IInheritanceProtocol, ILostDeviceFlow, IVerifiableWipe,
+    // Failure-mode rails
+    DefaultAbusiveEnvironmentMode, DefaultBrainUnreachableMode, DefaultImpairedUserMode,
+    DefaultNoInternetCacheTarget, DefaultPublicDisasterMode, DefaultStorageFullDegradationPolicy,
+    IAbusiveEnvironmentMode, IBrainUnreachableMode, IImpairedUserMode, INoInternetCacheTarget,
+    IPublicDisasterMode, IStorageFullDegradationPolicy,
+    // Cost rails
+    DefaultFreeTierCostCapping, DefaultLocalFirstRouting, DefaultPerCallCostCeiling,
+    DefaultSustainablePerUserCostMath, IFreeTierCostCapping, ILocalFirstRouting,
+    IPerCallCostCeiling, ISustainablePerUserCostMath,
+    // Network-effect rails
+    DefaultCrossProviderFederation, DefaultFamilyAiSharing, DefaultGroupNetworkEffects,
+    DefaultReferralProgramme, DefaultUserGrowthFlywheel, ICrossProviderFederation, IFamilyAiSharing,
+    IGroupNetworkEffects, IReferralProgramme, IUserGrowthFlywheel,
+    // Cultural rails
+    DefaultChildProtectionMode, DefaultIndigenousDataSovereignty, DefaultPublicTransparency,
+    DefaultQuietMode, DefaultReligiousAccommodation, DefaultThirdPartyHarmLiability,
+    IChildProtectionMode, IIndigenousDataSovereignty, IPublicTransparency, IQuietMode,
+    IReligiousAccommodation, IThirdPartyHarmLiability, LinkedEvidence, QuietWindow,
+    // Missing defaults (real in-memory impls)
+    DefaultAppStoreSubmitter, DefaultFamilyOnboarding, DefaultNoManualFirstRun,
+    DefaultPerCallTransparency, DefaultPersonalDataImport, DefaultPhonePinBiometricOnboarding,
+    DefaultSignedDeltaUpdater, DefaultVoiceLedSetup,
+};
+
+// CircleAI.Vision — face / document / plate / BLE contracts + ONNX backends
+// (flat access). The ONNX session + image decode are injected traits
+// ([`IOnnxSession`] / [`IImageSource`]); the letterbox + YOLO postprocess + NMS +
+// L2-normalise geometry is ported verbatim as free functions. `IFileSync`-style
+// null backends carry the fail-closed defaults.
+pub use vision::{
+    // Primitives
+    BluetoothAnomaly, BoundingBox, DetectedFace, DocumentField, DocumentVerificationResult,
+    FaceEmbedding, LandmarkPoint, LivenessResult, PlateRecognitionResult,
+    // Video capture
+    IVideoCapture, NullVideoCapture, VideoFrame, VideoPixelFormat,
+    // Contracts + null impls
+    AnomalyHandler, AnomalySubscription, IBluetoothAnomalyDetector, IComputerVisionRuntime,
+    IDocumentVerifier, IFaceDetector, IFaceEmbedder, IFaceLivenessDetector, IPlateRecognizer,
+    NullBluetoothAnomalyDetector, NullComputerVisionRuntime, NullDocumentVerifier,
+    NullFaceDetector, NullFaceEmbedder, NullFaceLivenessDetector, NullPlateRecognizer,
+    // ONNX backends + injected traits + ported geometry
+    clamp_region, iou, l2_normalise, letterbox_resize, non_max_suppression, postprocess_yolo,
+    to_tensor_rgb_normalised, IImageSource, IOnnxSession, OnnxFaceDetector,
+    OnnxFaceDetectorOptions, OnnxFaceEmbedder, OnnxFaceEmbedderOptions, OnnxPlateRecognizer,
+    OnnxPlateRecognizerOptions, RgbImage, VisionError,
 };
