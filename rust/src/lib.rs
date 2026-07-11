@@ -104,6 +104,12 @@ pub mod skills;
 pub mod distribution;
 // CircleAI.Vision — face / document / plate / BLE contracts + ONNX backends.
 pub mod vision;
+// CircleAI.Telephony — carrier-agnostic voice-loop surface + DSP + orchestration.
+pub mod telephony;
+// CircleAI.Workflows — durable-workflow contracts + the paca project/agent runtime.
+pub mod workflows;
+// CircleAI.Speech — ASR/TTS/wake-word/OCR contracts + VAD/EOT/AEC/NR/codec DSP.
+pub mod speech;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{
@@ -841,4 +847,87 @@ pub use vision::{
     to_tensor_rgb_normalised, IImageSource, IOnnxSession, OnnxFaceDetector,
     OnnxFaceDetectorOptions, OnnxFaceEmbedder, OnnxFaceEmbedderOptions, OnnxPlateRecognizer,
     OnnxPlateRecognizerOptions, RgbImage, VisionError,
+};
+
+// CircleAI.Telephony — carrier-agnostic voice-loop surface (flat access). The
+// carrier/session network + HTTP boundary is injected behind traits
+// (`ITelephonyCarrier` / `ICallSession` / `IHttpJsonClient`); the pure DSP
+// (`DtmfToneGenerator`, `AnsweringMachineDetector`, `HoldMusicMixer`,
+// `StereoCallRecorder`) and orchestration state machines are ported verbatim.
+// `AudioFrame`/`ToolDefinition`/`ToolInvocation`/`ToolResult` are re-exported with
+// a `Telephony`/`VoiceLoop` prefix to avoid clashing with the identically-named
+// `tools::`/`networking_transports::` items already re-exported above.
+pub use telephony::{
+    AgentHealthRow, AmdOptions, AmdVerdict, AnsweringMachineDetector,
+    AudioFrame as TelephonyAudioFrame, BargeInController, BargeInOptions, BargeInState,
+    BargeInTransition, BriefingSynthesiser, CallAgent, CallCostBreakdown, CallCostCalculator,
+    CallDirection, CallInfo, CallMediaFormat, CallPricing, CallSnapshot, CallStatus,
+    CarrierFallback, CircuitBreakerToolRegistry, CommonGuardrails, ConsultAnswer, ConsultEscalator,
+    ConsultRequest, DashboardSnapshot, DashboardSummary, DefaultAgentHandoffOrchestrator,
+    DefaultSpeculativeGenerator, DefaultToolCallRegistry, DefaultWarmTransferOrchestrator,
+    DtmfEvent, DtmfToneGenerator, EvalRunResult, EvalSession, EvalTurn, EvalTurnHandler,
+    EvalTurnResult, FirstMessagePreambleOptions, GuardrailAction, GuardrailResult, GuardrailRule,
+    Guardrails, HandoffResult, HoldMusicMixer, HttpMcpToolImporter, HttpWebhookConsultChannel,
+    IConsultChannel, IDashboardDataSource, IDtmfSendable, IFalseInterruptionTracker,
+    IHttpJsonClient, IInboundCallDispatcher, ILocalDevTunnel, IProvisionedNumberStore,
+    IToolCallRegistry, IToolProgressSink, ITelephonyCarrier, ICallSession, InMemoryHttpJsonClient,
+    InMemoryFalseInterruptionTracker, InMemoryProvisionedNumberStore, InMemorySpeechLifecycleBus,
+    InterruptionStats, IvrLoopDetector, IvrLoopVerdict, IvrRound, JudgeCompletion, JudgeDimension,
+    JudgeVerdict, LatencySnapshot, LatencyStage, LatencyTracker, LiveCallRow, LlmJudge,
+    LocalToolHandler, McpServerConfig, McpToolDescriptor, NullInboundCallDispatcher,
+    NullLocalDevTunnel, NullTelephonyCarrier, OutboundDialOptions, PhoneNumberProvisioner,
+    PromptVariableProvider, PromptVariableResolver, ProvisionError, ProvisionedNumber,
+    ReassuranceFillerOptions, ReassuranceVocabulary, RecentCallRow, RecordingToolProgressSink,
+    ResponseGenerator, SentenceChunker, SpanKind, SpanOutcome,
+    SpeechEventKind, SpeechLifecycleEvent, StaticLocalDevTunnel, StereoCallRecorder,
+    StreamingToolHandler, StreamingToolRunner, TelephonyError, TelephonySubscription,
+    TestCallSession, ToolBreakerState, ToolCallPolicy, ToolDefinition as VoiceLoopToolDefinition,
+    ToolInvocation as VoiceLoopToolInvocation, ToolProgressUpdate, ToolResult as VoiceLoopToolResult_,
+    TransferMode, VoiceLoopAsTool, VoiceLoopRunner, VoiceLoopSpan, VoiceLoopTelemetry,
+    VoiceLoopToolRequest, VoiceLoopToolResult, WarmTransferRequest, WarmTransferResult,
+};
+
+// CircleAI.Workflows — durable-workflow contracts + the paca project/agent/board/
+// doc/plugin/realtime/MCP/deploy/auth runtime (flat access). The
+// `WorkflowExecution`/durable-runner surface is trait-only; the paca stores are
+// deterministic in-memory. `HmacJwtAuthenticator`/`PacaApiKeyAuthenticator` port a
+// self-contained SHA-256 + HMAC-SHA256 (no crypto dep, like the Distribution
+// hashing submodule); the CSPRNG is the injected `ISecureRandom` boundary.
+pub use workflows::{
+    AgentCapabilities, AgentConversation, AgentGitIdentity, AgentLimits, AgentLlmConfig,
+    AgentMcpConfig, AgentProfile, AgentSystemPrompts, AgentTemplates, AgentTriggers, AllowAllPermissionCheck,
+    BoardView, CheckpointPayload, compare_semver, ConversationError, ConversationPermissions,
+    ConversationState, ConversationStep, ConversationStepSink, CounterSecureRandom, DocActivity,
+    DocLink, DocNode, DocVersion, HmacJwtAuthenticator, IConversationExecutor,
+    IPermissionCheck, IPluginRuntimeHost, IRealtimeBroadcaster, ISecureRandom,
+    IWorkflowDefinitionStore, IWorkflowRunner, IWorkflowState, InMemoryPacaMemberStore,
+    InMemoryPacaStore, InstalledPlugin, JwtPair, JwtPayload, McpTransportKind, MemberKind,
+    NullWorkflowDefinitionStore, NullWorkflowRunner, NullWorkflowState, PacaApiKeyAuthenticator,
+    PacaApiKeyRecord, PacaBoard, PacaConversationRuntime, PacaCoreMcpTools, PacaDeployArtifact,
+    PacaDeployMode, PacaDeployOverrides, PacaDeployer, PacaDocService, PacaMcpHandler, PacaMcpServer,
+    PacaMcpTool, PacaPluginRegistry, PacaProject, PacaRealtimeHub, PacaSkill, PacaSkillInstaller,
+    PacaSkillLibrary, PacaSprint, PacaTask, PluginExtensionPoint, PluginManifest,
+    PluginRegistryError, PluginResourceLimits, ProjectMember, QueryInvalidation, RealtimePacaEvent,
+    SkillTemplates as WorkflowSkillTemplates, SprintState, StatusColumn, TaskBoardMetadata,
+    WorkflowDefinition, WorkflowError, WorkflowExecution, WorkflowPhase,
+};
+
+// CircleAI.Speech — ASR/TTS/wake-word/OCR contracts + the (3.3.0) real DSP
+// backends (VAD/EOT/AEC/NR) + G.711 ↔ PCM-16 codec (flat access). The async
+// contracts carry an associated `Error`; the DSP traits are synchronous. The
+// native/ONNX model runners are the injected boundary; every shipped wrapper
+// falls back to the pure backend when no runner is wired. `AudioCodec` is
+// re-exported from the `audio_format` submodule.
+pub use speech::{
+    audio_format::{AudioCodec, AudioFormatConverter},
+    DeepFilterNetNoiseReducer, EndOfTurnResult, EnergyVoiceActivityDetector, IEchoCanceller,
+    IEchoCancellerModelRunner, IEndOfTurnDetector, INoiseReducer, INoiseReducerModelRunner,
+    IOpticalCharacterRecognizer, ISpeechRecognizer, ISpeechSynthesizer, ITurnModelRunner,
+    IVadModelRunner, IVoiceActivityDetector, IWakeWordDetector, KrispNoiseReducer,
+    NlmsEchoCanceller, NullEchoCanceller, NullEndOfTurnDetector, NullNoiseReducer,
+    NullOpticalCharacterRecognizer, NullSpeechRecognizer, NullSpeechSynthesizer,
+    NullVoiceActivityDetector, NullWakeWordDetector, OcrResult, OcrTextBlock,
+    RuleBasedEndOfTurnDetector, SileroVoiceActivityDetector, SmartTurnDetector, SpectralSubtractionNoiseReducer,
+    SpeechError, SynthesisResult, TranscribedSegment, TranscriptionResult, VadFrameResult,
+    WakeWordEvent, WebRtcEchoCanceller,
 };
