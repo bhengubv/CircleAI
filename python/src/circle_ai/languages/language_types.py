@@ -43,6 +43,19 @@ class DetectionResult:
     is_reliable: bool
 
 
+@dataclass(frozen=True)
+class ScriptNormalisationResult:
+    """Result of script normalisation.
+
+    Mirrors ``CircleAI.Languages.ScriptNormalisationResult`` —
+    ``record(string Input, string Normalised, LanguageTag DetectedLanguage)``.
+    """
+
+    input: str
+    normalised: str
+    detected_language: LanguageTag
+
+
 # Attach sentinel after class body to avoid forward-reference issues.
 _UNKNOWN = LanguageTag(
     bcp_tag="und",

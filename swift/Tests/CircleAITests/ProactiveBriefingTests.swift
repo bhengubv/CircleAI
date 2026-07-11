@@ -26,6 +26,13 @@ final class ProactiveBriefingTests: XCTestCase {
         var providerId: String { "fake-cal" }
         var isConfigured: Bool { true }
         func listEvents(fromUtc: Date, toUtc: Date) async throws -> [CalendarEvent] { events }
+        // Full-surface conformance (not exercised by the briefing tests): an
+        // in-memory calendar echoes a created event (assigning an id if blank)
+        // and treats delete of an unknown id as a no-op.
+        func createEvent(_ ev: CalendarEvent) async throws -> CalendarEvent {
+            ev.eventId.isEmpty ? ev.withEventId(UUID().uuidString) : ev
+        }
+        func deleteEvent(calendarId: String, eventId: String) async throws {}
     }
     final class FakeEmail: IEmailConnector, @unchecked Sendable {
         let msgs: [EmailMessage]
@@ -33,11 +40,25 @@ final class ProactiveBriefingTests: XCTestCase {
         var providerId: String { "fake-mail" }
         var isConfigured: Bool { true }
         func listUnread(max: Int) async throws -> [EmailMessage] { Array(msgs.prefix(max)) }
+        // Full-surface conformance: search filters the seeded messages by
+        // subject/body; markRead is a no-op against the immutable seed.
+        func search(query: String, max: Int) async throws -> [EmailMessage] {
+            Array(msgs.filter {
+                $0.subject.localizedCaseInsensitiveContains(query)
+                    || $0.bodyText.localizedCaseInsensitiveContains(query)
+            }.prefix(max))
+        }
+        func markRead(messageId: String) async throws {}
     }
     final class FakeWeather: IWeatherProvider, @unchecked Sendable {
         var providerId: String { "fake-wx" }
         func current(lat: Double, lon: Double) async throws -> WeatherSample {
             WeatherSample(atUtc: Date(), tempC: 21.4, feelsLikeC: 20.0, windKph: 12.6, condition: "Clear")
+        }
+        // Full-surface conformance: hourly repeats the current sample `hours`×.
+        func hourly(lat: Double, lon: Double, hours: Int) async throws -> [WeatherSample] {
+            let c = try await current(lat: lat, lon: lon)
+            return Array(repeating: c, count: max(0, hours))
         }
     }
     final class EchoSummarizer: IBriefingSummarizer, @unchecked Sendable {

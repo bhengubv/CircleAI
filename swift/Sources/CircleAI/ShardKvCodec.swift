@@ -86,6 +86,17 @@ struct DotNetRandom {
     mutating func nextDouble() -> Double {
         return Double(internalSample()) * (1.0 / Double(DotNetRandom.MBIG))
     }
+
+    /// Mirrors .NET `Random.Next(int minValue, int maxValue)` for ranges that
+    /// fit in `Int32` (`range <= Int32.max`), which is the only path CircleAI
+    /// ports exercise. Returns a value in `[minValue, maxValue)`.
+    mutating func next(_ minValue: Int, _ maxValue: Int) -> Int {
+        if minValue > maxValue { return minValue }
+        let range = Int64(maxValue) - Int64(minValue)
+        if range == 0 { return minValue }
+        // .NET: (int)(Sample() * range) + minValue, where Sample() == NextDouble().
+        return Int(nextDouble() * Double(range)) + minValue
+    }
 }
 
 // MARK: - ShardCompressedFrame — CircleAI.Core.Compression.ShardCompressedFrame

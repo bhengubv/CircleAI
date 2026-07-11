@@ -114,6 +114,122 @@ add_library(circle_ai STATIC
     src/telephony_twilio.c
     src/telephony_telnyx.c
     src/telephony_plivo.c
+    # Domain boards A — health/finance/legal/edu/commerce verticals
+    # (CircleAI.Healthcare / .Banking / .Legal / .Education / .Commerce +
+    # .Commerce.Accounting / .Finance / .Integration.PayFast / .Integration.Xero +
+    # .Personal.Finance / .Personal.Health / .Personal.Mental). Deterministic
+    # in-memory boards over linear arrays.
+    src/healthcare.c
+    src/banking.c
+    src/legal.c
+    src/education.c
+    src/commerce.c
+    src/commerce_accounting.c
+    src/commerce_finance.c
+    src/commerce_payfast.c
+    src/commerce_xero.c
+    src/personal_finance.c
+    src/personal_health.c
+    src/personal_mental.c
+    # Domain boards B — people/home/logistics verticals (CircleAI.CRM / .HR /
+    # .Business / .Retail / .Markets / .Logistics / .RealEstate / .Home / .IoT /
+    # .Family / .Parenting / .Pets / .Elderly). Deterministic in-memory boards +
+    # backends over linear arrays; Markets adds a subscribe/broadcast quote feed
+    # and an order router over the injected instrument catalog.
+    src/crm.c
+    src/hr.c
+    src/business.c
+    src/retail.c
+    src/markets.c
+    src/logistics.c
+    src/realestate.c
+    src/home.c
+    src/iot.c
+    src/family.c
+    src/parenting.c
+    src/pets.c
+    src/elderly.c
+    # Domain boards C — lifestyle/civic/misc verticals (CircleAI.Sports / .Fitness /
+    # .Food / .Agriculture / .Beauty / .Gaming / .Games / .Hospitality / .Tourism /
+    # .Travel / .Civic / .Community / .Social / .Relationships / .Faith /
+    # .Construction / .Energy / .Creative / .Kids / .Wearable / .Wearable.Biosignals
+    # / .Accessibility / .Ambient). Deterministic in-memory boards over linear
+    # arrays; Games + Biosignals add subscribe/replay cursors.
+    src/sports.c
+    src/fitness.c
+    src/food.c
+    src/agriculture.c
+    src/beauty.c
+    src/gaming.c
+    src/games.c
+    src/hospitality.c
+    src/tourism.c
+    src/travel.c
+    src/civic.c
+    src/community.c
+    src/social.c
+    src/relationships.c
+    src/faith.c
+    src/construction.c
+    src/energy.c
+    src/creative.c
+    src/kids.c
+    src/wearable.c
+    src/wearable_biosignals.c
+    src/accessibility.c
+    src/ambient.c
+
+    # CircleAI.Integration (+ .Calendar / .Email / .Geo / .HomeAssistant / .News)
+    # — external-integration contracts + deterministic in-memory provider impls
+    # (real HTTP connectors are injected dependencies, no real network)
+    src/integration.c
+    src/integration_calendar.c
+    src/integration_email.c
+    src/integration_geo.c
+    src/integration_home.c
+    src/integration_news.c
+
+    # Serving / agents / runtime work unit — CircleAI.Runtime (+ .Backends) /
+    # .Operator / .Orchestration / .Pipelines / .Plugins / .Skills / .Workflows /
+    # .MicroAgents / .Federation / .Distribution / .BuildFarm / .Collaboration /
+    # .AutonomousBiz. Deterministic in-memory boards + injected native/store/
+    # cloud seams. distribution.c carries a self-contained SHA-256 + HMAC.
+    src/runtime.c
+    src/operator.c
+    src/orchestration.c
+    src/pipelines.c
+    src/plugins.c
+    src/skills.c
+    src/workflows.c
+    src/microagents.c
+    src/federation.c
+    src/distribution.c
+    src/buildfarm.c
+    src/collaboration.c
+    src/autonomous_biz.c
+
+    # Knowledge / perception / dev-tools work unit — CircleAI.Knowledge / .Search /
+    # .Research / .Domain / .Personality / .Observer / .Observability / .Spatial /
+    # .Simulation / .Visualization / .Inputs / .CodeUnderstanding / .DevTools /
+    # .DepBot / .SDD / .DocAnalytics. Deterministic in-memory boards + injected
+    # scraper/native/store seams. (Embeddings + Embeddings.Local already ship in
+    # embedding_store.c.)
+    src/knowledge.c
+    src/search.c
+    src/research.c
+    src/domain.c
+    src/personality.c
+    src/observer.c
+    src/observability.c
+    src/spatial.c
+    src/simulation.c
+    src/visualization.c
+    src/inputs.c
+    src/code_understanding.c
+    src/devtools.c
+    src/depbot.c
+    src/sdd.c
+    src/doc_analytics.c
 )
 target_include_directories(circle_ai PUBLIC include)
 

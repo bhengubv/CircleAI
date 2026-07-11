@@ -48,12 +48,19 @@ public struct CalendarEvent: Sendable, Equatable {
     }
 }
 
-/// Calendar provider. Port of the briefing-relevant surface of
-/// `ICalendarConnector`.
+/// Calendar provider. Full surface of `CircleAI.Integration.ICalendarConnector`.
+///
+/// `listEvents` is the briefing-relevant read the ProactiveBriefingService uses;
+/// `createEvent` / `deleteEvent` complete the C# contract for the connector
+/// ports (CalDAV / Google / MS Graph) in IntegrationCalendar.swift.
 public protocol ICalendarConnector: AnyObject, Sendable {
     var providerId: String { get }
     var isConfigured: Bool { get }
     func listEvents(fromUtc: Date, toUtc: Date) async throws -> [CalendarEvent]
+    /// Create an event; returns the event with its provider id populated.
+    func createEvent(_ ev: CalendarEvent) async throws -> CalendarEvent
+    /// Delete an event by calendar + event id.
+    func deleteEvent(calendarId: String, eventId: String) async throws
 }
 
 /// An email message. Faithful port of `CircleAI.Integration.EmailMessage`.
@@ -80,11 +87,19 @@ public struct EmailMessage: Sendable, Equatable {
     }
 }
 
-/// Email provider. Port of the briefing-relevant surface of `IEmailConnector`.
+/// Email provider. Full surface of `CircleAI.Integration.IEmailConnector`.
+///
+/// `listUnread` is the briefing-relevant read; `search` / `markRead` complete
+/// the C# contract for the connector ports (Gmail / IMAP / MS Graph) in
+/// IntegrationEmail.swift.
 public protocol IEmailConnector: AnyObject, Sendable {
     var providerId: String { get }
     var isConfigured: Bool { get }
     func listUnread(max: Int) async throws -> [EmailMessage]
+    /// Search for up to `max` messages matching `query`.
+    func search(query: String, max: Int) async throws -> [EmailMessage]
+    /// Mark a message read by id.
+    func markRead(messageId: String) async throws
 }
 
 /// A news / social-feed item. Faithful port of `CircleAI.Integration.NewsItem`.
@@ -138,10 +153,15 @@ public struct WeatherSample: Sendable, Equatable {
     }
 }
 
-/// Weather provider. Port of the briefing-relevant surface of `IWeatherProvider`.
+/// Weather provider. Full surface of `CircleAI.Integration.IWeatherProvider`.
+///
+/// `current` is the briefing-relevant read; `hourly` completes the C# contract
+/// for the Open-Meteo port in IntegrationGeo.swift.
 public protocol IWeatherProvider: AnyObject, Sendable {
     var providerId: String { get }
     func current(lat: Double, lon: Double) async throws -> WeatherSample
+    /// Hourly forecast for the next `hours` hours at a coordinate.
+    func hourly(lat: Double, lon: Double, hours: Int) async throws -> [WeatherSample]
 }
 
 // =====================================================================

@@ -178,4 +178,143 @@
 #include "telephony_telnyx.h"
 #include "telephony_plivo.h"
 
+/* Domain boards A — deterministic in-memory verticals (CircleAI.Healthcare /
+ * .Banking / .Legal / .Education / .Commerce (+ .Accounting / .Finance /
+ * .Integration.PayFast / .Integration.Xero) / .Personal.Finance /
+ * .Personal.Health / .Personal.Mental). Each exposes an I<Domain>Board interface
+ * + record types over linear-array stores with deep-copy getters. */
+#include "healthcare.h"
+#include "banking.h"
+#include "legal.h"
+#include "education.h"
+#include "commerce.h"
+#include "commerce_accounting.h"
+#include "commerce_finance.h"
+#include "commerce_payfast.h"
+#include "commerce_xero.h"
+#include "personal_finance.h"
+#include "personal_health.h"
+#include "personal_mental.h"
+
+/* Domain boards B — deterministic in-memory verticals (CircleAI.CRM / .HR /
+ * .Business / .Retail / .Markets / .Logistics / .RealEstate / .Home / .IoT /
+ * .Family / .Parenting / .Pets / .Elderly). CRM ships IContactStore /
+ * IDealPipeline / IActivityLog; Markets ships IMarketDataFeed (subscribe/
+ * broadcast quotes) / IInstrumentCatalog / IOrderRouter (+ OrderSide/OrderType);
+ * the rest expose an I<Domain>Board interface + record types over linear-array
+ * stores with deep-copy getters. */
+#include "crm.h"
+#include "hr.h"
+#include "business.h"
+#include "retail.h"
+#include "markets.h"
+#include "logistics.h"
+#include "realestate.h"
+#include "home.h"
+#include "iot.h"
+#include "family.h"
+#include "parenting.h"
+#include "pets.h"
+#include "elderly.h"
+
+/* Domain boards C — lifestyle/civic/misc verticals (CircleAI.Sports / .Fitness /
+ * .Food / .Agriculture / .Beauty / .Gaming / .Games / .Hospitality / .Tourism /
+ * .Travel / .Civic / .Community / .Social / .Relationships / .Faith /
+ * .Construction / .Energy / .Creative / .Kids / .Wearable / .Wearable.Biosignals /
+ * .Accessibility / .Ambient). Each exposes an I<Domain>Board interface + record
+ * types over linear-array stores with deep-copy getters. Games ships IGameLoop /
+ * IInputMap / ISceneGraph (tick/input fan-out + node set); Wearable.Biosignals
+ * ships IBiosignalSource (Null + Recorded replay cursor) + BiosignalSample. */
+#include "sports.h"
+#include "fitness.h"
+#include "food.h"
+#include "agriculture.h"
+#include "beauty.h"
+#include "gaming.h"
+#include "games.h"
+#include "hospitality.h"
+#include "tourism.h"
+#include "travel.h"
+#include "civic.h"
+#include "community.h"
+#include "social.h"
+#include "relationships.h"
+#include "faith.h"
+#include "construction.h"
+#include "energy.h"
+#include "creative.h"
+#include "kids.h"
+#include "wearable.h"
+#include "wearable_biosignals.h"
+#include "accessibility.h"
+#include "ambient.h"
+
+/* CircleAI.Integration (+ .Calendar / .Email / .Geo / .HomeAssistant / .News) —
+ * the external-integration layer: the shared contracts (CalendarEvent /
+ * EmailMessage / NewsItem / WeatherSample / RouteEstimate / HaEntity + the
+ * ICalendarConnector / IEmailConnector / INewsSource / IWeatherProvider /
+ * IRoutingProvider / IHomeAutomationConnector vtables), plus deterministic
+ * in-memory implementations for each provider (CalDav/Google/MsGraph calendar,
+ * Gmail/Imap/MsGraph mail, OpenMeteo weather + Osrm routing, HomeAssistant, and
+ * the Bluesky/Mastodon/NewsApi/Rss news sources) — the real HTTP connectors are
+ * injected dependencies (no real network). */
+#include "integration.h"
+#include "integration_calendar.h"
+#include "integration_email.h"
+#include "integration_geo.h"
+#include "integration_home.h"
+#include "integration_news.h"
+
+/* Serving / agents / runtime work unit — CircleAI.Runtime (+ .Backends) /
+ * .Operator / .Orchestration / .Pipelines / .Plugins / .Skills / .Workflows /
+ * .MicroAgents / .Federation / .Distribution / .BuildFarm / .Collaboration /
+ * .AutonomousBiz. Deterministic in-memory boards + injected native/store/cloud
+ * seams (capability probe, native-runtime fetcher, pipeline/workflow runners,
+ * conversation + micro-agent executors, federation signature validator,
+ * skill-pack downloader). */
+#include "runtime.h"
+#include "operator.h"
+#include "orchestration.h"
+#include "pipelines.h"
+#include "plugins.h"
+#include "skills.h"
+#include "workflows.h"
+#include "microagents.h"
+#include "federation.h"
+#include "distribution.h"
+#include "buildfarm.h"
+#include "collaboration.h"
+#include "autonomous_biz.h"
+
+/* Knowledge / perception / dev-tools work unit — CircleAI.Knowledge / .Search /
+ * .Research / .Domain / .Personality / .Observer / .Observability / .Spatial /
+ * .Simulation / .Visualization / .Inputs / .CodeUnderstanding / .DevTools /
+ * .DepBot / .SDD / .DocAnalytics. Markdown knowledge notes + YAML frontmatter,
+ * cosine/tokenise search helpers, research corpora + citation graph, the Domain
+ * specialist seams (food/finance/presentation/job/mempalace/hippo/swarm/LoRA),
+ * user-declared Persona + conflict resolvers + prompt builder, the
+ * perceive-reason-act observation loop, metric/trace/dashboard sinks, geo/radar/
+ * sky/3D spatial sources, the network-health simulation engine + graph, dashboard/
+ * apidoc/site builders, input adapters (scraper/stealth/video/mcp/terminal-cast),
+ * code index/search/symbol-graph, dev-tool editor/suggester/agent-shell/patch-
+ * planner/refactor, dependency analyzer/updater, spec store/validator/scaffold,
+ * and document view tracking + insights. (Embeddings + Embeddings.Local ship in
+ * embedding_store.h.) */
+#include "knowledge.h"
+#include "search.h"
+#include "research.h"
+#include "domain.h"
+#include "personality.h"
+#include "observer.h"
+#include "observability.h"
+#include "spatial.h"
+#include "simulation.h"
+#include "visualization.h"
+#include "inputs.h"
+#include "code_understanding.h"
+#include "devtools.h"
+#include "depbot.h"
+#include "sdd.h"
+#include "doc_analytics.h"
+
 #endif /* CIRCLE_AI_H */

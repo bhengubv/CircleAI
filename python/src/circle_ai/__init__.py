@@ -805,6 +805,306 @@ from .safety_child import (
     SafetyChildDomainContext,
     TrustedAdult,
 )
+
+# ── Domain boards A (health / finance / legal / edu / commerce) ────────────────
+# Deterministic in-memory "board" packs — each an I<Domain>Board + record types
+# + a thread-safe in-memory implementation + static domain context. C# is spec.
+# The per-domain CompanionAdapters decorate CircleAI.Companion.ICompanionSession
+# (not part of the ported Python companion surface) and are intentionally omitted.
+
+# healthcare — patients / appointments / prescriptions
+from .healthcare import (
+    HealthAppointment,
+    HealthcareDomainContext,
+    IHealthcareBoard,
+    InMemoryHealthcareBoard,
+    Patient,
+    Prescription,
+)
+
+# banking — accounts / ledger / payments (Account exported flat; the personal-
+# finance Account is aliased below to avoid the name clash)
+from .banking import (
+    Account,
+    IAccountReader,
+    ILedgerWriter,
+    InMemoryAccountReader,
+    InMemoryBank,
+    InMemoryLedgerWriter,
+    InMemoryPaymentProcessor,
+    IPaymentProcessor,
+    LedgerEntry,
+    NullAccountReader,
+    NullLedgerWriter,
+    NullPaymentProcessor,
+    PaymentRequest,
+    PaymentResult,
+)
+
+# legal — matters / contracts / deadlines / clauses
+from .legal import (
+    Clause,
+    Contract,
+    ILegalBoard,
+    InMemoryLegalBoard,
+    LegalDeadline,
+    LegalDomainContext,
+    Matter,
+)
+
+# education — courses / lessons / student progress
+from .education import (
+    Course,
+    EducationDomainContext,
+    IEducationBoard,
+    InMemoryEducationBoard,
+    Lesson,
+    StudentRecord,
+)
+
+# commerce — customers / orders / line items / lifetime value
+from .commerce import (
+    CommerceCustomer,
+    CommerceDomainContext,
+    CommerceLineItem,
+    CommerceOrder,
+    ICommerceBoard,
+    InMemoryCommerceBoard,
+)
+
+# commerce_accounting — double-entry ledger / tax / periods / net profit
+from .commerce_accounting import (
+    AccountingEntry,
+    CommerceAccountingDomainContext,
+    IAccountingBoard,
+    InMemoryAccountingBoard,
+    Period,
+    TaxRate,
+)
+
+# commerce_finance — invoices / lines / payments / overdue / outstanding
+from .commerce_finance import (
+    CommerceFinanceDomainContext,
+    FinancePayment,
+    IInvoiceBoard,
+    InMemoryInvoiceBoard,
+    Invoice,
+    InvoiceLine,
+)
+
+# commerce_integration_payfast — MD5 signature / ITN / webhook recorder
+from .commerce_integration_payfast import (
+    CommerceIntegrationPayFastDomainContext,
+    InMemoryPayFastBoard,
+    IPayFastBoard,
+    PayFastConfig,
+    PayFastItnPayload,
+)
+
+# commerce_integration_xero — tokens / tenants / webhooks
+from .commerce_integration_xero import (
+    CommerceIntegrationXeroDomainContext,
+    InMemoryXeroBoard,
+    IXeroBoard,
+    XeroTenant,
+    XeroTokens,
+    XeroWebhookEvent,
+)
+
+# personal_finance — accounts / transactions / budgets / monthly summary
+# (Account clashes with banking.Account, so it is aliased PersonalFinanceAccount)
+from .personal_finance import Account as PersonalFinanceAccount
+from .personal_finance import (
+    BudgetLine,
+    FinanceTransaction,
+    InMemoryPersonalFinanceBoard,
+    IPersonalFinanceBoard,
+    MonthSummary,
+    PersonalFinanceDomainContext,
+)
+
+# personal_health — vitals / allergies / medications
+from .personal_health import (
+    Allergy,
+    InMemoryPersonalHealthBoard,
+    IPersonalHealthBoard,
+    Medication,
+    PersonalHealthDomainContext,
+    VitalKind,
+    VitalReading,
+)
+
+# personal_mental — mood logs / journal / coping strategies / 7-day trend
+from .personal_mental import (
+    CopingStrategy,
+    InMemoryMentalHealthBoard,
+    IMentalHealthBoard,
+    JournalEntry,
+    Mood,
+    MoodLog,
+    PersonalMentalDomainContext,
+)
+
+# ── Domain boards B (people / home / logistics) ───────────────────────────────
+# Deterministic in-memory "board" packs — each an I<Domain>Board (or an async
+# store contract) + record types + a thread-safe in-memory implementation +
+# static domain context. C# is spec. The per-domain CompanionAdapters (and the
+# IoT companion voice pipeline) decorate CircleAI.Companion.ICompanionSession
+# (not part of the ported Python companion surface) and are intentionally omitted.
+
+# crm — contacts / companies / deals / activities (async store contracts)
+from .crm import (
+    Activity,
+    Company,
+    Contact,
+    Deal,
+    IActivityLog,
+    IContactStore,
+    IDealPipeline,
+    InMemoryActivityLog,
+    InMemoryContactStore,
+    InMemoryDealPipeline,
+    NullActivityLog,
+    NullContactStore,
+    NullDealPipeline,
+)
+
+# hr — employees / leave / performance reviews
+from .hr import (
+    Employee,
+    HRDomainContext,
+    IHRBoard,
+    InMemoryHRBoard,
+    LeaveRequest,
+    PerformanceReview,
+)
+
+# business — business units / KPI samples / quarter targets
+from .business import (
+    BusinessDomainContext,
+    BusinessUnit,
+    IBusinessBoard,
+    InMemoryBusinessBoard,
+    KpiSample,
+    QuarterTarget,
+)
+
+# retail — products / stock / sales / daily summary
+from .retail import (
+    IRetailBoard,
+    InMemoryRetailBoard,
+    Product,
+    RetailDomainContext,
+    Sale,
+    StockLevel,
+)
+
+# markets — instruments / quotes / orders (feed + catalog + router, async)
+from .markets import (
+    IInstrumentCatalog,
+    IMarketDataFeed,
+    IOrderRouter,
+    Instrument,
+    InMemoryInstrumentCatalog,
+    InMemoryMarketDataFeed,
+    InMemoryOrderRouter,
+    NullInstrumentCatalog,
+    NullMarketDataFeed,
+    NullOrderRouter,
+    OrderRequest,
+    OrderResult,
+    OrderSide,
+    OrderType,
+    Quote,
+)
+from .markets import IDisposable as IMarketsDisposable
+
+# logistics — shipments / vehicles / route legs+plans
+from .logistics import (
+    ILogisticsBoard,
+    InMemoryLogisticsBoard,
+    LogisticsDomainContext,
+    RouteLeg,
+    RoutePlan,
+    Shipment,
+    Vehicle,
+)
+
+# real_estate — properties / listings / valuations / viewings
+from .real_estate import (
+    IRealEstateBoard,
+    InMemoryRealEstateBoard,
+    Listing,
+    Property,
+    PropertyKind,
+    RealEstateDomainContext,
+    Valuation,
+    Viewing,
+)
+
+# home — rooms / smart-home devices / maintenance tasks
+from .home import (
+    HomeDevice,
+    HomeDomainContext,
+    IHomeBoard,
+    InMemoryHomeBoard,
+    MaintenanceTask,
+    Room,
+)
+
+# iot — devices / telemetry / commands (no DomainContext in the C# assembly)
+from .iot import (
+    IIoTBoard,
+    InMemoryIoTBoard,
+    IoTCommand,
+    IoTDevice,
+    IoTTelemetry,
+)
+
+# family — members / shared events / shared expenses
+from .family import (
+    FamilyDomainContext,
+    FamilyEvent,
+    FamilyMember,
+    IFamilyBoard,
+    InMemoryFamilyBoard,
+    SharedExpense,
+)
+
+# parenting — children / milestones / school-day routines
+from .parenting import (
+    Child,
+    DayOfWeek,
+    IParentingBoard,
+    InMemoryParentingBoard,
+    Milestone,
+    ParentingDomainContext,
+    Routine,
+    RoutineEntry,
+)
+
+# pets — pets / vaccinations / weight history / vet appointments
+from .pets import (
+    IPetsBoard,
+    InMemoryPetsBoard,
+    Pet,
+    PetsDomainContext,
+    Vaccination,
+    VetAppointment,
+    WeightSample,
+)
+
+# elderly — care plans / med reminders / check-ins (CheckIn aliased to avoid the
+# safety_child.CheckIn clash, mirroring the personal_finance.Account handling)
+from .elderly import CheckIn as ElderlyCheckIn
+from .elderly import (
+    CarePlan,
+    ElderlyDomainContext,
+    IElderlyCareBoard,
+    InMemoryElderlyCareBoard,
+    MedReminder,
+)
+
 # networking — transport abstraction the 10 concrete transports implement
 from .networking import (
     AetherHopTelemetry,
@@ -920,6 +1220,836 @@ from .networking import (
     WebSocketTransport,
     WiFiNetworkTransport,
     WiFiPeerDiscovery,
+)
+
+# Deterministic in-memory "board" packs — domain boards C (lifestyle / civic /
+# misc). Each is an I<Domain>Board + record types + an in-memory impl, plus a
+# static <Domain>DomainContext (system-prompt snippet + compliance/tool
+# metadata). C# is the exact spec. The C# *CompanionAdapter decorators
+# (ICompanionSession) are intentionally not ported.
+
+# sports — activities / personal bests / training sessions
+from .sports import (
+    Activity as SportsActivity,
+    DistanceKind,
+    ISportsBoard,
+    InMemorySportsBoard,
+    PersonalBest,
+    SportsDomainContext,
+    TrainingSession,
+)
+
+# fitness — workouts / goals / exercise sets
+from .fitness import (
+    ExerciseSet,
+    FitnessDomainContext,
+    FitnessGoal,
+    IFitnessBoard,
+    InMemoryFitnessBoard,
+    Workout,
+)
+
+# food — recipes / meal logs / pantry
+from .food import (
+    FoodDomainContext,
+    IFoodBoard,
+    InMemoryFoodBoard,
+    MealLog,
+    PantryItem,
+    Recipe,
+)
+
+# agriculture — fields / crops / yield records
+from .agriculture import (
+    AgricultureDomainContext,
+    Crop,
+    Field as FarmField,
+    IFarmBoard,
+    InMemoryFarmBoard,
+    YieldRecord,
+)
+
+# beauty — treatments / appointments / skin profiles
+from .beauty import (
+    Appointment as BeautyAppointment,
+    BeautyDomainContext,
+    IBeautyBoard,
+    InMemoryBeautyBoard,
+    SkinProfile,
+    Treatment as BeautyTreatment,
+)
+
+# gaming — game titles / play sessions / achievements
+from .gaming import (
+    AchievementUnlock,
+    GameTitle,
+    GamingDomainContext,
+    IGamingBoard,
+    InMemoryGamingBoard,
+    PlaySession,
+)
+
+# games — game-runtime contracts + in-memory / null backends
+from .games import (
+    GameTick,
+    IGameLoop,
+    IInputMap,
+    ISceneGraph,
+    InMemoryInputMap,
+    InMemorySceneGraph,
+    InputEvent,
+    NullGameLoop,
+    NullInputMap,
+    NullSceneGraph,
+    SceneNode,
+    TimerGameLoop,
+)
+from .games import IDisposable as IGamesDisposable
+
+# hospitality — rooms / reservations / front-desk notes
+from .hospitality import (
+    FrontDeskNote,
+    GuestReservation,
+    HospitalityDomainContext,
+    HotelRoom,
+    IHospitalityBoard,
+    InMemoryHospitalityBoard,
+)
+
+# tourism — attractions / itineraries / bookings
+from .tourism import (
+    Attraction,
+    ITourismBoard,
+    InMemoryTourismBoard,
+    Itinerary,
+    ItineraryItem,
+    TourismBooking,
+    TourismDomainContext,
+)
+
+# travel — flights / hotel stays / trips
+from .travel import (
+    Flight,
+    HotelStay,
+    ITravelBoard,
+    InMemoryTravelBoard,
+    TravelDomainContext,
+    TravelTrip,
+)
+
+# civic — issues / representatives / civic events
+from .civic import (
+    CivicDomainContext,
+    CivicEvent,
+    CivicIssue,
+    ICivicBoard,
+    InMemoryCivicBoard,
+    Representative,
+)
+
+# community — groups / announcements / volunteer opportunities
+from .community import (
+    Announcement,
+    CommunityDomainContext,
+    CommunityGroup,
+    ICommunityBoard,
+    InMemoryCommunityBoard,
+    VolunteerOpportunity,
+)
+
+# social — posts / reactions / follow graph
+from .social import (
+    Follow,
+    ISocialBoard,
+    InMemorySocialBoard,
+    Reaction,
+    SocialDomainContext,
+    SocialPost,
+)
+
+# relationships — contacts / important dates / touchpoints
+from .relationships import (
+    ContactEvent,
+    IRelationshipsBoard,
+    ImportantDate,
+    InMemoryRelationshipsBoard,
+    PersonContact,
+    RelationshipsDomainContext,
+)
+
+# faith — services / prayer requests / scripture
+from .faith import (
+    FaithDomainContext,
+    FaithService,
+    IFaithBoard,
+    InMemoryFaithBoard,
+    PrayerRequest,
+    ScriptureReference,
+)
+
+# construction — projects / tasks / cost entries
+from .construction import (
+    ConstructionDomainContext,
+    ConstructionTask,
+    CostEntry,
+    IConstructionBoard,
+    InMemoryConstructionBoard,
+    Project as ConstructionProject,
+)
+
+# energy — meter readings / tariffs / outages
+from .energy import (
+    EnergyDomainContext,
+    EnergyTariff,
+    IEnergyBoard,
+    InMemoryEnergyBoard,
+    MeterReading,
+    Outage,
+)
+
+# creative — works / inspiration / critiques
+from .creative import (
+    CreativeDomainContext,
+    CreativeWork,
+    Critique,
+    ICreativeBoard,
+    InMemoryCreativeBoard,
+    Inspiration,
+)
+
+# kids — age-banded content / time limits / time logs
+from .kids import (
+    AgeAppropriateness,
+    DailyTime,
+    IKidsBoard,
+    InMemoryKidsBoard,
+    KidsContent,
+    KidsDomainContext,
+    TimeLog,
+)
+
+# wearable — devices / telemetry samples / biometric context
+from .wearable import (
+    IWearableBoard,
+    InMemoryWearableBoard,
+    WearableContext,
+    WearableDevice,
+    WearableKind,
+    WearableSample,
+    WearableTelemetryKind,
+)
+
+# wearable.biosignals — signal taxonomy / sources / aggregator / affect mapper
+from .wearable_biosignals import (
+    BiosignalAggregator,
+    BiosignalKind,
+    BiosignalSample,
+    BiosignalSnapshot,
+    BiosignalStats,
+    IBiosignalSource,
+    NullBiosignalSource,
+    RecordedBiosignalSource,
+    apply_biosignal_to_affect,
+)
+
+# accessibility — profiles / adaptation hints
+from .accessibility import (
+    AccessibilityDomainContext,
+    AccessibilityNeed,
+    AdaptationHint,
+    IAccessibilityBoard,
+    InMemoryAccessibilityBoard,
+    UserAccessibilityProfile,
+)
+
+# ambient — environmental readings / comfort preferences
+from .ambient import (
+    AmbientPreference,
+    AmbientReading,
+    IAmbientBoard,
+    InMemoryAmbientBoard,
+)
+
+# integration — external-provider contracts (calendar/email/news/weather/routing/
+# home) + the injectable async HTTP abstraction
+from .integration import (
+    DATETIME_MIN,
+    CalendarEvent,
+    EmailMessage,
+    HaEntity,
+    HttpError,
+    HttpRequest,
+    HttpResponse,
+    ICalendarConnector,
+    IEmailConnector,
+    IHomeAutomationConnector,
+    IHttpFetcher,
+    INewsSource,
+    IRoutingProvider,
+    IWeatherProvider,
+    InMemoryHttpFetcher,
+    NewsItem,
+    RouteEstimate,
+    WeatherSample,
+)
+
+# integration_calendar — CalDAV / Google / Microsoft Graph calendar connectors
+from .integration_calendar import (
+    CalDavCalendarConnector,
+    CalDavCalendarOptions,
+    GoogleCalendarConnector,
+    GoogleCalendarOptions,
+    MsGraphCalendarConnector,
+    MsGraphCalendarOptions,
+)
+
+# integration_email — Gmail / Microsoft Graph / IMAP email connectors
+from .integration_email import (
+    GmailEmailConnector,
+    GmailOptions,
+    IImapFolder,
+    IImapTransport,
+    ImapEmailConnector,
+    ImapEnvelope,
+    ImapMessage,
+    ImapOptions,
+    ImapSearchQuery,
+    ImapSummary,
+    InMemoryImapFolder,
+    InMemoryImapTransport,
+    MessageFlags,
+    MsGraphEmailConnector,
+    MsGraphEmailOptions,
+)
+
+# integration_geo — Open-Meteo weather + OSRM routing providers
+from .integration_geo import (
+    OpenMeteoWeatherProvider,
+    OsrmOptions,
+    OsrmRoutingProvider,
+)
+
+# integration_home_assistant — HomeAssistant REST connector
+from .integration_home_assistant import (
+    HomeAssistantConnector,
+    HomeAssistantOptions,
+)
+
+# integration_news — Bluesky / Mastodon / NewsAPI / RSS news sources
+from .integration_news import (
+    BlueskyOptions,
+    BlueskySource,
+    MastodonOptions,
+    MastodonSource,
+    NewsApiOptions,
+    NewsApiSource,
+    RssNewsSource,
+    RssOptions,
+)
+
+# ── Serving / agents / runtime work unit ──────────────────────────────────────
+
+# runtime — capability probe + native-runtime fetcher contracts
+from .runtime import (
+    ArchitectureKind,
+    GpuInfo,
+    GpuVendor,
+    HostProfile,
+    ICapabilityProbe,
+    INativeRuntimeFetcher,
+    InMemoryNativeRuntimeFetcher,
+    NativeRuntimeBundle,
+    NativeRuntimeInstall,
+    NativeRuntimeRegistry,
+    NpuInfo,
+    NpuVendor,
+    OperatingSystemKind,
+)
+
+# runtime_backends — backend selector
+from .runtime_backends import (
+    BackendKind,
+    BackendSelection,
+    BackendSelector,
+    CapabilityTier,
+    IBackendSelector,
+)
+
+# operator — k8s-operator model deployment lifecycle
+from .operator import (
+    IDeploymentObserver,
+    IModelOperator,
+    InMemoryModelOperator,
+    ModelDeployment,
+    ModelLifecyclePhase,
+    ModelStatus,
+    NullDeploymentObserver,
+    NullModelOperator,
+)
+
+# orchestration — agent swarm dispatch
+from .orchestration import (
+    AgentPriority,
+    AgentRole,
+    AgentStatus,
+    AgentSwarmConfig,
+    AgentTask,
+    IAgentDispatcher,
+    LocalAgentDispatcher,
+    QualityGateResult,
+    SwarmResult,
+)
+
+# pipelines — data pipeline source/sink/executor + query tool
+from .pipelines import (
+    DatabaseQueryResult,
+    IDatabaseQueryTool,
+    IPipelineExecutor,
+    IPipelineSink,
+    IPipelineSource,
+    InMemoryDatabaseQueryTool,
+    InMemoryPipelineExecutor,
+    InMemoryPipelineSink,
+    InMemoryPipelineSource,
+    NullDatabaseQueryTool,
+    NullPipelineExecutor,
+    NullPipelineSink,
+    NullPipelineSource,
+    PipelineRecord,
+    PipelineRun,
+)
+
+# plugins — plugin contract surface + event bus
+from .plugins import (
+    IPlugin,
+    IPluginContext,
+    IPluginEvents,
+    PermissionedPluginContext,
+    PluginContext,
+    PluginEventNames,
+    PluginEvents,
+)
+
+# skills — skill store + skill packs
+from .skills import (
+    IPackDownloader,
+    ISkillStore,
+    InMemoryPackDownloader,
+    InMemorySkillStore,
+    KnownSkillPacks,
+    ParsedSkill,
+    SkillDetail,
+    SkillDraft,
+    SkillPackAutoImporter,
+    SkillPackLoader,
+    SkillPackManifest,
+    SkillPackSource,
+    SkillPackSourcesOptions,
+    SkillSource,
+    SkillSummary,
+)
+
+# workflows — durable workflows + conversation state machine
+from .workflows import (
+    AgentConversation,
+    CheckpointPayload,
+    ConversationCancelToken,
+    ConversationPermissions,
+    ConversationState,
+    ConversationStep,
+    IConversationExecutor,
+    IWorkflowDefinitionStore,
+    IWorkflowRunner,
+    IWorkflowState,
+    NullWorkflowDefinitionStore,
+    NullWorkflowRunner,
+    NullWorkflowState,
+    PacaConversationRuntime,
+    WorkflowDefinition,
+    WorkflowExecution,
+    WorkflowPhase,
+)
+
+# micro_agents — micro-agent host + search
+from .micro_agents import (
+    FuncMicroAgent,
+    IMicroAgent,
+    IMicroAgentHost,
+    InMemoryMicroAgentHost,
+    MicroAgentDescriptor,
+    MicroAgentInvocation,
+    MicroAgentInvocationLog,
+    MicroAgentResponse,
+    MicroAgentSearch,
+    NullMicroAgent,
+)
+
+# federation — federated learning aggregator
+from .federation import (
+    DeltaDispatchOutcome,
+    FederatedAveraging,
+    FederationRound,
+    IFederationAggregator,
+    IFederationDeltaDispatcher,
+    IFederationParticipant,
+    InMemoryFederationAggregator,
+    ModelDelta,
+    RoundStatus,
+)
+
+# distribution — file sync + ubiquity rails
+from .distribution import (
+    AppStorePackage,
+    DefaultAppStoreSubmitter,
+    DefaultCarrierPreloadCatalog,
+    DefaultOemPreloadCatalog,
+    DefaultSignedDeltaUpdater,
+    DeltaUpdate,
+    FileMetadata,
+    IAppStoreSubmitter,
+    ICarrierPreloadCatalog,
+    IFileSync,
+    IOemPreloadCatalog,
+    IPeerAdvertiser,
+    ISignedDeltaUpdater,
+    NullFileSync,
+    NullPeerAdvertiser,
+    Peer,
+)
+
+# build_farm — build agents/jobs/artifacts
+from .build_farm import (
+    BuildAgent,
+    BuildAgentKind,
+    BuildArtifact,
+    BuildJob,
+    BuildJobPhase,
+    IBuildAgentPool,
+    IBuildArtifactStore,
+    IBuildJobRunner,
+    InMemoryBuildAgentPool,
+    InMemoryBuildArtifactStore,
+    InMemoryBuildJobRunner,
+    NullBuildAgentPool,
+    NullBuildArtifactStore,
+    NullBuildJobRunner,
+)
+
+# collaboration — channels/messages/presence
+from .collaboration import (
+    Channel,
+    IChannelStore,
+    IMessageStore,
+    IPresence,
+    InMemoryChannelStore,
+    InMemoryMessageStore,
+    InMemoryPresence,
+    Message,
+    NullChannelStore,
+    NullMessageStore,
+    NullPresence,
+    PresenceState,
+)
+
+# autonomous_biz — treasury / revenue loop / decision log
+from .autonomous_biz import (
+    AutonomousDecision,
+    IDecisionLog,
+    IRevenueLoop,
+    ITreasury,
+    InMemoryDecisionLog,
+    InMemoryRevenueLoop,
+    InMemoryTreasury,
+    NullDecisionLog,
+    NullRevenueLoop,
+    NullTreasury,
+    RevenueEvent,
+    TreasurySnapshot,
+)
+
+# ── Knowledge / perception / dev-tools work unit ──────────────────────────────
+# Deterministic in-memory board / adapter packs. C# is the exact spec.
+
+# knowledge — markdown-on-disk knowledge notes + episodic store
+from .knowledge import (
+    FileSystemKnowledgeStore,
+    IKnowledgeStore,
+    InMemoryKnowledgeStore,
+    KnowledgeNote,
+    MarkdownEpisodicMemoryStore,
+)
+
+# search — tokenisation / scoring / cosine vector math
+from .search import (
+    SearchScoring,
+    SearchTokenisation,
+    SimdOps,
+    VectorMath,
+)
+from .search import cosine_similarity as search_cosine_similarity
+
+# research — papers / citations corpus
+from .research import (
+    Citation,
+    ICitationGraph,
+    IPaperRetrieval,
+    IResearchCorpus,
+    InMemoryCitationGraph,
+    InMemoryPaperRetrieval,
+    InMemoryResearchCorpus,
+    NullCitationGraph,
+    NullPaperRetrieval,
+    NullResearchCorpus,
+    ResearchPaper,
+)
+
+# domain — food / finance / presentations / job-search / memory / swarm / LoRA
+from .domain import (
+    FinanceFinding,
+    FinanceSnippet,
+    GeneratedPresentation,
+    IFinancialAgent,
+    IFinanceRetrieval,
+    IFoodEmbeddings,
+    IHippoRagStore,
+    IJobSearchPipeline,
+    IMemPalaceStore,
+    IPersonalLoRA,
+    IPresentationGenerator,
+    ISwarmCoordinator,
+    InMemoryFinanceRetrieval,
+    InMemoryFoodEmbeddings,
+    InMemoryHippoRagStore,
+    InMemoryMemPalaceStore,
+    InMemoryPersonalLoRA,
+    InMemorySwarmCoordinator,
+    Ingredient,
+    JobApplicationDraft,
+    LoRAAdapterState,
+    LoRATrainingSummary,
+    MultiPassFinancialAgent,
+    NullFinanceRetrieval,
+    NullFinancialAgent,
+    NullFoodEmbeddings,
+    NullHippoRagStore,
+    NullJobSearchPipeline,
+    NullMemPalaceStore,
+    NullPersonalLoRA,
+    NullPresentationGenerator,
+    NullSwarmCoordinator,
+    SlideOutline,
+    SwarmPeer,
+    TemplateJobSearchPipeline,
+    TemplatePresentationGenerator,
+)
+from .domain import MemoryHit as DomainMemoryHit
+from .domain import MemoryItem as DomainMemoryItem
+
+# personality — user-declared persona + resolvers + prompt builder
+from .personality import (
+    DeclaredWinsResolver,
+    FormalityRange,
+    InMemoryPersonaProvider,
+    IPersonaConflictResolver,
+    IPersonaProvider,
+    JsonPersonaProvider,
+    LearnedWinsResolver,
+    Persona,
+    PersonaPromptBuilder,
+    PrivacyLevel,
+    build_system_hint as build_persona_system_hint,
+)
+
+# observer — perceive-reason-act loop
+from .observer import (
+    InMemoryObservationLoop,
+    InMemoryObservationToolbox,
+    IObservationLoop,
+    IObservationToolbox,
+    ISensor,
+    NullObservationLoop,
+    NullSensor,
+    ObservationTick,
+    ObservationTool,
+    ObserverDecision,
+    SensorReading,
+    SensorRecorder,
+)
+from .observer import IDisposable as IObserverDisposable
+
+# observability — metric / trace / dashboard sinks
+from .observability import (
+    DashboardSpec,
+    IDashboardPublisher,
+    IMetricSink,
+    ITraceSink,
+    InMemoryDashboardPublisher,
+    InMemoryMetricSink,
+    InMemoryTraceSink,
+    MetricSample,
+    NullDashboardPublisher,
+    NullMetricSink,
+    NullTraceSink,
+    TraceSpan,
+)
+
+# spatial — geo tiles / radar / sky / 3D-scene
+from .spatial import (
+    GeoTile,
+    I3DSceneRenderer,
+    IGeoTileSource,
+    IRadarReadout,
+    ISkyTracker,
+    InMemoryGeoTileSource,
+    JsonScene3DRenderer,
+    LatLon,
+    Null3DSceneRenderer,
+    NullGeoTileSource,
+    NullRadarReadout,
+    NullSkyTracker,
+    RadarReading,
+    RadarReturn,
+    Scene3D,
+    SkyObject,
+    SyntheticRadarReadout,
+    SyntheticSkyTracker,
+)
+
+# simulation — knowledge-graph + network-health diffusion
+from .simulation import (
+    EpisodicGraphExtractor,
+    GraphEdge,
+    GraphNode,
+    IGraphBuilder,
+    ISimulationEngine,
+    KnowledgeGraph,
+    LocalSimulationEngine,
+    MiroFishAdapter,
+    NetworkHealthSimulator,
+    ScenarioKind,
+    SimulationOutcome,
+    SimulationResult,
+    SimulationScenario,
+    ThreatPropagationScenario,
+)
+
+# visualization — dashboard defs / api-docs / static sites
+from .visualization import (
+    ApiDoc,
+    DashboardDefinition,
+    GeneratedSite,
+    IApiDocBuilder,
+    IDashboardDefinitionStore,
+    ISiteBuilder,
+    InMemoryDashboardStore,
+    JsonApiDocBuilder,
+    NullApiDocBuilder,
+    NullDashboardDefinitionStore,
+    NullSiteBuilder,
+    StaticSiteBuilder,
+)
+
+# inputs — scraper / stealth-http / video-ingest / mcp-scrape / terminal-cast
+from .inputs import (
+    AsciinemaTerminalCast,
+    DefaultMcpWebScrape,
+    HttpHtmlScraper,
+    IMcpWebScrape,
+    IStealthHttpClient,
+    ITerminalCast,
+    IVideoIngest,
+    IWebScraper,
+    InMemoryVideoIngest,
+    McpScrapeJob,
+    NullMcpWebScrape,
+    NullStealthHttpClient,
+    NullTerminalCast,
+    NullVideoIngest,
+    NullWebScraper,
+    ScrapedPage,
+    StealthHttpClient,
+    TerminalCast,
+    TerminalCastSegment,
+    VideoIngestResult,
+)
+
+# code_understanding — indexer / search / symbol-graph
+from .code_understanding import (
+    CodeMatch,
+    CodeSymbol,
+    FilesystemCodeIndexer,
+    ICodeIndexer,
+    ICodeSearch,
+    ISymbolGraph,
+    IndexBackedCodeSearch,
+    InMemorySymbolGraph,
+    NullCodeIndexer,
+    NullCodeSearch,
+    NullSymbolGraph,
+    SymbolEdge,
+)
+
+# dev_tools — code editor / inline suggester / agent shell / patch planner / refactor
+from .dev_tools import (
+    AgentTurn,
+    FileEdit,
+    FilesystemCodeEditor,
+    IAgentShell,
+    ICodeEditor,
+    IInlineSuggester,
+    IPatchPlanner,
+    IRefactorTool,
+    InMemoryAgentShell,
+    InlineSuggestion,
+    NullAgentShell,
+    NullCodeEditor,
+    NullInlineSuggester,
+    NullPatchPlanner,
+    NullRefactorTool,
+    PatchPlan,
+    PatternMatchPatchPlanner,
+    RefactorRequest,
+    RegexRefactorTool,
+    TokenContextInlineSuggester,
+)
+
+# dep_bot — dependency analyzer / updater
+from .dep_bot import (
+    Dependency,
+    DependencyUpdate,
+    FilesystemDependencyAnalyzer,
+    IDependencyAnalyzer,
+    IDependencyUpdater,
+    NullDependencyAnalyzer,
+    NullDependencyUpdater,
+    TextRewriteDependencyUpdater,
+)
+
+# sdd — spec store / validator / scaffold
+from .sdd import (
+    HelloWorldSpecToScaffold,
+    ISpecToScaffold,
+    ISpecificationStore,
+    ISpecificationValidator,
+    InMemorySpecificationStore,
+    JsonShapeSpecificationValidator,
+    NullSpecToScaffold,
+    NullSpecificationStore,
+    NullSpecificationValidator,
+    ScaffoldedProject,
+    SpecValidationResult,
+    Specification,
+)
+
+# doc_analytics — document view tracker / insights
+from .doc_analytics import (
+    DocumentInsight,
+    DocumentView,
+    IDocumentInsights,
+    IDocumentTracker,
+    InMemoryDocumentTracker,
+    NullDocumentInsights,
+    NullDocumentTracker,
 )
 
 __all__ = [
@@ -1505,6 +2635,216 @@ __all__ = [
     "IChildSafetyBoard",
     "InMemoryChildSafetyBoard",
     "SafetyChildDomainContext",
+    # ── Domain boards A (health / finance / legal / edu / commerce) ────────────
+    # healthcare
+    "Patient",
+    "HealthAppointment",
+    "Prescription",
+    "IHealthcareBoard",
+    "InMemoryHealthcareBoard",
+    "HealthcareDomainContext",
+    # banking (Account = banking.Account; personal-finance one is PersonalFinanceAccount)
+    "Account",
+    "LedgerEntry",
+    "PaymentRequest",
+    "PaymentResult",
+    "IAccountReader",
+    "ILedgerWriter",
+    "IPaymentProcessor",
+    "InMemoryBank",
+    "InMemoryAccountReader",
+    "InMemoryLedgerWriter",
+    "InMemoryPaymentProcessor",
+    "NullAccountReader",
+    "NullLedgerWriter",
+    "NullPaymentProcessor",
+    # legal
+    "Matter",
+    "Contract",
+    "LegalDeadline",
+    "Clause",
+    "ILegalBoard",
+    "InMemoryLegalBoard",
+    "LegalDomainContext",
+    # education
+    "Course",
+    "Lesson",
+    "StudentRecord",
+    "IEducationBoard",
+    "InMemoryEducationBoard",
+    "EducationDomainContext",
+    # commerce
+    "CommerceCustomer",
+    "CommerceOrder",
+    "CommerceLineItem",
+    "ICommerceBoard",
+    "InMemoryCommerceBoard",
+    "CommerceDomainContext",
+    # commerce_accounting
+    "AccountingEntry",
+    "TaxRate",
+    "Period",
+    "IAccountingBoard",
+    "InMemoryAccountingBoard",
+    "CommerceAccountingDomainContext",
+    # commerce_finance
+    "InvoiceLine",
+    "Invoice",
+    "FinancePayment",
+    "IInvoiceBoard",
+    "InMemoryInvoiceBoard",
+    "CommerceFinanceDomainContext",
+    # commerce_integration_payfast
+    "PayFastConfig",
+    "PayFastItnPayload",
+    "IPayFastBoard",
+    "InMemoryPayFastBoard",
+    "CommerceIntegrationPayFastDomainContext",
+    # commerce_integration_xero
+    "XeroTokens",
+    "XeroTenant",
+    "XeroWebhookEvent",
+    "IXeroBoard",
+    "InMemoryXeroBoard",
+    "CommerceIntegrationXeroDomainContext",
+    # personal_finance (Account -> PersonalFinanceAccount to avoid banking clash)
+    "PersonalFinanceAccount",
+    "FinanceTransaction",
+    "BudgetLine",
+    "MonthSummary",
+    "IPersonalFinanceBoard",
+    "InMemoryPersonalFinanceBoard",
+    "PersonalFinanceDomainContext",
+    # personal_health
+    "VitalKind",
+    "VitalReading",
+    "Allergy",
+    "Medication",
+    "IPersonalHealthBoard",
+    "InMemoryPersonalHealthBoard",
+    "PersonalHealthDomainContext",
+    # personal_mental
+    "Mood",
+    "MoodLog",
+    "JournalEntry",
+    "CopingStrategy",
+    "IMentalHealthBoard",
+    "InMemoryMentalHealthBoard",
+    "PersonalMentalDomainContext",
+    # ── Domain boards B (people / home / logistics) ────────────────────────────
+    # crm (async store contracts)
+    "Contact",
+    "Company",
+    "Deal",
+    "Activity",
+    "IContactStore",
+    "IDealPipeline",
+    "IActivityLog",
+    "InMemoryContactStore",
+    "InMemoryDealPipeline",
+    "InMemoryActivityLog",
+    "NullContactStore",
+    "NullDealPipeline",
+    "NullActivityLog",
+    # hr
+    "Employee",
+    "LeaveRequest",
+    "PerformanceReview",
+    "IHRBoard",
+    "InMemoryHRBoard",
+    "HRDomainContext",
+    # business
+    "BusinessUnit",
+    "KpiSample",
+    "QuarterTarget",
+    "IBusinessBoard",
+    "InMemoryBusinessBoard",
+    "BusinessDomainContext",
+    # retail
+    "Product",
+    "StockLevel",
+    "Sale",
+    "IRetailBoard",
+    "InMemoryRetailBoard",
+    "RetailDomainContext",
+    # markets (feed + catalog + router; IDisposable -> IMarketsDisposable)
+    "OrderSide",
+    "OrderType",
+    "Instrument",
+    "Quote",
+    "OrderRequest",
+    "OrderResult",
+    "IMarketDataFeed",
+    "IInstrumentCatalog",
+    "IOrderRouter",
+    "IMarketsDisposable",
+    "InMemoryMarketDataFeed",
+    "InMemoryInstrumentCatalog",
+    "InMemoryOrderRouter",
+    "NullMarketDataFeed",
+    "NullInstrumentCatalog",
+    "NullOrderRouter",
+    # logistics
+    "Shipment",
+    "Vehicle",
+    "RouteLeg",
+    "RoutePlan",
+    "ILogisticsBoard",
+    "InMemoryLogisticsBoard",
+    "LogisticsDomainContext",
+    # real_estate
+    "PropertyKind",
+    "Property",
+    "Listing",
+    "Valuation",
+    "Viewing",
+    "IRealEstateBoard",
+    "InMemoryRealEstateBoard",
+    "RealEstateDomainContext",
+    # home
+    "Room",
+    "HomeDevice",
+    "MaintenanceTask",
+    "IHomeBoard",
+    "InMemoryHomeBoard",
+    "HomeDomainContext",
+    # iot
+    "IoTDevice",
+    "IoTTelemetry",
+    "IoTCommand",
+    "IIoTBoard",
+    "InMemoryIoTBoard",
+    # family
+    "FamilyMember",
+    "FamilyEvent",
+    "SharedExpense",
+    "IFamilyBoard",
+    "InMemoryFamilyBoard",
+    "FamilyDomainContext",
+    # parenting
+    "DayOfWeek",
+    "Child",
+    "Milestone",
+    "RoutineEntry",
+    "Routine",
+    "IParentingBoard",
+    "InMemoryParentingBoard",
+    "ParentingDomainContext",
+    # pets
+    "Pet",
+    "Vaccination",
+    "WeightSample",
+    "VetAppointment",
+    "IPetsBoard",
+    "InMemoryPetsBoard",
+    "PetsDomainContext",
+    # elderly (CheckIn -> ElderlyCheckIn to avoid the safety_child.CheckIn clash)
+    "CarePlan",
+    "MedReminder",
+    "ElderlyCheckIn",
+    "IElderlyCareBoard",
+    "InMemoryElderlyCareBoard",
+    "ElderlyDomainContext",
     # networking — transport abstraction (enums)
     "TransportKind",
     "ConnectivityState",
@@ -1709,4 +3049,646 @@ __all__ = [
     "NullVideoGenerator",
     "NullStyleScript",
     "InMemoryStyleReference",
+    # domain boards C — sports
+    "DistanceKind",
+    "SportsActivity",
+    "PersonalBest",
+    "TrainingSession",
+    "ISportsBoard",
+    "InMemorySportsBoard",
+    "SportsDomainContext",
+    # domain boards C — fitness
+    "Workout",
+    "FitnessGoal",
+    "ExerciseSet",
+    "IFitnessBoard",
+    "InMemoryFitnessBoard",
+    "FitnessDomainContext",
+    # domain boards C — food
+    "Recipe",
+    "MealLog",
+    "PantryItem",
+    "IFoodBoard",
+    "InMemoryFoodBoard",
+    "FoodDomainContext",
+    # domain boards C — agriculture
+    "FarmField",
+    "Crop",
+    "YieldRecord",
+    "IFarmBoard",
+    "InMemoryFarmBoard",
+    "AgricultureDomainContext",
+    # domain boards C — beauty
+    "BeautyTreatment",
+    "BeautyAppointment",
+    "SkinProfile",
+    "IBeautyBoard",
+    "InMemoryBeautyBoard",
+    "BeautyDomainContext",
+    # domain boards C — gaming
+    "GameTitle",
+    "PlaySession",
+    "AchievementUnlock",
+    "IGamingBoard",
+    "InMemoryGamingBoard",
+    "GamingDomainContext",
+    # domain boards C — games (runtime)
+    "GameTick",
+    "InputEvent",
+    "SceneNode",
+    "IGamesDisposable",
+    "IGameLoop",
+    "IInputMap",
+    "ISceneGraph",
+    "TimerGameLoop",
+    "InMemoryInputMap",
+    "InMemorySceneGraph",
+    "NullGameLoop",
+    "NullInputMap",
+    "NullSceneGraph",
+    # domain boards C — hospitality
+    "HotelRoom",
+    "GuestReservation",
+    "FrontDeskNote",
+    "IHospitalityBoard",
+    "InMemoryHospitalityBoard",
+    "HospitalityDomainContext",
+    # domain boards C — tourism
+    "Attraction",
+    "ItineraryItem",
+    "Itinerary",
+    "TourismBooking",
+    "ITourismBoard",
+    "InMemoryTourismBoard",
+    "TourismDomainContext",
+    # domain boards C — travel
+    "Flight",
+    "HotelStay",
+    "TravelTrip",
+    "ITravelBoard",
+    "InMemoryTravelBoard",
+    "TravelDomainContext",
+    # domain boards C — civic
+    "CivicIssue",
+    "Representative",
+    "CivicEvent",
+    "ICivicBoard",
+    "InMemoryCivicBoard",
+    "CivicDomainContext",
+    # domain boards C — community
+    "CommunityGroup",
+    "Announcement",
+    "VolunteerOpportunity",
+    "ICommunityBoard",
+    "InMemoryCommunityBoard",
+    "CommunityDomainContext",
+    # domain boards C — social
+    "SocialPost",
+    "Reaction",
+    "Follow",
+    "ISocialBoard",
+    "InMemorySocialBoard",
+    "SocialDomainContext",
+    # domain boards C — relationships
+    "PersonContact",
+    "ImportantDate",
+    "ContactEvent",
+    "IRelationshipsBoard",
+    "InMemoryRelationshipsBoard",
+    "RelationshipsDomainContext",
+    # domain boards C — faith
+    "FaithService",
+    "PrayerRequest",
+    "ScriptureReference",
+    "IFaithBoard",
+    "InMemoryFaithBoard",
+    "FaithDomainContext",
+    # domain boards C — construction
+    "ConstructionProject",
+    "ConstructionTask",
+    "CostEntry",
+    "IConstructionBoard",
+    "InMemoryConstructionBoard",
+    "ConstructionDomainContext",
+    # domain boards C — energy
+    "MeterReading",
+    "EnergyTariff",
+    "Outage",
+    "IEnergyBoard",
+    "InMemoryEnergyBoard",
+    "EnergyDomainContext",
+    # domain boards C — creative
+    "CreativeWork",
+    "Inspiration",
+    "Critique",
+    "ICreativeBoard",
+    "InMemoryCreativeBoard",
+    "CreativeDomainContext",
+    # domain boards C — kids
+    "AgeAppropriateness",
+    "KidsContent",
+    "DailyTime",
+    "TimeLog",
+    "IKidsBoard",
+    "InMemoryKidsBoard",
+    "KidsDomainContext",
+    # domain boards C — wearable
+    "WearableKind",
+    "WearableTelemetryKind",
+    "WearableDevice",
+    "WearableSample",
+    "IWearableBoard",
+    "InMemoryWearableBoard",
+    "WearableContext",
+    # domain boards C — wearable.biosignals
+    "BiosignalKind",
+    "BiosignalSample",
+    "IBiosignalSource",
+    "NullBiosignalSource",
+    "RecordedBiosignalSource",
+    "BiosignalStats",
+    "BiosignalSnapshot",
+    "BiosignalAggregator",
+    "apply_biosignal_to_affect",
+    # domain boards C — accessibility
+    "AccessibilityNeed",
+    "UserAccessibilityProfile",
+    "AdaptationHint",
+    "IAccessibilityBoard",
+    "InMemoryAccessibilityBoard",
+    "AccessibilityDomainContext",
+    # domain boards C — ambient
+    "AmbientReading",
+    "AmbientPreference",
+    "IAmbientBoard",
+    "InMemoryAmbientBoard",
+    # integration — contracts + injectable HTTP abstraction
+    "CalendarEvent",
+    "EmailMessage",
+    "NewsItem",
+    "WeatherSample",
+    "RouteEstimate",
+    "HaEntity",
+    "ICalendarConnector",
+    "IEmailConnector",
+    "INewsSource",
+    "IWeatherProvider",
+    "IRoutingProvider",
+    "IHomeAutomationConnector",
+    "IHttpFetcher",
+    "InMemoryHttpFetcher",
+    "HttpRequest",
+    "HttpResponse",
+    "HttpError",
+    "DATETIME_MIN",
+    # integration_calendar
+    "CalDavCalendarConnector",
+    "CalDavCalendarOptions",
+    "GoogleCalendarConnector",
+    "GoogleCalendarOptions",
+    "MsGraphCalendarConnector",
+    "MsGraphCalendarOptions",
+    # integration_email
+    "GmailEmailConnector",
+    "GmailOptions",
+    "MsGraphEmailConnector",
+    "MsGraphEmailOptions",
+    "ImapEmailConnector",
+    "ImapOptions",
+    "IImapTransport",
+    "IImapFolder",
+    "InMemoryImapTransport",
+    "InMemoryImapFolder",
+    "ImapEnvelope",
+    "ImapSummary",
+    "ImapMessage",
+    "ImapSearchQuery",
+    "MessageFlags",
+    # integration_geo
+    "OpenMeteoWeatherProvider",
+    "OsrmRoutingProvider",
+    "OsrmOptions",
+    # integration_home_assistant
+    "HomeAssistantConnector",
+    "HomeAssistantOptions",
+    # integration_news
+    "BlueskySource",
+    "BlueskyOptions",
+    "MastodonSource",
+    "MastodonOptions",
+    "NewsApiSource",
+    "NewsApiOptions",
+    "RssNewsSource",
+    "RssOptions",
+    # runtime
+    "OperatingSystemKind",
+    "ArchitectureKind",
+    "GpuVendor",
+    "NpuVendor",
+    "GpuInfo",
+    "NpuInfo",
+    "HostProfile",
+    "ICapabilityProbe",
+    "NativeRuntimeBundle",
+    "NativeRuntimeInstall",
+    "NativeRuntimeRegistry",
+    "INativeRuntimeFetcher",
+    "InMemoryNativeRuntimeFetcher",
+    # runtime_backends
+    "BackendKind",
+    "CapabilityTier",
+    "BackendSelection",
+    "IBackendSelector",
+    "BackendSelector",
+    # operator
+    "ModelLifecyclePhase",
+    "ModelDeployment",
+    "ModelStatus",
+    "IModelOperator",
+    "IDeploymentObserver",
+    "InMemoryModelOperator",
+    "NullModelOperator",
+    "NullDeploymentObserver",
+    # orchestration
+    "AgentRole",
+    "AgentPriority",
+    "AgentStatus",
+    "AgentTask",
+    "SwarmResult",
+    "QualityGateResult",
+    "AgentSwarmConfig",
+    "IAgentDispatcher",
+    "LocalAgentDispatcher",
+    # pipelines
+    "PipelineRecord",
+    "PipelineRun",
+    "DatabaseQueryResult",
+    "IPipelineSource",
+    "IPipelineSink",
+    "IPipelineExecutor",
+    "IDatabaseQueryTool",
+    "InMemoryPipelineSource",
+    "InMemoryPipelineSink",
+    "InMemoryPipelineExecutor",
+    "InMemoryDatabaseQueryTool",
+    "NullPipelineSource",
+    "NullPipelineSink",
+    "NullPipelineExecutor",
+    "NullDatabaseQueryTool",
+    # plugins
+    "IPlugin",
+    "IPluginContext",
+    "IPluginEvents",
+    "PluginEvents",
+    "PluginEventNames",
+    "PluginContext",
+    "PermissionedPluginContext",
+    # skills
+    "SkillSource",
+    "SkillSummary",
+    "SkillDetail",
+    "SkillDraft",
+    "ISkillStore",
+    "InMemorySkillStore",
+    "SkillPackSource",
+    "KnownSkillPacks",
+    "SkillPackManifest",
+    "ParsedSkill",
+    "SkillPackLoader",
+    "IPackDownloader",
+    "InMemoryPackDownloader",
+    "SkillPackSourcesOptions",
+    "SkillPackAutoImporter",
+    # workflows
+    "WorkflowPhase",
+    "WorkflowDefinition",
+    "WorkflowExecution",
+    "CheckpointPayload",
+    "IWorkflowDefinitionStore",
+    "IWorkflowRunner",
+    "IWorkflowState",
+    "NullWorkflowDefinitionStore",
+    "NullWorkflowRunner",
+    "NullWorkflowState",
+    "ConversationState",
+    "AgentConversation",
+    "ConversationStep",
+    "ConversationPermissions",
+    "IConversationExecutor",
+    "PacaConversationRuntime",
+    "ConversationCancelToken",
+    # micro_agents
+    "MicroAgentDescriptor",
+    "MicroAgentResponse",
+    "IMicroAgent",
+    "IMicroAgentHost",
+    "FuncMicroAgent",
+    "NullMicroAgent",
+    "InMemoryMicroAgentHost",
+    "MicroAgentSearch",
+    "MicroAgentInvocationLog",
+    "MicroAgentInvocation",
+    # federation
+    "RoundStatus",
+    "DeltaDispatchOutcome",
+    "ModelDelta",
+    "FederationRound",
+    "IFederationParticipant",
+    "IFederationAggregator",
+    "IFederationDeltaDispatcher",
+    "FederatedAveraging",
+    "InMemoryFederationAggregator",
+    # distribution
+    "FileMetadata",
+    "Peer",
+    "IFileSync",
+    "IPeerAdvertiser",
+    "NullFileSync",
+    "NullPeerAdvertiser",
+    "AppStorePackage",
+    "DeltaUpdate",
+    "IAppStoreSubmitter",
+    "ISignedDeltaUpdater",
+    "IOemPreloadCatalog",
+    "ICarrierPreloadCatalog",
+    "DefaultAppStoreSubmitter",
+    "DefaultSignedDeltaUpdater",
+    "DefaultOemPreloadCatalog",
+    "DefaultCarrierPreloadCatalog",
+    # build_farm
+    "BuildAgentKind",
+    "BuildJobPhase",
+    "BuildAgent",
+    "BuildJob",
+    "BuildArtifact",
+    "IBuildAgentPool",
+    "IBuildJobRunner",
+    "IBuildArtifactStore",
+    "InMemoryBuildAgentPool",
+    "InMemoryBuildJobRunner",
+    "InMemoryBuildArtifactStore",
+    "NullBuildAgentPool",
+    "NullBuildJobRunner",
+    "NullBuildArtifactStore",
+    # collaboration
+    "Channel",
+    "Message",
+    "PresenceState",
+    "IChannelStore",
+    "IMessageStore",
+    "IPresence",
+    "InMemoryChannelStore",
+    "InMemoryMessageStore",
+    "InMemoryPresence",
+    "NullChannelStore",
+    "NullMessageStore",
+    "NullPresence",
+    # autonomous_biz
+    "TreasurySnapshot",
+    "RevenueEvent",
+    "AutonomousDecision",
+    "ITreasury",
+    "IRevenueLoop",
+    "IDecisionLog",
+    "InMemoryTreasury",
+    "InMemoryRevenueLoop",
+    "InMemoryDecisionLog",
+    "NullTreasury",
+    "NullRevenueLoop",
+    "NullDecisionLog",
+    # ── Knowledge / perception / dev-tools work unit ──────────────────────────
+    # knowledge
+    "KnowledgeNote",
+    "IKnowledgeStore",
+    "FileSystemKnowledgeStore",
+    "InMemoryKnowledgeStore",
+    "MarkdownEpisodicMemoryStore",
+    # search
+    "SearchTokenisation",
+    "SearchScoring",
+    "SimdOps",
+    "VectorMath",
+    "search_cosine_similarity",
+    # research
+    "ResearchPaper",
+    "Citation",
+    "IResearchCorpus",
+    "IPaperRetrieval",
+    "ICitationGraph",
+    "InMemoryResearchCorpus",
+    "InMemoryPaperRetrieval",
+    "InMemoryCitationGraph",
+    "NullResearchCorpus",
+    "NullPaperRetrieval",
+    "NullCitationGraph",
+    # domain
+    "Ingredient",
+    "FinanceSnippet",
+    "FinanceFinding",
+    "SlideOutline",
+    "GeneratedPresentation",
+    "JobApplicationDraft",
+    "DomainMemoryItem",
+    "DomainMemoryHit",
+    "SwarmPeer",
+    "LoRATrainingSummary",
+    "LoRAAdapterState",
+    "IFoodEmbeddings",
+    "IFinanceRetrieval",
+    "IFinancialAgent",
+    "IPresentationGenerator",
+    "IJobSearchPipeline",
+    "IMemPalaceStore",
+    "IHippoRagStore",
+    "ISwarmCoordinator",
+    "IPersonalLoRA",
+    "InMemoryFoodEmbeddings",
+    "InMemoryFinanceRetrieval",
+    "MultiPassFinancialAgent",
+    "TemplatePresentationGenerator",
+    "TemplateJobSearchPipeline",
+    "InMemoryMemPalaceStore",
+    "InMemoryHippoRagStore",
+    "InMemorySwarmCoordinator",
+    "InMemoryPersonalLoRA",
+    "NullFoodEmbeddings",
+    "NullFinanceRetrieval",
+    "NullFinancialAgent",
+    "NullPresentationGenerator",
+    "NullJobSearchPipeline",
+    "NullMemPalaceStore",
+    "NullHippoRagStore",
+    "NullSwarmCoordinator",
+    "NullPersonalLoRA",
+    # personality
+    "Persona",
+    "FormalityRange",
+    "PrivacyLevel",
+    "IPersonaProvider",
+    "JsonPersonaProvider",
+    "InMemoryPersonaProvider",
+    "IPersonaConflictResolver",
+    "DeclaredWinsResolver",
+    "LearnedWinsResolver",
+    "PersonaPromptBuilder",
+    "build_persona_system_hint",
+    # observer
+    "SensorReading",
+    "ObservationTool",
+    "ObservationTick",
+    "ObserverDecision",
+    "IObserverDisposable",
+    "ISensor",
+    "IObservationToolbox",
+    "IObservationLoop",
+    "SensorRecorder",
+    "InMemoryObservationLoop",
+    "InMemoryObservationToolbox",
+    "NullSensor",
+    "NullObservationLoop",
+    # observability
+    "MetricSample",
+    "TraceSpan",
+    "DashboardSpec",
+    "IMetricSink",
+    "ITraceSink",
+    "IDashboardPublisher",
+    "InMemoryMetricSink",
+    "InMemoryTraceSink",
+    "InMemoryDashboardPublisher",
+    "NullMetricSink",
+    "NullTraceSink",
+    "NullDashboardPublisher",
+    # spatial
+    "LatLon",
+    "GeoTile",
+    "RadarReturn",
+    "RadarReading",
+    "SkyObject",
+    "Scene3D",
+    "IGeoTileSource",
+    "IRadarReadout",
+    "ISkyTracker",
+    "I3DSceneRenderer",
+    "InMemoryGeoTileSource",
+    "SyntheticRadarReadout",
+    "SyntheticSkyTracker",
+    "JsonScene3DRenderer",
+    "NullGeoTileSource",
+    "NullRadarReadout",
+    "NullSkyTracker",
+    "Null3DSceneRenderer",
+    # simulation
+    "GraphNode",
+    "GraphEdge",
+    "KnowledgeGraph",
+    "ScenarioKind",
+    "SimulationScenario",
+    "SimulationOutcome",
+    "SimulationResult",
+    "IGraphBuilder",
+    "EpisodicGraphExtractor",
+    "ISimulationEngine",
+    "LocalSimulationEngine",
+    "MiroFishAdapter",
+    "NetworkHealthSimulator",
+    "ThreatPropagationScenario",
+    # visualization
+    "DashboardDefinition",
+    "ApiDoc",
+    "GeneratedSite",
+    "IDashboardDefinitionStore",
+    "IApiDocBuilder",
+    "ISiteBuilder",
+    "InMemoryDashboardStore",
+    "JsonApiDocBuilder",
+    "StaticSiteBuilder",
+    "NullDashboardDefinitionStore",
+    "NullApiDocBuilder",
+    "NullSiteBuilder",
+    # inputs
+    "ScrapedPage",
+    "VideoIngestResult",
+    "McpScrapeJob",
+    "TerminalCastSegment",
+    "TerminalCast",
+    "IWebScraper",
+    "IStealthHttpClient",
+    "IVideoIngest",
+    "IMcpWebScrape",
+    "ITerminalCast",
+    "HttpHtmlScraper",
+    "StealthHttpClient",
+    "DefaultMcpWebScrape",
+    "InMemoryVideoIngest",
+    "AsciinemaTerminalCast",
+    "NullWebScraper",
+    "NullStealthHttpClient",
+    "NullVideoIngest",
+    "NullMcpWebScrape",
+    "NullTerminalCast",
+    # code_understanding
+    "CodeSymbol",
+    "CodeMatch",
+    "SymbolEdge",
+    "ICodeIndexer",
+    "ICodeSearch",
+    "ISymbolGraph",
+    "FilesystemCodeIndexer",
+    "IndexBackedCodeSearch",
+    "InMemorySymbolGraph",
+    "NullCodeIndexer",
+    "NullCodeSearch",
+    "NullSymbolGraph",
+    # dev_tools
+    "FileEdit",
+    "InlineSuggestion",
+    "AgentTurn",
+    "PatchPlan",
+    "RefactorRequest",
+    "ICodeEditor",
+    "IInlineSuggester",
+    "IAgentShell",
+    "IPatchPlanner",
+    "IRefactorTool",
+    "FilesystemCodeEditor",
+    "TokenContextInlineSuggester",
+    "InMemoryAgentShell",
+    "PatternMatchPatchPlanner",
+    "RegexRefactorTool",
+    "NullCodeEditor",
+    "NullInlineSuggester",
+    "NullAgentShell",
+    "NullPatchPlanner",
+    "NullRefactorTool",
+    # dep_bot
+    "Dependency",
+    "DependencyUpdate",
+    "IDependencyAnalyzer",
+    "IDependencyUpdater",
+    "FilesystemDependencyAnalyzer",
+    "TextRewriteDependencyUpdater",
+    "NullDependencyAnalyzer",
+    "NullDependencyUpdater",
+    # sdd
+    "Specification",
+    "SpecValidationResult",
+    "ScaffoldedProject",
+    "ISpecificationStore",
+    "ISpecificationValidator",
+    "ISpecToScaffold",
+    "InMemorySpecificationStore",
+    "JsonShapeSpecificationValidator",
+    "HelloWorldSpecToScaffold",
+    "NullSpecificationStore",
+    "NullSpecificationValidator",
+    "NullSpecToScaffold",
+    # doc_analytics
+    "DocumentView",
+    "DocumentInsight",
+    "IDocumentTracker",
+    "IDocumentInsights",
+    "InMemoryDocumentTracker",
+    "NullDocumentTracker",
+    "NullDocumentInsights",
 ]

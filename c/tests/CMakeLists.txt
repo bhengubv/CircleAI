@@ -132,3 +132,77 @@ add_circle_test(test_realtime)
 # tool registry + Null/Fallback carriers, and the three carrier bindings driven
 # over a deterministic fake HTTP transport
 add_circle_test(test_telephony)
+
+# Domain boards A — health/finance/legal/edu/commerce verticals
+# (CircleAI.Healthcare / .Banking / .Legal / .Education / .Commerce +
+# .Commerce.Accounting / .Finance / .Integration.PayFast / .Integration.Xero +
+# .Personal.Finance / .Personal.Health / .Personal.Mental)
+add_circle_test(test_healthcare)
+add_circle_test(test_banking)
+add_circle_test(test_legal)
+add_circle_test(test_education)
+add_circle_test(test_commerce)
+add_circle_test(test_commerce_accounting)
+add_circle_test(test_commerce_finance)
+add_circle_test(test_commerce_payfast)
+add_circle_test(test_commerce_xero)
+add_circle_test(test_personal_finance)
+add_circle_test(test_personal_health)
+add_circle_test(test_personal_mental)
+
+# Domain boards B — people/home/logistics verticals (CircleAI.CRM / .HR /
+# .Business / .Retail / .Markets / .Logistics / .RealEstate / .Home / .IoT /
+# .Family / .Parenting / .Pets / .Elderly)
+add_circle_test(test_crm)
+add_circle_test(test_hr)
+add_circle_test(test_business)
+add_circle_test(test_retail)
+add_circle_test(test_markets)
+add_circle_test(test_logistics)
+add_circle_test(test_realestate)
+add_circle_test(test_home)
+add_circle_test(test_iot)
+add_circle_test(test_family)
+add_circle_test(test_parenting)
+add_circle_test(test_pets)
+add_circle_test(test_elderly)
+
+# Domain boards C — lifestyle/civic/misc verticals (CircleAI.Sports / .Fitness /
+# .Food / .Agriculture / .Beauty / .Gaming / .Games / .Hospitality / .Tourism /
+# .Travel / .Civic / .Community / .Social / .Relationships / .Faith /
+# .Construction / .Energy / .Creative / .Kids / .Wearable / .Wearable.Biosignals /
+# .Accessibility / .Ambient)
+add_circle_test(test_sports)
+add_circle_test(test_fitness)
+add_circle_test(test_food)
+add_circle_test(test_agriculture)
+add_circle_test(test_beauty)
+add_circle_test(test_gaming)
+add_circle_test(test_games)
+add_circle_test(test_hospitality)
+add_circle_test(test_tourism)
+add_circle_test(test_travel)
+add_circle_test(test_civic)
+add_circle_test(test_community)
+add_circle_test(test_social)
+add_circle_test(test_relationships)
+add_circle_test(test_faith)
+add_circle_test(test_construction)
+add_circle_test(test_energy)
+add_circle_test(test_creative)
+add_circle_test(test_kids)
+add_circle_test(test_wearable)
+add_circle_test(test_wearable_biosignals)
+add_circle_test(test_accessibility)
+add_circle_test(test_ambient)
+
+# CircleAI.Integration (+ .Calendar / .Email / .Geo / .HomeAssistant / .News) —
+# external-integration contracts + deterministic in-memory provider impls
+# (CalDav/Google/MsGraph calendar, Gmail/Imap/MsGraph mail, OpenMeteo + Osrm geo,
+# HomeAssistant, Bluesky/Mastodon/NewsApi/Rss news)
+add_circle_test(test_integration)
+add_circle_test(test_integration_calendar)
+add_circle_test(test_integration_email)
+add_circle_test(test_integration_geo)
+add_circle_test(test_integration_home)
+add_circle_test(test_integration_news)
