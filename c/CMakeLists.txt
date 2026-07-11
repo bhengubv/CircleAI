@@ -230,6 +230,25 @@ add_library(circle_ai STATIC
     src/depbot.c
     src/sdd.c
     src/doc_analytics.c
+
+    # Close-out work unit — the remaining portable packages (CircleAI.Agents.Peer /
+    # .Tools.Catalog / .Languages.Language (packs) / .Languages.Translation /
+    # .SelfBench / .Testing / .WindowsAutomation / .Web portable primitives).
+    # Deterministic in-memory boards + injected seams: agent bus/protocol,
+    # tool-namespace catalog, the 8 culture packs + registries, the on-device
+    # LLM translation engine (over the ca_local_chat_generator_t seam), the
+    # self-bench harness (over the ca_ai_service_t seam, with a self-contained
+    # regex matcher), snapshot/golden testing helpers, a Windows-automation
+    # contract surface (native driver injected — no real Win32), and the
+    # portable CircleAI.Web primitives (routes/pages/response-cache board).
+    src/agents_peer.c
+    src/tools_catalog.c
+    src/languages_packs.c
+    src/languages_translation.c
+    src/selfbench.c
+    src/testing.c
+    src/windows_automation.c
+    src/web.c
 )
 target_include_directories(circle_ai PUBLIC include)
 

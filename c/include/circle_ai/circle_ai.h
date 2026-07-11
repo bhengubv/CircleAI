@@ -317,4 +317,29 @@
 #include "sdd.h"
 #include "doc_analytics.h"
 
+/* Close-out work unit — the remaining portable packages. CircleAI.Agents.Peer
+ * (in-process agent bus + peer protocol + PeerAgent + AgentMessage/Envelope),
+ * CircleAI.Tools.Catalog (ToolNamespace/ToolDescriptor catalog + In-Memory/Null
+ * impls), CircleAI.Languages.Language (the 8 culture packs — Afrikaans/Amharic/
+ * Arabic/Hausa/Portuguese/Sesotho/Swahili/isiZulu — + the base contracts and the
+ * two registries), CircleAI.Languages.Translation (LlmTranslationEngine +
+ * live-conversation translator over the ca_local_chat_generator_t seam),
+ * CircleAI.SelfBench (BenchRunner / AbBenchRunner + regression gate +
+ * BenchSuiteRegistry with the built-in "default" suite, over the ca_ai_service_t
+ * seam and a self-contained regex matcher), CircleAI.Testing (SnapshotDiff +
+ * golden store + snapshot comparer + DeterministicIds + FrozenClock),
+ * CircleAI.WindowsAutomation (UI-automation contract surface — element tree /
+ * actions / input — with the native driver injected behind a vtable seam), and
+ * the portable primitives of CircleAI.Web (RouteDescriptor / PageMetadata /
+ * CachedResponse + InMemoryWebBoard; the Blazor/DI adapter is intentionally not
+ * ported). */
+#include "agents_peer.h"
+#include "tools_catalog.h"
+#include "languages_packs.h"
+#include "languages_translation.h"
+#include "selfbench.h"
+#include "testing.h"
+#include "windows_automation.h"
+#include "web.h"
+
 #endif /* CIRCLE_AI_H */
