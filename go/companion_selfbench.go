@@ -22,20 +22,23 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
-// BenchSummary mirrors the SelfBench BenchSummary aggregate the loop reads.
-// Ported from the C# record BenchSummary — only the fields the loop and the gate
-// use are modelled (the full run detail lives in the SelfBench module).
+// BenchSummary mirrors the SelfBench BenchSummary aggregate. Ported from the C#
+// record BenchSummary. The full SelfBench runner (selfbench.go) populates every
+// field; the Companion self-improvement loop and the A/B gate read the score and
+// latency fields.
 type BenchSummary struct {
-	RunID        string
-	SuiteID      string
-	TaskCount    int
-	PassCount    int
-	MeanScore    float64
-	P50LatencyMs float64
-	P95LatencyMs float64
-	PerTaskScore map[string]float64
+	RunID          string
+	SuiteID        string
+	TaskCount      int
+	PassCount      int
+	MeanScore      float64
+	P50LatencyMs   float64
+	P95LatencyMs   float64
+	PerTaskScore   map[string]float64
+	CompletedAtUtc time.Time
 }
 
 // RegressionGateConfig mirrors the SelfBench RegressionGateConfig. Ported from
