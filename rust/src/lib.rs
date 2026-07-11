@@ -9,11 +9,36 @@
 pub mod aether;
 pub mod aethernet;
 pub mod agents;
+pub mod banking;
 pub mod brain;
+pub mod business;
 pub mod catalog;
+pub mod commerce;
+pub mod commerce_accounting;
+pub mod commerce_finance;
+pub mod commerce_payfast;
+pub mod commerce_xero;
 pub mod companion;
 pub mod content_policy;
+pub mod crm;
 pub mod device;
+pub mod education;
+pub mod elderly;
+pub mod family;
+pub mod healthcare;
+pub mod home;
+pub mod hr;
+pub mod iot;
+pub mod legal;
+pub mod logistics;
+pub mod markets;
+pub mod parenting;
+pub mod pets;
+pub mod personal_finance;
+pub mod personal_health;
+pub mod personal_mental;
+pub mod real_estate;
+pub mod retail;
 pub mod embeddings;
 pub mod embeddings_local;
 pub mod hosting;
@@ -43,6 +68,36 @@ pub mod selector;
 pub mod sync;
 pub mod sync_service;
 pub mod tools;
+
+// Domain boards C: lifestyle / civic / misc (ports of CircleAI.<Domain>).
+pub mod accessibility;
+pub mod agriculture;
+pub mod ambient;
+pub mod beauty;
+pub mod civic;
+pub mod community;
+pub mod construction;
+pub mod creative;
+pub mod energy;
+pub mod faith;
+pub mod fitness;
+pub mod food;
+pub mod games;
+pub mod gaming;
+pub mod hospitality;
+pub mod kids;
+pub mod relationships;
+pub mod social;
+pub mod sports;
+pub mod tourism;
+pub mod travel;
+pub mod wearable;
+pub mod wearable_biosignals;
+
+// CircleAI.Personality — user-DECLARED persona artefact + provider/resolver/prompt.
+pub mod personality;
+// CircleAI.Federation — federated-learning round bookkeeping + averaging.
+pub mod federation;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{
@@ -148,6 +203,20 @@ pub use sync::{
     SyncDeliveryMode, SyncDelta, SyncDomainKeys, SyncReconciliation, VersionVector,
 };
 pub use sync_service::{IMemorySyncService, MemorySyncError, MemorySyncService};
+
+// CircleAI.Personality — declared persona artefact + storage/resolution/prompt (flat access).
+pub use personality::{
+    DeclaredWinsResolver, FormalityRange, IPersonaConflictResolver, IPersonaProvider,
+    JsonPersonaProvider, LearnedWinsResolver, Persona, PersonaPromptBuilder, PersonaProviderError,
+    PrivacyLevel,
+};
+
+// CircleAI.Federation — federated-learning rounds + averaging (flat access).
+pub use federation::{
+    federated_averaging, DefaultFederationDeltaDispatcher, DeltaDispatchOutcome, FederationError,
+    FederationRound, IFederationAggregator, IFederationDeltaDispatcher, IFederationParticipant,
+    InMemoryFederationAggregator, ModelDelta, RoundStatus,
+};
 
 // CircleAI.Networking — the transport ABSTRACTION the 10 concrete transports
 // implement (flat access). `SyncDeliveryMode` is reused from `sync` (same type),
@@ -367,4 +436,296 @@ pub use safety::{
 pub use safety_child::{
     haversine_meters, CheckIn, Geofence, IChildSafetyBoard, InMemoryChildSafetyBoard,
     SafetyChildCompanionAdapter, SafetyChildDomainContext, TrustedAdult,
+};
+
+// ── Domain boards A: health / finance / legal / edu / commerce ───────────────
+// Each of the following ports one `CircleAI.<Domain>` project: an `I<Domain>Board`
+// trait + a handful of record types + a deterministic in-memory board, plus (where
+// the C# has them) a static `<Domain>DomainContext` and an `ICompanionSession`
+// domain adapter. Sync-only; `decimal` money → `f64`.
+
+// CircleAI.Healthcare (flat access).
+pub use healthcare::{
+    HealthAppointment, HealthcareCompanionAdapter, HealthcareDomainContext, IHealthcareBoard,
+    InMemoryHealthcareBoard, Patient, Prescription,
+};
+
+// CircleAI.Banking (flat access). No domain context/adapter in the C#.
+pub use banking::{
+    Account, IAccountReader, ILedgerWriter, IPaymentProcessor, InMemoryAccountReader, InMemoryBank,
+    InMemoryLedgerWriter, InMemoryPaymentProcessor, LedgerEntry, NullAccountReader,
+    NullLedgerWriter, NullPaymentProcessor, PaymentRequest, PaymentResult,
+};
+
+// CircleAI.Legal (flat access).
+pub use legal::{
+    Clause, Contract, ILegalBoard, InMemoryLegalBoard, LegalCompanionAdapter, LegalDeadline,
+    LegalDomainContext, Matter,
+};
+
+// CircleAI.Education (flat access).
+pub use education::{
+    Course, EducationCompanionAdapter, EducationDomainContext, IEducationBoard,
+    InMemoryEducationBoard, Lesson, StudentRecord,
+};
+
+// CircleAI.Commerce (flat access).
+pub use commerce::{
+    CommerceCompanionAdapter, CommerceCustomer, CommerceDomainContext, CommerceLineItem,
+    CommerceOrder, ICommerceBoard, InMemoryCommerceBoard,
+};
+
+// CircleAI.Commerce.Accounting (flat access).
+pub use commerce_accounting::{
+    AccountingEntry, CommerceAccountingCompanionAdapter, CommerceAccountingDomainContext,
+    IAccountingBoard, InMemoryAccountingBoard, Period, TaxRate,
+};
+
+// CircleAI.Commerce.Finance (flat access).
+pub use commerce_finance::{
+    CommerceFinanceCompanionAdapter, CommerceFinanceDomainContext, FinancePayment, IInvoiceBoard,
+    InMemoryInvoiceBoard, Invoice, InvoiceLine,
+};
+
+// CircleAI.Commerce.Integration.PayFast (flat access).
+pub use commerce_payfast::{
+    CommerceIntegrationPayFastCompanionAdapter, CommerceIntegrationPayFastDomainContext,
+    IPayFastBoard, InMemoryPayFastBoard, PayFastConfig, PayFastItnPayload,
+};
+
+// CircleAI.Commerce.Integration.Xero (flat access).
+pub use commerce_xero::{
+    CommerceIntegrationXeroCompanionAdapter, CommerceIntegrationXeroDomainContext, IXeroBoard,
+    InMemoryXeroBoard, XeroTenant, XeroTokens, XeroWebhookEvent,
+};
+
+// CircleAI.Personal.Finance (flat access). `Account` clashes with the banking
+// `Account`, so it is re-exported as `PersonalFinanceAccount`
+// (`personal_finance::Account` remains the canonical path).
+pub use personal_finance::{
+    Account as PersonalFinanceAccount, BudgetLine, FinanceTransaction, IPersonalFinanceBoard,
+    InMemoryPersonalFinanceBoard, MonthSummary, PersonalFinanceCompanionAdapter,
+    PersonalFinanceDomainContext,
+};
+
+// CircleAI.Personal.Health (flat access).
+pub use personal_health::{
+    Allergy, IPersonalHealthBoard, InMemoryPersonalHealthBoard, Medication,
+    PersonalHealthCompanionAdapter, PersonalHealthDomainContext, VitalKind, VitalReading,
+};
+
+// CircleAI.Personal.Mental (flat access).
+pub use personal_mental::{
+    CopingStrategy, IMentalHealthBoard, InMemoryMentalHealthBoard, JournalEntry, Mood, MoodLog,
+    PersonalMentalCompanionAdapter, PersonalMentalDomainContext,
+};
+
+// ── Domain boards B: people / home / logistics ───────────────────────────────
+// Each of the following ports one `CircleAI.<Domain>` project: an `I<Domain>Board`
+// trait (or, for CRM/Markets, a small family of contracts) + a handful of record
+// types + a deterministic in-memory board. CRM/Markets additionally carry the
+// fail-closed `Null*` backends. Sync-only; `decimal` money → `f64`; the C#
+// `DateTime`/`DateTimeOffset` fields → `chrono::DateTime<Utc>`; `TimeSpan` →
+// `chrono::Duration`.
+
+// CircleAI.CRM (flat access).
+pub use crm::{
+    Activity, Company, Contact, Deal, IActivityLog, IContactStore, IDealPipeline,
+    InMemoryActivityLog, InMemoryContactStore, InMemoryDealPipeline, NullActivityLog,
+    NullContactStore, NullDealPipeline,
+};
+
+// CircleAI.HR (flat access).
+pub use hr::{
+    Employee, IHRBoard, InMemoryHRBoard, LeaveRequest, PerformanceReview,
+};
+
+// CircleAI.Business (flat access).
+pub use business::{
+    BusinessUnit, IBusinessBoard, InMemoryBusinessBoard, KpiSample, QuarterTarget,
+};
+
+// CircleAI.Retail (flat access).
+pub use retail::{
+    IRetailBoard, InMemoryRetailBoard, Product, Sale, StockLevel,
+};
+
+// CircleAI.Markets (flat access). `OrderSide`/`OrderType` + subscribe surface.
+pub use markets::{
+    IInstrumentCatalog, IMarketDataFeed, IOrderRouter, InMemoryInstrumentCatalog,
+    InMemoryMarketDataFeed, InMemoryOrderRouter, Instrument, NullInstrumentCatalog,
+    NullMarketDataFeed, NullOrderRouter, OrderRequest, OrderResult, OrderSide, OrderType, Quote,
+    QuoteHandler, QuoteSubscription,
+};
+
+// CircleAI.Logistics (flat access).
+pub use logistics::{
+    ILogisticsBoard, InMemoryLogisticsBoard, RouteLeg, RoutePlan, Shipment, Vehicle,
+};
+
+// CircleAI.RealEstate (flat access).
+pub use real_estate::{
+    IRealEstateBoard, InMemoryRealEstateBoard, Listing, Property, PropertyKind, Valuation, Viewing,
+};
+
+// CircleAI.Home (flat access).
+pub use home::{
+    HomeDevice, IHomeBoard, InMemoryHomeBoard, MaintenanceTask, Room,
+};
+
+// CircleAI.IoT (flat access).
+pub use iot::{
+    IIoTBoard, InMemoryIoTBoard, IoTCommand, IoTDevice, IoTTelemetry,
+};
+
+// CircleAI.Family (flat access).
+pub use family::{
+    FamilyEvent, FamilyMember, IFamilyBoard, InMemoryFamilyBoard, SharedExpense,
+};
+
+// CircleAI.Parenting (flat access). `DayOfWeek` is a faithful port of
+// `System.DayOfWeek`.
+pub use parenting::{
+    Child, DayOfWeek, IParentingBoard, InMemoryParentingBoard, Milestone, Routine, RoutineEntry,
+};
+
+// CircleAI.Pets (flat access).
+pub use pets::{
+    IPetsBoard, InMemoryPetsBoard, Pet, Vaccination, VetAppointment, WeightSample,
+};
+
+// CircleAI.Elderly (flat access). The elderly `CheckIn` is re-exported as
+// `ElderlyCheckIn` to avoid clashing with `safety_child::CheckIn`.
+pub use elderly::{
+    CarePlan, CheckIn as ElderlyCheckIn, IElderlyCareBoard, InMemoryElderlyCareBoard, MedReminder,
+};
+
+// ── Domain boards C: lifestyle / civic / misc ────────────────────────────────
+// Each ports one `CircleAI.<Domain>` project: an `I<Domain>Board` trait (or, for
+// Games, a small family of runtime contracts) + record/enum types + a
+// deterministic in-memory board. Games additionally carries `Null*` backends.
+// Sync-only; `decimal` money → `f64`; `DateTime`/`DateTimeOffset` →
+// `chrono::DateTime<Utc>`; `TimeSpan` → `chrono::Duration`.
+
+// CircleAI.Sports (flat access). `Activity` → `SportsActivity` (clashes with
+// `crm::Activity`).
+pub use sports::{
+    Activity as SportsActivity, DistanceKind, ISportsBoard, InMemorySportsBoard, PersonalBest,
+    TrainingSession,
+};
+
+// CircleAI.Fitness (flat access).
+pub use fitness::{
+    ExerciseSet, FitnessGoal, IFitnessBoard, InMemoryFitnessBoard, Workout,
+};
+
+// CircleAI.Food (flat access).
+pub use food::{
+    IFoodBoard, InMemoryFoodBoard, MealLog, PantryItem, Recipe,
+};
+
+// CircleAI.Agriculture (flat access).
+pub use agriculture::{
+    Crop, Field, IFarmBoard, InMemoryFarmBoard, YieldRecord,
+};
+
+// CircleAI.Beauty (flat access).
+pub use beauty::{
+    Appointment, IBeautyBoard, InMemoryBeautyBoard, SkinProfile, Treatment,
+};
+
+// CircleAI.Gaming (flat access).
+pub use gaming::{
+    AchievementUnlock, GameTitle, IGamingBoard, InMemoryGamingBoard, PlaySession,
+};
+
+// CircleAI.Games (flat access). Game-runtime contracts + real + `Null*` backends.
+pub use games::{
+    GameSubscription, GameTick, IGameLoop, IInputMap, ISceneGraph, InMemoryInputMap,
+    InMemorySceneGraph, InputEvent, InputHandler, NullGameLoop, NullInputMap, NullSceneGraph,
+    SceneNode, TickHandler, TimerGameLoop,
+};
+
+// CircleAI.Hospitality (flat access).
+pub use hospitality::{
+    FrontDeskNote, GuestReservation, HotelRoom, IHospitalityBoard, InMemoryHospitalityBoard,
+};
+
+// CircleAI.Tourism (flat access).
+pub use tourism::{
+    Attraction, ITourismBoard, InMemoryTourismBoard, Itinerary, ItineraryItem, TourismBooking,
+};
+
+// CircleAI.Travel (flat access).
+pub use travel::{
+    Flight, HotelStay, ITravelBoard, InMemoryTravelBoard, TravelTrip,
+};
+
+// CircleAI.Civic (flat access).
+pub use civic::{
+    CivicEvent, CivicIssue, ICivicBoard, InMemoryCivicBoard, Representative,
+};
+
+// CircleAI.Community (flat access).
+pub use community::{
+    Announcement, CommunityGroup, ICommunityBoard, InMemoryCommunityBoard, VolunteerOpportunity,
+};
+
+// CircleAI.Social (flat access).
+pub use social::{
+    Follow, ISocialBoard, InMemorySocialBoard, Reaction, SocialPost,
+};
+
+// CircleAI.Relationships (flat access).
+pub use relationships::{
+    ContactEvent, IRelationshipsBoard, ImportantDate, InMemoryRelationshipsBoard, PersonContact,
+};
+
+// CircleAI.Faith (flat access).
+pub use faith::{
+    FaithService, IFaithBoard, InMemoryFaithBoard, PrayerRequest, ScriptureReference,
+};
+
+// CircleAI.Construction (flat access). `Project` → `ConstructionProject`.
+pub use construction::{
+    ConstructionTask, CostEntry, IConstructionBoard, InMemoryConstructionBoard,
+    Project as ConstructionProject,
+};
+
+// CircleAI.Energy (flat access).
+pub use energy::{
+    EnergyTariff, IEnergyBoard, InMemoryEnergyBoard, MeterReading, Outage,
+};
+
+// CircleAI.Creative (flat access).
+pub use creative::{
+    CreativeWork, Critique, ICreativeBoard, InMemoryCreativeBoard, Inspiration,
+};
+
+// CircleAI.Kids (flat access).
+pub use kids::{
+    AgeAppropriateness, DailyTime, IKidsBoard, InMemoryKidsBoard, KidsContent, TimeLog,
+};
+
+// CircleAI.Wearable (flat access).
+pub use wearable::{
+    IWearableBoard, InMemoryWearableBoard, WearableDevice, WearableKind, WearableSample,
+    WearableTelemetryKind,
+};
+
+// CircleAI.Accessibility (flat access).
+pub use accessibility::{
+    AccessibilityNeed, AdaptationHint, IAccessibilityBoard, InMemoryAccessibilityBoard,
+    UserAccessibilityProfile,
+};
+
+// CircleAI.Ambient (flat access).
+pub use ambient::{
+    AmbientPreference, AmbientReading, IAmbientBoard, InMemoryAmbientBoard,
+};
+
+// CircleAI.Wearable.Biosignals (flat access).
+pub use wearable_biosignals::{
+    BiosignalAffectMapper, BiosignalAggregator, BiosignalKind, BiosignalSample, BiosignalSnapshot,
+    BiosignalStats, IBiosignalSource, NullBiosignalSource, RecordedBiosignalSource,
 };
