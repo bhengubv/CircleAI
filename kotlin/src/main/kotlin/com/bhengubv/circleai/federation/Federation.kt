@@ -231,6 +231,47 @@ interface IFederationDeltaDispatcher {
     suspend fun verifyAndSubmit(delta: ModelDelta): DeltaDispatchOutcome
 }
 
+/**
+ * Reference [IFederationDeltaDispatcher]. Composes signature verification,
+ * replay de-duplication, and submission over an [IFederationAggregator] in a
+ * single call so no step can be skipped. No exception is thrown on rejection —
+ * the caller branches on the returned [DeltaDispatchOutcome].
+ */
+class DefaultFederationDeltaDispatcher(
+    private val aggregator: IFederationAggregator,
+    private val signatureValidator: (ModelDelta) -> Boolean,
+) : IFederationDeltaDispatcher {
+
+    private val seen = HashSet<UUID>()
+    private val lock = Any()
+
+    override suspend fun verifyAndSubmit(delta: ModelDelta): DeltaDispatchOutcome {
+        // 1. Verify the signature first — a forged or unsigned delta never touches the round.
+        if (!signatureValidator(delta)) {
+            return DeltaDispatchOutcome.SignatureInvalid
+        }
+
+        // 2. De-duplicate: atomically claim the delta id; a replay loses the race.
+        val claimed = synchronized(lock) { seen.add(delta.id) }
+        if (!claimed) {
+            return DeltaDispatchOutcome.Duplicate
+        }
+
+        // 3. Submit, translating the aggregator's exceptions into outcomes so the
+        //    caller can branch on the result without a try/catch of its own.
+        return try {
+            aggregator.submitDelta(delta)
+            DeltaDispatchOutcome.Accepted
+        } catch (ex: NoSuchElementException) {
+            synchronized(lock) { seen.remove(delta.id) }
+            DeltaDispatchOutcome.RoundUnknown
+        } catch (ex: IllegalStateException) {
+            synchronized(lock) { seen.remove(delta.id) }
+            DeltaDispatchOutcome.RoundClosed
+        }
+    }
+}
+
 // ===========================================================================
 // InMemoryFederationAggregator  (InMemoryFederationAggregator.cs)
 // ===========================================================================

@@ -811,14 +811,30 @@ class DefaultAbusiveEnvironmentMode : IAbusiveEnvironmentMode {
         require(ownerId.isNotBlank()) { "ownerId required" }
         return synchronized(lock) {
             phrases.getOrPut(ownerId) {
-                // Deterministic per-owner safety phrase from a benign vocabulary.
-                val h = ownerId.hashCode().toUInt()
+                // Deterministic per-owner safety phrase from an 8-word benign vocabulary.
+                // FNV-1a-32 over UTF-8 (NOT String.hashCode(), which the JVM can randomize)
+                // so the phrase is stable across restarts AND byte-identical across every
+                // language port.
+                val h = fnv1a32(ownerId)
                 "the ${words[(h % 8u).toInt()]} ${words[((h shr 8) % 8u).toInt()]} is ${words[((h shr 16) % 8u).toInt()]}"
             }
         }
     }
 
     override fun isEngaged(ownerId: String): Boolean = synchronized(lock) { engaged.contains(ownerId) }
+
+    /**
+     * FNV-1a 32-bit over UTF-8 — deterministic and identical across all language
+     * ports (unlike [String.hashCode], which is unspecified across JVMs). [UInt]
+     * multiplication wraps mod 2^32, matching C# `unchecked` uint arithmetic.
+     */
+    private fun fnv1a32(s: String): UInt {
+        var h = 2166136261u // FNV offset basis
+        for (b in s.toByteArray(Charsets.UTF_8)) {
+            h = (h xor b.toUByte().toUInt()) * 16777619u // XOR byte, multiply by FNV prime
+        }
+        return h
+    }
 }
 
 interface IPublicDisasterMode {
