@@ -1259,9 +1259,10 @@ func (d *DefaultAbusiveEnvironmentMode) Engage(ctx context.Context, ownerID stri
 }
 
 // SafetyPhrase returns a deterministic per-owner safety phrase. Ports
-// SafetyPhrase. The word selection uses a 32-bit hash of ownerID, mirroring the
-// C# unchecked((uint)ownerId.GetHashCode()) shape with a stable FNV-1a hash so
-// the phrase is reproducible across runs.
+// SafetyPhrase. The word selection uses FNV-1a-32 over ownerID's UTF-8 bytes —
+// the identical algorithm the C# reference uses (NOT string.GetHashCode, which
+// .NET randomizes per process) — so the phrase is stable across runs AND
+// byte-identical across every language port.
 func (d *DefaultAbusiveEnvironmentMode) SafetyPhrase(ownerID string) string {
 	if strings.TrimSpace(ownerID) == "" {
 		panic("ownerId required")
@@ -1623,8 +1624,10 @@ func newHexGUID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// fnv1a32 is a stable 32-bit FNV-1a hash used for the deterministic abuse-safe
-// phrase (a reproducible stand-in for C#'s runtime-seeded string.GetHashCode).
+// fnv1a32 is the 32-bit FNV-1a hash over s's UTF-8 bytes (Go strings are UTF-8,
+// so ranging the bytes is exact). It matches the C# reference's Fnv1a32 byte for
+// byte — offset basis 2166136261, prime 16777619, uint32 wraparound — so the
+// deterministic abuse-safe phrase is identical across every language port.
 func fnv1a32(s string) uint32 {
 	const offset = 2166136261
 	const prime = 16777619

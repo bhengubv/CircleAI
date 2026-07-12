@@ -10,6 +10,7 @@
 //	IFederationDeltaDispatcher                       -> FederationDeltaDispatcher
 //	FederatedAveraging (static)                      -> package funcs
 //	InMemoryFederationAggregator                     -> InMemoryFederationAggregator
+//	DefaultFederationDeltaDispatcher                 -> DefaultFederationDeltaDispatcher
 //
 // The C# InMemoryFederationAggregator derives from CircleAIComponentBase (a
 // host-side telemetry wrapper: RunOperationAsync / metric counters). That
@@ -382,60 +383,69 @@ func fedFallbackMedianPayload(deltas []ModelDelta) []byte {
 	return out
 }
 
-// ── InMemoryFederationDeltaDispatcher ───────────────────────────────────────
+// ── DefaultFederationDeltaDispatcher ────────────────────────────────────────
 
-// InMemoryFederationDeltaDispatcher composes an aggregator with a signature
-// validator and a per-round dedup set so a consumer cannot accept an unsigned or
+// DefaultFederationDeltaDispatcher composes an aggregator with a signature
+// validator and a replay-dedup set so a consumer cannot accept an unsigned or
 // replayed delta. It realises IFederationDeltaDispatcher's documented three-step
-// behaviour (verify signature -> dedup for the round -> submit) as a real,
-// non-stub implementation. Construct with NewInMemoryFederationDeltaDispatcher.
+// behaviour (verify signature -> dedup by delta id -> submit) as a real,
+// non-stub implementation. Ports DefaultFederationDeltaDispatcher. Construct with
+// NewDefaultFederationDeltaDispatcher.
 //
-// CONCURRENCY: the dedup set is guarded by its own mutex; the (round, delta id)
-// pair is only recorded after a successful submit, so a rejected submit does not
-// poison future retries.
-type InMemoryFederationDeltaDispatcher struct {
-	agg       FederationAggregator
-	validate  func(ModelDelta) bool
-	mu        sync.Mutex
-	seen      map[string]bool // key = roundID + "|" + deltaID
+// CONCURRENCY: the dedup set is guarded by its own mutex; the delta id is claimed
+// atomically *before* submit (a replay loses the race) and un-claimed when the
+// submit is rejected (round unknown / closed), so a rejected submit does not
+// poison future retries — mirroring the C# ConcurrentDictionary TryAdd/TryRemove.
+type DefaultFederationDeltaDispatcher struct {
+	agg      FederationAggregator
+	validate func(ModelDelta) bool
+	mu       sync.Mutex
+	seen     map[uuid.UUID]bool // key = delta id
 }
 
-// NewInMemoryFederationDeltaDispatcher constructs a dispatcher over agg using
-// validate for signature verification. Panics if either is nil.
-func NewInMemoryFederationDeltaDispatcher(agg FederationAggregator, validate func(ModelDelta) bool) *InMemoryFederationDeltaDispatcher {
-	if agg == nil {
+// NewDefaultFederationDeltaDispatcher constructs a dispatcher over aggregator
+// using signatureValidator for signature verification. Panics if either is nil
+// (mirrors ArgumentNullException).
+// NewInMemoryFederationDeltaDispatcher is a back-compat alias for the renamed
+// NewDefaultFederationDeltaDispatcher (canonical name now matches the C# reference).
+func NewInMemoryFederationDeltaDispatcher(aggregator FederationAggregator, signatureValidator func(ModelDelta) bool) *DefaultFederationDeltaDispatcher {
+	return NewDefaultFederationDeltaDispatcher(aggregator, signatureValidator)
+}
+
+func NewDefaultFederationDeltaDispatcher(aggregator FederationAggregator, signatureValidator func(ModelDelta) bool) *DefaultFederationDeltaDispatcher {
+	if aggregator == nil {
 		panic("aggregator must not be nil")
 	}
-	if validate == nil {
-		panic("validate must not be nil")
+	if signatureValidator == nil {
+		panic("signatureValidator must not be nil")
 	}
-	return &InMemoryFederationDeltaDispatcher{agg: agg, validate: validate, seen: make(map[string]bool)}
+	return &DefaultFederationDeltaDispatcher{agg: aggregator, validate: signatureValidator, seen: make(map[uuid.UUID]bool)}
 }
 
-// VerifyAndSubmit verifies the signature, checks the round is open and the delta
-// is not a replay, then submits. Ports VerifyAndSubmitAsync — it returns an
-// outcome rather than raising so the caller can branch without try/catch.
-func (d *InMemoryFederationDeltaDispatcher) VerifyAndSubmit(delta ModelDelta) (DeltaDispatchOutcome, error) {
+// VerifyAndSubmit verifies the signature, atomically claims the delta id (a
+// replay loses the race), then submits — un-claiming the id if the aggregator
+// rejects the delta. Ports VerifyAndSubmitAsync — it returns an outcome rather
+// than raising so the caller can branch without try/catch.
+func (d *DefaultFederationDeltaDispatcher) VerifyAndSubmit(delta ModelDelta) (DeltaDispatchOutcome, error) {
+	// 1. Verify the signature first — a forged or unsigned delta never touches the round.
 	if !d.validate(delta) {
 		return DeltaSignatureInvalid, nil
 	}
-	// Round must exist and be open before we accept the delta.
-	round, err := d.agg.GetRound(delta.RoundID)
-	if err != nil {
-		return DeltaRoundUnknown, nil
-	}
-	if round.Status != RoundStatusOpen {
-		return DeltaRoundClosed, nil
-	}
-	key := delta.RoundID.String() + "|" + delta.ID.String()
+	// 2. De-duplicate: atomically claim the delta id; a replay loses the race.
 	d.mu.Lock()
-	if d.seen[key] {
+	if d.seen[delta.ID] {
 		d.mu.Unlock()
 		return DeltaDuplicate, nil
 	}
+	d.seen[delta.ID] = true
 	d.mu.Unlock()
-
+	// 3. Submit, translating the aggregator's errors into outcomes so the caller
+	//    can branch on the result without a try/catch of its own. On rejection the
+	//    id is un-claimed so a later legitimate retry is not blocked.
 	if err := d.agg.SubmitDelta(delta); err != nil {
+		d.mu.Lock()
+		delete(d.seen, delta.ID)
+		d.mu.Unlock()
 		switch {
 		case errors.Is(err, ErrFederationRoundUnknown):
 			return DeltaRoundUnknown, nil
@@ -445,9 +455,6 @@ func (d *InMemoryFederationDeltaDispatcher) VerifyAndSubmit(delta ModelDelta) (D
 			return DeltaRoundClosed, err
 		}
 	}
-	d.mu.Lock()
-	d.seen[key] = true
-	d.mu.Unlock()
 	return DeltaAccepted, nil
 }
 
@@ -477,5 +484,5 @@ func HMACSignDelta(key []byte, delta ModelDelta) []byte {
 // Interface guards.
 var (
 	_ FederationAggregator      = (*InMemoryFederationAggregator)(nil)
-	_ FederationDeltaDispatcher = (*InMemoryFederationDeltaDispatcher)(nil)
+	_ FederationDeltaDispatcher = (*DefaultFederationDeltaDispatcher)(nil)
 )
