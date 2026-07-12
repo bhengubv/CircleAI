@@ -56,3 +56,32 @@ export function createAgentMessage(
     correlationId: input.correlationId ?? randomUUID().replace(/-/g, ""),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Agents.Peer — the agent-to-agent Aether-mesh protocol. Identity
+// records (PeerAgent / AgentCapability), the IAgentPeerProtocol contract, the
+// AgentInvocationException, the in-process AgentBus transport, and the
+// InMemoryAgentPeerProtocol reference implementation (discovery window, invoke
+// timeout, payload-prefix correlation, and the background inbox pump). Faithful
+// ports of the CircleAI.Agents.Peer C# project (AgentMessage above is the
+// pre-existing entry).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  agentCapability,
+  peerAgent,
+  withLastSeen,
+  newPeerHandle,
+  type AgentCapability,
+  type PeerAgent,
+} from "./peer_agent.js";
+export type { IAgentPeerProtocol } from "./contracts.js";
+export { AgentInvocationException } from "./agent_invocation_exception.js";
+export { guidToBytes, bytesToGuid } from "./guid_bytes.js";
+export { AgentBus } from "./agent_bus.js";
+export {
+  InMemoryAgentPeerProtocol,
+  type InMemoryAgentPeerProtocolOptions,
+  type AgentPayloadSigner,
+  type AgentCapabilityHandler,
+} from "./in_memory_agent_peer_protocol.js";

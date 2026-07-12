@@ -140,6 +140,33 @@ export * from "./voice/index.js";
 export type { TranscriptionResult, TranscribedEventArgs } from "./voice/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Speech — the on-device speech DSP + ASR/TTS/OCR contract surface. A
+// DISTINCT C# project from CircleAI.Voice: its VAD / wake-word / transcription
+// contracts are frame-at-a-time and would collide by identifier with the
+// stream-based CircleAI.Voice ones, so the port keeps them in the ./speech
+// module under disambiguated names (SpeechTranscriptionResult,
+// ISpeechVoiceActivityDetector, ISpeechWakeWordDetector,
+// NullSpeechVoiceActivityDetector, NullSpeechWakeWordDetector, …). The
+// genuinely-new surface — AudioFormatConverter (μ-law/a-law/PCM-16 + resample),
+// echo cancellation (NLMS / WebRTC shell), end-of-turn detection (rule-based /
+// SmartTurn) and noise reduction (spectral-subtraction / Krisp / DeepFilterNet)
+// — carries its own non-colliding names. Faithful port of CircleAI.Speech.
+export * from "./speech/index.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Tools.Catalog — the composio-pattern provider directory + credential
+// vault + OAuth2 flow + quota guard + tool-namespace store: AuthKind,
+// ProviderDescriptor / OAuth2Descriptor / CredentialBundle / QuotaPolicy /
+// ToolNamespace, the five contracts (IProviderCatalog / ICredentialStore /
+// IOAuth2FlowDriver / IQuotaGuard / IToolNamespaceStore), the injectable
+// IAeadCipher crypto seam + WebCrypto AES-256-GCM default, the in-memory impls
+// (substring/tag provider search, AES-GCM encrypt-at-rest credential store,
+// authorize-URL OAuth2 driver + host token-exchange delegate, sliding-window
+// quota guard, namespace store) and fail-closed Null* defaults. Lives in
+// ./tools_catalog because the ./catalog module is the unrelated MODEL catalog.
+export * from "./tools_catalog/index.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CircleAI.Telephony — the carrier-agnostic voice-agent stack: call primitives,
 // sentence chunking, DTMF tone generation, barge-in, answering-machine + IVR-
 // loop detection, warm transfer, tool-calling (+ circuit breaker + streaming
@@ -172,6 +199,16 @@ export { isSuccessStatusCode } from "./integration/index.js";
 export { throwIfAborted } from "./voice/index.js";
 export type { ILogger } from "./plugins/index.js";
 export type { ToolDefinition, ToolInvocation, ToolResult } from "./tools/index.js";
+
+// CircleAI.Tools' `IToolBridge` (the local-LLM → TheGeekNetwork bridge, HTTP /
+// Composio) collides by name with the pre-existing CircleAI.Hosting `IToolBridge`
+// (the hosting-layer tool-catalog seam) already exported at the package root via
+// `export *`. Two `export *` sources exporting the same name is a hard TS error,
+// so the pre-existing hosting owner keeps the bare name and the CircleAI.Tools
+// variant is re-asserted under an alias. The full CircleAI.Tools bridge remains
+// reachable at the root as `ITgnToolBridge`, and directly via the ./tools subpath.
+export type { IToolBridge } from "./hosting/index.js";
+export type { IToolBridge as ITgnToolBridge } from "./tools/index.js";
 
 // Re-assert telephony's colliding variants under disambiguated aliases.
 export type {

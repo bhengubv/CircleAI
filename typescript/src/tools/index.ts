@@ -151,3 +151,28 @@ export class FacialMetricMatrix {
     return [this.landmarks[i * 2], this.landmarks[i * 2 + 1]];
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Tools — the tool-bridge + catalogue surface (the ToolDefinition /
+// ToolParameter / ToolInvocation / ToolResult types + FacialMetricMatrix above
+// are the pre-existing entries). Faithful ports of the remaining
+// CircleAI.Tools C# files:
+//   • IToolBridge — the local-LLM → TheGeekNetwork bridge contract.
+//   • TheGeekNetworkTools — the 36-API tool catalogue (tgn.<api>.<verb>).
+//   • ToolDefinitionBuilder — fluent ToolDefinition builder.
+//   • ToolManifestGenerator — OpenAI/Qwen JSON + Markdown manifest renderers.
+//   • DeviceDiagnosticsTools — the device.diagnose tool + IDeviceContext render.
+//   • FacexTools — the facex.extract_features on-device CV tool.
+//   • HttpToolBridge / ComposioToolBridge — HTTP-backed bridges over the shared
+//     injected IHttpClient seam (no real network; REST routing table +
+//     Composio JSON-RPC 2.0 + tool discovery).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type { IToolBridge } from "./tool_bridge.js";
+export { TheGeekNetworkTools } from "./the_geek_network_tools.js";
+export { ToolDefinitionBuilder } from "./tool_definition_builder.js";
+export { ToolManifestGenerator } from "./tool_manifest_generator.js";
+export { DeviceDiagnosticsTools } from "./device_diagnostics_tools.js";
+export { FacexTools } from "./facex_tools.js";
+export { HttpToolBridge } from "./http_tool_bridge.js";
+export { ComposioToolBridge } from "./composio_tool_bridge.js";
