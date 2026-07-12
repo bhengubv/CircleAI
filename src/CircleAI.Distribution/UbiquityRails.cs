@@ -474,13 +474,26 @@ public sealed class DefaultAbusiveEnvironmentMode : IAbusiveEnvironmentMode
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("ownerId required");
         return _phrases.GetOrAdd(ownerId, _ =>
         {
-            // Deterministic per-owner safety phrase from a 4-word benign vocabulary.
+            // Deterministic per-owner safety phrase from an 8-word benign vocabulary.
+            // FNV-1a-32 over UTF-8 (NOT string.GetHashCode(), which .NET randomizes per
+            // process) so the phrase is stable across restarts AND byte-identical across
+            // every language port.
             string[] words = { "thunder", "river", "amber", "field", "rain", "stone", "harbor", "linen" };
-            var h = unchecked((uint)ownerId.GetHashCode());
+            uint h = Fnv1a32(ownerId);
             return $"the {words[h % 8]} {words[(h >> 8) % 8]} is {words[(h >> 16) % 8]}";
         });
     }
     public bool IsEngaged(string ownerId) => _engaged.ContainsKey(ownerId);
+
+    /// <summary>FNV-1a 32-bit over UTF-8 — deterministic and identical across all language
+    /// ports (unlike <c>string.GetHashCode()</c>, which .NET randomizes per process).</summary>
+    private static uint Fnv1a32(string s)
+    {
+        uint h = 2166136261u; // FNV offset basis
+        foreach (byte b in System.Text.Encoding.UTF8.GetBytes(s))
+            h = unchecked((h ^ b) * 16777619u); // XOR byte, multiply by FNV prime (wraps mod 2^32)
+        return h;
+    }
 }
 public interface IPublicDisasterMode { string CurrentState { get; } }
 public sealed class DefaultPublicDisasterMode : IPublicDisasterMode { public string CurrentState => "normal"; }
