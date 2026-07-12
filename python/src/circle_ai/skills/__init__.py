@@ -17,6 +17,8 @@ Public surface:
   * SkillPackManifest / ParsedSkill / SkillPackLoader.
   * IPackDownloader / InMemoryPackDownloader / SkillPackSourcesOptions /
     SkillPackAutoImporter.
+  * FileSkillStore                                       — SKILL.md disk store.
+  * SkillContextBuilder                                  — top-N system-prompt block.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from .auto_importer import (
     SkillPackAutoImporter,
     SkillPackSourcesOptions,
 )
+from .context_builder import SkillContextBuilder
 from .contracts import (
     ISkillStore,
     SkillDetail,
@@ -34,6 +37,7 @@ from .contracts import (
     SkillSource,
     SkillSummary,
 )
+from .file_skill_store import FileSkillStore
 from .in_memory_skill_store import InMemorySkillStore
 from .pack_loader import ParsedSkill, SkillPackLoader, SkillPackManifest
 from .pack_source import KnownSkillPacks, SkillPackSource
@@ -45,6 +49,8 @@ __all__ = [
     "SkillDraft",
     "ISkillStore",
     "InMemorySkillStore",
+    "FileSkillStore",
+    "SkillContextBuilder",
     "SkillPackSource",
     "KnownSkillPacks",
     "SkillPackManifest",
