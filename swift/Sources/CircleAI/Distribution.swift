@@ -148,3 +148,78 @@ public struct DefaultCarrierPreloadCatalog: ICarrierPreloadCatalog {
     public init() {}
     public let carriers: [String] = ["MTN", "Vodacom", "Cell C", "Telkom", "Safaricom", "Airtel"]
 }
+
+// MARK: - Abuse-safe mode (safety phrase)
+
+/// Abuse-safe mode: a user in a coercive environment can silently invoke a
+/// safe mode by speaking a per-user test phrase. (C# `IAbusiveEnvironmentMode`.)
+public protocol IAbusiveEnvironmentMode: Sendable {
+    /// Engages abuse-safe mode for `ownerId`.
+    func engage(_ ownerId: String) async throws
+    /// The deterministic per-user phrase the user can speak to silently invoke
+    /// abuse-safe mode.
+    func safetyPhrase(_ ownerId: String) throws -> String
+    /// Whether abuse-safe mode is currently engaged for `ownerId`.
+    func isEngaged(_ ownerId: String) -> Bool
+}
+
+/// Default `IAbusiveEnvironmentMode`. (C# `DefaultAbusiveEnvironmentMode`.)
+///
+/// The safety phrase is derived deterministically from the owner id via
+/// FNV-1a-32 over UTF-8 (NOT Swift's `hashValue`/`Hasher`, which is seeded per
+/// process) so the phrase is stable across restarts AND byte-identical across
+/// every language port.
+public final class DefaultAbusiveEnvironmentMode: IAbusiveEnvironmentMode, @unchecked Sendable {
+    private let lock = NSLock()
+    private var engaged: Set<String> = []
+    private var phrases: [String: String] = [:]
+
+    public init() {}
+
+    public func engage(_ ownerId: String) async throws {
+        if ownerId.isBlank { throw DistributionError.ownerIdRequired }
+        lock.lock(); engaged.insert(ownerId); lock.unlock()
+    }
+
+    public func safetyPhrase(_ ownerId: String) throws -> String {
+        if ownerId.isBlank { throw DistributionError.ownerIdRequired }
+        lock.lock(); defer { lock.unlock() }
+        if let cached = phrases[ownerId] { return cached }
+        // Deterministic per-owner safety phrase from an 8-word benign vocabulary.
+        let vocab = ["thunder", "river", "amber", "field", "rain", "stone", "harbor", "linen"]
+        let h = Self.fnv1a32(ownerId)
+        let phrase = "the \(vocab[Int(h % 8)]) \(vocab[Int((h >> 8) % 8)]) is \(vocab[Int((h >> 16) % 8)])"
+        phrases[ownerId] = phrase
+        return phrase
+    }
+
+    public func isEngaged(_ ownerId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return engaged.contains(ownerId)
+    }
+
+    /// FNV-1a 32-bit over UTF-8 — deterministic and identical across all
+    /// language ports (unlike Swift's `Hasher`, which is seeded per process).
+    /// `&*` is the wrapping multiply: plain `*` would trap on overflow, whereas
+    /// FNV requires the product to wrap mod 2^32.
+    static func fnv1a32(_ s: String) -> UInt32 {
+        var h: UInt32 = 2166136261 // FNV offset basis
+        for b in Array(s.utf8) {
+            h = (h ^ UInt32(b)) &* 16777619 // XOR byte, multiply by FNV prime (wraps mod 2^32)
+        }
+        return h
+    }
+}
+
+// MARK: - Errors
+
+/// Errors raised by the distribution / ubiquity rails.
+public enum DistributionError: Error, Equatable, CustomStringConvertible {
+    case ownerIdRequired
+
+    public var description: String {
+        switch self {
+        case .ownerIdRequired: return "ownerId required"
+        }
+    }
+}

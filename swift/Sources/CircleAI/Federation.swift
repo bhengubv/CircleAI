@@ -408,12 +408,12 @@ public final class InMemoryFederationAggregator: IFederationAggregator, @uncheck
     }
 }
 
-// MARK: - InMemoryFederationDeltaDispatcher
+// MARK: - DefaultFederationDeltaDispatcher
 
 /// Composes verify → dedup → submit against an `InMemoryFederationAggregator`,
 /// so consumers cannot skip a step. Deduplicates by delta id per round.
-/// (Reference impl of C# `IFederationDeltaDispatcher`.)
-public final class InMemoryFederationDeltaDispatcher: IFederationDeltaDispatcher, @unchecked Sendable {
+/// (C# `DefaultFederationDeltaDispatcher` — the safe-by-default composer.)
+public final class DefaultFederationDeltaDispatcher: IFederationDeltaDispatcher, @unchecked Sendable {
     private let aggregator: InMemoryFederationAggregator
     private let signatureValidator: @Sendable (ModelDelta) -> Bool
     private let lock = NSLock()
@@ -449,3 +449,7 @@ public final class InMemoryFederationDeltaDispatcher: IFederationDeltaDispatcher
         return .accepted
     }
 }
+
+/// Backwards-compatible alias for the pre-rename name. The canonical name is
+/// `DefaultFederationDeltaDispatcher` (matching the C# reference).
+public typealias InMemoryFederationDeltaDispatcher = DefaultFederationDeltaDispatcher
