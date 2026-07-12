@@ -57,6 +57,7 @@ public sealed class StubCompanionSession : ICompanionSession
         AffectSummary: "",
         RecentMemorySnippets: Array.Empty<string>(),
         ActiveGoals: Array.Empty<string>(),
+        UserFacts: Array.Empty<string>(),
         ContextBuiltAt: DateTimeOffset.UtcNow);
 
     public Task RefreshContextAsync(CancellationToken ct = default) => Task.CompletedTask;
