@@ -140,6 +140,57 @@ export * from "./voice/index.js";
 export type { TranscriptionResult, TranscribedEventArgs } from "./voice/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Telephony — the carrier-agnostic voice-agent stack: call primitives,
+// sentence chunking, DTMF tone generation, barge-in, answering-machine + IVR-
+// loop detection, warm transfer, tool-calling (+ circuit breaker + streaming
+// progress + MCP import), guardrails, LLM-as-judge, eval sessions, latency +
+// false-interruption tracking, reassurance fillers, speculative generation,
+// prompt-variable resolution, stereo call recording, hold-music mixing, phone-
+// number provisioning, voice-loop-as-a-tool, agent handoff, consult escalation,
+// dashboard data, speech-lifecycle events, first-message preamble, an in-memory
+// test call session, and OTel-style telemetry. Carrier / MCP / consult HTTP
+// boundaries are injected behind IHttpClient; native tracing behind
+// IActivitySource; the carrier behind ITelephonyCarrier (Null* fail-soft).
+//
+// NOTE: a handful of telephony names collide with identifiers already exported
+// at the package root by sibling barrels — the HTTP-seam types + `isSuccess-
+// StatusCode` (from ./integration, byte-identical shapes reused deliberately),
+// `throwIfAborted` (from ./voice), `ILogger` (from ./plugins), and the tool-
+// calling records `ToolDefinition` / `ToolInvocation` / `ToolResult` (from
+// ./tools, a DISTINCT shape). Two `export *` sources exporting the same name is
+// a hard TS error, so each collision is disambiguated explicitly below: the
+// pre-existing owner keeps the bare name, and telephony's variant is re-asserted
+// under a `Telephony*` / `telephony*` alias so it stays reachable at the root.
+// Mirrors the TranscriptionResult / IAIService disambiguation convention above.
+export * from "./telephony/index.js";
+
+// Pin the pre-existing owners as the bare-name winners (resolves the ambiguity).
+// `HttpResponse` is deliberately omitted — it is already canonically pinned to
+// ./hosting above; telephony's variant is reachable via the alias below.
+export type { HttpMethod, HttpRequest, IHttpClient } from "./integration/index.js";
+export { isSuccessStatusCode } from "./integration/index.js";
+export { throwIfAborted } from "./voice/index.js";
+export type { ILogger } from "./plugins/index.js";
+export type { ToolDefinition, ToolInvocation, ToolResult } from "./tools/index.js";
+
+// Re-assert telephony's colliding variants under disambiguated aliases.
+export type {
+  HttpMethod as TelephonyHttpMethod,
+  HttpRequest as TelephonyHttpRequest,
+  HttpResponse as TelephonyHttpResponse,
+  IHttpClient as ITelephonyHttpClient,
+  ILogger as ITelephonyLogger,
+  ToolDefinition as TelephonyToolDefinition,
+  ToolInvocation as TelephonyToolInvocation,
+  ToolResult as TelephonyToolResult,
+} from "./telephony/index.js";
+export { isSuccessStatusCode as telephonyIsSuccessStatusCode } from "./telephony/index.js";
+export { throwIfAborted as telephonyThrowIfAborted } from "./telephony/index.js";
+export { toolDefinition as telephonyToolDefinition } from "./telephony/index.js";
+export { toolInvocation as telephonyToolInvocation } from "./telephony/index.js";
+export { toolResult as telephonyToolResult } from "./telephony/index.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Domain boards A — health / finance / legal / edu / commerce
 // Each is an I<Domain>Board + record types + a deterministic in-memory impl,
 // plus the vertical's static <Domain>DomainContext. Faithful ports of the
