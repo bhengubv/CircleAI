@@ -48,6 +48,14 @@ class HttpRequest:
     ``body_json`` mirrors ``PostAsJsonAsync`` / ``JsonContent.Create`` payloads;
     ``body_text`` mirrors ``StringContent`` (XML, iCalendar). Only one is set.
     ``headers`` carries per-request headers (Authorization, Depth, X-Api-Key…).
+
+    ``body_bytes`` carries a raw binary body (C# ``ByteArrayContent`` /
+    ``MultipartFormDataContent`` / ``StringContent`` sent as bytes) — used by the
+    telephony carriers (form-urlencoded) and the speech.cloud STT adapters (WAV
+    upload / multipart). ``content_type`` is the ``Content-Type`` the C# set on
+    that content (e.g. ``application/x-www-form-urlencoded``, ``audio/wav``,
+    ``multipart/form-data; boundary=…``). Only one of ``body_json`` /
+    ``body_text`` / ``body_bytes`` is set on any one request.
     """
 
     method: str
@@ -55,6 +63,8 @@ class HttpRequest:
     headers: Mapping[str, str] = field(default_factory=dict)
     body_json: Optional[Any] = None
     body_text: Optional[str] = None
+    body_bytes: Optional[bytes] = None
+    content_type: Optional[str] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,16 +73,34 @@ class HttpResponse:
 
     ``text`` is the raw body (used for XML / iCalendar). :meth:`json` parses it
     as JSON (used everywhere the C# calls ``JsonDocument.ParseAsync``).
+
+    ``body_bytes`` is the raw binary body (C#
+    ``HttpResponseMessage.Content.ReadAsByteArrayAsync``) — the speech.cloud TTS
+    adapters return audio bytes here. When only ``text`` is provided,
+    ``body_bytes`` defaults to that text UTF-8-encoded, so a caller reading bytes
+    off a text response still gets the payload.
     """
 
     status_code: int
     text: str = ""
     reason: str = ""
+    body_bytes: bytes = b""
 
     @property
     def is_success(self) -> bool:
         """C# ``HttpResponseMessage.IsSuccessStatusCode`` — 200..299."""
         return 200 <= self.status_code <= 299
+
+    @property
+    def content_bytes(self) -> bytes:
+        """Raw response body as bytes (C# ``ReadAsByteArrayAsync``).
+
+        Prefers an explicit ``body_bytes``; otherwise falls back to ``text``
+        encoded as UTF-8 so a bytes-oriented caller still sees a text body.
+        """
+        if self.body_bytes:
+            return self.body_bytes
+        return self.text.encode("utf-8") if self.text else b""
 
     def ensure_success(self) -> "HttpResponse":
         """C# ``EnsureSuccessStatusCode`` — raise :class:`HttpError` on non-2xx."""

@@ -5,8 +5,12 @@ provision numbers, and run a low-latency voice loop (barge-in, sentence
 chunking, speculative generation, reassurance fillers, guardrails, tool-calling,
 warm transfer, agent handoff, consult escalation) with cost + latency
 observability. Any consumer (txtMe, Panik, a salon receptionist) talks to these
-contracts; the real Twilio / Telnyx / Plivo adapters ship as sibling packages.
-C# is the exact spec.
+contracts; the real Twilio / Telnyx / Plivo adapters (C# sibling packages
+CircleAI.Telephony.{Twilio,Telnyx,Plivo}) are ported here in-package as
+``{twilio,telnyx,plivo}_carrier`` / ``…_call_session`` / ``…_options`` — each
+carrier injects the shared ``circle_ai.integration.http.IHttpFetcher`` for its
+REST leg (base-address + Basic/Bearer auth + form/JSON bodies reproduced in
+``carriers_http``). C# is the exact spec.
 
 Two ports differ from the C# by design (the Python tree has no equivalents):
 
@@ -209,6 +213,17 @@ from .warm_transfer_orchestrator import (
     WarmTransferResult,
 )
 
+# --- carrier adapters (ported from the C# sibling packages) -----------------
+from .plivo_call_session import PlivoCallSession, PlivoPendingMediaStream
+from .plivo_carrier import PlivoCarrier
+from .plivo_options import PlivoOptions
+from .telnyx_call_session import TelnyxCallSession, TelnyxPendingMediaStream
+from .telnyx_carrier import TelnyxCarrier
+from .telnyx_options import TelnyxOptions
+from .twilio_call_session import PendingMediaStream, TwilioCallSession
+from .twilio_carrier import TwilioCarrier
+from .twilio_options import TwilioOptions
+
 __all__ = [
     # primitives
     "CallDirection",
@@ -233,6 +248,19 @@ __all__ = [
     "NullTelephonyCarrier",
     "NullInboundCallDispatcher",
     "CarrierFallback",
+    # carrier adapters (Twilio / Telnyx / Plivo)
+    "TwilioCarrier",
+    "TwilioCallSession",
+    "TwilioOptions",
+    "PendingMediaStream",
+    "TelnyxCarrier",
+    "TelnyxCallSession",
+    "TelnyxOptions",
+    "TelnyxPendingMediaStream",
+    "PlivoCarrier",
+    "PlivoCallSession",
+    "PlivoOptions",
+    "PlivoPendingMediaStream",
     # provisioning
     "PhoneNumberProvisioner",
     "IProvisionedNumberStore",
