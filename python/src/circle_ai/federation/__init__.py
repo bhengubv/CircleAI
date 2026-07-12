@@ -11,10 +11,12 @@ Public surface:
   * ModelDelta / FederationRound                          — domain records.
   * IFederationParticipant / IFederationAggregator / IFederationDeltaDispatcher.
   * FederatedAveraging                                    — averaging math.
-  * InMemoryFederationAggregator                          — reference impl.
+  * InMemoryFederationAggregator                          — reference aggregator.
+  * DefaultFederationDeltaDispatcher                      — verify+dedup+submit.
 """
 from __future__ import annotations
 
+from .default_federation_delta_dispatcher import DefaultFederationDeltaDispatcher
 from .federated_averaging import FederatedAveraging
 from .in_memory_federation_aggregator import InMemoryFederationAggregator
 from .interfaces import (
@@ -35,4 +37,5 @@ __all__ = [
     "IFederationDeltaDispatcher",
     "FederatedAveraging",
     "InMemoryFederationAggregator",
+    "DefaultFederationDeltaDispatcher",
 ]

@@ -15,6 +15,8 @@ Public surface:
   * AppStorePackage / DeltaUpdate                         — Ubiquity records.
   * IAppStoreSubmitter / ISignedDeltaUpdater / IOemPreloadCatalog /
     ICarrierPreloadCatalog + their Default* implementations.
+  * IAbusiveEnvironmentMode + DefaultAbusiveEnvironmentMode — abuse-safe mode
+    whose per-owner safety phrase is a deterministic FNV-1a-32 draw.
 """
 from __future__ import annotations
 
@@ -22,11 +24,13 @@ from .contracts import FileMetadata, IFileSync, IPeerAdvertiser, Peer
 from .null_implementations import NullFileSync, NullPeerAdvertiser
 from .ubiquity import (
     AppStorePackage,
+    DefaultAbusiveEnvironmentMode,
     DefaultAppStoreSubmitter,
     DefaultCarrierPreloadCatalog,
     DefaultOemPreloadCatalog,
     DefaultSignedDeltaUpdater,
     DeltaUpdate,
+    IAbusiveEnvironmentMode,
     IAppStoreSubmitter,
     ICarrierPreloadCatalog,
     IOemPreloadCatalog,
@@ -50,4 +54,6 @@ __all__ = [
     "DefaultSignedDeltaUpdater",
     "DefaultOemPreloadCatalog",
     "DefaultCarrierPreloadCatalog",
+    "IAbusiveEnvironmentMode",
+    "DefaultAbusiveEnvironmentMode",
 ]

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hmac
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from hashlib import sha256
@@ -171,3 +172,79 @@ class DefaultCarrierPreloadCatalog(ICarrierPreloadCatalog):
     @property
     def carriers(self) -> List[str]:
         return ["MTN", "Vodacom", "Cell C", "Telkom", "Safaricom", "Airtel"]
+
+
+# =====================================================================
+# FAILURE MODES — abusive-environment safe mode
+# =====================================================================
+# FNV-1a 32-bit over UTF-8 — deterministic and identical across all language
+# ports (unlike hash()/str.__hash__, which Python randomizes per process via
+# PYTHONHASHSEED). This keeps the per-owner safety phrase stable across restarts
+# AND byte-identical to the C# / other-language ports.
+_FNV32_OFFSET_BASIS = 2166136261
+_FNV32_PRIME = 16777619
+_UINT32_MASK = 0xFFFFFFFF
+
+
+def _fnv1a32(s: str) -> int:
+    h = _FNV32_OFFSET_BASIS
+    for b in s.encode("utf-8"):
+        h = ((h ^ b) * _FNV32_PRIME) & _UINT32_MASK
+    return h
+
+
+class IAbusiveEnvironmentMode(ABC):
+    """(3.3.0) Abuse-safe failure mode. Mirrors
+    ``CircleAI.Distribution.Ubiquity.IAbusiveEnvironmentMode``."""
+
+    @abstractmethod
+    async def engage_async(self, owner_id: str, ct: Optional[object] = None) -> None:
+        ...
+
+    @abstractmethod
+    def safety_phrase(self, owner_id: str) -> str:
+        """Test phrase the user can speak to silently invoke abuse-safe mode.
+        Generated per user."""
+        ...
+
+    @abstractmethod
+    def is_engaged(self, owner_id: str) -> bool:
+        ...
+
+
+class DefaultAbusiveEnvironmentMode(IAbusiveEnvironmentMode):
+    """(3.3.0) Default abuse-safe mode. The per-owner :meth:`safety_phrase` is a
+    deterministic FNV-1a-32 draw from an 8-word benign vocabulary — stable across
+    restarts and byte-identical across every language port."""
+
+    _VOCAB = ("thunder", "river", "amber", "field", "rain", "stone", "harbor", "linen")
+
+    def __init__(self) -> None:
+        self._engaged: Dict[str, bool] = {}
+        self._phrases: Dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    async def engage_async(self, owner_id: str, ct: Optional[object] = None) -> None:
+        if owner_id is None or owner_id.strip() == "":
+            raise ValueError("ownerId required")
+        with self._lock:
+            self._engaged[owner_id] = True
+
+    def safety_phrase(self, owner_id: str) -> str:
+        if owner_id is None or owner_id.strip() == "":
+            raise ValueError("ownerId required")
+        with self._lock:
+            existing = self._phrases.get(owner_id)
+            if existing is not None:
+                return existing
+            # Deterministic per-owner safety phrase from an 8-word benign
+            # vocabulary. FNV-1a-32 over UTF-8 so the phrase is stable across
+            # restarts AND byte-identical across every language port.
+            h = _fnv1a32(owner_id)
+            phrase = f"the {self._VOCAB[h % 8]} {self._VOCAB[(h >> 8) % 8]} is {self._VOCAB[(h >> 16) % 8]}"
+            self._phrases[owner_id] = phrase
+            return phrase
+
+    def is_engaged(self, owner_id: str) -> bool:
+        with self._lock:
+            return owner_id in self._engaged
