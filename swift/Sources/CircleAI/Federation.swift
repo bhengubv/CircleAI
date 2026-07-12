@@ -411,13 +411,14 @@ public final class InMemoryFederationAggregator: IFederationAggregator, @uncheck
 // MARK: - DefaultFederationDeltaDispatcher
 
 /// Composes verify → dedup → submit against an `InMemoryFederationAggregator`,
-/// so consumers cannot skip a step. Deduplicates by delta id per round.
+/// so consumers cannot skip a step. Deduplicates by delta id (matching the C#
+/// reference's `ConcurrentDictionary<Guid, byte>` keyed on `delta.Id`).
 /// (C# `DefaultFederationDeltaDispatcher` — the safe-by-default composer.)
 public final class DefaultFederationDeltaDispatcher: IFederationDeltaDispatcher, @unchecked Sendable {
     private let aggregator: InMemoryFederationAggregator
     private let signatureValidator: @Sendable (ModelDelta) -> Bool
     private let lock = NSLock()
-    private var seen: [UUID: Set<UUID>] = [:]  // roundId → delta ids
+    private var seen: Set<UUID> = []  // delta ids (matches C# _seen keyed on delta.Id)
 
     public init(aggregator: InMemoryFederationAggregator,
                 signatureValidator: @escaping @Sendable (ModelDelta) -> Bool) {
@@ -426,27 +427,31 @@ public final class DefaultFederationDeltaDispatcher: IFederationDeltaDispatcher,
     }
 
     public func verifyAndSubmit(_ delta: ModelDelta) async -> DeltaDispatchOutcome {
-        // 1. Signature.
+        // 1. Verify the signature first — a forged/unsigned delta never touches the round.
         if !signatureValidator(delta) { return .signatureInvalid }
 
-        // 2. Dedup by (round, delta id).
+        // 2. Dedup: atomically CLAIM the delta id BEFORE submitting; a replay loses the
+        //    race (matches C# `_seen.TryAdd(delta.Id, 0)`).
         lock.lock()
-        if seen[delta.roundId]?.contains(delta.id) == true { lock.unlock(); return .duplicate }
+        let claimed = seen.insert(delta.id).inserted
         lock.unlock()
+        if !claimed { return .duplicate }
 
-        // 3. Submit — map aggregator errors to outcomes.
+        // 3. Submit — map aggregator errors to outcomes, un-claiming the id on rejection
+        //    (matches C# `_seen.TryRemove` in the catch blocks).
         do {
             try await aggregator.submitDelta(delta)
+            return .accepted
         } catch FederationError.roundUnknown {
+            lock.lock(); seen.remove(delta.id); lock.unlock()
             return .roundUnknown
         } catch FederationError.roundNotAcceptingDeltas, FederationError.maxParticipantsReached {
+            lock.lock(); seen.remove(delta.id); lock.unlock()
             return .roundClosed
         } catch {
+            lock.lock(); seen.remove(delta.id); lock.unlock()
             return .roundClosed
         }
-
-        lock.lock(); seen[delta.roundId, default: []].insert(delta.id); lock.unlock()
-        return .accepted
     }
 }
 
