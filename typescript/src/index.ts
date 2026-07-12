@@ -55,7 +55,9 @@ export * from "./core/index.js";
 // CircleAI.Embeddings — ITextEmbedder + TextEmbedder (backend-injected).
 export * from "./embeddings/index.js";
 
-// CircleAI.Embeddings.Local — encoder/store/index contracts + InMemoryEmbeddingStore.
+// CircleAI.Embeddings.Local — encoder/store/index contracts + InMemoryEmbeddingStore,
+// plus the TurboVec-backed HnswEmbeddingStore + TurboVecEmbeddingIndex (native SIMD
+// kernel injected behind INativeVectorKernel; portable quantised cosine otherwise).
 export * from "./embeddings/local/index.js";
 
 // CircleAI.Inference.Server + .Enterprise — OpenAI-compatible in-memory server:
@@ -681,6 +683,47 @@ export * from "./doc-analytics/index.js";
 // + MiroFishAdapter, the NetworkHealthSimulator facade, and the
 // ThreatPropagationScenario (Security ↔ Simulation) bridge.
 export * from "./simulation/index.js";
+
+// CircleAI.SelfBench — bench-runner + suite registry + A/B regression gate:
+// BenchScoring / BenchTask / BenchResult / BenchSummary, the IBenchScorer surface
+// + BuiltInScorers, BenchRunner, BenchSuiteRegistry (+ built-in "default" suite),
+// and AbBenchRunner with RegressionGateConfig / AbVerdict. Runs against the
+// hosting IAIService. The four record names BenchTask / BenchSummary /
+// RegressionGateConfig / AbVerdict and the value defaultRegressionGateConfig are
+// ALSO declared by companion/herjarvis (its opaque self-improvement-loop plumbing,
+// which reaches the root barrel first). To avoid duplicate-identifier collisions,
+// the canonical SelfBench versions of those five names are re-exported here under
+// a `SelfBench`-prefixed alias; every other SelfBench symbol is exported plainly.
+// The unprefixed canonical types remain importable from "circleai/selfbench".
+export {
+  BenchScoring,
+  ExactMatchScorer,
+  SubstringScorer,
+  RegexScorer,
+  NumericToleranceScorer,
+  BuiltInScorers,
+  BenchRunner,
+  BenchSuiteRegistry,
+  AbBenchRunner,
+  makeBenchTask,
+  buildDefaultSuite,
+  defaultRegressionGateConfig as defaultSelfBenchRegressionGateConfig,
+} from "./selfbench/index.js";
+export type {
+  IBenchLogger,
+  BenchResult,
+  IBenchScorer,
+  BenchTask as SelfBenchTask,
+  BenchSummary as SelfBenchSummary,
+  RegressionGateConfig as SelfBenchRegressionGateConfig,
+  AbVerdict as SelfBenchAbVerdict,
+} from "./selfbench/index.js";
+
+// CircleAI.Languages.Translation — on-device LLM translator over the injected
+// IChatGenerator: TranslationMode / TranslationRequest / TranslationResult /
+// ConversationTurn, ITranslationEngine / ILiveTranslator, and LlmTranslationEngine
+// (streaming + bidirectional live conversation).
+export * from "./languages/translation/index.js";
 
 // Re-assert a single canonical `Disposable` at the package root. CircleAI.Operator,
 // CircleAI.AutonomousBiz, CircleAI.Plugins, and CircleAI.Observer each export a
