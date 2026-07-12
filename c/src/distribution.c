@@ -389,3 +389,35 @@ const char *const *ca_dist_carrier_carriers(size_t *out_count) {
     if (out_count) *out_count = sizeof(CARRIERS) / sizeof(CARRIERS[0]);
     return CARRIERS;
 }
+
+/* ═══════════════ DefaultAbusiveEnvironmentMode.SafetyPhrase ════════════════ */
+
+/* FNV-1a 32-bit over the raw UTF-8 bytes — deterministic and identical across
+ * all language ports (unlike a host string hash, which .NET randomises per
+ * process). uint32_t arithmetic wraps mod 2^32 naturally. */
+static uint32_t fnv1a32(const char *s) {
+    uint32_t h = 2166136261u; /* FNV offset basis */
+    for (const unsigned char *p = (const unsigned char *)s; *p; ++p)
+        h = (h ^ (uint32_t)*p) * 16777619u; /* XOR byte, * FNV prime */
+    return h;
+}
+
+char *ca_dist_abusive_env_safety_phrase(const char *owner_id) {
+    if (cab_is_ws(owner_id)) return NULL; /* ArgumentException: ownerId required */
+
+    /* 8-word benign vocabulary; phrase = "the {a} {b} is {c}". */
+    static const char *const VOCAB[8] = {
+        "thunder", "river", "amber", "field", "rain", "stone", "harbor", "linen"
+    };
+    uint32_t h = fnv1a32(owner_id);
+    const char *a = VOCAB[h & 7u];
+    const char *b = VOCAB[(h >> 8) & 7u];
+    const char *c = VOCAB[(h >> 16) & 7u];
+
+    size_t len = strlen("the ") + strlen(a) + 1 + strlen(b) +
+                 strlen(" is ") + strlen(c) + 1;
+    char *out = (char *)malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "the %s %s is %s", a, b, c);
+    return out;
+}

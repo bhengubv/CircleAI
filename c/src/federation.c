@@ -391,31 +391,58 @@ size_t ca_fed_aggregator_round_count(const ca_fed_aggregator_t *a) {
     return a ? a->count : 0;
 }
 
-/* ── IFederationDeltaDispatcher ─────────────────────────────────────────── */
+/* ── IFederationDeltaDispatcher -> DefaultFederationDeltaDispatcher ──────── */
 
-int ca_fed_dispatcher_verify_and_submit(ca_fed_aggregator_t *a,
-                                        const ca_fed_delta_t *delta,
-                                        ca_fed_dispatch_outcome_t *outcome) {
+/* Composes verify -> dedup -> submit in the C# DefaultFederationDeltaDispatcher
+ * order: the signature is verified BEFORE the round is inspected, so a forged or
+ * unsigned delta never touches the round regardless of the round's existence or
+ * state. Then dedup by delta Id within the round, then submit — translating the
+ * aggregator's unknown-round / not-Open cases into ROUND_UNKNOWN / ROUND_CLOSED
+ * (the C# KeyNotFoundException / InvalidOperationException branches). */
+int ca_default_federation_delta_dispatcher(ca_fed_aggregator_t *a,
+                                           const ca_fed_delta_t *delta,
+                                           ca_fed_dispatch_outcome_t *outcome) {
     if (!a || !delta || !outcome) return -1;
 
-    round_state_t *rs = find_round(a, delta->round_id);
-    if (!rs) { *outcome = CA_FED_ROUND_UNKNOWN; return 0; }
-    if (rs->snapshot.status != CA_FED_ROUND_OPEN) { *outcome = CA_FED_ROUND_CLOSED; return 0; }
-
+    /* 1. Verify the signature first — a forged/unsigned delta never touches the round. */
     if (!a->validator(a->validator_ctx, delta)) {
         *outcome = CA_FED_SIGNATURE_INVALID;
         return 0;
     }
-    /* dedup by delta Id within the round */
+
+    /* Locate the round only after the signature passes, to classify the outcome. */
+    round_state_t *rs = find_round(a, delta->round_id);
+    if (!rs) { *outcome = CA_FED_ROUND_UNKNOWN; return 0; }
+    if (rs->snapshot.status != CA_FED_ROUND_OPEN) { *outcome = CA_FED_ROUND_CLOSED; return 0; }
+
+    /* 2. De-duplicate by delta Id within the round (a replay loses the race). */
     for (size_t i = 0; i < rs->d_count; ++i) {
         if (cab_ord_eq(rs->deltas[i].id, delta->id)) {
             *outcome = CA_FED_DUPLICATE;
             return 0;
         }
     }
-    if (ca_fed_aggregator_submit(a, delta) != 0) return -1;
+
+    /* 3. Submit. An empty-payload delta is a no-op in the aggregator but still
+     *    ACCEPTED here, matching the C# (SubmitDeltaAsync does not throw). A
+     *    round that just filled/closed maps to ROUND_CLOSED. */
+    if (ca_fed_aggregator_submit(a, delta) != 0) {
+        if (rs->d_count >= (size_t)rs->snapshot.max_participants ||
+            rs->snapshot.status != CA_FED_ROUND_OPEN) {
+            *outcome = CA_FED_ROUND_CLOSED;
+            return 0;
+        }
+        return -1; /* OOM / genuine failure */
+    }
     *outcome = CA_FED_ACCEPTED;
     return 0;
+}
+
+/* Back-compat alias — delegates to the default dispatcher (identical semantics). */
+int ca_fed_dispatcher_verify_and_submit(ca_fed_aggregator_t *a,
+                                        const ca_fed_delta_t *delta,
+                                        ca_fed_dispatch_outcome_t *outcome) {
+    return ca_default_federation_delta_dispatcher(a, delta, outcome);
 }
 
 /* ── IFederationParticipant ─────────────────────────────────────────────── */

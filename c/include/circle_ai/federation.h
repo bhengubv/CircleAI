@@ -159,12 +159,24 @@ bool ca_fed_aggregator_get_round(const ca_fed_aggregator_t *a,
 /* Total rounds tracked (diagnostic; RoundCount). */
 size_t ca_fed_aggregator_round_count(const ca_fed_aggregator_t *a);
 
-/* ── IFederationDeltaDispatcher ─────────────────────────────────────────── */
+/* ── IFederationDeltaDispatcher -> DefaultFederationDeltaDispatcher ──────── */
 
-/* VerifyAndSubmit(delta): verify signature (via the aggregator's validator),
- * dedup by delta Id within the round, then submit. Writes the outcome into
- * *outcome. Returns 0 on success (even for a rejection outcome), -1 on bad
- * args / OOM. The dispatcher shares the aggregator's validator. */
+/* DefaultFederationDeltaDispatcher.VerifyAndSubmit(delta): the safe-by-default
+ * composer — verify the signature FIRST (via the aggregator's validator), then
+ * dedup by delta Id within the round, then submit, so no step can be skipped.
+ * Writes the DeltaDispatchOutcome into *outcome. Returns 0 on success (even for
+ * a rejection outcome), -1 on bad args / OOM. Mirrors the C# order exactly: a
+ * forged/unsigned delta yields CA_FED_SIGNATURE_INVALID before the round is
+ * even inspected; an unknown round yields CA_FED_ROUND_UNKNOWN; a non-Open
+ * round yields CA_FED_ROUND_CLOSED. The dispatcher shares the aggregator's
+ * injected validator (no separate seen-set: dedup is against the round's
+ * recorded deltas). */
+int ca_default_federation_delta_dispatcher(ca_fed_aggregator_t *a,
+                                           const ca_fed_delta_t *delta,
+                                           ca_fed_dispatch_outcome_t *outcome);
+
+/* Back-compat alias for ca_default_federation_delta_dispatcher (same semantics,
+ * same C# order). Retained so existing callers keep compiling. */
 int ca_fed_dispatcher_verify_and_submit(ca_fed_aggregator_t *a,
                                         const ca_fed_delta_t *delta,
                                         ca_fed_dispatch_outcome_t *outcome);

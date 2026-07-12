@@ -115,6 +115,18 @@ const char *const *ca_dist_oem_partners(size_t *out_count);
 /* DefaultCarrierPreloadCatalog.Carriers — borrowed static array. *out_count. */
 const char *const *ca_dist_carrier_carriers(size_t *out_count);
 
+/* ── DefaultAbusiveEnvironmentMode.SafetyPhrase ─────────────────────────── */
+
+/* SafetyPhrase(ownerId): the deterministic per-owner abuse-safe test phrase the
+ * user can speak to silently invoke abuse-safe mode. Built from an 8-word benign
+ * vocabulary {thunder, river, amber, field, rain, stone, harbor, linen} indexed
+ * by FNV-1a-32 over the UTF-8 owner_id bytes (h%8, (h>>8)%8, (h>>16)%8),
+ * formatted "the {a} {b} is {c}". FNV-1a-32 — NOT any host string hash — so the
+ * phrase is stable across restarts AND byte-identical across every language
+ * port. Returns a fresh owned string (caller frees with free()), or NULL on
+ * blank/NULL owner_id or OOM. */
+char *ca_dist_abusive_env_safety_phrase(const char *owner_id);
+
 #ifdef __cplusplus
 }
 #endif
