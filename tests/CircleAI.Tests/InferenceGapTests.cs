@@ -97,52 +97,9 @@ public sealed class InferenceGapTests
 
 // ── ModelSelectorTests ────────────────────────────────────────────────────────
 
-public sealed class ModelSelectorTests
-{
-    private static long GB(int gb) => (long)gb * 1024 * 1024 * 1024;
-
-    [Fact]
-    public void DefaultTiers_IsNonEmpty()
-    {
-        Assert.NotEmpty(ModelSelector.DefaultTiers);
-    }
-
-    [Fact]
-    public void Select_6GB_ReturnsMidRangeTier()
-    {
-        // 6 GB fits "Qwen3-4B-MNN" (6 GB target) but not "Qwen3-8B-MNN" (12 GB)
-        var tier = ModelSelector.Select(GB(6));
-        Assert.Equal("Qwen3-4B-MNN", tier.ModelId);
-    }
-
-    [Fact]
-    public void Select_12GB_ReturnsFlagshipTier()
-    {
-        // 12 GB fits "Qwen3-8B-MNN" (12 GB) but not "Qwen3-14B-MNN" (24 GB)
-        var tier = ModelSelector.Select(GB(12));
-        Assert.Equal("Qwen3-8B-MNN", tier.ModelId);
-    }
-
-    [Fact]
-    public void Select_64GB_ReturnsServerTier()
-    {
-        // 64 GB comfortably fits the top tier (32 GB multimodal workstation)
-        var tier = ModelSelector.Select(GB(64));
-        Assert.Equal("Kimi-VL-A3B-Thinking-2506", tier.ModelId);
-    }
-
-    [Fact]
-    public void Select_512MB_FallsBackToLowestTier()
-    {
-        // 512 MB is below every tier's minimum; lowest tier must be returned
-        var tier = ModelSelector.Select(512L * 1024 * 1024);
-        // Lowest tier by MinRamBytes
-        var expected = ModelSelector.DefaultTiers
-            .OrderBy(t => t.MinRamBytes)
-            .First();
-        Assert.Equal(expected.ModelId, tier.ModelId);
-    }
-}
+// (ModelSelectorTests removed — the hardcoded static `ModelSelector` it exercised
+// was deleted as an architecture-invariant violation. Model selection is
+// catalog-driven via `DeviceAwareModelSelector` (see DeviceAwareModelSelectorTests).)
 
 // ── ContextWindowBudgetManagerTests ──────────────────────────────────────────
 
