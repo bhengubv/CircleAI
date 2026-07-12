@@ -116,6 +116,18 @@ pub mod runtime;
 pub mod orchestration;
 // CircleAI.Tools.Catalog — provider directory / credential store / OAuth2 driver / quota guard / namespaces.
 pub mod tools_catalog;
+// CircleAI.Simulation — simple entity-relationship graph + offline network-health forecaster.
+pub mod simulation;
+// CircleAI.Knowledge — markdown-on-disk knowledge notes + episodic store (real fs I/O).
+pub mod knowledge;
+// CircleAI.Speech.Cloud — regex-based voice intent router.
+pub mod speech_cloud;
+// CircleAI.Voice — on-device capture/VAD/transcribe/wake-word pipeline over injected seams.
+pub mod voice;
+// CircleAI.Embeddings.Local.HnswEmbeddingStore — index-backed store over the IEmbeddingIndex seam.
+pub mod embeddings_local_hnsw;
+// CircleAI.Hosting.VoiceOptions — voice-pipeline config DTO.
+pub mod hosting_voice;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{
@@ -353,6 +365,39 @@ pub use embeddings_local::{
     EmbeddingDocument, EmbeddingIndexHit, EmbeddingSearchHit, EmbeddingStoreError,
     ICircleEmbeddingStore, IEmbeddingEncoder, IEmbeddingIndex, InMemoryEmbeddingStore,
 };
+
+// CircleAI.Embeddings.Local.HnswEmbeddingStore (flat access; index-backed store).
+pub use embeddings_local_hnsw::HnswEmbeddingStore;
+
+// CircleAI.Simulation (flat access). The simple entity-relationship graph is
+// re-exported as `SimKnowledgeGraph` to avoid colliding with the HippoRAG
+// `memory::KnowledgeGraph`.
+pub use simulation::{
+    EpisodicGraphExtractor, GraphEdge, GraphNode, IGraphBuilder, ISimulationEngine,
+    KnowledgeGraph as SimKnowledgeGraph, LocalSimulationEngine, NetworkHealthSimulator,
+    ScenarioKind, SimulationOutcome, SimulationResult, SimulationScenario,
+};
+
+// CircleAI.Knowledge (flat access). `KnowledgeNote` here is the markdown note
+// type (distinct from the HippoRAG `memory::KnowledgeNode`).
+pub use knowledge::{
+    FileSystemKnowledgeStore, IKnowledgeStore, KnowledgeError, KnowledgeNote,
+    MarkdownEpisodicMemoryStore,
+};
+
+// CircleAI.Speech.Cloud voice intent router (flat access).
+pub use speech_cloud::{
+    IVoiceIntentRouter, KeywordVoiceIntentRouter, NullVoiceIntentRouter, VoiceIntent,
+    VoiceIntentMatch,
+};
+
+// CircleAI.Hosting.VoiceOptions (flat access).
+pub use hosting_voice::VoiceOptions;
+
+// CircleAI.Voice: NOT flat-exported — its `AudioFormat` / `VadSegment` /
+// `TranscriptionResult` / `IWakeWordDetector` / `IVoiceActivityDetector` types
+// deliberately shadow the richer `CircleAI.Speech` surface, so they are reached
+// path-qualified via `circle_ai::voice::*`.
 
 // CircleAI.Hosting runtime (flat access). The endpoint/observer/service surface
 // lives under `hosting::` and is re-exported flat here.
