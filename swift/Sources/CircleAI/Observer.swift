@@ -192,7 +192,7 @@ public final class InMemoryObservationLoop: IObservationLoop, @unchecked Sendabl
         lock.unlock()
 
         let task = Task { [weak self] in
-            await self?.runLoop(interval: tickInterval)
+            _ = await self?.runLoop(interval: tickInterval)
         }
         lock.lock()
         runTask = task

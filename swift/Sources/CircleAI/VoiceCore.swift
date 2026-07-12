@@ -512,7 +512,7 @@ public final class EnergyWakeWordDetector: IWakeWordDetector, @unchecked Sendabl
         lock.unlock()
 
         let task = Task { [weak self] in
-            await self?.listenLoop()
+            _ = await self?.listenLoop()
         }
         lock.lock(); listenTask = task; lock.unlock()
     }
@@ -672,7 +672,7 @@ public final class VoicePipeline: @unchecked Sendable {
         // Cancel any previous activation still running, then start a new one.
         cancelActivation()
         let task = Task { [weak self] in
-            await self?.runActivation()
+            _ = await self?.runActivation()
         }
         lock.lock(); activationTask = task; lock.unlock()
     }

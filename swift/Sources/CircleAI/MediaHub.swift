@@ -291,7 +291,7 @@ public final class InMemorySyncedPlayback: ISyncedPlayback, @unchecked Sendable 
     }
 
     /// Remove one subscriber by identity. Port of the C# `SubscriptionToken.Dispose`.
-    fileprivate func removeSubscriber(sessionId: String, sub: Subscriber) {
+    private func removeSubscriber(sessionId: String, sub: Subscriber) {
         lock.lock()
         if let state = sessions[sessionId] {
             state.subscribers.removeAll { $0 === sub }

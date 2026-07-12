@@ -253,10 +253,11 @@ public struct SyntheticSkyTracker: ISkyTracker {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         let comps = cal.dateComponents([.hour, .minute, .second, .nanosecond], from: utc)
-        let hours = Double(comps.hour ?? 0)
-            + Double(comps.minute ?? 0) / 60.0
-            + Double(comps.second ?? 0) / 3600.0
-            + Double(comps.nanosecond ?? 0) / 3_600_000_000_000.0
+        let hH  = Double(comps.hour ?? 0)
+        let hM  = Double(comps.minute ?? 0) / 60.0
+        let hS  = Double(comps.second ?? 0) / 3600.0
+        let hNs = Double(comps.nanosecond ?? 0) / 3_600_000_000_000.0
+        let hours = hH + hM + hS + hNs
         let rot = hours * 15.0 // earth rotation degrees-per-hour
 
         var hits: [SkyObject] = []

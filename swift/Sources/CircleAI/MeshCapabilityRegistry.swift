@@ -18,6 +18,10 @@
 
 import Foundation
 
+// DeviceTier (Device.swift) is an Int-raw enum — make it Codable so the
+// Codable MeshCapabilityAdvertisement can synthesize (encodes as rawValue).
+extension DeviceTier: Codable {}
+
 // MARK: - MeshCapabilityAdvertisement
 
 /// (RT-12 v1) One peer's advertisement of what it can serve right now.

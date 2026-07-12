@@ -654,7 +654,7 @@ public final class KwsWakeWordDetector: IWakeWordDetector, @unchecked Sendable {
         if listening { lock.unlock(); return }
         listening = true
         lock.unlock()
-        let task = Task { [weak self] in await self?.listenLoop() }
+        let task = Task { [weak self] in _ = await self?.listenLoop() }
         lock.lock(); loopTask = task; lock.unlock()
     }
 
