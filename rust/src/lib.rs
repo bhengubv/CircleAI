@@ -110,6 +110,12 @@ pub mod telephony;
 pub mod workflows;
 // CircleAI.Speech — ASR/TTS/wake-word/OCR contracts + VAD/EOT/AEC/NR/codec DSP.
 pub mod speech;
+// CircleAI.Runtime — deterministic hardware -> MNN-backend routing + host-capability probe seam.
+pub mod runtime;
+// CircleAI.Orchestration — semaphore-bounded agent swarm + quality gate + incident/security bridges.
+pub mod orchestration;
+// CircleAI.Tools.Catalog — provider directory / credential store / OAuth2 driver / quota guard / namespaces.
+pub mod tools_catalog;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{
@@ -209,6 +215,31 @@ pub use security::{
     PeerThreatLevel, PeerTrustScoreUpdate, SecurityCheckpoint, SecurityLayerService,
     SecurityOptions, SecurityResponse, SecurityResponseKind, ThreatDetector, ThreatVector,
     UhidKeyRing, RECOVERY_INTERVAL_SECONDS,
+};
+pub use runtime::{
+    ArchitectureKind, BackendKind, BackendSelection, BackendSelector, CapabilityProbe,
+    CapabilityTier, GpuInfo, GpuVendor, HostProfile, IBackendSelector, NpuInfo, NpuVendor,
+    OperatingSystemKind, UnknownCapabilityProbe,
+    // The host-capability probe trait — flat-aliased to avoid colliding with
+    // `inference_server::ICapabilityProbe` (a distinct inference-bridge trait).
+    ICapabilityProbe as IHostCapabilityProbe,
+};
+pub use orchestration::{
+    AgentHandler, AgentPriority, AgentRole, AgentStatus, AgentSwarmConfig, AgentTask,
+    IAgentDispatcher, IncidentTrigger, LocalAgentDispatcher, LokiOrchestrator, QualityGateResult,
+    SecurityOrchestrationBridge, SwarmResult,
+};
+pub use agents::{
+    AgentBus, AgentCapability, AgentInvocationError, AgentMessage, AgentMessageKind,
+    CapabilityHandlerFn, IAgentPeerProtocol, InMemoryAgentPeerProtocol, PeerAgent, SignerFn,
+};
+pub use tools_catalog::{
+    AesGcmCredentialStore, AuthKind, CatalogError, ClientIdResolver, CredentialBundle,
+    ICredentialCipher, ICredentialStore, IOAuth2FlowDriver, IProviderCatalog, IQuotaGuard,
+    IToolNamespaceStore, InMemoryProviderCatalog, InMemoryToolNamespaceStore, NullCredentialStore,
+    NullOAuth2FlowDriver, NullProviderCatalog, NullQuotaGuard, NullToolNamespaceStore,
+    OAuth2Descriptor, OAuth2FlowDriver, ProviderDescriptor, QuotaPolicy, SlidingWindowQuotaGuard,
+    ToolNamespace, TokenExchangeFn, XorObfuscationCipher,
 };
 pub use models::{ChatMessage, DownloadProgress};
 pub use sync::{
