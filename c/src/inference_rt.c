@@ -28,6 +28,7 @@
 #else
   #include <sys/types.h>
   #include <strings.h>
+  #include <unistd.h>   /* rmdir, POSIX file ops (Apple Clang: no implicit decls) */
   #define CA_MKDIR(p) mkdir((p), 0777)
   #define CA_SEP '/'
 #endif
