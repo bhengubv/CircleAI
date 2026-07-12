@@ -511,9 +511,43 @@ export * from "./autonomousbiz/index.js";
 
 // CircleAI.Workflows — durable-workflow contracts (WorkflowPhase,
 // IWorkflowDefinitionStore / IWorkflowRunner / IWorkflowState with in-memory +
-// Null* impls) and the conversation state machine (ConversationState,
-// IConversationExecutor, PacaConversationRuntime).
+// Null* impls) plus the full PACA surface ported from paca: conversation state
+// machine (PacaConversationRuntime), projects/tasks (InMemoryPacaStore),
+// sprintboards (PacaBoard), auth (HmacJwtAuthenticator / PacaApiKeyAuthenticator),
+// agents-as-members + presets (InMemoryPacaMemberStore / AgentTemplates), living
+// docs (PacaDocService), plugins (PacaPluginRegistry), MCP server (PacaMcpServer),
+// realtime fan-out (PacaRealtimeHub), skills (PacaSkillLibrary / installer), and
+// single-command deploy (PacaDeployer).
 export * from "./workflows/index.js";
+
+// CircleAI.Realtime — carrier-agnostic streaming realtime AI contracts
+// (RealtimeSessionConfig, IRealtimeSession, the RealtimeEvent union), the
+// in-process LoopbackRealtimeService, and fail-closed Null* defaults.
+export * from "./realtime/index.js";
+
+// CircleAI.Realtime.Cloud — the 5 vendor connectors (OpenAiRealtimeService,
+// GeminiLiveService, NovaSonicService, ElevenLabsConvService, UltravoxService)
+// behind an injected WebSocket/HTTP transport seam, plus the shared
+// RealtimeWebSocketSession that demuxes vendor JSON envelopes.
+export * from "./realtime-cloud/index.js";
+
+// `TranscriptFinalEvent` is exported by BOTH CircleAI.Realtime and
+// CircleAI.Telephony (its speech-lifecycle event). Under `export *` TypeScript
+// elides the ambiguous name; the realtime variant is the canonical package-root
+// binding (re-asserted here), matching the runtime/skills/inference precedent
+// above. The telephony `TranscriptFinalEvent` stays reachable via the
+// `@bhengubv/circle-ai/.../telephony` subpath.
+export type { TranscriptFinalEvent } from "./realtime/index.js";
+
+// CircleAI.Vision — the on-device vision stack's ONNX-backed components: face
+// detection (OnnxFaceDetector), license-plate recognition (OnnxPlateRecognizer)
+// and face embedding (OnnxFaceEmbedder), each behind an injected ONNX-runtime
+// (IOnnxSession) + image-codec (ImageDecoder) seam, plus the shared BoundingBox
+// / DetectedFace / FaceEmbedding primitives and the letterbox + NMS pipeline.
+// (The ONNX seam types DenseTensor / IOnnxSession / OnnxSessionFactory are NOT
+// re-exported here — voice already owns those names at the package root; use the
+// ./vision subpath for the vision seam.)
+export * from "./vision/index.js";
 
 // CircleAI.Plugins — plugin contract surface: IPlugin / IPluginContext /
 // IPluginEvents (+ the thread-safe PluginEvents bus + PluginEventNames), the
