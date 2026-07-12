@@ -180,6 +180,71 @@ export class DefaultCarrierPreloadCatalog implements ICarrierPreloadCatalog {
   ];
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Abuse-safe mode (failure-mode rail)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Abuse-safe engagement plus a deterministic, per-owner spoken safety phrase.
+ * Mirrors C# `IAbusiveEnvironmentMode`.
+ */
+export interface IAbusiveEnvironmentMode {
+  engageAsync(ownerId: string, signal?: AbortSignal): Promise<void>;
+  /** Test phrase the user can speak to silently invoke abuse-safe mode. Generated per owner. */
+  safetyPhrase(ownerId: string): string;
+  isEngaged(ownerId: string): boolean;
+}
+
+/** Benign 8-word vocabulary for {@link DefaultAbusiveEnvironmentMode.safetyPhrase}. Mirrors C# `words`. */
+const ABUSE_VOCAB = ["thunder", "river", "amber", "field", "rain", "stone", "harbor", "linen"] as const;
+
+/**
+ * FNV-1a 32-bit over UTF-8 — deterministic and byte-identical across all
+ * language ports (unlike a per-process-randomised runtime string hash). Uses
+ * `Math.imul` + `>>> 0` to keep the multiply in unsigned 32-bit space (a plain
+ * `*` overflows to float and diverges from the C# `unchecked((h ^ b) * prime)`).
+ * Mirrors C# `Fnv1a32`.
+ */
+function fnv1a32(s: string): number {
+  let h = 2166136261 >>> 0; // FNV offset basis
+  for (const b of new TextEncoder().encode(s)) {
+    h = Math.imul(h ^ b, 16777619) >>> 0; // XOR byte, multiply by FNV prime (wraps mod 2^32)
+  }
+  return h >>> 0;
+}
+
+/**
+ * Default abuse-safe mode. Tracks engagement and issues a deterministic
+ * per-owner safety phrase from an 8-word benign vocabulary, seeded by an
+ * FNV-1a-32 hash of the owner id so the phrase is stable across restarts AND
+ * byte-identical across every language port. Mirrors C# `DefaultAbusiveEnvironmentMode`.
+ */
+export class DefaultAbusiveEnvironmentMode implements IAbusiveEnvironmentMode {
+  private readonly engaged = new Set<string>();
+  private readonly phrases = new Map<string, string>();
+
+  engageAsync(ownerId: string, _signal?: AbortSignal): Promise<void> {
+    if (isBlank(ownerId)) throw new Error("ownerId required");
+    this.engaged.add(ownerId);
+    return Promise.resolve();
+  }
+
+  safetyPhrase(ownerId: string): string {
+    if (isBlank(ownerId)) throw new Error("ownerId required");
+    let phrase = this.phrases.get(ownerId);
+    if (phrase === undefined) {
+      const h = fnv1a32(ownerId);
+      phrase = `the ${ABUSE_VOCAB[h % 8]} ${ABUSE_VOCAB[(h >>> 8) % 8]} is ${ABUSE_VOCAB[(h >>> 16) % 8]}`;
+      this.phrases.set(ownerId, phrase);
+    }
+    return phrase;
+  }
+
+  isEngaged(ownerId: string): boolean {
+    return this.engaged.has(ownerId);
+  }
+}
+
 function isBlank(s: string | null | undefined): boolean {
   return s == null || s.trim().length === 0;
 }

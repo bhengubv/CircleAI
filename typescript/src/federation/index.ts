@@ -408,6 +408,67 @@ export class KeyNotFoundError extends Error {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DefaultFederationDeltaDispatcher
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reference {@link IFederationDeltaDispatcher}. Composes signature verification,
+ * replay de-duplication, and submission over an {@link IFederationAggregator} in
+ * a single call so no step can be skipped. No exception is thrown on rejection —
+ * the caller branches on the returned {@link DeltaDispatchOutcome}. Mirrors C#
+ * `DefaultFederationDeltaDispatcher`.
+ */
+export class DefaultFederationDeltaDispatcher implements IFederationDeltaDispatcher {
+  private readonly aggregator: IFederationAggregator;
+  private readonly signatureValidator: (delta: ModelDelta) => boolean;
+  private readonly seen = new Set<string>();
+
+  /**
+   * @param aggregator The round coordinator deltas are submitted to.
+   * @param signatureValidator Returns true when the delta's signature verifies
+   *   against the contributor's UHID key. Pass `() => true` only in tests where
+   *   signatures are not the subject of test.
+   */
+  constructor(aggregator: IFederationAggregator, signatureValidator: (delta: ModelDelta) => boolean) {
+    if (aggregator == null) throw new Error("aggregator required");
+    if (signatureValidator == null) throw new Error("signatureValidator required");
+    this.aggregator = aggregator;
+    this.signatureValidator = signatureValidator;
+  }
+
+  /**
+   * Verify the delta's signature, check it has not already been recorded, and
+   * submit it. Mirrors C# `VerifyAndSubmitAsync`.
+   */
+  async verifyAndSubmitAsync(delta: ModelDelta, signal?: AbortSignal): Promise<DeltaDispatchOutcome> {
+    if (delta == null) throw new Error("delta required");
+
+    // 1. Verify the signature first — a forged or unsigned delta never touches the round.
+    if (!this.signatureValidator(delta)) {
+      return DeltaDispatchOutcome.SignatureInvalid;
+    }
+
+    // 2. De-duplicate: claim the delta id; a replay of the same id loses.
+    if (this.seen.has(delta.id)) {
+      return DeltaDispatchOutcome.Duplicate;
+    }
+    this.seen.add(delta.id);
+
+    // 3. Submit, translating the aggregator's exceptions into outcomes so the
+    //    caller can branch on the result without a try/catch of its own.
+    try {
+      await this.aggregator.submitDeltaAsync(delta, signal);
+      return DeltaDispatchOutcome.Accepted;
+    } catch (e) {
+      this.seen.delete(delta.id);
+      // Unknown round id (C# KeyNotFoundException) vs round-closed / max-participants
+      // (C# InvalidOperationException, thrown here as a plain Error).
+      return e instanceof KeyNotFoundError ? DeltaDispatchOutcome.RoundUnknown : DeltaDispatchOutcome.RoundClosed;
+    }
+  }
+}
+
 function fallbackMedianPayload(deltas: readonly ModelDelta[]): Uint8Array {
   const ordered = [...deltas].sort((a, b) => a.sampleCount - b.sampleCount);
   const median = ordered[Math.floor(ordered.length / 2)];
