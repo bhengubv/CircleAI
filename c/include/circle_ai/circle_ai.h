@@ -354,4 +354,28 @@
 #include "windows_automation.h"
 #include "web.h"
 
+/* CircleAI.Workflows PACA subsystem — the paca project-management runtime
+ * (PacaAuth HMAC-SHA256 JWT + SHA-256 API keys, InMemoryPacaStore projects +
+ * auto-numbered tasks, PacaBoards kanban columns + sprints + task metadata +
+ * named views, PacaAgents ProjectMember/AgentProfile/AgentTemplates + member
+ * store, PacaDocs doc tree + version snapshots + activity + links + @mentions,
+ * PacaPlugins reverse-DNS + semver install/upgrade/uninstall lifecycle, PacaMcp
+ * tool registry + per-agent enabled-tool gate + invoke + core tools, PacaRealtime
+ * permission-gated rooms + broadcaster seam + query-invalidation keys, PacaSkills
+ * 11 built-ins + frontmatter stripper, PacaDeploy docker-compose + .env + plugin
+ * script generators). Self-contained SHA-256/HMAC + base64url; injected clock /
+ * broadcaster / plugin-runtime / MCP-handler seams. The durable-workflow
+ * contracts (Contracts.cs) already ship as workflows.h. */
+#include "paca.h"
+
+/* CircleAI.Speech.Cloud provider recognizers + synthesizers — the 12 cloud voice
+ * backends (OpenAI Whisper + TTS, Deepgram + Aura, Azure STT + TTS, Google STT +
+ * TTS, AssemblyAI, Cartesia STT + Sonic, ElevenLabs, PlayHT). They plug into the
+ * speech.h ISpeechRecognizer / ISpeechSynthesizer vtables + result records; the
+ * real HttpClient call is the injected ca_speech_http_t fn-ptr seam (WAV
+ * envelope / multipart / JSON body / response parse / base64 / PCM-duration are
+ * all ported logic). The KeywordVoiceIntentRouter already ships as
+ * speech_cloud.h. */
+#include "speech_cloud_providers.h"
+
 #endif /* CIRCLE_AI_H */

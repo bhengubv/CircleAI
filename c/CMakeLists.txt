@@ -257,6 +257,28 @@ add_library(circle_ai STATIC
     src/testing.c
     src/windows_automation.c
     src/web.c
+
+    # CircleAI.Workflows PACA subsystem — project-management runtime ported from
+    # src/CircleAI.Workflows/ (PacaAuth[HMAC-SHA256 JWT + SHA-256 API keys],
+    # PacaProjects/InMemoryPacaStore, PacaBoards[kanban columns + sprints +
+    # metadata + views], PacaAgents[AgentTemplates + member store], PacaDocs
+    # [versioning + @mentions + links], PacaPlugins[reverse-DNS + semver
+    # lifecycle], PacaMcp[tool registry + per-agent gate], PacaRealtime
+    # [permission-gated rooms + broadcaster seam], PacaSkills[11 built-ins],
+    # PacaDeploy[compose + .env generator]). Self-contained SHA-256/HMAC +
+    # base64url + a flat-JSON scanner for the JWT payload. Injected seams for the
+    # broadcaster, plugin runtime host, and MCP tool handlers.
+    src/paca.c
+
+    # CircleAI.Speech.Cloud provider recognizers + synthesizers — the 12 cloud
+    # voice backends (OpenAI Whisper/TTS, Deepgram + Aura, Azure STT/TTS, Google
+    # STT/TTS, AssemblyAI, Cartesia STT/Sonic, ElevenLabs, PlayHT) ported over an
+    # injected ca_speech_http_t fn-ptr transport (the "real HttpClient is
+    # injected" seam, like the telephony carriers). Real ported logic: WAV
+    # envelope, multipart/form-data, JSON request bodies + response parsing,
+    # base64 audio encode/decode, PCM sample->duration maths, fail-soft
+    # not-configured behaviour. Plugs into the speech.h result + vtable surface.
+    src/speech_cloud_providers.c
 )
 target_include_directories(circle_ai PUBLIC include)
 
