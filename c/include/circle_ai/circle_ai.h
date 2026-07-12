@@ -178,6 +178,18 @@
 #include "telephony_telnyx.h"
 #include "telephony_plivo.h"
 
+/* CircleAI.Telephony voice-agent layer — the pure-logic classes on top of the
+ * carrier contract surface: BargeInController / IvrLoopDetector /
+ * CircuitBreakerToolRegistry / Guardrails(+CommonGuardrails) / ReassuranceFiller /
+ * SpeculativeGenerator / FalseInterruptionTracker / HoldMusicMixer /
+ * WarmTransferOrchestrator / ConsultEscalation / AgentHandoff / LlmJudge /
+ * EvalSession / SentenceChunker / LatencyTracker / DashboardData /
+ * FirstMessagePreamble / StereoCallRecorder / AnsweringMachineDetector /
+ * VoiceLoopTelemetry / StreamingToolProgress / VoiceLoopAsTool /
+ * PromptVariableResolver / LocalDevTunnel / McpToolImporter. The async / TTS /
+ * HTTP / tunnel boundaries are ca_ fn-ptr callback seams. */
+#include "telephony_agent.h"
+
 /* Domain boards A — deterministic in-memory verticals (CircleAI.Healthcare /
  * .Banking / .Legal / .Education / .Commerce (+ .Accounting / .Finance /
  * .Integration.PayFast / .Integration.Xero) / .Personal.Finance /

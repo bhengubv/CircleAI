@@ -114,6 +114,14 @@ add_library(circle_ai STATIC
     src/telephony_twilio.c
     src/telephony_telnyx.c
     src/telephony_plivo.c
+    # CircleAI.Telephony voice-agent layer — pure-logic classes on top of the
+    # carrier contract surface: barge-in / IVR-loop / tool circuit-breaker /
+    # guardrails / reassurance / speculative-gen / false-interruption / hold-music
+    # / warm-transfer / consult-escalation / agent-handoff / LLM-judge / eval /
+    # sentence-chunker / latency / dashboard / preamble / stereo-recorder / AMD /
+    # telemetry / streaming-tool-progress / voice-loop-as-tool / prompt-vars /
+    # local-dev-tunnel / MCP-importer (async/TTS/HTTP/tunnel boundaries = ca_ seams)
+    src/telephony_agent.c
     # Domain boards A — health/finance/legal/edu/commerce verticals
     # (CircleAI.Healthcare / .Banking / .Legal / .Education / .Commerce +
     # .Commerce.Accounting / .Finance / .Integration.PayFast / .Integration.Xero +
