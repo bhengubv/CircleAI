@@ -374,3 +374,7 @@ c/build-parity/
 kotlin/build/
 kotlin/.gradle/
 *.mnn
+
+# Build output that surfaced as untracked and broke `git add -A` (2026-07)
+android/.kotlin/
+artifacts-nuget/
