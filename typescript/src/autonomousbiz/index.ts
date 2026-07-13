@@ -110,7 +110,10 @@ export class InMemoryRevenueLoop implements IRevenueLoop {
     const snapshot = [...this.subs];
     for (const s of snapshot) {
       try {
-        void s(e);
+        // Fire-and-forget, mirroring C# `_ = s(e)`: a discarded ValueTask
+        // swallows async faults, so we must .catch() the promise or an async
+        // throw becomes an unhandledRejection. try/catch covers sync throws.
+        void s(e).catch(() => { /* a revenue subscriber must not break publish */ });
       } catch {
         /* a revenue subscriber must not break publish */
       }
@@ -169,11 +172,9 @@ export class InMemoryDecisionLog implements IDecisionLog {
     return Promise.resolve();
   }
 
-  readAsync(limit = 100, _signal?: AbortSignal): Promise<readonly AutonomousDecision[]> {
+  async readAsync(limit = 100, _signal?: AbortSignal): Promise<readonly AutonomousDecision[]> {
     if (limit <= 0) throw new Error("limit out of range");
-    return Promise.resolve(
-      [...this.items].sort((a, b) => b.atUtc.getTime() - a.atUtc.getTime()).slice(0, limit),
-    );
+    return [...this.items].sort((a, b) => b.atUtc.getTime() - a.atUtc.getTime()).slice(0, limit);
   }
 }
 

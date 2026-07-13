@@ -45,8 +45,10 @@ final class MarketsBoardTests: XCTestCase {
         let cat = InMemoryInstrumentCatalog()
         XCTAssertEqual(cat.backendId, "in-memory")
         cat.add(inst("NPN"))
-        XCTAssertEqual(try await cat.get("npn")?.symbol, "NPN")
-        XCTAssertNil(try await cat.get("ZZZ"))
+        let npn = try await cat.get("npn")
+        XCTAssertEqual(npn?.symbol, "NPN")
+        let zzz = try await cat.get("ZZZ")
+        XCTAssertNil(zzz)
     }
 
     func testCatalogSearchSubstringOrderedAndTopK() async throws {
@@ -72,8 +74,10 @@ final class MarketsBoardTests: XCTestCase {
         let feed = InMemoryMarketDataFeed()
         XCTAssertEqual(feed.backendId, "in-memory")
         feed.publish(quote("NPN", 250))
-        XCTAssertEqual(try await feed.getQuote("npn")?.last, 250)   // case-insensitive
-        XCTAssertNil(try await feed.getQuote("ZZZ"))
+        let npnQuote = try await feed.getQuote("npn")
+        XCTAssertEqual(npnQuote?.last, 250)   // case-insensitive
+        let zzzQuote = try await feed.getQuote("ZZZ")
+        XCTAssertNil(zzzQuote)
     }
 
     func testFeedSubscribeReceivesPush() async throws {
@@ -148,13 +152,16 @@ final class MarketsBoardTests: XCTestCase {
 
     func testNullBackendsFailClosed() async throws {
         XCTAssertEqual(NullMarketDataFeed.instance.backendId, "null")
-        XCTAssertNil(try await NullMarketDataFeed.instance.getQuote("x"))
+        let nullQuote = try await NullMarketDataFeed.instance.getQuote("x")
+        XCTAssertNil(nullQuote)
         let sub = try NullMarketDataFeed.instance.subscribeQuotes("x") { _ in }
         sub.cancel()   // no-op
 
         XCTAssertEqual(NullInstrumentCatalog.instance.backendId, "null")
-        XCTAssertNil(try await NullInstrumentCatalog.instance.get("x"))
-        XCTAssertTrue(try await NullInstrumentCatalog.instance.search("x").isEmpty)
+        let nullInst = try await NullInstrumentCatalog.instance.get("x")
+        XCTAssertNil(nullInst)
+        let nullSearch = try await NullInstrumentCatalog.instance.search("x")
+        XCTAssertTrue(nullSearch.isEmpty)
 
         XCTAssertEqual(NullOrderRouter.instance.backendId, "null")
         let r = await NullOrderRouter.instance.submit(OrderRequest(symbol: "x", side: .buy, type: .market, quantity: 1, limitPrice: nil))

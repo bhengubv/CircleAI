@@ -31,7 +31,8 @@ final class SkillsTests: XCTestCase {
         let detail = await store.upsert("my-id", draft: draft("My Skill", "summarise", tags: ["prod"]))
         XCTAssertEqual(detail.id, "my-id")
         XCTAssertEqual(detail.source, .inMemory)
-        XCTAssertEqual(await store.get("my-id")?.name, "My Skill")
+        let fetched = await store.get("my-id")
+        XCTAssertEqual(fetched?.name, "My Skill")
     }
 
     func testUpsertAutoGeneratesSlug() async {
@@ -44,15 +45,18 @@ final class SkillsTests: XCTestCase {
         let store = InMemorySkillStore()
         _ = await store.upsert("id", draft: draft("First"))
         _ = await store.upsert("id", draft: draft("Second"))
-        XCTAssertEqual(await store.get("id")?.name, "Second")
-        XCTAssertEqual((await store.list()).count, 1)
+        let fetched = await store.get("id")
+        XCTAssertEqual(fetched?.name, "Second")
+        let all = await store.list()
+        XCTAssertEqual(all.count, 1)
     }
 
     func testListIsNameOrdered() async {
         let store = InMemorySkillStore()
         _ = await store.upsert("z", draft: draft("Zebra"))
         _ = await store.upsert("a", draft: draft("Alpha"))
-        XCTAssertEqual((await store.list()).map { $0.name }, ["Alpha", "Zebra"])
+        let listed = await store.list()
+        XCTAssertEqual(listed.map { $0.name }, ["Alpha", "Zebra"])
     }
 
     func testSearchMatchesNameDescriptionTags() async {
@@ -60,19 +64,24 @@ final class SkillsTests: XCTestCase {
         _ = await store.upsert("s1", draft: draft("Translator", "converts languages", tags: ["nlp"]))
         _ = await store.upsert("s2", draft: draft("Vision", "sees images", tags: ["cv"]))
         // Match on description.
-        XCTAssertEqual((await store.search("languages")).map { $0.id }, ["s1"])
+        let byDescription = await store.search("languages")
+        XCTAssertEqual(byDescription.map { $0.id }, ["s1"])
         // Match on tag (case-insensitive).
-        XCTAssertEqual((await store.search("NLP")).map { $0.id }, ["s1"])
+        let byTag = await store.search("NLP")
+        XCTAssertEqual(byTag.map { $0.id }, ["s1"])
         // Empty query → empty.
-        XCTAssertTrue((await store.search("")).isEmpty)
-        XCTAssertTrue((await store.search("   ")).isEmpty)
+        let emptyQuery = await store.search("")
+        XCTAssertTrue(emptyQuery.isEmpty)
+        let whitespaceQuery = await store.search("   ")
+        XCTAssertTrue(whitespaceQuery.isEmpty)
     }
 
     func testDelete() async {
         let store = InMemorySkillStore()
         _ = await store.upsert("id", draft: draft("X"))
         await store.delete("id")
-        XCTAssertNil(await store.get("id"))
+        let afterDelete = await store.get("id")
+        XCTAssertNil(afterDelete)
         await store.delete("id")  // no-op, no crash
     }
 

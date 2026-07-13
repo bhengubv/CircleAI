@@ -190,7 +190,8 @@ final class NetworkingDtnTests: XCTestCase {
         // No available transport — nothing is sent, but sequence + loopback still work.
         try await ch.pushDelta(delta("o", domain: "dk", seq: 4, mode: .reliable))
         XCTAssertTrue(down.sent.isEmpty)
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "dk"), 4)
+        let seqAfterLoopback = try await ch.getLastSequence(ownerId: "o", domainKey: "dk")
+        XCTAssertEqual(seqAfterLoopback, 4)
     }
 
     // ── DtnSyncChannel: sequence + delivery ──────────────────────────────────
@@ -200,7 +201,8 @@ final class NetworkingDtnTests: XCTestCase {
         try await ch.pushDelta(delta("o", domain: "dk", seq: 2, mode: .reliable))
         try await ch.pushDelta(delta("o", domain: "dk", seq: 8, mode: .reliable))
         try await ch.pushDelta(delta("o", domain: "dk", seq: 5, mode: .reliable)) // lower
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "dk"), 8)
+        let highestSeq = try await ch.getLastSequence(ownerId: "o", domainKey: "dk")
+        XCTAssertEqual(highestSeq, 8)
     }
 
     func testChannelDeliversDeltasToMatchingOwner() async throws {

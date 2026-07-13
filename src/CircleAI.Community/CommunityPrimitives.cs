@@ -19,6 +19,12 @@ public interface ICommunityBoard
     IReadOnlyList<Announcement> AnnouncementsFor(string groupId, int limit = 20);
     void List(VolunteerOpportunity o);
     IReadOnlyList<VolunteerOpportunity> Opportunities();
+    int GroupCount { get; }
+    bool RemoveGroup(string groupId);
+    bool AddMember(string groupId, string memberId);
+    bool RemoveMember(string groupId, string memberId);
+    IReadOnlyList<VolunteerOpportunity> OpportunitiesForGroup(string groupId);
+    int TotalVolunteersNeeded();
 }
 
 public sealed class InMemoryCommunityBoard : ICommunityBoard
@@ -37,4 +43,31 @@ public sealed class InMemoryCommunityBoard : ICommunityBoard
     { lock (_lock) return _annc.Where(a => a.GroupId == groupId).OrderByDescending(a => a.AtUtc).Take(limit).ToArray(); }
     public void List(VolunteerOpportunity o) { ArgumentNullException.ThrowIfNull(o); _opps[o.OppId] = o; }
     public IReadOnlyList<VolunteerOpportunity> Opportunities() => _opps.Values.Where(o => o.WhenUtc >= DateTimeOffset.UtcNow).OrderBy(o => o.WhenUtc).ToArray();
+
+    public int GroupCount => _groups.Count;
+
+    public bool RemoveGroup(string groupId) => _groups.TryRemove(groupId, out _);
+
+    public bool AddMember(string groupId, string memberId)
+    {
+        if (!_groups.TryGetValue(groupId, out var g)) return false;
+        if (g.MemberIds.Contains(memberId)) return false;
+        _groups[groupId] = g with { MemberIds = g.MemberIds.Append(memberId).ToArray() };
+        return true;
+    }
+
+    public bool RemoveMember(string groupId, string memberId)
+    {
+        if (!_groups.TryGetValue(groupId, out var g)) return false;
+        if (!g.MemberIds.Contains(memberId)) return false;
+        _groups[groupId] = g with { MemberIds = g.MemberIds.Where(m => m != memberId).ToArray() };
+        return true;
+    }
+
+    public IReadOnlyList<VolunteerOpportunity> OpportunitiesForGroup(string groupId)
+        => _opps.Values.Where(o => string.Equals(o.GroupId, groupId, StringComparison.Ordinal))
+                       .OrderBy(o => o.WhenUtc).ToArray();
+
+    public int TotalVolunteersNeeded()
+        => Opportunities().Sum(o => o.VolunteersNeeded);
 }

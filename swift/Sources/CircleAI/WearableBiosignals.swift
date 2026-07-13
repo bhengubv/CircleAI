@@ -226,60 +226,55 @@ public final class BiosignalAggregator: @unchecked Sendable {
         let deadline = generatedAt.addingTimeInterval(window)
         let stream = source.stream()
 
-        // Race the stream consumer against a window-length timeout. Whichever
-        // finishes first wins; the group is then cancelled to tear down the other.
-        let stats: [BiosignalKind: BiosignalStats] = try await withThrowingTaskGroup(of: [BiosignalKind: BiosignalStats]?.self) { group in
+        // Mirror the C# `SnapshotAsync`: consume the source, accumulating samples
+        // whose `measuredAt >= cutoff`, and time-bound the read to `window` so a
+        // never-completing source still yields a snapshot (the C# uses
+        // `cts.CancelAfter(window)`). A self-completing source (recorded /
+        // synthetic) simply ends the stream and we return what it accumulated.
+        //
+        // The accumulator is shared and lock-guarded rather than returned from a
+        // racing child task: the result must be whatever was accumulated within the
+        // window, independent of whether the read finished on its own or was cut
+        // short by the timeout — never discarded by which task the group surfaces
+        // first.
+        let store = AccumulatorStore()
+
+        await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                var accumulator: [BiosignalKind: Accumulator] = [:]
                 do {
                     for try await sample in stream {
+                        if Task.isCancelled { break }
                         if sample.measuredAt < cutoff { continue }
-                        accumulator[sample.kind, default: Accumulator()].add(sample.value)
+                        store.add(kind: sample.kind, value: sample.value)
                         if Date() >= deadline { break }
                     }
-                } catch is CancellationError {
-                    // Window elapsed before the source completed — expected.
+                } catch {
+                    // Cancellation (window elapsed) or a source error — fall through
+                    // with whatever was accumulated so far, exactly as the C#
+                    // `catch (OperationCanceledException)` does.
                 }
-                var out: [BiosignalKind: BiosignalStats] = [:]
-                out.reserveCapacity(accumulator.count)
-                for (kind, acc) in accumulator { out[kind] = acc.toStats() }
-                return out
             }
             group.addTask {
+                // Timeout safety-net: bound a non-completing source to `window`.
                 try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
-                return nil // timeout sentinel
             }
-
-            var result: [BiosignalKind: BiosignalStats] = [:]
-            for try await value in group {
-                if let value {
-                    // Consumer finished first — take its stats and stop.
-                    result = value
-                    group.cancelAll()
-                    break
-                } else {
-                    // Timeout fired first — cancel the consumer and take whatever
-                    // it accumulated up to the deadline.
-                    group.cancelAll()
-                    if let consumed = try await group.next(), let consumed {
-                        result = consumed
-                    }
-                    break
-                }
-            }
-            return result
+            // The first child to finish is the read (self-completing sources) or the
+            // timeout (infinite sources). Cancel the rest and drain.
+            _ = await group.next()
+            group.cancelAll()
         }
 
-        return BiosignalSnapshot(stats: stats, generatedAt: generatedAt)
+        return BiosignalSnapshot(stats: store.snapshot(), generatedAt: generatedAt)
     }
 
-    private final class Accumulator {
+    /// Per-kind running min/max/mean/count. Mirrors the C# private `Accumulator`.
+    private struct Accumulator {
         private var count = 0
         private var minV: Float = .infinity
         private var maxV: Float = -.infinity
         private var sum: Double = 0
 
-        func add(_ v: Float) {
+        mutating func add(_ v: Float) {
             count += 1
             if v < minV { minV = v }
             if v > maxV { maxV = v }
@@ -288,6 +283,28 @@ public final class BiosignalAggregator: @unchecked Sendable {
 
         func toStats() -> BiosignalStats {
             BiosignalStats(sampleCount: count, min: minV, max: maxV, mean: count == 0 ? 0 : Float(sum / Double(count)))
+        }
+    }
+
+    /// Lock-guarded per-kind accumulator shared between the stream-reading child
+    /// task and the caller. `@unchecked Sendable` because all access to the
+    /// mutable dictionary is serialised by `lock`.
+    private final class AccumulatorStore: @unchecked Sendable {
+        private let lock = NSLock()
+        private var byKind: [BiosignalKind: Accumulator] = [:]
+
+        func add(kind: BiosignalKind, value: Float) {
+            lock.lock(); defer { lock.unlock() }
+            byKind[kind, default: Accumulator()].add(value)
+        }
+
+        /// Materialise the current per-kind statistics.
+        func snapshot() -> [BiosignalKind: BiosignalStats] {
+            lock.lock(); defer { lock.unlock() }
+            var out: [BiosignalKind: BiosignalStats] = [:]
+            out.reserveCapacity(byKind.count)
+            for (kind, acc) in byKind { out[kind] = acc.toStats() }
+            return out
         }
     }
 }

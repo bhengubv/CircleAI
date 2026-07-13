@@ -69,7 +69,8 @@ final class FederationTests: XCTestCase {
                                             minParticipants: 2, maxParticipants: 5)
         // Below min → no commit yet.
         try await agg.submitDelta(delta(round: round.id, payload: FederatedAveraging.encodeFloats([4]), samples: 1))
-        XCTAssertNil(try await agg.tryCommit(round.id))
+        let belowMin = try await agg.tryCommit(round.id)
+        XCTAssertNil(belowMin)
 
         try await agg.submitDelta(delta(round: round.id, payload: FederatedAveraging.encodeFloats([8]), samples: 1))
         let snapshot = try await agg.getRound(round.id)
@@ -82,7 +83,8 @@ final class FederationTests: XCTestCase {
         // Round is now committed; idempotent re-commit returns same payload.
         let again = try await agg.tryCommit(round.id)
         XCTAssertEqual(again, payload)
-        XCTAssertEqual(try await agg.getRound(round.id).status, .committed)
+        let committedRound = try await agg.getRound(round.id)
+        XCTAssertEqual(committedRound.status, .committed)
     }
 
     func testSubmitToUnknownRoundThrows() async {
@@ -112,8 +114,10 @@ final class FederationTests: XCTestCase {
         let round = try await agg.openRound(modelId: "m", fromVersion: "1", toVersion: "2",
                                             minParticipants: 1, maxParticipants: 5)
         try await agg.submitDelta(delta(round: round.id, payload: Data(), samples: 1))  // empty — ignored
-        XCTAssertEqual(try await agg.getRound(round.id).currentParticipantCount, 0)
-        XCTAssertNil(try await agg.tryCommit(round.id))
+        let emptyRound = try await agg.getRound(round.id)
+        XCTAssertEqual(emptyRound.currentParticipantCount, 0)
+        let noCommit = try await agg.tryCommit(round.id)
+        XCTAssertNil(noCommit)
     }
 
     func testCommitDropsInvalidSignatures() async throws {
@@ -124,7 +128,8 @@ final class FederationTests: XCTestCase {
         try await agg.submitDelta(delta(round: round.id, payload: FederatedAveraging.encodeFloats([4]), samples: 1, sig: Data()))  // invalid
         try await agg.submitDelta(delta(round: round.id, payload: FederatedAveraging.encodeFloats([8]), samples: 1, sig: Data([1])))  // valid
         // Only 1 valid delta < min 2 → no commit.
-        XCTAssertNil(try await agg.tryCommit(round.id))
+        let noCommit = try await agg.tryCommit(round.id)
+        XCTAssertNil(noCommit)
     }
 
     func testRoundCount() async throws {
@@ -144,18 +149,22 @@ final class FederationTests: XCTestCase {
 
         // Invalid signature.
         let bad = delta(round: round.id, payload: FederatedAveraging.encodeFloats([1]), samples: 1, sig: Data())
-        XCTAssertEqual(await dispatcher.verifyAndSubmit(bad), .signatureInvalid)
+        let badResult = await dispatcher.verifyAndSubmit(bad)
+        XCTAssertEqual(badResult, .signatureInvalid)
 
         // Accepted.
         let d1 = delta(round: round.id, payload: FederatedAveraging.encodeFloats([1]), samples: 1)
-        XCTAssertEqual(await dispatcher.verifyAndSubmit(d1), .accepted)
+        let acceptedResult = await dispatcher.verifyAndSubmit(d1)
+        XCTAssertEqual(acceptedResult, .accepted)
 
         // Duplicate (same id).
-        XCTAssertEqual(await dispatcher.verifyAndSubmit(d1), .duplicate)
+        let duplicateResult = await dispatcher.verifyAndSubmit(d1)
+        XCTAssertEqual(duplicateResult, .duplicate)
 
         // Unknown round.
         let unknown = delta(round: UUID(), payload: FederatedAveraging.encodeFloats([1]), samples: 1)
-        XCTAssertEqual(await dispatcher.verifyAndSubmit(unknown), .roundUnknown)
+        let unknownResult = await dispatcher.verifyAndSubmit(unknown)
+        XCTAssertEqual(unknownResult, .roundUnknown)
     }
 
     // Async throwing assertion helper.

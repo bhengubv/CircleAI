@@ -36,10 +36,12 @@ final class MediaHubTests: XCTestCase {
     func testHubLibraryBackendIdAndGet() async throws {
         let lib = InMemoryHubMediaLibrary()
         XCTAssertEqual(lib.backendId, "in-memory")
-        XCTAssertNil(try await lib.get("nope"))
+        let missing = try await lib.get("nope")
+        XCTAssertNil(missing)
         let m = item("i1", "Hello")
         lib.add(m)
-        XCTAssertEqual(try await lib.get("i1"), m)
+        let fetched = try await lib.get("i1")
+        XCTAssertEqual(fetched, m)
     }
 
     func testHubLibraryGetThrowsOnBlankId() async {
@@ -75,7 +77,8 @@ final class MediaHubTests: XCTestCase {
     func testHubLibrarySearchTopKCapAndGuard() async throws {
         let lib = InMemoryHubMediaLibrary()
         for i in 0..<5 { lib.add(item("\(i)", "song\(i)")) }
-        XCTAssertEqual(try await lib.search("song", topK: 2).count, 2)
+        let capped = try await lib.search("song", topK: 2)
+        XCTAssertEqual(capped.count, 2)
         do {
             _ = try await lib.search("song", topK: 0)
             XCTFail("expected throw")
@@ -198,8 +201,10 @@ final class MediaHubTests: XCTestCase {
     func testNullHubMediaLibrary() async throws {
         let lib = NullHubMediaLibrary.instance
         XCTAssertEqual(lib.backendId, "null")
-        XCTAssertNil(try await lib.get("x"))
-        XCTAssertTrue(try await lib.search("anything").isEmpty)
+        let nullGet = try await lib.get("x")
+        XCTAssertNil(nullGet)
+        let nullSearch = try await lib.search("anything")
+        XCTAssertTrue(nullSearch.isEmpty)
     }
 
     func testNullSyncedPlaybackNeverDelivers() async throws {

@@ -60,9 +60,13 @@ internal fun Instant.toUtcDate(): String =
 internal val ICS_STAMP: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
 
-/** Same shape without the literal Z, for parsing to a LocalDateTime. */
+/**
+ * yyyyMMdd'T'HHmmss'Z' parsed into a LocalDateTime. The trailing Z is a required
+ * literal (mirrors the C# `TryParseExact(v, "yyyyMMddTHHmmssZ", …)` datetime branch,
+ * where the Z is a literal marker); the parsed value is then pinned to UTC.
+ */
 internal val ICS_LOCAL: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss")
+    DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
 
 internal fun esc(s: String): String =
     URLEncoder.encode(s, Charsets.UTF_8).replace("+", "%20")

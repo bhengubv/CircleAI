@@ -51,7 +51,10 @@ class ParsedSkill:
 _FRONTMATTER = re.compile(r"^\s*---\s*\r?\n(?P<body>[\s\S]*?)\r?\n---\s*\r?\n")
 _FIRST_HEADING = re.compile(r"^#\s+(?P<v>.+)$", re.MULTILINE)
 _TAGS_INLINE = re.compile(r"^\s*tags\s*:\s*\[(?P<v>[^\]]*)\]", re.MULTILINE)
-_TAGS_BLOCK = re.compile(r"^\s*tags\s*:\s*\r?\n(?P<v>(?:\s+-\s+\S+\s*\r?\n?)+)", re.MULTILINE)
+# NB: the item's trailing whitespace is [ \t]* (horizontal only), NOT \s* — a
+# greedy \s* eats the next line's newline+indent and Python's re (unlike .NET)
+# won't backtrack to re-enter the group, dropping every tag after the first.
+_TAGS_BLOCK = re.compile(r"^\s*tags\s*:\s*\r?\n(?P<v>(?:\s+-\s+\S+[ \t]*\r?\n?)+)", re.MULTILINE)
 
 
 def _file_name_without_ext(path: str) -> str:

@@ -50,7 +50,12 @@ describe("InMemoryKidsBoard", () => {
     b.setLimits(dailyTime("Kai", 60 * MIN, 30 * MIN));
     assert.equal(b.limitsFor("Kai")?.screenLimitMs, 60 * MIN);
     assert.equal(b.overLimit("Kai", "screen", now), true); // 120 > 60
-    assert.equal(b.overLimit("Kai", "SCREEN", now), true); // case-insensitive kind
+    // C# OverLimit selects the cap case-insensitively, but the usage total comes
+    // from UsedToday, which matches Kind with an ordinal (case-sensitive) `==`
+    // (KidsPrimitives.cs line 43). "SCREEN" therefore matches no "screen" logs →
+    // used = 0 → 0 > 60min is false. The kind casing only affects the cap, not
+    // which logs are summed.
+    assert.equal(b.overLimit("Kai", "SCREEN", now), false);
 
     b.recordTime(timeLog("Kai", "reading", 10 * MIN, new Date("2026-01-10T09:00:00Z")));
     assert.equal(b.overLimit("Kai", "reading", now), false); // 10 <= 30

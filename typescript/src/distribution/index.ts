@@ -58,16 +58,16 @@ export class DefaultAppStoreSubmitter implements IAppStoreSubmitter {
     ),
   );
 
-  submitAsync(pkg: AppStorePackage, _signal?: AbortSignal): Promise<boolean> {
+  async submitAsync(pkg: AppStorePackage, _signal?: AbortSignal): Promise<boolean> {
     if (pkg == null) throw new Error("package required");
     if (isBlank(pkg.storeName)) throw new Error("StoreName required");
     if (isBlank(pkg.packagePath)) throw new Error("PackagePath required");
     if (isBlank(pkg.version)) throw new Error("Version required");
     if (!DefaultAppStoreSubmitter.KNOWN_STORES.has(pkg.storeName.toLowerCase())) {
-      return Promise.resolve(false);
+      return false;
     }
     this.submittedMap.set(`${pkg.storeName}/${pkg.version}`, pkg);
-    return Promise.resolve(true);
+    return true;
   }
 
   /** All recorded submissions. Mirrors C# `Submitted`. */

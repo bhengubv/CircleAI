@@ -18,7 +18,11 @@ public interface IMediaLibrary
 {
     void Add(MediaAsset a);
     MediaAsset? Get(string id);
+    bool Remove(string id);
+    int Count { get; }
+    long TotalBytes { get; }
     IReadOnlyList<MediaAsset> ListByKind(MediaKind kind);
+    IReadOnlyList<MediaAsset> ByMime(string mimePrefix);
     IReadOnlyList<MediaAsset> Search(string q, int topK = 20);
 }
 
@@ -35,8 +39,31 @@ public sealed class InMemoryMediaLibrary : IMediaLibrary
 
     public MediaAsset? Get(string id) => _items.GetValueOrDefault(id);
 
+    /// <summary>Remove an asset by id. Returns true if it was present.</summary>
+    public bool Remove(string id)
+        => !string.IsNullOrEmpty(id) && _items.TryRemove(id, out _);
+
+    /// <summary>Number of assets currently catalogued.</summary>
+    public int Count => _items.Count;
+
+    /// <summary>Total on-disk footprint of every catalogued asset, in bytes.</summary>
+    public long TotalBytes => _items.Values.Sum(a => a.Bytes);
+
     public IReadOnlyList<MediaAsset> ListByKind(MediaKind kind)
         => _items.Values.Where(a => a.Kind == kind).OrderByDescending(a => a.CreatedAtUtc).ToArray();
+
+    /// <summary>
+    /// Assets whose MIME type starts with a given prefix (e.g. "image/", "audio/"),
+    /// matched case-insensitively and returned newest-first. Empty prefix yields nothing.
+    /// </summary>
+    public IReadOnlyList<MediaAsset> ByMime(string mimePrefix)
+    {
+        if (string.IsNullOrEmpty(mimePrefix)) return Array.Empty<MediaAsset>();
+        return _items.Values
+            .Where(a => a.Mime.StartsWith(mimePrefix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .ToArray();
+    }
 
     public IReadOnlyList<MediaAsset> Search(string q, int topK = 20)
     {

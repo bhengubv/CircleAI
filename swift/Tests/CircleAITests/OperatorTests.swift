@@ -42,7 +42,7 @@ final class OperatorTests: XCTestCase {
         XCTAssertEqual(phases, [.pending, .downloading, .loading, .ready])
         sub.dispose()
         // After dispose no more notifications.
-        try await op.apply(dep(id: "m2"))
+        try await op.apply(dep("m2"))
         let after = await collector.phases
         XCTAssertEqual(after.count, 4)  // unchanged
     }
@@ -72,17 +72,21 @@ final class OperatorTests: XCTestCase {
     func testDeleteRemovesStatus() async throws {
         let op = InMemoryModelOperator()
         try await op.apply(dep("m1", ns: "n"))
-        XCTAssertNotNil(try await op.getStatus(modelId: "m1", namespace: "n"))
+        let beforeDelete = try await op.getStatus(modelId: "m1", namespace: "n")
+        XCTAssertNotNil(beforeDelete)
         try await op.delete(modelId: "m1", namespace: "n")
-        XCTAssertNil(try await op.getStatus(modelId: "m1", namespace: "n"))
+        let afterDelete = try await op.getStatus(modelId: "m1", namespace: "n")
+        XCTAssertNil(afterDelete)
     }
 
     func testStatusIsNamespaced() async throws {
         let op = InMemoryModelOperator()
         try await op.apply(dep("m1", ns: "a", replicas: 1))
         try await op.apply(dep("m1", ns: "b", replicas: 9))
-        XCTAssertEqual(try await op.getStatus(modelId: "m1", namespace: "a")?.readyReplicas, 1)
-        XCTAssertEqual(try await op.getStatus(modelId: "m1", namespace: "b")?.readyReplicas, 9)
+        let statusA = try await op.getStatus(modelId: "m1", namespace: "a")
+        XCTAssertEqual(statusA?.readyReplicas, 1)
+        let statusB = try await op.getStatus(modelId: "m1", namespace: "b")
+        XCTAssertEqual(statusB?.readyReplicas, 9)
     }
 
     // ── Null ──────────────────────────────────────────────────────────────────
@@ -90,7 +94,8 @@ final class OperatorTests: XCTestCase {
     func testNullOperator() async throws {
         XCTAssertEqual(NullModelOperator.instance.backendId, "null")
         try await NullModelOperator.instance.apply(dep())
-        XCTAssertNil(try await NullModelOperator.instance.getStatus(modelId: "m", namespace: "n"))
+        let nullStatus = try await NullModelOperator.instance.getStatus(modelId: "m", namespace: "n")
+        XCTAssertNil(nullStatus)
     }
 
     func testNullObserverReturnsNoopHandle() {

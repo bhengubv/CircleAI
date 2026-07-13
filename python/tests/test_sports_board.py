@@ -28,7 +28,8 @@ def _at(mins: int) -> datetime:
 
 
 def _act(aid: str, kind: DistanceKind, km: float, dur_min: float, at: datetime):
-    return SportsActivity("u", aid, kind, km, timedelta(minutes=dur_min), at)
+    # SportsActivity == CircleAI.Sports.Activity(ActivityId, UserId, ...) — id first, user second.
+    return SportsActivity(aid, "u", kind, km, timedelta(minutes=dur_min), at)
 
 
 def test_board_is_isportsboard():

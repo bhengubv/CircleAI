@@ -71,7 +71,11 @@ describe("InMemoryPackDownloader", () => {
     const dl = new InMemoryPackDownloader();
     const opts = skillPackSourcesOptions();
     const path = await dl.ensureAsync(KnownSkillPacks.claudeBugHunter, opts.cacheDirectory, opts.cacheTtlMs);
-    assert.equal(path, `${opts.cacheDirectory}/Claude_BugHunter`);
+    // C# Sanitize replaces only Path.GetInvalidFileNameChars() with '_'
+    // (SkillPackAutoImporter.cs line 156-159). The hyphen is a valid file-name
+    // character on every platform, so "Claude-BugHunter" is kept verbatim — the
+    // dash is NOT converted to an underscore.
+    assert.equal(path, `${opts.cacheDirectory}/Claude-BugHunter`);
     assert.equal(dl.ensured.length, 1);
   });
 });

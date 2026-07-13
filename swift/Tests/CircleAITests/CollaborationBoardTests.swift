@@ -26,7 +26,8 @@ final class CollaborationBoardTests: XCTestCase {
         store.upsert(Channel(channelId: "c1", name: "zebra", teamId: "t1"))
         store.upsert(Channel(channelId: "c2", name: "alpha", teamId: "t1"))
         store.upsert(Channel(channelId: "c3", name: "gamma", teamId: "t2"))
-        XCTAssertEqual(await store.get("c1")?.name, "zebra")
+        let c1 = await store.get("c1")
+        XCTAssertEqual(c1?.name, "zebra")
         // Team listing ordered by name.
         let t1 = await store.listForTeam("t1")
         XCTAssertEqual(t1.map { $0.name }, ["alpha", "zebra"])
@@ -36,8 +37,10 @@ final class CollaborationBoardTests: XCTestCase {
         let store = InMemoryChannelStore()
         store.upsert(Channel(channelId: "c1", name: "old", teamId: "t"))
         store.upsert(Channel(channelId: "c1", name: "new", teamId: "t"))
-        XCTAssertEqual(await store.get("c1")?.name, "new")
-        XCTAssertEqual((await store.listForTeam("t")).count, 1)
+        let c1 = await store.get("c1")
+        XCTAssertEqual(c1?.name, "new")
+        let teamChannels = await store.listForTeam("t")
+        XCTAssertEqual(teamChannels.count, 1)
     }
 
     // ── Messages ─────────────────────────────────────────────────────────────────
@@ -55,8 +58,10 @@ final class CollaborationBoardTests: XCTestCase {
     func testMessageReadDefaultLimitOverload() async {
         let store = InMemoryMessageStore()
         _ = await store.post(Message(messageId: "m0", channelId: "c", authorId: "u", body: "b", atUtc: Date()))
-        XCTAssertEqual((await store.read("c")).count, 1)
-        XCTAssertTrue((await store.read("empty")).isEmpty)
+        let inChannel = await store.read("c")
+        XCTAssertEqual(inChannel.count, 1)
+        let inEmpty = await store.read("empty")
+        XCTAssertTrue(inEmpty.isEmpty)
     }
 
     // ── Presence ──────────────────────────────────────────────────────────────────
@@ -66,17 +71,23 @@ final class CollaborationBoardTests: XCTestCase {
         p.set(PresenceState(userId: "u1", online: true, lastSeenUtc: Date(timeIntervalSince1970: 3)))
         let got = await p.get("u1")
         XCTAssertEqual(got?.online, true)
-        XCTAssertNil(await p.get("u2"))
+        let u2 = await p.get("u2")
+        XCTAssertNil(u2)
     }
 
     // ── Null ──────────────────────────────────────────────────────────────────
 
     func testNullBackends() async {
-        XCTAssertNil(await NullChannelStore.instance.get("x"))
-        XCTAssertTrue(await NullChannelStore.instance.listForTeam("t").isEmpty)
+        let nullChannel = await NullChannelStore.instance.get("x")
+        XCTAssertNil(nullChannel)
+        let nullTeam = await NullChannelStore.instance.listForTeam("t")
+        XCTAssertTrue(nullTeam.isEmpty)
         let m = Message(messageId: "m", channelId: "c", authorId: "u", body: "b", atUtc: Date())
-        XCTAssertEqual(await NullMessageStore.instance.post(m), m)  // echoes
-        XCTAssertTrue(await NullMessageStore.instance.read("c").isEmpty)
-        XCTAssertNil(await NullPresence.instance.get("u"))
+        let echoed = await NullMessageStore.instance.post(m)
+        XCTAssertEqual(echoed, m)  // echoes
+        let nullMessages = await NullMessageStore.instance.read("c")
+        XCTAssertTrue(nullMessages.isEmpty)
+        let nullPresence = await NullPresence.instance.get("u")
+        XCTAssertNil(nullPresence)
     }
 }

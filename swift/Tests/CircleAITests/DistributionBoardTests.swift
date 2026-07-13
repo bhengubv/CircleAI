@@ -35,10 +35,12 @@ final class DistributionBoardTests: XCTestCase {
         let updater = InMemorySignedDeltaUpdater()  // default: accept non-empty signature
         let signed = DeltaUpdate(channel: "stable", fromVersion: "1", toVersion: "2",
                                  payload: Data([1]), signature: Data([9]))
-        XCTAssertTrue(await updater.apply(signed))
+        let appliedSigned = await updater.apply(signed)
+        XCTAssertTrue(appliedSigned)
         let unsigned = DeltaUpdate(channel: "stable", fromVersion: "2", toVersion: "3",
                                    payload: Data([1]), signature: Data())
-        XCTAssertFalse(await updater.apply(unsigned))
+        let appliedUnsigned = await updater.apply(unsigned)
+        XCTAssertFalse(appliedUnsigned)
         // Only the signed one was recorded.
         XCTAssertEqual(updater.allApplied, [signed])
     }
@@ -47,7 +49,8 @@ final class DistributionBoardTests: XCTestCase {
         // Reject everything.
         let updater = InMemorySignedDeltaUpdater { _ in false }
         let u = DeltaUpdate(channel: "c", fromVersion: "1", toVersion: "2", payload: Data([1]), signature: Data([9]))
-        XCTAssertFalse(await updater.apply(u))
+        let applied = await updater.apply(u)
+        XCTAssertFalse(applied)
         XCTAssertTrue(updater.allApplied.isEmpty)
     }
 

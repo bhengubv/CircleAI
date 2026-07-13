@@ -3,6 +3,17 @@ project(circle_ai VERSION 1.5.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Cross-language FP determinism. C# evaluates `a*b + c` as a multiply that
+# rounds, then an add that rounds. Clang/GCC may CONTRACT that pattern into a
+# single fused multiply-add (fma) that rounds only once, diverging by 1 ULP —
+# e.g. the belief-decay `1.0 / (1.0 + idx * 0.1)` came out 0.5882352941176471
+# under Apple clang vs the C# reference 0.588235294117647. Disable FP
+# contraction so every port produces byte-identical doubles. (MSVC has no such
+# flag and does not contract by default.)
+if(NOT MSVC)
+    add_compile_options(-ffp-contract=off)
+endif()
+
 add_library(circle_ai STATIC
     src/models.c
     src/memory.c

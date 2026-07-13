@@ -19,6 +19,12 @@ public interface ICivicBoard
     IReadOnlyList<Representative> RepsForDistrict(string district);
     void Schedule(CivicEvent e);
     IReadOnlyList<CivicEvent> UpcomingEvents();
+    int OpenIssueCount { get; }
+    IReadOnlyList<CivicIssue> IssuesByCategory(string category);
+    bool RemoveRep(string repId);
+    IReadOnlyList<Representative> RepsForOffice(string office);
+    IReadOnlyList<CivicEvent> EventsForAudience(string audience);
+    IReadOnlyList<(string Category, int Count)> OpenIssueBreakdown();
 }
 
 public sealed class InMemoryCivicBoard : ICivicBoard
@@ -39,4 +45,25 @@ public sealed class InMemoryCivicBoard : ICivicBoard
         => _reps.Values.Where(r => string.Equals(r.District, district, StringComparison.OrdinalIgnoreCase)).ToArray();
     public void Schedule(CivicEvent e) { ArgumentNullException.ThrowIfNull(e); _events[e.EventId] = e; }
     public IReadOnlyList<CivicEvent> UpcomingEvents() => _events.Values.Where(e => e.AtUtc >= DateTimeOffset.UtcNow).OrderBy(e => e.AtUtc).ToArray();
+
+    public int OpenIssueCount => OpenIssues().Count;
+
+    public IReadOnlyList<CivicIssue> IssuesByCategory(string category)
+        => _issues.Values.Where(i => string.Equals(i.Category, category, StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(i => i.ReportedUtc).ToArray();
+
+    public bool RemoveRep(string repId) => _reps.TryRemove(repId, out _);
+
+    public IReadOnlyList<Representative> RepsForOffice(string office)
+        => _reps.Values.Where(r => string.Equals(r.Office, office, StringComparison.OrdinalIgnoreCase))
+                       .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    public IReadOnlyList<CivicEvent> EventsForAudience(string audience)
+        => _events.Values.Where(e => string.Equals(e.Audience, audience, StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(e => e.AtUtc).ToArray();
+
+    public IReadOnlyList<(string Category, int Count)> OpenIssueBreakdown()
+        => OpenIssues().GroupBy(i => i.Category, StringComparer.OrdinalIgnoreCase)
+                       .Select(g => (g.Key, g.Count()))
+                       .OrderByDescending(t => t.Item2).ToArray();
 }

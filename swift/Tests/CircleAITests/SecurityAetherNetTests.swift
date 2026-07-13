@@ -156,7 +156,8 @@ final class SecurityAetherNetTests: XCTestCase {
 
         // Context / history / feedback still pass through (unguarded).
         XCTAssertEqual(gated.getContext().identityId, "user-1")
-        XCTAssertNoThrow(try await gated.signalFeedback(positive: true, note: nil))
+        // Feedback is unguarded and must not throw (test is `throws` → a throw fails it).
+        try await gated.signalFeedback(positive: true, note: nil)
         XCTAssertEqual(gated.sessionId, inner.sessionId)
         XCTAssertEqual(gated.identityId, "user-1")
         XCTAssertEqual(gated.interface, .headless)

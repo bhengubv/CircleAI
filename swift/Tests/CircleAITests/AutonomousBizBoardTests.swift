@@ -50,7 +50,8 @@ final class AutonomousBizBoardTests: XCTestCase {
         loop.publish(rev("e2", 5, "ZAR", 2))
         // No new delivery after dispose.
         try? await Task.sleep(nanoseconds: 20_000_000)
-        XCTAssertEqual(await collector.ids, ["e1"])
+        let ids = await collector.ids
+        XCTAssertEqual(ids, ["e1"])
     }
 
     // ── Treasury ──────────────────────────────────────────────────────────────────
@@ -83,7 +84,8 @@ final class AutonomousBizBoardTests: XCTestCase {
         }
         let recent = await log.read(limit: 2)
         XCTAssertEqual(recent.map { $0.decisionId }, ["d3", "d2"])
-        XCTAssertEqual((await log.read()).count, 4)  // default limit
+        let all = await log.read()
+        XCTAssertEqual(all.count, 4)  // default limit
     }
 
     // ── Null ──────────────────────────────────────────────────────────────────
@@ -93,10 +95,12 @@ final class AutonomousBizBoardTests: XCTestCase {
         XCTAssertEqual(snap.balance, 0)
         let sub = NullRevenueLoop.instance.subscribe { _ in }
         sub.dispose()
-        XCTAssertTrue(await NullRevenueLoop.instance.read(since: Date(timeIntervalSince1970: 0)).isEmpty)
+        let revEmpty = await NullRevenueLoop.instance.read(since: Date(timeIntervalSince1970: 0))
+        XCTAssertTrue(revEmpty.isEmpty)
         await NullDecisionLog.instance.append(AutonomousDecision(decisionId: "d", rationale: "r",
                                                                  chosenAction: "a", atUtc: Date()))
-        XCTAssertTrue(await NullDecisionLog.instance.read().isEmpty)
+        let logEmpty = await NullDecisionLog.instance.read()
+        XCTAssertTrue(logEmpty.isEmpty)
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────────

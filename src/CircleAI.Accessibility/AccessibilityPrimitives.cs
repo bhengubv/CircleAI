@@ -16,6 +16,12 @@ public interface IAccessibilityBoard
     void SetProfile(UserAccessibilityProfile p);
     UserAccessibilityProfile? GetProfile(string userId);
     IReadOnlyList<AdaptationHint> HintsFor(string userId);
+    int Count { get; }
+    bool Remove(string userId);
+    IReadOnlyList<UserAccessibilityProfile> WithNeed(AccessibilityNeed need);
+    IReadOnlyList<UserAccessibilityProfile> ScreenReaderUsers();
+    double AverageTextScale();
+    bool NeedsLargeText(string userId, double threshold = 1.3);
 }
 
 public sealed class InMemoryAccessibilityBoard : IAccessibilityBoard
@@ -36,4 +42,22 @@ public sealed class InMemoryAccessibilityBoard : IAccessibilityBoard
         foreach (var n in p.Needs) hints.Add(new AdaptationHint("need", n.ToString()));
         return hints;
     }
+
+    public int Count => _profiles.Count;
+
+    public bool Remove(string userId) => _profiles.TryRemove(userId, out _);
+
+    public IReadOnlyList<UserAccessibilityProfile> WithNeed(AccessibilityNeed need)
+        => _profiles.Values.Where(p => p.Needs.Contains(need))
+                           .OrderBy(p => p.UserId, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    public IReadOnlyList<UserAccessibilityProfile> ScreenReaderUsers()
+        => _profiles.Values.Where(p => p.ScreenReader)
+                           .OrderBy(p => p.UserId, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    public double AverageTextScale()
+        => _profiles.Values.Select(p => p.TextScale).DefaultIfEmpty(1.0).Average();
+
+    public bool NeedsLargeText(string userId, double threshold = 1.3)
+        => _profiles.TryGetValue(userId, out var p) && p.TextScale >= threshold;
 }

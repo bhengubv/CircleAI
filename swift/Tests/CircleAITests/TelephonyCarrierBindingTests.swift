@@ -52,7 +52,8 @@ final class TelephonyCarrierBindingTests: XCTestCase {
         XCTAssertNil(http.defaultHeaders["Authorization"])
         await XCTAssertThrowsErrorAsync(try await carrier.provisionNumber(countryCode: "ZA"))
         // ListNumbers fail-soft.
-        XCTAssertTrue(try await carrier.listNumbers().isEmpty)
+        let numbers = try await carrier.listNumbers()
+        XCTAssertTrue(numbers.isEmpty)
     }
 
     func testTwilioProvisionNumberWireFormat() async throws {

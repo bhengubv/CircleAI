@@ -37,6 +37,39 @@ public sealed class InMemoryBluetoothTransportRegistry
     public void SetState(string deviceId, BluetoothConnectionState s) => _states[deviceId] = s;
     public BluetoothConnectionState State(string deviceId) => _states.TryGetValue(deviceId, out var s) ? s : BluetoothConnectionState.Disconnected;
     public void RecordThroughput(BluetoothThroughputSample s) { ArgumentNullException.ThrowIfNull(s); lock (_lock) _throughput.Add(s); }
+
     public double AvgKbpsRead(string deviceId)
     { lock (_lock) return _throughput.Where(t => t.DeviceId == deviceId).Select(t => t.KbpsRead).DefaultIfEmpty(0.0).Average(); }
+
+    /// <summary>Average observed write throughput (kbps) for a device, or 0 when unsampled.</summary>
+    public double AvgKbpsWrite(string deviceId)
+    { lock (_lock) return _throughput.Where(t => t.DeviceId == deviceId).Select(t => t.KbpsWrite).DefaultIfEmpty(0.0).Average(); }
+
+    /// <summary>
+    /// Drop a device from the registry: removes its endpoint descriptor and any
+    /// tracked connection state. Returns true if an endpoint was actually removed.
+    /// </summary>
+    public bool Unregister(string deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return false;
+        var removed = _endpoints.TryRemove(deviceId, out _);
+        _states.TryRemove(deviceId, out _);
+        return removed;
+    }
+
+    /// <summary>
+    /// Endpoints advertising a given GATT/SPP service, matched case-insensitively
+    /// and ordered by device name — the discovery view a service scanner needs.
+    /// </summary>
+    public IReadOnlyList<BluetoothEndpointDescriptor> EndpointsWithService(string service)
+    {
+        if (string.IsNullOrEmpty(service)) return Array.Empty<BluetoothEndpointDescriptor>();
+        return _endpoints.Values
+            .Where(e => e.AdvertisedServices.Contains(service, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(e => e.Name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    /// <summary>Number of devices currently in the <see cref="BluetoothConnectionState.Connected"/> state.</summary>
+    public int ConnectedCount => _states.Values.Count(s => s == BluetoothConnectionState.Connected);
 }

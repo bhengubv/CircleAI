@@ -26,8 +26,9 @@ struct CosineSimilarityVector {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct Fixture {
+    // The shared fixture JSON uses snake_case keys (cosine_similarity_vectors);
+    // no rename_all so the field maps directly.
     cosine_similarity_vectors: Vec<CosineSimilarityVector>,
 }
 

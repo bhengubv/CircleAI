@@ -62,9 +62,11 @@ final class RuntimeTests: XCTestCase {
     func testCapabilityProbeDelegates() async {
         let p = profile(cpu: "Delegated")
         let wrapper = CapabilityProbe(StaticCapabilityProbe(p))
-        XCTAssertEqual(await wrapper.probe(), p)
+        let probed = await wrapper.probe()
+        XCTAssertEqual(probed, p)
         // Default ctor falls back to Unknown.
-        XCTAssertEqual(await CapabilityProbe().probe().os, .unknown)
+        let defaultProfile = await CapabilityProbe().probe()
+        XCTAssertEqual(defaultProfile.os, .unknown)
     }
 
     // ── BackendSelector routing ────────────────────────────────────────────────
@@ -192,7 +194,8 @@ final class RuntimeTests: XCTestCase {
         let fetcher = InMemoryNativeRuntimeFetcher(cacheRoot: "/cache",
                                                    registry: NativeRuntimeRegistry([b]), content: store)
 
-        XCTAssertFalse(await fetcher.isRuntimeCached(os: .linux, arch: .x64, backend: .cpu))
+        let cachedBefore = await fetcher.isRuntimeCached(os: .linux, arch: .x64, backend: .cpu)
+        XCTAssertFalse(cachedBefore)
         var reported: Double = 0
         let install = try await fetcher.ensureRuntime(os: .linux, arch: .x64, backend: .cpu,
                                                       progress: { reported = $0 })
@@ -200,7 +203,8 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(install.extractedRoot, "/cache/3.5.0-linux-x64-cpu")
         XCTAssertEqual(install.mnnCorePath, "/cache/3.5.0-linux-x64-cpu/libMNN.so")
         XCTAssertEqual(reported, 1.0)
-        XCTAssertTrue(await fetcher.isRuntimeCached(os: .linux, arch: .x64, backend: .cpu))
+        let cachedAfter = await fetcher.isRuntimeCached(os: .linux, arch: .x64, backend: .cpu)
+        XCTAssertTrue(cachedAfter)
 
         // Second ensure hits the fast path and returns the same install.
         let again = try await fetcher.ensureRuntime(os: .linux, arch: .x64, backend: .cpu)

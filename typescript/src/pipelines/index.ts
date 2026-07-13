@@ -227,7 +227,7 @@ export class InMemoryDatabaseQueryTool implements IDatabaseQueryTool {
     list.push(new Map(row));
   }
 
-  queryAsync(
+  async queryAsync(
     sql: string,
     _parameters?: ReadonlyMap<string, unknown> | null,
     _signal?: AbortSignal,
@@ -245,10 +245,10 @@ export class InMemoryDatabaseQueryTool implements IDatabaseQueryTool {
     const tableName = spaceIdx > 0 ? rest.slice(0, spaceIdx) : rest;
 
     const list = this.tables.get(tableName.toLowerCase());
-    if (list === undefined) return Promise.resolve(databaseQueryResult([], 0));
+    if (list === undefined) return databaseQueryResult([], 0);
 
     const rows: ReadonlyMap<string, unknown>[] = list.map((r) => new Map(r));
-    return Promise.resolve(databaseQueryResult(rows, rows.length));
+    return databaseQueryResult(rows, rows.length);
   }
 }
 

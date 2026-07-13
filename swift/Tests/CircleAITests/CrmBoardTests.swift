@@ -49,9 +49,13 @@ final class CrmBoardTests: XCTestCase {
         // Match by email substring (case-insensitive) picks alice; name match picks nobody else for "acme".
         let byEmail = try await store.search("acme")
         XCTAssertEqual(byEmail.map { $0.contactId }, ["2"])
-        // Broad query matching several, ordered ascending by full name (case-insensitive).
-        let broad = try await store.search("o")   // Charlie brOwn, bOb jOnes
-        XCTAssertEqual(broad.map { $0.fullName }, ["Bob Jones", "Charlie Brown"])
+        // Broad query matching several, ordered ascending by full name (OrdinalIgnoreCase).
+        // "o" hits Charlie brOwn (name), bOb jOnes (name), AND alice smith via its
+        // email "alice@ACME.io" (".io"). All three match; C# `SearchAsync` orders by
+        // FullName with StringComparer.OrdinalIgnoreCase, so lowercase "alice smith"
+        // sorts before "Bob Jones"/"Charlie Brown".
+        let broad = try await store.search("o")
+        XCTAssertEqual(broad.map { $0.fullName }, ["alice smith", "Bob Jones", "Charlie Brown"])
     }
 
     func testContactSearchHonoursTopK() async throws {
@@ -133,16 +137,21 @@ final class CrmBoardTests: XCTestCase {
     func testNullBackendsFailClosed() async throws {
         XCTAssertEqual(NullContactStore.instance.backendId, "null")
         try await NullContactStore.instance.upsert(Contact(contactId: "c", fullName: "n", email: nil, phone: nil, companyId: nil))
-        XCTAssertNil(try await NullContactStore.instance.get("c"))
-        XCTAssertTrue(try await NullContactStore.instance.search("x").isEmpty)
+        let contact = try await NullContactStore.instance.get("c")
+        XCTAssertNil(contact)
+        let contactSearch = try await NullContactStore.instance.search("x")
+        XCTAssertTrue(contactSearch.isEmpty)
 
         XCTAssertEqual(NullDealPipeline.instance.backendId, "null")
         try await NullDealPipeline.instance.upsert(Deal(dealId: "d", companyId: "c", name: "n", value: 1, currency: "ZAR", stage: "Open"))
-        XCTAssertNil(await NullDealPipeline.instance.get("d"))
-        XCTAssertTrue(try await NullDealPipeline.instance.listByStage("Open").isEmpty)
+        let deal = await NullDealPipeline.instance.get("d")
+        XCTAssertNil(deal)
+        let deals = try await NullDealPipeline.instance.listByStage("Open")
+        XCTAssertTrue(deals.isEmpty)
 
         XCTAssertEqual(NullActivityLog.instance.backendId, "null")
         try await NullActivityLog.instance.append(Activity(activityId: "a", contactId: "c", kind: "n", body: "b", atUtc: Date()))
-        XCTAssertTrue(try await NullActivityLog.instance.readForContact("c").isEmpty)
+        let activities = try await NullActivityLog.instance.readForContact("c")
+        XCTAssertTrue(activities.isEmpty)
     }
 }

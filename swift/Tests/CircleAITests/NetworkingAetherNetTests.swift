@@ -196,7 +196,8 @@ final class NetworkingAetherNetTests: XCTestCase {
         // Sanity: when available, an announce IS recorded (a later discover replays).
         try await dUp.announce(localInfo: peer("real"))
         var upIter = dUp.discover().makeAsyncIterator()
-        XCTAssertEqual(await upIter.next()?.nodeId, "real")
+        let firstPeer = await upIter.next()
+        XCTAssertEqual(firstPeer?.nodeId, "real")
 
         // When unavailable, announce is gated off — nothing is recorded, so a
         // fresh discover() that then closes yields an empty replay.
@@ -213,15 +214,19 @@ final class NetworkingAetherNetTests: XCTestCase {
 
     func testSyncChannelLastSequenceTracksHighest() async throws {
         let ch = AetherSyncChannel(context: availableContext())
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic"), 0)
+        let initialSeq = try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic")
+        XCTAssertEqual(initialSeq, 0)
         try await ch.pushDelta(delta("o", domain: "memory.episodic", seq: 5))
         try await ch.pushDelta(delta("o", domain: "memory.episodic", seq: 3)) // lower, ignored
         try await ch.pushDelta(delta("o", domain: "memory.episodic", seq: 9))
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic"), 9)
+        let episodicSeq = try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic")
+        XCTAssertEqual(episodicSeq, 9)
         // Different domain is tracked independently.
         try await ch.pushDelta(delta("o", domain: "persona", seq: 2))
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "persona"), 2)
-        XCTAssertEqual(try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic"), 9)
+        let personaSeq = try await ch.getLastSequence(ownerId: "o", domainKey: "persona")
+        XCTAssertEqual(personaSeq, 2)
+        let episodicSeqAgain = try await ch.getLastSequence(ownerId: "o", domainKey: "memory.episodic")
+        XCTAssertEqual(episodicSeqAgain, 9)
     }
 
     func testSyncChannelDeliversDeltasToMatchingOwner() async throws {

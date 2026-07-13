@@ -14,7 +14,7 @@ fn trip_cost_sums_flights_and_stays() {
     let arr = Utc.with_ymd_and_hms(2026, 6, 1, 10, 0, 0).unwrap();
     board.add_flight(Flight::new("f1", "JNB", "CPT", dep, arr, "FlySafair", "Economy", 1200.0, "ZAR"));
     let ci = Utc.with_ymd_and_hms(2026, 6, 1, 14, 0, 0).unwrap();
-    let co = Utc.with_ymd_and_hms(2026, 6, 4, 10, 0, 0).unwrap(); // 3 nights (whole days from Δ)
+    let co = Utc.with_ymd_and_hms(2026, 6, 4, 14, 0, 0).unwrap(); // exactly 72h after check-in → 3 whole nights
     board.add_stay(HotelStay::new("s1", "Hotel", "CPT", ci, co, 800.0, "ZAR"));
 
     board.plan(TravelTrip::new("t1", "CPT trip", ci, co, vec!["f1".into()], vec!["s1".into()]));

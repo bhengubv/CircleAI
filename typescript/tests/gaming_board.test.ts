@@ -55,9 +55,14 @@ describe("InMemoryGamingBoard", () => {
       b.mostPlayed("u1").map((t) => t.titleId),
       ["t2", "t1"],
     );
+    // C# MostPlayed order is OrderByDescending → Take(topK) → Select(title lookup)
+    // → Where(not null): the topK cap is applied to the RANKED session totals
+    // BEFORE unregistered titles are dropped. With topK=1 the top-ranked entry is
+    // t3 (9999ms) which has no registered title, so it is taken then dropped and
+    // the result is empty. (GamingPrimitives.cs MostPlayed, lines 53-60.)
     assert.deepEqual(
       b.mostPlayed("u1", 1).map((t) => t.titleId),
-      ["t2"],
+      [],
     );
   });
 

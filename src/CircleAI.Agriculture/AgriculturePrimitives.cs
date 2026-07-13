@@ -18,6 +18,12 @@ public interface IFarmBoard
     Field? GetField(string id);
     IReadOnlyList<Crop> CropsForField(string fieldId);
     double AvgYieldOfVariety(string variety);
+    int FieldCount { get; }
+    bool RemoveField(string fieldId);
+    double TotalAreaHa();
+    IReadOnlyList<Field> FieldsBySoil(string soilType);
+    IReadOnlyList<Crop> DueForHarvest(DateTime asOf);
+    string? BestYieldingVariety();
 }
 
 public sealed class InMemoryFarmBoard : IFarmBoard
@@ -40,6 +46,33 @@ public sealed class InMemoryFarmBoard : IFarmBoard
         {
             var rows = _yields.Where(y => _crops.TryGetValue(y.CropId, out var c) && string.Equals(c.Variety, variety, StringComparison.OrdinalIgnoreCase)).ToArray();
             return rows.Length == 0 ? 0.0 : rows.Average(r => r.TonsPerHa);
+        }
+    }
+
+    public int FieldCount => _fields.Count;
+
+    public bool RemoveField(string fieldId) => _fields.TryRemove(fieldId, out _);
+
+    public double TotalAreaHa() => _fields.Values.Sum(f => f.AreaHa);
+
+    public IReadOnlyList<Field> FieldsBySoil(string soilType)
+        => _fields.Values.Where(f => string.Equals(f.SoilType, soilType, StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(f => f.AreaHa).ToArray();
+
+    public IReadOnlyList<Crop> DueForHarvest(DateTime asOf)
+        => _crops.Values.Where(c => c.ExpectedHarvest is DateTime h && h <= asOf)
+                        .OrderBy(c => c.ExpectedHarvest).ToArray();
+
+    public string? BestYieldingVariety()
+    {
+        lock (_lock)
+        {
+            return _yields.Where(y => _crops.ContainsKey(y.CropId))
+                          .GroupBy(y => _crops[y.CropId].Variety, StringComparer.OrdinalIgnoreCase)
+                          .Select(g => (Variety: g.Key, Avg: g.Average(r => r.TonsPerHa)))
+                          .OrderByDescending(t => t.Avg)
+                          .Select(t => t.Variety)
+                          .FirstOrDefault();
         }
     }
 }

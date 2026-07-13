@@ -33,11 +33,16 @@ class SportsTest {
         // Sunday 2026-03-01 is the week start for a Wed 2026-03-04.
         b.log(Activity("a1", "u1", DistanceKind.Run, 5.0, Duration.ofMinutes(30), Instant.parse("2026-03-02T08:00:00Z")))
         b.log(Activity("a2", "u1", DistanceKind.Run, 3.0, Duration.ofMinutes(20), Instant.parse("2026-03-04T08:00:00Z")))
-        b.log(Activity("aOld", "u1", DistanceKind.Run, 99.0, Duration.ofMinutes(10), Instant.parse("2026-02-20T08:00:00Z")))
+        // Before the week start -> excluded from the weekly sum. Also kept below the
+        // 10km best() floor (like the Rust/C sibling ports' "too short" decoy) so a
+        // faster-but-shorter effort never wins Best over the qualifying 10km runs.
+        b.log(Activity("aOld", "u1", DistanceKind.Run, 4.0, Duration.ofMinutes(10), Instant.parse("2026-02-20T08:00:00Z")))
         assertEquals(8.0, b.totalKmThisWeek("u1", DistanceKind.Run, t0), 1e-9)
 
         b.log(Activity("fast", "u1", DistanceKind.Run, 10.0, Duration.ofMinutes(45), t0))
         b.log(Activity("faster", "u1", DistanceKind.Run, 10.0, Duration.ofMinutes(42), t0))
+        // Best over >=10km picks the fastest qualifying effort: faster (42) beats fast (45);
+        // the sub-10km runs (a1/a2/aOld) do not qualify even though aOld is quicker.
         val best = b.best("u1", DistanceKind.Run, 10.0)!!
         assertEquals(Duration.ofMinutes(42), best.time)
         assertNull(b.best("u1", DistanceKind.Swim, 1.0))

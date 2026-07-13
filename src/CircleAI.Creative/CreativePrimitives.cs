@@ -19,6 +19,12 @@ public interface ICreativeBoard
     IReadOnlyList<Inspiration> RecentInspiration(int limit = 20);
     void AddCritique(Critique c);
     double AvgScore(string workId);
+    int WorkCount { get; }
+    bool RemoveWork(string workId);
+    IReadOnlyList<CreativeWork> WorksByAuthor(string author);
+    IReadOnlyList<CreativeWork> WorksByMedium(string medium);
+    CreativeWork? TopRatedWork();
+    IReadOnlyList<string> AllTags();
 }
 
 public sealed class InMemoryCreativeBoard : ICreativeBoard
@@ -38,4 +44,38 @@ public sealed class InMemoryCreativeBoard : ICreativeBoard
     public void AddCritique(Critique c) { ArgumentNullException.ThrowIfNull(c); lock (_lock) _critiques.Add(c); }
     public double AvgScore(string workId)
     { lock (_lock) return _critiques.Where(c => c.WorkId == workId).Select(c => (double)c.Score).DefaultIfEmpty(0).Average(); }
+
+    public int WorkCount => _works.Count;
+
+    public bool RemoveWork(string workId)
+    {
+        var removed = _works.TryRemove(workId, out _);
+        if (removed) lock (_lock) _critiques.RemoveAll(c => c.WorkId == workId);
+        return removed;
+    }
+
+    public IReadOnlyList<CreativeWork> WorksByAuthor(string author)
+        => _works.Values.Where(w => string.Equals(w.Author, author, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(w => w.CreatedUtc).ToArray();
+
+    public IReadOnlyList<CreativeWork> WorksByMedium(string medium)
+        => _works.Values.Where(w => string.Equals(w.Medium, medium, StringComparison.OrdinalIgnoreCase))
+                        .OrderByDescending(w => w.CreatedUtc).ToArray();
+
+    public CreativeWork? TopRatedWork()
+    {
+        lock (_lock)
+        {
+            return _critiques.GroupBy(c => c.WorkId, StringComparer.Ordinal)
+                             .Select(g => (WorkId: g.Key, Avg: g.Average(c => c.Score)))
+                             .OrderByDescending(t => t.Avg)
+                             .Select(t => _works.GetValueOrDefault(t.WorkId))
+                             .FirstOrDefault(w => w is not null);
+        }
+    }
+
+    public IReadOnlyList<string> AllTags()
+        => _works.Values.SelectMany(w => w.Tags)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToArray();
 }

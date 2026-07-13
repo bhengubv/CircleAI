@@ -171,9 +171,16 @@ final class ContentPolicyTests: XCTestCase {
     }
 
     func testInjectionDetectorTruncatesLongMatchInReason() async throws {
-        // A match longer than 60 chars must be truncated with a trailing ellipsis.
+        // A matched substring longer than 60 chars must be truncated with a
+        // trailing ellipsis (C# `Truncate` appends "…" / U+2026). The matched
+        // span itself must exceed 60 chars, so use the
+        // `(BEGIN|END)\s+(SYSTEM|DEVELOPER|ASSISTANT)\s+MESSAGE` pattern with wide
+        // whitespace — the `\s+` runs make the whole match ~98 chars. (The prior
+        // input "you are now …" only matched the fixed 11-char "you are now", which
+        // is < 60 and so was never truncated.) Mirrors the Rust/C sibling tests.
         let det = KeywordPromptInjectionDetector()
-        let long = "you are now " + String(repeating: "x", count: 200)
+        let long = "BEGIN" + String(repeating: " ", count: 40)
+                 + "SYSTEM" + String(repeating: " ", count: 40) + "MESSAGE"
         let finding = try await det.inspect(long, sourceLabel: "src")
         XCTAssertEqual(finding.verdict, .refuse)
         XCTAssertTrue(finding.reason.contains("…"), "expected an ellipsis in a truncated match")

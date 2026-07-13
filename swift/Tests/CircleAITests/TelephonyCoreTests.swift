@@ -227,7 +227,8 @@ final class TelephonyCoreTests: XCTestCase {
         let carrier = FakeTelephonyCarrier(configured: false)
         XCTAssertFalse(carrier.isConfigured)
         // ListNumbers fail-soft (empty).
-        XCTAssertTrue(try await carrier.listNumbers().isEmpty)
+        let unconfiguredNumbers = try await carrier.listNumbers()
+        XCTAssertTrue(unconfiguredNumbers.isEmpty)
         // Provision/dial/configure throw.
         await XCTAssertThrowsErrorAsync(try await carrier.provisionNumber(countryCode: "ZA"))
         // Flip configured on and it works.
@@ -251,7 +252,8 @@ final class TelephonyCoreTests: XCTestCase {
         let fallback = CarrierFallback([FakeTelephonyCarrier(configured: false)])
         XCTAssertFalse(fallback.isConfigured)
         // Picks NullTelephonyCarrier → dial throws, listNumbers empty.
-        XCTAssertTrue(try await fallback.listNumbers().isEmpty)
+        let fallbackNumbers = try await fallback.listNumbers()
+        XCTAssertTrue(fallbackNumbers.isEmpty)
         await XCTAssertThrowsErrorAsync(
             try await fallback.dial(fromNumber: "+1", toNumber: "+2", streamUrl: URL(string: "wss://x")!))
     }

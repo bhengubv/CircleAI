@@ -32,9 +32,11 @@ class CrmTest {
         assertEquals("Ann Smith", store.getAsync("c2")!!.fullName)
         assertNull(store.getAsync("missing"))
 
-        // Match on name substring (case-insensitive), ordered by name ASC.
-        val byName = store.searchAsync("o") // Zoe, Bob Jones
-        assertEquals(listOf("Bob Jones", "Zoe Ndlovu"), byName.map { it.fullName })
+        // Match on name OR email substring (case-insensitive), ordered by name ASC.
+        // "o" hits Zoe Ndlovu and Bob Jones by name, and Ann Smith by email
+        // (ann@work.co.za contains "o"); OrdinalIgnoreCase order: Ann, Bob, Zoe.
+        val byName = store.searchAsync("o")
+        assertEquals(listOf("Ann Smith", "Bob Jones", "Zoe Ndlovu"), byName.map { it.fullName })
 
         // Match on email substring.
         val byEmail = store.searchAsync("WORK")

@@ -33,7 +33,7 @@ type cosineVector struct {
 	B                               []float32 `json:"b"`
 	ExpectedSimilarity              float64   `json:"expected_similarity"`
 	Tolerance                       float64   `json:"tolerance"`
-	ExpectedIsMatchAtThreshold085   bool      `json:"expected_is_match_at_threshold_0_85"`
+	ExpectedIsMatchAtThreshold085   *bool     `json:"expected_is_match_at_threshold_0_85"`
 }
 
 type affectMapperVector struct {
@@ -114,11 +114,10 @@ func TestIsMatch_Vectors(t *testing.T) {
 
 	for _, v := range fix.CosineSimilarityVectors {
 		v := v
-		// Only test vectors that carry an explicit is_match assertion.
-		// Vectors without the field default to false (Go zero value), and
-		// we only want to assert when the fixture meaningfully exercises IsMatch.
-		// We check all vectors — if expected_is_match is false AND similarity
-		// is truly below threshold, the assertion still passes.
+		// IsMatch is deterministically similarity >= threshold (mirrors C#
+		// BiometricMatcher.IsMatch). Derive the expectation from the golden
+		// expected_similarity, honouring an explicit per-vector override when
+		// the fixture provides the optional is_match field.
 		t.Run(v.ID+"/IsMatch", func(t *testing.T) {
 			profile := circleai.BiometricProfile{
 				IdentityID:      "test",
@@ -126,11 +125,15 @@ func TestIsMatch_Vectors(t *testing.T) {
 				MatchThreshold:  defaultThreshold,
 				EnrolledAt:      time.Now(),
 			}
+			want := v.ExpectedSimilarity >= float64(defaultThreshold)
+			if v.ExpectedIsMatchAtThreshold085 != nil {
+				want = *v.ExpectedIsMatchAtThreshold085
+			}
 			got := circleai.IsMatch(v.A, profile)
-			if got != v.ExpectedIsMatchAtThreshold085 {
+			if got != want {
 				sim := circleai.CosineSimilarity(v.A, v.B)
 				t.Errorf("IsMatch: got %v, want %v (sim=%.6f, threshold=%.2f)",
-					got, v.ExpectedIsMatchAtThreshold085, sim, defaultThreshold)
+					got, want, sim, defaultThreshold)
 			}
 		})
 	}
@@ -258,8 +261,8 @@ func TestFaceCompanionBridge_Observe_ConfusedTriggersEvent(t *testing.T) {
 	if evt == nil {
 		t.Fatalf("expected a proactive event, got nil (uncertainty=%.2f)", state.Uncertainty)
 	}
-	if evt.TriggerName != "face_confusion_detected" {
-		t.Errorf("TriggerName: got %q, want face_confusion_detected", evt.TriggerName)
+	if evt.TriggerName != "face.confusion_detected" {
+		t.Errorf("TriggerName: got %q, want face.confusion_detected", evt.TriggerName)
 	}
 	if evt.SessionID != "sess-1" {
 		t.Errorf("SessionID: got %q, want sess-1", evt.SessionID)

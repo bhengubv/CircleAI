@@ -135,13 +135,17 @@ final class VisionOnnxTests: XCTestCase {
 
     func testPostprocessYoloBackProjectsBox() {
         // 640x480 source: scale=1, padX=0, padY=80. Box cx=320,cy=320,w=100,h=100.
-        // Expected: bx=270, by=190, w=100, h=80 (clamped by origH=480).
+        // C# `PostprocessYolo`: x1=(320-50-0)/1=270, y1=(320-50-80)/1=190,
+        // x2=370, y2=290. bx=270, by=190, w=min(640-270, ceil(370-270))=100,
+        // h=min(480-190, ceil(290-190))=min(290,100)=100 (the ceil term wins —
+        // the box bottom at 290 is inside the 480-tall source, so origH does not
+        // clamp). Expected box therefore (270,190,100,100) — matches C#/Rust/C.
         let out = yoloTensor([(320, 320, 100, 100, 0.9)])
         let kept = VisionGeometry.postprocessYolo(
             output: out, origW: 640, origH: 480, padX: 0, padY: 80, scale: 1.0,
             confidenceThreshold: 0.5, iouThreshold: 0.45)
         XCTAssertEqual(kept.count, 1)
-        XCTAssertEqual(kept[0].box, BoundingBox(x: 270, y: 190, width: 100, height: 80))
+        XCTAssertEqual(kept[0].box, BoundingBox(x: 270, y: 190, width: 100, height: 100))
         XCTAssertEqual(kept[0].score, 0.9, accuracy: 1e-6)
     }
 
@@ -235,7 +239,9 @@ final class VisionOnnxTests: XCTestCase {
             runner: runner)
         let faces = try await det.detect(imageBytes: Data([0xFF, 0xD8, 0xFF]))
         XCTAssertEqual(faces.count, 1)
-        XCTAssertEqual(faces[0].region, BoundingBox(x: 270, y: 190, width: 100, height: 80))
+        // Same back-projection as testPostprocessYoloBackProjectsBox (640x480,
+        // scale=1, padY=80): (270,190,100,100). Matches C#/Rust/C.
+        XCTAssertEqual(faces[0].region, BoundingBox(x: 270, y: 190, width: 100, height: 100))
         XCTAssertEqual(faces[0].confidence, 0.9, accuracy: 1e-6)
         XCTAssertNil(faces[0].landmarks)
     }

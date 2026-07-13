@@ -289,7 +289,7 @@ export class InMemoryFederationAggregator implements IFederationAggregator {
     this.signatureValidator = signatureValidator;
   }
 
-  openRoundAsync(
+  async openRoundAsync(
     modelId: string,
     fromVersion: string,
     toVersion: string,
@@ -321,10 +321,10 @@ export class InMemoryFederationAggregator implements IFederationAggregator {
       null,
     );
     this.rounds.set(round.id, { snapshot: round, deltas: [], committedPayload: null });
-    return Promise.resolve(round);
+    return round;
   }
 
-  submitDeltaAsync(delta: ModelDelta, signal?: AbortSignal): Promise<void> {
+  async submitDeltaAsync(delta: ModelDelta, signal?: AbortSignal): Promise<void> {
     if (delta == null) throw new Error("delta required");
     throwIfAborted(signal);
 
@@ -335,7 +335,7 @@ export class InMemoryFederationAggregator implements IFederationAggregator {
 
     if (delta.deltaPayload.length === 0) {
       // Empty payloads are ignored (not stored, not counted) — the round stays viable.
-      return Promise.resolve();
+      return;
     }
 
     if (state.snapshot.status !== RoundStatus.Open) {
@@ -347,7 +347,6 @@ export class InMemoryFederationAggregator implements IFederationAggregator {
 
     state.deltas.push(delta);
     state.snapshot = { ...state.snapshot, currentParticipantCount: state.deltas.length };
-    return Promise.resolve();
   }
 
   tryCommitAsync(roundId: string, signal?: AbortSignal): Promise<Uint8Array | null> {

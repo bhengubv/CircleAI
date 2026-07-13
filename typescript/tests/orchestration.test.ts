@@ -117,7 +117,18 @@ describe("LokiOrchestrator", () => {
       },
       runQualityGateAsync: async (r) => ({ passed: r.issues.length === 0, blockers: [], warnings: [] }),
     };
-    const orch = new LokiOrchestrator(throwing);
+    // Disable gate enforcement so the wrapped Failed result is yielded as-is. With
+    // the default config (both require-flags true), RunSwarmAsync re-classifies any
+    // gate-failing result to Blocked (LokiOrchestrator.cs lines 75-83) — so the C#
+    // reference tests that assert a Failed result (e.g.
+    // RunSwarmAsync_TaskExceedsTimeout_YieldsFailed) construct the orchestrator with
+    // `new AgentSwarmConfig(1, …, false, false)`. We mirror that here.
+    const cfg: AgentSwarmConfig = {
+      ...AgentSwarmConfig.default(),
+      requireReviewPassBeforeDeploy: false,
+      requireSecurityPassBeforeDeploy: false,
+    };
+    const orch = new LokiOrchestrator(throwing, cfg);
     const results: SwarmResult[] = [];
     for await (const r of orch.runSwarmAsync([
       createAgentTask(AgentRole.Operations, "x", AgentPriority.Normal),

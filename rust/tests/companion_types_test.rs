@@ -245,8 +245,8 @@ struct AffectMapperVector {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct FacexFixture {
+    // Shared fixture JSON uses snake_case keys (affect_mapper_vectors).
     affect_mapper_vectors: Vec<AffectMapperVector>,
 }
 

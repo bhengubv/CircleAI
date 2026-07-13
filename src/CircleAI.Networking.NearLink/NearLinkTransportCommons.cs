@@ -35,6 +35,38 @@ public sealed class InMemoryNearLinkRegistry
     public void CloseSession(string id) => _sessions.TryRemove(id, out _);
     public IReadOnlyList<NearLinkSession> ActiveSessions => _sessions.Values.ToArray();
     public void RecordThroughput(NearLinkThroughputSample s) { ArgumentNullException.ThrowIfNull(s); lock (_lock) _throughput.Add(s); }
+
     public double AvgRssi(string deviceId)
     { lock (_lock) return _throughput.Where(t => t.DeviceId == deviceId).Select(t => (double)t.RssiDbm).DefaultIfEmpty(-127).Average(); }
+
+    /// <summary>Average observed read throughput (kbps) for a device, or 0 when unsampled.</summary>
+    public double AvgKbpsRead(string deviceId)
+    { lock (_lock) return _throughput.Where(t => t.DeviceId == deviceId).Select(t => t.KbpsRead).DefaultIfEmpty(0.0).Average(); }
+
+    /// <summary>Average observed write throughput (kbps) for a device, or 0 when unsampled.</summary>
+    public double AvgKbpsWrite(string deviceId)
+    { lock (_lock) return _throughput.Where(t => t.DeviceId == deviceId).Select(t => t.KbpsWrite).DefaultIfEmpty(0.0).Average(); }
+
+    /// <summary>
+    /// Remove a paired device: drops its device record and cached pairing state.
+    /// Open sessions are left untouched (close them explicitly via <see cref="CloseSession"/>).
+    /// Returns true if a device record was actually removed.
+    /// </summary>
+    public bool Unregister(string deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return false;
+        var removed = _devices.TryRemove(deviceId, out _);
+        _states.TryRemove(deviceId, out _);
+        return removed;
+    }
+
+    /// <summary>Active sessions belonging to a device, oldest-first by start time.</summary>
+    public IReadOnlyList<NearLinkSession> SessionsForDevice(string deviceId)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return Array.Empty<NearLinkSession>();
+        return _sessions.Values
+            .Where(s => string.Equals(s.DeviceId, deviceId, StringComparison.Ordinal))
+            .OrderBy(s => s.StartedUtc)
+            .ToArray();
+    }
 }

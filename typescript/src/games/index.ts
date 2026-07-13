@@ -212,17 +212,15 @@ export class InMemorySceneGraph implements ISceneGraph {
     return "in-memory";
   }
 
-  addAsync(node: SceneNode): Promise<void> {
+  async addAsync(node: SceneNode): Promise<void> {
     if (node == null) throw new Error("node required");
     if (node.nodeId == null || node.nodeId.trim() === "") throw new Error("NodeId required");
     this.nodes.set(node.nodeId, node);
-    return Promise.resolve();
   }
 
-  removeAsync(nodeId: string): Promise<void> {
+  async removeAsync(nodeId: string): Promise<void> {
     if (nodeId == null || nodeId.trim() === "") throw new Error("nodeId required");
     this.nodes.delete(nodeId);
-    return Promise.resolve();
   }
 
   snapshotAsync(): Promise<readonly SceneNode[]> {

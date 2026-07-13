@@ -108,9 +108,11 @@ final class VoiceSpeakerEmotionTests: XCTestCase {
         runner.next = [0, 1]; try await svc.enroll(userId: "bob", audioPcm16: audio, sampleRateHz: 16_000)
 
         runner.next = [0.9, 0.1]
-        XCTAssertEqual(try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000), "alice")
+        let aliceMatch = try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000)
+        XCTAssertEqual(aliceMatch, "alice")
         runner.next = [0.1, 0.9]
-        XCTAssertEqual(try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000), "bob")
+        let bobMatch = try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000)
+        XCTAssertEqual(bobMatch, "bob")
         await svc.dispose()
     }
 
@@ -125,7 +127,8 @@ final class VoiceSpeakerEmotionTests: XCTestCase {
         runner.next = [1, 0]; try await svc.enroll(userId: "alice", audioPcm16: audio, sampleRateHz: 16_000)
         // Orthogonal probe -> cosine 0 < 0.9 threshold.
         runner.next = [0, 1]
-        XCTAssertNil(try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000))
+        let noMatch = try await svc.identify(audioPcm16: audio, sampleRateHz: 16_000)
+        XCTAssertNil(noMatch)
         await svc.dispose()
     }
 
@@ -141,7 +144,8 @@ final class VoiceSpeakerEmotionTests: XCTestCase {
         // New service pointed at same store reloads the enrollment.
         let svc2 = SpeakerIdentityService(config: cfg)
         XCTAssertEqual(svc2.enrolledSpeakers.first?.userId, "carol")
-        XCTAssertEqual(try await svc2.identify(audioPcm16: audio, sampleRateHz: 16_000), "carol")
+        let carolMatch = try await svc2.identify(audioPcm16: audio, sampleRateHz: 16_000)
+        XCTAssertEqual(carolMatch, "carol")
         await svc2.dispose()
         try? FileManager.default.removeItem(atPath: dir)
     }

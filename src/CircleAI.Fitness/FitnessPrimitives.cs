@@ -19,6 +19,12 @@ public interface IFitnessBoard
     IReadOnlyList<FitnessGoal> GoalsFor(string userId);
     void AddSet(ExerciseSet s);
     IReadOnlyList<ExerciseSet> SetsFor(string workoutId);
+    int WorkoutCount { get; }
+    IReadOnlyList<Workout> WorkoutsByKind(string userId, string kind);
+    bool RemoveGoal(string goalId);
+    FitnessGoal? GoalByMetric(string userId, string metric);
+    double AvgDurationSince(string userId, DateTimeOffset since);
+    double TotalVolumeKg(string workoutId);
 }
 
 public sealed class InMemoryFitnessBoard : IFitnessBoard
@@ -41,4 +47,29 @@ public sealed class InMemoryFitnessBoard : IFitnessBoard
     public void AddSet(ExerciseSet s) { ArgumentNullException.ThrowIfNull(s); lock (_lock) _sets.Add(s); }
     public IReadOnlyList<ExerciseSet> SetsFor(string workoutId)
     { lock (_lock) return _sets.Where(s => s.WorkoutId == workoutId).ToArray(); }
+
+    public int WorkoutCount { get { lock (_lock) return _workouts.Count; } }
+
+    public IReadOnlyList<Workout> WorkoutsByKind(string userId, string kind)
+    {
+        lock (_lock) return _workouts.Where(w => w.UserId == userId && string.Equals(w.Kind, kind, StringComparison.OrdinalIgnoreCase))
+                                     .OrderByDescending(w => w.AtUtc).ToArray();
+    }
+
+    public bool RemoveGoal(string goalId) => _goals.TryRemove(goalId, out _);
+
+    public FitnessGoal? GoalByMetric(string userId, string metric)
+        => _goals.Values.Where(g => g.UserId == userId && string.Equals(g.Metric, metric, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(g => g.DueOn).FirstOrDefault();
+
+    public double AvgDurationSince(string userId, DateTimeOffset since)
+    {
+        lock (_lock) return _workouts.Where(w => w.UserId == userId && w.AtUtc >= since)
+                                     .Select(w => (double)w.DurationMinutes).DefaultIfEmpty(0).Average();
+    }
+
+    public double TotalVolumeKg(string workoutId)
+    {
+        lock (_lock) return _sets.Where(s => s.WorkoutId == workoutId).Sum(s => s.Reps * s.WeightKg);
+    }
 }

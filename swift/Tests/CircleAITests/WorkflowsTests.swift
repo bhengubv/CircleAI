@@ -24,8 +24,10 @@ final class WorkflowsTests: XCTestCase {
     func testDefinitionStoreUpsertGet() async {
         let store = InMemoryWorkflowDefinitionStore()
         await store.upsert(WorkflowDefinition(definitionId: "wf", name: "Flow", version: "1", description: "d"))
-        XCTAssertEqual(await store.get("wf")?.name, "Flow")
-        XCTAssertNil(await store.get("missing"))
+        let found = await store.get("wf")
+        XCTAssertEqual(found?.name, "Flow")
+        let missing = await store.get("missing")
+        XCTAssertNil(missing)
     }
 
     func testRunnerStartGetCancel() async {
@@ -33,9 +35,11 @@ final class WorkflowsTests: XCTestCase {
         let exec = await runner.start("wf", inputs: ["k": AnyCodable(1)])
         XCTAssertEqual(exec.phase, .completed)
         XCTAssertEqual(exec.runId, "wf-1")
-        XCTAssertEqual(await runner.get("wf-1")?.definitionId, "wf")
+        let running = await runner.get("wf-1")
+        XCTAssertEqual(running?.definitionId, "wf")
         await runner.cancel("wf-1")
-        XCTAssertEqual(await runner.get("wf-1")?.phase, .failed)
+        let cancelled = await runner.get("wf-1")
+        XCTAssertEqual(cancelled?.phase, .failed)
     }
 
     func testRunnerDefaultInputsOverload() async {
@@ -48,8 +52,10 @@ final class WorkflowsTests: XCTestCase {
         let state = InMemoryWorkflowState()
         let cp = CheckpointPayload(runId: "r", stepId: "s1", stateBlob: Data([1, 2]))
         await state.checkpoint(cp)
-        XCTAssertEqual(await state.load(runId: "r", stepId: "s1"), cp)
-        XCTAssertNil(await state.load(runId: "r", stepId: "other"))
+        let loaded = await state.load(runId: "r", stepId: "s1")
+        XCTAssertEqual(loaded, cp)
+        let missing = await state.load(runId: "r", stepId: "other")
+        XCTAssertNil(missing)
     }
 
     // ── Null workflow ────────────────────────────────────────────────────────────
@@ -57,12 +63,14 @@ final class WorkflowsTests: XCTestCase {
     func testNullWorkflowBackends() async {
         await NullWorkflowDefinitionStore.instance.upsert(
             WorkflowDefinition(definitionId: "d", name: "n", version: "1", description: ""))
-        XCTAssertNil(await NullWorkflowDefinitionStore.instance.get("d"))
+        let nullDef = await NullWorkflowDefinitionStore.instance.get("d")
+        XCTAssertNil(nullDef)
         let run = await NullWorkflowRunner.instance.start("wf")
         XCTAssertEqual(run.phase, .failed)
         XCTAssertEqual(run.runId, "00000000-0000-0000-0000-000000000000")
         await NullWorkflowState.instance.checkpoint(CheckpointPayload(runId: "r", stepId: "s", stateBlob: Data()))
-        XCTAssertNil(await NullWorkflowState.instance.load(runId: "r", stepId: "s"))
+        let nullState = await NullWorkflowState.instance.load(runId: "r", stepId: "s")
+        XCTAssertNil(nullState)
     }
 
     // ── Conversation runtime ───────────────────────────────────────────────────────

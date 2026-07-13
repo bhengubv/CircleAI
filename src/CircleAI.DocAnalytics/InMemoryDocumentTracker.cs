@@ -64,4 +64,69 @@ public sealed class InMemoryDocumentTracker : IDocumentTracker, IDocumentInsight
                 AvgDurationSeconds: avgSeconds));
         }
     }
+
+    /// <summary>Number of distinct documents that have at least one recorded view.</summary>
+    public int DocumentCount => _byDoc.Count;
+
+    /// <summary>Total views recorded across every tracked document.</summary>
+    public int TotalViews
+    {
+        get { lock (_writeLock) return _byDoc.Values.Sum(v => v.Count); }
+    }
+
+    /// <summary>Drop all recorded views for a document. Returns true if anything was removed.</summary>
+    public bool Clear(string documentId)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) throw new ArgumentException("documentId required", nameof(documentId));
+        lock (_writeLock) return _byDoc.TryRemove(documentId, out _);
+    }
+
+    /// <summary>The most-viewed documents, highest first, capped at <paramref name="topK"/>.</summary>
+    public IReadOnlyList<(string DocumentId, int Views)> TopDocuments(int topK = 5)
+    {
+        if (topK <= 0) throw new ArgumentOutOfRangeException(nameof(topK));
+        lock (_writeLock)
+        {
+            return _byDoc.Select(kv => (kv.Key, kv.Value.Count))
+                         .OrderByDescending(t => t.Item2)
+                         .Take(topK)
+                         .ToArray();
+        }
+    }
+
+    /// <summary>Most recent views for a document, newest first.</summary>
+    public IReadOnlyList<DocumentView> RecentViews(string documentId, int limit = 20)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) throw new ArgumentException("documentId required", nameof(documentId));
+        if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit));
+        lock (_writeLock)
+        {
+            if (!_byDoc.TryGetValue(documentId, out var views)) return Array.Empty<DocumentView>();
+            return views.OrderByDescending(v => v.AtUtc).Take(limit).ToArray();
+        }
+    }
+
+    /// <summary>Sum of pages viewed across every recorded view of a document.</summary>
+    public int TotalPagesViewed(string documentId)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) throw new ArgumentException("documentId required", nameof(documentId));
+        lock (_writeLock)
+        {
+            return _byDoc.TryGetValue(documentId, out var views) ? views.Sum(v => v.PagesViewed) : 0;
+        }
+    }
+
+    /// <summary>The viewer who spent the most cumulative time on a document, if any.</summary>
+    public string? MostEngagedViewer(string documentId)
+    {
+        if (string.IsNullOrWhiteSpace(documentId)) throw new ArgumentException("documentId required", nameof(documentId));
+        lock (_writeLock)
+        {
+            if (!_byDoc.TryGetValue(documentId, out var views) || views.Count == 0) return null;
+            return views.GroupBy(v => v.ViewerId, StringComparer.Ordinal)
+                        .OrderByDescending(g => g.Sum(v => v.Duration.TotalSeconds))
+                        .Select(g => g.Key)
+                        .First();
+        }
+    }
 }

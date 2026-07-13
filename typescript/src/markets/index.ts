@@ -204,7 +204,10 @@ export class InMemoryMarketDataFeed implements IMarketDataFeed {
       const snap = [...list];
       for (const s of snap) {
         try {
-          void s(q);
+          // Mirror C# `_ = s(q)`: a discarded ValueTask swallows async faults;
+          // in JS an unhandled rejected promise would surface as an
+          // unhandledRejection, so .catch() it. try/catch covers sync throws.
+          void s(q).catch(() => { /* quote subscriber threw — swallow, matching C# */ });
         } catch {
           // [CircleAI.Markets] quote subscriber threw — swallow, matching C#.
         }

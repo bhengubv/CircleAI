@@ -24,16 +24,19 @@ final class BuildFarmBoardTests: XCTestCase {
         XCTAssertNotNil(b)
         XCTAssertNotEqual(a?.agentId, b?.agentId)
         // Both busy → next acquire returns nil.
-        XCTAssertNil(await pool.acquire(.linux))
+        let whenBusy = await pool.acquire(.linux)
+        XCTAssertNil(whenBusy)
         // Release one → acquire succeeds again.
         await pool.release(a!.agentId)
-        XCTAssertNotNil(await pool.acquire(.linux))
+        let afterRelease = await pool.acquire(.linux)
+        XCTAssertNotNil(afterRelease)
     }
 
     func testAcquireWrongKindReturnsNil() async {
         let pool = InMemoryBuildAgentPool()
         pool.register(BuildAgent(agentId: "linux-1", kind: .linux, os: "ubuntu", hardware: nil))
-        XCTAssertNil(await pool.acquire(.mac))
+        let wrongKind = await pool.acquire(.mac)
+        XCTAssertNil(wrongKind)
     }
 
     func testListReturnsAllAgents() async {
@@ -41,7 +44,8 @@ final class BuildFarmBoardTests: XCTestCase {
         pool.register(BuildAgent(agentId: "a", kind: .linux, os: "u", hardware: nil))
         pool.register(BuildAgent(agentId: "b", kind: .windows, os: "w", hardware: "x64"))
         _ = await pool.acquire(.linux)  // busy agents still listed
-        XCTAssertEqual(Set((await pool.list()).map { $0.agentId }), ["a", "b"])
+        let listed = await pool.list()
+        XCTAssertEqual(Set(listed.map { $0.agentId }), ["a", "b"])
     }
 
     // ── Job runner ─────────────────────────────────────────────────────────────
@@ -52,14 +56,16 @@ final class BuildFarmBoardTests: XCTestCase {
         XCTAssertEqual(job.phase, .running)
         XCTAssertEqual(job.jobId, "job-1")
         try runner.complete(job.jobId, success: true)
-        XCTAssertEqual(await runner.get(job.jobId)?.phase, .succeeded)
+        let completed = await runner.get(job.jobId)
+        XCTAssertEqual(completed?.phase, .succeeded)
     }
 
     func testCompleteFailure() async throws {
         let runner = InMemoryBuildJobRunner()
         let job = await runner.start(agentId: "a", repo: "r", branch: "b")
         try runner.complete(job.jobId, success: false)
-        XCTAssertEqual(await runner.get(job.jobId)?.phase, .failed)
+        let failed = await runner.get(job.jobId)
+        XCTAssertEqual(failed?.phase, .failed)
     }
 
     func testCompleteUnknownJobThrows() {
@@ -82,8 +88,10 @@ final class BuildFarmBoardTests: XCTestCase {
         let store = InMemoryBuildArtifactStore()
         let art = BuildArtifact(artifactId: "art-1", jobId: "job-1", name: "out.zip", payload: Data([1, 2, 3]))
         await store.save(art)
-        XCTAssertEqual(await store.get("art-1"), art)
-        XCTAssertNil(await store.get("missing"))
+        let stored = await store.get("art-1")
+        XCTAssertEqual(stored, art)
+        let missing = await store.get("missing")
+        XCTAssertNil(missing)
     }
 
     func testArtifactCodableRoundTrip() throws {
@@ -94,12 +102,15 @@ final class BuildFarmBoardTests: XCTestCase {
     // ── Null ──────────────────────────────────────────────────────────────────
 
     func testNullBackends() async {
-        XCTAssertNil(await NullBuildAgentPool.instance.acquire(.linux))
-        XCTAssertTrue(await NullBuildAgentPool.instance.list().isEmpty)
+        let nullAcquire = await NullBuildAgentPool.instance.acquire(.linux)
+        XCTAssertNil(nullAcquire)
+        let nullList = await NullBuildAgentPool.instance.list()
+        XCTAssertTrue(nullList.isEmpty)
         let job = await NullBuildJobRunner.instance.start(agentId: "a", repo: "r", branch: "b")
         XCTAssertEqual(job.phase, .failed)
         XCTAssertEqual(job.jobId, "00000000-0000-0000-0000-000000000000")
         await NullBuildArtifactStore.instance.save(BuildArtifact(artifactId: "x", jobId: "j", name: "n", payload: Data()))
-        XCTAssertNil(await NullBuildArtifactStore.instance.get("x"))
+        let nullArtifact = await NullBuildArtifactStore.instance.get("x")
+        XCTAssertNil(nullArtifact)
     }
 }
