@@ -72,11 +72,36 @@ export function adaptationHint(kind: string, value: string): AdaptationHint {
   return { kind, value };
 }
 
+/**
+ * Ordinal-case-insensitive compare, matching C# `StringComparer.OrdinalIgnoreCase`
+ * ordering. Ties (equal under case-fold) fall back to the ordinal comparison of
+ * the originals, mirroring .NET's OrdinalIgnoreCase tie-break.
+ */
+function ordinalIgnoreCaseCompare(a: string, b: string): number {
+  const la = a.toUpperCase();
+  const lb = b.toUpperCase();
+  if (la < lb) return -1;
+  if (la > lb) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** The accessibility board contract. Mirrors C# `IAccessibilityBoard`. */
 export interface IAccessibilityBoard {
   setProfile(p: UserAccessibilityProfile): void;
   getProfile(userId: string): UserAccessibilityProfile | undefined;
   hintsFor(userId: string): readonly AdaptationHint[];
+  /** Number of profiles currently stored. */
+  readonly count: number;
+  /** Remove a profile by user id. Returns whether one was removed. */
+  remove(userId: string): boolean;
+  /** Profiles declaring a given need, ordered by user id (OrdinalIgnoreCase). */
+  withNeed(need: AccessibilityNeed): readonly UserAccessibilityProfile[];
+  /** Profiles with the screen reader flag set, ordered by user id (OrdinalIgnoreCase). */
+  screenReaderUsers(): readonly UserAccessibilityProfile[];
+  /** Average text scale across all profiles, or 1.0 when none. */
+  averageTextScale(): number;
+  /** True when a user's stored text scale is at or above `threshold` (default 1.3). */
+  needsLargeText(userId: string, threshold?: number): boolean;
 }
 
 /** Deterministic in-memory {@link IAccessibilityBoard}. */
@@ -102,6 +127,55 @@ export class InMemoryAccessibilityBoard implements IAccessibilityBoard {
     if (p.textScale > 1) hints.push({ kind: "text-scale", value: p.textScale.toFixed(2) });
     for (const n of p.needs) hints.push({ kind: "need", value: NEED_NAMES[n] });
     return hints;
+  }
+
+  /** Number of profiles currently stored. Mirrors C# `Count`. */
+  get count(): number {
+    return this.profiles.size;
+  }
+
+  /** Remove a profile by user id. Returns whether one was removed. Mirrors C# `Remove`. */
+  remove(userId: string): boolean {
+    return this.profiles.delete(userId);
+  }
+
+  /**
+   * Profiles declaring a given need, ordered by user id (OrdinalIgnoreCase).
+   * Mirrors C# `WithNeed`.
+   */
+  withNeed(need: AccessibilityNeed): readonly UserAccessibilityProfile[] {
+    return [...this.profiles.values()]
+      .filter((p) => p.needs.includes(need))
+      .sort((a, b) => ordinalIgnoreCaseCompare(a.userId, b.userId));
+  }
+
+  /**
+   * Profiles with the screen reader flag set, ordered by user id
+   * (OrdinalIgnoreCase). Mirrors C# `ScreenReaderUsers`.
+   */
+  screenReaderUsers(): readonly UserAccessibilityProfile[] {
+    return [...this.profiles.values()]
+      .filter((p) => p.screenReader)
+      .sort((a, b) => ordinalIgnoreCaseCompare(a.userId, b.userId));
+  }
+
+  /**
+   * Average text scale across all profiles, or 1.0 when none (C#
+   * `DefaultIfEmpty(1.0).Average()`). Mirrors C# `AverageTextScale`.
+   */
+  averageTextScale(): number {
+    const scales = [...this.profiles.values()].map((p) => p.textScale);
+    if (scales.length === 0) return 1.0;
+    return scales.reduce((sum, s) => sum + s, 0) / scales.length;
+  }
+
+  /**
+   * True when a user's stored text scale is at or above `threshold` (default
+   * 1.3). False when the user has no profile. Mirrors C# `NeedsLargeText`.
+   */
+  needsLargeText(userId: string, threshold = 1.3): boolean {
+    const p = this.profiles.get(userId);
+    return p !== undefined && p.textScale >= threshold;
   }
 }
 

@@ -68,6 +68,39 @@ class InMemoryFaithBoard : IFaithBoard {
 
     override fun byTradition(tradition: String): List<ScriptureReference> =
         scripture.values.filter { it.tradition.equals(tradition, ignoreCase = true) }
+
+    /** Number of scheduled services. */
+    val serviceCount: Int get() = services.size
+
+    /** Remove a service by id. Returns true if one was present. */
+    fun removeService(serviceId: String): Boolean = services.remove(serviceId) != null
+
+    /** Services at a given location (case-insensitive), earliest first. */
+    fun servicesAt(location: String): List<FaithService> =
+        services.values.filter { it.location.equals(location, ignoreCase = true) }
+            .sortedBy { it.startUtc }
+
+    /**
+     * Non-anonymous prayers by a given author (case-insensitive), newest-first.
+     * Privacy-aware: anonymous requests are never attributed and are excluded.
+     */
+    fun prayersByAuthor(author: String): List<PrayerRequest> = synchronized(lock) {
+        prayers.filter { !it.isAnonymous && it.author.equals(author, ignoreCase = true) }
+            .sortedByDescending { it.submittedUtc }
+    }
+
+    /** Count of prayer requests submitted anonymously. */
+    fun anonymousPrayerCount(): Int = synchronized(lock) {
+        prayers.count { it.isAnonymous }
+    }
+
+    /** Verses of a given chapter (tradition + book case-insensitive), ordered by verse. */
+    fun chapterVerses(tradition: String, book: String, chapter: Int): List<ScriptureReference> =
+        scripture.values.filter {
+            it.tradition.equals(tradition, ignoreCase = true) &&
+                it.book.equals(book, ignoreCase = true) &&
+                it.chapter == chapter
+        }.sortedBy { it.verse }
 }
 
 // =====================================================================

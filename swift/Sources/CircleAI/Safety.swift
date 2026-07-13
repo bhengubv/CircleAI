@@ -134,6 +134,9 @@ public protocol ISafetyBoard: AnyObject, Sendable {
     /// All logged incidents, newest first.
     var active: [Incident] { get }
 
+    /// Total number of incidents logged since this board was created.
+    var incidentCount: Int { get }
+
     /// Incidents at or above `minimum` severity, newest first.
     func atOrAboveSeverity(_ minimum: IncidentSeverity) -> [Incident]
 
@@ -143,14 +146,26 @@ public protocol ISafetyBoard: AnyObject, Sendable {
     /// All noted hazards, newest first.
     var hazards: [Hazard] { get }
 
+    /// Hazards filed under a given category (case-insensitive), newest-first.
+    func hazardsByCategory(_ category: String) -> [Hazard]
+
     /// Adds an emergency contact.
     func addContact(_ c: EmergencyContact)
+
+    /// Removes the first emergency contact matching an id. Returns true if one
+    /// was removed.
+    @discardableResult
+    func removeContact(_ contactId: String) -> Bool
 
     /// The first-added emergency contact, or `nil` if none.
     var firstContact: EmergencyContact? { get }
 
     /// All emergency contacts in insertion order.
     var contacts: [EmergencyContact] { get }
+
+    /// Emergency contacts with a given relationship (e.g. "spouse", "doctor"),
+    /// case-insensitive.
+    func contactsByRelationship(_ relationship: String) -> [EmergencyContact]
 }
 
 // MARK: - InMemorySafetyBoard
@@ -176,6 +191,11 @@ public final class InMemorySafetyBoard: ISafetyBoard, @unchecked Sendable {
         return incidents.sorted { $0.atUtc > $1.atUtc }
     }
 
+    public var incidentCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return incidents.count
+    }
+
     public func atOrAboveSeverity(_ minimum: IncidentSeverity) -> [Incident] {
         lock.lock(); defer { lock.unlock() }
         return incidents
@@ -193,9 +213,30 @@ public final class InMemorySafetyBoard: ISafetyBoard, @unchecked Sendable {
         return Array(hazardsById.values).sorted { $0.notedUtc > $1.notedUtc }
     }
 
+    public func hazardsByCategory(_ category: String) -> [Hazard] {
+        // C#: empty category yields nothing; else case-insensitive match,
+        // OrderByDescending(NotedUtc).
+        if category.isEmpty { return [] }
+        lock.lock(); defer { lock.unlock() }
+        return hazardsById.values
+            .filter { $0.category.caseInsensitiveCompare(category) == .orderedSame }
+            .sorted { $0.notedUtc > $1.notedUtc }
+    }
+
     public func addContact(_ c: EmergencyContact) {
         lock.lock(); defer { lock.unlock() }
         contactsList.append(c)
+    }
+
+    @discardableResult
+    public func removeContact(_ contactId: String) -> Bool {
+        // C#: empty id → false; else remove the FIRST contact whose id matches
+        // (ordinal). Returns true if one was removed.
+        if contactId.isEmpty { return false }
+        lock.lock(); defer { lock.unlock() }
+        guard let idx = contactsList.firstIndex(where: { $0.contactId == contactId }) else { return false }
+        contactsList.remove(at: idx)
+        return true
     }
 
     public var firstContact: EmergencyContact? {
@@ -206,5 +247,13 @@ public final class InMemorySafetyBoard: ISafetyBoard, @unchecked Sendable {
     public var contacts: [EmergencyContact] {
         lock.lock(); defer { lock.unlock() }
         return contactsList
+    }
+
+    public func contactsByRelationship(_ relationship: String) -> [EmergencyContact] {
+        // C#: empty relationship yields nothing; else case-insensitive match,
+        // insertion order preserved (no sort).
+        if relationship.isEmpty { return [] }
+        lock.lock(); defer { lock.unlock() }
+        return contactsList.filter { $0.relationship.caseInsensitiveCompare(relationship) == .orderedSame }
     }
 }

@@ -54,6 +54,70 @@ typedef enum {
 } ca_grpc_channel_state_t;
 
 /* ===========================================================================
+ * GrpcConnectionState
+ *
+ * Lifecycle state of a managed gRPC connection as reconnection is driven. A
+ * distinct enum from GrpcChannelState (same members) mirroring the C# type.
+ * =========================================================================== */
+
+typedef enum {
+    CA_GRPC_CONNECTION_IDLE              = 0,
+    CA_GRPC_CONNECTION_CONNECTING        = 1,
+    CA_GRPC_CONNECTION_READY             = 2,
+    CA_GRPC_CONNECTION_TRANSIENT_FAILURE = 3,
+    CA_GRPC_CONNECTION_SHUTDOWN          = 4
+} ca_grpc_connection_state_t;
+
+/* ===========================================================================
+ * GrpcReconnectPolicy(MaxAttempts, InitialBackoff, BackoffMultiplier, MaxBackoff)
+ *
+ * Reconnection strategy for a managed gRPC channel: how many attempts to make and
+ * how to grow the backoff between them. Durations are milliseconds. A value type
+ * (plain struct, no owned fields) so it is passed/returned by value.
+ * =========================================================================== */
+
+typedef struct {
+    int     max_attempts;
+    int64_t initial_backoff_ms;
+    double  backoff_multiplier;
+    int64_t max_backoff_ms;
+} ca_grpc_reconnect_policy_t;
+
+/* Default: 5 attempts, 200ms growing ×2 up to a 30s (30000ms) ceiling. */
+ca_grpc_reconnect_policy_t ca_grpc_reconnect_policy_default(void);
+
+/* BackoffFor(attempt) — backoff before a given 1-based attempt:
+ * InitialBackoff × Multiplier^(attempt-1), capped at MaxBackoff. Attempt 1
+ * returns InitialBackoff. Overflow-safe: an infinite or over-cap scaled value
+ * returns MaxBackoff. `attempt` is 1-based; attempt < 1 is invalid and returns
+ * -1 (the C# throws ArgumentOutOfRangeException). Result in milliseconds. */
+int64_t ca_grpc_reconnect_policy_backoff_for(
+    const ca_grpc_reconnect_policy_t *p, int attempt);
+
+/* ShouldRetry(attempt) — true when the 1-based attempt is still within budget
+ * (attempt < MaxAttempts). */
+bool ca_grpc_reconnect_policy_should_retry(
+    const ca_grpc_reconnect_policy_t *p, int attempt);
+
+/* ===========================================================================
+ * GrpcDeadline — deadline math for gRPC calls (all times Unix ms UTC / ms).
+ * =========================================================================== */
+
+/* FromTimeout(timeout, nowUtc) — absolute deadline for a call started at nowUtc
+ * with the given timeout. timeout < 0 is invalid: *out_deadline_ms is left
+ * untouched and false is returned (the C# throws ArgumentOutOfRangeException).
+ * Otherwise writes nowUtc + timeout and returns true. */
+bool ca_grpc_deadline_from_timeout(int64_t timeout_ms, int64_t now_utc_ms,
+                                   int64_t *out_deadline_ms);
+
+/* Remaining(deadlineUtc, nowUtc) — time left before the deadline, clamped to 0
+ * once passed. Milliseconds. */
+int64_t ca_grpc_deadline_remaining(int64_t deadline_utc_ms, int64_t now_utc_ms);
+
+/* IsExpired(deadlineUtc, nowUtc) — true once nowUtc has reached/passed it. */
+bool ca_grpc_deadline_is_expired(int64_t deadline_utc_ms, int64_t now_utc_ms);
+
+/* ===========================================================================
  * GrpcChannelDescriptor
  * =========================================================================== */
 

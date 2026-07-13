@@ -121,6 +121,29 @@ bool ca_safety_board_first_contact(ca_safety_board_t *board,
 ca_emergency_contact_t *ca_safety_board_contacts(ca_safety_board_t *board,
                                                  size_t *out_count);
 
+/* IncidentCount — total incidents logged since the board was created. NULL
+ * board → 0. */
+size_t ca_safety_board_incident_count(const ca_safety_board_t *board);
+
+/* HazardsByCategory — hazards filed under `category` (OrdinalIgnoreCase),
+ * NotedUtc descending. Empty category (string.IsNullOrEmpty) → NULL + 0. Fresh
+ * array (caller frees with ca_hazard_free_array). NULL board → SIZE_MAX + NULL. */
+ca_hazard_t *ca_safety_board_hazards_by_category(ca_safety_board_t *board,
+                                                 const char *category,
+                                                 size_t *out_count);
+
+/* RemoveContact(contactId) — remove the first contact whose ContactId matches
+ * (Ordinal). Returns true if one was removed; false on NULL board / empty id
+ * (string.IsNullOrEmpty) / no match. */
+bool ca_safety_board_remove_contact(ca_safety_board_t *board,
+                                    const char *contact_id);
+
+/* ContactsByRelationship — contacts whose Relationship matches `relationship`
+ * (OrdinalIgnoreCase), insertion order. Empty relationship → NULL + 0. Fresh
+ * array (caller frees). NULL board → SIZE_MAX + NULL. */
+ca_emergency_contact_t *ca_safety_board_contacts_by_relationship(
+    ca_safety_board_t *board, const char *relationship, size_t *out_count);
+
 #ifdef __cplusplus
 }
 #endif

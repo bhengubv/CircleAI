@@ -198,6 +198,45 @@ public final class InMemoryBluetoothTransportRegistry: @unchecked Sendable {
         guard !rows.isEmpty else { return 0 }
         return rows.reduce(0, +) / Double(rows.count)
     }
+
+    /// Mean write throughput to `deviceId`. Empty → 0 (matches C#'s
+    /// `AvgKbpsWrite` → `DefaultIfEmpty(0.0).Average()`).
+    public func avgKbpsWrite(_ deviceId: String) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        let rows = throughput.filter { $0.deviceId == deviceId }.map { $0.kbpsWrite }
+        guard !rows.isEmpty else { return 0 }
+        return rows.reduce(0, +) / Double(rows.count)
+    }
+
+    /// Drop a device from the registry: removes its endpoint descriptor and any
+    /// tracked connection state. Returns true if an endpoint was actually
+    /// removed (matches C#'s `Unregister`).
+    @discardableResult
+    public func unregister(_ deviceId: String) -> Bool {
+        if deviceId.isEmpty { return false }
+        lock.lock(); defer { lock.unlock() }
+        let removed = endpoints.removeValue(forKey: deviceId) != nil
+        states[deviceId] = nil
+        return removed
+    }
+
+    /// Endpoints advertising a given GATT/SPP service, matched case-insensitively
+    /// and ordered by device name — the discovery view a service scanner needs.
+    /// Empty service yields nothing (matches C#'s `EndpointsWithService`).
+    public func endpointsWithService(_ service: String) -> [BluetoothEndpointDescriptor] {
+        if service.isEmpty { return [] }
+        lock.lock(); defer { lock.unlock() }
+        return endpoints.values
+            .filter { $0.advertisedServices.contains { $0.caseInsensitiveCompare(service) == .orderedSame } }
+            .sorted { $0.name < $1.name }
+    }
+
+    /// Number of devices currently in the `.connected` state (matches C#'s
+    /// `ConnectedCount`).
+    public var connectedCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return states.values.filter { $0 == .connected }.count
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

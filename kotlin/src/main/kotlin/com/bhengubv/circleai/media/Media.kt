@@ -57,8 +57,20 @@ interface IMediaLibrary {
     /** Look up an asset by id, or null if absent. */
     fun get(id: String): MediaAsset?
 
+    /** Remove an asset by id. Returns true if it was present. */
+    fun remove(id: String): Boolean
+
+    /** Number of assets currently catalogued. */
+    val count: Int
+
+    /** Total on-disk footprint of every catalogued asset, in bytes. */
+    val totalBytes: Long
+
     /** Every asset of [kind], newest first. */
     fun listByKind(kind: MediaKind): List<MediaAsset>
+
+    /** Assets whose MIME type starts with [mimePrefix] (case-insensitive), newest first. */
+    fun byMime(mimePrefix: String): List<MediaAsset>
 
     /** Title-substring search (case-insensitive), newest first, capped at [topK]. */
     fun search(q: String, topK: Int = 20): List<MediaAsset>
@@ -80,10 +92,26 @@ class InMemoryMediaLibrary : IMediaLibrary {
 
     override fun get(id: String): MediaAsset? = items[id]
 
+    override fun remove(id: String): Boolean =
+        id.isNotEmpty() && items.remove(id) != null
+
+    override val count: Int
+        get() = items.size
+
+    override val totalBytes: Long
+        get() = items.values.sumOf { it.bytes }
+
     override fun listByKind(kind: MediaKind): List<MediaAsset> =
         items.values
             .filter { it.kind == kind }
             .sortedByDescending { it.createdAtUtc }
+
+    override fun byMime(mimePrefix: String): List<MediaAsset> {
+        if (mimePrefix.isEmpty()) return emptyList()
+        return items.values
+            .filter { it.mime.startsWith(mimePrefix, ignoreCase = true) }
+            .sortedByDescending { it.createdAtUtc }
+    }
 
     override fun search(q: String, topK: Int): List<MediaAsset> {
         // C#: `if (q is null) throw new ArgumentNullException` — Kotlin non-null

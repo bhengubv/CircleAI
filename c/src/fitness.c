@@ -290,3 +290,111 @@ ca_fitness_set_t *ca_fitness_board_sets_for(const ca_fitness_board_t *b,
     *out_count = n;
     return out;
 }
+
+size_t ca_fitness_board_workout_count(const ca_fitness_board_t *b) {
+    return b ? b->w_count : 0;
+}
+
+ca_fitness_workout_t *ca_fitness_board_workouts_by_kind(
+    const ca_fitness_board_t *b, const char *user_id, const char *kind,
+    size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !user_id || !kind) { *out_count = (size_t)-1; return NULL; }
+    if (b->w_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->w_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    /* UserId == userId (Ordinal) && Kind matches (OrdinalIgnoreCase). */
+    for (size_t i = 0; i < b->w_count; ++i)
+        if (cab_ord_eq(b->workouts[i].user_id, user_id) &&
+            cab_ci_eq(b->workouts[i].kind, kind))
+            idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderByDescending(AtUtc), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        int64_t key = b->workouts[cur].at_utc_ms;
+        size_t j = i;
+        while (j > 0 && b->workouts[idx[j - 1]].at_utc_ms < key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_fitness_workout_t *out = (ca_fitness_workout_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!workout_copy(&out[i], &b->workouts[idx[i]])) {
+            ca_fitness_workout_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+bool ca_fitness_board_remove_goal(ca_fitness_board_t *b, const char *goal_id) {
+    /* _goals.TryRemove(goalId, out _). */
+    if (!b || !goal_id) return false;
+    for (size_t i = 0; i < b->g_count; ++i) {
+        if (cab_ord_eq(b->goals[i].goal_id, goal_id)) {
+            ca_fitness_goal_free(&b->goals[i]);
+            for (size_t j = i; j + 1 < b->g_count; ++j)
+                b->goals[j] = b->goals[j + 1];
+            b->g_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ca_fitness_board_goal_by_metric(const ca_fitness_board_t *b,
+                                     const char *user_id, const char *metric,
+                                     ca_fitness_goal_t *out) {
+    if (out) memset(out, 0, sizeof(*out));
+    if (!b || !user_id || !metric || !out) return false;
+    /* Where(UserId Ordinal && Metric CI).OrderBy(DueOn).FirstOrDefault():
+     * earliest DueOn, ties broken by source order (strictly-less update). */
+    const ca_fitness_goal_t *best = NULL;
+    for (size_t i = 0; i < b->g_count; ++i) {
+        const ca_fitness_goal_t *g = &b->goals[i];
+        if (!cab_ord_eq(g->user_id, user_id)) continue;
+        if (!cab_ci_eq(g->metric, metric)) continue;
+        if (!best || g->due_on_ms < best->due_on_ms) best = g;
+    }
+    if (!best) return false;
+    return goal_copy(out, best);
+}
+
+double ca_fitness_board_avg_duration_since(const ca_fitness_board_t *b,
+                                           const char *user_id,
+                                           int64_t since_ms) {
+    if (!b || !user_id) return 0.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < b->w_count; ++i) {
+        const ca_fitness_workout_t *w = &b->workouts[i];
+        if (cab_ord_eq(w->user_id, user_id) && w->at_utc_ms >= since_ms) {
+            sum += (double)w->duration_minutes;
+            n++;
+        }
+    }
+    /* .Select(DurationMinutes).DefaultIfEmpty(0).Average() */
+    return n == 0 ? 0.0 : sum / (double)n;
+}
+
+double ca_fitness_board_total_volume_kg(const ca_fitness_board_t *b,
+                                        const char *workout_id) {
+    if (!b || !workout_id) return 0.0;
+    double sum = 0.0;
+    /* Where(WorkoutId Ordinal).Sum(Reps * WeightKg). */
+    for (size_t i = 0; i < b->s_count; ++i)
+        if (cab_ord_eq(b->sets[i].workout_id, workout_id))
+            sum += (double)b->sets[i].reps * b->sets[i].weight_kg;
+    return sum;
+}

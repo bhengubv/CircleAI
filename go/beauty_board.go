@@ -59,6 +59,18 @@ type BeautyBoard interface {
 	// RecommendFor returns treatments whose name contains any of the client's
 	// concerns (case-insensitive); empty if the client has no profile.
 	RecommendFor(clientName string) []Treatment
+	// TreatmentCount returns the number of treatments on the menu.
+	TreatmentCount() int
+	// CancelAppointment removes all appointments with apptId, returning true if any went.
+	CancelAppointment(apptId string) bool
+	// AppointmentsForClient lists a client's appointments (case-insensitive), oldest-first.
+	AppointmentsForClient(clientName string) []Appointment
+	// TreatmentsUnder lists treatments priced at or below maxPrice, cheapest first.
+	TreatmentsUnder(maxPrice Decimal) []Treatment
+	// NextAppointmentFor returns the client's earliest appointment at or after now.
+	NextAppointmentFor(clientName string, now time.Time) (Appointment, bool)
+	// ScheduledRevenueBetween sums treatment prices for booked appts in [start,end].
+	ScheduledRevenueBetween(start, end time.Time) Decimal
 }
 
 // InMemoryBeautyBoard is a concurrency-safe in-memory BeautyBoard. Ports
@@ -154,6 +166,101 @@ func (b *InMemoryBeautyBoard) RecommendFor(clientName string) []Treatment {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].TreatmentId < out[j].TreatmentId })
 	return out
+}
+
+// TreatmentCount returns the number of treatments on the menu. Ports
+// InMemoryBeautyBoard.TreatmentCount.
+func (b *InMemoryBeautyBoard) TreatmentCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.treatments)
+}
+
+// CancelAppointment removes every appointment whose ApptId matches (Ordinal),
+// returning true if at least one was removed. Ports
+// InMemoryBeautyBoard.CancelAppointment (RemoveAll(...) > 0).
+func (b *InMemoryBeautyBoard) CancelAppointment(apptId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	kept := b.appts[:0]
+	removed := 0
+	for _, a := range b.appts {
+		if a.ApptId == apptId {
+			removed++
+			continue
+		}
+		kept = append(kept, a)
+	}
+	b.appts = kept
+	return removed > 0
+}
+
+// AppointmentsForClient lists a client's appointments (case-insensitive on
+// ClientName), ordered by AtUtc ascending. Ports
+// InMemoryBeautyBoard.AppointmentsForClient.
+func (b *InMemoryBeautyBoard) AppointmentsForClient(clientName string) []Appointment {
+	b.mu.Lock()
+	out := make([]Appointment, 0)
+	for _, a := range b.appts {
+		if strings.EqualFold(a.ClientName, clientName) {
+			out = append(out, a)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].AtUtc.Before(out[j].AtUtc) })
+	return out
+}
+
+// TreatmentsUnder lists treatments priced at or below maxPrice, ordered by Price
+// ascending. Ports InMemoryBeautyBoard.TreatmentsUnder.
+func (b *InMemoryBeautyBoard) TreatmentsUnder(maxPrice Decimal) []Treatment {
+	b.mu.Lock()
+	out := make([]Treatment, 0)
+	for _, t := range b.treatments {
+		if t.Price.Cmp(maxPrice) <= 0 {
+			out = append(out, t)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Price.Less(out[j].Price) })
+	return out
+}
+
+// NextAppointmentFor returns the client's earliest appointment at or after now
+// (case-insensitive on ClientName), or (zero,false) when none. Ports
+// InMemoryBeautyBoard.NextAppointmentFor (OrderBy(AtUtc).FirstOrDefault()).
+func (b *InMemoryBeautyBoard) NextAppointmentFor(clientName string, now time.Time) (Appointment, bool) {
+	b.mu.Lock()
+	out := make([]Appointment, 0)
+	for _, a := range b.appts {
+		if strings.EqualFold(a.ClientName, clientName) && !a.AtUtc.Before(now) {
+			out = append(out, a)
+		}
+	}
+	b.mu.Unlock()
+	if len(out) == 0 {
+		return Appointment{}, false
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].AtUtc.Before(out[j].AtUtc) })
+	return out[0], true
+}
+
+// ScheduledRevenueBetween sums the Price of the treatment behind every booked
+// appointment in [start,end] whose treatment is still on the menu. Ports
+// InMemoryBeautyBoard.ScheduledRevenueBetween.
+func (b *InMemoryBeautyBoard) ScheduledRevenueBetween(start, end time.Time) Decimal {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var total Decimal
+	for _, a := range b.appts {
+		if a.AtUtc.Before(start) || a.AtUtc.After(end) {
+			continue
+		}
+		if t, ok := b.treatments[a.TreatmentId]; ok {
+			total = total.Add(t.Price)
+		}
+	}
+	return total
 }
 
 // Interface guard.

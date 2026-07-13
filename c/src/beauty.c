@@ -293,3 +293,146 @@ ca_beauty_treatment_t *ca_beauty_board_recommend_for(const ca_beauty_board_t *b,
     *out_count = n;
     return out;
 }
+
+size_t ca_beauty_board_treatment_count(const ca_beauty_board_t *b) {
+    return b ? b->t_count : 0;
+}
+
+bool ca_beauty_board_cancel_appointment(ca_beauty_board_t *b,
+                                        const char *appt_id) {
+    /* _appts.RemoveAll(a => ApptId == apptId Ordinal) > 0. */
+    if (!b || !appt_id) return false;
+    size_t w = 0;
+    bool removed = false;
+    for (size_t i = 0; i < b->a_count; ++i) {
+        if (cab_ord_eq(b->appts[i].appt_id, appt_id)) {
+            ca_beauty_appointment_free(&b->appts[i]);
+            removed = true;
+        } else {
+            if (w != i) b->appts[w] = b->appts[i];
+            w++;
+        }
+    }
+    b->a_count = w;
+    return removed;
+}
+
+/* Collect the client's appointments (ClientName OrdinalIgnoreCase) into a fresh
+ * owned array ordered by AtUtc ascending (stable). */
+ca_beauty_appointment_t *ca_beauty_board_appointments_for_client(
+    const ca_beauty_board_t *b, const char *client_name, size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !client_name) { *out_count = (size_t)-1; return NULL; }
+    if (b->a_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->a_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->a_count; ++i)
+        if (cab_ci_eq(b->appts[i].client_name, client_name)) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+    appt_sort_asc(b, idx, n);
+
+    ca_beauty_appointment_t *out =
+        (ca_beauty_appointment_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!appointment_copy(&out[i], &b->appts[idx[i]])) {
+            ca_beauty_appointment_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_beauty_treatment_t *ca_beauty_board_treatments_under(
+    const ca_beauty_board_t *b, ca_beauty_decimal_t max_price,
+    size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b) { *out_count = (size_t)-1; return NULL; }
+    if (b->t_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->t_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->t_count; ++i)
+        if (b->treatments[i].price <= max_price) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderBy(Price) ascending, stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        ca_beauty_decimal_t key = b->treatments[cur].price;
+        size_t j = i;
+        while (j > 0 && b->treatments[idx[j - 1]].price > key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_beauty_treatment_t *out =
+        (ca_beauty_treatment_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!treatment_copy(&out[i], &b->treatments[idx[i]])) {
+            ca_beauty_treatment_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+bool ca_beauty_board_next_appointment_for(const ca_beauty_board_t *b,
+                                          const char *client_name,
+                                          int64_t now_ms,
+                                          ca_beauty_appointment_t *out) {
+    if (out) memset(out, 0, sizeof(*out));
+    if (!b || !client_name || !out) return false;
+    /* Where(ClientName CI && AtUtc >= now).OrderBy(AtUtc).FirstOrDefault():
+     * the earliest AtUtc, ties broken by source order (strictly-less update). */
+    const ca_beauty_appointment_t *best = NULL;
+    for (size_t i = 0; i < b->a_count; ++i) {
+        const ca_beauty_appointment_t *a = &b->appts[i];
+        if (a->at_utc_ms < now_ms) continue;
+        if (!cab_ci_eq(a->client_name, client_name)) continue;
+        if (!best || a->at_utc_ms < best->at_utc_ms) best = a;
+    }
+    if (!best) return false;
+    return appointment_copy(out, best);
+}
+
+/* Look up a treatment's Price by TreatmentId (Ordinal). *found gates presence. */
+static ca_beauty_decimal_t treatment_price(const ca_beauty_board_t *b,
+                                           const char *treatment_id,
+                                           bool *found) {
+    for (size_t i = 0; i < b->t_count; ++i)
+        if (cab_ord_eq(b->treatments[i].treatment_id, treatment_id)) {
+            *found = true;
+            return b->treatments[i].price;
+        }
+    *found = false;
+    return 0;
+}
+
+ca_beauty_decimal_t ca_beauty_board_scheduled_revenue_between(
+    const ca_beauty_board_t *b, int64_t start_ms, int64_t end_ms) {
+    if (!b) return 0;
+    ca_beauty_decimal_t sum = 0;
+    for (size_t i = 0; i < b->a_count; ++i) {
+        int64_t at = b->appts[i].at_utc_ms;
+        if (at < start_ms || at > end_ms) continue;
+        bool found = false;
+        ca_beauty_decimal_t price =
+            treatment_price(b, b->appts[i].treatment_id, &found);
+        if (found) sum += price;   /* _treatments.ContainsKey(a.TreatmentId) */
+    }
+    return sum;
+}

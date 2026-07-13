@@ -45,6 +45,14 @@ from .http import (
     IHttpFetcher,
     InMemoryHttpFetcher,
 )
+from .in_memory_connectors import (
+    InMemoryCalendarConnector,
+    InMemoryEmailConnector,
+    InMemoryHomeAutomationConnector,
+    InMemoryNewsSource,
+    InMemoryRoutingProvider,
+    InMemoryWeatherProvider,
+)
 
 __all__ = [
     # records
@@ -67,6 +75,13 @@ __all__ = [
     "HttpRequest",
     "HttpResponse",
     "HttpError",
+    # in-memory reference connectors
+    "InMemoryCalendarConnector",
+    "InMemoryEmailConnector",
+    "InMemoryNewsSource",
+    "InMemoryWeatherProvider",
+    "InMemoryRoutingProvider",
+    "InMemoryHomeAutomationConnector",
     # sentinel
     "DATETIME_MIN",
 ]

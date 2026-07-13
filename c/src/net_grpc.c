@@ -10,6 +10,7 @@
 
 #include "circle_ai/net_grpc.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -130,6 +131,61 @@ ca_grpc_retry_policy_t *ca_grpc_retry_policies_aggressive(void) {
 }
 ca_grpc_retry_policy_t *ca_grpc_retry_policies_no_retry(void) {
     return ca_grpc_retry_policy_new(1, 0, 0, 1.0, NULL, 0);
+}
+
+/* ===========================================================================
+ * GrpcReconnectPolicy
+ * =========================================================================== */
+
+ca_grpc_reconnect_policy_t ca_grpc_reconnect_policy_default(void) {
+    /* new(5, TimeSpan.FromMilliseconds(200), 2.0, TimeSpan.FromSeconds(30)) */
+    ca_grpc_reconnect_policy_t p;
+    p.max_attempts       = 5;
+    p.initial_backoff_ms = 200;
+    p.backoff_multiplier = 2.0;
+    p.max_backoff_ms     = 30000;
+    return p;
+}
+
+int64_t ca_grpc_reconnect_policy_backoff_for(
+    const ca_grpc_reconnect_policy_t *p, int attempt) {
+    if (!p) return -1;
+    /* if (attempt < 1) throw ArgumentOutOfRangeException. */
+    if (attempt < 1) return -1;
+    /* InitialBackoff.TotalMilliseconds * Math.Pow(BackoffMultiplier, attempt-1) */
+    double scaled = (double)p->initial_backoff_ms *
+                    pow(p->backoff_multiplier, (double)(attempt - 1));
+    double cap_ms = (double)p->max_backoff_ms;
+    if (isinf(scaled) || scaled > cap_ms) return p->max_backoff_ms;
+    /* TimeSpan.FromMilliseconds(scaled) — whole-ms durations in this port. */
+    return (int64_t)scaled;
+}
+
+bool ca_grpc_reconnect_policy_should_retry(
+    const ca_grpc_reconnect_policy_t *p, int attempt) {
+    if (!p) return false;
+    return attempt < p->max_attempts;
+}
+
+/* ===========================================================================
+ * GrpcDeadline
+ * =========================================================================== */
+
+bool ca_grpc_deadline_from_timeout(int64_t timeout_ms, int64_t now_utc_ms,
+                                   int64_t *out_deadline_ms) {
+    /* if (timeout < TimeSpan.Zero) throw ArgumentOutOfRangeException. */
+    if (timeout_ms < 0) return false;
+    if (out_deadline_ms) *out_deadline_ms = now_utc_ms + timeout_ms;
+    return true;
+}
+
+int64_t ca_grpc_deadline_remaining(int64_t deadline_utc_ms, int64_t now_utc_ms) {
+    int64_t left = deadline_utc_ms - now_utc_ms;
+    return left > 0 ? left : 0;   /* clamp to zero once passed */
+}
+
+bool ca_grpc_deadline_is_expired(int64_t deadline_utc_ms, int64_t now_utc_ms) {
+    return now_utc_ms >= deadline_utc_ms;
 }
 
 /* ===========================================================================

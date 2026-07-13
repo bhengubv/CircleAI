@@ -149,6 +149,58 @@ class InMemoryBluetoothTransportRegistry:
             ]
         return statistics.fmean(reads) if reads else 0.0
 
+    def avg_kbps_write(self, device_id: str) -> float:
+        """Mean write throughput for ``device_id``; 0.0 when no samples
+        (C#: ``DefaultIfEmpty(0.0).Average()``).
+        """
+        with self._lock:
+            writes = [
+                t.kbps_write for t in self._throughput if t.device_id == device_id
+            ]
+        return statistics.fmean(writes) if writes else 0.0
+
+    def unregister(self, device_id: str) -> bool:
+        """Drop a device: remove its endpoint descriptor and any tracked
+        connection state. Returns True if an endpoint was actually removed
+        (C#: ``Unregister``).
+        """
+        if not device_id:
+            return False
+        with self._lock:
+            removed = self._endpoints.pop(device_id, None) is not None
+            self._states.pop(device_id, None)
+        return removed
+
+    def endpoints_with_service(
+        self, service: str
+    ) -> Sequence[BluetoothEndpointDescriptor]:
+        """Endpoints advertising ``service`` (matched case-insensitively),
+        ordered by device name — the discovery view a service scanner needs
+        (C#: ``EndpointsWithService``). Empty ``service`` yields nothing.
+        """
+        if not service:
+            return []
+        target = service.casefold()
+        with self._lock:
+            matches = [
+                e
+                for e in self._endpoints.values()
+                if any(s.casefold() == target for s in e.advertised_services)
+            ]
+        return sorted(matches, key=lambda e: e.name)
+
+    @property
+    def connected_count(self) -> int:
+        """Number of devices currently in the ``CONNECTED`` state
+        (C#: ``ConnectedCount``).
+        """
+        with self._lock:
+            return sum(
+                1
+                for s in self._states.values()
+                if s == BluetoothConnectionState.CONNECTED
+            )
+
 
 class IBleGattAdapter(ABC):
     """Platform-specific BLE GATT operations. Implement per platform (MAUI,

@@ -236,6 +236,68 @@ impl InMemoryBluetoothTransportRegistry {
             vals.iter().sum::<f64>() / vals.len() as f64
         }
     }
+
+    /// Average observed write throughput (kbps) for `device_id`; `0.0` when
+    /// unsampled. Mirrors `AvgKbpsWrite`.
+    pub fn avg_kbps_write(&self, device_id: &str) -> f64 {
+        let guard = self.throughput.lock().unwrap();
+        let vals: Vec<f64> = guard
+            .iter()
+            .filter(|t| t.device_id == device_id)
+            .map(|t| t.kbps_write)
+            .collect();
+        if vals.is_empty() {
+            0.0
+        } else {
+            vals.iter().sum::<f64>() / vals.len() as f64
+        }
+    }
+
+    /// Drops a device from the registry: removes its endpoint descriptor and any
+    /// tracked connection state. Returns `true` if an endpoint was actually
+    /// removed. Mirrors `Unregister`.
+    pub fn unregister(&self, device_id: &str) -> bool {
+        if device_id.is_empty() {
+            return false;
+        }
+        let removed = self.endpoints.lock().unwrap().remove(device_id).is_some();
+        self.states.lock().unwrap().remove(device_id);
+        removed
+    }
+
+    /// Endpoints advertising a given GATT/SPP service, matched case-insensitively
+    /// and ordered by device name (ordinal) — the discovery view a service scanner
+    /// needs. Mirrors `EndpointsWithService`.
+    pub fn endpoints_with_service(&self, service: &str) -> Vec<BluetoothEndpointDescriptor> {
+        if service.is_empty() {
+            return Vec::new();
+        }
+        let mut v: Vec<BluetoothEndpointDescriptor> = self
+            .endpoints
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| {
+                e.advertised_services
+                    .iter()
+                    .any(|s| s.eq_ignore_ascii_case(service))
+            })
+            .cloned()
+            .collect();
+        v.sort_by(|a, b| a.name.cmp(&b.name));
+        v
+    }
+
+    /// Number of devices currently in the [`BluetoothConnectionState::Connected`]
+    /// state. Mirrors `ConnectedCount`.
+    pub fn connected_count(&self) -> usize {
+        self.states
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| **s == BluetoothConnectionState::Connected)
+            .count()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

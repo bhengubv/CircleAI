@@ -18,10 +18,11 @@
 from __future__ import annotations
 
 import itertools
+import math
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import IntEnum
 from typing import AsyncIterator, Dict, List, Optional, Sequence
 
@@ -44,6 +45,22 @@ class GrpcChannelState(IntEnum):
 
     Ordinals match the C# ``enum GrpcChannelState { Idle, Connecting, Ready,
     TransientFailure, Shutdown }``.
+    """
+
+    IDLE = 0
+    CONNECTING = 1
+    READY = 2
+    TRANSIENT_FAILURE = 3
+    SHUTDOWN = 4
+
+
+class GrpcConnectionState(IntEnum):
+    """Lifecycle state of a managed gRPC connection, mirroring the connectivity
+    states a channel steps through as reconnection is driven.
+
+    Ordinals match the C# ``enum GrpcConnectionState { Idle, Connecting, Ready,
+    TransientFailure, Shutdown }`` (a distinct enum from
+    :class:`GrpcChannelState` in the C# source, with identical members).
     """
 
     IDLE = 0
@@ -108,6 +125,87 @@ class GrpcRetryPolicies:
         ("UNAVAILABLE", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED"),
     )
     NO_RETRY: GrpcRetryPolicy = GrpcRetryPolicy(1, 0.0, 0.0, 1.0, ())
+
+
+@dataclass(frozen=True, slots=True)
+class GrpcReconnectPolicy:
+    """Reconnection strategy for a managed gRPC channel: how many attempts to
+    make and how to grow the backoff between them. Faithful port of the C#
+    ``GrpcReconnectPolicy`` record.
+
+    ``initial_backoff`` / ``max_backoff`` are seconds (the C# ``TimeSpan``).
+    A sane :attr:`DEFAULT` is attached as a class attribute below.
+    """
+
+    max_attempts: int
+    initial_backoff: float  # seconds
+    backoff_multiplier: float
+    max_backoff: float  # seconds
+
+    def backoff_for(self, attempt: int) -> float:
+        """Backoff (seconds) before a given 1-based ``attempt``:
+        ``initial_backoff * backoff_multiplier ** (attempt - 1)``, capped at
+        :attr:`max_backoff`. Attempt 1 returns :attr:`initial_backoff`
+        (C#: ``BackoffFor``; overflow-safe — an infinite scaled value clamps to
+        the cap).
+        """
+        if attempt < 1:
+            raise ValueError("attempt is 1-based")
+        scaled = self.initial_backoff * math.pow(
+            self.backoff_multiplier, attempt - 1
+        )
+        cap = self.max_backoff
+        if math.isinf(scaled) or scaled > cap:
+            return self.max_backoff
+        return scaled
+
+    def should_retry(self, attempt: int) -> bool:
+        """True when the 1-based ``attempt`` number is still within the retry
+        budget (C#: ``ShouldRetry`` — ``attempt < MaxAttempts``).
+        """
+        return attempt < self.max_attempts
+
+
+# C# static ``GrpcReconnectPolicy.Default`` — 5 attempts, 200ms growing x2 up to
+# a 30s ceiling. Attached as a class attribute so callers use
+# ``GrpcReconnectPolicy.DEFAULT``.
+GrpcReconnectPolicy.DEFAULT = GrpcReconnectPolicy(  # type: ignore[attr-defined]
+    5, 0.2, 2.0, 30.0
+)
+
+
+class GrpcDeadline:
+    """Deadline math for gRPC calls: turns a relative timeout into the absolute
+    UTC instant a call must complete by, and reports remaining time against a
+    clock. Faithful port of the C# static ``GrpcDeadline`` class.
+
+    Timeouts / remaining values are :class:`datetime.timedelta` (the C#
+    ``TimeSpan``); ``now`` / deadlines are :class:`datetime`.
+    """
+
+    @staticmethod
+    def from_timeout(timeout: timedelta, now_utc: datetime) -> datetime:
+        """Absolute deadline for a call started at ``now_utc`` with the given
+        ``timeout`` (C#: ``FromTimeout``).
+        """
+        if timeout < timedelta(0):
+            raise ValueError("timeout must not be negative")
+        return now_utc + timeout
+
+    @staticmethod
+    def remaining(deadline_utc: datetime, now_utc: datetime) -> timedelta:
+        """Time left before ``deadline_utc``, clamped to zero once passed
+        (C#: ``Remaining``).
+        """
+        left = deadline_utc - now_utc
+        return left if left > timedelta(0) else timedelta(0)
+
+    @staticmethod
+    def is_expired(deadline_utc: datetime, now_utc: datetime) -> bool:
+        """True once ``now_utc`` has reached or passed ``deadline_utc``
+        (C#: ``IsExpired`` — ``nowUtc >= deadlineUtc``).
+        """
+        return now_utc >= deadline_utc
 
 
 class InMemoryGrpcCallMetrics:

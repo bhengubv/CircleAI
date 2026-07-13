@@ -131,3 +131,68 @@ class InMemoryCommunityBoard(ICommunityBoard):
             items = [o for o in self._opps.values() if o.when_utc >= now]
         items.sort(key=lambda o: o.when_utc)
         return items
+
+    @property
+    def group_count(self) -> int:
+        """Number of community groups (C#: ``GroupCount``)."""
+        with self._lock:
+            return len(self._groups)
+
+    def remove_group(self, group_id: str) -> bool:
+        """Remove a group. Returns True if one was present (C#: ``RemoveGroup``)."""
+        with self._lock:
+            return self._groups.pop(group_id, None) is not None
+
+    def add_member(self, group_id: str, member_id: str) -> bool:
+        """Add ``member_id`` to a group. Returns False when the group is unknown
+        or the member is already present (C#: ``AddMember``).
+        """
+        with self._lock:
+            g = self._groups.get(group_id)
+            if g is None:
+                return False
+            if member_id in g.member_ids:
+                return False
+            self._groups[group_id] = CommunityGroup(
+                g.group_id,
+                g.name,
+                g.purpose,
+                list(g.member_ids) + [member_id],
+            )
+            return True
+
+    def remove_member(self, group_id: str, member_id: str) -> bool:
+        """Remove ``member_id`` from a group. Returns False when the group is
+        unknown or the member is not present (C#: ``RemoveMember``).
+        """
+        with self._lock:
+            g = self._groups.get(group_id)
+            if g is None:
+                return False
+            if member_id not in g.member_ids:
+                return False
+            self._groups[group_id] = CommunityGroup(
+                g.group_id,
+                g.name,
+                g.purpose,
+                [m for m in g.member_ids if m != member_id],
+            )
+            return True
+
+    def opportunities_for_group(
+        self, group_id: str
+    ) -> List[VolunteerOpportunity]:
+        """A group's volunteer opportunities (ordinal group match), earliest
+        first (C#: ``OpportunitiesForGroup``).
+        """
+        with self._lock:
+            matches = [
+                o for o in self._opps.values() if o.group_id == group_id
+            ]
+        return sorted(matches, key=lambda o: o.when_utc)
+
+    def total_volunteers_needed(self) -> int:
+        """Total volunteers needed across every upcoming opportunity
+        (C#: ``TotalVolunteersNeeded`` — sums the future-only ``Opportunities``).
+        """
+        return sum(o.volunteers_needed for o in self.opportunities())

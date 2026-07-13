@@ -12,7 +12,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,3 +143,67 @@ class InMemoryFitnessBoard(IFitnessBoard):
     def sets_for(self, workout_id: str) -> List[ExerciseSet]:
         with self._lock:
             return [s for s in self._sets if s.workout_id == workout_id]
+
+    @property
+    def workout_count(self) -> int:
+        """Total number of logged workouts (C#: ``WorkoutCount``)."""
+        with self._lock:
+            return len(self._workouts)
+
+    def workouts_by_kind(self, user_id: str, kind: str) -> List[Workout]:
+        """A user's workouts of a given kind (case-insensitive), newest-first
+        (C#: ``WorkoutsByKind``).
+        """
+        target = kind.casefold()
+        with self._lock:
+            matches = [
+                w
+                for w in self._workouts
+                if w.user_id == user_id and w.kind.casefold() == target
+            ]
+        return sorted(matches, key=lambda w: w.at_utc, reverse=True)
+
+    def remove_goal(self, goal_id: str) -> bool:
+        """Remove a goal. Returns True if one was present (C#: ``RemoveGoal``)."""
+        with self._lock:
+            return self._goals.pop(goal_id, None) is not None
+
+    def goal_by_metric(
+        self, user_id: str, metric: str
+    ) -> Optional[FitnessGoal]:
+        """A user's soonest-due goal for a given metric (case-insensitive), or
+        None (C#: ``GoalByMetric`` — ordered by ``DueOn``, first).
+        """
+        target = metric.casefold()
+        with self._lock:
+            matches = [
+                g
+                for g in self._goals.values()
+                if g.user_id == user_id and g.metric.casefold() == target
+            ]
+        if not matches:
+            return None
+        return min(matches, key=lambda g: g.due_on)
+
+    def avg_duration_since(self, user_id: str, since: datetime) -> float:
+        """Mean workout duration (minutes) for a user since ``since``; 0.0 when
+        none (C#: ``AvgDurationSince`` — ``DefaultIfEmpty(0).Average()``).
+        """
+        with self._lock:
+            durations = [
+                float(w.duration_minutes)
+                for w in self._workouts
+                if w.user_id == user_id and w.at_utc >= since
+            ]
+        return sum(durations) / len(durations) if durations else 0.0
+
+    def total_volume_kg(self, workout_id: str) -> float:
+        """Total lifted volume (sum of reps x weight) across a workout's sets
+        (C#: ``TotalVolumeKg``).
+        """
+        with self._lock:
+            return sum(
+                s.reps * s.weight_kg
+                for s in self._sets
+                if s.workout_id == workout_id
+            )

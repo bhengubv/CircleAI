@@ -325,3 +325,111 @@ ca_community_opportunity_t *ca_community_board_opportunities(
     *out_count = n;
     return out;
 }
+
+size_t ca_community_board_group_count(const ca_community_board_t *b) {
+    return b ? b->g_count : 0;
+}
+
+bool ca_community_board_remove_group(ca_community_board_t *b,
+                                     const char *group_id) {
+    /* _groups.TryRemove(groupId, out _). */
+    if (!b || !group_id) return false;
+    for (size_t i = 0; i < b->g_count; ++i) {
+        if (cab_ord_eq(b->groups[i].group_id, group_id)) {
+            ca_community_group_free(&b->groups[i]);
+            for (size_t j = i; j + 1 < b->g_count; ++j)
+                b->groups[j] = b->groups[j + 1];
+            b->g_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Find a mutable group by GroupId (Ordinal); NULL when absent. */
+static ca_community_group_t *group_find(ca_community_board_t *b,
+                                        const char *group_id) {
+    for (size_t i = 0; i < b->g_count; ++i)
+        if (cab_ord_eq(b->groups[i].group_id, group_id)) return &b->groups[i];
+    return NULL;
+}
+
+bool ca_community_board_add_member(ca_community_board_t *b, const char *group_id,
+                                   const char *member_id) {
+    if (!b || !group_id || !member_id) return false;
+    ca_community_group_t *g = group_find(b, group_id);
+    if (!g) return false;                           /* unknown group */
+    if (group_has_member(g, member_id)) return false; /* already a member */
+
+    /* g with { MemberIds = MemberIds.Append(memberId).ToArray() }: grow by one. */
+    char **nm = (char **)realloc(g->member_ids,
+                                 (g->member_count + 1) * sizeof(*nm));
+    if (!nm) return false;
+    g->member_ids = nm;
+    char *dup = cab_strdup_empty(member_id);
+    if (!dup) return false;   /* array already grown; count unchanged */
+    g->member_ids[g->member_count++] = dup;
+    return true;
+}
+
+bool ca_community_board_remove_member(ca_community_board_t *b,
+                                      const char *group_id,
+                                      const char *member_id) {
+    if (!b || !group_id || !member_id) return false;
+    ca_community_group_t *g = group_find(b, group_id);
+    if (!g) return false;                            /* unknown group */
+    /* Locate the member (Ordinal). Absent -> false. */
+    size_t at = g->member_count;
+    for (size_t i = 0; i < g->member_count; ++i)
+        if (cab_ord_eq(g->member_ids[i], member_id)) { at = i; break; }
+    if (at == g->member_count) return false;
+
+    /* g with { MemberIds = MemberIds.Where(m => m != memberId).ToArray() }. */
+    free(g->member_ids[at]);
+    for (size_t i = at; i + 1 < g->member_count; ++i)
+        g->member_ids[i] = g->member_ids[i + 1];
+    g->member_count--;
+    return true;
+}
+
+ca_community_opportunity_t *ca_community_board_opportunities_for_group(
+    const ca_community_board_t *b, const char *group_id, size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !group_id) { *out_count = (size_t)-1; return NULL; }
+    if (b->o_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->o_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    /* string.Equals(o.GroupId, groupId, Ordinal). */
+    for (size_t i = 0; i < b->o_count; ++i)
+        if (cab_ord_eq(b->opps[i].group_id, group_id)) idx[n++] = i;
+    opp_sort_asc(b, idx, n);
+
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+    ca_community_opportunity_t *out =
+        (ca_community_opportunity_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!opportunity_copy(&out[i], &b->opps[idx[i]])) {
+            ca_community_opportunity_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+int ca_community_board_total_volunteers_needed(const ca_community_board_t *b,
+                                               int64_t now_ms) {
+    if (!b) return 0;
+    /* Opportunities().Sum(VolunteersNeeded): future opportunities only. */
+    int sum = 0;
+    for (size_t i = 0; i < b->o_count; ++i)
+        if (b->opps[i].when_utc_ms >= now_ms)
+            sum += b->opps[i].volunteers_needed;
+    return sum;
+}

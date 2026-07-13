@@ -149,6 +149,72 @@ public final class InMemoryCivicBoard: ICivicBoard, @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return events.values.filter { $0.atUtc >= now }.sorted { $0.atUtc < $1.atUtc }
     }
+
+    /// Number of open (non-"Resolved") issues (matches C#'s `OpenIssueCount`).
+    public var openIssueCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return issues.values.filter { $0.status.caseInsensitiveCompare("Resolved") != .orderedSame }.count
+    }
+
+    /// Issues in a given category (case-insensitive), newest report first.
+    /// Matches C#'s `IssuesByCategory` → `OrderByDescending(ReportedUtc)`.
+    public func issuesByCategory(_ category: String) -> [CivicIssue] {
+        lock.lock(); defer { lock.unlock() }
+        return issues.values
+            .filter { $0.category.caseInsensitiveCompare(category) == .orderedSame }
+            .sorted { $0.reportedUtc > $1.reportedUtc }
+    }
+
+    /// Remove a representative by id. Returns true if present (matches C#'s
+    /// `RemoveRep` → `TryRemove`).
+    @discardableResult
+    public func removeRep(_ repId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return reps.removeValue(forKey: repId) != nil
+    }
+
+    /// Representatives holding a given office (case-insensitive), ordered by name
+    /// (case-insensitive). Matches C#'s `RepsForOffice` →
+    /// `OrderBy(Name, OrdinalIgnoreCase)`.
+    public func repsForOffice(_ office: String) -> [Representative] {
+        lock.lock(); defer { lock.unlock() }
+        return reps.values
+            .filter { $0.office.caseInsensitiveCompare(office) == .orderedSame }
+            .sorted { $0.name.caseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Events targeting a given audience (case-insensitive), earliest first.
+    /// Matches C#'s `EventsForAudience` → `OrderBy(AtUtc)`.
+    public func eventsForAudience(_ audience: String) -> [CivicEvent] {
+        lock.lock(); defer { lock.unlock() }
+        return events.values
+            .filter { $0.audience.caseInsensitiveCompare(audience) == .orderedSame }
+            .sorted { $0.atUtc < $1.atUtc }
+    }
+
+    /// Open-issue counts grouped by category (case-insensitive), largest count
+    /// first. Matches C#'s `OpenIssueBreakdown` → `GroupBy(Category,
+    /// OrdinalIgnoreCase).OrderByDescending(Count)` (ties keep first-appearance
+    /// order of the group key).
+    public func openIssueBreakdown() -> [(category: String, count: Int)] {
+        lock.lock(); defer { lock.unlock() }
+        let open = issues.values.filter { $0.status.caseInsensitiveCompare("Resolved") != .orderedSame }
+        var order: [String] = []            // lowercased keys, first-seen order
+        var display: [String: String] = [:] // lowercased → first-seen casing
+        var counts: [String: Int] = [:]
+        for i in open {
+            let key = i.category.lowercased()
+            if display[key] == nil { display[key] = i.category; order.append(key) }
+            counts[key, default: 0] += 1
+        }
+        return order.enumerated()
+            .sorted { a, b in
+                let ca = counts[a.element]!, cb = counts[b.element]!
+                if ca != cb { return ca > cb }
+                return a.offset < b.offset
+            }
+            .map { (category: display[$0.element]!, count: counts[$0.element]!) }
+    }
 }
 
 // MARK: - CivicDomainContext

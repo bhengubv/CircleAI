@@ -51,6 +51,14 @@ typedef struct {
 
 void ca_doc_insight_free(ca_doc_insight_t *i);
 
+/* (DocumentId, Views) pair — one bucket of TopDocuments(). */
+typedef struct {
+    char *document_id;  /* owned, non-null */
+    int   views;
+} ca_doc_top_t;
+
+void ca_doc_top_free_array(ca_doc_top_t *arr, size_t count);
+
 /* ── IDocumentTracker + IDocumentInsights -> InMemoryDocumentTracker ─────── */
 
 typedef struct ca_doc_tracker ca_doc_tracker_t;
@@ -76,6 +84,46 @@ bool ca_doc_tracker_compute(const ca_doc_tracker_t *t, const char *document_id,
 
 const char *ca_doc_null_tracker_backend_id(void); /* "null" */
 const char *ca_doc_null_insights_backend_id(void); /* "null" */
+
+/* DocumentCount — number of distinct documents with at least one recorded view.
+ * NULL tracker → 0. */
+size_t ca_doc_tracker_document_count(const ca_doc_tracker_t *t);
+
+/* TotalViews — total views recorded across every tracked document. NULL
+ * tracker → 0. */
+size_t ca_doc_tracker_total_views(const ca_doc_tracker_t *t);
+
+/* Clear(documentId) — drop all recorded views for a document. Returns true if
+ * anything was removed. documentId required (non-null / non-whitespace): a
+ * whitespace/NULL id returns false. */
+bool ca_doc_tracker_clear(ca_doc_tracker_t *t, const char *document_id);
+
+/* TopDocuments(topK) -> fresh owned array of (DocumentId, Views), highest first
+ * (grouped by first-appearance order, stable on ties), capped at topK. topK must
+ * be > 0 (NULL + SIZE_MAX otherwise / on bad args). NULL + 0 when empty. Free
+ * with ca_doc_top_free_array. Use 5 for the C# default. */
+ca_doc_top_t *ca_doc_tracker_top_documents(const ca_doc_tracker_t *t, int top_k,
+                                           size_t *out_count);
+
+/* RecentViews(documentId, limit) -> fresh owned array of the document's views,
+ * newest-first by AtUtc, first `limit`. documentId required; limit must be > 0
+ * (NULL + SIZE_MAX on bad args). NULL + 0 when the document is unknown. Use 20
+ * for the C# default. */
+ca_doc_view_t *ca_doc_tracker_recent_views(const ca_doc_tracker_t *t,
+                                           const char *document_id, int limit,
+                                           size_t *out_count);
+
+/* TotalPagesViewed(documentId) — sum of PagesViewed across the document's views;
+ * 0 when unknown. documentId required (whitespace/NULL → 0). */
+int ca_doc_tracker_total_pages_viewed(const ca_doc_tracker_t *t,
+                                      const char *document_id);
+
+/* MostEngagedViewer(documentId) -> owned string naming the viewer with the most
+ * cumulative Duration on the document (grouped by ViewerId Ordinal, ties keep
+ * first-appearance order). NULL when the document has no views / bad args / OOM.
+ * documentId required. Caller frees with free(). */
+char *ca_doc_tracker_most_engaged_viewer(const ca_doc_tracker_t *t,
+                                         const char *document_id);
 
 #ifdef __cplusplus
 }

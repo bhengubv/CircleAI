@@ -43,6 +43,9 @@ data class Representative(val repId: String, val name: String, val office: Strin
 /** A civic event. Mirrors C# `CivicEvent`. */
 data class CivicEvent(val eventId: String, val title: String, val atUtc: Instant, val location: String, val audience: String)
 
+/** An open-issue count for one category. Mirrors the C# `(string Category, int Count)` tuple. */
+data class CategoryCount(val category: String, val count: Int)
+
 /** Deterministic civic board. Mirrors C# `ICivicBoard`. */
 interface ICivicBoard {
     fun report(i: CivicIssue)
@@ -79,6 +82,37 @@ class InMemoryCivicBoard : ICivicBoard {
         val now = Instant.now()
         return events.values.filter { !it.atUtc.isBefore(now) }.sortedBy { it.atUtc }
     }
+
+    /** Number of currently-open issues. */
+    val openIssueCount: Int get() = openIssues().size
+
+    /** Issues in a given category (case-insensitive), newest-first. */
+    fun issuesByCategory(category: String): List<CivicIssue> =
+        issues.values.filter { it.category.equals(category, ignoreCase = true) }
+            .sortedByDescending { it.reportedUtc }
+
+    /** Remove a representative by id. Returns true if one was present. */
+    fun removeRep(repId: String): Boolean = reps.remove(repId) != null
+
+    /** Representatives holding a given office (case-insensitive), ordered by name. */
+    fun repsForOffice(office: String): List<Representative> =
+        reps.values.filter { it.office.equals(office, ignoreCase = true) }
+            .sortedBy { it.name.lowercase(java.util.Locale.US) }
+
+    /** Events for a given audience (case-insensitive), earliest first. */
+    fun eventsForAudience(audience: String): List<CivicEvent> =
+        events.values.filter { it.audience.equals(audience, ignoreCase = true) }
+            .sortedBy { it.atUtc }
+
+    /**
+     * Open-issue counts grouped by category (case-insensitive), most-common first.
+     * Category casing is that of the first-encountered open issue in the group.
+     */
+    fun openIssueBreakdown(): List<CategoryCount> =
+        openIssues()
+            .groupBy { it.category.lowercase(java.util.Locale.US) }
+            .map { (_, group) -> CategoryCount(group.first().category, group.size) }
+            .sortedByDescending { it.count }
 }
 
 // =====================================================================

@@ -107,6 +107,55 @@ public final class InMemoryAccessibilityBoard: IAccessibilityBoard, @unchecked S
         return hints
     }
 
+    /// Number of stored profiles (matches C#'s `Count`).
+    public var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return profiles.count
+    }
+
+    /// Remove a profile by user id. Returns true if it was present (matches C#'s
+    /// `Remove` → `TryRemove`).
+    @discardableResult
+    public func remove(userId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return profiles.removeValue(forKey: userId) != nil
+    }
+
+    /// Profiles declaring a given need, ordered by user id (case-insensitive).
+    /// Matches C#'s `WithNeed` → `OrderBy(UserId, OrdinalIgnoreCase)`.
+    public func withNeed(_ need: AccessibilityNeed) -> [UserAccessibilityProfile] {
+        lock.lock(); defer { lock.unlock() }
+        return profiles.values
+            .filter { $0.needs.contains(need) }
+            .sorted { $0.userId.caseInsensitiveCompare($1.userId) == .orderedAscending }
+    }
+
+    /// Profiles with the screen reader enabled, ordered by user id
+    /// (case-insensitive). Matches C#'s `ScreenReaderUsers`.
+    public func screenReaderUsers() -> [UserAccessibilityProfile] {
+        lock.lock(); defer { lock.unlock() }
+        return profiles.values
+            .filter { $0.screenReader }
+            .sorted { $0.userId.caseInsensitiveCompare($1.userId) == .orderedAscending }
+    }
+
+    /// Mean text scale across all profiles. Empty → 1.0 (matches C#'s
+    /// `AverageTextScale` → `DefaultIfEmpty(1.0).Average()`).
+    public func averageTextScale() -> Double {
+        lock.lock(); defer { lock.unlock() }
+        let scales = profiles.values.map { $0.textScale }
+        guard !scales.isEmpty else { return 1.0 }
+        return scales.reduce(0, +) / Double(scales.count)
+    }
+
+    /// True when the user's text scale meets/exceeds `threshold` (default 1.3).
+    /// Matches C#'s `NeedsLargeText` (absent profile → false).
+    public func needsLargeText(userId: String, threshold: Double = 1.3) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let p = profiles[userId] else { return false }
+        return p.textScale >= threshold
+    }
+
     /// Formats a value to 2 decimal places, mirroring C# `ToString("F2")`
     /// (invariant culture, round-half-away-from-zero).
     private static func format2(_ v: Double) -> String {

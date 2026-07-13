@@ -18,6 +18,7 @@ package circleai
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -64,6 +65,18 @@ type FitnessBoard interface {
 	AddSet(s ExerciseSet)
 	// SetsFor lists a workout's sets in insertion order.
 	SetsFor(workoutId string) []ExerciseSet
+	// WorkoutCount returns the total number of logged workouts.
+	WorkoutCount() int
+	// WorkoutsByKind lists a user's workouts of a kind (case-insensitive), newest-first.
+	WorkoutsByKind(userId, kind string) []Workout
+	// RemoveGoal drops a goal by id, returning true if present.
+	RemoveGoal(goalId string) bool
+	// GoalByMetric returns a user's earliest-due goal for a metric (case-insensitive).
+	GoalByMetric(userId, metric string) (FitnessGoal, bool)
+	// AvgDurationSince is the mean workout duration (minutes) for a user at/after since.
+	AvgDurationSince(userId string, since time.Time) float64
+	// TotalVolumeKg sums Reps*WeightKg across a workout's sets.
+	TotalVolumeKg(workoutId string) float64
 }
 
 // InMemoryFitnessBoard is a concurrency-safe in-memory FitnessBoard. Ports
@@ -156,6 +169,96 @@ func (b *InMemoryFitnessBoard) SetsFor(workoutId string) []ExerciseSet {
 		}
 	}
 	return out
+}
+
+// WorkoutCount returns the total number of logged workouts. Ports
+// InMemoryFitnessBoard.WorkoutCount.
+func (b *InMemoryFitnessBoard) WorkoutCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.workouts)
+}
+
+// WorkoutsByKind lists a user's workouts of a kind (Kind matched
+// case-insensitively), ordered by AtUtc descending. Ports
+// InMemoryFitnessBoard.WorkoutsByKind.
+func (b *InMemoryFitnessBoard) WorkoutsByKind(userId, kind string) []Workout {
+	b.mu.Lock()
+	out := make([]Workout, 0)
+	for _, w := range b.workouts {
+		if w.UserId == userId && strings.EqualFold(w.Kind, kind) {
+			out = append(out, w)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].AtUtc.After(out[j].AtUtc) })
+	return out
+}
+
+// RemoveGoal drops a goal by id, returning true if present. Ports
+// InMemoryFitnessBoard.RemoveGoal (TryRemove).
+func (b *InMemoryFitnessBoard) RemoveGoal(goalId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.goals[goalId]
+	delete(b.goals, goalId)
+	return ok
+}
+
+// GoalByMetric returns a user's earliest-due goal for a metric (Metric matched
+// case-insensitively), or (zero,false) when none. Ties on DueOn resolve
+// deterministically by GoalId (the goals map is unordered; the port pre-sorts for
+// stable output). Ports InMemoryFitnessBoard.GoalByMetric
+// (OrderBy(DueOn).FirstOrDefault()).
+func (b *InMemoryFitnessBoard) GoalByMetric(userId, metric string) (FitnessGoal, bool) {
+	b.mu.Lock()
+	out := make([]FitnessGoal, 0)
+	for _, g := range b.goals {
+		if g.UserId == userId && strings.EqualFold(g.Metric, metric) {
+			out = append(out, g)
+		}
+	}
+	b.mu.Unlock()
+	if len(out) == 0 {
+		return FitnessGoal{}, false
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].GoalId < out[j].GoalId })
+	sort.SliceStable(out, func(i, j int) bool { return out[i].DueOn.Before(out[j].DueOn) })
+	return out[0], true
+}
+
+// AvgDurationSince is the mean DurationMinutes across a user's workouts at/after
+// since, or 0 when there are none (mirrors DefaultIfEmpty(0).Average()). Ports
+// InMemoryFitnessBoard.AvgDurationSince.
+func (b *InMemoryFitnessBoard) AvgDurationSince(userId string, since time.Time) float64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var sum float64
+	var n int
+	for _, w := range b.workouts {
+		if w.UserId == userId && !w.AtUtc.Before(since) {
+			sum += float64(w.DurationMinutes)
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// TotalVolumeKg sums Reps*WeightKg across a workout's sets. Ports
+// InMemoryFitnessBoard.TotalVolumeKg (Sum(s => s.Reps * s.WeightKg)).
+func (b *InMemoryFitnessBoard) TotalVolumeKg(workoutId string) float64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var total float64
+	for _, s := range b.sets {
+		if s.WorkoutId == workoutId {
+			total += float64(s.Reps) * s.WeightKg
+		}
+	}
+	return total
 }
 
 // Interface guard.

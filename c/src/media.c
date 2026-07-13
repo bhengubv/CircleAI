@@ -235,6 +235,55 @@ size_t ca_media_library_count(const ca_media_library_t *lib) {
     return lib ? lib->count : 0;
 }
 
+bool ca_media_library_remove(ca_media_library_t *lib, const char *id) {
+    /* !string.IsNullOrEmpty(id) && _items.TryRemove(id, out _) */
+    if (!lib || !id || id[0] == '\0') return false;
+    size_t idx = media_index_of(lib, id);
+    if (idx == (size_t)-1) return false;
+    ca_media_asset_free(&lib->items[idx]);
+    for (size_t i = idx; i + 1 < lib->count; ++i)
+        lib->items[i] = lib->items[i + 1];
+    lib->count--;
+    return true;
+}
+
+int64_t ca_media_library_total_bytes(const ca_media_library_t *lib) {
+    if (!lib) return 0;
+    int64_t sum = 0;
+    for (size_t i = 0; i < lib->count; ++i) sum += lib->items[i].bytes;
+    return sum;
+}
+
+/* Does `s` start with `prefix` (ASCII OrdinalIgnoreCase)? */
+static bool md_ci_starts_with(const char *s, const char *prefix) {
+    if (!s || !prefix) return false;
+    for (; *prefix; ++s, ++prefix)
+        if (tolower((unsigned char)*s) != tolower((unsigned char)*prefix))
+            return false;
+    return true;
+}
+
+ca_media_asset_t *ca_media_library_by_mime(const ca_media_library_t *lib,
+                                           const char *mime_prefix,
+                                           size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!lib) { *out_count = (size_t)-1; return NULL; }
+    /* string.IsNullOrEmpty(mimePrefix) -> Array.Empty. */
+    if (!mime_prefix || mime_prefix[0] == '\0') { *out_count = 0; return NULL; }
+    if (lib->count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(lib->count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < lib->count; ++i)
+        if (md_ci_starts_with(lib->items[i].mime, mime_prefix)) idx[n++] = i;
+
+    sort_desc_by_created(lib, idx, n);
+    ca_media_asset_t *out = materialise(lib, idx, n, out_count);
+    free(idx);
+    return out;
+}
+
 /* ===========================================================================
  * CircleAI.MediaHub — MediaItem + PlaybackPosition records
  * =========================================================================== */

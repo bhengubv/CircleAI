@@ -81,6 +81,36 @@ bool ca_accessibility_board_get_profile(const ca_accessibility_board_t *b,
 ca_accessibility_hint_t *ca_accessibility_board_hints_for(
     const ca_accessibility_board_t *b, const char *user_id, size_t *out_count);
 
+/* Count — number of stored profiles. NULL board → 0. */
+size_t ca_accessibility_board_count(const ca_accessibility_board_t *b);
+
+/* Remove(userId) — drop a profile by id. Returns true if it was present. */
+bool ca_accessibility_board_remove(ca_accessibility_board_t *b,
+                                   const char *user_id);
+
+/* WithNeed(need) -> fresh owned array of profiles whose Needs contain `need`,
+ * ordered by UserId (OrdinalIgnoreCase). NULL + 0 empty; NULL + SIZE_MAX on
+ * error. */
+ca_accessibility_profile_t *ca_accessibility_board_with_need(
+    const ca_accessibility_board_t *b, ca_accessibility_need_t need,
+    size_t *out_count);
+
+/* ScreenReaderUsers() -> fresh owned array of ScreenReader profiles, ordered by
+ * UserId (OrdinalIgnoreCase). NULL + 0 empty; NULL + SIZE_MAX on error. */
+ca_accessibility_profile_t *ca_accessibility_board_screen_reader_users(
+    const ca_accessibility_board_t *b, size_t *out_count);
+
+/* AverageTextScale() — mean TextScale over profiles; 1.0 when there are none
+ * (DefaultIfEmpty(1.0).Average()). */
+double ca_accessibility_board_average_text_scale(
+    const ca_accessibility_board_t *b);
+
+/* NeedsLargeText(userId, threshold) — true when the profile exists and its
+ * TextScale >= threshold. Use 1.3 for the C# default. */
+bool ca_accessibility_board_needs_large_text(const ca_accessibility_board_t *b,
+                                             const char *user_id,
+                                             double threshold);
+
 #ifdef __cplusplus
 }
 #endif

@@ -79,6 +79,12 @@ export interface IDocumentInsights {
 // In-memory implementation (both contracts)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A `(documentId, views)` pair, mirroring the C# named tuple
+ * `(string DocumentId, int Views)` returned by `TopDocuments`.
+ */
+export type DocumentViewCount = readonly [documentId: string, views: number];
+
 /** Thread-safe in-memory document tracker + insights. Mirrors C# `InMemoryDocumentTracker`. */
 export class InMemoryDocumentTracker implements IDocumentTracker, IDocumentInsights {
   private readonly byDoc = new Map<string, DocumentView[]>();
@@ -112,6 +118,72 @@ export class InMemoryDocumentTracker implements IDocumentTracker, IDocumentInsig
     const avgSeconds = views.reduce((acc, v) => acc + v.durationMs / 1000, 0) / total;
 
     return documentInsight(documentId, total, unique, avgSeconds);
+  }
+
+  /** Number of distinct documents with at least one recorded view. Mirrors C# `DocumentCount`. */
+  get documentCount(): number {
+    return this.byDoc.size;
+  }
+
+  /** Total views recorded across every tracked document. Mirrors C# `TotalViews`. */
+  get totalViews(): number {
+    let sum = 0;
+    for (const views of this.byDoc.values()) sum += views.length;
+    return sum;
+  }
+
+  /** Drop all recorded views for a document. Returns whether anything was removed. Mirrors C# `Clear`. */
+  clear(documentId: string): boolean {
+    if (documentId == null || documentId.trim().length === 0) throw new Error("documentId required");
+    return this.byDoc.delete(documentId);
+  }
+
+  /**
+   * The most-viewed documents, highest first, capped at `topK` (default 5).
+   * Mirrors C# `TopDocuments`. Ties keep first-seen (insertion) order.
+   */
+  topDocuments(topK = 5): readonly DocumentViewCount[] {
+    if (topK <= 0) throw new Error("topK must be positive");
+    return [...this.byDoc.entries()]
+      .map(([docId, views]): DocumentViewCount => [docId, views.length])
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topK);
+  }
+
+  /** Most recent views for a document, newest first, capped at `limit` (default 20). Mirrors C# `RecentViews`. */
+  recentViews(documentId: string, limit = 20): readonly DocumentView[] {
+    if (documentId == null || documentId.trim().length === 0) throw new Error("documentId required");
+    if (limit <= 0) throw new Error("limit must be positive");
+    const views = this.byDoc.get(documentId);
+    if (views === undefined) return [];
+    return [...views].sort((a, b) => b.atUtc.getTime() - a.atUtc.getTime()).slice(0, limit);
+  }
+
+  /** Sum of pages viewed across every recorded view of a document. Mirrors C# `TotalPagesViewed`. */
+  totalPagesViewed(documentId: string): number {
+    if (documentId == null || documentId.trim().length === 0) throw new Error("documentId required");
+    const views = this.byDoc.get(documentId);
+    return views === undefined ? 0 : views.reduce((sum, v) => sum + v.pagesViewed, 0);
+  }
+
+  /**
+   * The viewer who spent the most cumulative time on a document, or null when
+   * the document has no views. Viewers are grouped ordinally (case-sensitive),
+   * first-seen order preserved on ties. Mirrors C# `MostEngagedViewer`.
+   */
+  mostEngagedViewer(documentId: string): string | null {
+    if (documentId == null || documentId.trim().length === 0) throw new Error("documentId required");
+    const views = this.byDoc.get(documentId);
+    if (views === undefined || views.length === 0) return null;
+    // Group by viewer, summing duration (ms; relative ordering matches TotalSeconds).
+    const totals = new Map<string, number>();
+    for (const v of views) totals.set(v.viewerId, (totals.get(v.viewerId) ?? 0) + v.durationMs);
+    let best: { viewer: string; total: number } | undefined;
+    for (const [viewer, total] of totals) {
+      // Strict `>` keeps the first-seen viewer on ties (stable OrderByDescending).
+      if (best === undefined || total > best.total) best = { viewer, total };
+    }
+    return best!.viewer;
   }
 }
 

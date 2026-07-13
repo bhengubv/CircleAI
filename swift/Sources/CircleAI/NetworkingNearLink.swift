@@ -205,6 +205,47 @@ public final class InMemoryNearLinkRegistry: @unchecked Sendable {
         guard !rows.isEmpty else { return -127 }
         return rows.reduce(0, +) / Double(rows.count)
     }
+
+    /// Mean read throughput (kbps) for `deviceId`. Empty → 0 (matches C#'s
+    /// `AvgKbpsRead` → `DefaultIfEmpty(0.0).Average()`).
+    public func avgKbpsRead(_ deviceId: String) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        let rows = throughput.filter { $0.deviceId == deviceId }.map { $0.kbpsRead }
+        guard !rows.isEmpty else { return 0 }
+        return rows.reduce(0, +) / Double(rows.count)
+    }
+
+    /// Mean write throughput (kbps) for `deviceId`. Empty → 0 (matches C#'s
+    /// `AvgKbpsWrite` → `DefaultIfEmpty(0.0).Average()`).
+    public func avgKbpsWrite(_ deviceId: String) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        let rows = throughput.filter { $0.deviceId == deviceId }.map { $0.kbpsWrite }
+        guard !rows.isEmpty else { return 0 }
+        return rows.reduce(0, +) / Double(rows.count)
+    }
+
+    /// Remove a paired device: drops its device record and cached pairing state.
+    /// Open sessions are left untouched (close them explicitly via
+    /// `closeSession`). Returns true if a device record was actually removed
+    /// (matches C#'s `Unregister`).
+    @discardableResult
+    public func unregister(_ deviceId: String) -> Bool {
+        if deviceId.isEmpty { return false }
+        lock.lock(); defer { lock.unlock() }
+        let removed = devices.removeValue(forKey: deviceId) != nil
+        states[deviceId] = nil
+        return removed
+    }
+
+    /// Active sessions belonging to a device, oldest-first by start time.
+    /// Empty deviceId yields nothing (matches C#'s `SessionsForDevice`).
+    public func sessionsForDevice(_ deviceId: String) -> [NearLinkSession] {
+        if deviceId.isEmpty { return [] }
+        lock.lock(); defer { lock.unlock() }
+        return sessions.values
+            .filter { $0.deviceId == deviceId }
+            .sorted { $0.startedUtc < $1.startedUtc }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────

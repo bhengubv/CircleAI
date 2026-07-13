@@ -31,6 +31,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -238,6 +239,77 @@ func (r *InMemoryBluetoothTransportRegistry) AvgKbpsRead(deviceId string) float6
 		return 0
 	}
 	return sum / float64(n)
+}
+
+// AvgKbpsWrite returns the mean KbpsWrite of deviceId's samples, or 0 when none
+// (mirrors DefaultIfEmpty(0.0).Average()).
+func (r *InMemoryBluetoothTransportRegistry) AvgKbpsWrite(deviceId string) float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var sum float64
+	var n int
+	for _, t := range r.throughput {
+		if t.DeviceId == deviceId {
+			sum += t.KbpsWrite
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// Unregister drops a device from the registry: removes its endpoint descriptor
+// and any tracked connection state. Returns true if an endpoint was actually
+// removed. Ports InMemoryBluetoothTransportRegistry.Unregister.
+func (r *InMemoryBluetoothTransportRegistry) Unregister(deviceId string) bool {
+	if deviceId == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, removed := r.endpoints[deviceId]
+	delete(r.endpoints, deviceId)
+	delete(r.states, deviceId)
+	return removed
+}
+
+// EndpointsWithService returns endpoints advertising a given GATT/SPP service,
+// matched case-insensitively and ordered by device name (Ordinal) — the
+// discovery view a service scanner needs. Empty service yields nothing. Ports
+// InMemoryBluetoothTransportRegistry.EndpointsWithService.
+func (r *InMemoryBluetoothTransportRegistry) EndpointsWithService(service string) []BluetoothEndpointDescriptor {
+	if service == "" {
+		return []BluetoothEndpointDescriptor{}
+	}
+	r.mu.Lock()
+	out := make([]BluetoothEndpointDescriptor, 0)
+	for _, e := range r.endpoints {
+		for _, s := range e.AdvertisedServices {
+			if strings.EqualFold(s, service) {
+				out = append(out, e)
+				break
+			}
+		}
+	}
+	r.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// ConnectedCount returns the number of devices currently in the Connected state.
+// Ports InMemoryBluetoothTransportRegistry.ConnectedCount.
+func (r *InMemoryBluetoothTransportRegistry) ConnectedCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, s := range r.states {
+		if s == BluetoothConnectionStateConnected {
+			n++
+		}
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------

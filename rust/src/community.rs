@@ -213,3 +213,69 @@ impl ICommunityBoard for InMemoryCommunityBoard {
         hits
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryCommunityBoard`/`ICommunityBoard`).
+impl InMemoryCommunityBoard {
+    /// Number of groups. Mirrors `GroupCount`.
+    pub fn group_count(&self) -> usize {
+        self.groups.lock().unwrap().len()
+    }
+
+    /// Removes a group by id. Returns `true` if present. Mirrors `RemoveGroup`.
+    pub fn remove_group(&self, group_id: &str) -> bool {
+        self.groups.lock().unwrap().remove(group_id).is_some()
+    }
+
+    /// Adds `member_id` to a group. Returns `false` when the group is unknown or
+    /// the member is already present, `true` when added. Mirrors `AddMember`.
+    pub fn add_member(&self, group_id: &str, member_id: &str) -> bool {
+        let mut groups = self.groups.lock().unwrap();
+        let g = match groups.get_mut(group_id) {
+            Some(g) => g,
+            None => return false,
+        };
+        if g.member_ids.iter().any(|m| m == member_id) {
+            return false;
+        }
+        g.member_ids.push(member_id.to_string());
+        true
+    }
+
+    /// Removes `member_id` from a group. Returns `false` when the group is unknown
+    /// or the member is absent, `true` when removed. Mirrors `RemoveMember`.
+    pub fn remove_member(&self, group_id: &str, member_id: &str) -> bool {
+        let mut groups = self.groups.lock().unwrap();
+        let g = match groups.get_mut(group_id) {
+            Some(g) => g,
+            None => return false,
+        };
+        if !g.member_ids.iter().any(|m| m == member_id) {
+            return false;
+        }
+        g.member_ids.retain(|m| m != member_id);
+        true
+    }
+
+    /// Opportunities belonging to `group_id` (ordinal match), earliest first.
+    /// Mirrors `OpportunitiesForGroup`.
+    pub fn opportunities_for_group(&self, group_id: &str) -> Vec<VolunteerOpportunity> {
+        let mut hits: Vec<VolunteerOpportunity> = self
+            .opps
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|o| o.group_id == group_id)
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.when_utc.cmp(&b.when_utc));
+        hits
+    }
+
+    /// Total volunteers needed across future opportunities (the same future-only
+    /// set as [`opportunities`](ICommunityBoard::opportunities)). Mirrors
+    /// `TotalVolunteersNeeded`.
+    pub fn total_volunteers_needed(&self) -> i32 {
+        self.opportunities().iter().map(|o| o.volunteers_needed).sum()
+    }
+}

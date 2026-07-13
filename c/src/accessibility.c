@@ -165,3 +165,110 @@ ca_accessibility_hint_t *ca_accessibility_board_hints_for(
     *out_count = n;
     return out;
 }
+
+size_t ca_accessibility_board_count(const ca_accessibility_board_t *b) {
+    return b ? b->count : 0;
+}
+
+bool ca_accessibility_board_remove(ca_accessibility_board_t *b,
+                                   const char *user_id) {
+    /* _profiles.TryRemove(userId, out _). */
+    if (!b || !user_id) return false;
+    for (size_t i = 0; i < b->count; ++i) {
+        if (cab_ord_eq(b->profiles[i].user_id, user_id)) {
+            ca_accessibility_profile_free(&b->profiles[i]);
+            for (size_t j = i; j + 1 < b->count; ++j)
+                b->profiles[j] = b->profiles[j + 1];
+            b->count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Does a profile list `need` among its Needs? */
+static bool profile_has_need(const ca_accessibility_profile_t *p,
+                             ca_accessibility_need_t need) {
+    for (size_t i = 0; i < p->need_count; ++i)
+        if (p->needs[i] == need) return true;
+    return false;
+}
+
+/* Collect+order profiles matching a predicate, ordered by UserId
+ * (OrdinalIgnoreCase, stable on ties). want_need gates the need filter;
+ * want_screen_reader gates the ScreenReader filter (both false => all). */
+static ca_accessibility_profile_t *collect_ordered_by_user(
+    const ca_accessibility_board_t *b, bool want_need,
+    ca_accessibility_need_t need, bool want_screen_reader, size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b) { *out_count = (size_t)-1; return NULL; }
+    if (b->count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->count; ++i) {
+        if (want_need && !profile_has_need(&b->profiles[i], need)) continue;
+        if (want_screen_reader && !b->profiles[i].screen_reader) continue;
+        idx[n++] = i;
+    }
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderBy(UserId, OrdinalIgnoreCase), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        const char *ku = b->profiles[cur].user_id;
+        size_t j = i;
+        while (j > 0 && cab_ci_cmp(b->profiles[idx[j - 1]].user_id, ku) > 0) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_accessibility_profile_t *out =
+        (ca_accessibility_profile_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!profile_copy(&out[i], &b->profiles[idx[i]])) {
+            for (size_t j = 0; j < i; ++j)
+                ca_accessibility_profile_free(&out[j]);
+            free(out); free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_accessibility_profile_t *ca_accessibility_board_with_need(
+    const ca_accessibility_board_t *b, ca_accessibility_need_t need,
+    size_t *out_count) {
+    return collect_ordered_by_user(b, true, need, false, out_count);
+}
+
+ca_accessibility_profile_t *ca_accessibility_board_screen_reader_users(
+    const ca_accessibility_board_t *b, size_t *out_count) {
+    return collect_ordered_by_user(b, false, CA_ACCESSIBILITY_NEED_VISUAL, true,
+                                   out_count);
+}
+
+double ca_accessibility_board_average_text_scale(
+    const ca_accessibility_board_t *b) {
+    /* .Select(TextScale).DefaultIfEmpty(1.0).Average() */
+    if (!b || b->count == 0) return 1.0;
+    double sum = 0.0;
+    for (size_t i = 0; i < b->count; ++i) sum += b->profiles[i].text_scale;
+    return sum / (double)b->count;
+}
+
+bool ca_accessibility_board_needs_large_text(const ca_accessibility_board_t *b,
+                                             const char *user_id,
+                                             double threshold) {
+    if (!b || !user_id) return false;
+    for (size_t i = 0; i < b->count; ++i)
+        if (cab_ord_eq(b->profiles[i].user_id, user_id))
+            return b->profiles[i].text_scale >= threshold;
+    return false;
+}

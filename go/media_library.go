@@ -87,8 +87,17 @@ type MediaLibrary interface {
 	Add(a MediaAsset) error
 	// Get returns the asset for id and true, or (zero, false) when absent.
 	Get(id string) (MediaAsset, bool)
+	// Remove drops an asset by id, returning true if it was present.
+	Remove(id string) bool
+	// Count returns the number of assets currently catalogued.
+	Count() int
+	// TotalBytes returns the summed Bytes of every catalogued asset.
+	TotalBytes() int64
 	// ListByKind returns all assets of kind, newest first (CreatedAtUtc desc).
 	ListByKind(kind MediaKind) []MediaAsset
+	// ByMime returns assets whose MIME starts with mimePrefix (case-insensitive),
+	// newest first. Empty prefix yields nothing.
+	ByMime(mimePrefix string) []MediaAsset
 	// Search returns up to topK assets whose Title contains q (case-insensitive),
 	// newest first. Returns an error when topK <= 0 (ports ArgumentOutOfRangeException).
 	Search(q string, topK int) ([]MediaAsset, error)
@@ -130,6 +139,39 @@ func (l *InMemoryMediaLibrary) Get(id string) (MediaAsset, bool) {
 	return a, ok
 }
 
+// Remove drops an asset by id, returning true if it was present. Blank id
+// returns false. Ports InMemoryMediaLibrary.Remove (TryRemove).
+func (l *InMemoryMediaLibrary) Remove(id string) bool {
+	if id == "" {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, ok := l.items[id]
+	delete(l.items, id)
+	return ok
+}
+
+// Count returns the number of assets currently catalogued. Ports
+// InMemoryMediaLibrary.Count.
+func (l *InMemoryMediaLibrary) Count() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return len(l.items)
+}
+
+// TotalBytes returns the summed Bytes of every catalogued asset. Ports
+// InMemoryMediaLibrary.TotalBytes (Sum(a => a.Bytes)).
+func (l *InMemoryMediaLibrary) TotalBytes() int64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	var total int64
+	for _, a := range l.items {
+		total += a.Bytes
+	}
+	return total
+}
+
 // ListByKind returns every asset of kind ordered CreatedAtUtc descending
 // (newest first). Ports the LINQ Where(Kind==kind).OrderByDescending(CreatedAtUtc).
 func (l *InMemoryMediaLibrary) ListByKind(kind MediaKind) []MediaAsset {
@@ -137,6 +179,27 @@ func (l *InMemoryMediaLibrary) ListByKind(kind MediaKind) []MediaAsset {
 	out := make([]MediaAsset, 0)
 	for _, a := range l.items {
 		if a.Kind == kind {
+			out = append(out, a)
+		}
+	}
+	l.mu.RUnlock()
+	sortByCreatedDesc(out)
+	return out
+}
+
+// ByMime returns assets whose MIME type starts with mimePrefix (e.g. "image/",
+// "audio/"), matched case-insensitively and ordered CreatedAtUtc descending.
+// Empty prefix yields nothing. Ports InMemoryMediaLibrary.ByMime
+// (Where(Mime.StartsWith(prefix, OrdinalIgnoreCase)).OrderByDescending(CreatedAtUtc)).
+func (l *InMemoryMediaLibrary) ByMime(mimePrefix string) []MediaAsset {
+	if mimePrefix == "" {
+		return []MediaAsset{}
+	}
+	needle := strings.ToLower(mimePrefix)
+	l.mu.RLock()
+	out := make([]MediaAsset, 0)
+	for _, a := range l.items {
+		if strings.HasPrefix(strings.ToLower(a.Mime), needle) {
 			out = append(out, a)
 		}
 	}

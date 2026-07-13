@@ -89,6 +89,36 @@ export interface ICivicBoard {
   repsForDistrict(district: string): readonly Representative[];
   schedule(e: CivicEvent): void;
   upcomingEvents(): readonly CivicEvent[];
+  /** Number of issues not yet resolved. */
+  readonly openIssueCount: number;
+  /** Issues filed under a given category (case-insensitive), newest first. */
+  issuesByCategory(category: string): readonly CivicIssue[];
+  /** Remove a representative by id. Returns whether one was removed. */
+  removeRep(repId: string): boolean;
+  /** Representatives holding a given office (case-insensitive), ordered by name. */
+  repsForOffice(office: string): readonly Representative[];
+  /** Events targeting a given audience (case-insensitive), earliest first. */
+  eventsForAudience(audience: string): readonly CivicEvent[];
+  /** Open-issue counts grouped by category, most-common first. */
+  openIssueBreakdown(): readonly CategoryCount[];
+}
+
+/**
+ * A `(category, count)` pair, mirroring the C# named tuple
+ * `(string Category, int Count)` returned by `OpenIssueBreakdown`.
+ */
+export type CategoryCount = readonly [category: string, count: number];
+
+/**
+ * Ordinal-case-insensitive compare, matching C# `StringComparer.OrdinalIgnoreCase`
+ * ordering. Ties fall back to the ordinal comparison of the originals.
+ */
+function ordinalIgnoreCaseCompare(a: string, b: string): number {
+  const la = a.toUpperCase();
+  const lb = b.toUpperCase();
+  if (la < lb) return -1;
+  if (la > lb) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Deterministic in-memory {@link ICivicBoard}. */
@@ -132,6 +162,67 @@ export class InMemoryCivicBoard implements ICivicBoard {
     return [...this.events.values()]
       .filter((e) => e.atUtc.getTime() >= nowMs)
       .sort((a, b) => a.atUtc.getTime() - b.atUtc.getTime());
+  }
+
+  /** Number of issues not yet resolved. Mirrors C# `OpenIssueCount`. */
+  get openIssueCount(): number {
+    return this.openIssues().length;
+  }
+
+  /**
+   * Issues filed under a given category (case-insensitive), newest first.
+   * Mirrors C# `IssuesByCategory`.
+   */
+  issuesByCategory(category: string): readonly CivicIssue[] {
+    const target = category.toLowerCase();
+    return [...this.issues.values()]
+      .filter((i) => i.category.toLowerCase() === target)
+      .sort((a, b) => b.reportedUtc.getTime() - a.reportedUtc.getTime());
+  }
+
+  /** Remove a representative by id. Returns whether one was removed. Mirrors C# `RemoveRep`. */
+  removeRep(repId: string): boolean {
+    return this.reps.delete(repId);
+  }
+
+  /**
+   * Representatives holding a given office (case-insensitive), ordered by name
+   * (OrdinalIgnoreCase). Mirrors C# `RepsForOffice`.
+   */
+  repsForOffice(office: string): readonly Representative[] {
+    const target = office.toLowerCase();
+    return [...this.reps.values()]
+      .filter((r) => r.office.toLowerCase() === target)
+      .sort((a, b) => ordinalIgnoreCaseCompare(a.name, b.name));
+  }
+
+  /**
+   * Events targeting a given audience (case-insensitive), earliest first.
+   * Mirrors C# `EventsForAudience`.
+   */
+  eventsForAudience(audience: string): readonly CivicEvent[] {
+    const target = audience.toLowerCase();
+    return [...this.events.values()]
+      .filter((e) => e.audience.toLowerCase() === target)
+      .sort((a, b) => a.atUtc.getTime() - b.atUtc.getTime());
+  }
+
+  /**
+   * Open-issue counts grouped by category (case-insensitive; first-seen casing
+   * wins), most-common first. Ties keep first-seen order. Mirrors C#
+   * `OpenIssueBreakdown`.
+   */
+  openIssueBreakdown(): readonly CategoryCount[] {
+    const groups = new Map<string, { category: string; count: number }>();
+    for (const i of this.openIssues()) {
+      const key = i.category.toLowerCase();
+      const g = groups.get(key);
+      if (g === undefined) groups.set(key, { category: i.category, count: 1 });
+      else g.count += 1;
+    }
+    return [...groups.values()]
+      .sort((a, b) => b.count - a.count)
+      .map((g): CategoryCount => [g.category, g.count]);
   }
 }
 

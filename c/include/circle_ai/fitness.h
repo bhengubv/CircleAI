@@ -105,6 +105,36 @@ ca_fitness_set_t *ca_fitness_board_sets_for(const ca_fitness_board_t *b,
                                             const char *workout_id,
                                             size_t *out_count);
 
+/* WorkoutCount — number of logged workouts. NULL board → 0. */
+size_t ca_fitness_board_workout_count(const ca_fitness_board_t *b);
+
+/* WorkoutsByKind(userId, kind) -> fresh owned array of the user's workouts
+ * (UserId Ordinal) whose Kind matches (OrdinalIgnoreCase), ordered by AtUtc
+ * descending. NULL + 0 empty; NULL + SIZE_MAX on error. */
+ca_fitness_workout_t *ca_fitness_board_workouts_by_kind(
+    const ca_fitness_board_t *b, const char *user_id, const char *kind,
+    size_t *out_count);
+
+/* RemoveGoal(goalId) — drop a goal by id. Returns true if it was present. */
+bool ca_fitness_board_remove_goal(ca_fitness_board_t *b, const char *goal_id);
+
+/* GoalByMetric(userId, metric) -> the user's soonest-due goal for a metric
+ * (UserId Ordinal, Metric OrdinalIgnoreCase, ordered by DueOn): writes a fresh
+ * owned copy into *out and returns true. false (C# null) when none / bad args. */
+bool ca_fitness_board_goal_by_metric(const ca_fitness_board_t *b,
+                                     const char *user_id, const char *metric,
+                                     ca_fitness_goal_t *out);
+
+/* AvgDurationSince(userId, since_ms) — mean DurationMinutes over the user's
+ * workouts at or after since_ms; 0.0 when none (DefaultIfEmpty(0).Average()). */
+double ca_fitness_board_avg_duration_since(const ca_fitness_board_t *b,
+                                           const char *user_id, int64_t since_ms);
+
+/* TotalVolumeKg(workoutId) — sum of Reps × WeightKg over the workout's sets
+ * (WorkoutId Ordinal). 0.0 when none / NULL board. */
+double ca_fitness_board_total_volume_kg(const ca_fitness_board_t *b,
+                                        const char *workout_id);
+
 #ifdef __cplusplus
 }
 #endif

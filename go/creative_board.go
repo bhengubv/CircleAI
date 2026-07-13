@@ -62,6 +62,18 @@ type CreativeBoard interface {
 	AddCritique(c Critique)
 	// AvgScore is the mean critique score for a work (0 when none).
 	AvgScore(workId string) float64
+	// WorkCount returns the number of works.
+	WorkCount() int
+	// RemoveWork drops a work by id (cascading its critiques), returning true if present.
+	RemoveWork(workId string) bool
+	// WorksByAuthor lists an author's works (case-insensitive), newest-first.
+	WorksByAuthor(author string) []CreativeWork
+	// WorksByMedium lists works in a medium (case-insensitive), newest-first.
+	WorksByMedium(medium string) []CreativeWork
+	// TopRatedWork returns the work with the highest mean critique score, or (zero,false).
+	TopRatedWork() (CreativeWork, bool)
+	// AllTags lists every distinct tag (case-insensitive), ordered case-insensitively.
+	AllTags() []string
 }
 
 // InMemoryCreativeBoard is a concurrency-safe in-memory CreativeBoard. Ports
@@ -155,6 +167,131 @@ func (b *InMemoryCreativeBoard) AvgScore(workId string) float64 {
 		return 0.0
 	}
 	return sum / float64(n)
+}
+
+// WorkCount returns the number of works. Ports InMemoryCreativeBoard.WorkCount.
+func (b *InMemoryCreativeBoard) WorkCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.works)
+}
+
+// RemoveWork drops a work by id and, if it was present, cascades by removing
+// every critique of that work. Returns true if the work was present. Ports
+// InMemoryCreativeBoard.RemoveWork.
+func (b *InMemoryCreativeBoard) RemoveWork(workId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, removed := b.works[workId]
+	if !removed {
+		return false
+	}
+	delete(b.works, workId)
+	kept := b.critiques[:0]
+	for _, c := range b.critiques {
+		if c.WorkId != workId {
+			kept = append(kept, c)
+		}
+	}
+	b.critiques = kept
+	return true
+}
+
+// WorksByAuthor lists an author's works (case-insensitive), ordered by CreatedUtc
+// descending. Ports InMemoryCreativeBoard.WorksByAuthor.
+func (b *InMemoryCreativeBoard) WorksByAuthor(author string) []CreativeWork {
+	b.mu.Lock()
+	out := make([]CreativeWork, 0)
+	for _, w := range b.works {
+		if strings.EqualFold(w.Author, author) {
+			out = append(out, w)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedUtc.After(out[j].CreatedUtc) })
+	return out
+}
+
+// WorksByMedium lists works in a medium (case-insensitive), ordered by CreatedUtc
+// descending. Ports InMemoryCreativeBoard.WorksByMedium.
+func (b *InMemoryCreativeBoard) WorksByMedium(medium string) []CreativeWork {
+	b.mu.Lock()
+	out := make([]CreativeWork, 0)
+	for _, w := range b.works {
+		if strings.EqualFold(w.Medium, medium) {
+			out = append(out, w)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedUtc.After(out[j].CreatedUtc) })
+	return out
+}
+
+// TopRatedWork returns the work with the highest mean critique score, or
+// (zero,false) when no surviving work has critiques. Critiques are grouped by
+// WorkId (Ordinal, first-encounter order over insertion order); groups are stably
+// ordered by average score descending; the first group whose work still exists
+// wins. Ports InMemoryCreativeBoard.TopRatedWork.
+func (b *InMemoryCreativeBoard) TopRatedWork() (CreativeWork, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	type group struct {
+		workId string
+		sum    float64
+		count  int
+		order  int
+	}
+	groups := make(map[string]*group)
+	ordered := make([]*group, 0)
+	for _, c := range b.critiques {
+		g, ok := groups[c.WorkId]
+		if !ok {
+			g = &group{workId: c.WorkId, order: len(ordered)}
+			groups[c.WorkId] = g
+			ordered = append(ordered, g)
+		}
+		g.sum += float64(c.Score)
+		g.count++
+	}
+	// Stable order by average descending; encounter order (already in `ordered`)
+	// is the tie-break, matching C# GroupBy + OrderByDescending stability.
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].sum/float64(ordered[i].count) > ordered[j].sum/float64(ordered[j].count)
+	})
+	for _, g := range ordered {
+		if w, ok := b.works[g.workId]; ok {
+			return w, true
+		}
+	}
+	return CreativeWork{}, false
+}
+
+// AllTags lists every distinct tag across all works (case-insensitive dedup,
+// keeping the first-encountered spelling), ordered case-insensitively. Works are
+// visited in WorkId order so the retained spelling is deterministic. Ports
+// InMemoryCreativeBoard.AllTags.
+func (b *InMemoryCreativeBoard) AllTags() []string {
+	b.mu.Lock()
+	ids := make([]string, 0, len(b.works))
+	for id := range b.works {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, id := range ids {
+		for _, t := range b.works[id].Tags {
+			key := strings.ToUpper(t)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return ordinalIgnoreCaseLess(out[i], out[j]) })
+	return out
 }
 
 // Interface guard.

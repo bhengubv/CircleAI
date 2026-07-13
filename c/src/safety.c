@@ -14,6 +14,7 @@
 
 #include "circle_ai/safety.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -271,6 +272,101 @@ ca_emergency_contact_t *ca_safety_board_contacts(ca_safety_board_t *board,
     ca_emergency_contact_t *res = (ca_emergency_contact_t *)calloc(n, sizeof(*res));
     if (!res) { if (out_count) *out_count = SIZE_MAX; return NULL; }
     for (size_t i = 0; i < n; ++i) ca_emergency_contact_copy(&res[i], &board->contacts[i]);
+    if (out_count) *out_count = n;
+    return res;
+}
+
+size_t ca_safety_board_incident_count(const ca_safety_board_t *board) {
+    return board ? board->inc_count : 0;
+}
+
+/* OrdinalIgnoreCase equality (ASCII case-fold). NULL-safe. */
+static bool sf_ci_eq(const char *a, const char *b) {
+    if (a == b) return true;
+    if (!a || !b) return false;
+    for (;; ++a, ++b) {
+        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
+        if (ca != cb) return false;
+        if (ca == 0) return true;
+    }
+}
+
+ca_hazard_t *ca_safety_board_hazards_by_category(ca_safety_board_t *board,
+                                                 const char *category,
+                                                 size_t *out_count) {
+    if (out_count) *out_count = 0;
+    if (!board) { if (out_count) *out_count = SIZE_MAX; return NULL; }
+    /* string.IsNullOrEmpty(category) -> Array.Empty. */
+    if (!category || category[0] == '\0') return NULL;
+    if (board->haz_count == 0) return NULL;
+
+    size_t *pick = (size_t *)malloc(board->haz_count * sizeof(size_t));
+    if (!pick) { if (out_count) *out_count = SIZE_MAX; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < board->haz_count; ++i)
+        if (sf_ci_eq(board->hazards[i].category, category)) pick[n++] = i;
+    if (n == 0) { free(pick); return NULL; }
+
+    /* OrderByDescending(NotedUtc), stable (source order preserved on ties). */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = pick[i];
+        int64_t key = board->hazards[cur].noted_utc_ms;
+        size_t j = i;
+        while (j > 0 && board->hazards[pick[j - 1]].noted_utc_ms < key) {
+            pick[j] = pick[j - 1]; --j;
+        }
+        pick[j] = cur;
+    }
+
+    ca_hazard_t *res = (ca_hazard_t *)calloc(n, sizeof(*res));
+    if (!res) { free(pick); if (out_count) *out_count = SIZE_MAX; return NULL; }
+    for (size_t i = 0; i < n; ++i)
+        ca_hazard_copy(&res[i], &board->hazards[pick[i]]);
+    free(pick);
+    if (out_count) *out_count = n;
+    return res;
+}
+
+bool ca_safety_board_remove_contact(ca_safety_board_t *board,
+                                    const char *contact_id) {
+    /* string.IsNullOrEmpty(contactId) -> false. */
+    if (!board || !contact_id || contact_id[0] == '\0') return false;
+    /* FindIndex by ContactId (Ordinal); RemoveAt the first match. */
+    for (size_t i = 0; i < board->con_count; ++i) {
+        if (board->contacts[i].contact_id &&
+            strcmp(board->contacts[i].contact_id, contact_id) == 0) {
+            ca_emergency_contact_free(&board->contacts[i]);
+            for (size_t j = i; j + 1 < board->con_count; ++j)
+                board->contacts[j] = board->contacts[j + 1];
+            board->con_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+ca_emergency_contact_t *ca_safety_board_contacts_by_relationship(
+    ca_safety_board_t *board, const char *relationship, size_t *out_count) {
+    if (out_count) *out_count = 0;
+    if (!board) { if (out_count) *out_count = SIZE_MAX; return NULL; }
+    /* string.IsNullOrEmpty(relationship) -> Array.Empty. */
+    if (!relationship || relationship[0] == '\0') return NULL;
+    if (board->con_count == 0) return NULL;
+
+    size_t *pick = (size_t *)malloc(board->con_count * sizeof(size_t));
+    if (!pick) { if (out_count) *out_count = SIZE_MAX; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < board->con_count; ++i)
+        if (sf_ci_eq(board->contacts[i].relationship, relationship))
+            pick[n++] = i;  /* insertion order (no reordering) */
+    if (n == 0) { free(pick); return NULL; }
+
+    ca_emergency_contact_t *res =
+        (ca_emergency_contact_t *)calloc(n, sizeof(*res));
+    if (!res) { free(pick); if (out_count) *out_count = SIZE_MAX; return NULL; }
+    for (size_t i = 0; i < n; ++i)
+        ca_emergency_contact_copy(&res[i], &board->contacts[pick[i]]);
+    free(pick);
     if (out_count) *out_count = n;
     return res;
 }

@@ -269,6 +269,79 @@ func (r *InMemoryNearLinkRegistry) AvgRssi(deviceId string) float64 {
 	return sum / float64(n)
 }
 
+// AvgKbpsRead returns the mean KbpsRead of deviceId's samples, or 0 when none
+// (mirrors DefaultIfEmpty(0.0).Average()).
+func (r *InMemoryNearLinkRegistry) AvgKbpsRead(deviceId string) float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var sum float64
+	var n int
+	for _, t := range r.throughput {
+		if t.DeviceId == deviceId {
+			sum += t.KbpsRead
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// AvgKbpsWrite returns the mean KbpsWrite of deviceId's samples, or 0 when none
+// (mirrors DefaultIfEmpty(0.0).Average()).
+func (r *InMemoryNearLinkRegistry) AvgKbpsWrite(deviceId string) float64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var sum float64
+	var n int
+	for _, t := range r.throughput {
+		if t.DeviceId == deviceId {
+			sum += t.KbpsWrite
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// Unregister removes a paired device: drops its device record and cached pairing
+// state. Open sessions are left untouched (close them explicitly via
+// CloseSession). Returns true if a device record was actually removed. Ports
+// InMemoryNearLinkRegistry.Unregister.
+func (r *InMemoryNearLinkRegistry) Unregister(deviceId string) bool {
+	if deviceId == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, removed := r.devices[deviceId]
+	delete(r.devices, deviceId)
+	delete(r.states, deviceId)
+	return removed
+}
+
+// SessionsForDevice returns active sessions belonging to a device, oldest-first
+// by start time. Empty deviceId yields nothing. Ports
+// InMemoryNearLinkRegistry.SessionsForDevice.
+func (r *InMemoryNearLinkRegistry) SessionsForDevice(deviceId string) []NearLinkSession {
+	if deviceId == "" {
+		return []NearLinkSession{}
+	}
+	r.mu.Lock()
+	out := make([]NearLinkSession, 0)
+	for _, s := range r.sessions {
+		if s.DeviceId == deviceId {
+			out = append(out, s)
+		}
+	}
+	r.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].StartedUtc.Before(out[j].StartedUtc) })
+	return out
+}
+
 // ---------------------------------------------------------------------------
 // INearLinkAdapter — NearLinkTransport.cs interface INearLinkAdapter
 // ---------------------------------------------------------------------------

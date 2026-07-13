@@ -109,6 +109,37 @@ int ca_community_board_list_opportunity(ca_community_board_t *b,
 ca_community_opportunity_t *ca_community_board_opportunities(
     const ca_community_board_t *b, int64_t now_ms, size_t *out_count);
 
+/* GroupCount — number of groups. NULL board → 0. */
+size_t ca_community_board_group_count(const ca_community_board_t *b);
+
+/* RemoveGroup(groupId) — drop a group by id. Returns true if it was present. */
+bool ca_community_board_remove_group(ca_community_board_t *b,
+                                     const char *group_id);
+
+/* AddMember(groupId, memberId) — add memberId to the group's MemberIds. Returns
+ * false when the group is unknown or memberId is already a member (idempotent),
+ * true when it was appended. -1-style OOM manifests as false. */
+bool ca_community_board_add_member(ca_community_board_t *b, const char *group_id,
+                                   const char *member_id);
+
+/* RemoveMember(groupId, memberId) — remove memberId from the group's MemberIds.
+ * Returns false when the group is unknown or memberId is not a member, true when
+ * it was removed. */
+bool ca_community_board_remove_member(ca_community_board_t *b,
+                                      const char *group_id,
+                                      const char *member_id);
+
+/* OpportunitiesForGroup(groupId) -> fresh owned array of the group's
+ * opportunities (GroupId Ordinal), ordered by WhenUtc ascending. NULL + 0 empty;
+ * NULL + SIZE_MAX on error. */
+ca_community_opportunity_t *ca_community_board_opportunities_for_group(
+    const ca_community_board_t *b, const char *group_id, size_t *out_count);
+
+/* TotalVolunteersNeeded(now_ms) — sum of VolunteersNeeded over future
+ * opportunities (WhenUtc >= now, matching Opportunities()). NULL board → 0. */
+int ca_community_board_total_volunteers_needed(const ca_community_board_t *b,
+                                               int64_t now_ms);
+
 #ifdef __cplusplus
 }
 #endif

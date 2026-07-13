@@ -84,6 +84,18 @@ export interface IBeautyBoard {
   saveProfile(p: SkinProfile): void;
   getProfile(clientName: string): SkinProfile | undefined;
   recommendFor(clientName: string): readonly Treatment[];
+  /** Number of treatments on the menu. */
+  readonly treatmentCount: number;
+  /** Cancel all appointments with a given id. Returns whether any were removed. */
+  cancelAppointment(apptId: string): boolean;
+  /** A client's appointments (case-insensitive name), earliest first. */
+  appointmentsForClient(clientName: string): readonly Appointment[];
+  /** Treatments priced at or below `maxPrice`, cheapest first. */
+  treatmentsUnder(maxPrice: number): readonly Treatment[];
+  /** The client's next appointment at or after `now`, or undefined. */
+  nextAppointmentFor(clientName: string, now: Date): Appointment | undefined;
+  /** Total price of booked treatments in [start, end], for appointments whose treatment still exists. */
+  scheduledRevenueBetween(start: Date, end: Date): number;
 }
 
 /** Deterministic in-memory {@link IBeautyBoard}. */
@@ -130,6 +142,69 @@ export class InMemoryBeautyBoard implements IBeautyBoard {
       const name = t.name.toLowerCase();
       return p.concerns.some((c) => name.includes(c.toLowerCase()));
     });
+  }
+
+  /** Number of treatments on the menu. Mirrors C# `TreatmentCount`. */
+  get treatmentCount(): number {
+    return this.treatments.size;
+  }
+
+  /**
+   * Cancel all appointments with a given id (ordinal, case-sensitive match).
+   * Returns whether any were removed. Mirrors C# `CancelAppointment`
+   * (`_appts.RemoveAll(...) > 0`).
+   */
+  cancelAppointment(apptId: string): boolean {
+    let removed = 0;
+    for (let i = this.appts.length - 1; i >= 0; i--) {
+      if (this.appts[i].apptId === apptId) {
+        this.appts.splice(i, 1);
+        removed++;
+      }
+    }
+    return removed > 0;
+  }
+
+  /**
+   * A client's appointments (case-insensitive name), earliest first.
+   * Mirrors C# `AppointmentsForClient`.
+   */
+  appointmentsForClient(clientName: string): readonly Appointment[] {
+    const target = clientName.toLowerCase();
+    return this.appts
+      .filter((a) => a.clientName.toLowerCase() === target)
+      .sort((x, y) => x.atUtc.getTime() - y.atUtc.getTime());
+  }
+
+  /** Treatments priced at or below `maxPrice`, cheapest first. Mirrors C# `TreatmentsUnder`. */
+  treatmentsUnder(maxPrice: number): readonly Treatment[] {
+    return [...this.treatments.values()]
+      .filter((t) => t.price <= maxPrice)
+      .sort((a, b) => a.price - b.price);
+  }
+
+  /**
+   * The client's next appointment at or after `now` (case-insensitive name),
+   * or undefined. Mirrors C# `NextAppointmentFor`.
+   */
+  nextAppointmentFor(clientName: string, now: Date): Appointment | undefined {
+    const target = clientName.toLowerCase();
+    const nowMs = now.getTime();
+    return this.appts
+      .filter((a) => a.clientName.toLowerCase() === target && a.atUtc.getTime() >= nowMs)
+      .sort((x, y) => x.atUtc.getTime() - y.atUtc.getTime())[0];
+  }
+
+  /**
+   * Total price of booked treatments in [start, end], counting only
+   * appointments whose treatment still exists. Mirrors C# `ScheduledRevenueBetween`.
+   */
+  scheduledRevenueBetween(start: Date, end: Date): number {
+    const s = start.getTime();
+    const e = end.getTime();
+    return this.appts
+      .filter((a) => a.atUtc.getTime() >= s && a.atUtc.getTime() <= e && this.treatments.has(a.treatmentId))
+      .reduce((sum, a) => sum + (this.treatments.get(a.treatmentId) as Treatment).price, 0);
   }
 }
 

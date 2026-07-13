@@ -149,6 +149,40 @@ class InMemoryNearLinkRegistry {
             val vals = throughput.filter { it.deviceId == deviceId }.map { it.rssiDbm.toDouble() }
             if (vals.isEmpty()) -127.0 else vals.average()
         }
+
+    /** Mean read throughput (kbps) across all samples for [deviceId]; 0.0 when none. */
+    fun avgKbpsRead(deviceId: String): Double =
+        synchronized(lock) {
+            val vals = throughput.filter { it.deviceId == deviceId }.map { it.kbpsRead }
+            if (vals.isEmpty()) 0.0 else vals.average()
+        }
+
+    /** Mean write throughput (kbps) across all samples for [deviceId]; 0.0 when none. */
+    fun avgKbpsWrite(deviceId: String): Double =
+        synchronized(lock) {
+            val vals = throughput.filter { it.deviceId == deviceId }.map { it.kbpsWrite }
+            if (vals.isEmpty()) 0.0 else vals.average()
+        }
+
+    /**
+     * Remove a paired device: drops its device record and cached pairing state.
+     * Open sessions are left untouched (close them explicitly via [closeSession]).
+     * Returns true if a device record was actually removed.
+     */
+    fun unregister(deviceId: String): Boolean {
+        if (deviceId.isEmpty()) return false
+        val removed = devices.remove(deviceId) != null
+        states.remove(deviceId)
+        return removed
+    }
+
+    /** Active sessions belonging to a device, oldest-first by start time. */
+    fun sessionsForDevice(deviceId: String): List<NearLinkSession> {
+        if (deviceId.isEmpty()) return emptyList()
+        return sessions.values
+            .filter { it.deviceId == deviceId }
+            .sortedBy { it.startedUtc }
+    }
 }
 
 // ===========================================================================

@@ -55,11 +55,15 @@ public struct DocumentInsight: Sendable, Equatable, Codable {
 public enum DocAnalyticsError: Error, Equatable, CustomStringConvertible {
     case documentIdRequired
     case documentIdArgRequired
+    case topKOutOfRange
+    case limitOutOfRange
 
     public var description: String {
         switch self {
         case .documentIdRequired: return "DocumentId required"
         case .documentIdArgRequired: return "documentId required"
+        case .topKOutOfRange: return "topK out of range"
+        case .limitOutOfRange: return "limit out of range"
         }
     }
 }
@@ -122,6 +126,97 @@ public final class InMemoryDocumentTracker: IDocumentTracker, IDocumentInsights,
             totalViews: total,
             uniqueViewers: unique,
             avgDurationSeconds: avgSeconds)
+    }
+
+    // ── Synchronous analytics extras (concrete-only; C# ArgumentException guards
+    //    become throwing Swift functions; property getters are non-throwing) ──
+
+    /// Number of distinct documents with at least one recorded view (matches
+    /// C#'s `DocumentCount`).
+    public var documentCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return byDoc.count
+    }
+
+    /// Total views recorded across every tracked document (matches C#'s
+    /// `TotalViews`).
+    public var totalViews: Int {
+        lock.lock(); defer { lock.unlock() }
+        return byDoc.values.reduce(0) { $0 + $1.count }
+    }
+
+    /// Drop all recorded views for a document. Returns true if anything was
+    /// removed (matches C#'s `Clear`; throws on a blank id like C#'s
+    /// ArgumentException).
+    @discardableResult
+    public func clear(documentId: String) throws -> Bool {
+        if documentId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DocAnalyticsError.documentIdArgRequired
+        }
+        lock.lock(); defer { lock.unlock() }
+        return byDoc.removeValue(forKey: documentId) != nil
+    }
+
+    /// The most-viewed documents, highest first, capped at `topK` (default 5).
+    /// Matches C#'s `TopDocuments` → `OrderByDescending(Views).Take(topK)`;
+    /// throws on `topK <= 0` like C#'s ArgumentOutOfRangeException.
+    public func topDocuments(topK: Int = 5) throws -> [(documentId: String, views: Int)] {
+        if topK <= 0 { throw DocAnalyticsError.topKOutOfRange }
+        lock.lock(); defer { lock.unlock() }
+        let ranked = byDoc
+            .map { (documentId: $0.key, views: $0.value.count) }
+            .sorted { $0.views > $1.views }
+        return Array(ranked.prefix(topK))
+    }
+
+    /// Most recent views for a document, newest first, capped at `limit`
+    /// (default 20). Matches C#'s `RecentViews` → `OrderByDescending(AtUtc)
+    /// .Take(limit)`; throws on a blank id or `limit <= 0` like C#.
+    public func recentViews(documentId: String, limit: Int = 20) throws -> [DocumentView] {
+        if documentId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DocAnalyticsError.documentIdArgRequired
+        }
+        if limit <= 0 { throw DocAnalyticsError.limitOutOfRange }
+        lock.lock(); defer { lock.unlock() }
+        guard let views = byDoc[documentId] else { return [] }
+        return Array(views.sorted { $0.atUtc > $1.atUtc }.prefix(limit))
+    }
+
+    /// Sum of pages viewed across every recorded view of a document (0 when the
+    /// document is unknown). Matches C#'s `TotalPagesViewed`; throws on a blank
+    /// id like C#.
+    public func totalPagesViewed(documentId: String) throws -> Int {
+        if documentId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DocAnalyticsError.documentIdArgRequired
+        }
+        lock.lock(); defer { lock.unlock() }
+        return (byDoc[documentId] ?? []).reduce(0) { $0 + $1.pagesViewed }
+    }
+
+    /// The viewer who spent the most cumulative time on a document, or nil when
+    /// there are no views. Matches C#'s `MostEngagedViewer` (groups by viewerId
+    /// ordinally by total duration; ties keep first-appearance order); throws on
+    /// a blank id like C#.
+    public func mostEngagedViewer(documentId: String) throws -> String? {
+        if documentId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DocAnalyticsError.documentIdArgRequired
+        }
+        lock.lock(); defer { lock.unlock() }
+        guard let views = byDoc[documentId], !views.isEmpty else { return nil }
+        var order: [String] = []            // viewerIds in first-seen order
+        var totals: [String: Double] = [:]
+        for v in views {
+            if totals[v.viewerId] == nil { order.append(v.viewerId) }
+            totals[v.viewerId, default: 0] += v.duration
+        }
+        return order.enumerated()
+            .sorted { a, b in
+                let ta = totals[a.element]!, tb = totals[b.element]!
+                if ta != tb { return ta > tb }
+                return a.offset < b.offset
+            }
+            .first!
+            .element
     }
 }
 

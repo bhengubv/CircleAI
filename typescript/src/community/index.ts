@@ -89,6 +89,18 @@ export interface ICommunityBoard {
   announcementsFor(groupId: string, limit?: number): readonly Announcement[];
   list(o: VolunteerOpportunity): void;
   opportunities(): readonly VolunteerOpportunity[];
+  /** Number of groups registered. */
+  readonly groupCount: number;
+  /** Remove a group by id. Returns whether one was removed. */
+  removeGroup(groupId: string): boolean;
+  /** Add a member to a group. Returns false if the group is unknown or already a member. */
+  addMember(groupId: string, memberId: string): boolean;
+  /** Remove a member from a group. Returns false if the group is unknown or not a member. */
+  removeMember(groupId: string, memberId: string): boolean;
+  /** Future opportunities for a group (ordinal id match), earliest first. */
+  opportunitiesForGroup(groupId: string): readonly VolunteerOpportunity[];
+  /** Total volunteers needed across all future opportunities. */
+  totalVolunteersNeeded(): number;
 }
 
 /** Deterministic in-memory {@link ICommunityBoard}. */
@@ -132,6 +144,60 @@ export class InMemoryCommunityBoard implements ICommunityBoard {
     return [...this.opps.values()]
       .filter((o) => o.whenUtc.getTime() >= nowMs)
       .sort((a, b) => a.whenUtc.getTime() - b.whenUtc.getTime());
+  }
+
+  /** Number of groups registered. Mirrors C# `GroupCount`. */
+  get groupCount(): number {
+    return this.groups.size;
+  }
+
+  /** Remove a group by id. Returns whether one was removed. Mirrors C# `RemoveGroup`. */
+  removeGroup(groupId: string): boolean {
+    return this.groups.delete(groupId);
+  }
+
+  /**
+   * Add a member to a group. Returns false if the group is unknown or the
+   * member is already present; otherwise appends and returns true. Mirrors C#
+   * `AddMember`.
+   */
+  addMember(groupId: string, memberId: string): boolean {
+    const g = this.groups.get(groupId);
+    if (g === undefined) return false;
+    if (g.memberIds.includes(memberId)) return false;
+    this.groups.set(groupId, { ...g, memberIds: [...g.memberIds, memberId] });
+    return true;
+  }
+
+  /**
+   * Remove a member from a group. Returns false if the group is unknown or the
+   * member is absent; otherwise removes and returns true. Mirrors C#
+   * `RemoveMember`.
+   */
+  removeMember(groupId: string, memberId: string): boolean {
+    const g = this.groups.get(groupId);
+    if (g === undefined) return false;
+    if (!g.memberIds.includes(memberId)) return false;
+    this.groups.set(groupId, { ...g, memberIds: g.memberIds.filter((m) => m !== memberId) });
+    return true;
+  }
+
+  /**
+   * Future opportunities for a group (ordinal, case-sensitive id match),
+   * earliest first. Mirrors C# `OpportunitiesForGroup`.
+   */
+  opportunitiesForGroup(groupId: string): readonly VolunteerOpportunity[] {
+    return [...this.opps.values()]
+      .filter((o) => o.groupId === groupId)
+      .sort((a, b) => a.whenUtc.getTime() - b.whenUtc.getTime());
+  }
+
+  /**
+   * Total volunteers needed across all future opportunities (C# sums over
+   * `Opportunities()`, which is future-filtered). Mirrors C# `TotalVolunteersNeeded`.
+   */
+  totalVolunteersNeeded(): number {
+    return this.opportunities().reduce((sum, o) => sum + o.volunteersNeeded, 0);
   }
 }
 

@@ -138,6 +138,60 @@ public final class InMemoryFaithBoard: IFaithBoard, @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return scripture.values.filter { $0.tradition.caseInsensitiveCompare(tradition) == .orderedSame }
     }
+
+    /// Number of scheduled services (matches C#'s `ServiceCount`).
+    public var serviceCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return services.count
+    }
+
+    /// Remove a service by id. Returns true if present (matches C#'s
+    /// `RemoveService` → `TryRemove`).
+    @discardableResult
+    public func removeService(_ serviceId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return services.removeValue(forKey: serviceId) != nil
+    }
+
+    /// Services at a given location (case-insensitive), earliest first. Matches
+    /// C#'s `ServicesAt` → `OrderBy(StartUtc)`.
+    public func servicesAt(_ location: String) -> [FaithService] {
+        lock.lock(); defer { lock.unlock() }
+        return services.values
+            .filter { $0.location.caseInsensitiveCompare(location) == .orderedSame }
+            .sorted { $0.startUtc < $1.startUtc }
+    }
+
+    /// A named author's NON-anonymous prayers (privacy-aware), newest first.
+    /// Anonymous prayers are excluded even if the author string matches. Matches
+    /// C#'s `PrayersByAuthor` → `Where(!IsAnonymous && author ci-eq)
+    /// .OrderByDescending(SubmittedUtc)`.
+    public func prayersByAuthor(_ author: String) -> [PrayerRequest] {
+        lock.lock(); defer { lock.unlock() }
+        return prayers
+            .filter { !$0.isAnonymous && $0.author.caseInsensitiveCompare(author) == .orderedSame }
+            .sorted { $0.submittedUtc > $1.submittedUtc }
+    }
+
+    /// Number of prayers submitted anonymously (matches C#'s
+    /// `AnonymousPrayerCount`).
+    public func anonymousPrayerCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return prayers.filter { $0.isAnonymous }.count
+    }
+
+    /// All verses of a chapter (tradition + book case-insensitive, chapter
+    /// exact), ordered by verse. Matches C#'s `ChapterVerses` → `OrderBy(Verse)`.
+    public func chapterVerses(tradition: String, book: String, chapter: Int) -> [ScriptureReference] {
+        lock.lock(); defer { lock.unlock() }
+        return scripture.values
+            .filter {
+                $0.tradition.caseInsensitiveCompare(tradition) == .orderedSame
+                    && $0.book.caseInsensitiveCompare(book) == .orderedSame
+                    && $0.chapter == chapter
+            }
+            .sorted { $0.verse < $1.verse }
+    }
 }
 
 // MARK: - FaithDomainContext

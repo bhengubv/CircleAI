@@ -124,3 +124,73 @@ class InMemoryFarmBoard(IFarmBoard):
             if not rows:
                 return 0.0
             return sum(r.tons_per_ha for r in rows) / len(rows)
+
+    @property
+    def field_count(self) -> int:
+        """Number of registered fields (C#: ``FieldCount``)."""
+        with self._lock:
+            return len(self._fields)
+
+    def remove_field(self, field_id: str) -> bool:
+        """Remove a field. Returns True if one was present (C#: ``RemoveField``)."""
+        with self._lock:
+            return self._fields.pop(field_id, None) is not None
+
+    def total_area_ha(self) -> float:
+        """Total area of every registered field, in hectares
+        (C#: ``TotalAreaHa``).
+        """
+        with self._lock:
+            return sum(f.area_ha for f in self._fields.values())
+
+    def fields_by_soil(self, soil_type: str) -> List[Field]:
+        """Fields of a given soil type (case-insensitive), largest area first
+        (C#: ``FieldsBySoil``).
+        """
+        target = soil_type.casefold()
+        with self._lock:
+            matches = [
+                f
+                for f in self._fields.values()
+                if f.soil_type.casefold() == target
+            ]
+        return sorted(matches, key=lambda f: f.area_ha, reverse=True)
+
+    def due_for_harvest(self, as_of: datetime) -> List[Crop]:
+        """Crops whose expected harvest is on or before ``as_of``, ordered by
+        expected harvest (C#: ``DueForHarvest`` — crops with no expected
+        harvest are excluded).
+        """
+        with self._lock:
+            matches = [
+                c
+                for c in self._crops.values()
+                if c.expected_harvest is not None
+                and c.expected_harvest <= as_of
+            ]
+        return sorted(matches, key=lambda c: c.expected_harvest)
+
+    def best_yielding_variety(self) -> Optional[str]:
+        """The variety with the highest average yield, or None when nothing has
+        been harvested (C#: ``BestYieldingVariety`` — variety grouped
+        case-insensitively; ties keep first-seen order/casing).
+        """
+        with self._lock:
+            averages: Dict[str, List] = {}  # casefold -> [display, sum, count]
+            for y in self._yields:
+                c = self._crops.get(y.crop_id)
+                if c is None:
+                    continue
+                key = c.variety.casefold()
+                agg = averages.get(key)
+                if agg is None:
+                    averages[key] = [c.variety, y.tons_per_ha, 1]
+                else:
+                    agg[1] += y.tons_per_ha
+                    agg[2] += 1
+            if not averages:
+                return None
+        ranked = sorted(
+            averages.values(), key=lambda a: a[1] / a[2], reverse=True
+        )
+        return ranked[0][0]

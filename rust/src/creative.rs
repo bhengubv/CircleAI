@@ -213,3 +213,91 @@ impl ICreativeBoard for InMemoryCreativeBoard {
         }
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryCreativeBoard`/`ICreativeBoard`).
+impl InMemoryCreativeBoard {
+    /// Number of catalogued works. Mirrors `WorkCount`.
+    pub fn work_count(&self) -> usize {
+        self.works.lock().unwrap().len()
+    }
+
+    /// Removes a work and cascades: drops all its critiques. Returns `true` if the
+    /// work was present. Mirrors `RemoveWork`.
+    pub fn remove_work(&self, work_id: &str) -> bool {
+        let removed = self.works.lock().unwrap().remove(work_id).is_some();
+        if removed {
+            self.critiques.lock().unwrap().retain(|c| c.work_id != work_id);
+        }
+        removed
+    }
+
+    /// Works by `author` (case-insensitive), newest first. Mirrors `WorksByAuthor`.
+    pub fn works_by_author(&self, author: &str) -> Vec<CreativeWork> {
+        let mut hits: Vec<CreativeWork> = self
+            .works
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|w| w.author.eq_ignore_ascii_case(author))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.created_utc.cmp(&a.created_utc));
+        hits
+    }
+
+    /// Works in `medium` (case-insensitive), newest first. Mirrors `WorksByMedium`.
+    pub fn works_by_medium(&self, medium: &str) -> Vec<CreativeWork> {
+        let mut hits: Vec<CreativeWork> = self
+            .works
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|w| w.medium.eq_ignore_ascii_case(medium))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.created_utc.cmp(&a.created_utc));
+        hits
+    }
+
+    /// The work with the highest average critique score, if any (the highest-avg
+    /// work id that still resolves to a work). Mirrors `TopRatedWork`.
+    pub fn top_rated_work(&self) -> Option<CreativeWork> {
+        let critiques = self.critiques.lock().unwrap();
+        // Average score per work id.
+        let mut sums: HashMap<String, (f64, usize)> = HashMap::new();
+        for c in critiques.iter() {
+            let e = sums.entry(c.work_id.clone()).or_insert((0.0, 0));
+            e.0 += c.score as f64;
+            e.1 += 1;
+        }
+        let mut ranked: Vec<(String, f64)> = sums
+            .into_iter()
+            .map(|(id, (sum, n))| (id, sum / n as f64))
+            .collect();
+        // Highest average first.
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let works = self.works.lock().unwrap();
+        ranked
+            .into_iter()
+            .find_map(|(id, _)| works.get(&id).cloned())
+    }
+
+    /// All distinct tags across every work (case-insensitive distinct, keeping the
+    /// first-seen casing), sorted case-insensitively ascending. Mirrors `AllTags`.
+    pub fn all_tags(&self) -> Vec<String> {
+        let works = self.works.lock().unwrap();
+        let mut seen: HashMap<String, ()> = HashMap::new();
+        let mut out: Vec<String> = Vec::new();
+        for w in works.values() {
+            for t in &w.tags {
+                let key = t.to_lowercase();
+                if seen.insert(key, ()).is_none() {
+                    out.push(t.clone());
+                }
+            }
+        }
+        out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        out
+    }
+}

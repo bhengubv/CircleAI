@@ -237,3 +237,145 @@ double ca_farm_board_avg_yield_of_variety(const ca_farm_board_t *b,
     }
     return n == 0 ? 0.0 : sum / (double)n;
 }
+
+size_t ca_farm_board_field_count(const ca_farm_board_t *b) {
+    return b ? b->f_count : 0;
+}
+
+bool ca_farm_board_remove_field(ca_farm_board_t *b, const char *field_id) {
+    /* _fields.TryRemove(fieldId, out _). */
+    if (!b || !field_id) return false;
+    for (size_t i = 0; i < b->f_count; ++i) {
+        if (cab_ord_eq(b->fields[i].field_id, field_id)) {
+            ca_farm_field_free(&b->fields[i]);
+            for (size_t j = i; j + 1 < b->f_count; ++j)
+                b->fields[j] = b->fields[j + 1];
+            b->f_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+double ca_farm_board_total_area_ha(const ca_farm_board_t *b) {
+    if (!b) return 0.0;
+    double sum = 0.0;
+    for (size_t i = 0; i < b->f_count; ++i) sum += b->fields[i].area_ha;
+    return sum;
+}
+
+ca_farm_field_t *ca_farm_board_fields_by_soil(const ca_farm_board_t *b,
+                                              const char *soil_type,
+                                              size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !soil_type) { *out_count = (size_t)-1; return NULL; }
+    if (b->f_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->f_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->f_count; ++i)
+        if (cab_ci_eq(b->fields[i].soil_type, soil_type)) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderByDescending(AreaHa), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        double key = b->fields[cur].area_ha;
+        size_t j = i;
+        while (j > 0 && b->fields[idx[j - 1]].area_ha < key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_farm_field_t *out = (ca_farm_field_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!field_copy(&out[i], &b->fields[idx[i]])) {
+            for (size_t j = 0; j < i; ++j) ca_farm_field_free(&out[j]);
+            free(out); free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_farm_crop_t *ca_farm_board_due_for_harvest(const ca_farm_board_t *b,
+                                              int64_t as_of_ms,
+                                              size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b) { *out_count = (size_t)-1; return NULL; }
+    if (b->c_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->c_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->c_count; ++i)
+        if (b->crops[i].has_expected_harvest &&
+            b->crops[i].expected_harvest_ms <= as_of_ms)
+            idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderBy(ExpectedHarvest) ascending, stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        int64_t key = b->crops[cur].expected_harvest_ms;
+        size_t j = i;
+        while (j > 0 && b->crops[idx[j - 1]].expected_harvest_ms > key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_farm_crop_t *out = (ca_farm_crop_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!crop_copy(&out[i], &b->crops[idx[i]])) {
+            ca_farm_crop_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+char *ca_farm_board_best_yielding_variety(const ca_farm_board_t *b) {
+    if (!b || b->y_count == 0) return NULL;
+
+    /* Group yields (whose crop exists) by the crop's Variety (OrdinalIgnoreCase,
+     * first-seen spelling as the key), accumulating sum + count. */
+    typedef struct { const char *variety; double sum; size_t count; } grp_t;
+    grp_t *g = (grp_t *)malloc(b->y_count * sizeof(*g));
+    if (!g) return NULL;
+    size_t gc = 0;
+    for (size_t i = 0; i < b->y_count; ++i) {
+        const char *v = crop_variety(b, b->yields[i].crop_id);
+        if (!v) continue;   /* _crops.ContainsKey(y.CropId) filter */
+        size_t k;
+        for (k = 0; k < gc; ++k)
+            if (cab_ci_eq(g[k].variety, v)) break;
+        if (k == gc) { g[gc].variety = v; g[gc].sum = 0.0; g[gc].count = 0; gc++; }
+        g[k].sum += b->yields[i].tons_per_ha;
+        g[k].count++;
+    }
+    if (gc == 0) { free(g); return NULL; }
+
+    /* OrderByDescending(avg); groups already in first-appearance order and the
+     * sort is stable, so ties keep that order — pick the first. */
+    size_t best = 0;
+    double best_avg = g[0].sum / (double)g[0].count;
+    for (size_t k = 1; k < gc; ++k) {
+        double avg = g[k].sum / (double)g[k].count;
+        if (avg > best_avg) { best_avg = avg; best = k; }
+    }
+    char *res = cab_strdup_empty(g[best].variety);
+    free(g);
+    return res;   /* NULL on OOM (cab_strdup_empty) */
+}

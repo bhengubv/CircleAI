@@ -135,6 +135,60 @@ public final class InMemoryFitnessBoard: IFitnessBoard, @unchecked Sendable {
         return sets.filter { $0.workoutId == workoutId }
     }
 
+    /// Total number of logged workouts (matches C#'s `WorkoutCount`).
+    public var workoutCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return workouts.count
+    }
+
+    /// A user's workouts of a given kind (userId exact, kind case-insensitive),
+    /// newest first. Matches C#'s `WorkoutsByKind` → `OrderByDescending(AtUtc)`.
+    public func workoutsByKind(userId: String, kind: String) -> [Workout] {
+        lock.lock(); defer { lock.unlock() }
+        return workouts
+            .filter { $0.userId == userId && $0.kind.caseInsensitiveCompare(kind) == .orderedSame }
+            .sorted { $0.atUtc > $1.atUtc }
+    }
+
+    /// Remove a goal by id. Returns true if present (matches C#'s `RemoveGoal` →
+    /// `TryRemove`).
+    @discardableResult
+    public func removeGoal(_ goalId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return goals.removeValue(forKey: goalId) != nil
+    }
+
+    /// The user's soonest-due goal for a metric (userId exact, metric
+    /// case-insensitive), or nil. Matches C#'s `GoalByMetric` →
+    /// `OrderBy(DueOn).FirstOrDefault()`.
+    public func goalByMetric(userId: String, metric: String) -> FitnessGoal? {
+        lock.lock(); defer { lock.unlock() }
+        return goals.values
+            .filter { $0.userId == userId && $0.metric.caseInsensitiveCompare(metric) == .orderedSame }
+            .sorted { $0.dueOn < $1.dueOn }
+            .first
+    }
+
+    /// Mean workout duration (minutes) for a user since `since`. Empty → 0
+    /// (matches C#'s `AvgDurationSince` → `DefaultIfEmpty(0).Average()`).
+    public func avgDurationSince(userId: String, since: Date) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        let durations = workouts
+            .filter { $0.userId == userId && $0.atUtc >= since }
+            .map { Double($0.durationMinutes) }
+        guard !durations.isEmpty else { return 0 }
+        return durations.reduce(0, +) / Double(durations.count)
+    }
+
+    /// Total lifted volume (kg) for a workout: Σ reps × weightKg. Matches C#'s
+    /// `TotalVolumeKg`.
+    public func totalVolumeKg(_ workoutId: String) -> Double {
+        lock.lock(); defer { lock.unlock() }
+        return sets
+            .filter { $0.workoutId == workoutId }
+            .reduce(0.0) { $0 + Double($1.reps) * $1.weightKg }
+    }
+
     private static func weekStart(_ now: Date) -> Date {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!

@@ -70,6 +70,15 @@ typedef struct {
 void ca_civic_event_free(ca_civic_event_t *e);
 void ca_civic_event_free_array(ca_civic_event_t *arr, size_t count);
 
+/* (Category, Count) pair — one bucket of OpenIssueBreakdown(). */
+typedef struct {
+    char *category;  /* owned, non-null */
+    int   count;
+} ca_civic_category_count_t;
+
+void ca_civic_category_count_free_array(ca_civic_category_count_t *arr,
+                                        size_t count);
+
 typedef struct ca_civic_board ca_civic_board_t;
 
 ca_civic_board_t *ca_civic_board_create(void); /* NULL on OOM */
@@ -105,6 +114,41 @@ int ca_civic_board_schedule(ca_civic_board_t *b, const ca_civic_event_t *e);
 ca_civic_event_t *ca_civic_board_upcoming_events(const ca_civic_board_t *b,
                                                  int64_t now_ms,
                                                  size_t *out_count);
+
+/* OpenIssueCount — number of open issues (Status != "Resolved", CI). NULL board
+ * → 0. */
+size_t ca_civic_board_open_issue_count(const ca_civic_board_t *b);
+
+/* IssuesByCategory(category) -> fresh owned array of issues whose Category
+ * matches (OrdinalIgnoreCase), ordered by ReportedUtc descending. NULL + 0
+ * empty; NULL + SIZE_MAX on error. */
+ca_civic_issue_t *ca_civic_board_issues_by_category(const ca_civic_board_t *b,
+                                                    const char *category,
+                                                    size_t *out_count);
+
+/* RemoveRep(repId) — drop a representative by id. Returns true if present. */
+bool ca_civic_board_remove_rep(ca_civic_board_t *b, const char *rep_id);
+
+/* RepsForOffice(office) -> fresh owned array of reps whose Office matches
+ * (OrdinalIgnoreCase), ordered by Name (OrdinalIgnoreCase). NULL + 0 empty;
+ * NULL + SIZE_MAX on error. */
+ca_civic_rep_t *ca_civic_board_reps_for_office(const ca_civic_board_t *b,
+                                               const char *office,
+                                               size_t *out_count);
+
+/* EventsForAudience(audience) -> fresh owned array of events whose Audience
+ * matches (OrdinalIgnoreCase), ordered by AtUtc ascending. NULL + 0 empty;
+ * NULL + SIZE_MAX on error. */
+ca_civic_event_t *ca_civic_board_events_for_audience(const ca_civic_board_t *b,
+                                                     const char *audience,
+                                                     size_t *out_count);
+
+/* OpenIssueBreakdown() -> fresh owned array of (Category, Count) over open issues
+ * (grouped OrdinalIgnoreCase, first-seen spelling as the key), ordered by Count
+ * descending (ties keep first-appearance order). NULL + 0 when no open issues;
+ * NULL + SIZE_MAX on error. Free with ca_civic_category_count_free_array. */
+ca_civic_category_count_t *ca_civic_board_open_issue_breakdown(
+    const ca_civic_board_t *b, size_t *out_count);
 
 #ifdef __cplusplus
 }

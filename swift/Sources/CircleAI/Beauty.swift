@@ -129,6 +129,59 @@ public final class InMemoryBeautyBoard: IBeautyBoard, @unchecked Sendable {
             p.concerns.contains { t.name.range(of: $0, options: .caseInsensitive) != nil }
         }
     }
+
+    /// Number of treatments in the catalogue (matches C#'s `TreatmentCount`).
+    public var treatmentCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return treatments.count
+    }
+
+    /// Cancel every appointment matching `apptId` (ordinal). Returns true if any
+    /// were removed (matches C#'s `CancelAppointment` → `RemoveAll(...) > 0`).
+    @discardableResult
+    public func cancelAppointment(_ apptId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let before = appts.count
+        appts.removeAll { $0.apptId == apptId }
+        return appts.count != before
+    }
+
+    /// A client's appointments (name case-insensitive), earliest first.
+    /// Matches C#'s `AppointmentsForClient` → `OrderBy(AtUtc)`.
+    public func appointmentsForClient(clientName: String) -> [Appointment] {
+        lock.lock(); defer { lock.unlock() }
+        return appts
+            .filter { $0.clientName.caseInsensitiveCompare(clientName) == .orderedSame }
+            .sorted { $0.atUtc < $1.atUtc }
+    }
+
+    /// Treatments priced at or below `maxPrice`, cheapest first. Matches C#'s
+    /// `TreatmentsUnder` → `Where(Price <= maxPrice).OrderBy(Price)`.
+    public func treatmentsUnder(_ maxPrice: Decimal) -> [Treatment] {
+        lock.lock(); defer { lock.unlock() }
+        return treatments.values
+            .filter { $0.price <= maxPrice }
+            .sorted { $0.price < $1.price }
+    }
+
+    /// The client's next appointment at/after `now` (name case-insensitive), or
+    /// nil. Matches C#'s `NextAppointmentFor` → `OrderBy(AtUtc).FirstOrDefault()`.
+    public func nextAppointmentFor(clientName: String, now: Date) -> Appointment? {
+        lock.lock(); defer { lock.unlock() }
+        return appts
+            .filter { $0.clientName.caseInsensitiveCompare(clientName) == .orderedSame && $0.atUtc >= now }
+            .sorted { $0.atUtc < $1.atUtc }
+            .first
+    }
+
+    /// Total scheduled revenue for appointments in [start, end] whose treatment
+    /// is known. Matches C#'s `ScheduledRevenueBetween` → `Sum(treatment.Price)`.
+    public func scheduledRevenueBetween(start: Date, end: Date) -> Decimal {
+        lock.lock(); defer { lock.unlock() }
+        return appts
+            .filter { $0.atUtc >= start && $0.atUtc <= end && treatments[$0.treatmentId] != nil }
+            .reduce(Decimal(0)) { $0 + treatments[$1.treatmentId]!.price }
+    }
 }
 
 // MARK: - BeautyDomainContext

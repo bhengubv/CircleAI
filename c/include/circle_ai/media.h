@@ -111,8 +111,22 @@ ca_media_asset_t *ca_media_library_search(const ca_media_library_t *lib,
                                           const char *q, int top_k,
                                           size_t *out_count);
 
-/* Number of assets currently held. */
+/* Number of assets currently held (Count). */
 size_t ca_media_library_count(const ca_media_library_t *lib);
+
+/* Remove(id) — drop an asset by id. Returns true if it was present. id required
+ * (non-null / non-empty, per string.IsNullOrEmpty). */
+bool ca_media_library_remove(ca_media_library_t *lib, const char *id);
+
+/* TotalBytes — sum of Bytes over every catalogued asset. */
+int64_t ca_media_library_total_bytes(const ca_media_library_t *lib);
+
+/* ByMime(mimePrefix) -> fresh owned array (*out_count): assets whose Mime starts
+ * with mimePrefix (OrdinalIgnoreCase), ordered by CreatedAtUtc descending. Empty
+ * prefix (string.IsNullOrEmpty) yields NULL + 0. NULL + SIZE_MAX on error. */
+ca_media_asset_t *ca_media_library_by_mime(const ca_media_library_t *lib,
+                                           const char *mime_prefix,
+                                           size_t *out_count);
 
 /* ===========================================================================
  * CircleAI.MediaHub — MediaItem + PlaybackPosition

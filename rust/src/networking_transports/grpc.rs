@@ -47,6 +47,18 @@ pub enum GrpcChannelState {
     Shutdown,
 }
 
+/// Lifecycle state of a managed gRPC connection, mirroring the connectivity states
+/// a channel steps through as reconnection is driven. 1:1 with the C#
+/// `GrpcConnectionState`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum GrpcConnectionState {
+    Idle,
+    Connecting,
+    Ready,
+    TransientFailure,
+    Shutdown,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Value records
 // ─────────────────────────────────────────────────────────────────────────────
@@ -261,6 +273,103 @@ impl InMemoryGrpcCallMetrics {
         v.sort_by(|a, b| b.at_utc.cmp(&a.at_utc));
         v.truncate(limit);
         v
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GrpcReconnectPolicy — port of the C# reconnection record
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Reconnection strategy for a managed gRPC channel: how many attempts to make and
+/// how to grow the backoff between them. Port of the C# `GrpcReconnectPolicy` —
+/// fulfils the channel-lifecycle and reconnection promise of the transport without
+/// any transport deps.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GrpcReconnectPolicy {
+    pub max_attempts: i32,
+    pub initial_backoff: Duration,
+    pub backoff_multiplier: f64,
+    pub max_backoff: Duration,
+}
+
+impl GrpcReconnectPolicy {
+    pub fn new(
+        max_attempts: i32,
+        initial_backoff: Duration,
+        backoff_multiplier: f64,
+        max_backoff: Duration,
+    ) -> Self {
+        Self {
+            max_attempts,
+            initial_backoff,
+            backoff_multiplier,
+            max_backoff,
+        }
+    }
+
+    /// A sane default: 5 attempts, 200ms growing ×2 up to a 30s ceiling. Port of
+    /// the C# `GrpcReconnectPolicy.Default`.
+    pub fn default_policy() -> Self {
+        Self::new(5, Duration::from_millis(200), 2.0, Duration::from_secs(30))
+    }
+
+    /// Backoff before a given 1-based `attempt`:
+    /// `initial_backoff × multiplier^(attempt-1)`, capped at
+    /// [`max_backoff`](Self::max_backoff). Attempt 1 returns
+    /// [`initial_backoff`](Self::initial_backoff). Overflow-safe: an infinite or
+    /// over-cap scaled value clamps to `max_backoff`, matching the C#
+    /// `BackoffFor`.
+    ///
+    /// # Panics
+    /// Panics when `attempt < 1` (the C# `ArgumentOutOfRangeException` — the
+    /// attempt number is 1-based).
+    pub fn backoff_for(&self, attempt: i32) -> Duration {
+        assert!(attempt >= 1, "attempt is 1-based");
+        let scaled =
+            self.initial_backoff.as_millis() as f64 * self.backoff_multiplier.powi(attempt - 1);
+        let cap_ms = self.max_backoff.as_millis() as f64;
+        if scaled.is_infinite() || scaled > cap_ms {
+            return self.max_backoff;
+        }
+        Duration::from_millis(scaled as u64)
+    }
+
+    /// True when the 1-based `attempt` number is still within the retry budget.
+    /// Mirrors `ShouldRetry`.
+    pub fn should_retry(&self, attempt: i32) -> bool {
+        attempt < self.max_attempts
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GrpcDeadline — port of the C# static deadline helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Deadline math for gRPC calls: turns a relative timeout into the absolute UTC
+/// instant a call must complete by, and reports remaining time against a clock.
+/// Port of the C# static `GrpcDeadline`.
+pub struct GrpcDeadline;
+
+impl GrpcDeadline {
+    /// Absolute deadline for a call started at `now_utc` with the given `timeout`.
+    /// Mirrors `FromTimeout`. (A [`Duration`] is inherently non-negative, so the
+    /// C# `timeout < TimeSpan.Zero` guard is unrepresentable here.)
+    pub fn from_timeout(timeout: Duration, now_utc: DateTime<Utc>) -> DateTime<Utc> {
+        // `from_std` only fails past ~292e6 years, unreachable for real timeouts;
+        // the `zero()` fallback mirrors the crate's DTN idiom.
+        now_utc + chrono::Duration::from_std(timeout).unwrap_or_else(|_| chrono::Duration::zero())
+    }
+
+    /// Time left before `deadline_utc`, clamped to zero once passed. Mirrors
+    /// `Remaining`.
+    pub fn remaining(deadline_utc: DateTime<Utc>, now_utc: DateTime<Utc>) -> Duration {
+        let left = deadline_utc - now_utc;
+        left.to_std().unwrap_or(Duration::ZERO)
+    }
+
+    /// True once `now_utc` has reached or passed the deadline. Mirrors `IsExpired`.
+    pub fn is_expired(deadline_utc: DateTime<Utc>, now_utc: DateTime<Utc>) -> bool {
+        now_utc >= deadline_utc
     }
 }
 

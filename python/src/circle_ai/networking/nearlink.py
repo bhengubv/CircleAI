@@ -163,6 +163,52 @@ class InMemoryNearLinkRegistry:
             ]
         return statistics.fmean(samples) if samples else -127.0
 
+    def avg_kbps_read(self, device_id: str) -> float:
+        """Mean read throughput for ``device_id``; 0.0 when no samples
+        (C#: ``DefaultIfEmpty(0.0).Average()``).
+        """
+        with self._lock:
+            reads = [
+                t.kbps_read for t in self._throughput if t.device_id == device_id
+            ]
+        return statistics.fmean(reads) if reads else 0.0
+
+    def avg_kbps_write(self, device_id: str) -> float:
+        """Mean write throughput for ``device_id``; 0.0 when no samples
+        (C#: ``DefaultIfEmpty(0.0).Average()``).
+        """
+        with self._lock:
+            writes = [
+                t.kbps_write for t in self._throughput if t.device_id == device_id
+            ]
+        return statistics.fmean(writes) if writes else 0.0
+
+    def unregister(self, device_id: str) -> bool:
+        """Remove a paired device: drop its device record and cached pairing
+        state. Open sessions are left untouched (close them explicitly via
+        :meth:`close_session`). Returns True if a device record was actually
+        removed (C#: ``Unregister``).
+        """
+        if not device_id:
+            return False
+        with self._lock:
+            removed = self._devices.pop(device_id, None) is not None
+            self._states.pop(device_id, None)
+        return removed
+
+    def sessions_for_device(self, device_id: str) -> Sequence[NearLinkSession]:
+        """Active sessions belonging to ``device_id``, oldest-first by start
+        time (C#: ``SessionsForDevice`` — ordinal device-id match, ordered by
+        ``StartedUtc``). Empty ``device_id`` yields nothing.
+        """
+        if not device_id:
+            return []
+        with self._lock:
+            matches = [
+                s for s in self._sessions.values() if s.device_id == device_id
+            ]
+        return sorted(matches, key=lambda s: s.started_utc)
+
 
 class INearLinkAdapter(ABC):
     """Platform-level NearLink / SLE operations. Implement with the Huawei

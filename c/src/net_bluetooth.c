@@ -10,6 +10,7 @@
 
 #include "circle_ai/net_bluetooth.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -324,6 +325,112 @@ double ca_bt_registry_avg_kbps_read(const ca_bt_registry_t *r,
         }
     }
     return n == 0 ? 0.0 : sum / (double)n;
+}
+
+double ca_bt_registry_avg_kbps_write(const ca_bt_registry_t *r,
+                                     const char *device_id) {
+    if (!r || !device_id) return 0.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < r->tp_count; ++i) {
+        if (strcmp(r->tp[i].device_id, device_id) == 0) {
+            sum += r->tp[i].kbps_write;
+            n++;
+        }
+    }
+    /* .Select(KbpsWrite).DefaultIfEmpty(0.0).Average() */
+    return n == 0 ? 0.0 : sum / (double)n;
+}
+
+bool ca_bt_registry_unregister(ca_bt_registry_t *r, const char *device_id) {
+    /* string.IsNullOrEmpty(deviceId) -> false. */
+    if (!r || !device_id || device_id[0] == '\0') return false;
+    /* Remove the endpoint descriptor (the return value tracks this removal). */
+    ptrdiff_t ei = reg_ep_index(r, device_id);
+    bool removed = false;
+    if (ei >= 0) {
+        ca_bt_endpoint_descriptor_destroy(r->endpoints[(size_t)ei]);
+        for (size_t i = (size_t)ei; i + 1 < r->ep_count; ++i)
+            r->endpoints[i] = r->endpoints[i + 1];
+        r->ep_count--;
+        removed = true;
+    }
+    /* _states.TryRemove(deviceId, out _) — drop any tracked state regardless. */
+    ptrdiff_t si = reg_state_index(r, device_id);
+    if (si >= 0) {
+        free(r->states[(size_t)si].device_id);
+        for (size_t i = (size_t)si; i + 1 < r->state_count; ++i)
+            r->states[i] = r->states[i + 1];
+        r->state_count--;
+    }
+    return removed;
+}
+
+/* OrdinalIgnoreCase equality (ASCII case-fold), for service matching. */
+static bool bt_ci_eq(const char *a, const char *b) {
+    if (a == b) return true;
+    if (!a || !b) return false;
+    for (;; ++a, ++b) {
+        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
+        if (ca != cb) return false;
+        if (ca == 0) return true;
+    }
+}
+
+/* Does an endpoint advertise `service` (OrdinalIgnoreCase Contains)? */
+static bool ep_has_service(const ca_bt_endpoint_descriptor_t *e,
+                           const char *service) {
+    for (size_t i = 0; i < e->advertised_count; ++i)
+        if (bt_ci_eq(e->advertised_services[i], service)) return true;
+    return false;
+}
+
+int ca_bt_registry_endpoints_with_service(const ca_bt_registry_t *r,
+                                          const char *service,
+                                          ca_bt_endpoint_descriptor_t ***out,
+                                          size_t *count) {
+    if (!r || !out || !count) { if (out) *out = NULL; if (count) *count = SIZE_MAX; return -1; }
+    /* string.IsNullOrEmpty(service) -> Array.Empty. */
+    if (!service || service[0] == '\0') { *out = NULL; *count = 0; return 0; }
+
+    ep_ref_t *refs = (ep_ref_t *)calloc(r->ep_count ? r->ep_count : 1,
+                                        sizeof(*refs));
+    if (!refs) { *out = NULL; *count = SIZE_MAX; return -1; }
+    size_t n = 0;
+    for (size_t i = 0; i < r->ep_count; ++i) {
+        if (ep_has_service(r->endpoints[i], service)) {
+            refs[n].e = r->endpoints[i];
+            refs[n].ord = i;
+            n++;
+        }
+    }
+    if (n == 0) { free(refs); *out = NULL; *count = 0; return 0; }
+    qsort(refs, n, sizeof(*refs), cmp_ep_by_name);
+    ca_bt_endpoint_descriptor_t **arr =
+        (ca_bt_endpoint_descriptor_t **)calloc(n, sizeof(*arr));
+    if (!arr) { free(refs); *out = NULL; *count = SIZE_MAX; return -1; }
+    for (size_t i = 0; i < n; ++i) {
+        arr[i] = ca_bt_endpoint_descriptor_copy(refs[i].e);
+        if (!arr[i]) {
+            for (size_t j = 0; j < i; ++j)
+                ca_bt_endpoint_descriptor_destroy(arr[j]);
+            free(arr); free(refs);
+            *out = NULL; *count = SIZE_MAX;
+            return -1;
+        }
+    }
+    free(refs);
+    *out = arr;
+    *count = n;
+    return 0;
+}
+
+size_t ca_bt_registry_connected_count(const ca_bt_registry_t *r) {
+    if (!r) return 0;
+    size_t n = 0;
+    for (size_t i = 0; i < r->state_count; ++i)
+        if (r->states[i].state == CA_BT_STATE_CONNECTED) n++;
+    return n;
 }
 
 /* ===========================================================================

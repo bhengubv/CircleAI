@@ -108,6 +108,40 @@ ca_beauty_treatment_t *ca_beauty_board_recommend_for(const ca_beauty_board_t *b,
                                                      const char *client_name,
                                                      size_t *out_count);
 
+/* TreatmentCount — number of catalogued treatments. NULL board → 0. */
+size_t ca_beauty_board_treatment_count(const ca_beauty_board_t *b);
+
+/* CancelAppointment(apptId) — remove every appointment whose ApptId matches
+ * (Ordinal). Returns true if at least one was removed. */
+bool ca_beauty_board_cancel_appointment(ca_beauty_board_t *b,
+                                        const char *appt_id);
+
+/* AppointmentsForClient(clientName) -> fresh owned array of the client's
+ * appointments (ClientName OrdinalIgnoreCase), ordered by AtUtc ascending.
+ * NULL + 0 empty; NULL + SIZE_MAX on error. */
+ca_beauty_appointment_t *ca_beauty_board_appointments_for_client(
+    const ca_beauty_board_t *b, const char *client_name, size_t *out_count);
+
+/* TreatmentsUnder(maxPrice) -> fresh owned array of treatments with Price <=
+ * maxPrice (micro-units), ordered by Price ascending. NULL + 0 empty; NULL +
+ * SIZE_MAX on error. */
+ca_beauty_treatment_t *ca_beauty_board_treatments_under(
+    const ca_beauty_board_t *b, ca_beauty_decimal_t max_price, size_t *out_count);
+
+/* NextAppointmentFor(clientName, now_ms) -> the client's soonest appointment at
+ * or after now_ms (ClientName OrdinalIgnoreCase, ordered by AtUtc): writes a
+ * fresh owned copy into *out and returns true. false (C# null) when none / bad
+ * args. */
+bool ca_beauty_board_next_appointment_for(const ca_beauty_board_t *b,
+                                          const char *client_name, int64_t now_ms,
+                                          ca_beauty_appointment_t *out);
+
+/* ScheduledRevenueBetween(start_ms, end_ms) — sum of the Price of the treatment
+ * booked by each appointment whose AtUtc is in [start, end] and whose treatment
+ * still exists. Micro-units. 0 when none / NULL board. */
+ca_beauty_decimal_t ca_beauty_board_scheduled_revenue_between(
+    const ca_beauty_board_t *b, int64_t start_ms, int64_t end_ms);
+
 #ifdef __cplusplus
 }
 #endif

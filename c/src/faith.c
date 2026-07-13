@@ -316,3 +316,139 @@ ca_faith_scripture_t *ca_faith_board_by_tradition(const ca_faith_board_t *b,
     *out_count = n;
     return out;
 }
+
+size_t ca_faith_board_service_count(const ca_faith_board_t *b) {
+    return b ? b->s_count : 0;
+}
+
+bool ca_faith_board_remove_service(ca_faith_board_t *b, const char *service_id) {
+    /* _services.TryRemove(serviceId, out _). */
+    if (!b || !service_id) return false;
+    for (size_t i = 0; i < b->s_count; ++i) {
+        if (cab_ord_eq(b->services[i].service_id, service_id)) {
+            ca_faith_service_free(&b->services[i]);
+            for (size_t j = i; j + 1 < b->s_count; ++j)
+                b->services[j] = b->services[j + 1];
+            b->s_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+ca_faith_service_t *ca_faith_board_services_at(const ca_faith_board_t *b,
+                                               const char *location,
+                                               size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !location) { *out_count = (size_t)-1; return NULL; }
+    if (b->s_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->s_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->s_count; ++i)
+        if (cab_ci_eq(b->services[i].location, location)) idx[n++] = i;
+    service_sort_asc(b, idx, n);
+
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+    ca_faith_service_t *out = (ca_faith_service_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!service_copy(&out[i], &b->services[idx[i]])) {
+            ca_faith_service_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_faith_prayer_t *ca_faith_board_prayers_by_author(const ca_faith_board_t *b,
+                                                    const char *author,
+                                                    size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !author) { *out_count = (size_t)-1; return NULL; }
+    if (b->p_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->p_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    /* !IsAnonymous && Author matches (OrdinalIgnoreCase) — anonymous excluded. */
+    for (size_t i = 0; i < b->p_count; ++i)
+        if (!b->prayers[i].is_anonymous &&
+            cab_ci_eq(b->prayers[i].author, author))
+            idx[n++] = i;
+    prayer_sort_desc(b, idx, n);
+
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+    ca_faith_prayer_t *out = (ca_faith_prayer_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!prayer_copy(&out[i], &b->prayers[idx[i]])) {
+            ca_faith_prayer_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+size_t ca_faith_board_anonymous_prayer_count(const ca_faith_board_t *b) {
+    if (!b) return 0;
+    size_t n = 0;
+    for (size_t i = 0; i < b->p_count; ++i)
+        if (b->prayers[i].is_anonymous) n++;
+    return n;
+}
+
+ca_faith_scripture_t *ca_faith_board_chapter_verses(const ca_faith_board_t *b,
+                                                    const char *tradition,
+                                                    const char *book,
+                                                    int chapter,
+                                                    size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !tradition || !book) { *out_count = (size_t)-1; return NULL; }
+    if (b->sc_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->sc_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->sc_count; ++i) {
+        const ca_faith_scripture_t *s = &b->scripture[i];
+        if (cab_ci_eq(s->tradition, tradition) && cab_ci_eq(s->book, book) &&
+            s->chapter == chapter)
+            idx[n++] = i;
+    }
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderBy(Verse) ascending, stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        int key = b->scripture[cur].verse;
+        size_t j = i;
+        while (j > 0 && b->scripture[idx[j - 1]].verse > key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_faith_scripture_t *out = (ca_faith_scripture_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!scripture_copy(&out[i], &b->scripture[idx[i]])) {
+            ca_faith_scripture_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}

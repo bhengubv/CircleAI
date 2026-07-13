@@ -95,6 +95,9 @@ interface ISafetyBoard {
     /** All incidents, newest first. */
     val active: List<Incident>
 
+    /** Total number of incidents logged since this board was created. */
+    val incidentCount: Int
+
     /** Incidents whose severity is at or above [minimum], newest first. */
     fun atOrAboveSeverity(minimum: IncidentSeverity): List<Incident>
 
@@ -104,14 +107,23 @@ interface ISafetyBoard {
     /** All hazards, most-recently-noted first. */
     val hazards: List<Hazard>
 
+    /** Hazards filed under a given category (case-insensitive), newest-first. */
+    fun hazardsByCategory(category: String): List<Hazard>
+
     /** Append an emergency contact. */
     fun addContact(c: EmergencyContact)
+
+    /** Remove the first emergency contact matching an id. Returns true if one was removed. */
+    fun removeContact(contactId: String): Boolean
 
     /** The first-added contact, or null when the ring is empty. */
     val firstContact: EmergencyContact?
 
     /** All contacts in insertion order. */
     val contacts: List<EmergencyContact>
+
+    /** Emergency contacts with a given relationship (e.g. "spouse", "doctor"), case-insensitive. */
+    fun contactsByRelationship(relationship: String): List<EmergencyContact>
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +150,9 @@ class InMemorySafetyBoard : ISafetyBoard {
     override val active: List<Incident>
         get() = synchronized(lock) { incidents.sortedByDescending { it.atUtc } }
 
+    override val incidentCount: Int
+        get() = synchronized(lock) { incidents.size }
+
     override fun atOrAboveSeverity(minimum: IncidentSeverity): List<Incident> =
         synchronized(lock) {
             incidents
@@ -152,8 +167,27 @@ class InMemorySafetyBoard : ISafetyBoard {
     override val hazards: List<Hazard>
         get() = synchronized(lock) { hazardsMap.values.sortedByDescending { it.notedUtc } }
 
+    override fun hazardsByCategory(category: String): List<Hazard> {
+        if (category.isEmpty()) return emptyList()
+        return synchronized(lock) {
+            hazardsMap.values
+                .filter { it.category.equals(category, ignoreCase = true) }
+                .sortedByDescending { it.notedUtc }
+        }
+    }
+
     override fun addContact(c: EmergencyContact) {
         synchronized(lock) { contactsList.add(c) }
+    }
+
+    override fun removeContact(contactId: String): Boolean {
+        if (contactId.isEmpty()) return false
+        synchronized(lock) {
+            val idx = contactsList.indexOfFirst { it.contactId == contactId }
+            if (idx < 0) return false
+            contactsList.removeAt(idx)
+            return true
+        }
     }
 
     override val firstContact: EmergencyContact?
@@ -161,6 +195,13 @@ class InMemorySafetyBoard : ISafetyBoard {
 
     override val contacts: List<EmergencyContact>
         get() = synchronized(lock) { contactsList.toList() }
+
+    override fun contactsByRelationship(relationship: String): List<EmergencyContact> {
+        if (relationship.isEmpty()) return emptyList()
+        return synchronized(lock) {
+            contactsList.filter { it.relationship.equals(relationship, ignoreCase = true) }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -371,6 +371,116 @@ double ca_nearlink_registry_avg_rssi(const ca_nearlink_registry_t *r,
     return n == 0 ? -127.0 : sum / (double)n;
 }
 
+double ca_nearlink_registry_avg_kbps_read(const ca_nearlink_registry_t *r,
+                                          const char *device_id) {
+    if (!r || !device_id) return 0.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < r->tp_count; ++i) {
+        if (strcmp(r->tp[i].device_id, device_id) == 0) {
+            sum += r->tp[i].kbps_read;
+            n++;
+        }
+    }
+    /* .Select(KbpsRead).DefaultIfEmpty(0.0).Average() */
+    return n == 0 ? 0.0 : sum / (double)n;
+}
+
+double ca_nearlink_registry_avg_kbps_write(const ca_nearlink_registry_t *r,
+                                           const char *device_id) {
+    if (!r || !device_id) return 0.0;
+    double sum = 0.0;
+    size_t n = 0;
+    for (size_t i = 0; i < r->tp_count; ++i) {
+        if (strcmp(r->tp[i].device_id, device_id) == 0) {
+            sum += r->tp[i].kbps_write;
+            n++;
+        }
+    }
+    /* .Select(KbpsWrite).DefaultIfEmpty(0.0).Average() */
+    return n == 0 ? 0.0 : sum / (double)n;
+}
+
+bool ca_nearlink_registry_unregister(ca_nearlink_registry_t *r,
+                                     const char *device_id) {
+    /* string.IsNullOrEmpty(deviceId) -> false. */
+    if (!r || !device_id || device_id[0] == '\0') return false;
+    ptrdiff_t di = nl_dev_index(r, device_id);
+    bool removed = false;
+    if (di >= 0) {
+        ca_nearlink_device_destroy(r->devices[(size_t)di]);
+        for (size_t i = (size_t)di; i + 1 < r->dev_count; ++i)
+            r->devices[i] = r->devices[i + 1];
+        r->dev_count--;
+        removed = true;
+    }
+    /* _states.TryRemove(deviceId, out _) — drop cached pairing state. Open
+     * sessions are intentionally left untouched. */
+    ptrdiff_t si = nl_state_index(r, device_id);
+    if (si >= 0) {
+        free(r->states[(size_t)si].device_id);
+        for (size_t i = (size_t)si; i + 1 < r->state_count; ++i)
+            r->states[i] = r->states[i + 1];
+        r->state_count--;
+    }
+    return removed;
+}
+
+typedef struct { const ca_nearlink_session_t *s; size_t ord; } sess_ref_t;
+static int cmp_sess_by_started(const void *a, const void *b) {
+    const sess_ref_t *ra = (const sess_ref_t *)a;
+    const sess_ref_t *rb = (const sess_ref_t *)b;
+    if (ra->s->started_unix_ms < rb->s->started_unix_ms) return -1;
+    if (ra->s->started_unix_ms > rb->s->started_unix_ms) return 1;
+    if (ra->ord < rb->ord) return -1;
+    if (ra->ord > rb->ord) return 1;
+    return 0;
+}
+
+int ca_nearlink_registry_sessions_for_device(const ca_nearlink_registry_t *r,
+                                             const char *device_id,
+                                             ca_nearlink_session_t ***out,
+                                             size_t *count) {
+    if (!r || !out || !count) {
+        if (out) *out = NULL;
+        if (count) *count = SIZE_MAX;
+        return -1;
+    }
+    /* string.IsNullOrEmpty(deviceId) -> Array.Empty. */
+    if (!device_id || device_id[0] == '\0') { *out = NULL; *count = 0; return 0; }
+
+    sess_ref_t *refs = (sess_ref_t *)calloc(r->sess_count ? r->sess_count : 1,
+                                            sizeof(*refs));
+    if (!refs) { *out = NULL; *count = SIZE_MAX; return -1; }
+    size_t n = 0;
+    for (size_t i = 0; i < r->sess_count; ++i) {
+        if (strcmp(r->sessions[i]->device_id, device_id) == 0) {
+            refs[n].s = r->sessions[i];
+            refs[n].ord = i;
+            n++;
+        }
+    }
+    if (n == 0) { free(refs); *out = NULL; *count = 0; return 0; }
+    qsort(refs, n, sizeof(*refs), cmp_sess_by_started);
+    ca_nearlink_session_t **arr =
+        (ca_nearlink_session_t **)calloc(n, sizeof(*arr));
+    if (!arr) { free(refs); *out = NULL; *count = SIZE_MAX; return -1; }
+    for (size_t i = 0; i < n; ++i) {
+        arr[i] = ca_nearlink_session_copy(refs[i].s);
+        if (!arr[i]) {
+            for (size_t j = 0; j < i; ++j)
+                ca_nearlink_session_destroy(arr[j]);
+            free(arr); free(refs);
+            *out = NULL; *count = SIZE_MAX;
+            return -1;
+        }
+    }
+    free(refs);
+    *out = arr;
+    *count = n;
+    return 0;
+}
+
 /* ===========================================================================
  * Unbounded FIFO of NetworkPayload* (transport inbound channel)
  * =========================================================================== */

@@ -71,6 +71,34 @@ class InMemoryAccessibilityBoard : IAccessibilityBoard {
         for (n in p.needs) hints.add(AdaptationHint("need", n.name))
         return hints
     }
+
+    /** Number of profiles currently stored. */
+    val count: Int get() = profiles.size
+
+    /** Remove a user's profile. Returns true if one was present. */
+    fun remove(userId: String): Boolean = profiles.remove(userId) != null
+
+    /** Profiles that declare [need], ordered by user id (case-insensitive). */
+    fun withNeed(need: AccessibilityNeed): List<UserAccessibilityProfile> =
+        profiles.values.filter { need in it.needs }
+            .sortedBy { it.userId.lowercase(Locale.US) }
+
+    /** Profiles that use a screen reader, ordered by user id (case-insensitive). */
+    fun screenReaderUsers(): List<UserAccessibilityProfile> =
+        profiles.values.filter { it.screenReader }
+            .sortedBy { it.userId.lowercase(Locale.US) }
+
+    /** Mean text scale across all profiles; 1.0 when there are none. */
+    fun averageTextScale(): Double {
+        val vals = profiles.values.map { it.textScale }
+        return if (vals.isEmpty()) 1.0 else vals.average()
+    }
+
+    /** True when the user's profile exists and its text scale is at or above [threshold]. */
+    fun needsLargeText(userId: String, threshold: Double = 1.3): Boolean {
+        val p = profiles[userId] ?: return false
+        return p.textScale >= threshold
+    }
 }
 
 // =====================================================================

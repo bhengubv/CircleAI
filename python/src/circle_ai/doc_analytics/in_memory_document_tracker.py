@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .contracts import (
     DocumentInsight,
@@ -65,3 +65,87 @@ class InMemoryDocumentTracker(IDocumentTracker, IDocumentInsights):
             unique = len({v.viewer_id for v in views})
             avg_seconds = sum(v.duration.total_seconds() for v in views) / total
             return DocumentInsight(document_id, total, unique, avg_seconds)
+
+    @property
+    def document_count(self) -> int:
+        """Number of distinct documents that have at least one recorded view
+        (C#: ``DocumentCount``).
+        """
+        with self._write_lock:
+            return len(self._by_doc)
+
+    @property
+    def total_views(self) -> int:
+        """Total views recorded across every tracked document
+        (C#: ``TotalViews``).
+        """
+        with self._write_lock:
+            return sum(len(v) for v in self._by_doc.values())
+
+    def clear(self, document_id: str) -> bool:
+        """Drop all recorded views for ``document_id``. Returns True if anything
+        was removed (C#: ``Clear``).
+        """
+        if document_id is None or document_id.strip() == "":
+            raise ValueError("documentId required")
+        with self._write_lock:
+            return self._by_doc.pop(document_id, None) is not None
+
+    def top_documents(self, top_k: int = 5) -> List[Tuple[str, int]]:
+        """The most-viewed documents, highest first, capped at ``top_k``
+        (C#: ``TopDocuments`` — ``(DocumentId, Views)`` pairs).
+        """
+        if top_k <= 0:
+            raise ValueError("top_k must be positive")
+        with self._write_lock:
+            pairs = [(k, len(v)) for k, v in self._by_doc.items()]
+        pairs.sort(key=lambda t: t[1], reverse=True)
+        return pairs[:top_k]
+
+    def recent_views(
+        self, document_id: str, limit: int = 20
+    ) -> List[DocumentView]:
+        """Most recent views for ``document_id``, newest first
+        (C#: ``RecentViews``).
+        """
+        if document_id is None or document_id.strip() == "":
+            raise ValueError("documentId required")
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        with self._write_lock:
+            views = self._by_doc.get(document_id)
+            if views is None:
+                return []
+            ordered = sorted(views, key=lambda v: v.at_utc, reverse=True)
+        return ordered[:limit]
+
+    def total_pages_viewed(self, document_id: str) -> int:
+        """Sum of pages viewed across every recorded view of ``document_id``
+        (C#: ``TotalPagesViewed`` — 0 when the document is unknown).
+        """
+        if document_id is None or document_id.strip() == "":
+            raise ValueError("documentId required")
+        with self._write_lock:
+            views = self._by_doc.get(document_id)
+            return sum(v.pages_viewed for v in views) if views is not None else 0
+
+    def most_engaged_viewer(self, document_id: str) -> Optional[str]:
+        """The viewer who spent the most cumulative time on ``document_id``, if
+        any (C#: ``MostEngagedViewer`` — groups by viewer, orders by total
+        duration descending, takes the first; ties keep first-seen order).
+        """
+        if document_id is None or document_id.strip() == "":
+            raise ValueError("documentId required")
+        with self._write_lock:
+            views = self._by_doc.get(document_id)
+            if views is None or len(views) == 0:
+                return None
+            totals: Dict[str, float] = {}
+            for v in views:
+                totals[v.viewer_id] = (
+                    totals.get(v.viewer_id, 0.0) + v.duration.total_seconds()
+                )
+        ordered = sorted(
+            totals.items(), key=lambda kv: kv[1], reverse=True
+        )
+        return ordered[0][0]

@@ -137,3 +137,79 @@ class InMemoryCreativeBoard(ICreativeBoard):
         if not scores:
             return 0.0
         return sum(scores) / len(scores)
+
+    @property
+    def work_count(self) -> int:
+        """Number of catalogued works (C#: ``WorkCount``)."""
+        with self._lock:
+            return len(self._works)
+
+    def remove_work(self, work_id: str) -> bool:
+        """Remove a work and cascade-delete its critiques. Returns True if the
+        work was present (C#: ``RemoveWork``).
+        """
+        with self._lock:
+            removed = self._works.pop(work_id, None) is not None
+            if removed:
+                self._critiques = [
+                    c for c in self._critiques if c.work_id != work_id
+                ]
+            return removed
+
+    def works_by_author(self, author: str) -> List[CreativeWork]:
+        """Works by a given author (case-insensitive), newest-first
+        (C#: ``WorksByAuthor``).
+        """
+        target = author.casefold()
+        with self._lock:
+            matches = [
+                w for w in self._works.values() if w.author.casefold() == target
+            ]
+        return sorted(matches, key=lambda w: w.created_utc, reverse=True)
+
+    def works_by_medium(self, medium: str) -> List[CreativeWork]:
+        """Works in a given medium (case-insensitive), newest-first
+        (C#: ``WorksByMedium``).
+        """
+        target = medium.casefold()
+        with self._lock:
+            matches = [
+                w for w in self._works.values() if w.medium.casefold() == target
+            ]
+        return sorted(matches, key=lambda w: w.created_utc, reverse=True)
+
+    def top_rated_work(self) -> Optional[CreativeWork]:
+        """The work with the highest average critique score whose record still
+        exists, or None (C#: ``TopRatedWork`` — critiques grouped by work id
+        (ordinal); ties keep first-seen order).
+        """
+        with self._lock:
+            averages: Dict[str, List] = {}  # work_id -> [sum, count]
+            for c in self._critiques:
+                agg = averages.get(c.work_id)
+                if agg is None:
+                    averages[c.work_id] = [float(c.score), 1]
+                else:
+                    agg[0] += float(c.score)
+                    agg[1] += 1
+            ranked = sorted(
+                averages.items(), key=lambda kv: kv[1][0] / kv[1][1], reverse=True
+            )
+            for work_id, _ in ranked:
+                w = self._works.get(work_id)
+                if w is not None:
+                    return w
+            return None
+
+    def all_tags(self) -> List[str]:
+        """Every distinct tag (case-insensitive), ordered case-insensitively
+        (C#: ``AllTags`` — first-seen casing is kept per distinct tag).
+        """
+        with self._lock:
+            seen: Dict[str, str] = {}  # casefold -> first-seen display
+            for w in self._works.values():
+                for t in w.tags:
+                    key = t.casefold()
+                    if key not in seen:
+                        seen[key] = t
+        return sorted(seen.values(), key=lambda t: t.casefold())

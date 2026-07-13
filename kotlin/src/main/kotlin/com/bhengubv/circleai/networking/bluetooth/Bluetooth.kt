@@ -142,6 +142,39 @@ class InMemoryBluetoothTransportRegistry {
             val vals = throughput.filter { it.deviceId == deviceId }.map { it.kbpsRead }
             if (vals.isEmpty()) 0.0 else vals.average()
         }
+
+    /** Mean write throughput (kbps) across all samples for [deviceId]; 0.0 when none. */
+    fun avgKbpsWrite(deviceId: String): Double =
+        synchronized(lock) {
+            val vals = throughput.filter { it.deviceId == deviceId }.map { it.kbpsWrite }
+            if (vals.isEmpty()) 0.0 else vals.average()
+        }
+
+    /**
+     * Drop a device from the registry: removes its endpoint descriptor and any
+     * tracked connection state. Returns true if an endpoint was actually removed.
+     */
+    fun unregister(deviceId: String): Boolean {
+        if (deviceId.isEmpty()) return false
+        val removed = endpoints.remove(deviceId) != null
+        states.remove(deviceId)
+        return removed
+    }
+
+    /**
+     * Endpoints advertising a given GATT/SPP service, matched case-insensitively
+     * and ordered by device name — the discovery view a service scanner needs.
+     */
+    fun endpointsWithService(service: String): List<BluetoothEndpointDescriptor> {
+        if (service.isEmpty()) return emptyList()
+        return endpoints.values
+            .filter { e -> e.advertisedServices.any { it.equals(service, ignoreCase = true) } }
+            .sortedBy { it.name }
+    }
+
+    /** Number of devices currently in the [BluetoothConnectionState.Connected] state. */
+    val connectedCount: Int
+        get() = states.values.count { it == BluetoothConnectionState.Connected }
 }
 
 // ===========================================================================

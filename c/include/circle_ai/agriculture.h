@@ -90,6 +90,35 @@ ca_farm_crop_t *ca_farm_board_crops_for_field(const ca_farm_board_t *b,
 double ca_farm_board_avg_yield_of_variety(const ca_farm_board_t *b,
                                           const char *variety);
 
+/* FieldCount — number of registered fields. NULL board → 0. */
+size_t ca_farm_board_field_count(const ca_farm_board_t *b);
+
+/* RemoveField(fieldId) — drop a field by id. Returns true if it was present. */
+bool ca_farm_board_remove_field(ca_farm_board_t *b, const char *field_id);
+
+/* TotalAreaHa() — sum of AreaHa across every field. */
+double ca_farm_board_total_area_ha(const ca_farm_board_t *b);
+
+/* FieldsBySoil(soilType) -> fresh owned array of fields whose SoilType matches
+ * (OrdinalIgnoreCase), ordered by AreaHa descending. NULL + 0 empty; NULL +
+ * SIZE_MAX on error. Caller frees each field + the block. */
+ca_farm_field_t *ca_farm_board_fields_by_soil(const ca_farm_board_t *b,
+                                              const char *soil_type,
+                                              size_t *out_count);
+
+/* DueForHarvest(asOf) -> fresh owned array of crops whose ExpectedHarvest is set
+ * and <= asOf (Unix ms UTC), ordered by ExpectedHarvest ascending. NULL + 0
+ * empty; NULL + SIZE_MAX on error. */
+ca_farm_crop_t *ca_farm_board_due_for_harvest(const ca_farm_board_t *b,
+                                              int64_t as_of_ms,
+                                              size_t *out_count);
+
+/* BestYieldingVariety() -> owned string naming the variety with the highest mean
+ * TonsPerHa across yields whose crop still exists (grouped OrdinalIgnoreCase, the
+ * first-seen spelling wins; ties keep first-appearance order). NULL when there
+ * are no such yields, or on OOM. Caller frees with free(). */
+char *ca_farm_board_best_yielding_variety(const ca_farm_board_t *b);
+
 #ifdef __cplusplus
 }
 #endif

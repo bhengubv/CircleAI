@@ -206,3 +206,83 @@ impl IBeautyBoard for InMemoryBeautyBoard {
             .collect()
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryBeautyBoard`/`IBeautyBoard`).
+impl InMemoryBeautyBoard {
+    /// Number of catalogued treatments. Mirrors `TreatmentCount`.
+    pub fn treatment_count(&self) -> usize {
+        self.treatments.lock().unwrap().len()
+    }
+
+    /// Cancels every appointment with `appt_id` (ordinal match). Returns `true`
+    /// if at least one was removed. Mirrors `CancelAppointment`.
+    pub fn cancel_appointment(&self, appt_id: &str) -> bool {
+        let mut appts = self.appts.lock().unwrap();
+        let before = appts.len();
+        appts.retain(|a| a.appt_id != appt_id);
+        appts.len() != before
+    }
+
+    /// A client's appointments (case-insensitive name), earliest first. Mirrors
+    /// `AppointmentsForClient`.
+    pub fn appointments_for_client(&self, client_name: &str) -> Vec<Appointment> {
+        let mut hits: Vec<Appointment> = self
+            .appts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.client_name.eq_ignore_ascii_case(client_name))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.at_utc.cmp(&b.at_utc));
+        hits
+    }
+
+    /// Treatments priced at or below `max_price`, cheapest first. Mirrors
+    /// `TreatmentsUnder`.
+    pub fn treatments_under(&self, max_price: f64) -> Vec<Treatment> {
+        let mut hits: Vec<Treatment> = self
+            .treatments
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|t| t.price <= max_price)
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.price.partial_cmp(&b.price).unwrap_or(std::cmp::Ordering::Equal));
+        hits
+    }
+
+    /// The client's next appointment at/after `now` (case-insensitive name),
+    /// earliest first, if any. Mirrors `NextAppointmentFor`.
+    pub fn next_appointment_for(
+        &self,
+        client_name: &str,
+        now: DateTime<Utc>,
+    ) -> Option<Appointment> {
+        let mut hits: Vec<Appointment> = self
+            .appts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.client_name.eq_ignore_ascii_case(client_name) && a.at_utc >= now)
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.at_utc.cmp(&b.at_utc));
+        hits.into_iter().next()
+    }
+
+    /// Total scheduled revenue for appointments in `[start, end]` whose treatment
+    /// is catalogued (sum of treatment prices). Mirrors `ScheduledRevenueBetween`.
+    pub fn scheduled_revenue_between(&self, start: DateTime<Utc>, end: DateTime<Utc>) -> f64 {
+        let treatments = self.treatments.lock().unwrap();
+        self.appts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.at_utc >= start && a.at_utc <= end)
+            .filter_map(|a| treatments.get(&a.treatment_id).map(|t| t.price))
+            .sum()
+    }
+}

@@ -83,8 +83,23 @@ public protocol IMediaLibrary: AnyObject {
     /// Fetch an asset by id, or nil if absent.
     func get(_ id: String) -> MediaAsset?
 
+    /// Remove an asset by id. Returns true if it was present.
+    @discardableResult
+    func remove(_ id: String) -> Bool
+
+    /// Number of assets currently catalogued.
+    var count: Int { get }
+
+    /// Total on-disk footprint of every catalogued asset, in bytes.
+    var totalBytes: Int64 { get }
+
     /// All assets of a given kind, newest-first (by `createdAtUtc`).
     func listByKind(_ kind: MediaKind) -> [MediaAsset]
+
+    /// Assets whose MIME type starts with a given prefix (e.g. "image/",
+    /// "audio/"), matched case-insensitively and returned newest-first. Empty
+    /// prefix yields nothing.
+    func byMime(_ mimePrefix: String) -> [MediaAsset]
 
     /// Title-substring search (case-insensitive), newest-first, capped to `topK`.
     func search(_ q: String, topK: Int) throws -> [MediaAsset]
@@ -117,6 +132,33 @@ public final class InMemoryMediaLibrary: IMediaLibrary, @unchecked Sendable {
 
     public func get(_ id: String) -> MediaAsset? {
         getItem(id)
+    }
+
+    @discardableResult
+    public func remove(_ id: String) -> Bool {
+        // C#: `!string.IsNullOrEmpty(id) && _items.TryRemove(id, out _)`.
+        if id.isEmpty { return false }
+        lock.lock(); defer { lock.unlock() }
+        return items.removeValue(forKey: id) != nil
+    }
+
+    public var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return items.count
+    }
+
+    public var totalBytes: Int64 {
+        // C#: `_items.Values.Sum(a => a.Bytes)`.
+        snapshotValues().reduce(0) { $0 + $1.bytes }
+    }
+
+    public func byMime(_ mimePrefix: String) -> [MediaAsset] {
+        // C#: empty prefix yields nothing; else StartsWith(OrdinalIgnoreCase),
+        // OrderByDescending(CreatedAtUtc).
+        if mimePrefix.isEmpty { return [] }
+        return snapshotValues()
+            .filter { $0.mime.range(of: mimePrefix, options: [.caseInsensitive, .anchored]) != nil }
+            .sorted { $0.createdAtUtc > $1.createdAtUtc }
     }
 
     public func listByKind(_ kind: MediaKind) -> [MediaAsset] {

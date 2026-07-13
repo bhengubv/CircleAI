@@ -273,3 +273,188 @@ double ca_creative_board_avg_score(const ca_creative_board_t *b,
     /* DefaultIfEmpty(0).Average(): 0.0 when empty. */
     return n == 0 ? 0.0 : sum / (double)n;
 }
+
+size_t ca_creative_board_work_count(const ca_creative_board_t *b) {
+    return b ? b->w_count : 0;
+}
+
+bool ca_creative_board_remove_work(ca_creative_board_t *b, const char *work_id) {
+    if (!b || !work_id) return false;
+    size_t at = b->w_count;
+    for (size_t i = 0; i < b->w_count; ++i)
+        if (cab_ord_eq(b->works[i].work_id, work_id)) { at = i; break; }
+    if (at == b->w_count) return false;   /* TryRemove failed */
+
+    ca_creative_work_free(&b->works[at]);
+    for (size_t i = at; i + 1 < b->w_count; ++i)
+        b->works[i] = b->works[i + 1];
+    b->w_count--;
+
+    /* _critiques.RemoveAll(c => c.WorkId == workId) — Ordinal, compact in place. */
+    size_t w = 0;
+    for (size_t i = 0; i < b->c_count; ++i) {
+        if (cab_ord_eq(b->critiques[i].work_id, work_id)) {
+            free(b->critiques[i].critique_id);
+            free(b->critiques[i].work_id);
+            free(b->critiques[i].reviewer);
+            free(b->critiques[i].body);
+        } else {
+            if (w != i) b->critiques[w] = b->critiques[i];
+            w++;
+        }
+    }
+    b->c_count = w;
+    return true;
+}
+
+/* Collect works matching an Author/Medium filter (OrdinalIgnoreCase) into a fresh
+ * owned array ordered by CreatedUtc descending (stable). by_author gates which
+ * field is compared. */
+static ca_creative_work_t *works_by_field(const ca_creative_board_t *b,
+                                          bool by_author, const char *value,
+                                          size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !value) { *out_count = (size_t)-1; return NULL; }
+    if (b->w_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->w_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->w_count; ++i) {
+        const char *field = by_author ? b->works[i].author : b->works[i].medium;
+        if (cab_ci_eq(field, value)) idx[n++] = i;
+    }
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderByDescending(CreatedUtc), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        int64_t key = b->works[cur].created_utc_ms;
+        size_t j = i;
+        while (j > 0 && b->works[idx[j - 1]].created_utc_ms < key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_creative_work_t *out = (ca_creative_work_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!work_copy(&out[i], &b->works[idx[i]])) {
+            ca_creative_work_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_creative_work_t *ca_creative_board_works_by_author(
+    const ca_creative_board_t *b, const char *author, size_t *out_count) {
+    return works_by_field(b, true, author, out_count);
+}
+
+ca_creative_work_t *ca_creative_board_works_by_medium(
+    const ca_creative_board_t *b, const char *medium, size_t *out_count) {
+    return works_by_field(b, false, medium, out_count);
+}
+
+/* Find a work by WorkId (Ordinal); NULL when absent. */
+static const ca_creative_work_t *work_find(const ca_creative_board_t *b,
+                                           const char *work_id) {
+    for (size_t i = 0; i < b->w_count; ++i)
+        if (cab_ord_eq(b->works[i].work_id, work_id)) return &b->works[i];
+    return NULL;
+}
+
+bool ca_creative_board_top_rated_work(const ca_creative_board_t *b,
+                                      ca_creative_work_t *out) {
+    if (out) memset(out, 0, sizeof(*out));
+    if (!b || !out) return false;
+    if (b->c_count == 0) return false;
+
+    /* Group critiques by WorkId (Ordinal, first-appearance order); accumulate
+     * sum + count to average. */
+    typedef struct { const char *work_id; double sum; size_t count; } grp_t;
+    grp_t *g = (grp_t *)malloc(b->c_count * sizeof(*g));
+    if (!g) return false;
+    size_t gc = 0;
+    for (size_t i = 0; i < b->c_count; ++i) {
+        const char *wid = b->critiques[i].work_id;
+        size_t k;
+        for (k = 0; k < gc; ++k)
+            if (cab_ord_eq(g[k].work_id, wid)) break;
+        if (k == gc) { g[gc].work_id = wid; g[gc].sum = 0.0; g[gc].count = 0; gc++; }
+        g[k].sum += (double)b->critiques[i].score;
+        g[k].count++;
+    }
+
+    /* OrderByDescending(Avg), stable insertion sort (first-appearance ties). */
+    for (size_t i = 1; i < gc; ++i) {
+        grp_t cur = g[i];
+        double cur_avg = cur.sum / (double)cur.count;
+        size_t j = i;
+        while (j > 0 && (g[j - 1].sum / (double)g[j - 1].count) < cur_avg) {
+            g[j] = g[j - 1]; --j;
+        }
+        g[j] = cur;
+    }
+
+    /* FirstOrDefault(w => w is not null): first group whose work still exists. */
+    const ca_creative_work_t *found = NULL;
+    for (size_t i = 0; i < gc; ++i) {
+        const ca_creative_work_t *w = work_find(b, g[i].work_id);
+        if (w) { found = w; break; }
+    }
+    free(g);
+    if (!found) return false;
+    return work_copy(out, found);
+}
+
+void ca_creative_tags_free(char **tags, size_t count) {
+    cab_strv_free(tags, count);
+}
+
+char **ca_creative_board_all_tags(const ca_creative_board_t *b,
+                                  size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b) { *out_count = (size_t)-1; return NULL; }
+
+    /* Count total tags to bound the distinct set. */
+    size_t total = 0;
+    for (size_t i = 0; i < b->w_count; ++i) total += b->works[i].tag_count;
+    if (total == 0) { *out_count = 0; return NULL; }
+
+    char **tags = (char **)calloc(total, sizeof(*tags));
+    if (!tags) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    /* Distinct(OrdinalIgnoreCase): keep the first-seen spelling of each tag. */
+    for (size_t i = 0; i < b->w_count; ++i) {
+        for (size_t t = 0; t < b->works[i].tag_count; ++t) {
+            const char *tag = b->works[i].tags[t];
+            bool seen = false;
+            for (size_t k = 0; k < n; ++k)
+                if (cab_ci_eq(tags[k], tag)) { seen = true; break; }
+            if (seen) continue;
+            char *dup = cab_strdup_empty(tag);
+            if (!dup) { cab_strv_free(tags, n); *out_count = (size_t)-1; return NULL; }
+            tags[n++] = dup;
+        }
+    }
+    if (n == 0) { free(tags); *out_count = 0; return NULL; }
+
+    /* OrderBy(t, OrdinalIgnoreCase), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        char *cur = tags[i];
+        size_t j = i;
+        while (j > 0 && cab_ci_cmp(tags[j - 1], cur) > 0) {
+            tags[j] = tags[j - 1]; --j;
+        }
+        tags[j] = cur;
+    }
+    *out_count = n;
+    return tags;
+}

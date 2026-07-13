@@ -76,6 +76,43 @@ class InMemoryCreativeBoard : ICreativeBoard {
         val scores = critiques.filter { it.workId == workId }.map { it.score.toDouble() }
         if (scores.isEmpty()) 0.0 else scores.average()
     }
+
+    /** Number of works catalogued. */
+    val workCount: Int get() = works.size
+
+    /** Remove a work by id, cascading its critiques. Returns true if the work was present. */
+    fun removeWork(workId: String): Boolean {
+        val removed = works.remove(workId) != null
+        if (removed) synchronized(lock) { critiques.removeAll { it.workId == workId } }
+        return removed
+    }
+
+    /** Works by a given author (case-insensitive), newest-first. */
+    fun worksByAuthor(author: String): List<CreativeWork> =
+        works.values.filter { it.author.equals(author, ignoreCase = true) }
+            .sortedByDescending { it.createdUtc }
+
+    /** Works in a given medium (case-insensitive), newest-first. */
+    fun worksByMedium(medium: String): List<CreativeWork> =
+        works.values.filter { it.medium.equals(medium, ignoreCase = true) }
+            .sortedByDescending { it.createdUtc }
+
+    /**
+     * The work with the highest mean critique score, or null when no critiqued work
+     * still exists. Mirrors the C# group-by-workId → avg → order desc → first extant.
+     */
+    fun topRatedWork(): CreativeWork? = synchronized(lock) {
+        critiques.groupBy { it.workId }
+            .map { (workId, group) -> workId to group.map { it.score }.average() }
+            .sortedByDescending { it.second }
+            .firstNotNullOfOrNull { works[it.first] }
+    }
+
+    /** Every distinct tag across all works (case-insensitive), ordered case-insensitively. */
+    fun allTags(): List<String> =
+        works.values.flatMap { it.tags }
+            .distinctBy { it.lowercase(java.util.Locale.US) }
+            .sortedBy { it.lowercase(java.util.Locale.US) }
 }
 
 // =====================================================================

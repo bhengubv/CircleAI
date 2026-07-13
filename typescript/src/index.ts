@@ -86,6 +86,21 @@ export * from "./aethernet/index.js";
 export * from "./security/aethernet/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CircleAI.Networking.* — per-transport shared metadata + helpers + in-memory
+// registries (no live sockets; deterministic registries mirroring the C#
+// InMemory* pattern):
+//   .Bluetooth — endpoint/capability descriptors, throughput samples, connection
+//                registry (service discovery, per-device throughput, connected count).
+//   .NearLink  — device pairing + session records, throughput/RSSI samples,
+//                registry (per-device sessions, throughput/RSSI rollups).
+//   .Grpc      — channel descriptor, retry + reconnect policies (exponential
+//                backoff), deadline math, in-memory call metrics.
+// ─────────────────────────────────────────────────────────────────────────────
+export * from "./networking/bluetooth/index.js";
+export * from "./networking/nearlink/index.js";
+export * from "./networking/grpc/index.js";
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CircleAI.Integration — external-integration layer (Phase B/C). Shared
 // contracts (ICalendarConnector / IEmailConnector / INewsSource / IWeatherProvider
 // / IRoutingProvider / IHomeAutomationConnector + CalendarEvent / EmailMessage /
@@ -443,6 +458,15 @@ export * from "./wearable/biosignals/index.js";
 // CircleAI.Accessibility — IAccessibilityBoard: AccessibilityNeed /
 // UserAccessibilityProfile / AdaptationHint (profiles → derived adaptation hints).
 export * from "./accessibility/index.js";
+
+// CircleAI.Media — IMediaLibrary + MediaKind / MediaAsset (audio/video/image asset
+// catalog: kind + MIME-prefix queries, byte-footprint + count rollups, title search).
+export * from "./media/index.js";
+
+// CircleAI.Safety — ISafetyBoard + IncidentSeverity / Incident / Hazard /
+// EmergencyContact (incident log with severity routing, hazards by category,
+// emergency contacts by relationship).
+export * from "./safety/index.js";
 
 // CircleAI.Ambient — IAmbientBoard (environmental readings, comfort preferences,
 // comfort test).

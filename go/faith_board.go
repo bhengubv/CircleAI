@@ -68,6 +68,18 @@ type FaithBoard interface {
 	// ByTradition lists references of a tradition (case-insensitive), sorted by
 	// ReferenceId.
 	ByTradition(tradition string) []ScriptureReference
+	// ServiceCount returns the number of scheduled services.
+	ServiceCount() int
+	// RemoveService drops a service by id, returning true if present.
+	RemoveService(serviceId string) bool
+	// ServicesAt lists services at a location (case-insensitive), oldest-first.
+	ServicesAt(location string) []FaithService
+	// PrayersByAuthor lists a non-anonymous author's prayers (case-insensitive), newest-first.
+	PrayersByAuthor(author string) []PrayerRequest
+	// AnonymousPrayerCount returns how many prayers were submitted anonymously.
+	AnonymousPrayerCount() int
+	// ChapterVerses lists a chapter's verses (tradition/book case-insensitive), by Verse.
+	ChapterVerses(tradition, book string, chapter int) []ScriptureReference
 }
 
 // InMemoryFaithBoard is a concurrency-safe in-memory FaithBoard. Ports
@@ -164,6 +176,86 @@ func (b *InMemoryFaithBoard) ByTradition(tradition string) []ScriptureReference 
 	}
 	b.mu.Unlock()
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ReferenceId < out[j].ReferenceId })
+	return out
+}
+
+// ServiceCount returns the number of scheduled services. Ports
+// InMemoryFaithBoard.ServiceCount.
+func (b *InMemoryFaithBoard) ServiceCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.services)
+}
+
+// RemoveService drops a service by id, returning true if present. Ports
+// InMemoryFaithBoard.RemoveService (TryRemove).
+func (b *InMemoryFaithBoard) RemoveService(serviceId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.services[serviceId]
+	delete(b.services, serviceId)
+	return ok
+}
+
+// ServicesAt lists services at a location (case-insensitive), ordered by StartUtc
+// ascending. Ports InMemoryFaithBoard.ServicesAt.
+func (b *InMemoryFaithBoard) ServicesAt(location string) []FaithService {
+	b.mu.Lock()
+	out := make([]FaithService, 0)
+	for _, s := range b.services {
+		if strings.EqualFold(s.Location, location) {
+			out = append(out, s)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].StartUtc.Before(out[j].StartUtc) })
+	return out
+}
+
+// PrayersByAuthor lists a named author's non-anonymous prayers (case-insensitive
+// on Author), newest-first. It is privacy-aware: anonymous prayers are never
+// surfaced even when their Author field matches. Ports
+// InMemoryFaithBoard.PrayersByAuthor.
+func (b *InMemoryFaithBoard) PrayersByAuthor(author string) []PrayerRequest {
+	b.mu.Lock()
+	out := make([]PrayerRequest, 0)
+	for _, p := range b.prayers {
+		if !p.IsAnonymous && strings.EqualFold(p.Author, author) {
+			out = append(out, p)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].SubmittedUtc.After(out[j].SubmittedUtc) })
+	return out
+}
+
+// AnonymousPrayerCount returns how many prayers were submitted anonymously. Ports
+// InMemoryFaithBoard.AnonymousPrayerCount.
+func (b *InMemoryFaithBoard) AnonymousPrayerCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n := 0
+	for _, p := range b.prayers {
+		if p.IsAnonymous {
+			n++
+		}
+	}
+	return n
+}
+
+// ChapterVerses lists the verses of a chapter (Tradition and Book matched
+// case-insensitively, Chapter exact), ordered by Verse ascending. Ports
+// InMemoryFaithBoard.ChapterVerses.
+func (b *InMemoryFaithBoard) ChapterVerses(tradition, book string, chapter int) []ScriptureReference {
+	b.mu.Lock()
+	out := make([]ScriptureReference, 0)
+	for _, r := range b.scripture {
+		if strings.EqualFold(r.Tradition, tradition) && strings.EqualFold(r.Book, book) && r.Chapter == chapter {
+			out = append(out, r)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Verse < out[j].Verse })
 	return out
 }
 

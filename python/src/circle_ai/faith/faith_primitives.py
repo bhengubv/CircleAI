@@ -149,3 +149,68 @@ class InMemoryFaithBoard(IFaithBoard):
                 for r in self._scripture.values()
                 if r.tradition.casefold() == target
             ]
+
+    @property
+    def service_count(self) -> int:
+        """Number of scheduled services (C#: ``ServiceCount``)."""
+        with self._lock:
+            return len(self._services)
+
+    def remove_service(self, service_id: str) -> bool:
+        """Remove a service. Returns True if one was present
+        (C#: ``RemoveService``).
+        """
+        with self._lock:
+            return self._services.pop(service_id, None) is not None
+
+    def services_at(self, location: str) -> List[FaithService]:
+        """Services at a given location (case-insensitive), earliest first
+        (C#: ``ServicesAt``).
+        """
+        target = location.casefold()
+        with self._lock:
+            matches = [
+                s
+                for s in self._services.values()
+                if s.location.casefold() == target
+            ]
+        return sorted(matches, key=lambda s: s.start_utc)
+
+    def prayers_by_author(self, author: str) -> List[PrayerRequest]:
+        """A named author's non-anonymous prayer requests (case-insensitive),
+        newest-first (C#: ``PrayersByAuthor`` — privacy-aware: anonymous
+        requests are excluded).
+        """
+        target = author.casefold()
+        with self._lock:
+            matches = [
+                p
+                for p in self._prayers
+                if not p.is_anonymous and p.author.casefold() == target
+            ]
+        return sorted(matches, key=lambda p: p.submitted_utc, reverse=True)
+
+    def anonymous_prayer_count(self) -> int:
+        """Number of prayer requests submitted anonymously
+        (C#: ``AnonymousPrayerCount``).
+        """
+        with self._lock:
+            return sum(1 for p in self._prayers if p.is_anonymous)
+
+    def chapter_verses(
+        self, tradition: str, book: str, chapter: int
+    ) -> List[ScriptureReference]:
+        """Every verse of a tradition's book chapter (tradition + book matched
+        case-insensitively), ordered by verse (C#: ``ChapterVerses``).
+        """
+        t_target = tradition.casefold()
+        b_target = book.casefold()
+        with self._lock:
+            matches = [
+                r
+                for r in self._scripture.values()
+                if r.tradition.casefold() == t_target
+                and r.book.casefold() == b_target
+                and r.chapter == chapter
+            ]
+        return sorted(matches, key=lambda r: r.verse)

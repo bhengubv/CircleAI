@@ -77,6 +77,18 @@ export interface IFarmBoard {
   getField(id: string): Field | undefined;
   cropsForField(fieldId: string): readonly Crop[];
   avgYieldOfVariety(variety: string): number;
+  /** Number of fields registered. */
+  readonly fieldCount: number;
+  /** Remove a field by id. Returns whether one was removed. */
+  removeField(fieldId: string): boolean;
+  /** Total area across all fields, in hectares. */
+  totalAreaHa(): number;
+  /** Fields of a given soil type (case-insensitive), largest area first. */
+  fieldsBySoil(soilType: string): readonly Field[];
+  /** Crops whose expected harvest is on or before `asOf`, earliest first. */
+  dueForHarvest(asOf: Date): readonly Crop[];
+  /** The variety with the highest average yield, or undefined when none recorded. */
+  bestYieldingVariety(): string | undefined;
 }
 
 /** Deterministic in-memory {@link IFarmBoard}. */
@@ -118,6 +130,72 @@ export class InMemoryFarmBoard implements IFarmBoard {
     });
     if (rows.length === 0) return 0.0;
     return rows.reduce((sum, r) => sum + r.tonsPerHa, 0) / rows.length;
+  }
+
+  /** Number of fields registered. Mirrors C# `FieldCount`. */
+  get fieldCount(): number {
+    return this.fields.size;
+  }
+
+  /** Remove a field by id. Returns whether one was removed. Mirrors C# `RemoveField`. */
+  removeField(fieldId: string): boolean {
+    return this.fields.delete(fieldId);
+  }
+
+  /** Total area across all fields, in hectares. Mirrors C# `TotalAreaHa`. */
+  totalAreaHa(): number {
+    return [...this.fields.values()].reduce((sum, f) => sum + f.areaHa, 0);
+  }
+
+  /**
+   * Fields of a given soil type (case-insensitive), largest area first.
+   * Mirrors C# `FieldsBySoil`.
+   */
+  fieldsBySoil(soilType: string): readonly Field[] {
+    const target = soilType.toLowerCase();
+    return [...this.fields.values()]
+      .filter((f) => f.soilType.toLowerCase() === target)
+      .sort((a, b) => b.areaHa - a.areaHa);
+  }
+
+  /**
+   * Crops whose expected harvest is on or before `asOf`, earliest first.
+   * Crops without an expected-harvest date are excluded. Mirrors C# `DueForHarvest`.
+   */
+  dueForHarvest(asOf: Date): readonly Crop[] {
+    const cutoff = asOf.getTime();
+    return [...this.crops.values()]
+      .filter((c) => c.expectedHarvest !== null && c.expectedHarvest.getTime() <= cutoff)
+      .sort((a, b) => (a.expectedHarvest as Date).getTime() - (b.expectedHarvest as Date).getTime());
+  }
+
+  /**
+   * The variety with the highest average yield across recorded yields, or
+   * undefined when none recorded. Varieties are grouped case-insensitively
+   * (first-seen casing wins); ties keep first-seen order. Mirrors C#
+   * `BestYieldingVariety`.
+   */
+  bestYieldingVariety(): string | undefined {
+    // Group yields by variety (OrdinalIgnoreCase), preserving first-seen order.
+    const groups = new Map<string, { variety: string; sum: number; n: number }>();
+    for (const y of this.yields) {
+      const c = this.crops.get(y.cropId);
+      if (c === undefined) continue;
+      const key = c.variety.toLowerCase();
+      const g = groups.get(key);
+      if (g === undefined) groups.set(key, { variety: c.variety, sum: y.tonsPerHa, n: 1 });
+      else {
+        g.sum += y.tonsPerHa;
+        g.n += 1;
+      }
+    }
+    let best: { variety: string; avg: number } | undefined;
+    for (const g of groups.values()) {
+      const avg = g.sum / g.n;
+      // Strict `>` keeps the first-seen group on ties (stable OrderByDescending).
+      if (best === undefined || avg > best.avg) best = { variety: g.variety, avg };
+    }
+    return best?.variety;
   }
 }
 

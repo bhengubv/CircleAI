@@ -113,6 +113,39 @@ ca_faith_scripture_t *ca_faith_board_by_tradition(const ca_faith_board_t *b,
                                                   const char *tradition,
                                                   size_t *out_count);
 
+/* ServiceCount — number of scheduled services. NULL board → 0. */
+size_t ca_faith_board_service_count(const ca_faith_board_t *b);
+
+/* RemoveService(serviceId) — drop a service by id. Returns true if present. */
+bool ca_faith_board_remove_service(ca_faith_board_t *b, const char *service_id);
+
+/* ServicesAt(location) -> fresh owned array of services whose Location matches
+ * (OrdinalIgnoreCase), ordered by StartUtc ascending. NULL + 0 empty; NULL +
+ * SIZE_MAX on error. */
+ca_faith_service_t *ca_faith_board_services_at(const ca_faith_board_t *b,
+                                               const char *location,
+                                               size_t *out_count);
+
+/* PrayersByAuthor(author) -> fresh owned array of NON-anonymous prayers whose
+ * Author matches (OrdinalIgnoreCase), ordered by SubmittedUtc descending
+ * (anonymous prayers are excluded regardless of author). NULL + 0 empty; NULL +
+ * SIZE_MAX on error. */
+ca_faith_prayer_t *ca_faith_board_prayers_by_author(const ca_faith_board_t *b,
+                                                    const char *author,
+                                                    size_t *out_count);
+
+/* AnonymousPrayerCount — number of prayers flagged IsAnonymous. NULL board → 0. */
+size_t ca_faith_board_anonymous_prayer_count(const ca_faith_board_t *b);
+
+/* ChapterVerses(tradition, book, chapter) -> fresh owned array of references in
+ * that tradition (OrdinalIgnoreCase) + book (OrdinalIgnoreCase) + chapter,
+ * ordered by Verse ascending. NULL + 0 empty; NULL + SIZE_MAX on error. */
+ca_faith_scripture_t *ca_faith_board_chapter_verses(const ca_faith_board_t *b,
+                                                    const char *tradition,
+                                                    const char *book,
+                                                    int chapter,
+                                                    size_t *out_count);
+
 #ifdef __cplusplus
 }
 #endif

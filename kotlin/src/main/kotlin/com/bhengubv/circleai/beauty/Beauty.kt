@@ -68,6 +68,35 @@ class InMemoryBeautyBoard : IBeautyBoard {
         val p = profiles[clientName] ?: return emptyList()
         return treatments.values.filter { t -> p.concerns.any { t.name.contains(it, ignoreCase = true) } }
     }
+
+    /** Number of treatments in the catalogue. */
+    val treatmentCount: Int get() = treatments.size
+
+    /** Cancel every appointment matching [apptId]. Returns true if any were removed. */
+    fun cancelAppointment(apptId: String): Boolean = synchronized(lock) {
+        appts.removeAll { it.apptId == apptId }
+    }
+
+    /** Appointments for a client (case-insensitive), earliest first. */
+    fun appointmentsForClient(clientName: String): List<Appointment> = synchronized(lock) {
+        appts.filter { it.clientName.equals(clientName, ignoreCase = true) }.sortedBy { it.atUtc }
+    }
+
+    /** Treatments priced at or below [maxPrice], cheapest first. */
+    fun treatmentsUnder(maxPrice: BigDecimal): List<Treatment> =
+        treatments.values.filter { it.price <= maxPrice }.sortedBy { it.price }
+
+    /** The client's next appointment at or after [now] (case-insensitive), or null. */
+    fun nextAppointmentFor(clientName: String, now: Instant): Appointment? = synchronized(lock) {
+        appts.filter { it.clientName.equals(clientName, ignoreCase = true) && !it.atUtc.isBefore(now) }
+            .minByOrNull { it.atUtc }
+    }
+
+    /** Sum of treatment prices for appointments booked in [start, end] whose treatment is known. */
+    fun scheduledRevenueBetween(start: Instant, end: Instant): BigDecimal = synchronized(lock) {
+        appts.filter { !it.atUtc.isBefore(start) && !it.atUtc.isAfter(end) && treatments.containsKey(it.treatmentId) }
+            .fold(BigDecimal.ZERO) { acc, a -> acc + treatments.getValue(a.treatmentId).price }
+    }
 }
 
 // =====================================================================

@@ -27,6 +27,7 @@ package circleai
 import (
 	"context"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"sync"
@@ -177,6 +178,144 @@ func GrpcRetryPolicyNoRetry() GrpcRetryPolicy {
 		Multiplier:           1.0,
 		RetryableStatusCodes: []string{},
 	}
+}
+
+// ---------------------------------------------------------------------------
+// GrpcConnectionState — GrpcTransportCommons.cs enum GrpcConnectionState
+// ---------------------------------------------------------------------------
+
+// GrpcConnectionState is the lifecycle state of a managed gRPC connection,
+// mirroring the connectivity states a channel steps through as reconnection is
+// driven. Ordinals match the C# declaration order exactly. It is a distinct type
+// from GrpcChannelState even though the members coincide (the C# reference
+// declares both enums).
+type GrpcConnectionState int
+
+const (
+	// GrpcConnectionStateIdle — channel created, not yet connecting.
+	GrpcConnectionStateIdle GrpcConnectionState = iota
+	// GrpcConnectionStateConnecting — establishing the connection.
+	GrpcConnectionStateConnecting
+	// GrpcConnectionStateReady — connected and ready.
+	GrpcConnectionStateReady
+	// GrpcConnectionStateTransientFailure — a recoverable failure.
+	GrpcConnectionStateTransientFailure
+	// GrpcConnectionStateShutdown — channel shut down.
+	GrpcConnectionStateShutdown
+)
+
+// String renders the C# enum member name for a GrpcConnectionState.
+func (s GrpcConnectionState) String() string {
+	switch s {
+	case GrpcConnectionStateIdle:
+		return "Idle"
+	case GrpcConnectionStateConnecting:
+		return "Connecting"
+	case GrpcConnectionStateReady:
+		return "Ready"
+	case GrpcConnectionStateTransientFailure:
+		return "TransientFailure"
+	case GrpcConnectionStateShutdown:
+		return "Shutdown"
+	default:
+		return "Unknown"
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GrpcReconnectPolicy — GrpcTransportCommons.cs record GrpcReconnectPolicy
+// ---------------------------------------------------------------------------
+
+// GrpcReconnectPolicy is the reconnection strategy for a managed gRPC channel:
+// how many attempts to make and how to grow the backoff between them. Ports the
+// C# `sealed record GrpcReconnectPolicy(MaxAttempts, InitialBackoff,
+// BackoffMultiplier, MaxBackoff)`. This is a separate concept from
+// GrpcRetryPolicy (which is per-call and carries retryable status codes).
+type GrpcReconnectPolicy struct {
+	MaxAttempts       int
+	InitialBackoff    time.Duration
+	BackoffMultiplier float64
+	MaxBackoff        time.Duration
+}
+
+// GrpcReconnectPolicyDefault is a sane default: 5 attempts, 200ms growing ×2 up
+// to a 30s ceiling. Mirrors GrpcReconnectPolicy.Default.
+func GrpcReconnectPolicyDefault() GrpcReconnectPolicy {
+	return GrpcReconnectPolicy{
+		MaxAttempts:       5,
+		InitialBackoff:    200 * time.Millisecond,
+		BackoffMultiplier: 2.0,
+		MaxBackoff:        30 * time.Second,
+	}
+}
+
+// BackoffFor returns the backoff before a given 1-based attempt:
+// InitialBackoff × Multiplier^(attempt-1), capped at MaxBackoff. Attempt 1
+// returns InitialBackoff. Panics when attempt < 1 (mirrors the C#
+// ArgumentOutOfRangeException). The computation mirrors the C# one-shot
+// math.Pow form (rather than an iterative product) so results match
+// byte-for-byte, and is overflow-safe: an infinite or over-cap scaled value
+// clamps to MaxBackoff. Ports GrpcReconnectPolicy.BackoffFor.
+func (p GrpcReconnectPolicy) BackoffFor(attempt int) time.Duration {
+	if attempt < 1 {
+		panic("attempt is 1-based")
+	}
+	// Fractional-millisecond math mirroring C#'s TimeSpan.TotalMilliseconds so
+	// results match byte-for-byte (TotalMilliseconds is a double, not truncated).
+	const msPerDuration = float64(time.Millisecond)
+	scaledMs := (float64(p.InitialBackoff) / msPerDuration) * math.Pow(p.BackoffMultiplier, float64(attempt-1))
+	capMs := float64(p.MaxBackoff) / msPerDuration
+	if math.IsInf(scaledMs, 0) || scaledMs > capMs {
+		return p.MaxBackoff
+	}
+	return time.Duration(scaledMs * msPerDuration)
+}
+
+// ShouldRetry reports whether the 1-based attempt number is still within the
+// retry budget. Ports GrpcReconnectPolicy.ShouldRetry.
+func (p GrpcReconnectPolicy) ShouldRetry(attempt int) bool {
+	return attempt < p.MaxAttempts
+}
+
+// ---------------------------------------------------------------------------
+// GrpcDeadline — GrpcTransportCommons.cs static class GrpcDeadline
+// ---------------------------------------------------------------------------
+
+// grpcDeadline provides deadline math for gRPC calls: turning a relative timeout
+// into the absolute UTC instant a call must complete by, and reporting remaining
+// time against a clock. Ports the C# static class GrpcDeadline; exposed as the
+// package-level value GrpcDeadline (methods on an empty struct) to mirror the
+// static-class call style GrpcDeadline.FromTimeout(...).
+type grpcDeadline struct{}
+
+// GrpcDeadline is the singleton accessor for the deadline helpers. Ports the C#
+// static class GrpcDeadline.
+var GrpcDeadline = grpcDeadline{}
+
+// FromTimeout returns the absolute deadline for a call started at nowUtc with the
+// given timeout. Panics when timeout is negative (mirrors the C#
+// ArgumentOutOfRangeException). Ports GrpcDeadline.FromTimeout.
+func (grpcDeadline) FromTimeout(timeout time.Duration, nowUtc time.Time) time.Time {
+	if timeout < 0 {
+		panic("timeout must not be negative")
+	}
+	return nowUtc.Add(timeout)
+}
+
+// Remaining returns the time left before deadlineUtc, clamped to zero once
+// passed. Ports GrpcDeadline.Remaining.
+func (grpcDeadline) Remaining(deadlineUtc, nowUtc time.Time) time.Duration {
+	left := deadlineUtc.Sub(nowUtc)
+	if left > 0 {
+		return left
+	}
+	return 0
+}
+
+// IsExpired reports whether nowUtc has reached or passed the deadline. Ports
+// GrpcDeadline.IsExpired.
+func (grpcDeadline) IsExpired(deadlineUtc, nowUtc time.Time) bool {
+	return !nowUtc.Before(deadlineUtc)
 }
 
 // ---------------------------------------------------------------------------

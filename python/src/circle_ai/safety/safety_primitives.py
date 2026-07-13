@@ -163,3 +163,54 @@ class InMemorySafetyBoard(ISafetyBoard):
     def contacts(self) -> List[EmergencyContact]:
         with self._lock:
             return list(self._contacts)
+
+    @property
+    def incident_count(self) -> int:
+        """Total number of incidents logged since this board was created
+        (C#: ``IncidentCount``).
+        """
+        with self._lock:
+            return len(self._incidents)
+
+    def remove_contact(self, contact_id: str) -> bool:
+        """Remove the first emergency contact matching ``contact_id`` (ordinal).
+        Returns True if one was removed (C#: ``RemoveContact``).
+        """
+        if not contact_id:
+            return False
+        with self._lock:
+            for idx, c in enumerate(self._contacts):
+                if c.contact_id == contact_id:
+                    del self._contacts[idx]
+                    return True
+            return False
+
+    def hazards_by_category(self, category: str) -> List[Hazard]:
+        """Hazards filed under ``category`` (case-insensitive), newest-first
+        (C#: ``HazardsByCategory``). Empty ``category`` yields nothing.
+        """
+        if not category:
+            return []
+        target = category.casefold()
+        with self._lock:
+            filtered = [
+                h for h in self._hazards.values() if h.category.casefold() == target
+            ]
+        return sorted(filtered, key=lambda h: h.noted_utc, reverse=True)
+
+    def contacts_by_relationship(
+        self, relationship: str
+    ) -> List[EmergencyContact]:
+        """Emergency contacts with a given ``relationship`` (e.g. "spouse",
+        "doctor"), case-insensitive (C#: ``ContactsByRelationship``). Empty
+        ``relationship`` yields nothing.
+        """
+        if not relationship:
+            return []
+        target = relationship.casefold()
+        with self._lock:
+            return [
+                c
+                for c in self._contacts
+                if c.relationship.casefold() == target
+            ]

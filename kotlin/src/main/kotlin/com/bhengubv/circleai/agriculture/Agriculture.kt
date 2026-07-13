@@ -67,6 +67,41 @@ class InMemoryFarmBoard : IFarmBoard {
         }
         if (rows.isEmpty()) 0.0 else rows.map { it.tonsPerHa }.average()
     }
+
+    /** Number of fields registered. */
+    val fieldCount: Int get() = fields.size
+
+    /** Remove a field by id. Returns true if one was present. */
+    fun removeField(fieldId: String): Boolean = fields.remove(fieldId) != null
+
+    /** Total area (ha) across every field. */
+    fun totalAreaHa(): Double = fields.values.sumOf { it.areaHa }
+
+    /** Fields of a given soil type (case-insensitive), largest area first. */
+    fun fieldsBySoil(soilType: String): List<Field> =
+        fields.values.filter { it.soilType.equals(soilType, ignoreCase = true) }
+            .sortedByDescending { it.areaHa }
+
+    /** Crops whose expected harvest is on or before [asOf], earliest first. */
+    fun dueForHarvest(asOf: Instant): List<Crop> =
+        crops.values.filter { c -> c.expectedHarvest?.let { !it.isAfter(asOf) } ?: false }
+            .sortedBy { it.expectedHarvest }
+
+    /**
+     * The variety with the highest mean yield (t/ha) across recorded yields whose
+     * crop is known, grouped case-insensitively; null when there are no yields.
+     * Returns the original casing of the variety.
+     */
+    fun bestYieldingVariety(): String? = synchronized(lock) {
+        yields.filter { crops.containsKey(it.cropId) }
+            .groupBy { crops.getValue(it.cropId).variety.lowercase(java.util.Locale.US) }
+            .map { (_, rows) ->
+                val variety = crops.getValue(rows.first().cropId).variety
+                variety to rows.map { it.tonsPerHa }.average()
+            }
+            .maxByOrNull { it.second }
+            ?.first
+    }
 }
 
 // =====================================================================

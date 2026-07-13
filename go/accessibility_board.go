@@ -18,6 +18,7 @@
 package circleai
 
 import (
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -77,6 +78,18 @@ type AccessibilityBoard interface {
 	GetProfile(userId string) (UserAccessibilityProfile, bool)
 	// HintsFor derives adaptation hints from a user's profile (empty if none).
 	HintsFor(userId string) []AdaptationHint
+	// Count returns the number of stored profiles.
+	Count() int
+	// Remove drops a profile by userId, returning true if it was present.
+	Remove(userId string) bool
+	// WithNeed lists profiles declaring need, ordered by UserId (case-insensitive).
+	WithNeed(need AccessibilityNeed) []UserAccessibilityProfile
+	// ScreenReaderUsers lists screen-reader profiles, ordered by UserId (case-insensitive).
+	ScreenReaderUsers() []UserAccessibilityProfile
+	// AverageTextScale is the mean TextScale across profiles (1.0 when none).
+	AverageTextScale() float64
+	// NeedsLargeText reports whether userId's TextScale is >= threshold.
+	NeedsLargeText(userId string, threshold float64) bool
 }
 
 // InMemoryAccessibilityBoard is a concurrency-safe in-memory AccessibilityBoard.
@@ -132,6 +145,82 @@ func (b *InMemoryAccessibilityBoard) HintsFor(userId string) []AdaptationHint {
 		hints = append(hints, AdaptationHint{Kind: "need", Value: n.String()})
 	}
 	return hints
+}
+
+// Count returns the number of stored profiles. Ports InMemoryAccessibilityBoard.Count.
+func (b *InMemoryAccessibilityBoard) Count() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.profiles)
+}
+
+// Remove drops a profile by userId, returning true if it was present. Ports
+// InMemoryAccessibilityBoard.Remove (TryRemove).
+func (b *InMemoryAccessibilityBoard) Remove(userId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.profiles[userId]
+	delete(b.profiles, userId)
+	return ok
+}
+
+// WithNeed lists profiles that declare need, ordered by UserId
+// (OrdinalIgnoreCase). Ports InMemoryAccessibilityBoard.WithNeed.
+func (b *InMemoryAccessibilityBoard) WithNeed(need AccessibilityNeed) []UserAccessibilityProfile {
+	b.mu.Lock()
+	out := make([]UserAccessibilityProfile, 0)
+	for _, p := range b.profiles {
+		for _, n := range p.Needs {
+			if n == need {
+				out = append(out, p)
+				break
+			}
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return ordinalIgnoreCaseLess(out[i].UserId, out[j].UserId) })
+	return out
+}
+
+// ScreenReaderUsers lists profiles with ScreenReader set, ordered by UserId
+// (OrdinalIgnoreCase). Ports InMemoryAccessibilityBoard.ScreenReaderUsers.
+func (b *InMemoryAccessibilityBoard) ScreenReaderUsers() []UserAccessibilityProfile {
+	b.mu.Lock()
+	out := make([]UserAccessibilityProfile, 0)
+	for _, p := range b.profiles {
+		if p.ScreenReader {
+			out = append(out, p)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return ordinalIgnoreCaseLess(out[i].UserId, out[j].UserId) })
+	return out
+}
+
+// AverageTextScale is the mean TextScale across profiles, or 1.0 when there are
+// none (mirrors DefaultIfEmpty(1.0).Average()). Ports
+// InMemoryAccessibilityBoard.AverageTextScale.
+func (b *InMemoryAccessibilityBoard) AverageTextScale() float64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.profiles) == 0 {
+		return 1.0
+	}
+	var sum float64
+	for _, p := range b.profiles {
+		sum += p.TextScale
+	}
+	return sum / float64(len(b.profiles))
+}
+
+// NeedsLargeText reports whether userId's TextScale is >= threshold (false when
+// the user is unknown). The C# default threshold is 1.3. Ports
+// InMemoryAccessibilityBoard.NeedsLargeText.
+func (b *InMemoryAccessibilityBoard) NeedsLargeText(userId string, threshold float64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p, ok := b.profiles[userId]
+	return ok && p.TextScale >= threshold
 }
 
 // Interface guard.

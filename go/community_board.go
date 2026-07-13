@@ -63,6 +63,18 @@ type CommunityBoard interface {
 	List(o VolunteerOpportunity)
 	// Opportunities lists future opportunities ordered by WhenUtc.
 	Opportunities() []VolunteerOpportunity
+	// GroupCount returns the number of groups.
+	GroupCount() int
+	// RemoveGroup drops a group by id, returning true if present.
+	RemoveGroup(groupId string) bool
+	// AddMember adds a member to a group; false if group is unknown or already a member.
+	AddMember(groupId, memberId string) bool
+	// RemoveMember removes a member from a group; false if group is unknown or not a member.
+	RemoveMember(groupId, memberId string) bool
+	// OpportunitiesForGroup lists a group's opportunities ordered by WhenUtc.
+	OpportunitiesForGroup(groupId string) []VolunteerOpportunity
+	// TotalVolunteersNeeded sums VolunteersNeeded across future opportunities.
+	TotalVolunteersNeeded() int
 }
 
 // InMemoryCommunityBoard is a concurrency-safe in-memory CommunityBoard. Ports
@@ -161,6 +173,111 @@ func (b *InMemoryCommunityBoard) Opportunities() []VolunteerOpportunity {
 	b.mu.Unlock()
 	sort.SliceStable(out, func(i, j int) bool { return out[i].WhenUtc.Before(out[j].WhenUtc) })
 	return out
+}
+
+// GroupCount returns the number of groups. Ports InMemoryCommunityBoard.GroupCount.
+func (b *InMemoryCommunityBoard) GroupCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.groups)
+}
+
+// RemoveGroup drops a group by id, returning true if present. Ports
+// InMemoryCommunityBoard.RemoveGroup (TryRemove).
+func (b *InMemoryCommunityBoard) RemoveGroup(groupId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, ok := b.groups[groupId]
+	delete(b.groups, groupId)
+	return ok
+}
+
+// AddMember adds memberId to groupId's roster. Returns false if the group is
+// unknown or the member is already present. The member slice is copied (never
+// mutated in place), mirroring the C# `g with { MemberIds = ...Append(...) }`.
+// Ports InMemoryCommunityBoard.AddMember.
+func (b *InMemoryCommunityBoard) AddMember(groupId, memberId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	g, ok := b.groups[groupId]
+	if !ok {
+		return false
+	}
+	for _, m := range g.MemberIds {
+		if m == memberId {
+			return false
+		}
+	}
+	updated := make([]string, len(g.MemberIds), len(g.MemberIds)+1)
+	copy(updated, g.MemberIds)
+	updated = append(updated, memberId)
+	g.MemberIds = updated
+	b.groups[groupId] = g
+	return true
+}
+
+// RemoveMember removes memberId from groupId's roster. Returns false if the group
+// is unknown or the member is absent. The surviving members are copied into a new
+// slice, mirroring the C# `g with { MemberIds = ...Where(...) }`. Ports
+// InMemoryCommunityBoard.RemoveMember.
+func (b *InMemoryCommunityBoard) RemoveMember(groupId, memberId string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	g, ok := b.groups[groupId]
+	if !ok {
+		return false
+	}
+	found := false
+	for _, m := range g.MemberIds {
+		if m == memberId {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	updated := make([]string, 0, len(g.MemberIds))
+	for _, m := range g.MemberIds {
+		if m != memberId {
+			updated = append(updated, m)
+		}
+	}
+	g.MemberIds = updated
+	b.groups[groupId] = g
+	return true
+}
+
+// OpportunitiesForGroup lists a group's opportunities (Ordinal GroupId match),
+// ordered by WhenUtc ascending. Unlike Opportunities, this is NOT filtered to the
+// future. Ports InMemoryCommunityBoard.OpportunitiesForGroup.
+func (b *InMemoryCommunityBoard) OpportunitiesForGroup(groupId string) []VolunteerOpportunity {
+	b.mu.Lock()
+	out := make([]VolunteerOpportunity, 0)
+	for _, o := range b.opps {
+		if o.GroupId == groupId {
+			out = append(out, o)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(i, j int) bool { return out[i].WhenUtc.Before(out[j].WhenUtc) })
+	return out
+}
+
+// TotalVolunteersNeeded sums VolunteersNeeded across future opportunities
+// (WhenUtc >= now UTC), matching the C# Opportunities().Sum(...). Ports
+// InMemoryCommunityBoard.TotalVolunteersNeeded.
+func (b *InMemoryCommunityBoard) TotalVolunteersNeeded() int {
+	now := time.Now().UTC()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	total := 0
+	for _, o := range b.opps {
+		if !o.WhenUtc.Before(now) {
+			total += o.VolunteersNeeded
+		}
+	}
+	return total
 }
 
 // Interface guard.

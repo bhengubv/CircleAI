@@ -162,6 +162,80 @@ class InMemoryGrpcCallMetrics {
 }
 
 // ===========================================================================
+// GrpcConnectionState  (GrpcTransportCommons.cs)
+// ===========================================================================
+
+/**
+ * Lifecycle state of a managed gRPC connection, mirroring the connectivity
+ * states a channel steps through as reconnection is driven.
+ */
+enum class GrpcConnectionState { Idle, Connecting, Ready, TransientFailure, Shutdown }
+
+// ===========================================================================
+// GrpcReconnectPolicy  (GrpcTransportCommons.cs)
+// ===========================================================================
+
+/**
+ * Reconnection strategy for a managed gRPC channel: how many attempts to make and
+ * how to grow the backoff between them. Fulfils the channel-lifecycle and
+ * reconnection promise of `GrpcNetworkTransport` without any transport deps.
+ */
+data class GrpcReconnectPolicy(
+    val maxAttempts: Int,
+    val initialBackoff: Duration,
+    val backoffMultiplier: Double,
+    val maxBackoff: Duration,
+) {
+    /**
+     * Backoff before a given 1-based attempt: `initialBackoff × multiplier^(attempt-1)`,
+     * capped at [maxBackoff]. Attempt 1 returns [initialBackoff]. Overflow-safe:
+     * an infinite or over-cap scaled value clamps to [maxBackoff] (mirrors the C#
+     * `double.IsInfinity(scaled) || scaled > capMs` guard).
+     */
+    fun backoffFor(attempt: Int): Duration {
+        require(attempt >= 1) { "attempt is 1-based" }
+        val scaled = initialBackoff.toMillis().toDouble() * Math.pow(backoffMultiplier, (attempt - 1).toDouble())
+        val capMs = maxBackoff.toMillis().toDouble()
+        if (scaled.isInfinite() || scaled > capMs) return maxBackoff
+        return Duration.ofMillis(scaled.toLong())
+    }
+
+    /** True when the 1-based attempt number is still within the retry budget. */
+    fun shouldRetry(attempt: Int): Boolean = attempt < maxAttempts
+
+    companion object {
+        /** A sane default: 5 attempts, 200ms growing ×2 up to a 30s ceiling. */
+        val Default: GrpcReconnectPolicy =
+            GrpcReconnectPolicy(5, Duration.ofMillis(200), 2.0, Duration.ofSeconds(30))
+    }
+}
+
+// ===========================================================================
+// GrpcDeadline  (GrpcTransportCommons.cs)
+// ===========================================================================
+
+/**
+ * Deadline math for gRPC calls: turns a relative timeout into the absolute UTC
+ * instant a call must complete by, and reports remaining time against a clock.
+ */
+object GrpcDeadline {
+    /** Absolute deadline for a call started at [nowUtc] with the given timeout. */
+    fun fromTimeout(timeout: Duration, nowUtc: Instant): Instant {
+        require(!timeout.isNegative) { "timeout" }
+        return nowUtc.plus(timeout)
+    }
+
+    /** Time left before [deadlineUtc], clamped to zero once passed. */
+    fun remaining(deadlineUtc: Instant, nowUtc: Instant): Duration {
+        val left = Duration.between(nowUtc, deadlineUtc)
+        return if (left > Duration.ZERO) left else Duration.ZERO
+    }
+
+    /** True once [nowUtc] has reached or passed the deadline. */
+    fun isExpired(deadlineUtc: Instant, nowUtc: Instant): Boolean = !nowUtc.isBefore(deadlineUtc)
+}
+
+// ===========================================================================
 // IGrpcChannel  (injected socket contract for GrpcNetworkTransport)
 // ===========================================================================
 

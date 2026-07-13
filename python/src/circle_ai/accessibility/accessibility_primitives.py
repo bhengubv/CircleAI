@@ -120,3 +120,52 @@ class InMemoryAccessibilityBoard(IAccessibilityBoard):
             for n in p.needs:
                 hints.append(AdaptationHint("need", AccessibilityNeed(n).cs_name))
             return hints
+
+    @property
+    def count(self) -> int:
+        """Number of saved profiles (C#: ``Count``)."""
+        with self._lock:
+            return len(self._profiles)
+
+    def remove(self, user_id: str) -> bool:
+        """Remove a user's profile. Returns True if one was present
+        (C#: ``Remove``).
+        """
+        with self._lock:
+            return self._profiles.pop(user_id, None) is not None
+
+    def with_need(
+        self, need: AccessibilityNeed
+    ) -> List[UserAccessibilityProfile]:
+        """Profiles declaring ``need``, ordered by user id (case-insensitive)
+        (C#: ``WithNeed``).
+        """
+        with self._lock:
+            matches = [
+                p for p in self._profiles.values() if need in p.needs
+            ]
+        return sorted(matches, key=lambda p: p.user_id.casefold())
+
+    def screen_reader_users(self) -> List[UserAccessibilityProfile]:
+        """Profiles with the screen reader enabled, ordered by user id
+        (case-insensitive) (C#: ``ScreenReaderUsers``).
+        """
+        with self._lock:
+            matches = [p for p in self._profiles.values() if p.screen_reader]
+        return sorted(matches, key=lambda p: p.user_id.casefold())
+
+    def average_text_scale(self) -> float:
+        """Mean text scale across all profiles; 1.0 when there are none
+        (C#: ``AverageTextScale`` — ``DefaultIfEmpty(1.0).Average()``).
+        """
+        with self._lock:
+            scales = [p.text_scale for p in self._profiles.values()]
+        return sum(scales) / len(scales) if scales else 1.0
+
+    def needs_large_text(self, user_id: str, threshold: float = 1.3) -> bool:
+        """True when ``user_id`` has a profile whose text scale is at or above
+        ``threshold`` (C#: ``NeedsLargeText``).
+        """
+        with self._lock:
+            p = self._profiles.get(user_id)
+            return p is not None and p.text_scale >= threshold

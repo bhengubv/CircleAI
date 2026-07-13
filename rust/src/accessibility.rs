@@ -165,3 +165,74 @@ impl IAccessibilityBoard for InMemoryAccessibilityBoard {
         hints
     }
 }
+
+/// Default `threshold` for [`InMemoryAccessibilityBoard::needs_large_text`]
+/// (C# `threshold = 1.3`).
+pub const DEFAULT_LARGE_TEXT_THRESHOLD: f64 = 1.3;
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryAccessibilityBoard`/`IAccessibilityBoard`).
+impl InMemoryAccessibilityBoard {
+    /// Number of stored profiles. Mirrors `Count`.
+    pub fn count(&self) -> usize {
+        self.profiles.lock().unwrap().len()
+    }
+
+    /// Removes a user's profile. Returns `true` if present. Mirrors `Remove`.
+    pub fn remove(&self, user_id: &str) -> bool {
+        self.profiles.lock().unwrap().remove(user_id).is_some()
+    }
+
+    /// Profiles declaring `need`, ordered by user id (case-insensitive). Mirrors
+    /// `WithNeed`.
+    pub fn with_need(&self, need: AccessibilityNeed) -> Vec<UserAccessibilityProfile> {
+        let mut hits: Vec<UserAccessibilityProfile> = self
+            .profiles
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.needs.contains(&need))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.user_id.to_lowercase().cmp(&b.user_id.to_lowercase()));
+        hits
+    }
+
+    /// Profiles with a screen reader enabled, ordered by user id (case-insensitive).
+    /// Mirrors `ScreenReaderUsers`.
+    pub fn screen_reader_users(&self) -> Vec<UserAccessibilityProfile> {
+        let mut hits: Vec<UserAccessibilityProfile> = self
+            .profiles
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|p| p.screen_reader)
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.user_id.to_lowercase().cmp(&b.user_id.to_lowercase()));
+        hits
+    }
+
+    /// Average text scale across all profiles; `1.0` when there are none (the C#
+    /// `DefaultIfEmpty(1.0).Average()`). Mirrors `AverageTextScale`.
+    pub fn average_text_scale(&self) -> f64 {
+        let profiles = self.profiles.lock().unwrap();
+        let scales: Vec<f64> = profiles.values().map(|p| p.text_scale).collect();
+        if scales.is_empty() {
+            1.0
+        } else {
+            scales.iter().sum::<f64>() / scales.len() as f64
+        }
+    }
+
+    /// Whether a user's text scale is at or above `threshold` (see
+    /// [`DEFAULT_LARGE_TEXT_THRESHOLD`]). `false` for an unknown user. Mirrors
+    /// `NeedsLargeText`.
+    pub fn needs_large_text(&self, user_id: &str, threshold: f64) -> bool {
+        self.profiles
+            .lock()
+            .unwrap()
+            .get(user_id)
+            .is_some_and(|p| p.text_scale >= threshold)
+    }
+}

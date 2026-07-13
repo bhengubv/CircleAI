@@ -315,3 +315,191 @@ ca_civic_event_t *ca_civic_board_upcoming_events(const ca_civic_board_t *b,
     *out_count = n;
     return out;
 }
+
+void ca_civic_category_count_free_array(ca_civic_category_count_t *arr,
+                                        size_t count) {
+    if (!arr) return;
+    for (size_t i = 0; i < count; ++i) free(arr[i].category);
+    free(arr);
+}
+
+/* Is an issue open (Status != "Resolved", OrdinalIgnoreCase)? */
+static bool issue_is_open(const ca_civic_issue_t *i) {
+    return !cab_ci_eq(i->status, "Resolved");
+}
+
+size_t ca_civic_board_open_issue_count(const ca_civic_board_t *b) {
+    if (!b) return 0;
+    size_t n = 0;
+    for (size_t i = 0; i < b->i_count; ++i)
+        if (issue_is_open(&b->issues[i])) n++;
+    return n;
+}
+
+ca_civic_issue_t *ca_civic_board_issues_by_category(const ca_civic_board_t *b,
+                                                    const char *category,
+                                                    size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !category) { *out_count = (size_t)-1; return NULL; }
+    if (b->i_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->i_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->i_count; ++i)
+        if (cab_ci_eq(b->issues[i].category, category)) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderByDescending(ReportedUtc), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        int64_t key = b->issues[cur].reported_utc_ms;
+        size_t j = i;
+        while (j > 0 && b->issues[idx[j - 1]].reported_utc_ms < key) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_civic_issue_t *out = (ca_civic_issue_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!issue_copy(&out[i], &b->issues[idx[i]])) {
+            ca_civic_issue_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+bool ca_civic_board_remove_rep(ca_civic_board_t *b, const char *rep_id) {
+    /* _reps.TryRemove(repId, out _). */
+    if (!b || !rep_id) return false;
+    for (size_t i = 0; i < b->r_count; ++i) {
+        if (cab_ord_eq(b->reps[i].rep_id, rep_id)) {
+            ca_civic_rep_free(&b->reps[i]);
+            for (size_t j = i; j + 1 < b->r_count; ++j)
+                b->reps[j] = b->reps[j + 1];
+            b->r_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+ca_civic_rep_t *ca_civic_board_reps_for_office(const ca_civic_board_t *b,
+                                               const char *office,
+                                               size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !office) { *out_count = (size_t)-1; return NULL; }
+    if (b->r_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->r_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->r_count; ++i)
+        if (cab_ci_eq(b->reps[i].office, office)) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+
+    /* OrderBy(Name, OrdinalIgnoreCase), stable insertion sort. */
+    for (size_t i = 1; i < n; ++i) {
+        size_t cur = idx[i];
+        const char *kn = b->reps[cur].name;
+        size_t j = i;
+        while (j > 0 && cab_ci_cmp(b->reps[idx[j - 1]].name, kn) > 0) {
+            idx[j] = idx[j - 1]; --j;
+        }
+        idx[j] = cur;
+    }
+
+    ca_civic_rep_t *out = (ca_civic_rep_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!rep_copy(&out[i], &b->reps[idx[i]])) {
+            ca_civic_rep_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_civic_event_t *ca_civic_board_events_for_audience(const ca_civic_board_t *b,
+                                                     const char *audience,
+                                                     size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b || !audience) { *out_count = (size_t)-1; return NULL; }
+    if (b->e_count == 0) { *out_count = 0; return NULL; }
+
+    size_t *idx = (size_t *)malloc(b->e_count * sizeof(size_t));
+    if (!idx) { *out_count = (size_t)-1; return NULL; }
+    size_t n = 0;
+    for (size_t i = 0; i < b->e_count; ++i)
+        if (cab_ci_eq(b->events[i].audience, audience)) idx[n++] = i;
+    if (n == 0) { free(idx); *out_count = 0; return NULL; }
+    event_sort_asc(b, idx, n);
+
+    ca_civic_event_t *out = (ca_civic_event_t *)calloc(n, sizeof(*out));
+    if (!out) { free(idx); *out_count = (size_t)-1; return NULL; }
+    for (size_t i = 0; i < n; ++i) {
+        if (!event_copy(&out[i], &b->events[idx[i]])) {
+            ca_civic_event_free_array(out, i);
+            free(idx);
+            *out_count = (size_t)-1;
+            return NULL;
+        }
+    }
+    free(idx);
+    *out_count = n;
+    return out;
+}
+
+ca_civic_category_count_t *ca_civic_board_open_issue_breakdown(
+    const ca_civic_board_t *b, size_t *out_count) {
+    if (!out_count) return NULL;
+    if (!b) { *out_count = (size_t)-1; return NULL; }
+
+    /* Group open issues by Category (OrdinalIgnoreCase, first-seen spelling as
+     * the key), in first-appearance order. */
+    size_t cap = b->i_count ? b->i_count : 1;
+    ca_civic_category_count_t *g =
+        (ca_civic_category_count_t *)calloc(cap, sizeof(*g));
+    if (!g) { *out_count = (size_t)-1; return NULL; }
+    size_t gc = 0;
+    for (size_t i = 0; i < b->i_count; ++i) {
+        if (!issue_is_open(&b->issues[i])) continue;
+        const char *cat = b->issues[i].category;
+        size_t k;
+        for (k = 0; k < gc; ++k)
+            if (cab_ci_eq(g[k].category, cat)) break;
+        if (k == gc) {
+            g[gc].category = cab_strdup_empty(cat);
+            if (!g[gc].category) {
+                ca_civic_category_count_free_array(g, gc);
+                *out_count = (size_t)-1;
+                return NULL;
+            }
+            g[gc].count = 0;
+            gc++;
+        }
+        g[k].count++;
+    }
+    if (gc == 0) { free(g); *out_count = 0; return NULL; }
+
+    /* OrderByDescending(Count), stable insertion sort (first-appearance ties). */
+    for (size_t i = 1; i < gc; ++i) {
+        ca_civic_category_count_t cur = g[i];
+        size_t j = i;
+        while (j > 0 && g[j - 1].count < cur.count) { g[j] = g[j - 1]; --j; }
+        g[j] = cur;
+    }
+    *out_count = gc;
+    return g;
+}

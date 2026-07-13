@@ -94,6 +94,18 @@ export interface IFaithBoard {
   addScripture(r: ScriptureReference): void;
   lookup(tradition: string, book: string, chapter: number, verse: number): ScriptureReference | undefined;
   byTradition(tradition: string): readonly ScriptureReference[];
+  /** Number of services scheduled. */
+  readonly serviceCount: number;
+  /** Remove a service by id. Returns whether one was removed. */
+  removeService(serviceId: string): boolean;
+  /** Services at a given location (case-insensitive), earliest first. */
+  servicesAt(location: string): readonly FaithService[];
+  /** Non-anonymous prayers by a given author (case-insensitive), newest first. */
+  prayersByAuthor(author: string): readonly PrayerRequest[];
+  /** Count of prayers submitted anonymously. */
+  anonymousPrayerCount(): number;
+  /** Verses of a given tradition/book/chapter (case-insensitive), ordered by verse. */
+  chapterVerses(tradition: string, book: string, chapter: number): readonly ScriptureReference[];
 }
 
 /** Deterministic in-memory {@link IFaithBoard}. */
@@ -141,6 +153,53 @@ export class InMemoryFaithBoard implements IFaithBoard {
   byTradition(tradition: string): readonly ScriptureReference[] {
     const t = tradition.toLowerCase();
     return [...this.scripture.values()].filter((r) => r.tradition.toLowerCase() === t);
+  }
+
+  /** Number of services scheduled. Mirrors C# `ServiceCount`. */
+  get serviceCount(): number {
+    return this.services.size;
+  }
+
+  /** Remove a service by id. Returns whether one was removed. Mirrors C# `RemoveService`. */
+  removeService(serviceId: string): boolean {
+    return this.services.delete(serviceId);
+  }
+
+  /** Services at a given location (case-insensitive), earliest first. Mirrors C# `ServicesAt`. */
+  servicesAt(location: string): readonly FaithService[] {
+    const target = location.toLowerCase();
+    return [...this.services.values()]
+      .filter((s) => s.location.toLowerCase() === target)
+      .sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime());
+  }
+
+  /**
+   * Non-anonymous prayers by a given author (case-insensitive), newest first.
+   * Anonymous requests are excluded regardless of author, mirroring the
+   * privacy-aware C# `PrayersByAuthor`.
+   */
+  prayersByAuthor(author: string): readonly PrayerRequest[] {
+    const target = author.toLowerCase();
+    return this.prayers
+      .filter((p) => !p.isAnonymous && p.author.toLowerCase() === target)
+      .sort((a, b) => b.submittedUtc.getTime() - a.submittedUtc.getTime());
+  }
+
+  /** Count of prayers submitted anonymously. Mirrors C# `AnonymousPrayerCount`. */
+  anonymousPrayerCount(): number {
+    return this.prayers.reduce((n, p) => n + (p.isAnonymous ? 1 : 0), 0);
+  }
+
+  /**
+   * Verses of a given tradition/book/chapter (tradition + book matched
+   * case-insensitively), ordered by verse. Mirrors C# `ChapterVerses`.
+   */
+  chapterVerses(tradition: string, book: string, chapter: number): readonly ScriptureReference[] {
+    const t = tradition.toLowerCase();
+    const b = book.toLowerCase();
+    return [...this.scripture.values()]
+      .filter((r) => r.tradition.toLowerCase() === t && r.book.toLowerCase() === b && r.chapter === chapter)
+      .sort((x, y) => x.verse - y.verse);
   }
 }
 

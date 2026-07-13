@@ -233,6 +233,69 @@ impl InMemoryNearLinkRegistry {
             vals.iter().sum::<f64>() / vals.len() as f64
         }
     }
+
+    /// Average observed read throughput (kbps) for `device_id`; `0.0` when
+    /// unsampled. Mirrors `AvgKbpsRead`.
+    pub fn avg_kbps_read(&self, device_id: &str) -> f64 {
+        let guard = self.throughput.lock().unwrap();
+        let vals: Vec<f64> = guard
+            .iter()
+            .filter(|t| t.device_id == device_id)
+            .map(|t| t.kbps_read)
+            .collect();
+        if vals.is_empty() {
+            0.0
+        } else {
+            vals.iter().sum::<f64>() / vals.len() as f64
+        }
+    }
+
+    /// Average observed write throughput (kbps) for `device_id`; `0.0` when
+    /// unsampled. Mirrors `AvgKbpsWrite`.
+    pub fn avg_kbps_write(&self, device_id: &str) -> f64 {
+        let guard = self.throughput.lock().unwrap();
+        let vals: Vec<f64> = guard
+            .iter()
+            .filter(|t| t.device_id == device_id)
+            .map(|t| t.kbps_write)
+            .collect();
+        if vals.is_empty() {
+            0.0
+        } else {
+            vals.iter().sum::<f64>() / vals.len() as f64
+        }
+    }
+
+    /// Removes a paired device: drops its device record and cached pairing state.
+    /// Open sessions are left untouched (close them explicitly via
+    /// [`close_session`](Self::close_session)). Returns `true` if a device record
+    /// was actually removed. Mirrors `Unregister`.
+    pub fn unregister(&self, device_id: &str) -> bool {
+        if device_id.is_empty() {
+            return false;
+        }
+        let removed = self.devices.lock().unwrap().remove(device_id).is_some();
+        self.states.lock().unwrap().remove(device_id);
+        removed
+    }
+
+    /// Active sessions belonging to `device_id`, oldest-first by start time.
+    /// Mirrors `SessionsForDevice`.
+    pub fn sessions_for_device(&self, device_id: &str) -> Vec<NearLinkSession> {
+        if device_id.is_empty() {
+            return Vec::new();
+        }
+        let mut v: Vec<NearLinkSession> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.device_id == device_id)
+            .cloned()
+            .collect();
+        v.sort_by(|a, b| a.started_utc.cmp(&b.started_utc));
+        v
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

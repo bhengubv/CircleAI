@@ -133,6 +133,22 @@ int ca_bt_registry_record_throughput(ca_bt_registry_t *r, const char *device_id,
                                      int64_t at_unix_ms);
 double ca_bt_registry_avg_kbps_read(const ca_bt_registry_t *r,
                                     const char *device_id);
+/* AvgKbpsWrite — mean write throughput for a device (0.0 when none). */
+double ca_bt_registry_avg_kbps_write(const ca_bt_registry_t *r,
+                                     const char *device_id);
+/* Unregister(deviceId) — drop the endpoint descriptor + tracked state. Returns
+ * true if an endpoint was actually removed. false on NULL/empty deviceId. */
+bool ca_bt_registry_unregister(ca_bt_registry_t *r, const char *device_id);
+/* EndpointsWithService(service) — owned array of owned copies whose
+ * AdvertisedServices contain `service` (OrdinalIgnoreCase), ordered by Name
+ * (Ordinal). Empty service or no match => *out=NULL,*count=0; on error
+ * *out=NULL,*count=SIZE_MAX. 0/-1. */
+int ca_bt_registry_endpoints_with_service(const ca_bt_registry_t *r,
+                                          const char *service,
+                                          ca_bt_endpoint_descriptor_t ***out,
+                                          size_t *count);
+/* ConnectedCount — number of devices currently in the Connected state. */
+size_t ca_bt_registry_connected_count(const ca_bt_registry_t *r);
 
 /* ===========================================================================
  * IBleGattAdapter — injected platform GATT seam (vtable).

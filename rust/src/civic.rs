@@ -230,3 +230,87 @@ impl ICivicBoard for InMemoryCivicBoard {
         hits
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryCivicBoard`/`ICivicBoard`).
+impl InMemoryCivicBoard {
+    /// Number of open (non-"Resolved") issues. Mirrors `OpenIssueCount`.
+    pub fn open_issue_count(&self) -> usize {
+        self.open_issues().len()
+    }
+
+    /// Issues in `category` (case-insensitive), newest first. Mirrors
+    /// `IssuesByCategory`.
+    pub fn issues_by_category(&self, category: &str) -> Vec<CivicIssue> {
+        let mut hits: Vec<CivicIssue> = self
+            .issues
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|i| i.category.eq_ignore_ascii_case(category))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.reported_utc.cmp(&a.reported_utc));
+        hits
+    }
+
+    /// Removes a representative by id. Returns `true` if present. Mirrors
+    /// `RemoveRep`.
+    pub fn remove_rep(&self, rep_id: &str) -> bool {
+        self.reps.lock().unwrap().remove(rep_id).is_some()
+    }
+
+    /// Representatives holding `office` (case-insensitive), ordered by name
+    /// (case-insensitive). Mirrors `RepsForOffice`.
+    pub fn reps_for_office(&self, office: &str) -> Vec<Representative> {
+        let mut hits: Vec<Representative> = self
+            .reps
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| r.office.eq_ignore_ascii_case(office))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        hits
+    }
+
+    /// Events for `audience` (case-insensitive), earliest first. Mirrors
+    /// `EventsForAudience`.
+    pub fn events_for_audience(&self, audience: &str) -> Vec<CivicEvent> {
+        let mut hits: Vec<CivicEvent> = self
+            .events
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.audience.eq_ignore_ascii_case(audience))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.at_utc.cmp(&b.at_utc));
+        hits
+    }
+
+    /// Count of open issues grouped by category (case-insensitive, first-seen
+    /// casing kept), ordered by count descending. Mirrors `OpenIssueBreakdown`.
+    pub fn open_issue_breakdown(&self) -> Vec<(String, usize)> {
+        // Preserve first-seen display casing per case-insensitive category key.
+        let mut order: Vec<String> = Vec::new();
+        let mut counts: HashMap<String, (String, usize)> = HashMap::new();
+        for i in self.open_issues() {
+            let key = i.category.to_lowercase();
+            match counts.get_mut(&key) {
+                Some(entry) => entry.1 += 1,
+                None => {
+                    order.push(key.clone());
+                    counts.insert(key, (i.category.clone(), 1));
+                }
+            }
+        }
+        let mut out: Vec<(String, usize)> = order
+            .into_iter()
+            .map(|k| counts.remove(&k).unwrap())
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out
+    }
+}

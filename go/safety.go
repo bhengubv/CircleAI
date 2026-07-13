@@ -21,6 +21,7 @@ package circleai
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -104,18 +105,26 @@ type ISafetyBoard interface {
 	Log(i Incident)
 	// Active returns all incidents, newest-first.
 	Active() []Incident
+	// IncidentCount returns the total number of incidents logged.
+	IncidentCount() int
 	// AtOrAboveSeverity returns incidents at or above minimum, newest-first.
 	AtOrAboveSeverity(minimum IncidentSeverity) []Incident
 	// NoteHazard records (or replaces, keyed by HazardID) a hazard.
 	NoteHazard(h Hazard)
 	// Hazards returns all hazards, newest-noted first.
 	Hazards() []Hazard
+	// HazardsByCategory returns hazards in a category (case-insensitive), newest-first.
+	HazardsByCategory(category string) []Hazard
 	// AddContact adds an emergency contact.
 	AddContact(c EmergencyContact)
+	// RemoveContact removes the first contact matching an id, returning true if removed.
+	RemoveContact(contactID string) bool
 	// FirstContact returns the first-added contact, or nil when there are none.
 	FirstContact() *EmergencyContact
 	// Contacts returns all emergency contacts in insertion order.
 	Contacts() []EmergencyContact
+	// ContactsByRelationship returns contacts with a given relationship (case-insensitive).
+	ContactsByRelationship(relationship string) []EmergencyContact
 }
 
 // InMemorySafetyBoard is a thread-safe in-memory ISafetyBoard. Ports
@@ -148,6 +157,14 @@ func (b *InMemorySafetyBoard) Active() []Incident {
 	copy(out, b.incidents)
 	sortIncidentsByAtDesc(out)
 	return out
+}
+
+// IncidentCount returns the total number of incidents logged since this board was
+// created. Ports InMemorySafetyBoard.IncidentCount.
+func (b *InMemorySafetyBoard) IncidentCount() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.incidents)
 }
 
 // AtOrAboveSeverity returns incidents whose severity ordinal is >= minimum,
@@ -186,11 +203,48 @@ func (b *InMemorySafetyBoard) Hazards() []Hazard {
 	return out
 }
 
+// HazardsByCategory returns hazards filed under a given category
+// (case-insensitive), newest-first. Empty category yields nothing. Ports
+// InMemorySafetyBoard.HazardsByCategory.
+func (b *InMemorySafetyBoard) HazardsByCategory(category string) []Hazard {
+	if category == "" {
+		return []Hazard{}
+	}
+	b.mu.Lock()
+	out := make([]Hazard, 0, len(b.hazards))
+	for _, h := range b.hazards {
+		if strings.EqualFold(h.Category, category) {
+			out = append(out, h)
+		}
+	}
+	b.mu.Unlock()
+	sort.SliceStable(out, func(x, y int) bool { return out[x].NotedUTC.After(out[y].NotedUTC) })
+	return out
+}
+
 // AddContact appends an emergency contact. Ports InMemorySafetyBoard.AddContact.
 func (b *InMemorySafetyBoard) AddContact(c EmergencyContact) {
 	b.mu.Lock()
 	b.contacts = append(b.contacts, c)
 	b.mu.Unlock()
+}
+
+// RemoveContact removes the first emergency contact matching an id (Ordinal),
+// returning true if one was removed. Blank id returns false. Ports
+// InMemorySafetyBoard.RemoveContact.
+func (b *InMemorySafetyBoard) RemoveContact(contactID string) bool {
+	if contactID == "" {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for idx, c := range b.contacts {
+		if c.ContactID == contactID {
+			b.contacts = append(b.contacts[:idx], b.contacts[idx+1:]...)
+			return true
+		}
+	}
+	return false
 }
 
 // FirstContact returns the first-added contact, or nil when there are none.
@@ -212,6 +266,25 @@ func (b *InMemorySafetyBoard) Contacts() []EmergencyContact {
 	defer b.mu.Unlock()
 	out := make([]EmergencyContact, len(b.contacts))
 	copy(out, b.contacts)
+	return out
+}
+
+// ContactsByRelationship returns emergency contacts with a given relationship
+// (e.g. "spouse", "doctor"), matched case-insensitively, in insertion order.
+// Empty relationship yields nothing. Ports
+// InMemorySafetyBoard.ContactsByRelationship.
+func (b *InMemorySafetyBoard) ContactsByRelationship(relationship string) []EmergencyContact {
+	if relationship == "" {
+		return []EmergencyContact{}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]EmergencyContact, 0, len(b.contacts))
+	for _, c := range b.contacts {
+		if strings.EqualFold(c.Relationship, relationship) {
+			out = append(out, c)
+		}
+	}
 	return out
 }
 

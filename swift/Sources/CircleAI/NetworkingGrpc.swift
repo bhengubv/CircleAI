@@ -170,6 +170,111 @@ public enum GrpcRetryPolicies {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// GrpcConnectionState (GrpcTransportCommons.cs)
+//
+// A SEPARATE enum from GrpcChannelState above (same members) modelling the
+// lifecycle state of a managed connection as reconnection is driven. Int-raw +
+// Codable; ordinals follow the C# declaration order.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Lifecycle state of a managed gRPC connection, mirroring the connectivity
+/// states a channel steps through as reconnection is driven. Ported from the C#
+/// `GrpcConnectionState` (declared alongside `GrpcChannelState`; same ordinals).
+public enum GrpcConnectionState: Int, Codable, Sendable, CaseIterable {
+    case idle = 0
+    case connecting = 1
+    case ready = 2
+    case transientFailure = 3
+    case shutdown = 4
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// GrpcReconnectPolicy (GrpcTransportCommons.cs)
+//
+// Reconnection strategy for a managed channel: attempt budget + backoff growth.
+// Backoff fields are seconds (C#'s TimeSpan). Distinct from GrpcRetryPolicy —
+// this is the channel-lifecycle reconnection promise.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Reconnection strategy for a managed gRPC channel: how many attempts to make
+/// and how to grow the backoff between them. Ported from the C#
+/// `GrpcReconnectPolicy` record. Backoff fields are seconds (C#'s TimeSpan).
+public struct GrpcReconnectPolicy: Sendable, Equatable, Codable {
+    public let maxAttempts: Int
+    public let initialBackoff: TimeInterval
+    public let backoffMultiplier: Double
+    public let maxBackoff: TimeInterval
+
+    public init(
+        maxAttempts: Int,
+        initialBackoff: TimeInterval,
+        backoffMultiplier: Double,
+        maxBackoff: TimeInterval
+    ) {
+        self.maxAttempts = maxAttempts
+        self.initialBackoff = initialBackoff
+        self.backoffMultiplier = backoffMultiplier
+        self.maxBackoff = maxBackoff
+    }
+
+    /// A sane default: 5 attempts, 200ms growing ×2 up to a 30s ceiling.
+    /// Matches the C# `GrpcReconnectPolicy.Default`.
+    public static let `default` = GrpcReconnectPolicy(
+        maxAttempts: 5,
+        initialBackoff: 0.200,
+        backoffMultiplier: 2.0,
+        maxBackoff: 30.0)
+
+    /// Backoff before a given 1-based attempt:
+    /// `initialBackoff × multiplier^(attempt-1)`, capped at `maxBackoff`.
+    /// Attempt 1 returns `initialBackoff`. Mirrors C#'s `BackoffFor` including
+    /// its overflow/infinity → `maxBackoff` cap. `attempt` is 1-based (C# throws
+    /// `ArgumentOutOfRangeException` for attempt < 1; Swift uses `precondition`).
+    public func backoffFor(_ attempt: Int) -> TimeInterval {
+        precondition(attempt >= 1, "attempt is 1-based")
+        let scaled = initialBackoff * pow(backoffMultiplier, Double(attempt - 1))
+        if scaled.isInfinite || scaled > maxBackoff { return maxBackoff }
+        return scaled
+    }
+
+    /// True when the 1-based attempt number is still within the retry budget
+    /// (matches C#'s `ShouldRetry` → `attempt < MaxAttempts`).
+    public func shouldRetry(_ attempt: Int) -> Bool { attempt < maxAttempts }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// GrpcDeadline (GrpcTransportCommons.cs)
+//
+// Deadline math for gRPC calls: relative timeout → absolute instant, plus
+// remaining-time and expiry checks against a clock. C# uses DateTime; the Swift
+// analogue is Date. Static, stateless helpers (ported as an enum namespace).
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Deadline math for gRPC calls. Ported from the C# static `GrpcDeadline`.
+public enum GrpcDeadline {
+    /// Absolute deadline for a call started at `nowUtc` with the given timeout.
+    /// Mirrors C#'s `FromTimeout` (negative timeout is a programmer error — C#
+    /// throws `ArgumentOutOfRangeException`; Swift uses `precondition`).
+    public static func fromTimeout(_ timeout: TimeInterval, nowUtc: Date) -> Date {
+        precondition(timeout >= 0, "timeout must be non-negative")
+        return nowUtc.addingTimeInterval(timeout)
+    }
+
+    /// Time left before `deadlineUtc`, clamped to zero once passed (matches C#'s
+    /// `Remaining`).
+    public static func remaining(_ deadlineUtc: Date, nowUtc: Date) -> TimeInterval {
+        let left = deadlineUtc.timeIntervalSince(nowUtc)
+        return left > 0 ? left : 0
+    }
+
+    /// True once `nowUtc` has reached or passed the deadline (matches C#'s
+    /// `IsExpired` → `nowUtc >= deadlineUtc`).
+    public static func isExpired(_ deadlineUtc: Date, nowUtc: Date) -> Bool {
+        nowUtc >= deadlineUtc
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // InMemoryGrpcCallMetrics (GrpcTransportCommons.cs)
 //
 // C# uses two ConcurrentDictionaries (channels + states), a lock-guarded call

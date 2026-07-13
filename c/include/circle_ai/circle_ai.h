@@ -269,12 +269,14 @@
  * in-memory implementations for each provider (CalDav/Google/MsGraph calendar,
  * Gmail/Imap/MsGraph mail, OpenMeteo weather + Osrm routing, HomeAssistant, and
  * the Bluesky/Mastodon/NewsApi/Rss news sources) — the real HTTP connectors are
- * injected dependencies (no real network). */
+ * injected dependencies (no real network). integration_inmemory.h adds the six
+ * canonical "in-memory" reference connectors (InMemoryIntegrationConnectors.cs). */
 #include "integration.h"
 #include "integration_calendar.h"
 #include "integration_email.h"
 #include "integration_geo.h"
 #include "integration_home.h"
+#include "integration_inmemory.h"
 #include "integration_news.h"
 
 /* Serving / agents / runtime work unit — CircleAI.Runtime (+ .Backends) /

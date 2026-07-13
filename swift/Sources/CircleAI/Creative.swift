@@ -137,6 +137,83 @@ public final class InMemoryCreativeBoard: ICreativeBoard, @unchecked Sendable {
         if scores.isEmpty { return 0.0 }
         return scores.reduce(0.0, +) / Double(scores.count)
     }
+
+    /// Number of works catalogued (matches C#'s `WorkCount`).
+    public var workCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return works.count
+    }
+
+    /// Remove a work by id; if it existed, also drops all its critiques
+    /// (cascade). Returns true if the work was present (matches C#'s
+    /// `RemoveWork`).
+    @discardableResult
+    public func removeWork(_ workId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let removed = works.removeValue(forKey: workId) != nil
+        if removed { critiques.removeAll { $0.workId == workId } }
+        return removed
+    }
+
+    /// Works by a given author (case-insensitive), newest first. Matches C#'s
+    /// `WorksByAuthor` → `OrderByDescending(CreatedUtc)`.
+    public func worksByAuthor(_ author: String) -> [CreativeWork] {
+        lock.lock(); defer { lock.unlock() }
+        return works.values
+            .filter { $0.author.caseInsensitiveCompare(author) == .orderedSame }
+            .sorted { $0.createdUtc > $1.createdUtc }
+    }
+
+    /// Works in a given medium (case-insensitive), newest first. Matches C#'s
+    /// `WorksByMedium` → `OrderByDescending(CreatedUtc)`.
+    public func worksByMedium(_ medium: String) -> [CreativeWork] {
+        lock.lock(); defer { lock.unlock() }
+        return works.values
+            .filter { $0.medium.caseInsensitiveCompare(medium) == .orderedSame }
+            .sorted { $0.createdUtc > $1.createdUtc }
+    }
+
+    /// The highest average-scored work that still exists, or nil. Matches C#'s
+    /// `TopRatedWork` (groups critiques by workId ordinally; ties keep
+    /// first-appearance order; skips works that were removed).
+    public func topRatedWork() -> CreativeWork? {
+        lock.lock(); defer { lock.unlock() }
+        var order: [String] = []
+        var sums: [String: Double] = [:]
+        var counts: [String: Int] = [:]
+        for c in critiques {
+            if counts[c.workId] == nil { order.append(c.workId) }
+            sums[c.workId, default: 0] += Double(c.score)
+            counts[c.workId, default: 0] += 1
+        }
+        let ranked = order.enumerated().sorted { a, b in
+            let avgA = sums[a.element]! / Double(counts[a.element]!)
+            let avgB = sums[b.element]! / Double(counts[b.element]!)
+            if avgA != avgB { return avgA > avgB }
+            return a.offset < b.offset
+        }
+        for entry in ranked {
+            if let w = works[entry.element] { return w }
+        }
+        return nil
+    }
+
+    /// All distinct tags across works (case-insensitive), ordered
+    /// case-insensitively ascending. Matches C#'s `AllTags` →
+    /// `Distinct(OrdinalIgnoreCase).OrderBy(OrdinalIgnoreCase)` (first-seen
+    /// casing kept for each tag).
+    public func allTags() -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        var seen = Set<String>()
+        var distinct: [String] = []
+        for w in works.values {
+            for t in w.tags {
+                let key = t.lowercased()
+                if !seen.contains(key) { seen.insert(key); distinct.append(t) }
+            }
+        }
+        return distinct.sorted { $0.caseInsensitiveCompare($1) == .orderedAscending }
+    }
 }
 
 // MARK: - CreativeDomainContext

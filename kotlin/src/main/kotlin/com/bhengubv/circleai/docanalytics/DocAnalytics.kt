@@ -38,6 +38,9 @@ data class DocumentInsight(
     val avgDurationSeconds: Double,
 )
 
+/** A most-viewed-document rollup row. Mirrors the C# `(string DocumentId, int Views)` tuple. */
+data class TopDocument(val documentId: String, val views: Int)
+
 /** Document view tracker. Mirrors C# `IDocumentTracker`. */
 interface IDocumentTracker {
     val backendId: String
@@ -95,6 +98,62 @@ class InMemoryDocumentTracker : IDocumentTracker, IDocumentInsights {
                 uniqueViewers = unique,
                 avgDurationSeconds = avgSeconds,
             )
+        }
+    }
+
+    /** Number of distinct documents that have at least one recorded view. */
+    val documentCount: Int get() = byDoc.size
+
+    /** Total views recorded across every tracked document. */
+    val totalViews: Int
+        get() = synchronized(writeLock) { byDoc.values.sumOf { it.size } }
+
+    /** Drop all recorded views for a document. Returns true if anything was removed. */
+    fun clear(documentId: String): Boolean {
+        require(documentId.isNotBlank()) { "documentId required" }
+        return synchronized(writeLock) { byDoc.remove(documentId) != null }
+    }
+
+    /** The most-viewed documents, highest first, capped at [topK]. */
+    fun topDocuments(topK: Int = 5): List<TopDocument> {
+        require(topK > 0) { "topK" }
+        return synchronized(writeLock) {
+            byDoc.map { (id, views) -> TopDocument(id, views.size) }
+                .sortedByDescending { it.views }
+                .take(topK)
+        }
+    }
+
+    /** Most recent views for a document, newest first. */
+    fun recentViews(documentId: String, limit: Int = 20): List<DocumentView> {
+        require(documentId.isNotBlank()) { "documentId required" }
+        require(limit > 0) { "limit" }
+        return synchronized(writeLock) {
+            byDoc[documentId]?.sortedByDescending { it.atUtc }?.take(limit) ?: emptyList()
+        }
+    }
+
+    /** Sum of pages viewed across every recorded view of a document. */
+    fun totalPagesViewed(documentId: String): Int {
+        require(documentId.isNotBlank()) { "documentId required" }
+        return synchronized(writeLock) {
+            byDoc[documentId]?.sumOf { it.pagesViewed } ?: 0
+        }
+    }
+
+    /** The viewer who spent the most cumulative time on a document, if any. */
+    fun mostEngagedViewer(documentId: String): String? {
+        require(documentId.isNotBlank()) { "documentId required" }
+        return synchronized(writeLock) {
+            val views = byDoc[documentId]
+            if (views == null || views.isEmpty()) {
+                null
+            } else {
+                views.groupBy { it.viewerId }
+                    .map { (viewer, group) -> viewer to group.sumOf { it.duration.toNanos() / 1_000_000_000.0 } }
+                    .maxByOrNull { it.second }
+                    ?.first
+            }
         }
     }
 }

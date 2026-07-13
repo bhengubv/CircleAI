@@ -209,3 +209,60 @@ impl ISafetyBoard for InMemorySafetyBoard {
         self.contacts.lock().unwrap().clone()
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemorySafetyBoard`/`ISafetyBoard`).
+impl InMemorySafetyBoard {
+    /// Total number of incidents logged since creation. Mirrors `IncidentCount`.
+    pub fn incident_count(&self) -> usize {
+        self.incidents.lock().unwrap().len()
+    }
+
+    /// Removes the first emergency contact whose id matches (ordinal). Returns
+    /// `true` if one was removed. Mirrors `RemoveContact`.
+    pub fn remove_contact(&self, contact_id: &str) -> bool {
+        if contact_id.is_empty() {
+            return false;
+        }
+        let mut contacts = self.contacts.lock().unwrap();
+        if let Some(idx) = contacts.iter().position(|c| c.contact_id == contact_id) {
+            contacts.remove(idx);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Hazards filed under `category` (case-insensitive), newest first. Mirrors
+    /// `HazardsByCategory`.
+    pub fn hazards_by_category(&self, category: &str) -> Vec<Hazard> {
+        if category.is_empty() {
+            return Vec::new();
+        }
+        let mut hits: Vec<Hazard> = self
+            .hazards
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|h| h.category.eq_ignore_ascii_case(category))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.noted_utc.cmp(&a.noted_utc));
+        hits
+    }
+
+    /// Emergency contacts with a given `relationship` (case-insensitive), in
+    /// insertion order. Mirrors `ContactsByRelationship`.
+    pub fn contacts_by_relationship(&self, relationship: &str) -> Vec<EmergencyContact> {
+        if relationship.is_empty() {
+            return Vec::new();
+        }
+        self.contacts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.relationship.eq_ignore_ascii_case(relationship))
+            .cloned()
+            .collect()
+    }
+}

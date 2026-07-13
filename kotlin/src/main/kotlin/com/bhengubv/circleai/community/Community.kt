@@ -68,6 +68,35 @@ class InMemoryCommunityBoard : ICommunityBoard {
         val now = Instant.now()
         return opps.values.filter { !it.whenUtc.isBefore(now) }.sortedBy { it.whenUtc }
     }
+
+    /** Number of groups. */
+    val groupCount: Int get() = groups.size
+
+    /** Remove a group by id. Returns true if one was present. */
+    fun removeGroup(groupId: String): Boolean = groups.remove(groupId) != null
+
+    /** Add [memberId] to a group. Returns false if the group is unknown or already a member. */
+    fun addMember(groupId: String, memberId: String): Boolean {
+        val g = groups[groupId] ?: return false
+        if (memberId in g.memberIds) return false
+        groups[groupId] = g.copy(memberIds = g.memberIds + memberId)
+        return true
+    }
+
+    /** Remove [memberId] from a group. Returns false if the group is unknown or not a member. */
+    fun removeMember(groupId: String, memberId: String): Boolean {
+        val g = groups[groupId] ?: return false
+        if (memberId !in g.memberIds) return false
+        groups[groupId] = g.copy(memberIds = g.memberIds.filter { it != memberId })
+        return true
+    }
+
+    /** Volunteer opportunities for a group (all, not only future), earliest first. */
+    fun opportunitiesForGroup(groupId: String): List<VolunteerOpportunity> =
+        opps.values.filter { it.groupId == groupId }.sortedBy { it.whenUtc }
+
+    /** Total volunteers needed across all upcoming opportunities. */
+    fun totalVolunteersNeeded(): Int = opportunities().sumOf { it.volunteersNeeded }
 }
 
 // =====================================================================

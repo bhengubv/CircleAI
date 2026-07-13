@@ -124,6 +124,79 @@ public final class InMemoryFarmBoard: IFarmBoard, @unchecked Sendable {
         if rows.isEmpty { return 0.0 }
         return rows.reduce(0.0) { $0 + $1.tonsPerHa } / Double(rows.count)
     }
+
+    /// Number of registered fields (matches C#'s `FieldCount`).
+    public var fieldCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return fields.count
+    }
+
+    /// Remove a field by id. Returns true if it was present (matches C#'s
+    /// `RemoveField` → `TryRemove`).
+    @discardableResult
+    public func removeField(_ fieldId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return fields.removeValue(forKey: fieldId) != nil
+    }
+
+    /// Total area (ha) across all fields (matches C#'s `TotalAreaHa` →
+    /// `Sum(AreaHa)`).
+    public func totalAreaHa() -> Double {
+        lock.lock(); defer { lock.unlock() }
+        return fields.values.reduce(0.0) { $0 + $1.areaHa }
+    }
+
+    /// Fields with a given soil type (case-insensitive), largest area first.
+    /// Matches C#'s `FieldsBySoil` → `OrderByDescending(AreaHa)`.
+    public func fieldsBySoil(_ soilType: String) -> [Field] {
+        lock.lock(); defer { lock.unlock() }
+        return fields.values
+            .filter { $0.soilType.caseInsensitiveCompare(soilType) == .orderedSame }
+            .sorted { $0.areaHa > $1.areaHa }
+    }
+
+    /// Crops whose expected harvest is on/before `asOf`, earliest-harvest first.
+    /// Matches C#'s `DueForHarvest` (crops with no expected harvest are excluded).
+    public func dueForHarvest(asOf: Date) -> [Crop] {
+        lock.lock(); defer { lock.unlock() }
+        return crops.values
+            .filter { if let h = $0.expectedHarvest { return h <= asOf } else { return false } }
+            .sorted { $0.expectedHarvest! < $1.expectedHarvest! }
+    }
+
+    /// The variety with the highest average yield across recorded yields whose
+    /// crop is known, or nil when there are none. Matches C#'s
+    /// `BestYieldingVariety` (groups by variety case-insensitively; ties keep
+    /// first-appearance order).
+    public func bestYieldingVariety() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        // Group yields (whose crop exists) by variety, case-insensitively,
+        // preserving the first-seen display casing + appearance order.
+        var order: [String] = []            // lowercased keys in first-seen order
+        var display: [String: String] = [:] // lowercased key → first-seen variety casing
+        var sums: [String: Double] = [:]
+        var counts: [String: Int] = [:]
+        for y in yields {
+            guard let c = crops[y.cropId] else { continue }
+            let key = c.variety.lowercased()
+            if display[key] == nil { display[key] = c.variety; order.append(key) }
+            sums[key, default: 0] += y.tonsPerHa
+            counts[key, default: 0] += 1
+        }
+        guard !order.isEmpty else { return nil }
+        // Descending by average; ties preserve first-appearance order (mirrors
+        // C#'s stable OrderByDescending(...).First()).
+        let best = order.enumerated()
+            .sorted { a, b in
+                let avgA = sums[a.element]! / Double(counts[a.element]!)
+                let avgB = sums[b.element]! / Double(counts[b.element]!)
+                if avgA != avgB { return avgA > avgB }
+                return a.offset < b.offset
+            }
+            .first!
+            .element
+        return display[best]
+    }
 }
 
 // MARK: - AgricultureDomainContext

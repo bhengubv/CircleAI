@@ -96,6 +96,18 @@ export interface IFitnessBoard {
   goalsFor(userId: string): readonly FitnessGoal[];
   addSet(s: ExerciseSet): void;
   setsFor(workoutId: string): readonly ExerciseSet[];
+  /** Total number of workouts logged. */
+  readonly workoutCount: number;
+  /** A user's workouts of a given kind (case-insensitive), newest first. */
+  workoutsByKind(userId: string, kind: string): readonly Workout[];
+  /** Remove a goal by id. Returns whether one was removed. */
+  removeGoal(goalId: string): boolean;
+  /** The user's soonest-due goal for a given metric (case-insensitive), or undefined. */
+  goalByMetric(userId: string, metric: string): FitnessGoal | undefined;
+  /** Average workout duration (minutes) for a user since `since`, or 0 when none. */
+  avgDurationSince(userId: string, since: Date): number;
+  /** Total lifted volume (reps × weightKg) across a workout's sets. */
+  totalVolumeKg(workoutId: string): number;
 }
 
 /**
@@ -148,6 +160,59 @@ export class InMemoryFitnessBoard implements IFitnessBoard {
 
   setsFor(workoutId: string): readonly ExerciseSet[] {
     return this.sets.filter((s) => s.workoutId === workoutId);
+  }
+
+  /** Total number of workouts logged. Mirrors C# `WorkoutCount`. */
+  get workoutCount(): number {
+    return this.workouts.length;
+  }
+
+  /**
+   * A user's workouts of a given kind (kind matched case-insensitively; user id
+   * matched ordinally), newest first. Mirrors C# `WorkoutsByKind`.
+   */
+  workoutsByKind(userId: string, kind: string): readonly Workout[] {
+    const target = kind.toLowerCase();
+    return this.workouts
+      .filter((w) => w.userId === userId && w.kind.toLowerCase() === target)
+      .sort((a, b) => b.atUtc.getTime() - a.atUtc.getTime());
+  }
+
+  /** Remove a goal by id. Returns whether one was removed. Mirrors C# `RemoveGoal`. */
+  removeGoal(goalId: string): boolean {
+    return this.goals.delete(goalId);
+  }
+
+  /**
+   * The user's soonest-due goal for a given metric (metric matched
+   * case-insensitively), or undefined. Mirrors C# `GoalByMetric`.
+   */
+  goalByMetric(userId: string, metric: string): FitnessGoal | undefined {
+    const target = metric.toLowerCase();
+    return [...this.goals.values()]
+      .filter((g) => g.userId === userId && g.metric.toLowerCase() === target)
+      .sort((a, b) => a.dueOn.getTime() - b.dueOn.getTime())[0];
+  }
+
+  /**
+   * Average workout duration (minutes) for a user since `since`, or 0 when the
+   * user has no qualifying workouts (C# `DefaultIfEmpty(0).Average()`).
+   * Mirrors C# `AvgDurationSince`.
+   */
+  avgDurationSince(userId: string, since: Date): number {
+    const sinceMs = since.getTime();
+    const durations = this.workouts
+      .filter((w) => w.userId === userId && w.atUtc.getTime() >= sinceMs)
+      .map((w) => w.durationMinutes);
+    if (durations.length === 0) return 0;
+    return durations.reduce((sum, d) => sum + d, 0) / durations.length;
+  }
+
+  /** Total lifted volume (reps × weightKg) across a workout's sets. Mirrors C# `TotalVolumeKg`. */
+  totalVolumeKg(workoutId: string): number {
+    return this.sets
+      .filter((s) => s.workoutId === workoutId)
+      .reduce((sum, s) => sum + s.reps * s.weightKg, 0);
   }
 }
 

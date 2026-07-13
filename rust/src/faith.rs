@@ -218,3 +218,82 @@ impl IFaithBoard for InMemoryFaithBoard {
             .collect()
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryFaithBoard`/`IFaithBoard`).
+impl InMemoryFaithBoard {
+    /// Number of scheduled services. Mirrors `ServiceCount`.
+    pub fn service_count(&self) -> usize {
+        self.services.lock().unwrap().len()
+    }
+
+    /// Removes a service by id. Returns `true` if present. Mirrors `RemoveService`.
+    pub fn remove_service(&self, service_id: &str) -> bool {
+        self.services.lock().unwrap().remove(service_id).is_some()
+    }
+
+    /// Services at `location` (case-insensitive), earliest first. Mirrors
+    /// `ServicesAt`.
+    pub fn services_at(&self, location: &str) -> Vec<FaithService> {
+        let mut hits: Vec<FaithService> = self
+            .services
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.location.eq_ignore_ascii_case(location))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.start_utc.cmp(&b.start_utc));
+        hits
+    }
+
+    /// Non-anonymous prayers by `author` (case-insensitive), newest first.
+    /// Privacy-aware: anonymous requests are excluded even on an author match.
+    /// Mirrors `PrayersByAuthor`.
+    pub fn prayers_by_author(&self, author: &str) -> Vec<PrayerRequest> {
+        let mut hits: Vec<PrayerRequest> = self
+            .prayers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| !p.is_anonymous && p.author.eq_ignore_ascii_case(author))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.submitted_utc.cmp(&a.submitted_utc));
+        hits
+    }
+
+    /// Count of anonymous prayer requests. Mirrors `AnonymousPrayerCount`.
+    pub fn anonymous_prayer_count(&self) -> usize {
+        self.prayers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.is_anonymous)
+            .count()
+    }
+
+    /// Verses of a chapter: references matching `tradition` + `book`
+    /// (case-insensitive) and `chapter`, ordered by verse. Mirrors `ChapterVerses`.
+    pub fn chapter_verses(
+        &self,
+        tradition: &str,
+        book: &str,
+        chapter: i32,
+    ) -> Vec<ScriptureReference> {
+        let mut hits: Vec<ScriptureReference> = self
+            .scripture
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|r| {
+                r.tradition.eq_ignore_ascii_case(tradition)
+                    && r.book.eq_ignore_ascii_case(book)
+                    && r.chapter == chapter
+            })
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.verse.cmp(&b.verse));
+        hits
+    }
+}

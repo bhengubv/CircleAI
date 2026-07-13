@@ -128,6 +128,13 @@ pub mod voice;
 pub mod embeddings_local_hnsw;
 // CircleAI.Hosting.VoiceOptions — voice-pipeline config DTO.
 pub mod hosting_voice;
+// CircleAI.Media — audio/video/image asset catalogue + in-memory library.
+pub mod media;
+// CircleAI.DocAnalytics — document view tracker + on-demand insights.
+pub mod doc_analytics;
+// CircleAI.Integration — deterministic in-memory reference connectors
+// (calendar / email / news / weather / routing / home-automation).
+pub mod integration;
 
 // Convenience re-exports so downstream crates can write `circle_ai::AffectState`.
 pub use companion::{

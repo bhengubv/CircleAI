@@ -223,3 +223,77 @@ impl IFitnessBoard for InMemoryFitnessBoard {
             .collect()
     }
 }
+
+/// StubGuard parity additions — concrete-only helpers on the in-memory board
+/// (mirroring the C# members added to `InMemoryFitnessBoard`/`IFitnessBoard`).
+impl InMemoryFitnessBoard {
+    /// Total number of logged workouts. Mirrors `WorkoutCount`.
+    pub fn workout_count(&self) -> usize {
+        self.workouts.lock().unwrap().len()
+    }
+
+    /// A user's workouts of a given `kind` (case-insensitive), newest first.
+    /// Mirrors `WorkoutsByKind`.
+    pub fn workouts_by_kind(&self, user_id: &str, kind: &str) -> Vec<Workout> {
+        let mut hits: Vec<Workout> = self
+            .workouts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|w| w.user_id == user_id && w.kind.eq_ignore_ascii_case(kind))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| b.at_utc.cmp(&a.at_utc));
+        hits
+    }
+
+    /// Removes a goal by id. Returns `true` if present. Mirrors `RemoveGoal`.
+    pub fn remove_goal(&self, goal_id: &str) -> bool {
+        self.goals.lock().unwrap().remove(goal_id).is_some()
+    }
+
+    /// A user's goal for `metric` (case-insensitive), the earliest-due one, if any.
+    /// Mirrors `GoalByMetric`.
+    pub fn goal_by_metric(&self, user_id: &str, metric: &str) -> Option<FitnessGoal> {
+        let mut hits: Vec<FitnessGoal> = self
+            .goals
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|g| g.user_id == user_id && g.metric.eq_ignore_ascii_case(metric))
+            .cloned()
+            .collect();
+        hits.sort_by(|a, b| a.due_on.cmp(&b.due_on));
+        hits.into_iter().next()
+    }
+
+    /// Average workout duration (minutes) for a user since `since`; `0.0` when
+    /// none (the C# `DefaultIfEmpty(0).Average()`). Mirrors `AvgDurationSince`.
+    pub fn avg_duration_since(&self, user_id: &str, since: DateTime<Utc>) -> f64 {
+        let durations: Vec<f64> = self
+            .workouts
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|w| w.user_id == user_id && w.at_utc >= since)
+            .map(|w| w.duration_minutes as f64)
+            .collect();
+        if durations.is_empty() {
+            0.0
+        } else {
+            durations.iter().sum::<f64>() / durations.len() as f64
+        }
+    }
+
+    /// Total lifted volume (Σ reps × weight_kg) across a workout's sets. Mirrors
+    /// `TotalVolumeKg`.
+    pub fn total_volume_kg(&self, workout_id: &str) -> f64 {
+        self.sets
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.workout_id == workout_id)
+            .map(|s| s.reps as f64 * s.weight_kg)
+            .sum()
+    }
+}

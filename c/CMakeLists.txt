@@ -206,6 +206,7 @@ add_library(circle_ai STATIC
     src/integration_email.c
     src/integration_geo.c
     src/integration_home.c
+    src/integration_inmemory.c
     src/integration_news.c
 
     # Serving / agents / runtime work unit — CircleAI.Runtime (+ .Backends) /

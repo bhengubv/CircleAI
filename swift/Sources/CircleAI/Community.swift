@@ -136,6 +136,67 @@ public final class InMemoryCommunityBoard: ICommunityBoard, @unchecked Sendable 
         lock.lock(); defer { lock.unlock() }
         return opps.values.filter { $0.whenUtc >= now }.sorted { $0.whenUtc < $1.whenUtc }
     }
+
+    /// Number of groups (matches C#'s `GroupCount`).
+    public var groupCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return groups.count
+    }
+
+    /// Remove a group by id. Returns true if present (matches C#'s `RemoveGroup`
+    /// → `TryRemove`).
+    @discardableResult
+    public func removeGroup(_ groupId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return groups.removeValue(forKey: groupId) != nil
+    }
+
+    /// Add a member to a group. False if the group is unknown or the member is
+    /// already in it; otherwise appends and returns true (matches C#'s
+    /// `AddMember`).
+    @discardableResult
+    public func addMember(groupId: String, memberId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let g = groups[groupId] else { return false }
+        if g.memberIds.contains(memberId) { return false }
+        groups[groupId] = CommunityGroup(
+            groupId: g.groupId, name: g.name, purpose: g.purpose,
+            memberIds: g.memberIds + [memberId])
+        return true
+    }
+
+    /// Remove a member from a group. False if the group is unknown or the member
+    /// is not in it; otherwise removes and returns true (matches C#'s
+    /// `RemoveMember`).
+    @discardableResult
+    public func removeMember(groupId: String, memberId: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let g = groups[groupId] else { return false }
+        if !g.memberIds.contains(memberId) { return false }
+        groups[groupId] = CommunityGroup(
+            groupId: g.groupId, name: g.name, purpose: g.purpose,
+            memberIds: g.memberIds.filter { $0 != memberId })
+        return true
+    }
+
+    /// A group's volunteer opportunities (groupId ordinal), earliest first — ALL
+    /// of them, no time filter. Matches C#'s `OpportunitiesForGroup` →
+    /// `OrderBy(WhenUtc)`.
+    public func opportunitiesForGroup(_ groupId: String) -> [VolunteerOpportunity] {
+        lock.lock(); defer { lock.unlock() }
+        return opps.values
+            .filter { $0.groupId == groupId }
+            .sorted { $0.whenUtc < $1.whenUtc }
+    }
+
+    /// Total volunteers needed across FUTURE opportunities only (mirrors C#'s
+    /// `TotalVolunteersNeeded` → `Opportunities().Sum(...)`, where
+    /// `Opportunities()` is future-filtered).
+    public func totalVolunteersNeeded() -> Int {
+        let now = Date()
+        lock.lock(); defer { lock.unlock() }
+        return opps.values.filter { $0.whenUtc >= now }.reduce(0) { $0 + $1.volunteersNeeded }
+    }
 }
 
 // MARK: - CommunityDomainContext

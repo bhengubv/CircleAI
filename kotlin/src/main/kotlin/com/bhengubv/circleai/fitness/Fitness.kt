@@ -81,6 +81,35 @@ class InMemoryFitnessBoard : IFitnessBoard {
         sets.filter { it.workoutId == workoutId }
     }
 
+    /** Total number of workouts logged. */
+    val workoutCount: Int get() = synchronized(lock) { workouts.size }
+
+    /** A user's workouts of a given kind (case-insensitive), newest-first. */
+    fun workoutsByKind(userId: String, kind: String): List<Workout> = synchronized(lock) {
+        workouts.filter { it.userId == userId && it.kind.equals(kind, ignoreCase = true) }
+            .sortedByDescending { it.atUtc }
+    }
+
+    /** Remove a goal by id. Returns true if one was present. */
+    fun removeGoal(goalId: String): Boolean = goals.remove(goalId) != null
+
+    /** A user's goal for a given metric (case-insensitive), soonest due first; or null. */
+    fun goalByMetric(userId: String, metric: String): FitnessGoal? =
+        goals.values.filter { it.userId == userId && it.metric.equals(metric, ignoreCase = true) }
+            .minByOrNull { it.dueOn }
+
+    /** Mean workout duration (minutes) for a user since [since]; 0.0 when none. */
+    fun avgDurationSince(userId: String, since: Instant): Double = synchronized(lock) {
+        val vals = workouts.filter { it.userId == userId && !it.atUtc.isBefore(since) }
+            .map { it.durationMinutes.toDouble() }
+        if (vals.isEmpty()) 0.0 else vals.average()
+    }
+
+    /** Total lifted volume (reps × weightKg) across all sets of a workout. */
+    fun totalVolumeKg(workoutId: String): Double = synchronized(lock) {
+        sets.filter { it.workoutId == workoutId }.sumOf { it.reps * it.weightKg }
+    }
+
     private companion object {
         fun weekStartOf(now: Instant): Instant {
             val date = now.atZone(ZoneOffset.UTC).toLocalDate()

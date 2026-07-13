@@ -154,6 +154,24 @@ int ca_nearlink_registry_record_throughput(ca_nearlink_registry_t *r,
  * (DefaultIfEmpty(-127).Average()). */
 double ca_nearlink_registry_avg_rssi(const ca_nearlink_registry_t *r,
                                      const char *device_id);
+/* AvgKbpsRead(deviceId) — mean read throughput for the device; 0.0 when none. */
+double ca_nearlink_registry_avg_kbps_read(const ca_nearlink_registry_t *r,
+                                          const char *device_id);
+/* AvgKbpsWrite(deviceId) — mean write throughput for the device; 0.0 when none. */
+double ca_nearlink_registry_avg_kbps_write(const ca_nearlink_registry_t *r,
+                                           const char *device_id);
+/* Unregister(deviceId) — drop the device record + cached pairing state (open
+ * sessions are left untouched). Returns true if a device record was removed;
+ * false on NULL/empty deviceId. */
+bool ca_nearlink_registry_unregister(ca_nearlink_registry_t *r,
+                                     const char *device_id);
+/* SessionsForDevice(deviceId) — owned array of owned copies of the device's
+ * sessions, oldest-first by StartedUtc (Ordinal deviceId match). Empty deviceId
+ * or no match => *out=NULL,*count=0; on error *out=NULL,*count=SIZE_MAX. 0/-1. */
+int ca_nearlink_registry_sessions_for_device(const ca_nearlink_registry_t *r,
+                                             const char *device_id,
+                                             ca_nearlink_session_t ***out,
+                                             size_t *count);
 
 /* ===========================================================================
  * INearLinkAdapter — injected platform NearLink seam (vtable).

@@ -15,7 +15,7 @@ import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,3 +150,68 @@ class InMemoryCivicBoard(ICivicBoard):
             items = [e for e in self._events.values() if e.at_utc >= now]
         items.sort(key=lambda e: e.at_utc)
         return items
+
+    @property
+    def open_issue_count(self) -> int:
+        """Number of issues not yet resolved (C#: ``OpenIssueCount``)."""
+        return len(self.open_issues())
+
+    def issues_by_category(self, category: str) -> List[CivicIssue]:
+        """Issues in a given category (case-insensitive), newest-first
+        (C#: ``IssuesByCategory``).
+        """
+        target = category.casefold()
+        with self._lock:
+            matches = [
+                i
+                for i in self._issues.values()
+                if i.category.casefold() == target
+            ]
+        return sorted(matches, key=lambda i: i.reported_utc, reverse=True)
+
+    def remove_rep(self, rep_id: str) -> bool:
+        """Remove a representative. Returns True if one was present
+        (C#: ``RemoveRep``).
+        """
+        with self._lock:
+            return self._reps.pop(rep_id, None) is not None
+
+    def reps_for_office(self, office: str) -> List[Representative]:
+        """Representatives holding a given office (case-insensitive), ordered by
+        name (case-insensitive) (C#: ``RepsForOffice``).
+        """
+        target = office.casefold()
+        with self._lock:
+            matches = [
+                r for r in self._reps.values() if r.office.casefold() == target
+            ]
+        return sorted(matches, key=lambda r: r.name.casefold())
+
+    def events_for_audience(self, audience: str) -> List[CivicEvent]:
+        """Events for a given audience (case-insensitive), earliest first
+        (C#: ``EventsForAudience``).
+        """
+        target = audience.casefold()
+        with self._lock:
+            matches = [
+                e
+                for e in self._events.values()
+                if e.audience.casefold() == target
+            ]
+        return sorted(matches, key=lambda e: e.at_utc)
+
+    def open_issue_breakdown(self) -> List[Tuple[str, int]]:
+        """Open-issue counts grouped by category (case-insensitive), highest
+        first (C#: ``OpenIssueBreakdown`` — ``(Category, Count)`` pairs; ties
+        keep first-seen order/casing).
+        """
+        counts: Dict[str, List] = {}  # casefold -> [display, count]
+        for i in self.open_issues():
+            key = i.category.casefold()
+            agg = counts.get(key)
+            if agg is None:
+                counts[key] = [i.category, 1]
+            else:
+                agg[1] += 1
+        ranked = sorted(counts.values(), key=lambda a: a[1], reverse=True)
+        return [(display, count) for display, count in ranked]

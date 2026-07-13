@@ -344,3 +344,255 @@ export function isNullOrWhiteSpace(s: string | null | undefined): boolean {
 export function isNullOrEmpty(s: string | null | undefined): boolean {
   return s === null || s === undefined || s.length === 0;
 }
+
+// ── In-memory reference connectors ────────────────────────────────────────────
+//
+// Deterministic, dependency-free reference implementations of the connector
+// contracts above — the canonical offline/test doubles usable without any
+// external provider. Mirrors C# `InMemoryIntegrationConnectors.cs`. The real
+// provider bindings live in the ./calendar, ./email, ./news, ./geo and
+// ./homeassistant sub-modules.
+
+/**
+ * C# `Math.Round(double, int)` uses banker's rounding (round-half-to-even).
+ * The weather/routing providers round their outputs, so we reproduce
+ * round-half-to-even at a given number of decimal places to match byte-for-byte.
+ */
+function roundHalfEven(value: number, digits: number): number {
+  const factor = 10 ** digits;
+  const scaled = value * factor;
+  const floor = Math.floor(scaled);
+  const diff = scaled - floor;
+  let rounded: number;
+  if (diff < 0.5) rounded = floor;
+  else if (diff > 0.5) rounded = floor + 1;
+  else rounded = floor % 2 === 0 ? floor : floor + 1; // exactly .5 → to even
+  return rounded / factor;
+}
+
+/**
+ * In-memory {@link ICalendarConnector}: events are held in a map; listing
+ * returns those overlapping the window, ordered by start. Mirrors C#
+ * `InMemoryCalendarConnector`.
+ */
+export class InMemoryCalendarConnector implements ICalendarConnector {
+  private readonly events = new Map<string, CalendarEvent>();
+
+  get providerId(): string {
+    return "in-memory";
+  }
+  get isConfigured(): boolean {
+    return true;
+  }
+
+  listEventsAsync(fromUtc: Date, toUtc: Date, _ct?: AbortSignal): Promise<readonly CalendarEvent[]> {
+    const from = fromUtc.getTime();
+    const to = toUtc.getTime();
+    return Promise.resolve(
+      [...this.events.values()]
+        .filter((e) => e.startUtc.getTime() < to && e.endUtc.getTime() > from)
+        .sort((a, b) => a.startUtc.getTime() - b.startUtc.getTime()),
+    );
+  }
+
+  createEventAsync(ev: CalendarEvent, _ct?: AbortSignal): Promise<CalendarEvent> {
+    if (ev == null) throw new Error("ev required");
+    this.events.set(ev.eventId, ev);
+    return Promise.resolve(ev);
+  }
+
+  deleteEventAsync(_calendarId: string, eventId: string, _ct?: AbortSignal): Promise<void> {
+    this.events.delete(eventId);
+    return Promise.resolve();
+  }
+}
+
+/**
+ * In-memory {@link IEmailConnector}: seeded with messages; unread + search read
+ * newest-first, markRead flips the flag. Mirrors C# `InMemoryEmailConnector`.
+ */
+export class InMemoryEmailConnector implements IEmailConnector {
+  private readonly messages = new Map<string, EmailMessage>();
+
+  constructor(seed?: Iterable<EmailMessage>) {
+    if (seed !== undefined) for (const m of seed) this.messages.set(m.messageId, m);
+  }
+
+  get providerId(): string {
+    return "in-memory";
+  }
+  get isConfigured(): boolean {
+    return true;
+  }
+
+  listUnreadAsync(max: number, _ct?: AbortSignal): Promise<readonly EmailMessage[]> {
+    return Promise.resolve(
+      [...this.messages.values()]
+        .filter((m) => m.unread)
+        .sort((a, b) => b.receivedUtc.getTime() - a.receivedUtc.getTime())
+        .slice(0, Math.max(0, max)),
+    );
+  }
+
+  searchAsync(query: string, max: number, _ct?: AbortSignal): Promise<readonly EmailMessage[]> {
+    const needle = (query ?? "").toLowerCase();
+    return Promise.resolve(
+      [...this.messages.values()]
+        .filter((m) => m.subject.toLowerCase().includes(needle) || m.bodyText.toLowerCase().includes(needle))
+        .sort((a, b) => b.receivedUtc.getTime() - a.receivedUtc.getTime())
+        .slice(0, Math.max(0, max)),
+    );
+  }
+
+  markReadAsync(messageId: string, _ct?: AbortSignal): Promise<void> {
+    const m = this.messages.get(messageId);
+    if (m !== undefined) this.messages.set(messageId, { ...m, unread: false });
+    return Promise.resolve();
+  }
+}
+
+/** In-memory {@link INewsSource}: seeded items, newest-first. Mirrors C# `InMemoryNewsSource`. */
+export class InMemoryNewsSource implements INewsSource {
+  private readonly items = new Map<string, NewsItem>();
+
+  constructor(seed?: Iterable<NewsItem>) {
+    if (seed !== undefined) for (const i of seed) this.items.set(i.itemId, i);
+  }
+
+  get sourceId(): string {
+    return "in-memory";
+  }
+  get isConfigured(): boolean {
+    return true;
+  }
+
+  fetchLatestAsync(max: number, _ct?: AbortSignal): Promise<readonly NewsItem[]> {
+    return Promise.resolve(
+      [...this.items.values()]
+        .sort((a, b) => b.publishedUtc.getTime() - a.publishedUtc.getTime())
+        .slice(0, Math.max(0, max)),
+    );
+  }
+}
+
+/**
+ * In-memory {@link IWeatherProvider}: deterministic pseudo-weather derived from
+ * coordinates + hour (no randomness, reproducible across platforms). Mirrors C#
+ * `InMemoryWeatherProvider`.
+ */
+export class InMemoryWeatherProvider implements IWeatherProvider {
+  get providerId(): string {
+    return "in-memory";
+  }
+
+  currentAsync(lat: number, lon: number, _ct?: AbortSignal): Promise<WeatherSample> {
+    return Promise.resolve(InMemoryWeatherProvider.sample(lat, lon, 0));
+  }
+
+  hourlyAsync(lat: number, lon: number, hours: number, _ct?: AbortSignal): Promise<readonly WeatherSample[]> {
+    const n = Math.max(0, hours);
+    const out: WeatherSample[] = [];
+    for (let h = 0; h < n; h++) out.push(InMemoryWeatherProvider.sample(lat, lon, h));
+    return Promise.resolve(out);
+  }
+
+  private static sample(lat: number, _lon: number, hourOffset: number): WeatherSample {
+    const tempC = roundHalfEven(15.0 + 10.0 * Math.cos(((lat + hourOffset) * Math.PI) / 12.0), 2);
+    // C# `DateTimeOffset.UnixEpoch.AddHours(hourOffset)` → epoch + hours (ms).
+    const atUtc = new Date(hourOffset * 3_600_000);
+    return weatherSample(atUtc, tempC, roundHalfEven(tempC - 1.5, 2), 0.0, 12.0, 40, "Clear");
+  }
+}
+
+/**
+ * In-memory {@link IRoutingProvider}: great-circle distance and a mode-based
+ * speed give a deterministic estimate with a 2-point polyline. Mirrors C#
+ * `InMemoryRoutingProvider`.
+ */
+export class InMemoryRoutingProvider implements IRoutingProvider {
+  get providerId(): string {
+    return "in-memory";
+  }
+
+  routeAsync(
+    fromLat: number,
+    fromLon: number,
+    toLat: number,
+    toLon: number,
+    mode = "car",
+    _ct?: AbortSignal,
+  ): Promise<RouteEstimate> {
+    const km = InMemoryRoutingProvider.haversine(fromLat, fromLon, toLat, toLon);
+    const kph = mode === "walk" ? 5.0 : mode === "bike" ? 18.0 : mode === "transit" ? 30.0 : 60.0;
+    // C# `TimeSpan.FromHours(km / kph)` → duration in ms (0 when kph <= 0).
+    const durationMs = (kph <= 0 ? 0 : km / kph) * 3_600_000;
+    return Promise.resolve(
+      routeEstimate(roundHalfEven(km, 3), durationMs, [
+        { lat: fromLat, lon: fromLon },
+        { lat: toLat, lon: toLon },
+      ]),
+    );
+  }
+
+  private static haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const r = 6371.0;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180.0;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180.0;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180.0) *
+        Math.cos((lat2 * Math.PI) / 180.0) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+}
+
+/**
+ * In-memory {@link IHomeAutomationConnector}: seeded entities;
+ * turn_on/turn_off/toggle deterministically mutate matching-domain entity state.
+ * Mirrors C# `InMemoryHomeAutomationConnector`.
+ */
+export class InMemoryHomeAutomationConnector implements IHomeAutomationConnector {
+  private readonly entities = new Map<string, HaEntity>();
+
+  constructor(seed?: Iterable<HaEntity>) {
+    if (seed !== undefined) for (const e of seed) this.entities.set(e.entityId, e);
+  }
+
+  get providerId(): string {
+    return "in-memory";
+  }
+  get isConfigured(): boolean {
+    return true;
+  }
+
+  listEntitiesAsync(_ct?: AbortSignal): Promise<readonly HaEntity[]> {
+    return Promise.resolve(
+      [...this.entities.values()].sort((a, b) => (a.entityId < b.entityId ? -1 : a.entityId > b.entityId ? 1 : 0)),
+    );
+  }
+
+  callServiceAsync(
+    domain: string,
+    service: string,
+    _data: ReadonlyMap<string, unknown> | null | undefined,
+    _ct?: AbortSignal,
+  ): Promise<void> {
+    const target = domain.toLowerCase();
+    for (const e of [...this.entities.values()].filter((x) => x.domain.toLowerCase() === target)) {
+      const newState =
+        service === "turn_on"
+          ? "on"
+          : service === "turn_off"
+            ? "off"
+            : service === "toggle"
+              ? e.state === "on"
+                ? "off"
+                : "on"
+              : e.state;
+      this.entities.set(e.entityId, { ...e, state: newState });
+    }
+    return Promise.resolve();
+  }
+}

@@ -138,3 +138,72 @@ class InMemoryBeautyBoard(IBeautyBoard):
                 for t in self._treatments.values()
                 if any(c in t.name.casefold() for c in concerns)
             ]
+
+    @property
+    def treatment_count(self) -> int:
+        """Number of treatments on the menu (C#: ``TreatmentCount``)."""
+        with self._lock:
+            return len(self._treatments)
+
+    def cancel_appointment(self, appt_id: str) -> bool:
+        """Cancel every appointment matching ``appt_id`` (ordinal). Returns True
+        if at least one was removed (C#: ``CancelAppointment``).
+        """
+        with self._lock:
+            before = len(self._appts)
+            self._appts = [a for a in self._appts if a.appt_id != appt_id]
+            return len(self._appts) < before
+
+    def appointments_for_client(self, client_name: str) -> List[Appointment]:
+        """A client's appointments (case-insensitive), earliest first
+        (C#: ``AppointmentsForClient``).
+        """
+        target = client_name.casefold()
+        with self._lock:
+            items = [
+                a for a in self._appts if a.client_name.casefold() == target
+            ]
+        items.sort(key=lambda a: a.at_utc)
+        return items
+
+    def treatments_under(self, max_price: Decimal) -> List[Treatment]:
+        """Treatments priced at or below ``max_price``, cheapest first
+        (C#: ``TreatmentsUnder``).
+        """
+        with self._lock:
+            matches = [
+                t for t in self._treatments.values() if t.price <= max_price
+            ]
+        return sorted(matches, key=lambda t: t.price)
+
+    def next_appointment_for(
+        self, client_name: str, now: datetime
+    ) -> Optional[Appointment]:
+        """A client's next appointment at or after ``now`` (case-insensitive),
+        or None (C#: ``NextAppointmentFor``).
+        """
+        target = client_name.casefold()
+        with self._lock:
+            upcoming = [
+                a
+                for a in self._appts
+                if a.client_name.casefold() == target and a.at_utc >= now
+            ]
+        if not upcoming:
+            return None
+        return min(upcoming, key=lambda a: a.at_utc)
+
+    def scheduled_revenue_between(
+        self, start: datetime, end: datetime
+    ) -> Decimal:
+        """Total priced revenue of appointments in the inclusive [start, end]
+        window whose treatment is known (C#: ``ScheduledRevenueBetween``).
+        """
+        total = Decimal(0)
+        with self._lock:
+            for a in self._appts:
+                if start <= a.at_utc <= end:
+                    t = self._treatments.get(a.treatment_id)
+                    if t is not None:
+                        total += t.price
+        return total
