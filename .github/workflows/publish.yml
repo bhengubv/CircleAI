@@ -193,23 +193,23 @@ jobs:
         with:
           dotnet-version: "9.x"
 
-      - name: Pack Circle.AI.Security
+      - name: Pack CircleAI.Security
         run: |
-          dotnet pack src/Circle.AI.Security/Circle.AI.Security.csproj \
+          dotnet pack src/CircleAI.Security/CircleAI.Security.csproj \
             -c Release \
             -p:PackageVersion="${VERSION#v}" \
             -o ./nupkgs
 
-      - name: Pack Circle.AI.Orchestration
+      - name: Pack CircleAI.Orchestration
         run: |
-          dotnet pack src/Circle.AI.Orchestration/Circle.AI.Orchestration.csproj \
+          dotnet pack src/CircleAI.Orchestration/CircleAI.Orchestration.csproj \
             -c Release \
             -p:PackageVersion="${VERSION#v}" \
             -o ./nupkgs
 
-      - name: Pack Circle.AI.Simulation
+      - name: Pack CircleAI.Simulation
         run: |
-          dotnet pack src/Circle.AI.Simulation/Circle.AI.Simulation.csproj \
+          dotnet pack src/CircleAI.Simulation/CircleAI.Simulation.csproj \
             -c Release \
             -p:PackageVersion="${VERSION#v}" \
             -o ./nupkgs
@@ -254,6 +254,6 @@ jobs:
           echo "  Swift        → SPM:             CircleAI"
           echo "  Rust         → crates.io:       circle-ai"
           echo "  Android      → GitHub Packages: com.bhengubv:circle-ai-android"
-          echo "  .NET host    → GitHub Packages: Circle.AI.Security,"
-          echo "                                   Circle.AI.Orchestration,"
-          echo "                                   Circle.AI.Simulation"
+          echo "  .NET host    → GitHub Packages: CircleAI.Security,"
+          echo "                                   CircleAI.Orchestration,"
+          echo "                                   CircleAI.Simulation"
