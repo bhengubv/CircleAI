@@ -4,6 +4,68 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] — 2026-07-14 — **Cross-language test parity — 8/9 suites green + StubGuard package completions**
+
+Brings all eight language surfaces — the C# reference plus the Go, Rust, Python,
+TypeScript, Kotlin, Swift and C ports — to a verified-green unit-test state and
+full public-API parity. HarmonyOS remains the single documented gap (no ArkTS
+toolchain to compile-gate it). Fifteen deliberately-concise `src/CircleAI.*`
+packages were completed to genuine depth (clearing the `StubGuardTests`
+≥60-real-line quality gate), and every addition was mirrored across all seven
+ports and re-verified.
+
+### Added — package completions (C# reference + mirrored to all 7 ports)
+
+- **`CircleAI.Media`** — `IMediaLibrary` / `InMemoryMediaLibrary`: `Remove`,
+  `Count`, `TotalBytes`, `ByMime` (case-insensitive prefix, newest-first).
+- **`CircleAI.Safety`** — `ISafetyBoard` / `InMemorySafetyBoard`:
+  `IncidentCount`, `RemoveContact`, `HazardsByCategory`,
+  `ContactsByRelationship`.
+- **`CircleAI.Networking.Bluetooth`** — `InMemoryBluetoothTransportRegistry`:
+  `AvgKbpsWrite` (previously only `AvgKbpsRead`), `Unregister`,
+  `EndpointsWithService`, `ConnectedCount`.
+- **`CircleAI.Networking.NearLink`** — `InMemoryNearLinkRegistry`:
+  `AvgKbpsRead`, `AvgKbpsWrite`, `Unregister`, `SessionsForDevice`.
+- **`CircleAI.Networking.Grpc`** — `GrpcConnectionState`, `GrpcReconnectPolicy`
+  (exponential capped, overflow-safe backoff), `GrpcDeadline` — fulfilling the
+  transport's documented "deadlines and reconnection" contract.
+- **`CircleAI.Integration`** — six deterministic in-memory reference connectors
+  (`InMemoryCalendarConnector`, `InMemoryEmailConnector`, `InMemoryNewsSource`,
+  `InMemoryWeatherProvider`, `InMemoryRoutingProvider`,
+  `InMemoryHomeAutomationConnector`) with reproducible weather + haversine math.
+- **Vertical-domain packs** — `Accessibility`, `Agriculture`, `Beauty`,
+  `Civic`, `Community`, `Creative`, `DocAnalytics`, `Faith`, `Fitness`:
+  count / remove / category-filter / aggregate query methods on each in-memory
+  board.
+- Several ports gained modules that had never existed (Media, Safety and the
+  networking transports in TypeScript/Rust/Python) — created in full, so
+  parity is genuinely deeper than before.
+
+### Fixed — cross-language determinism + port bugs surfaced by the test pass
+
+- **C** — disabled FP contraction (`-ffp-contract=off`); a fused multiply-add
+  was diverging 1 ULP from the C# reference on the belief-decay computation.
+- **Python** — `SkillPackLoader` `tags:` block-sequence regex (Python `re`
+  will not backtrack a greedy `\s*` the way .NET does, dropping every tag
+  after the first).
+- **Kotlin** — CalDAV ICS date parser was missing the required literal
+  trailing `Z`, throwing on every timestamp.
+- **Swift** — biosignals aggregator task-group race could drop computed stats;
+  the test target had never been compiled during porting, so ~75
+  `await`-inside-`XCTAssert` autoclosure errors were fixed.
+- **TypeScript** — fire-and-forget event subscribers now `.catch()` async
+  rejections (matching C#'s discarded-`ValueTask` semantics) instead of raising
+  an `unhandledRejection`.
+- **Rust** — fixture `serde(rename_all)` mismatch against the snake_case golden
+  JSON; Travel nights test data.
+- All ports converged on round-half-to-even for `Math.Round` byte-parity.
+
+### Notes
+
+- Unit-test suites verified green: C# (15 projects incl. `StubGuardTests`),
+  Go, Rust (1,396), Python (2,276), TypeScript (1,413), Kotlin (1,447),
+  Swift (2,140), C (130). HarmonyOS is the accepted documented gap.
+
 ## [3.3.0] — 2026-06-25 — **HER / JARVIS parity — always-on, world-aware, embodied, learns-you, reasoner**
 
 Closes the gap between the 3.2.0 substrate ("real backends for 24 HER/Jarvis
