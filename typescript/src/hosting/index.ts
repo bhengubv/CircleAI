@@ -51,6 +51,33 @@ export type {
 export { AIService } from "./service.js";
 export type { IAIService, IFallbackChainModelSelector } from "./service.js";
 
+// ── Chat runtime seam (host-neutral) ────────────────────────────────────────────
+export { NullChatRuntime, isPersistable, chatTurn } from "./chat_runtime.js";
+export type {
+  IChatRuntime,
+  IPersistableChatRuntime,
+  ChatTurn,
+} from "./chat_runtime.js";
+
+// ── Neuron (concierge two-slot node) ────────────────────────────────────────────
+export {
+  Organ,
+  NeuronGate,
+  HeuristicNeuronRouter,
+  ResidentSlotManager,
+  SlotOutcome,
+  NeuronNode,
+  generalistDecision,
+  specialistDecision,
+} from "./neuron/index.js";
+export type {
+  INeuronRouter,
+  RouteContext,
+  RouteDecision,
+  SlotAdmission,
+  INeuronBrain,
+} from "./neuron/index.js";
+
 // ── Endpoints + HTTP transport seam ─────────────────────────────────────────────
 export {
   InProcessEndpoint,

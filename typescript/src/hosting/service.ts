@@ -49,6 +49,12 @@ import {
   type IMemoryPressureSource,
   MemoryPressureLevel,
 } from "./memory_pressure.js";
+import {
+  ResidentSlotManager,
+  SlotOutcome,
+} from "./neuron/resident_slot_manager.js";
+import { Organ } from "./neuron/router.js";
+import type { RouteContext } from "./neuron/router.js";
 
 const TOOL_CALL_OPEN = "<tool_call>";
 const TOOL_CALL_CLOSE = "</tool_call>";
@@ -98,6 +104,13 @@ export interface IAIService {
   checkForUpgradesAsync(): Promise<readonly UpgradeInfo[]>;
   /** (RT-07) Pre-warm the loaded generator without a user-facing call. */
   prewarmAsync(): Promise<void>;
+  /**
+   * (RT-02) Persist the generalist floor's session snapshot to `path`. Optional
+   * — implementers without a persistable generator inherit the false default.
+   */
+  saveSessionAsync?(path: string): Promise<boolean>;
+  /** (RT-02) Restore the generalist floor's session snapshot from `path`. */
+  loadSessionAsync?(path: string): Promise<boolean>;
   /** Async-dispose (C# IAsyncDisposable). */
   disposeAsync(): Promise<void>;
 }
@@ -131,6 +144,10 @@ export class AIService implements IAIService {
   private personaCache: PersonaState | null = null;
   private ragBuilder: RagContextBuilder | null = null;
   private skillContextBuilder: SkillContextBuilder | null = null;
+
+  // ── Neuron: the hot-swappable specialist slot beside the generalist floor ──
+  private slots: ResidentSlotManager | null = null;
+  private generalistEstimatedBytes = 0;
 
   constructor(
     options: AIOptions,
@@ -233,6 +250,18 @@ export class AIService implements IAIService {
       if (generator == null) throw new Error("Generator factory returned null.");
       this.generator = generator;
 
+      // Neuron: stand up the specialist slot beside the warm generalist floor.
+      // With no router the slot manager is never created and the per-call path
+      // is byte-identical to a plain single-slot AIService.
+      if (this.options.router != null) {
+        const reserved =
+          this.options.generalistReservedBytes ?? this.generalistEstimatedBytes;
+        const ceiling =
+          this.options.ramCeilingBytes ??
+          (await deviceSnapshot()).ramAvailableBytes;
+        this.slots = new ResidentSlotManager(reserved, () => ceiling);
+      }
+
       if (this.warmOnStart) {
         try {
           await this.warmUp();
@@ -246,8 +275,14 @@ export class AIService implements IAIService {
       // RT-04 — subscribe to platform pressure. Critical → brownout.
       if (this.pressureSource !== null && this.pressureUnsub === null) {
         this.pressureUnsub = this.pressureSource.subscribe(async (_old, next) => {
-          if (next === MemoryPressureLevel.Critical)
+          if (next !== MemoryPressureLevel.Critical) return;
+          // Evict the specialist first — the generalist floor stays warm. Only
+          // brown out the floor if there is no specialist to shed.
+          if (this.slots?.residentSpecialistModelId != null) {
+            this.slots.evictSpecialist();
+          } else {
             await this.brownoutAsync(BrownoutReason.MemoryPressure);
+          }
         });
       }
 
@@ -270,6 +305,8 @@ export class AIService implements IAIService {
       this.shutdownEpoch++;
       this.disposeGenerator();
       this.generator = null;
+      this.slots?.evictSpecialist();
+      this.slots = null;
       this.started = false;
       this.personaCache = null;
 
@@ -359,10 +396,10 @@ export class AIService implements IAIService {
     if (!messages) throw new Error("messages required");
     await this.ensureStarted();
 
-    const generator = this.generator;
+    const userQuery = lastUserContent(messages);
+    const generator = await this.selectSlotAsync(messages, userQuery);
     if (generator === null) throw new Error("Butler is not ready.");
 
-    const userQuery = lastUserContent(messages);
     const prepared = await this.prepareMessages(messages, userQuery);
     const effectiveOptions = options ?? this.defaultGenerationOptions;
 
@@ -396,10 +433,10 @@ export class AIService implements IAIService {
     if (!messages) throw new Error("messages required");
     await this.ensureStarted();
 
-    const generator = this.generator;
+    const userQuery = lastUserContent(messages);
+    const generator = await this.selectSlotAsync(messages, userQuery);
     if (generator === null) throw new Error("Butler is not ready.");
 
-    const userQuery = lastUserContent(messages);
     const prepared = await this.prepareMessages(messages, userQuery);
     const effectiveOptions = options ?? this.defaultGenerationOptions;
 
@@ -498,7 +535,10 @@ export class AIService implements IAIService {
     if (prompt == null || prompt.length === 0) throw new Error("prompt required");
     await this.ensureStarted();
 
-    const generator = this.generator;
+    const generator = await this.selectSlotAsync(
+      [{ role: "user", content: prompt }],
+      prompt,
+    );
     if (generator === null) throw new Error("Butler is not ready.");
 
     const maxIter = Math.max(
@@ -680,6 +720,7 @@ export class AIService implements IAIService {
 
       modelId = selection.modelId;
       this.resolvedDeviceTier = selection.tier;
+      this.generalistEstimatedBytes = selection.estimatedBytes;
       autoSelected = true;
     }
 
@@ -707,6 +748,115 @@ export class AIService implements IAIService {
     ];
     const warmOptions: GenerationOptions = { maxTokens: 1, temperature: 0 };
     await generator.generateAsync(warmMessages, warmOptions);
+  }
+
+  // ── Neuron: per-turn slot selection ────────────────────────────────────────
+
+  /** Resolved generalist model id (engine label), or null before start. */
+  get resolvedModelIdValue(): string | null {
+    return this.resolvedModelId;
+  }
+
+  /**
+   * Router-gated slot selection. With no router (or no slot manager) this
+   * returns the generalist floor unchanged — byte-identical to a plain
+   * AIService. Otherwise it routes the turn: a specialist decision hot-loads a
+   * capability-matched model (RAM-admission-gated; any denial falls back to the
+   * generalist, never throws) and answers from it; else the generalist.
+   */
+  private async selectSlotAsync(
+    messages: readonly ChatMessage[],
+    query: string,
+  ): Promise<IChatGenerator | null> {
+    const floor = this.generator;
+    if (floor === null) return null;
+
+    const router = this.options.router;
+    if (router == null || this.slots === null) return floor;
+
+    const ctx: RouteContext = {
+      query,
+      hasImage: messages.some((m) => (m.imageBytes?.length ?? 0) > 0),
+      promptChars: query.length,
+    };
+    const decision = router.route(ctx);
+    if (decision.organ !== Organ.Specialist) return floor;
+
+    // Need a selector to resolve the capability to a concrete model.
+    if (this.modelSelector === null) return floor;
+    let selection: ModelSelection;
+    try {
+      const probe = await deviceSnapshot();
+      selection = this.modelSelector.bestFit(probe, decision.capability);
+    } catch {
+      return floor; // no model satisfies the capability → generalist floor
+    }
+
+    // Best-fit resolved to the generalist itself — nothing to hot-load.
+    if (
+      this.resolvedModelId != null &&
+      selection.modelId.toLowerCase() === this.resolvedModelId.toLowerCase()
+    ) {
+      return floor;
+    }
+
+    const admission = await this.slots.ensureSpecialist(selection, (id) =>
+      this.buildSpecialist(id),
+    );
+    if (
+      (admission.outcome === SlotOutcome.Admitted ||
+        admission.outcome === SlotOutcome.AlreadyResident) &&
+      admission.generator !== null
+    ) {
+      return admission.generator;
+    }
+    return floor; // denial (insufficient RAM / build failed) → generalist floor
+  }
+
+  /** Build a specialist generator for `modelId` via the loader + factory. */
+  private async buildSpecialist(
+    modelId: string,
+  ): Promise<IChatGenerator | null> {
+    if (this.modelLoader === null || this.generatorFactory === null) return null;
+    let modelPath = this.modelLoader.getModelPath(modelId);
+    if (!modelPath || !(await this.modelLoader.modelExists(modelId))) {
+      modelPath = await this.modelLoader.downloadModelAsync(modelId);
+    }
+    if (!modelPath) return null;
+    return this.generatorFactory(modelPath);
+  }
+
+  // ── RT-02: generalist-floor session durability ─────────────────────────────
+
+  /**
+   * Persist the generalist floor's session (KV cache) to `path`. The specialist
+   * is rebuildable from the registry, so only the floor is snapshotted. Returns
+   * false when the generator can't persist. Mirrors AIService.SaveSessionAsync.
+   */
+  async saveSessionAsync(path: string): Promise<boolean> {
+    this.throwIfDisposed();
+    const g = this.generator;
+    if (g === null || g.saveSessionAsync == null) return false;
+    try {
+      return await g.saveSessionAsync(path);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Restore the generalist floor's session from `path`. Returns false when the
+   * generator can't restore. Mirrors AIService.LoadSessionAsync.
+   */
+  async loadSessionAsync(path: string): Promise<boolean> {
+    this.throwIfDisposed();
+    const g = this.generator;
+    if (g === null || g.loadSessionAsync == null) return false;
+    try {
+      return await g.loadSessionAsync(path);
+    } catch {
+      return false;
+    }
   }
 
   // ── Private — v2.0 context enrichment ──────────────────────────────────────

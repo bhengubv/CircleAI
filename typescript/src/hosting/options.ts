@@ -21,6 +21,7 @@ import type {
 import type { RagContextBuilder } from "../memory/rag.js";
 import type { IToolBridge } from "./tool_bridge.js";
 import type { IAIObserver } from "./observers.js";
+import type { INeuronRouter } from "./neuron/router.js";
 import type { IThermalThrottleService } from "./thermal.js";
 import type { IScheduledTaskStore } from "./scheduled.js";
 import type { ISkillStore } from "./skills.js";
@@ -148,6 +149,26 @@ export interface AIOptions {
   // ── v3.0 Goal tracking ─────────────────────────────────────────────────────
   /** Goal store for proactive help. */
   readonly goalStore?: IGoalStore | null;
+
+  // ── Neuron: concierge two-slot residency ───────────────────────────────────
+  /**
+   * Per-turn concierge router. null/undefined → single-slot behaviour that is
+   * byte-identical to a plain AIService (the generalist answers every turn).
+   * A router lets the service hot-load one capability-matched specialist beside
+   * the always-warm generalist floor.
+   */
+  readonly router?: INeuronRouter | null;
+  /**
+   * Bytes to reserve for the always-warm generalist floor when admitting a
+   * specialist. null → derive from the generalist's selection estimate (0 when
+   * the model was pinned by path rather than selected).
+   */
+  readonly generalistReservedBytes?: number | null;
+  /**
+   * RAM ceiling in bytes for the two-slot admission gate. null → probe the live
+   * device at start.
+   */
+  readonly ramCeilingBytes?: number | null;
 
   // ── TS-only injection seam ─────────────────────────────────────────────────
   /**
