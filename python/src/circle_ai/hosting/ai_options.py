@@ -15,11 +15,16 @@ from __future__ import annotations
 import base64
 import secrets
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from ..catalog.modelscope_catalog_client import ModelScopeCatalogClient
 from ..device.device_probe import IDeviceContext
-from ..inference.inference import ChatCapability, GenerationOptions
+from ..inference.inference import (
+    ChatCapability,
+    GenerationOptions,
+    IChatGenerator,
+    IModelSelector,
+)
 from ..memory.rag import RagContextBuilder
 from ..memory.stores import (
     IAffectStore,
@@ -32,6 +37,9 @@ from ..tools.tool_types import IToolBridge
 from .ai_observer import IAIObserver
 from .scheduled_task_store import IScheduledTaskStore
 from .thermal_throttle_service import IThermalThrottleService
+
+if TYPE_CHECKING:  # pragma: no cover - type-only, avoids an import cycle
+    from .neuron.router import INeuronRouter
 
 __all__ = ["AIOptions"]
 
@@ -61,6 +69,19 @@ class AIOptions:
     # ── Tools ──────────────────────────────────────────────────────────────
     tool_bridge: Optional[IToolBridge] = None
     """When None, invoke_tool_async returns a failure result."""
+
+    # ── Neuron — concierge routing + two-slot residency ────────────────────
+    router: Optional["INeuronRouter"] = None
+    """When set, AIService becomes a two-slot Neuron: the generalist stays warm
+    and one capability-matched specialist may answer per turn. None (default) =
+    single-slot, byte-identical behaviour."""
+
+    model_selector: Optional[IModelSelector] = None
+    """Selector used to best-fit a specialist for the router's capability."""
+
+    specialist_factory: Optional[Callable[[str], IChatGenerator]] = None
+    """Builds a specialist generator by model id — the Python analog of the C#
+    IModelLoader path. Required alongside router + model_selector for two-slot."""
 
     # ── Observer ───────────────────────────────────────────────────────────
     observer: Optional[IAIObserver] = None

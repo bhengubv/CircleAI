@@ -20,6 +20,26 @@ from .ai_options import AIOptions
 
 # ── Core service + endpoints ───────────────────────────────────────────────
 from .ai_service import AIService, IAIService, parse_tool_call
+
+# ── Neuron — host-neutral seam + concierge + two-slot residency ─────────────
+from .chat_runtime import (
+    ChatTurn,
+    IChatRuntime,
+    IPersistableChatRuntime,
+    NullChatRuntime,
+)
+from .neuron import (
+    HeuristicNeuronRouter,
+    INeuronRouter,
+    NeuronGate,
+    NeuronNode,
+    Organ,
+    ResidentSlotManager,
+    RouteContext,
+    RouteDecision,
+    SlotAdmission,
+    SlotOutcome,
+)
 from .endpoints import (
     AIHttpClient,
     HttpLoopbackEndpoint,
@@ -153,6 +173,21 @@ __all__ = [
     "IAIService",
     "AIService",
     "parse_tool_call",
+    # neuron — host-neutral seam + concierge + two-slot residency
+    "ChatTurn",
+    "IChatRuntime",
+    "IPersistableChatRuntime",
+    "NullChatRuntime",
+    "Organ",
+    "RouteContext",
+    "RouteDecision",
+    "INeuronRouter",
+    "NeuronGate",
+    "HeuristicNeuronRouter",
+    "SlotOutcome",
+    "SlotAdmission",
+    "ResidentSlotManager",
+    "NeuronNode",
     "IAIEndpoint",
     "InProcessEndpoint",
     "HttpLoopbackEndpoint",

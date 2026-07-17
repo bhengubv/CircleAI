@@ -28,7 +28,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Callable, List, Optional, Sequence
 
-from ..device.device_probe import DeviceTier, DeviceTierDefaults
+from ..device.device_probe import (
+    DefaultDeviceContext,
+    DeviceProbe,
+    DeviceTier,
+    DeviceTierDefaults,
+)
 from ..inference.inference import GenerationOptions, generate_response_async
 from ..memory.episodic_memory import EpisodicMemoryEntry
 from ..memory.feedback_analyser import FeedbackAnalyser
@@ -39,6 +44,8 @@ from ..models.models import ChatMessage, UpgradeInfo
 from ..tools.tool_types import ToolInvocation, ToolResult
 from .ai_observer import AIChatEvent, AIStreamEvent, AIToolEvent, IAIObserver
 from .ai_options import AIOptions
+from .neuron.resident_slot_manager import ResidentSlotManager
+from .neuron.router import Organ, RouteContext
 
 __all__ = ["IAIService", "AIService"]
 
@@ -127,6 +134,14 @@ class IAIService(ABC):
         """Default: pre-warm by starting. Mirrors the C# default-interface-method."""
         await self.start_async(ct)
 
+    async def save_session_async(self, path: str, ct: object = None) -> bool:
+        """(RT-02) Default: no snapshot support. ``AIService`` overrides."""
+        return False
+
+    async def load_session_async(self, path: str, ct: object = None) -> bool:
+        """(RT-02) Default: no snapshot support. ``AIService`` overrides."""
+        return False
+
     async def dispose_async(self) -> None:
         """Default: stop. Mirrors ``IAsyncDisposable``."""
         await self.stop_async()
@@ -147,6 +162,8 @@ class AIService(IAIService):
         "_disposed",
         "_persona_cache",
         "_rag_builder",
+        "_slots",
+        "_generalist_reserved_bytes",
     )
 
     def __init__(
@@ -169,10 +186,17 @@ class AIService(IAIService):
         self._disposed = False
         self._persona_cache: Optional[PersonaState] = None
         self._rag_builder: Optional[RagContextBuilder] = None
+        self._slots: Optional[ResidentSlotManager] = None
+        self._generalist_reserved_bytes = 0
 
     @property
     def is_ready(self) -> bool:
         return self._started and self._generator is not None and not self._disposed
+
+    @property
+    def resolved_model_id(self) -> Optional[str]:
+        """The generalist's model id — surfaced by ``NeuronNode.engine_label``."""
+        return self._options.model_id
 
     # ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -220,6 +244,8 @@ class AIService(IAIService):
             return
         await self._try_save_persona()
         async with self._start_gate:
+            if self._slots is not None:
+                await self._slots.evict_specialist_async()
             gen = self._generator
             dispose = getattr(gen, "dispose_async", None) if gen is not None else None
             if dispose is not None:
@@ -268,11 +294,12 @@ class AIService(IAIService):
             raise ValueError("messages is required")
         await self._ensure_started()
 
-        generator = self._generator
-        if generator is None:
-            raise RuntimeError("Butler is not ready.")
-
         user_query = _last_user_query(messages)
+        has_image = _has_image(messages)
+        # Neuron: generalist by default; a specialist may answer when a router is
+        # configured. Byte-identical to the single-slot path when router is None.
+        generator = await self._select_slot_async(user_query, has_image)
+
         prepared = await self._prepare_messages(messages, user_query)
         effective_options = options or self._options.default_generation_options
 
@@ -301,11 +328,12 @@ class AIService(IAIService):
             raise ValueError("messages is required")
         await self._ensure_started()
 
-        generator = self._generator
-        if generator is None:
-            raise RuntimeError("Butler is not ready.")
-
         user_query = _last_user_query(messages)
+        has_image = _has_image(messages)
+        # Neuron: generalist by default; a specialist may answer when a router is
+        # configured. Byte-identical to the single-slot path when router is None.
+        generator = await self._select_slot_async(user_query, has_image)
+
         prepared = await self._prepare_messages(messages, user_query)
         effective_options = options or self._options.default_generation_options
 
@@ -387,9 +415,8 @@ class AIService(IAIService):
             raise ValueError("prompt is required")
         await self._ensure_started()
 
-        generator = self._generator
-        if generator is None:
-            raise RuntimeError("Butler is not ready.")
+        # Neuron slot selection for the whole agentic run (prompt has no image).
+        generator = await self._select_slot_async(prompt, False)
 
         max_iter = max(
             1,
@@ -512,6 +539,12 @@ class AIService(IAIService):
         if self._disposed:
             return
         self._disposed = True
+        if self._slots is not None:
+            try:
+                await self._slots.dispose_async()
+            except Exception:  # noqa: BLE001
+                pass
+            self._slots = None
         await self._try_save_persona()
         try:
             await self.stop_async()
@@ -525,6 +558,91 @@ class AIService(IAIService):
         if self._started:
             return
         await self.start_async()
+
+    # ── Neuron — two-slot residency + session persistence ──────────────────
+
+    async def save_session_async(self, path: str, ct: object = None) -> bool:
+        """(RT-02) Snapshot the always-warm generalist floor. No-throw."""
+        self._throw_if_disposed()
+        if not path or not path.strip():
+            return False
+        gen = self._generator
+        if gen is None:
+            return False
+        try:
+            return await gen.save_session_async(path)
+        except Exception:  # noqa: BLE001 - no-throw contract
+            return False
+
+    async def load_session_async(self, path: str, ct: object = None) -> bool:
+        """(RT-02) Restore the generalist floor. No-throw."""
+        self._throw_if_disposed()
+        if not path or not path.strip():
+            return False
+        await self._ensure_started()
+        gen = self._generator
+        if gen is None:
+            return False
+        try:
+            return await gen.load_session_async(path)
+        except Exception:  # noqa: BLE001 - no-throw contract
+            return False
+
+    async def evict_specialist_async(self) -> None:
+        """Evict the hot specialist; the generalist floor keeps serving."""
+        if self._slots is not None:
+            await self._slots.evict_specialist_async()
+
+    def _probe_device(self) -> DeviceProbe:
+        ctx = self._options.device_context
+        if isinstance(ctx, DefaultDeviceContext):
+            return ctx.build_probe()
+        return DeviceProbe.snapshot()
+
+    async def _select_slot_async(self, user_query: str, has_image: bool):
+        """Neuron slot selection. No router -> the generalist (unchanged). With a
+        router: route the turn and, on a specialist decision, best-fit + hot-load
+        (admission-gated) a specialist. Any miss — no selector/factory, a
+        best-fit that resolves to the generalist, gate denial, or a build failure
+        — degrades to the generalist and never raises.
+        """
+        generalist = self._generator
+        if generalist is None:
+            raise RuntimeError("Butler is not ready.")
+
+        router = self._options.router
+        if router is None:
+            return generalist
+
+        try:
+            decision = router.route(RouteContext(user_query or "", has_image))
+        except Exception:  # noqa: BLE001 - a router fault must not break generation
+            return generalist
+
+        if decision.organ != Organ.SPECIALIST:
+            return generalist
+
+        selector = self._options.model_selector
+        factory = self._options.specialist_factory
+        if selector is None or factory is None:
+            return generalist
+
+        try:
+            selection = selector.best_fit(self._probe_device(), decision.capability)
+            if (
+                self._options.model_id is not None
+                and selection.model_id.lower() == self._options.model_id.lower()
+            ):
+                return generalist  # best-fit resolved to the generalist itself
+            if self._slots is None:
+                self._slots = ResidentSlotManager(
+                    self._generalist_reserved_bytes,
+                    lambda: self._probe_device().ram_available_bytes,
+                )
+            admission = await self._slots.ensure_specialist_async(selection, factory)
+            return admission.generator or generalist
+        except Exception:  # noqa: BLE001 - degrade to generalist, never raise
+            return generalist
 
     async def _prepare_messages(
         self, messages: Sequence[ChatMessage], user_query: str
@@ -730,6 +848,10 @@ def _last_user_query(messages: Sequence[ChatMessage]) -> str:
         if m.role.lower() == "user":
             return m.content or ""
     return ""
+
+
+def _has_image(messages: Sequence[ChatMessage]) -> bool:
+    return any(getattr(m, "image_bytes", None) for m in messages)
 
 
 def _is_null_context(ctx) -> bool:
