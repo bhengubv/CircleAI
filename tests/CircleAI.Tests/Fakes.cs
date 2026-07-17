@@ -60,6 +60,40 @@ internal sealed class FakeModelLoader : IModelLoader
 }
 
 // ---------------------------------------------------------------------------
+// IModelSelector
+// ---------------------------------------------------------------------------
+
+/// <summary>
+/// Fake selector: returns a fixed BestFit and an optional fallback chain.
+/// Records the last requested capability so Neuron routing can be asserted.
+/// </summary>
+internal sealed class FakeModelSelector : IModelSelector
+{
+    private readonly ModelSelection _bestFit;
+    private readonly IReadOnlyList<string>? _chain;
+
+    public FakeModelSelector(ModelSelection bestFit, IReadOnlyList<string>? chain = null)
+    {
+        _bestFit = bestFit;
+        _chain = chain;
+    }
+
+    public int BestFitCallCount { get; private set; }
+    public ChatCapability LastRequested { get; private set; }
+
+    public ModelSelection BestFit(DeviceProbe probe, ChatCapability required)
+    {
+        BestFitCallCount++;
+        LastRequested = required;
+        return _bestFit;
+    }
+
+    public IReadOnlyList<ModelSelection> AllCandidates(DeviceProbe probe) => new[] { _bestFit };
+
+    public IReadOnlyList<string> ChainFor(string headModelId) => _chain ?? new[] { headModelId };
+}
+
+// ---------------------------------------------------------------------------
 // IChatGenerator
 // ---------------------------------------------------------------------------
 

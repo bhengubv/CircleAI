@@ -15,6 +15,7 @@
 using System;
 using System.Security.Cryptography;
 using CircleAI.Core;
+using CircleAI.Hosting.Neuron;
 using CircleAI.Inference;
 using CircleAI.Memory;
 using CircleAI.Skills;
@@ -94,6 +95,20 @@ public sealed class AIOptions
     /// returns a failure result.
     /// </summary>
     public IToolBridge? ToolBridge { get; init; }
+
+    // ------------------------------------------------------------------
+    // Neuron — concierge per-turn routing
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Optional concierge router. When set, <see cref="AIService"/> becomes a
+    /// two-slot Neuron: it keeps the generalist warm and, per turn, may hot-load
+    /// one capability-matched specialist (via <see cref="IModelSelector"/> +
+    /// <see cref="CircleAI.Core.IModelLoader"/>) to answer instead. When
+    /// <c>null</c> (default) the service runs exactly as before — a single warm
+    /// generator, no routing, byte-identical behaviour.
+    /// </summary>
+    public INeuronRouter? Router { get; init; }
 
     // ------------------------------------------------------------------
     // Observers

@@ -119,4 +119,24 @@ public interface IAIService : IAsyncDisposable
     /// when configured).
     /// </summary>
     Task PrewarmAsync(CancellationToken ct = default) => StartAsync(ct);
+
+    /// <summary>
+    /// (RT-02) Snapshot the service's in-memory session (KV cache + history) to
+    /// <paramref name="path"/> so the active conversation survives an OOM kill
+    /// and resumes via <see cref="LoadSessionAsync"/>. No-throw contract —
+    /// failures surface as <c>false</c>. Default implementation returns
+    /// <c>false</c> (no snapshot support); <see cref="AIService"/> overrides to
+    /// snapshot the always-warm generalist floor.
+    /// </summary>
+    Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    /// <summary>
+    /// (RT-02) Hydrate the service from a snapshot written by
+    /// <see cref="SaveSessionAsync"/>. Same no-throw contract. Default returns
+    /// <c>false</c>; <see cref="AIService"/> overrides to restore the generalist
+    /// floor.
+    /// </summary>
+    Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+        => Task.FromResult(false);
 }

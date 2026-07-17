@@ -60,6 +60,11 @@ public sealed class AIService : IAIService
     private bool _started;
     private bool _disposed;
 
+    // Neuron — two-slot residency (opt-in via AIOptions.Router). _generator above
+    // is the always-warm generalist floor; _slots owns one evictable specialist.
+    private Neuron.ResidentSlotManager? _slots;
+    private long _generalistReservedBytes;
+
     // RT-04 — brownout plumbing
     private readonly IMemoryPressureSource? _pressureSource;
     private IDisposable? _pressureSub;
@@ -169,6 +174,14 @@ public sealed class AIService : IAIService
     /// <inheritdoc />
     public bool IsReady => _started && _generator is not null && !_disposed;
 
+    /// <summary>
+    /// The model id the generalist floor resolved at <see cref="StartAsync"/> —
+    /// surfaced by <see cref="Neuron.NeuronNode.EngineLabel"/>. <c>null</c> until
+    /// the service has started (or when a raw <see cref="AIOptions.ModelPath"/>
+    /// with no id was pinned).
+    /// </summary>
+    public string? ResolvedModelId => _resolvedModelId;
+
     // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
@@ -210,6 +223,9 @@ public sealed class AIService : IAIService
                 throw new InvalidOperationException("Generator factory returned null.");
 
             _generator = generator;
+            _generalistReservedBytes = EstimateModelBytes(modelPath);
+            if (_options.Router is not null)
+                _slots ??= new Neuron.ResidentSlotManager(_generalistReservedBytes, ProbeDevice);
 
             if (_options.WarmOnStart)
             {
@@ -230,8 +246,13 @@ public sealed class AIService : IAIService
                 _pressureSub = _pressureSource.Subscribe(async (_, next) =>
                 {
                     if (next == MemoryPressureLevel.Critical)
+                    {
+                        // Evict the specialist first — the generalist is the floor.
+                        if (_slots is not null)
+                            await _slots.EvictSpecialistAsync().ConfigureAwait(false);
                         await BrownoutAsync(BrownoutReason.MemoryPressure, CancellationToken.None)
                             .ConfigureAwait(false);
+                    }
                 });
             }
 
@@ -267,6 +288,9 @@ public sealed class AIService : IAIService
             {
                 try { _shutdownCts.Cancel(); } catch { /* already disposed */ }
             }
+
+            if (_slots is not null)
+                await _slots.EvictSpecialistAsync().ConfigureAwait(false);
 
             if (_generator is IAsyncDisposable adisp)
                 await adisp.DisposeAsync().ConfigureAwait(false);
@@ -347,33 +371,7 @@ public sealed class AIService : IAIService
             try { old.Dispose(); } catch { }
 
             _resolvedModelId = to;
-
-            string modelPath;
-            if (_modelLoader is not null)
-            {
-                var existing = _modelLoader.GetModelPath(to);
-                modelPath = !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing)
-                    ? existing
-                    : await _modelLoader.DownloadModelAsync(to).ConfigureAwait(false);
-                if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))
-                    throw new InvalidOperationException($"Brownout target '{to}' resolution failed.");
-            }
-            else
-            {
-                throw new InvalidOperationException(
-                    "Brownout requires an IModelLoader to fetch the fallback bundle.");
-            }
-
-            var contextSize = _options.ContextSize
-                ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
-
-            var generator = _generatorFactory is not null
-                ? _generatorFactory(modelPath)
-                : new QwenTextGenerator(
-                    modelPath,
-                    contextSize: (uint)Math.Max(1, contextSize),
-                    threads: _options.ThreadCount);
-            _generator = generator;
+            _generator = await BuildGeneratorAsync(to, ct).ConfigureAwait(false);
         }
         finally { _startGate.Release(); }
 
@@ -408,13 +406,15 @@ public sealed class AIService : IAIService
         ArgumentNullException.ThrowIfNull(messages);
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
-        var generator = _generator
-            ?? throw new InvalidOperationException("Butler is not ready.");
-
-        // Determine the user query for RAG lookup (last user message).
+        // Determine the user query (last user message) for routing + RAG lookup.
         var userQuery = messages.LastOrDefault(m =>
             string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content
             ?? string.Empty;
+        var hasImage = messages.Any(m => m.ImageBytes is not null);
+
+        // Neuron: generalist by default; a specialist may answer when a router is
+        // configured. Byte-identical to the single-slot path when Router is null.
+        var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
         var prepared = await PrepareMessagesAsync(messages, userQuery, ct)
             .ConfigureAwait(false);
@@ -448,12 +448,13 @@ public sealed class AIService : IAIService
         ArgumentNullException.ThrowIfNull(messages);
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
-        var generator = _generator
-            ?? throw new InvalidOperationException("Butler is not ready.");
-
         var userQuery = messages.LastOrDefault(m =>
             string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content
             ?? string.Empty;
+        var hasImage = messages.Any(m => m.ImageBytes is not null);
+
+        // Neuron slot selection (generalist unless a router routes to a specialist).
+        var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
         var prepared = await PrepareMessagesAsync(messages, userQuery, ct)
             .ConfigureAwait(false);
@@ -543,8 +544,8 @@ public sealed class AIService : IAIService
         ArgumentException.ThrowIfNullOrEmpty(prompt);
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
-        var generator = _generator
-            ?? throw new InvalidOperationException("Butler is not ready.");
+        // Neuron slot selection for the whole agentic run (prompt has no image).
+        var generator = await SelectSlotAsync(prompt, hasImage: false, ct).ConfigureAwait(false);
 
         // Pinned value wins; otherwise derive from the device tier resolved
         // at StartAsync (defaults to Desktop when no selector ran).
@@ -707,6 +708,10 @@ public sealed class AIService : IAIService
         try { await StopAsync(CancellationToken.None).ConfigureAwait(false); }
         catch { /* swallow */ }
 
+        if (_slots is not null)
+            try { await _slots.DisposeAsync().ConfigureAwait(false); } catch { /* swallow */ }
+        _slots = null;
+
         if (_generator is IAsyncDisposable adisp)
             try { await adisp.DisposeAsync().ConfigureAwait(false); } catch { /* swallow */ }
         else
@@ -798,6 +803,126 @@ public sealed class AIService : IAIService
         ThrowIfDisposed();
         if (!_started) { await StartAsync(ct).ConfigureAwait(false); return; }
         await WarmUpAsync(ct).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------
+    // RT-02 — Session persistence (generalist floor only)
+    // ------------------------------------------------------------------
+
+    /// <inheritdoc />
+    public async Task<bool> SaveSessionAsync(string path, CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var generator = _generator;                 // always-warm generalist floor
+        if (generator is null) return false;
+        try { return await generator.SaveSessionAsync(path, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { _logger.LogDebug(ex, "Session save failed; non-fatal."); return false; }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        await EnsureStartedAsync(ct).ConfigureAwait(false);
+        var generator = _generator;
+        if (generator is null) return false;
+        try { return await generator.LoadSessionAsync(path, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { _logger.LogDebug(ex, "Session load failed; non-fatal."); return false; }
+    }
+
+    // ------------------------------------------------------------------
+    // Neuron — two-slot residency helpers
+    // ------------------------------------------------------------------
+
+    private DeviceProbe ProbeDevice()
+    {
+        var deviceCtx = _options.DeviceContext ?? DefaultDeviceContext.Instance;
+        return deviceCtx is DefaultDeviceContext ddc ? ddc.BuildProbe() : DeviceProbe.Snapshot();
+    }
+
+    private static long EstimateModelBytes(string modelPath)
+    {
+        try { return new System.IO.FileInfo(modelPath).Length; }
+        catch { return 0L; }
+    }
+
+    /// <summary>
+    /// Build a fresh generator for a specific model id via the loader + factory.
+    /// Shared by the RT-04 brownout swap and the Neuron specialist slot.
+    /// </summary>
+    private async Task<IChatGenerator> BuildGeneratorAsync(string modelId, CancellationToken ct)
+    {
+        if (_modelLoader is null)
+            throw new InvalidOperationException(
+                $"Building model '{modelId}' by id requires an IModelLoader.");
+
+        var existing = _modelLoader.GetModelPath(modelId);
+        var modelPath = !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing)
+            ? existing
+            : await _modelLoader.DownloadModelAsync(modelId).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))
+            throw new InvalidOperationException($"Model '{modelId}' resolution failed.");
+
+        var contextSize = _options.ContextSize
+            ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
+
+        return _generatorFactory is not null
+            ? _generatorFactory(modelPath)
+            : new QwenTextGenerator(
+                modelPath,
+                contextSize: (uint)Math.Max(1, contextSize),
+                threads: _options.ThreadCount);
+    }
+
+    /// <summary>
+    /// Neuron slot selection. With no router configured this returns the
+    /// generalist (identical to the single-slot path). With a router: it
+    /// classifies the turn and, on a specialist decision, best-fits + hot-loads
+    /// (admission-gated) a specialist into the second slot and answers from it.
+    /// Any miss — no selector/loader, a best-fit that resolves to the generalist
+    /// itself, gate denial, or a build failure — degrades to the generalist and
+    /// never throws.
+    /// </summary>
+    private async Task<IChatGenerator> SelectSlotAsync(
+        string userQuery, bool hasImage, CancellationToken ct)
+    {
+        var generalist = _generator
+            ?? throw new InvalidOperationException("Butler is not ready.");
+
+        var router = _options.Router;
+        if (router is null) return generalist;
+
+        Neuron.RouteDecision decision;
+        try { decision = router.Route(new Neuron.RouteContext(userQuery ?? string.Empty, hasImage)); }
+        catch { return generalist; }   // a router fault must never break generation
+
+        if (decision.Organ != Neuron.Organ.Specialist) return generalist;
+
+        // Specialists need a selector (to best-fit the capability) and a loader
+        // (to fetch/build the bundle). Absent either, the generalist answers.
+        if (_modelSelector is null || _modelLoader is null) return generalist;
+
+        try
+        {
+            var selection = _modelSelector.BestFit(ProbeDevice(), decision.Capability);
+
+            // Best-fit resolved to the generalist itself — no second slot needed.
+            if (string.Equals(selection.ModelId, _resolvedModelId, StringComparison.OrdinalIgnoreCase))
+                return generalist;
+
+            _slots ??= new Neuron.ResidentSlotManager(_generalistReservedBytes, ProbeDevice);
+            var admission = await _slots.EnsureSpecialistAsync(selection, BuildGeneratorAsync, ct)
+                .ConfigureAwait(false);
+
+            // Denied / failed → generalist; admitted / already-resident → specialist.
+            return admission.Generator ?? generalist;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return generalist; }
     }
 
     private async Task WarmUpAsync(CancellationToken ct)
