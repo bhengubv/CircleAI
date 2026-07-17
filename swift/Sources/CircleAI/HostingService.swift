@@ -170,6 +170,13 @@ public protocol IAIService: AnyObject, Sendable {
 
     /// Releases all resources (mirrors C# `IAsyncDisposable`).
     func dispose() async
+
+    /// (RT-02) Snapshot the session (KV cache + history) to `path`. No-op
+    /// default; `AIService` overrides to snapshot the generalist floor.
+    func saveSession(path: String) async -> Bool
+
+    /// (RT-02) Restore a session from `path`. No-op default.
+    func loadSession(path: String) async -> Bool
 }
 
 public extension IAIService {
@@ -187,6 +194,8 @@ public extension IAIService {
     }
     func checkForUpgrades() async throws -> [UpgradeInfo] { [] }
     func prewarm() async throws { try await start() }
+    func saveSession(path: String) async -> Bool { false }
+    func loadSession(path: String) async -> Bool { false }
 }
 
 // =====================================================================
@@ -222,6 +231,7 @@ public final class AIService: IAIService, @unchecked Sendable {
     private let modelRegistry: ModelRegistryService?
     private let pressureSource: (any IMemoryPressureSource)?
     private let observer: (any IAIServiceObserver)?
+    private let router: (any INeuronRouter)?
 
     private let gate = NSLock()
     private var generator: IChatGenerator?
@@ -233,6 +243,7 @@ public final class AIService: IAIService, @unchecked Sendable {
     private var personaCache: PersonaState?
     private var ragBuilder: RagContextBuilder?
     private var pressureSub: (any Disposable)?
+    private var slots: ResidentSlotManager?
     // Memoised in-flight start so concurrent callers await one load (SemaphoreSlim parity).
     private var startTask: Task<Void, Error>?
 
@@ -245,7 +256,8 @@ public final class AIService: IAIService, @unchecked Sendable {
         modelSelector: (any IModelSelector)? = nil,
         modelRegistry: ModelRegistryService? = nil,
         memoryPressureSource: (any IMemoryPressureSource)? = nil,
-        observer: (any IAIServiceObserver)? = nil
+        observer: (any IAIServiceObserver)? = nil,
+        router: (any INeuronRouter)? = nil
     ) {
         self.options = options
         self.modelLoader = modelLoader
@@ -254,6 +266,7 @@ public final class AIService: IAIService, @unchecked Sendable {
         self.modelRegistry = modelRegistry
         self.pressureSource = memoryPressureSource
         self.observer = observer
+        self.router = router
     }
 
     // ------------------------------------------------------------------
@@ -343,6 +356,8 @@ public final class AIService: IAIService, @unchecked Sendable {
         if isDisposedFlag() { return }
         await trySavePersona()
 
+        gate.lock(); let mgr = slots; gate.unlock()
+        mgr?.evictSpecialist()
         if let g = currentGenerator() { (g as? Disposable)?.dispose() }
         setGenerator(nil)
         setStarted(false)
@@ -372,6 +387,85 @@ public final class AIService: IAIService, @unchecked Sendable {
         // No Swift-native QwenTextGenerator: a generator factory is required.
         throw AIServiceError.noResolver(
             "AIService needs a generatorFactory; the native QwenTextGenerator path is C#-only.")
+    }
+
+    // ------------------------------------------------------------------
+    // Neuron — two-slot residency + session persistence
+    // ------------------------------------------------------------------
+
+    /// The generalist model id — surfaced by `NeuronNode.engineLabel`.
+    public var resolvedModelIdValue: String? {
+        gate.lock(); defer { gate.unlock() }; return resolvedModelId
+    }
+
+    /// (RT-02) Snapshot the always-warm generalist floor. No-throw.
+    public func saveSession(path: String) async -> Bool {
+        if path.isEmpty { return false }
+        guard let g = currentGenerator() else { return false }
+        return (try? await g.saveSession(path: path)) ?? false
+    }
+
+    /// (RT-02) Restore the generalist floor. No-throw.
+    public func loadSession(path: String) async -> Bool {
+        if path.isEmpty { return false }
+        try? await ensureStarted()
+        guard let g = currentGenerator() else { return false }
+        return (try? await g.loadSession(path: path)) ?? false
+    }
+
+    private func ensureSlots() -> ResidentSlotManager {
+        gate.lock()
+        if let s = slots { gate.unlock(); return s }
+        gate.unlock()
+        let mgr = ResidentSlotManager(generalistReservedBytes: 0, ramAvailable: { [weak self] in
+            let probe = (self?.options.deviceContext as? DefaultDeviceContext)?.buildProbe()
+                ?? DeviceProbe.snapshot()
+            return probe.ramAvailableBytes
+        })
+        gate.lock()
+        if slots == nil { slots = mgr }
+        let result = slots!
+        gate.unlock()
+        return result
+    }
+
+    /// Build a specialist generator by model id (resolve path via loader +
+    /// makeGenerator) — the specialist analog of the brownout swap.
+    private func buildSpecialist(modelId: String) async throws -> IChatGenerator {
+        guard let loader = modelLoader else {
+            throw AIServiceError.loaderFailed("Specialist build requires an IModelLoader.")
+        }
+        var modelPath = (try? loader.getModelPath(modelId)) ?? ""
+        if modelPath.isEmpty || !FileManager.default.fileExists(atPath: modelPath) {
+            modelPath = try await loader.downloadModel(modelId, progress: nil)
+        }
+        if modelPath.isEmpty || !FileManager.default.fileExists(atPath: modelPath) {
+            throw AIServiceError.loaderFailed("Specialist '\(modelId)' resolution failed.")
+        }
+        let contextSize = options.contextSize ?? DeviceTierDefaults.contextWindow(currentTier())
+        return try makeGenerator(modelPath: modelPath, contextSize: contextSize)
+    }
+
+    /// Neuron slot selection. Returns nil for the generalist (unchanged path).
+    /// With a router: route the turn and, on a specialist decision, best-fit +
+    /// hot-load (admission-gated) a specialist. Any miss degrades to nil.
+    private func selectSlot(userQuery: String, hasImage: Bool) async -> IChatGenerator? {
+        guard let router = router else { return nil }
+        let decision = router.route(RouteContext(query: userQuery, hasImage: hasImage))
+        guard decision.organ == .specialist else { return nil }
+        guard let selector = modelSelector, modelLoader != nil else { return nil }
+        let probe = (options.deviceContext as? DefaultDeviceContext)?.buildProbe() ?? DeviceProbe.snapshot()
+        guard let selection = try? selector.bestFit(probe, required: decision.capability) else { return nil }
+        gate.lock(); let genId = resolvedModelId; gate.unlock()
+        if let genId = genId, selection.modelId.caseInsensitiveCompare(genId) == .orderedSame {
+            return nil // best-fit resolved to the generalist itself
+        }
+        let mgr = ensureSlots()
+        let admission = await mgr.ensureSpecialist(selection) { [weak self] modelId in
+            guard let self = self else { return nil }
+            return try await self.buildSpecialist(modelId: modelId)
+        }
+        return admission.generator
     }
 
     // ------------------------------------------------------------------
@@ -438,9 +532,12 @@ public final class AIService: IAIService, @unchecked Sendable {
 
     public func chat(_ messages: [ChatMessage], options callOptions: GenerationOptions?) async throws -> String {
         try await ensureStarted()
-        guard let generator = currentGenerator() else { throw AIServiceError.notReady }
-
         let userQuery = lastUserMessage(messages)
+        // Neuron: generalist by default; a specialist may answer when a router is
+        // configured. Byte-identical to the single-slot path when router is nil.
+        guard let generator = await selectSlot(userQuery: userQuery, hasImage: false) ?? currentGenerator() else {
+            throw AIServiceError.notReady
+        }
         let prepared = await prepareMessages(messages, userQuery: userQuery)
         let effective = callOptions ?? options.defaultGenerationOptions
 
@@ -464,10 +561,10 @@ public final class AIService: IAIService, @unchecked Sendable {
             let task = Task {
                 do {
                     try await self.ensureStarted()
-                    guard let generator = self.currentGenerator() else {
+                    let userQuery = self.lastUserMessage(messages)
+                    guard let generator = await self.selectSlot(userQuery: userQuery, hasImage: false) ?? self.currentGenerator() else {
                         continuation.finish(throwing: AIServiceError.notReady); return
                     }
-                    let userQuery = self.lastUserMessage(messages)
                     let prepared = await self.prepareMessages(messages, userQuery: userQuery)
                     let effective = callOptions ?? self.options.defaultGenerationOptions
 
@@ -537,7 +634,9 @@ public final class AIService: IAIService, @unchecked Sendable {
     public func agenticChat(_ prompt: String, options callOptions: GenerationOptions?) async throws -> String {
         precondition(!prompt.isEmpty, "prompt required")
         try await ensureStarted()
-        guard let generator = currentGenerator() else { throw AIServiceError.notReady }
+        guard let generator = await selectSlot(userQuery: prompt, hasImage: false) ?? currentGenerator() else {
+            throw AIServiceError.notReady
+        }
 
         let maxIter = max(1, options.agenticMaxIterations ?? DeviceTierDefaults.agenticMaxIterations(currentTier()))
         let effective = callOptions ?? options.defaultGenerationOptions
