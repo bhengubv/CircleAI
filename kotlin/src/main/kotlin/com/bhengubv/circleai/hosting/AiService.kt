@@ -95,6 +95,12 @@ interface IAIService {
     /** Pre-warm the loaded generator without a full user-facing call. Default: [startAsync]. */
     suspend fun prewarmAsync() = startAsync()
 
+    /** (RT-02) Persist the generalist floor's session snapshot to [path]. Default: false. */
+    suspend fun saveSessionAsync(path: String): Boolean = false
+
+    /** (RT-02) Restore the generalist floor's session snapshot from [path]. Default: false. */
+    suspend fun loadSessionAsync(path: String): Boolean = false
+
     /** Releases all resources. Mirrors C# `IAsyncDisposable.DisposeAsync`. */
     suspend fun disposeAsync()
 }
@@ -129,6 +135,9 @@ class AIService(
     private var disposed = false
     private var resolvedModelId: String? = null
 
+    // Neuron: the hot-swappable specialist slot beside the generalist floor.
+    private var slots: ResidentSlotManager? = null
+
     private var personaCache: PersonaState? = null
 
     override val isReady: Boolean get() = started && generator != null && !disposed
@@ -161,6 +170,16 @@ class AIService(
             val gen = generatorFactory(modelPath)
             generator = gen
 
+            // Neuron: stand up the specialist slot beside the warm generalist
+            // floor. With no router the slot manager is never created and the
+            // per-call path is byte-identical to a plain single-slot AIService.
+            if (options.router != null) {
+                val reserved = options.generalistReservedBytes ?: 0L
+                val ceiling = options.ramCeilingBytes
+                    ?: com.bhengubv.circleai.device.DeviceProbe.snapshot().ramAvailableBytes
+                slots = ResidentSlotManager(reserved) { ceiling }
+            }
+
             if (options.warmOnStart) {
                 try {
                     warmUp()
@@ -192,6 +211,8 @@ class AIService(
         startGate.withLock {
             (generator as? AutoCloseable)?.let { runCatching { it.close() } }
             generator = null
+            slots?.evictSpecialist()
+            slots = null
             started = false
             personaCache = null
 
@@ -210,9 +231,9 @@ class AIService(
 
     override suspend fun chatAsync(messages: List<ChatMessage>, options: GenerationOptions?): String {
         ensureStarted()
-        val gen = generator ?: throw IllegalStateException("Butler is not ready.")
-
         val userQuery = messages.lastOrNull { it.role.equals("user", ignoreCase = true) }?.content ?: ""
+        val gen = selectSlot(messages, userQuery)
+
         val prepared = prepareMessages(messages, userQuery)
         val effectiveOptions = options ?: this.options.defaultGenerationOptions ?: GenerationOptions()
 
@@ -232,9 +253,9 @@ class AIService(
 
     override fun streamAsync(messages: List<ChatMessage>, options: GenerationOptions?): Flow<String> = flow {
         ensureStarted()
-        val gen = generator ?: throw IllegalStateException("Butler is not ready.")
-
         val userQuery = messages.lastOrNull { it.role.equals("user", ignoreCase = true) }?.content ?: ""
+        val gen = selectSlot(messages, userQuery)
+
         val prepared = prepareMessages(messages, userQuery)
         val effectiveOptions = options ?: this@AIService.options.defaultGenerationOptions ?: GenerationOptions()
 
@@ -295,7 +316,7 @@ class AIService(
     override suspend fun agenticChatAsync(prompt: String, options: GenerationOptions?): String {
         require(prompt.isNotEmpty()) { "prompt is required" }
         ensureStarted()
-        val gen = generator ?: throw IllegalStateException("Butler is not ready.")
+        val gen = selectSlot(listOf(userMessage(prompt)), prompt)
 
         val maxIter = maxOf(
             1,
@@ -448,6 +469,80 @@ class AIService(
         )
         val warmOptions = GenerationOptions(maxTokens = 1, temperature = 0f)
         gen.generateAsync(warmMessages, warmOptions)
+    }
+
+    // ── Neuron: per-turn slot selection ──────────────────────────────────────
+
+    /** Resolved generalist model id (engine label), or null before start. */
+    val resolvedModelIdValue: String? get() = resolvedModelId
+
+    /**
+     * Router-gated slot selection. With no router (or no slot manager) this
+     * returns the generalist floor unchanged — byte-identical to a plain
+     * AIService. Otherwise it routes the turn: a specialist decision hot-loads a
+     * capability-matched model (RAM-admission-gated; any denial falls back to
+     * the generalist, never throws) and answers from it; else the generalist.
+     */
+    private fun selectSlot(messages: List<ChatMessage>, query: String): IChatGenerator {
+        val floor = generator ?: throw IllegalStateException("Butler is not ready.")
+        val router = options.router ?: return floor
+        val slotMgr = slots ?: return floor
+
+        // Base ChatMessage carries no image bytes on this port, so image routing
+        // can only be driven by a caller-supplied router; hasImage stays false.
+        val decision = router.route(
+            RouteContext(query = query, hasImage = false, promptChars = query.length),
+        )
+        if (decision.organ != Organ.SPECIALIST) return floor
+
+        val selector = options.neuronSelector ?: return floor
+        val factory = options.specialistFactory ?: return floor
+
+        val selection = try {
+            selector.bestFit(
+                com.bhengubv.circleai.device.DeviceProbe.snapshot(),
+                decision.capability,
+            )
+        } catch (e: Exception) {
+            return floor // no model satisfies the capability → generalist floor
+        }
+
+        val current = resolvedModelId
+        if (current != null && selection.modelId.equals(current, ignoreCase = true)) {
+            return floor // best-fit resolved to the generalist itself
+        }
+
+        val admission = slotMgr.ensureSpecialist(selection) { id -> factory(id) }
+        return when (admission.outcome) {
+            SlotOutcome.ADMITTED, SlotOutcome.ALREADY_RESIDENT -> admission.generator ?: floor
+            else -> floor // denial (insufficient RAM / build failed) → floor
+        }
+    }
+
+    // ── RT-02: generalist-floor session durability ────────────────────────────
+
+    override suspend fun saveSessionAsync(path: String): Boolean {
+        throwIfDisposed()
+        val gen = generator ?: return false
+        return try {
+            gen.saveSessionAsync(path)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun loadSessionAsync(path: String): Boolean {
+        throwIfDisposed()
+        val gen = generator ?: return false
+        return try {
+            gen.loadSessionAsync(path)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Exception) {
+            false
+        }
     }
 
     // ── Private — context enrichment ──────────────────────────────────────────

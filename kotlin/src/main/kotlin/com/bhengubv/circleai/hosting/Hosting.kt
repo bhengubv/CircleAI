@@ -214,6 +214,23 @@ data class AIOptions(
 
     // ── v3.0 Goal tracking ──
     val goalStore: IGoalStore? = null,
+
+    // ── Neuron: concierge two-slot residency ──
+    /**
+     * Per-turn concierge router. null → single-slot behaviour byte-identical to
+     * a plain AIService (the generalist answers every turn). A router lets the
+     * service hot-load one capability-matched specialist beside the always-warm
+     * generalist floor.
+     */
+    val router: INeuronRouter? = null,
+    /** Resolves a routed capability to a concrete model. Required for specialists. */
+    val neuronSelector: com.bhengubv.circleai.selector.IModelSelector? = null,
+    /** Builds a specialist generator for a resolved model id. Required for specialists. */
+    val specialistFactory: ((String) -> com.bhengubv.circleai.inference.IChatGenerator)? = null,
+    /** Bytes reserved for the generalist floor when admitting a specialist. null → 0. */
+    val generalistReservedBytes: Long? = null,
+    /** RAM ceiling for the two-slot admission gate. null → probe the live device. */
+    val ramCeilingBytes: Long? = null,
 ) {
     companion object {
         /**
