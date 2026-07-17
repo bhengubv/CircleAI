@@ -45,6 +45,8 @@ pub mod proactive_reasoning;
 pub mod push_observer;
 pub mod scheduled_service;
 pub mod scheduled_task_store;
+pub mod chat_runtime;
+pub mod neuron;
 pub mod service;
 pub mod thermal;
 pub mod tool_catalog;
@@ -89,6 +91,11 @@ pub use service::{
     AIService, DeviceContext, FallbackAIService, FixedRamProbe, HostingError, IAIService,
     IHostChatGenerator, IHostEpisodicStore, IHostFeedbackStore, IHostPersonaStore, IHostToolBridge,
     IRamProbe,
+};
+pub use chat_runtime::{ChatTurn, IChatRuntime, IPersistableChatRuntime, NullChatRuntime};
+pub use neuron::{
+    HeuristicNeuronRouter, INeuronRouter, NeuronGate, NeuronNode, Organ, ResidentSlotManager,
+    RouteContext, RouteDecision, SlotAdmission, SlotOutcome, SpecialistPick,
 };
 pub use thermal::{
     classify_kelvin, classify_milli_celsius, IThermalSampler, IThermalThrottleService,

@@ -17,13 +17,14 @@
 //!   * feedback submission with persona verbosity/formality adaptation
 //!   * observer firing (error-isolated) for every lifecycle + inference event
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration as StdDuration, Instant};
 
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::inference::{ChatMessage, GenerationOptions, IChatGenerator};
+use crate::selector::ChatCapability;
 use crate::memory::{
     EpisodicMemoryEntry, FeedbackAnalyser, FeedbackPolarity, FeedbackSignal, PersonaState,
 };
@@ -187,6 +188,21 @@ pub struct AIOptions {
     pub episodic_memory: Option<Box<dyn IHostEpisodicStore>>,
     pub device_context: Option<DeviceContext>,
     pub observer: Option<Box<dyn IAIObserver>>,
+
+    // Neuron — two-slot residency (opt-in). `router` None → single-slot, unchanged.
+    pub router: Option<Box<dyn super::neuron::INeuronRouter>>,
+    /// Capability -> specialist pick (the BestFit analog).
+    pub neuron_selector:
+        Option<Box<dyn Fn(ChatCapability) -> Option<super::neuron::SpecialistPick> + Send + Sync>>,
+    /// Model id -> built specialist generator (the loader analog).
+    pub specialist_builder:
+        Option<Box<dyn Fn(&str) -> Option<Arc<dyn IHostChatGenerator>> + Send + Sync>>,
+    /// Generalist model id — a best-fit that resolves to it stays on the generalist.
+    pub generalist_model_id: Option<String>,
+    /// Reserved footprint of the generalist floor (RAM gate).
+    pub generalist_reserved_bytes: i64,
+    /// Live RAM ceiling. None → no gate.
+    pub ram_available: Option<Box<dyn Fn() -> i64 + Send + Sync>>,
 }
 
 impl Default for AIOptions {
@@ -204,6 +220,12 @@ impl Default for AIOptions {
             episodic_memory: None,
             device_context: None,
             observer: None,
+            router: None,
+            neuron_selector: None,
+            specialist_builder: None,
+            generalist_model_id: None,
+            generalist_reserved_bytes: 0,
+            ram_available: None,
         }
     }
 }
@@ -279,6 +301,7 @@ pub struct AIService {
     generator: Box<dyn IHostChatGenerator>,
     state: Mutex<ServiceState>,
     persona: Mutex<Option<PersonaState>>,
+    slots: super::neuron::ResidentSlotManager,
 }
 
 #[derive(Default)]
@@ -292,13 +315,41 @@ const TOOL_CALL_CLOSE: &str = "</tool_call>";
 
 impl AIService {
     /// Constructs the service over the given generator + options.
-    pub fn new(options: AIOptions, generator: Box<dyn IHostChatGenerator>) -> Self {
+    pub fn new(mut options: AIOptions, generator: Box<dyn IHostChatGenerator>) -> Self {
+        let reserved = options.generalist_reserved_bytes;
+        let ram_available: Box<dyn Fn() -> i64 + Send + Sync> =
+            options.ram_available.take().unwrap_or_else(|| Box::new(|| i64::MAX));
+        let slots = super::neuron::ResidentSlotManager::new(reserved, ram_available);
         Self {
             options,
             generator,
             state: Mutex::new(ServiceState::default()),
             persona: Mutex::new(None),
+            slots,
         }
+    }
+
+    /// Neuron slot selection. `None` → the generalist (unchanged). With a router:
+    /// route the turn and, on a specialist decision, best-fit + hot-load
+    /// (admission-gated) a specialist. Any miss degrades to the generalist.
+    fn select_slot(&self, user_query: &str, has_image: bool) -> Option<Arc<dyn IHostChatGenerator>> {
+        let router = self.options.router.as_deref()?;
+        let decision = router.route(&super::neuron::RouteContext {
+            query: user_query.to_string(),
+            has_image,
+        });
+        if decision.organ != super::neuron::Organ::Specialist {
+            return None;
+        }
+        let selector = self.options.neuron_selector.as_deref()?;
+        let builder = self.options.specialist_builder.as_deref()?;
+        let pick = selector(decision.capability)?;
+        if let Some(gid) = &self.options.generalist_model_id {
+            if pick.model_id.eq_ignore_ascii_case(gid) {
+                return None; // best-fit resolved to the generalist itself
+            }
+        }
+        self.slots.ensure_specialist(&pick, builder).generator
     }
 
     fn throw_if_disposed(&self) -> Result<(), HostingError> {
@@ -534,6 +585,7 @@ impl IAIService for AIService {
             return Ok(());
         }
         self.try_save_persona();
+        self.slots.evict_specialist();
         {
             let mut s = self.state.lock().unwrap();
             s.started = false;
@@ -566,10 +618,14 @@ impl IAIService for AIService {
 
         let correlation_id = Uuid::new_v4();
         let start = Instant::now();
-        let response = self
-            .generator
-            .generate(&prepared, Some(effective))
-            .map_err(HostingError::Failed)?;
+        // Neuron: generalist by default; a specialist may answer when a router is
+        // configured. Byte-identical to the single-slot path when router is None.
+        let slot = self.select_slot(&user_query, false);
+        let response = match slot.as_ref() {
+            Some(g) => g.generate(&prepared, Some(effective)),
+            None => self.generator.generate(&prepared, Some(effective)),
+        }
+        .map_err(HostingError::Failed)?;
         let elapsed = start.elapsed();
 
         self.try_store_episode(&user_query, &response);
@@ -600,10 +656,12 @@ impl IAIService for AIService {
 
         let correlation_id = Uuid::new_v4();
         let start = Instant::now();
-        let chunks = self
-            .generator
-            .stream(&prepared, Some(effective))
-            .map_err(HostingError::Failed)?;
+        let slot = self.select_slot(&user_query, false);
+        let chunks = match slot.as_ref() {
+            Some(g) => g.stream(&prepared, Some(effective)),
+            None => self.generator.stream(&prepared, Some(effective)),
+        }
+        .map_err(HostingError::Failed)?;
 
         if !chunks.is_empty() {
             let started = AIStreamEvent {
@@ -683,14 +741,17 @@ impl IAIService for AIService {
 
         let mut history = vec![ChatMessage::user(prompt)];
         let mut last_response = String::new();
+        // Neuron slot selection for the whole agentic run (prompt has no image).
+        let slot = self.select_slot(prompt, false);
 
         for _ in 0..max_iter {
             let prepared = self.prepare_messages(&history, prompt);
             let start = Instant::now();
-            let response = self
-                .generator
-                .generate(&prepared, Some(&effective))
-                .map_err(HostingError::Failed)?;
+            let response = match slot.as_ref() {
+                Some(g) => g.generate(&prepared, Some(&effective)),
+                None => self.generator.generate(&prepared, Some(&effective)),
+            }
+            .map_err(HostingError::Failed)?;
             let elapsed = start.elapsed();
 
             last_response = response.clone();
