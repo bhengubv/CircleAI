@@ -31,6 +31,7 @@ add_library(circle_ai STATIC
     src/prompt.c
     src/agents_v15.c
     src/hosting.c
+    src/neuron.c
     # memory-brain port
     src/memory_brain.c
     src/companion_brain.c

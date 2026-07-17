@@ -29,6 +29,10 @@
 #include "agents.h"
 #include "hosting.h"
 
+/* The Neuron — concierge router + gate, RAM admission gate, NeuronNode facade
+ * (CircleAI.Hosting.Neuron) */
+#include "neuron.h"
+
 /* Aether contracts + AetherNet bindings (CircleAI.Aether / .AetherNet /
  * .Security.AetherNet) — one-way mesh<->BhenguAI boundary + mesh capability
  * discovery + AetherNet-specific security bindings */

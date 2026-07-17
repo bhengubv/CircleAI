@@ -45,6 +45,9 @@ add_circle_test(test_companion_reason)
 # HER/Jarvis companion cognition + proactive substrate
 add_circle_test(test_herjarvis)
 add_circle_test(test_capability_registry)
+
+# Neuron (CircleAI.Hosting.Neuron)
+add_circle_test(test_neuron)
 add_circle_test(test_proactive)
 add_circle_test(test_proactive_briefing)
 add_circle_test(test_companion_session_factory)
