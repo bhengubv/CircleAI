@@ -82,8 +82,17 @@ type AIService struct {
 	observer      HostAIObserver
 	enricher      SystemPromptEnricher
 
+	// Neuron — two-slot residency (opt-in via WithNeuron*). Immutable after build.
+	router                  INeuronRouter
+	modelSelector           IModelSelector
+	specialistFactory       func(modelID string) (IChatGenerator, error)
+	generalistModelID       string
+	generalistReservedBytes int64
+	probe                   func() DeviceProbe
+
 	mu        sync.Mutex
 	generator IChatGenerator
+	slots     *ResidentSlotManager
 	started   bool
 	disposed  bool
 }
@@ -121,6 +130,34 @@ func WithHostObserver(o HostAIObserver) AIServiceOption { return func(s *AIServi
 // WithSystemPromptEnricher wires the enrichment hook.
 func WithSystemPromptEnricher(e SystemPromptEnricher) AIServiceOption {
 	return func(s *AIService) { s.enricher = e }
+}
+
+// WithNeuronRouter enables the concierge: per-turn routing between the warm
+// generalist and a hot specialist. Requires WithNeuronSpecialist to load one.
+func WithNeuronRouter(r INeuronRouter) AIServiceOption {
+	return func(s *AIService) { s.router = r }
+}
+
+// WithNeuronSpecialist wires the selector + factory used to best-fit and build a
+// capability-matched specialist. generalistModelID (may be "") keeps a best-fit
+// that resolves to the generalist itself on the generalist.
+func WithNeuronSpecialist(selector IModelSelector, factory func(modelID string) (IChatGenerator, error), generalistModelID string) AIServiceOption {
+	return func(s *AIService) {
+		s.modelSelector = selector
+		s.specialistFactory = factory
+		s.generalistModelID = generalistModelID
+	}
+}
+
+// WithDeviceProbe overrides the device probe used by the RAM admission gate.
+func WithDeviceProbe(p func() DeviceProbe) AIServiceOption {
+	return func(s *AIService) { s.probe = p }
+}
+
+// WithGeneralistModelID records the generalist's model id — used by the
+// best-fit-equals-generalist short-circuit and NeuronNode.EngineLabel.
+func WithGeneralistModelID(id string) AIServiceOption {
+	return func(s *AIService) { s.generalistModelID = id }
 }
 
 // NewAIService builds an AIService that loads its generator via factory. The
@@ -193,10 +230,14 @@ func (s *AIService) Stop(ctx context.Context) error {
 	}
 	gen := s.generator
 	s.generator = nil
+	slots := s.slots
 	s.started = false
 	obs := s.observer
 	s.mu.Unlock()
 
+	if slots != nil {
+		slots.EvictSpecialist()
+	}
 	if gen != nil {
 		_ = gen.Close()
 	}
@@ -224,12 +265,17 @@ func (s *AIService) Chat(ctx context.Context, messages []ChatMessage, options *G
 	if err := s.ensureStarted(ctx); err != nil {
 		return "", err
 	}
-	gen := s.currentGenerator()
+	userQuery := lastUserContent(messages)
+	// Neuron: generalist by default; a specialist may answer when a router is
+	// configured. Byte-identical to the single-slot path when router is nil.
+	gen, err := s.selectSlot(ctx, userQuery, false)
+	if err != nil {
+		return "", err
+	}
 	if gen == nil {
 		return "", errors.New("Butler is not ready")
 	}
 
-	userQuery := lastUserContent(messages)
 	prepared := s.prepareMessages(ctx, messages, userQuery)
 	effective := s.effectiveOptions(options)
 
@@ -273,7 +319,14 @@ func (s *AIService) Stream(ctx context.Context, messages []ChatMessage, options 
 		close(errc)
 		return out, errc
 	}
-	gen := s.currentGenerator()
+	userQuery := lastUserContent(messages)
+	gen, err := s.selectSlot(ctx, userQuery, false)
+	if err != nil {
+		errc <- err
+		close(out)
+		close(errc)
+		return out, errc
+	}
 	if gen == nil {
 		errc <- errors.New("Butler is not ready")
 		close(out)
@@ -281,7 +334,6 @@ func (s *AIService) Stream(ctx context.Context, messages []ChatMessage, options 
 		return out, errc
 	}
 
-	userQuery := lastUserContent(messages)
 	prepared := s.prepareMessages(ctx, messages, userQuery)
 	effective := s.effectiveOptions(options)
 	obs := s.observer
@@ -389,7 +441,10 @@ func (s *AIService) AgenticChat(ctx context.Context, prompt string, options *Gen
 	if err := s.ensureStarted(ctx); err != nil {
 		return "", err
 	}
-	gen := s.currentGenerator()
+	gen, err := s.selectSlot(ctx, prompt, false)
+	if err != nil {
+		return "", err
+	}
 	if gen == nil {
 		return "", errors.New("Butler is not ready")
 	}
@@ -494,6 +549,101 @@ func (s *AIService) currentGenerator() IChatGenerator {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.generator
+}
+
+// ResolvedModelID returns the generalist model id — surfaced by NeuronNode.EngineLabel.
+func (s *AIService) ResolvedModelID() string { return s.generalistModelID }
+
+// SaveSession snapshots the always-warm generalist floor (RT-02). No-op when the
+// generator has no SessionPersistence.
+func (s *AIService) SaveSession(ctx context.Context, path string) (bool, error) {
+	gen := s.currentGenerator()
+	if gen == nil {
+		return false, nil
+	}
+	if sp, ok := gen.(SessionPersistence); ok {
+		return sp.SaveSession(path)
+	}
+	return false, nil
+}
+
+// LoadSession restores the generalist floor (RT-02). No-op when unsupported.
+func (s *AIService) LoadSession(ctx context.Context, path string) (bool, error) {
+	if err := s.ensureStarted(ctx); err != nil {
+		return false, err
+	}
+	gen := s.currentGenerator()
+	if gen == nil {
+		return false, nil
+	}
+	if sp, ok := gen.(SessionPersistence); ok {
+		return sp.LoadSession(path)
+	}
+	return false, nil
+}
+
+// EvictSpecialist evicts the hot specialist; the generalist floor keeps serving.
+func (s *AIService) EvictSpecialist() {
+	s.mu.Lock()
+	slots := s.slots
+	s.mu.Unlock()
+	if slots != nil {
+		slots.EvictSpecialist()
+	}
+}
+
+func (s *AIService) probeDevice() DeviceProbe {
+	if s.probe != nil {
+		return s.probe()
+	}
+	return Snapshot(SnapshotOptions{})
+}
+
+// selectSlot is the Neuron slot selection. With no router it returns the
+// generalist (unchanged). With a router: it routes the turn and, on a specialist
+// decision, best-fits + hot-loads (admission-gated) a specialist. Any miss — no
+// selector/factory, a best-fit that resolves to the generalist, or a build
+// failure — degrades to the generalist.
+func (s *AIService) selectSlot(ctx context.Context, userQuery string, hasImage bool) (IChatGenerator, error) {
+	generalist := s.currentGenerator()
+	if generalist == nil {
+		return nil, nil
+	}
+	if s.router == nil {
+		return generalist, nil
+	}
+
+	decision := s.router.Route(RouteContext{Query: userQuery, HasImage: hasImage})
+	if decision.Organ != OrganSpecialist {
+		return generalist, nil
+	}
+	if s.modelSelector == nil || s.specialistFactory == nil {
+		return generalist, nil
+	}
+
+	selection, err := s.modelSelector.BestFit(s.probeDevice(), decision.Capability)
+	if err != nil {
+		return generalist, nil
+	}
+	if s.generalistModelID != "" && strings.EqualFold(selection.ModelID, s.generalistModelID) {
+		return generalist, nil // best-fit resolved to the generalist itself
+	}
+
+	s.mu.Lock()
+	if s.slots == nil {
+		s.slots = NewResidentSlotManager(
+			s.generalistReservedBytes,
+			func() int64 { return s.probeDevice().RAMAvailableBytes },
+		)
+	}
+	slots := s.slots
+	s.mu.Unlock()
+
+	admission := slots.EnsureSpecialist(selection, s.specialistFactory)
+	if admission.Generator != nil {
+		return admission.Generator, nil
+	}
+	return generalist, nil
 }
 
 func (s *AIService) effectiveOptions(options *GenerationOptions) *GenerationOptions {
