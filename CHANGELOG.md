@@ -4,6 +4,60 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-07-18 — **The Neuron — on-device concierge, ported to all 8 languages + multilingual docs**
+
+Adds the **Neuron**: a private, on-device second brain that decides, per turn,
+whether an always-warm generalist answers or a capability-matched specialist is
+hot-loaded to answer — grounded in one shared memory and persona, host-neutral,
+and durable across restarts. Built on the C# reference and ported to all seven
+sister languages (Python, TypeScript, Go, Kotlin, Swift, Rust, C), each adapted
+to its substrate and covered by its own tests. HarmonyOS remains the single
+documented gap. Also ships a multilingual README set — the Neuron explained in
+17 languages, including six new African-language translations.
+
+### Added — the Neuron (`CircleAI.Hosting`, mirrored to all 7 ports)
+
+- **Concierge router + gate** — `INeuronRouter` / `HeuristicNeuronRouter` /
+  `NeuronGate`. Per-turn keyword/length heuristics (never a model) route each
+  turn to the generalist or a specialist (vision / long-context / reasoning);
+  a gate can veto a specialist, and the generalist floor always answers.
+- **Two-slot residency** — `ResidentSlotManager`, a RAM admission gate that
+  keeps the generalist warm and hot-loads at most one specialist beside it,
+  reserving RAM before loading and evicting the **specialist** first under
+  memory pressure so the generalist never drops. Wired into `AIService` at the
+  chat / stream / agentic call sites, gated on `AIOptions.Router` — with no
+  router the path is byte-identical to before.
+- **Host-neutral seam + facade** — `IChatRuntime` / `IPersistableChatRuntime`
+  + `NeuronNode`, so any harness can drive the node without touching engine
+  internals; `AddNeuron(...)` DI; generalist-floor KV session save/load for
+  OOM/restart survival.
+- **Voice** — the "Hey B" voice loop drives the Neuron (`NeuronVoice`).
+- **Ported to all seven sister languages** — Python, TypeScript, Go, Kotlin,
+  Swift, Rust, C. Each adapts to its substrate (rich ports mirror the two-slot
+  path directly; thinner ports inject a specialist selector + factory; C ships
+  a self-contained module over its callback substrate) and carries its own
+  Neuron test suite.
+
+### Added — documentation + internationalisation
+
+- Plain-language **Neuron** section in the root README — what it is, and how a
+  network of Neurons composes (clearly marked as not-yet-built vision).
+- **17-language** README set under `docs/i18n/`: a new English source, the
+  Neuron section added to the 10 existing translations (Arabic, German,
+  Spanish, Persian, French, Japanese, Korean, Portuguese-BR, Russian, Chinese),
+  and **six new African-language** READMEs — Afrikaans, Kiswahili, isiZulu,
+  Sesotho, Hausa, Amharic — matching the product's own language support. A
+  language bar links them all from the root README.
+
+### Notes
+
+- Neuron unit tests verified green per language: C# (net9 **and** net10),
+  Python, Go, Rust (16/16), TypeScript (17/17), Kotlin (17/17), Swift (17/17 on
+  macOS), C (full CMake library build + ctest). `AIOptions.Router` null keeps
+  every existing `AIService` path byte-identical.
+- The `docs/i18n` translations are AI-assisted starting points; native-speaker
+  review is welcome, isiZulu especially.
+
 ## [3.4.0] — 2026-07-14 — **Cross-language test parity — 8/9 suites green + StubGuard package completions**
 
 Brings all eight language surfaces — the C# reference plus the Go, Rust, Python,
