@@ -1,6 +1,6 @@
 [package]
 name = "circle-ai"
-version = "1.5.0"
+version = "3.5.0"
 edition = "2021"
 authors = ["Bhengu B.V. <info@bhengubv.com>"]
 description = "Circle AI SDK — portable core for the B! companion"

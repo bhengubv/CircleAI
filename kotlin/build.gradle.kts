@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.bhengubv"
-version = project.findProperty("version")?.takeIf { it != "unspecified" } ?: "1.5.0"
+version = project.findProperty("version")?.takeIf { it != "unspecified" } ?: "3.5.0"
 
 repositories {
     mavenCentral()

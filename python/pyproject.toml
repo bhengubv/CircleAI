@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "circle-ai-sdk"
-version = "1.5.0"
+version = "3.5.0"
 description = "Circle AI SDK — on-device AI companion, memory, identity, language, catalog, selector, prompt, upgrade-detection primitives"
 requires-python = ">=3.11"
 dependencies = []
