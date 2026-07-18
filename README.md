@@ -90,6 +90,38 @@ in [CONSUMING.md](CONSUMING.md).
 
 ---
 
+## The Neuron — on-device concierge
+
+`CircleAI.Hosting` ships a **Neuron**: a private, on-device second brain
+that decides, *per turn*, whether the always-warm generalist answers or a
+capability-matched specialist is hot-loaded to answer — grounded in one
+shared memory and persona.
+
+- **Concierge router + gate.** Cheap keyword/length heuristics (never a
+  model) classify each turn → the generalist, or a specialist for vision,
+  long-context, or reasoning. A `NeuronGate` can veto a specialist by
+  policy; the generalist floor always answers.
+- **Two-slot residency.** The generalist stays warm (the floor); one
+  specialist loads hot beside it. A `ResidentSlotManager` reserves RAM
+  before loading and, under memory pressure, evicts the **specialist**
+  first — the generalist never drops.
+- **Host-neutral seam.** `IChatRuntime` / `IPersistableChatRuntime` + the
+  `NeuronNode` facade let any harness drive the node without touching
+  engine internals, and snapshot the generalist's KV session so a
+  conversation survives an OOM or restart.
+
+Resolve it from `AddNeuron(...)`; with no router the path is byte-identical
+to a plain `AIService`. The Neuron is `IAIService`-backed, so
+`CompanionSession` (identity + memory + proactive) — and the "Hey B" voice
+loop — still sit on top unchanged.
+
+The Neuron ships in the **C# reference and all seven sister ports** —
+Python, TypeScript, Go, Kotlin, Swift, Rust, and C — each adapted to its
+substrate and covered by its own test suite. (The HarmonyOS/ArkTS port is
+pending.)
+
+---
+
 ## Inference runtime
 
 **Alibaba MNN** (Apache-2.0) on every platform. Models: **Qwen 3+**,
@@ -155,7 +187,7 @@ release. Lines marked **implemented** ship working backends today.
 | `CircleAI.Core` | implemented | Primitives + `ModelRegistryService` + `TurboQuantCodec` + capability flags |
 | `CircleAI.Inference` | implemented | `IChatGenerator` + `QwenTextGenerator` + `KimiVlGenerator` + MNN P/Invoke |
 | `CircleAI.Hosting.InferenceBridge` | implemented | `IInferenceBridge` + `MnnInferenceBridgeFactory` |
-| `CircleAI.Hosting` | implemented | `IAIService` + persona + RAG + tool dispatch + observers + `IToolCatalog` |
+| `CircleAI.Hosting` | implemented | `IAIService` + persona + RAG + tool dispatch + observers + `IToolCatalog` + the **Neuron** (concierge router + gate, two-slot residency, `NeuronNode`) |
 | `CircleAI.Maui` | implemented | MAUI-side `OnPaused`/`OnResumed` snapshot wiring + Android/iOS adapters |
 | `CircleAI.Inference.Server` | implemented | The OpenAI-shape HTTP server (see above) |
 | `CircleAI.Inference.Server.Enterprise` | contracts | Multi-tenant + gRPC + batch + sharding + RT-12 v2 |
@@ -396,6 +428,12 @@ TypeScript, Go, Kotlin, Swift, Rust, C, Android (Kotlin), HarmonyOS
 (ArkTS). Each port lives in its own top-level directory in this
 repository (`python/`, `typescript/`, `go/`, …); the cross-language
 contract specification is in [docs/CONTRACTS.md](docs/CONTRACTS.md).
+
+The kernel now also carries the **Neuron** — the concierge router + gate,
+`ResidentSlotManager`, the `IChatRuntime` seam, and `NeuronNode` — in the
+C# reference and the seven sister ports (Python, TypeScript, Go, Kotlin,
+Swift, Rust, C), each with its own test suite. The HarmonyOS (ArkTS) port
+is the one remaining gap.
 
 ---
 
