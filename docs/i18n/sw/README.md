@@ -1,19 +1,21 @@
-# Circle AI — SDK 10 Langages
+# Circle AI — SDK ya Lugha 10
 
-Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
-nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
-téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
+Kiini kinachobebeka cha mrundikano wa msindikizaji wa Circle AI. Hukimbia kwa
+asili kando ya kila node ya
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) —
+kifaa cha kuvaliwa, simu, IoT, HarmonyOS — bila gharama ya ziada ya FFI wala
+madaraja ya wakati wa utekelezaji.
 
 ---
 
-## Cœur Portable (8 modules)
+## Kiini Kinachobebeka (moduli 8)
 
-| Module | Types clés |
+| Moduli | Aina kuu |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (vitambulisho 20 vya BCP-47), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +23,34 @@ téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécuti
 
 ---
 
-## Le Neurone — un petit cerveau IA sur votre appareil
+## Nyuroni — ubongo mdogo wa AI kwenye kifaa chako
 
-Un **Neurone** est un petit cerveau IA qui s'exécute sur votre propre appareil. Il pense, se souvient et parle — directement sur votre téléphone ou votre ordinateur portable, sans rien envoyer à un serveur. Un assistant rapide du quotidien répond à la plupart des questions ; pour une tâche plus difficile (lire une image, un long document ou réfléchir soigneusement, étape par étape) il charge discrètement un spécialiste, répond, puis le met de côté. Il ne garde qu'un seul spécialiste à la fois, de sorte qu'il n'a jamais besoin de plus de mémoire que l'appareil n'en possède, et il se souvient de la conversation pour qu'un échange reprenne là où il s'était arrêté.
+**Nyuroni** ni ubongo mdogo wa AI unaokimbia kwenye kifaa chako mwenyewe.
+Hufikiri, hukumbuka, na huzungumza — hapo hapo kwenye simu au kompyuta yako ya
+mkononi, bila chochote kutumwa kwa seva. Msaidizi wa kila siku mwenye kasi
+hujibu maswali mengi; kwa kazi ngumu zaidi (kusoma picha, hati ndefu, au
+kufikiri kwa makini hatua kwa hatua) hupakia mtaalamu kimya kimya, hujibu, kisha
+humweka kando. Huhifadhi mtaalamu mmoja tu kwa wakati, hivyo haihitaji kamwe
+kumbukumbu zaidi ya iliyopo kwenye kifaa, na hukumbuka mazungumzo ili gumzo
+liendelee pale lilipoishia.
 
-**Un Neurone, ou plusieurs — un cerveau fait de cerveaux.** Un seul Neurone fonctionne bien tout seul. Mais les Neurones peuvent aussi s'associer, comme les cellules d'un cerveau — et c'est là qu'est la véritable puissance. (Cette partie n'est pas encore construite ; c'est ce qui, selon nous, devient possible, et c'est la raison pour laquelle le nœud est appelé Neurone.) En groupe, ils se répartissent le travail, s'entraident lorsque l'un d'eux ne peut pas héberger un spécialiste, répondent d'égal à égal sans qu'aucun nœud ne commande, et gardent vos données privées sur votre propre appareil — seule la question circule entre eux. Chaque Neurone est déjà un esprit à part entière, donc un groupe de Neurones, c'est de nombreux esprits à part entière qui s'entraident pour faire plus qu'aucun d'eux ne le pourrait seul.
+**Nyuroni Moja, au Nyingi — ubongo uliotengenezwa kwa bongo.** Nyuroni moja
+hufanya kazi vizuri peke yake. Lakini Nyuroni pia zinaweza kuungana, kama seli
+za ubongo ndani ya ubongo — na hapo ndipo nguvu halisi zilipo. (Sehemu hii bado
+haijajengwa; ni kile tunachoamini kuwa kitawezekana, na ndiyo sababu node
+huitwa Nyuroni.) Katika kikundi hushirikiana kazi, husaidiana wakati Nyuroni
+moja inaposhindwa kubeba mtaalamu, hujibu kwa usawa bila node yoyote kuwa
+kiongozi, na huhifadhi data yako ya faragha kwenye kifaa chako mwenyewe — swali
+pekee ndilo husafiri kati yao. Kila Nyuroni tayari ni akili kamili, hivyo
+kikundi cha Nyuroni ni akili kamili nyingi zinazosaidiana kufanya zaidi ya vile
+yoyote kati yazo ingeweza peke yake.
 
-Le Neurone est fourni dans l'implémentation de référence C# et dans les sept portages frères (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS est encore à venir.
+Nyuroni inapatikana katika marejeo ya C# na matoleo dada yote saba (Python,
+TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS bado inakuja.
 
 ---
 
-## Démarrage Rapide par Langage
+## Anza Haraka kwa Kila Lugha
 
 ### C# (.NET)
 
@@ -233,37 +252,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Calculs Communs à Tous les Langages
+## AffectState — Hesabu Baina ya Lugha
 
-Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
+Utekelezaji wote 10 huzalisha matokeo ya nukta-elea yanayofanana (ε ≤ 1e-5).
 
-| Opération | Effet |
+| Operesheni | Athari |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (imebanwa hadi [0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (imebanwa) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement na energy huelekea 0.5 kwa interpolation ya mstari |
 
-Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
+Vekta za majaribio katika [`fixtures/affect_state.json`](fixtures/affect_state.json) (vekta 12). Zimehakikiwa na CI katika lugha zote 10.
 
 ---
 
-## Registre des Langues (20 balises BCP-47)
+## Rejista ya Lugha (vitambulisho 20 vya BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Structure du Dépôt
+## Muundo wa Hifadhi
 
 ```
 CircleAI/
-├── src/            Implémentation de référence C# (CircleAI.*)
-├── tests/          Suite de tests C#
-├── fixtures/       Vecteurs de test multi-langages (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Bibliothèque Kotlin/Android
-├── c/              C99 pur, CMake
-├── go/             Module Go
+├── android/        Kotlin/Android library
+├── c/              Pure C99, CMake
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -274,15 +293,15 @@ CircleAI/
 
 ---
 
-## IC (Intégration Continue)
+## CI
 
-| Workflow | Déclencheur |
+| Mtiririko wa Kazi | Kichochezi |
 |----------|---------|
-| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
-| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Uthibitishaji wa Fixture](.github/workflows/fixture-validation.yml) | push/PR kwenda master — huendesha seti zote 10 za majaribio |
+| [Chapisha](.github/workflows/publish.yml) | git tag `v*.*.*` — huchapisha kwa NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## Licence
+## Leseni
 
 MIT

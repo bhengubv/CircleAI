@@ -1,19 +1,20 @@
-# Circle AI — SDK 10 Langages
+# Circle AI — SDK Yezilimi Ezingu-10
 
-Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
-nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
-téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
+Yingqikithi ephathekayo yohlelo lomngane we-Circle AI. Isebenza ngokwemvelo
+eduze kwayo yonke inodi ye-[Aether Protocol](https://github.com/bhengubv/aether-protocol) —
+okugqokwayo, ifoni, i-IoT, i-HarmonyOS — ngaphandle kwesindo esengeziwe se-FFI
+nangaphandle kwamabhuloho e-runtime.
 
 ---
 
-## Cœur Portable (8 modules)
+## Ingqikithi Ephathekayo (izimojula ezingu-8)
 
-| Module | Types clés |
+| Imojula | Izinhlobo eziyinhloko |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (amathegi angu-20 e-BCP-47), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +22,34 @@ téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécuti
 
 ---
 
-## Le Neurone — un petit cerveau IA sur votre appareil
+## INyuroni — ubuchopho obuncane be-AI edivayisini yakho
 
-Un **Neurone** est un petit cerveau IA qui s'exécute sur votre propre appareil. Il pense, se souvient et parle — directement sur votre téléphone ou votre ordinateur portable, sans rien envoyer à un serveur. Un assistant rapide du quotidien répond à la plupart des questions ; pour une tâche plus difficile (lire une image, un long document ou réfléchir soigneusement, étape par étape) il charge discrètement un spécialiste, répond, puis le met de côté. Il ne garde qu'un seul spécialiste à la fois, de sorte qu'il n'a jamais besoin de plus de mémoire que l'appareil n'en possède, et il se souvient de la conversation pour qu'un échange reprenne là où il s'était arrêté.
+**INyuroni** ubuchopho obuncane be-AI obusebenza edivayisini yakho siqu. Iyacabanga,
+iyakhumbula, futhi iyakhuluma — khona lapho efonini yakho noma kwilaptophu yakho, kungekho
+lutho oluthunyelwa kuseva. Umsizi osheshayo wansuku zonke uphendula imibuzo eminingi;
+kodwa emsebenzini onzima (ukufunda isithombe, idokhumenti elide, noma ukucabanga
+okucophelele isinyathelo nesinyathelo) ilayisha ngokuthulile uchwepheshe, iphendule, bese
+imbeka eceleni. Igcina uchwepheshe oyedwa kuphela ngesikhathi esisodwa, ngakho ayidingi
+imemori engaphezu kwaleyo idivayisi enayo, futhi iyayikhumbula ingxoxo ukuze ingxoxo
+iqhubeke kusukela lapho igcine khona.
 
-**Un Neurone, ou plusieurs — un cerveau fait de cerveaux.** Un seul Neurone fonctionne bien tout seul. Mais les Neurones peuvent aussi s'associer, comme les cellules d'un cerveau — et c'est là qu'est la véritable puissance. (Cette partie n'est pas encore construite ; c'est ce qui, selon nous, devient possible, et c'est la raison pour laquelle le nœud est appelé Neurone.) En groupe, ils se répartissent le travail, s'entraident lorsque l'un d'eux ne peut pas héberger un spécialiste, répondent d'égal à égal sans qu'aucun nœud ne commande, et gardent vos données privées sur votre propre appareil — seule la question circule entre eux. Chaque Neurone est déjà un esprit à part entière, donc un groupe de Neurones, c'est de nombreux esprits à part entière qui s'entraident pour faire plus qu'aucun d'eux ne le pourrait seul.
+**INyuroni eyodwa, noma eziningi — ubuchopho obakhiwe ngobuchopho.** INyuroni eyodwa
+isebenza kahle iyodwa. Kodwa iziNyuroni zingahlangana futhi, njengamaseli obuchopho
+asebuchosheni — futhi yilapho khona amandla angempela. (Le ngxenye ayikakhiwa okwamanje;
+yilokho esikholwa ukuthi kungenzeka, futhi yiso isizathu sokuthi inodi ibizwe ngokuthi
+iNyuroni.) Eqenjini zabelana ngomsebenzi, zisizane lapho enye ingakwazi ukufaka
+uchwepheshe, ziphendule zilingana kungekho inodi ephethe, futhi zigcine idatha yakho
+eyimfihlo edivayisini yakho siqu — umbuzo kuphela ohamba phakathi kwazo. INyuroni ngayinye
+isivele iyingqondo ephelele, ngakho iqembu leziNyuroni liyizingqondo eziphelele eziningi
+ezisizanayo ukwenza okungaphezu kwalokho noma iyiphi kuzo engakwenza iyodwa.
 
-Le Neurone est fourni dans l'implémentation de référence C# et dans les sept portages frères (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS est encore à venir.
+INyuroni itholakala kunguqulo yesisekelo ye-C# kanye nakuzo zonke izinguqulo ezingodadewabo
+eziyisikhombisa (Python, TypeScript, Go, Kotlin, Swift, Rust, C). I-HarmonyOS/ArkTS
+isazolandela.
 
 ---
 
-## Démarrage Rapide par Langage
+## Ukuqala Okusheshayo Ngolimi Ngalunye
 
 ### C# (.NET)
 
@@ -233,37 +251,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Calculs Communs à Tous les Langages
+## AffectState — Izibalo Ezisebenza Kuzo Zonke Izilimi
 
-Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
+Zonke izinguqulo ezingu-10 zikhiqiza imiphumela efanayo ye-floating-point (ε ≤ 1e-5).
 
-| Opération | Effet |
+| Umsebenzi | Umthelela |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (kuvinjelwe ku-[0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (kuvinjelwe) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement ne-energy zishelela ziye ku-0.5 nge-linear interpolation |
 
-Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
+Amavektha okuhlola aku-[`fixtures/affect_state.json`](fixtures/affect_state.json) (amavektha angu-12). Aqinisekiswa yi-CI kuzo zonke izilimi ezingu-10.
 
 ---
 
-## Registre des Langues (20 balises BCP-47)
+## Irejista Yezilimi (amathegi angu-20 e-BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Structure du Dépôt
+## Isakhiwo Sendawo Yokugcina
 
 ```
 CircleAI/
-├── src/            Implémentation de référence C# (CircleAI.*)
-├── tests/          Suite de tests C#
-├── fixtures/       Vecteurs de test multi-langages (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Bibliothèque Kotlin/Android
-├── c/              C99 pur, CMake
-├── go/             Module Go
+├── android/        Kotlin/Android library
+├── c/              Pure C99, CMake
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -274,15 +292,15 @@ CircleAI/
 
 ---
 
-## IC (Intégration Continue)
+## CI
 
-| Workflow | Déclencheur |
+| Uhlelo Lokusebenza | Isiqalisi |
 |----------|---------|
-| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
-| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Ukuqinisekiswa Kwama-Fixture](.github/workflows/fixture-validation.yml) | push/PR ku-master — iqhuba wonke amaqoqo okuhlola angu-10 |
+| [Ukushicilela](.github/workflows/publish.yml) | git tag `v*.*.*` — ishicilela ku-NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## Licence
+## Ilayisensi
 
 MIT

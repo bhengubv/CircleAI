@@ -21,6 +21,16 @@ teléfono, IoT, HarmonyOS — sin sobrecarga de FFI ni puentes en tiempo de ejec
 
 ---
 
+## La Neurona — un pequeño cerebro de IA en tu dispositivo
+
+Una **Neurona** es un pequeño cerebro de IA que se ejecuta en tu propio dispositivo. Piensa, recuerda y habla — allí mismo, en tu teléfono o portátil, sin enviar nada a un servidor. Un ayudante rápido para el día a día responde la mayoría de las preguntas; para una tarea más difícil (leer una imagen, un documento largo o razonar con cuidado paso a paso) carga discretamente a un especialista, responde y luego lo deja a un lado. Mantiene solo un especialista a la vez, por lo que nunca necesita más memoria de la que tiene el dispositivo, y recuerda la conversación para que un chat continúe donde lo dejó.
+
+**Una Neurona, o muchas — un cerebro hecho de cerebros.** Una sola Neurona funciona bien por sí misma. Pero las Neuronas también pueden unirse, como las células de un cerebro — y ahí es donde está el verdadero poder. (Esta parte aún no está construida; es lo que creemos que se vuelve posible, y es la razón por la que el nodo se llama Neurona.) En grupo reparten el trabajo, se ayudan entre sí cuando una no puede alojar a un especialista, responden como iguales sin ningún nodo al mando y mantienen tus datos privados en tu propio dispositivo — solo la pregunta viaja entre ellas. Cada Neurona ya es una mente completa, así que un grupo de Neuronas es muchas mentes completas que se ayudan entre sí para hacer más de lo que cualquiera de ellas podría sola.
+
+La Neurona se incluye en la implementación de referencia en C# y en las siete portaciones hermanas (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS aún está por llegar.
+
+---
+
 ## Inicio Rápido por Lenguaje
 
 ### C# (.NET)

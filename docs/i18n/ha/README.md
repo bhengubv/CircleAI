@@ -1,19 +1,20 @@
-# Circle AI — SDK 10 Langages
+# Circle AI — SDK na Harsuna 10
 
-Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
-nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
-téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
+Jigo mai ɗaukuwa na tsarin abokin-tafiya na Circle AI. Yana aiki kai tsaye a
+gefen kowane node na [Aether Protocol](https://github.com/bhengubv/aether-protocol) —
+na'urar sawa, waya, IoT, HarmonyOS — ba tare da nauyin FFI ba kuma ba tare da
+gadoji na lokacin aiki ba.
 
 ---
 
-## Cœur Portable (8 modules)
+## Jigo Mai Ɗaukuwa (Sassa 8)
 
-| Module | Types clés |
+| Sashe | Manyan Nau'ikan |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (alamun BCP-47 guda 20), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +22,35 @@ téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécuti
 
 ---
 
-## Le Neurone — un petit cerveau IA sur votre appareil
+## Neuron — Ƙaramar Ƙwaƙwalwar AI a Na'urarka
 
-Un **Neurone** est un petit cerveau IA qui s'exécute sur votre propre appareil. Il pense, se souvient et parle — directement sur votre téléphone ou votre ordinateur portable, sans rien envoyer à un serveur. Un assistant rapide du quotidien répond à la plupart des questions ; pour une tâche plus difficile (lire une image, un long document ou réfléchir soigneusement, étape par étape) il charge discrètement un spécialiste, répond, puis le met de côté. Il ne garde qu'un seul spécialiste à la fois, de sorte qu'il n'a jamais besoin de plus de mémoire que l'appareil n'en possède, et il se souvient de la conversation pour qu'un échange reprenne là où il s'était arrêté.
+**Neuron** ƙaramar ƙwaƙwalwar AI ce da take aiki a kan na'urarka. Tana tunani,
+tana tunawa, kuma tana magana — nan take a wayarka ko laptop ɗinka, ba tare da
+an aika komai zuwa sabar ba. Mataimaki mai sauri na yau da kullum yana amsa
+yawancin tambayoyi; don aiki mai wuya (karanta hoto, doguwar takarda, ko tunani
+a hankali mataki-mataki) sai ta ɗora ƙwararre a shiru, ta amsa, sannan ta ajiye
+shi a gefe. Tana riƙe ƙwararre ɗaya kaɗai a lokaci guda, don haka ba ta taɓa
+buƙatar ƙwaƙwalwar ajiya fiye da abin da na'urar take da shi ba, kuma tana tuna
+tattaunawar don hira ta ci gaba daga inda ta tsaya.
 
-**Un Neurone, ou plusieurs — un cerveau fait de cerveaux.** Un seul Neurone fonctionne bien tout seul. Mais les Neurones peuvent aussi s'associer, comme les cellules d'un cerveau — et c'est là qu'est la véritable puissance. (Cette partie n'est pas encore construite ; c'est ce qui, selon nous, devient possible, et c'est la raison pour laquelle le nœud est appelé Neurone.) En groupe, ils se répartissent le travail, s'entraident lorsque l'un d'eux ne peut pas héberger un spécialiste, répondent d'égal à égal sans qu'aucun nœud ne commande, et gardent vos données privées sur votre propre appareil — seule la question circule entre eux. Chaque Neurone est déjà un esprit à part entière, donc un groupe de Neurones, c'est de nombreux esprits à part entière qui s'entraident pour faire plus qu'aucun d'eux ne le pourrait seul.
+**Neuron ɗaya, ko da yawa — ƙwaƙwalwa da aka yi da ƙwaƙwalwu.** Neuron ɗaya tana
+aiki sosai ita kaɗai. Amma Neurons kuma za su iya haɗuwa, kamar ƙwayoyin
+ƙwaƙwalwa a cikin ƙwaƙwalwa — kuma a nan ne ainihin ƙarfin yake. (Ba a gina
+wannan ɓangaren ba tukuna; shi ne abin da muka yi imani zai yiwu, kuma shi ne
+dalilin da ya sa ake kiran node ɗin Neuron.) A cikin ƙungiya suna raba aiki,
+suna taimakon juna idan wata ba ta iya ɗaukar ƙwararre, suna amsawa daidai da
+juna babu wani node da ke shugabanci, kuma suna ajiye bayananka na sirri a kan
+na'urarka — tambaya kaɗai ce take tafiya tsakaninsu. Kowace Neuron riga ta
+kasance cikakken hankali, don haka ƙungiyar Neurons ita ce cikakkun hankula da
+yawa da suke taimakon juna don yin fiye da yadda kowanne zai iya shi kaɗai.
 
-Le Neurone est fourni dans l'implémentation de référence C# et dans les sept portages frères (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS est encore à venir.
+Neuron yana samuwa a cikin aiwatarwar C# ta tushe da dukkan sauran aiwatarwa
+bakwai 'yan'uwa (Python, TypeScript, Go, Kotlin, Swift, Rust, C).
+HarmonyOS/ArkTS na zuwa nan gaba.
 
 ---
 
-## Démarrage Rapide par Langage
+## Farawa Cikin Sauri bisa Harshe
 
 ### C# (.NET)
 
@@ -233,37 +252,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Calculs Communs à Tous les Langages
+## AffectState — Lissafi Tsakanin Harsuna
 
-Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
+Dukkan aiwatarwa 10 suna ba da sakamako iri ɗaya na floating-point (ε ≤ 1e-5).
 
-| Opération | Effet |
+| Aiki | Tasiri |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (an ƙuntata zuwa [0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (an ƙuntata) |
+| `applyIdleDecay(hours)` | raguwa = min(0.3, hours × 0.02); engagement da energy suna gangarowa zuwa 0.5 ta hanyar linear interpolation |
 
-Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
+Vectocin gwaji suna cikin [`fixtures/affect_state.json`](fixtures/affect_state.json) (guda 12). CI ya tabbatar da su a dukkan harsuna 10.
 
 ---
 
-## Registre des Langues (20 balises BCP-47)
+## Rijistar Harsuna (alamun BCP-47 guda 20)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Structure du Dépôt
+## Tsarin Ma'ajiya
 
 ```
 CircleAI/
-├── src/            Implémentation de référence C# (CircleAI.*)
-├── tests/          Suite de tests C#
-├── fixtures/       Vecteurs de test multi-langages (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Bibliothèque Kotlin/Android
-├── c/              C99 pur, CMake
-├── go/             Module Go
+├── android/        Kotlin/Android library
+├── c/              Pure C99, CMake
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -274,15 +293,15 @@ CircleAI/
 
 ---
 
-## IC (Intégration Continue)
+## CI
 
-| Workflow | Déclencheur |
+| Tsarin Aiki | Mai Kunnawa |
 |----------|---------|
-| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
-| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Tabbatar da Fixtures](.github/workflows/fixture-validation.yml) | push/PR zuwa master — yana gudanar da dukkan tsarukan gwaji 10 |
+| [Bugawa](.github/workflows/publish.yml) | git tag `v*.*.*` — yana bugawa zuwa NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## Licence
+## Lasisi
 
 MIT

@@ -1,19 +1,20 @@
-# Circle AI — SDK 10 Langages
+# Circle AI — SDK vir 10 tale
 
-Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
-nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
-téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
+Die draagbare kern van die Circle AI-metgesel-stapel. Dit loop natief langs elke
+[Aether Protocol](https://github.com/bhengubv/aether-protocol)-node —
+draagbare toestel, foon, IoT, HarmonyOS — sonder FFI-bokoste en sonder
+looptydbrûe.
 
 ---
 
-## Cœur Portable (8 modules)
+## Draagbare kern (8 modules)
 
-| Module | Types clés |
+| Module | Hooftipes |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47-etikette), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +22,33 @@ téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécuti
 
 ---
 
-## Le Neurone — un petit cerveau IA sur votre appareil
+## Die Neuron — 'n klein KI-brein op jou toestel
 
-Un **Neurone** est un petit cerveau IA qui s'exécute sur votre propre appareil. Il pense, se souvient et parle — directement sur votre téléphone ou votre ordinateur portable, sans rien envoyer à un serveur. Un assistant rapide du quotidien répond à la plupart des questions ; pour une tâche plus difficile (lire une image, un long document ou réfléchir soigneusement, étape par étape) il charge discrètement un spécialiste, répond, puis le met de côté. Il ne garde qu'un seul spécialiste à la fois, de sorte qu'il n'a jamais besoin de plus de mémoire que l'appareil n'en possède, et il se souvient de la conversation pour qu'un échange reprenne là où il s'était arrêté.
+'n **Neuron** is 'n klein KI-brein wat op jou eie toestel loop. Dit dink,
+onthou en gesels — reg daar op jou foon of skootrekenaar, met niks wat na 'n
+bediener gestuur word nie. 'n Vinnige alledaagse helper beantwoord die meeste
+vrae; vir 'n moeiliker taak (om 'n prent te lees, 'n lang dokument, of
+noukeurige stap-vir-stap-denke) laai dit stilweg 'n spesialis, antwoord, en sit
+dit dan opsy. Dit hou net een spesialis op 'n slag, sodat dit nooit meer geheue
+nodig het as wat die toestel het nie, en dit onthou die gesprek sodat 'n
+geselsie voortgaan waar dit opgehou het.
 
-**Un Neurone, ou plusieurs — un cerveau fait de cerveaux.** Un seul Neurone fonctionne bien tout seul. Mais les Neurones peuvent aussi s'associer, comme les cellules d'un cerveau — et c'est là qu'est la véritable puissance. (Cette partie n'est pas encore construite ; c'est ce qui, selon nous, devient possible, et c'est la raison pour laquelle le nœud est appelé Neurone.) En groupe, ils se répartissent le travail, s'entraident lorsque l'un d'eux ne peut pas héberger un spécialiste, répondent d'égal à égal sans qu'aucun nœud ne commande, et gardent vos données privées sur votre propre appareil — seule la question circule entre eux. Chaque Neurone est déjà un esprit à part entière, donc un groupe de Neurones, c'est de nombreux esprits à part entière qui s'entraident pour faire plus qu'aucun d'eux ne le pourrait seul.
+**Een Neuron, of baie — 'n brein gemaak van breine.** Een Neuron werk goed op
+sy eie. Maar Neurons kan ook saamsluit, soos breinselle in 'n brein — en dít is
+waar die ware krag lê. (Hierdie deel is nog nie gebou nie; dit is wat ons glo
+moontlik word, en dit is die rede waarom die node 'n Neuron genoem word.) In 'n
+groep deel hulle die werk, help hulle mekaar wanneer een nie 'n spesialis kan
+inpas nie, antwoord hulle as gelykes met geen node in beheer nie, en hou hulle
+jou private data op jou eie toestel — net die vraag beweeg ooit tussen hulle.
+Elke Neuron is reeds 'n hele verstand, so 'n groep Neurons is baie hele
+verstande wat mekaar help om meer te doen as wat enigeen van hulle alleen kon.
 
-Le Neurone est fourni dans l'implémentation de référence C# et dans les sept portages frères (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS est encore à venir.
+Die Neuron word saam met die C#-verwysing en al sewe susterpoorte (Python,
+TypeScript, Go, Kotlin, Swift, Rust, C) gelewer. HarmonyOS/ArkTS kom nog.
 
 ---
 
-## Démarrage Rapide par Langage
+## Vinnige begin per taal
 
 ### C# (.NET)
 
@@ -233,37 +250,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Calculs Communs à Tous les Langages
+## AffectState — wiskunde oor tale heen
 
-Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
+Al 10 implementasies lewer identiese drywende-punt-resultate (ε ≤ 1e-5).
 
-| Opération | Effet |
+| Bewerking | Uitwerking |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (vasgeklem tot [0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (vasgeklem) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement en energy dryf na 0.5 deur lineêre interpolasie |
 
-Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
+Toetsvektore in [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vektore). Deur CI oor al 10 tale heen bekragtig.
 
 ---
 
-## Registre des Langues (20 balises BCP-47)
+## Taalregister (20 BCP-47-etikette)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Structure du Dépôt
+## Bewaarplekstruktuur
 
 ```
 CircleAI/
-├── src/            Implémentation de référence C# (CircleAI.*)
-├── tests/          Suite de tests C#
-├── fixtures/       Vecteurs de test multi-langages (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Bibliothèque Kotlin/Android
-├── c/              C99 pur, CMake
-├── go/             Module Go
+├── android/        Kotlin/Android library
+├── c/              Pure C99, CMake
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -274,15 +291,15 @@ CircleAI/
 
 ---
 
-## IC (Intégration Continue)
+## CI
 
-| Workflow | Déclencheur |
+| Werkvloei | Sneller |
 |----------|---------|
-| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
-| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Fixture-validering](.github/workflows/fixture-validation.yml) | push/PR na master — laat al 10 toetsstelle loop |
+| [Publiseer](.github/workflows/publish.yml) | git-etiket `v*.*.*` — publiseer na NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## Licence
+## Lisensie
 
 MIT

@@ -1,19 +1,20 @@
-# Circle AI — SDK 10 Langages
+# Circle AI — SDK ya Dipuo tse 10
 
-Le cœur portable de la pile d'accompagnement Circle AI. S'exécute nativement aux côtés de chaque
-nœud [Aether Protocol](https://github.com/bhengubv/aether-protocol) — wearable,
-téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécution.
+Ke motheo o nkehang wa tsamaiso ya motswalle wa Circle AI. E sebetsa ka tlhaho
+haufi le node e nngwe le e nngwe ya [Aether Protocol](https://github.com/bhengubv/aether-protocol) —
+se aparwang, mohala, IoT, HarmonyOS — ntle le boima bo eketsehileng ba FFI
+le ntle le marokho a runtime.
 
 ---
 
-## Cœur Portable (8 modules)
+## Motheo o Nkehang (limodule tse 8)
 
-| Module | Types clés |
+| Mojule | Mefuta e ka sehloohong |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 balises BCP-47), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (matshwao a 20 a BCP-47), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +22,34 @@ téléphone, IoT, HarmonyOS — sans surcharge FFI et sans pontage à l'exécuti
 
 ---
 
-## Le Neurone — un petit cerveau IA sur votre appareil
+## Nyurone — boko bo bonyenyane ba AI sesebedisweng sa hao
 
-Un **Neurone** est un petit cerveau IA qui s'exécute sur votre propre appareil. Il pense, se souvient et parle — directement sur votre téléphone ou votre ordinateur portable, sans rien envoyer à un serveur. Un assistant rapide du quotidien répond à la plupart des questions ; pour une tâche plus difficile (lire une image, un long document ou réfléchir soigneusement, étape par étape) il charge discrètement un spécialiste, répond, puis le met de côté. Il ne garde qu'un seul spécialiste à la fois, de sorte qu'il n'a jamais besoin de plus de mémoire que l'appareil n'en possède, et il se souvient de la conversation pour qu'un échange reprenne là où il s'était arrêté.
+**Nyurone** ke boko bo bonyenyane ba AI bo sebetsang sesebedisweng sa hao ka bowena.
+Ea nahana, ea hopola, mme ea bua — hona moo mohaleng wa hao kapa laptop ya hao, ho se
+letho le rometsweng seveng. Mothusi ya potlakileng wa letsatsi le letsatsi o araba dipotso
+tse ngata; empa mosebetsing o thata (ho bala setshwantsho, tokomane e telele, kapa ho
+nahana ka hloko mohato ka mohato) e kenya setsebi ka khutso, e arabe, ebe e se beha ka
+thoko. E boloka setsebi se le seng feela ka nako, kahoo ha e hloke memori e fetang eo
+sesebediswa se nang le yona, mme e hopola moqoqo e le hore puisano e tswele pele moo e
+emeng teng.
 
-**Un Neurone, ou plusieurs — un cerveau fait de cerveaux.** Un seul Neurone fonctionne bien tout seul. Mais les Neurones peuvent aussi s'associer, comme les cellules d'un cerveau — et c'est là qu'est la véritable puissance. (Cette partie n'est pas encore construite ; c'est ce qui, selon nous, devient possible, et c'est la raison pour laquelle le nœud est appelé Neurone.) En groupe, ils se répartissent le travail, s'entraident lorsque l'un d'eux ne peut pas héberger un spécialiste, répondent d'égal à égal sans qu'aucun nœud ne commande, et gardent vos données privées sur votre propre appareil — seule la question circule entre eux. Chaque Neurone est déjà un esprit à part entière, donc un groupe de Neurones, c'est de nombreux esprits à part entière qui s'entraident pour faire plus qu'aucun d'eux ne le pourrait seul.
+**Nyurone e le nngwe, kapa tse ngata — boko bo entsweng ka boko.** Nyurone e le nngwe e
+sebetsa hantle e le nngwe. Empa di-Nyurone di ka boela tsa kopana, jwalo ka disele tsa boko
+ka hare ho boko — mme ke moo matla a sebele a leng teng. (Karolo ena ha e so ka e ahwa; ke
+seo re dumelang hore se ka kgoneha, mme ke lona lebaka leo ka lona node e bitswang Nyurone.)
+Ka sehlopheng di arolelana mosebetsi, di thusana ha e nngwe e sitwa ho kenya setsebi, di
+araba di lekana ntle le node e laolang, mme di boloka data ya hao ya lekunutu sesebedisweng
+sa hao ka bowena — ke potso feela e tsamayang pakeng tsa tsona. Nyurone e nngwe le e nngwe e
+se e le kelello e felletseng, kahoo sehlopha sa di-Nyurone ke dikelello tse ngata tse
+felletseng tse thusanang ho etsa ho fetang seo le e le nngwe ya tsona e ka se etsang e le
+nngwe.
 
-Le Neurone est fourni dans l'implémentation de référence C# et dans les sept portages frères (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS est encore à venir.
+Nyurone e fumaneha phetolelong ya motheo ya C# le diphetolelong tsohle tse supileng tse
+tshwanang (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS e sa ntse e tla.
 
 ---
 
-## Démarrage Rapide par Langage
+## Qalo e Potlakileng ka Puo ka Nngwe
 
 ### C# (.NET)
 
@@ -233,37 +251,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — Calculs Communs à Tous les Langages
+## AffectState — Dipalo tse Tshwanang Dipuong Tsohle
 
-Les 10 implémentations produisent des résultats flottants identiques (ε ≤ 1e-5).
+Diphetolelo tsohle tse 10 di hlahisa diphetho tse tshwanang tsa floating-point (ε ≤ 1e-5).
 
-| Opération | Effet |
+| Tshebetso | Phello |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (borné [0, 1]) |
-| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (borné) |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02) ; engagement et energy convergent vers 0.5 par interpolation linéaire |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (e thibetswe ho [0, 1]) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (e thibetswe) |
+| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02); engagement le energy di sutha ho ya ho 0.5 ka linear interpolation |
 
-Vecteurs de test dans [`fixtures/affect_state.json`](fixtures/affect_state.json) (12 vecteurs). Validés par la CI dans les 10 langages.
+Di-vector tsa teko ho [`fixtures/affect_state.json`](fixtures/affect_state.json) (di-vector tse 12). Di netefaditswe ke CI dipuong tsohle tse 10.
 
 ---
 
-## Registre des Langues (20 balises BCP-47)
+## Lenane la Dipuo (matshwao a 20 a BCP-47)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## Structure du Dépôt
+## Sebopeho sa Polokelo
 
 ```
 CircleAI/
-├── src/            Implémentation de référence C# (CircleAI.*)
-├── tests/          Suite de tests C#
-├── fixtures/       Vecteurs de test multi-langages (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Bibliothèque Kotlin/Android
-├── c/              C99 pur, CMake
-├── go/             Module Go
+├── android/        Kotlin/Android library
+├── c/              Pure C99, CMake
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -274,15 +292,15 @@ CircleAI/
 
 ---
 
-## IC (Intégration Continue)
+## CI
 
-| Workflow | Déclencheur |
+| Workflow | Qaliso |
 |----------|---------|
-| [Validation des Fixtures](.github/workflows/fixture-validation.yml) | push/PR vers master — exécute les 10 suites de tests |
-| [Publication](.github/workflows/publish.yml) | tag git `v*.*.*` — publie sur NuGet, crates.io, PyPI, npm, GitHub Packages |
+| [Netefatso ya Fixture](.github/workflows/fixture-validation.yml) | push/PR ho master — e matha dihlopha tsohle tse 10 tsa diteko |
+| [Phatlalatso](.github/workflows/publish.yml) | git tag `v*.*.*` — e phatlalatsa ho NuGet, crates.io, PyPI, npm, GitHub Packages |
 
 ---
 
-## Licence
+## Laesense
 
 MIT

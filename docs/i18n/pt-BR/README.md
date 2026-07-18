@@ -21,6 +21,16 @@ smartphone, IoT, HarmonyOS — sem overhead de FFI e sem pontes de runtime.
 
 ---
 
+## O Neurônio — um pequeno cérebro de IA no seu dispositivo
+
+Um **Neurônio** é um pequeno cérebro de IA que roda no seu próprio dispositivo. Ele pensa, lembra e conversa — ali mesmo, no seu celular ou notebook, sem enviar nada para um servidor. Um ajudante rápido para o dia a dia responde à maioria das perguntas; para uma tarefa mais difícil (ler uma imagem, um documento longo ou raciocinar com cuidado, passo a passo) ele carrega discretamente um especialista, responde e depois o deixa de lado. Ele mantém apenas um especialista por vez, então nunca precisa de mais memória do que o dispositivo tem, e lembra da conversa para que um bate-papo continue de onde parou.
+
+**Um Neurônio, ou muitos — um cérebro feito de cérebros.** Um Neurônio funciona bem sozinho. Mas os Neurônios também podem se unir, como as células de um cérebro — e é aí que está o verdadeiro poder. (Esta parte ainda não foi construída; é o que acreditamos que se torna possível, e é a razão pela qual o nó é chamado de Neurônio.) Em grupo, eles dividem o trabalho, ajudam uns aos outros quando um não consegue acomodar um especialista, respondem como iguais sem nenhum nó no comando e mantêm seus dados privados no seu próprio dispositivo — apenas a pergunta trafega entre eles. Cada Neurônio já é uma mente completa, então um grupo de Neurônios é muitas mentes completas ajudando umas às outras a fazer mais do que qualquer uma delas conseguiria sozinha.
+
+O Neurônio vem na implementação de referência em C# e em todos os sete ports irmãos (Python, TypeScript, Go, Kotlin, Swift, Rust, C). HarmonyOS/ArkTS ainda está por vir.
+
+---
+
 ## Início Rápido por Linguagem
 
 ### C# (.NET)

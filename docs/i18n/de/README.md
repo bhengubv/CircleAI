@@ -21,6 +21,37 @@ Mobiltelefon, IoT, HarmonyOS — ohne FFI-Overhead und ohne Laufzeit-Bridging.
 
 ---
 
+## Das Neuron — ein kleines KI-Gehirn auf deinem Gerät
+
+Ein **Neuron** ist ein kleines KI-Gehirn, das auf deinem eigenen Gerät läuft.
+Es denkt, erinnert sich und spricht — direkt auf deinem Telefon oder Laptop,
+ohne dass etwas an einen Server gesendet wird. Ein schneller Alltagshelfer
+beantwortet die meisten Fragen; für eine schwierigere Aufgabe (das Lesen eines
+Bildes, eines langen Dokuments oder sorgfältiges schrittweises Nachdenken) lädt
+es leise einen Spezialisten, antwortet und legt ihn dann wieder beiseite. Es
+behält immer nur einen Spezialisten gleichzeitig, sodass es nie mehr Speicher
+benötigt, als das Gerät hat, und es merkt sich das Gespräch, sodass ein Chat
+dort weitergeht, wo er aufgehört hat.
+
+**Ein Neuron oder viele — ein Gehirn aus Gehirnen.** Ein einzelnes Neuron
+funktioniert für sich allein gut. Aber Neuronen können sich auch
+zusammenschließen, wie Gehirnzellen in einem Gehirn — und genau darin liegt die
+eigentliche Stärke. (Dieser Teil ist noch nicht gebaut; es ist das, was unserer
+Überzeugung nach möglich wird, und es ist der Grund, warum der Knoten Neuron
+heißt.) In einer Gruppe teilen sie sich die Arbeit, helfen einander, wenn eines
+keinen Spezialisten unterbringen kann, antworten als Gleichberechtigte ohne
+einen Knoten, der das Sagen hat, und behalten deine privaten Daten auf deinem
+eigenen Gerät — nur die Frage wandert jemals zwischen ihnen hin und her. Jedes
+Neuron ist bereits ein ganzer Verstand, sodass eine Gruppe von Neuronen viele
+ganze Verstände sind, die einander helfen, mehr zu leisten, als es jedes von
+ihnen allein könnte.
+
+Das Neuron ist in der C#-Referenz und allen sieben Schwester-Ports (Python,
+TypeScript, Go, Kotlin, Swift, Rust, C) enthalten. HarmonyOS/ArkTS steht noch
+aus.
+
+---
+
 ## Schnellstart nach Sprache
 
 ### C# (.NET)

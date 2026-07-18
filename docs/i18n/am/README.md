@@ -1,19 +1,20 @@
-# Circle AI — 10言語SDK
+# Circle AI — የ10 ቋንቋ SDK
 
-Circle AIコンパニオンスタックのポータブルコア。すべての
-[Aether Protocol](https://github.com/bhengubv/aether-protocol) ノード（ウェアラブル、
-スマートフォン、IoT、HarmonyOS）でFFIオーバーヘッドやランタイムブリッジングなしにネイティブ動作します。
+የCircle AI አጃቢ ስብስብ ተንቀሳቃሽ ዋና ክፍል። ከእያንዳንዱ
+[Aether Protocol](https://github.com/bhengubv/aether-protocol) ኖድ ጎን ለጎን
+በቀጥታ ይሠራል — ተለባሽ መሣሪያ፣ ስልክ፣ IoT፣ HarmonyOS — ያለ ምንም የFFI ጫና እና
+ያለ ምንም የruntime ድልድዮች።
 
 ---
 
-## ポータブルコア（8モジュール）
+## ተንቀሳቃሽ ዋና ክፍል (8 ሞጁሎች)
 
-| モジュール | 主要な型 |
+| ሞጁል | ዋና ዓይነቶች |
 |--------|-----------|
 | **models** | `ChatMessage`, `DownloadProgress` |
 | **memory** | `AffectState`, `EpisodicMemoryEntry`, `PersonaState`, `Goal` |
 | **identity** | `CircleIdentity`, `RegisteredDevice`, `IdentityTier` |
-| **languages** | `LanguageTag`, `KnownLanguages` (20 BCP-47タグ), `WritingSystem` |
+| **languages** | `LanguageTag`, `KnownLanguages` (20 የBCP-47 መለያዎች), `WritingSystem` |
 | **companion** | `CompanionContext`, `CompanionTurn`, `ICompanionSession` |
 | **inference** | `GenerationOptions`, `IChatGenerator` |
 | **tools** | `ToolDefinition`, `ToolInvocation`, `ToolResult`, `IToolBridge` |
@@ -21,17 +22,30 @@ Circle AIコンパニオンスタックのポータブルコア。すべての
 
 ---
 
-## ニューロン — あなたのデバイス上の小さなAIの脳
+## ኒዩሮን — በመሣሪያህ ላይ ያለ ትንሽ የAI አእምሮ
 
-**ニューロン**は、あなた自身のデバイス上で動く小さなAIの脳です。スマートフォンやノートパソコンのまさにその場で考え、記憶し、話します——サーバーには何も送信されません。高速な日常用のヘルパーがほとんどの質問に答えます。より難しい仕事（画像を読む、長い文書を読む、あるいは慎重な段階的思考）の場合は、静かに専門家を読み込んで答え、その後わきへ下げます。一度に保持する専門家は1つだけなので、デバイスが持つ以上のメモリを必要とすることは決してなく、会話を記憶しているため、チャットは中断したところから続きます。
+**ኒዩሮን** በራስህ መሣሪያ ላይ የሚሠራ ትንሽ የAI አእምሮ ነው። ያስባል፣ ያስታውሳል፣ ይናገራልም —
+እዚያው በስልክህ ወይም በላፕቶፕህ ላይ፣ ወደ አገልጋይ ምንም ሳይላክ። ፈጣን የዕለት ተዕለት ረዳት አብዛኞቹን
+ጥያቄዎች ይመልሳል፤ ለከባድ ሥራ (ስዕል ማንበብ፣ ረጅም ሰነድ፣ ወይም በጥንቃቄ ደረጃ በደረጃ ማሰብ) በጸጥታ
+አንድ ባለሙያ ይጭናል፣ ይመልሳል፣ ከዚያም ወደ ጎን ያስቀምጠዋል። በአንድ ጊዜ አንድ ባለሙያ ብቻ ነው የሚይዘው፣
+ስለዚህ ከመሣሪያው አቅም በላይ ማህደረ ትውስታ ፈጽሞ አያስፈልገውም፣ እንዲሁም ውይይቱን ስለሚያስታውስ ጭውውት
+ካቆመበት ይቀጥላል።
 
-**1つのニューロン、あるいは多数で——脳からなる脳。** 1つのニューロンは単独でも十分に機能します。しかしニューロンは、脳の中の脳細胞のように連携することもできます——そして本当の力はそこにあります。（この部分はまだ実装されていません。これは私たちが可能になると信じているものであり、このノードがニューロンと呼ばれる理由です。）グループ内では、ニューロンは仕事を分担し、あるニューロンが専門家を収められないときには互いに助け合い、どのノードも主導権を握ることなく対等に答え、あなたの個人データをあなた自身のデバイス上に保ちます——ノードの間を移動するのは常に質問だけです。各ニューロンはすでにそれ自体が完全な知性であり、したがってニューロンのグループとは、多数の完全な知性が互いに助け合い、どの1つも単独では成し得ないことを成し遂げるものです。
+**አንድ ኒዩሮን፣ ወይም ብዙ — ከአእምሮዎች የተሠራ አእምሮ።** አንድ ኒዩሮን በራሱ በደንብ ይሠራል። ነገር ግን
+ኒዩሮኖች እርስ በርስ መተባበርም ይችላሉ፣ በአእምሮ ውስጥ እንዳሉ የአእምሮ ሕዋሳት — እውነተኛው ኃይል ያለውም
+እዚያ ነው። (ይህ ክፍል ገና አልተገነባም፤ ሊሆን ይችላል ብለን የምናምንበት ነው፣ እና ኖዱ ኒዩሮን ተብሎ
+የተጠራበት ምክንያትም ይኸው ነው።) በቡድን ውስጥ ሥራውን ይካፈላሉ፣ አንዱ ባለሙያ መያዝ ሳይችል ሲቀር እርስ
+በርስ ይረዳዳሉ፣ ማንም ኖድ አዛዥ ሳይኖር በእኩልነት ይመልሳሉ፣ እና የግል መረጃህን በራስህ መሣሪያ ላይ
+ያስቀምጣሉ — በመካከላቸው የሚተላለፈው ጥያቄው ብቻ ነው። እያንዳንዱ ኒዩሮን ራሱ ሙሉ አእምሮ ነው፣ ስለዚህ
+የኒዩሮኖች ቡድን ማለት ብዙ ሙሉ አእምሮዎች እርስ በርስ ተረዳድተው ከማንኛቸውም ብቻውን ከሚችለው በላይ
+የሚያደርጉ ናቸው።
 
-ニューロンは、C# リファレンス実装と7つすべての姉妹移植版（Python、TypeScript、Go、Kotlin、Swift、Rust、C）に搭載されています。HarmonyOS/ArkTSは今後対応予定です。
+ኒዩሮን በC# ማመሳከሪያ ትግበራ እና በሁሉም ሰባት እህት ትግበራዎች (Python, TypeScript, Go,
+Kotlin, Swift, Rust, C) ውስጥ ይገኛል። HarmonyOS/ArkTS ገና ወደፊት ይመጣል።
 
 ---
 
-## 言語別クイックスタート
+## ፈጣን መጀመሪያ በቋንቋ
 
 ### C# (.NET)
 
@@ -233,37 +247,37 @@ console.log(state.engagement); // 0.52
 
 ---
 
-## AffectState — クロス言語の数値計算
+## AffectState — በቋንቋዎች መካከል ያለ ሒሳብ
 
-全10実装が同一の浮動小数点結果を生成します（ε ≤ 1e-5）。
+ሁሉም 10 ትግበራዎች ተመሳሳይ የfloating-point ውጤቶችን ያመነጫሉ (ε ≤ 1e-5)።
 
-| 操作 | 効果 |
+| ክንውን | ውጤት |
 |-----------|--------|
-| `applyPositiveSignal()` | engagement +0.02、rapport +0.01、uncertainty −0.02（[0, 1]にクランプ） |
-| `applyNegativeSignal()` | engagement −0.03、uncertainty +0.03（クランプ） |
-| `applyIdleDecay(hours)` | decay = min(0.3, hours × 0.02)；engagementとenergyが0.5に向けてlerp |
+| `applyPositiveSignal()` | engagement +0.02, rapport +0.01, uncertainty −0.02 (ወደ [0, 1] የተገደበ) |
+| `applyNegativeSignal()` | engagement −0.03, uncertainty +0.03 (የተገደበ) |
+| `applyIdleDecay(hours)` | መቀነስ = min(0.3, hours × 0.02); engagement እና energy በlinear interpolation ወደ 0.5 ይንሸራተታሉ |
 
-テストベクターは [`fixtures/affect_state.json`](fixtures/affect_state.json) に12件収録。全10言語でCIによって検証済み。
+የፈተና ቬክተሮች በ[`fixtures/affect_state.json`](fixtures/affect_state.json) ውስጥ ይገኛሉ (12 ቬክተሮች)። በCI በሁሉም 10 ቋንቋዎች ተረጋግጧል።
 
 ---
 
-## 言語レジストリ（20 BCP-47タグ）
+## የቋንቋ መዝገብ (20 የBCP-47 መለያዎች)
 
 `zu` · `st` · `af` · `sw` · `ha` · `am` · `yo` · `ig` · `xh` · `nso` · `tn` · `so` · `om` · `ar` · `en` · `pt` · `fr` · `es` · `zh` · `hi`
 
 ---
 
-## リポジトリ構成
+## የማከማቻ አወቃቀር
 
 ```
 CircleAI/
-├── src/            C# リファレンス実装 (CircleAI.*)
-├── tests/          C# テストスイート
-├── fixtures/       クロス言語テストベクター (JSON)
+├── src/            C# reference implementation (CircleAI.*)
+├── tests/          C# test suite
+├── fixtures/       Cross-language test vectors (JSON)
 ├── docs/           CONTRACTS.md · MEMORY_SPEC.md · COMPANION_SPEC.md
-├── android/        Kotlin/Android ライブラリ
+├── android/        Kotlin/Android library
 ├── c/              Pure C99, CMake
-├── go/             Go モジュール
+├── go/             Go module
 ├── harmonyos/      ArkTS, OpenHarmony
 ├── kotlin/         Kotlin/JVM
 ├── python/         Python 3.12+
@@ -276,13 +290,13 @@ CircleAI/
 
 ## CI
 
-| ワークフロー | トリガー |
+| የሥራ ፍሰት | ቀስቃሽ |
 |----------|---------|
-| [Fixture Validation](.github/workflows/fixture-validation.yml) | master へのpush/PR — 全10テストスイートを実行 |
-| [Publish](.github/workflows/publish.yml) | git タグ `v*.*.*` — NuGet、crates.io、PyPI、npm、GitHub Packagesへ公開 |
+| [የFixture ማረጋገጫ](.github/workflows/fixture-validation.yml) | push/PR ወደ master — ሁሉንም 10 የፈተና ስብስቦች ያስኬዳል |
+| [ማሳተም](.github/workflows/publish.yml) | git tag `v*.*.*` — ወደ NuGet, crates.io, PyPI, npm, GitHub Packages ያሳትማል |
 
 ---
 
-## ライセンス
+## ፈቃድ
 
 MIT

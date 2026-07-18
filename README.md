@@ -7,6 +7,8 @@ speech, spatial, banking, markets, workflows, code understanding,
 DevOps, and the IDE-replacement primitives a future agent shell will
 bind to.
 
+**🌍 SDK overview in your language:** [English](docs/i18n/en/README.md) · [isiZulu](docs/i18n/zu/README.md) · [Sesotho](docs/i18n/st/README.md) · [Afrikaans](docs/i18n/af/README.md) · [Kiswahili](docs/i18n/sw/README.md) · [Hausa](docs/i18n/ha/README.md) · [አማርኛ](docs/i18n/am/README.md) · [العربية](docs/i18n/ar/README.md) · [中文](docs/i18n/zh-CN/README.md) · [Español](docs/i18n/es/README.md) · [Français](docs/i18n/fr/README.md) · [Deutsch](docs/i18n/de/README.md) · [日本語](docs/i18n/ja/README.md) · [한국어](docs/i18n/ko/README.md) · [Português (BR)](docs/i18n/pt-BR/README.md) · [Русский](docs/i18n/ru/README.md) · [فارسی](docs/i18n/fa/README.md)
+
 Current 3.0 contract line: **`3.0.1`** — on
 [nuget.org](https://www.nuget.org/profiles/bhengubv) and
 [GHCR](https://github.com/bhengubv/CircleAI/pkgs/container/circleai-inference-server)
