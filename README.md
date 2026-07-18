@@ -90,35 +90,65 @@ in [CONSUMING.md](CONSUMING.md).
 
 ---
 
-## The Neuron — on-device concierge
+## The Neuron — a small AI brain on your device
 
-`CircleAI.Hosting` ships a **Neuron**: a private, on-device second brain
-that decides, *per turn*, whether the always-warm generalist answers or a
-capability-matched specialist is hot-loaded to answer — grounded in one
-shared memory and persona.
+A **Neuron** is a small AI brain that runs on your own device. It thinks,
+remembers, and talks — right there on your phone or laptop, with nothing
+sent away to a server.
 
-- **Concierge router + gate.** Cheap keyword/length heuristics (never a
-  model) classify each turn → the generalist, or a specialist for vision,
-  long-context, or reasoning. A `NeuronGate` can veto a specialist by
-  policy; the generalist floor always answers.
-- **Two-slot residency.** The generalist stays warm (the floor); one
-  specialist loads hot beside it. A `ResidentSlotManager` reserves RAM
-  before loading and, under memory pressure, evicts the **specialist**
-  first — the generalist never drops.
-- **Host-neutral seam.** `IChatRuntime` / `IPersistableChatRuntime` + the
-  `NeuronNode` facade let any harness drive the node without touching
-  engine internals, and snapshot the generalist's KV session so a
-  conversation survives an OOM or restart.
+When you ask it something, it picks the best way to answer:
 
-Resolve it from `AddNeuron(...)`; with no router the path is byte-identical
-to a plain `AIService`. The Neuron is `IAIService`-backed, so
-`CompanionSession` (identity + memory + proactive) — and the "Hey B" voice
-loop — still sit on top unchanged.
+- Most of the time, a fast helper that's always ready answers straight
+  away.
+- For a harder job — reading a picture, working through a long document,
+  or careful step-by-step thinking — it quietly loads a specialist for
+  that job, answers, then sets it aside.
+- It keeps only one specialist loaded at a time, so it never needs more
+  memory than the device has. If a specialist won't fit, the everyday
+  helper answers instead. The everyday helper is never dropped.
+- It remembers the conversation, so a chat carries on where it left off —
+  even after you close the app.
 
-The Neuron ships in the **C# reference and all seven sister ports** —
-Python, TypeScript, Go, Kotlin, Swift, Rust, and C — each adapted to its
-substrate and covered by its own test suite. (The HarmonyOS/ArkTS port is
-pending.)
+One brain, one memory, one personality — all on your device, all yours.
+
+*For developers:* the Neuron lives in `CircleAI.Hosting`; add it with
+`AddNeuron(...)`, and with no router set it behaves exactly like a plain
+`AIService`. It sits on `IAIService`, so the companion stack (identity,
+memory, proactive help) and the "Hey B" voice loop still sit on top
+unchanged. It ships in the C# reference and all seven sister ports —
+Python, TypeScript, Go, Kotlin, Swift, Rust, and C — each with its own
+tests. (HarmonyOS/ArkTS is still to come.)
+
+### One Neuron, or many — a brain made of brains
+
+One Neuron works well on its own. But Neurons can also join up, like brain
+cells in a brain — and that's where the real power is.
+
+This part isn't built yet. It's what we believe becomes possible, and it's
+the reason the node is called a Neuron:
+
+- **They share the work.** No single phone can hold every specialist. In a
+  group, each Neuron says what it's good at, so together they can handle
+  pictures, long documents, and hard thinking — even when no one device
+  could do it all alone.
+- **They help each other.** If a Neuron can't fit a specialist it needs, it
+  borrows one from a nearby Neuron that already has it ready — a phone
+  leaning on a laptop, or a stronger machine beside it.
+- **No one is in charge.** There's no central Neuron and no server running
+  the show. They team up as equals and sort it out among themselves.
+- **Your private things stay put.** Only the question travels between
+  devices. Your memories and your personality never leave the device that
+  owns them.
+
+Each Neuron is already a whole mind. So a group of Neurons isn't weak parts
+adding up to something smart — it's many whole minds helping each other do
+more than any one of them could alone.
+
+*For developers:* none of this is wired into the Neuron yet — it's the path
+the mesh opens up. The building blocks already exist in `CircleAI.AetherNet`
+(mesh capability discovery + cross-tier offload) and the `ISwarmCoordinator`
+contract; a Neuron that can't fit a specialist is the natural place to hand
+the turn to a nearby peer.
 
 ---
 
