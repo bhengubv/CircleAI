@@ -169,6 +169,59 @@ public static class ServiceCollectionExtensions
             new DeviceAwareModelSelector(sp.GetRequiredService<ModelRegistryService>()));
 
         // ---------------------------------------------------------------
+        // IModelLoader — BundleModelLoader understands the multi-file MNN
+        // bundle shape that EVERY registry entry actually uses, and returns
+        // config.json (what mnn_llm_create loads), not the weight blob.
+        //
+        // Until now nothing registered an IModelLoader at all, so the
+        // selector picked a model that could never be fetched and
+        // ResolveModelPath threw — while its own message promised "the
+        // default IModelSelector + IModelLoader pair (registered by
+        // AddCircleAI)". This makes that promise true.
+        //
+        // TryAdd, so a host that registers its own loader first still wins.
+        //
+        // AIOptions.WifiOnlyModelDownload is now actually ENFORCED, via
+        // MeteredNetworkDownloadGate. It was inert until 2026-07-20: the
+        // property existed and was documented as protecting mobile data, but
+        // nothing read it and ModelDownloadService has no network awareness.
+        // (An earlier revision of this very comment claimed downloads were
+        // "bounded by" it — they were not.)
+        //
+        // Enforcement is only as good as the host's IDeviceContext:
+        // DefaultDeviceContext reports "online"/"none" and cannot tell wifi
+        // from cellular, so the gate allows the download and reports
+        // IsEnforceable=false rather than pretending it checked. Mobile hosts
+        // should supply a NetworkType of "wifi"/"cellular".
+        //
+        // Storage dir: AIOptions carries TWO properties for one concept —
+        // ModelStorageDirectory (nullable, and the one CheckForUpgradesAsync
+        // reads) and ModelStorageDir (defaulted to {BaseDirectory}/models).
+        // Binding the loader to only ModelStorageDir would split the brain: a
+        // host that sets ModelStorageDirectory would have models downloaded to
+        // one directory while upgrade detection scanned another. So prefer the
+        // explicit nullable one and fall back to the defaulted one.
+        // (The duplication itself should be collapsed — see capabilities.json
+        // model.download — but not silently, since both are public API.)
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<IModelLoader>(sp =>
+        {
+            var opts = sp.GetRequiredService<AIOptions>();
+
+            // Single source of truth — see AIOptions.ResolvedModelStorageDirectory.
+            var storageDir = opts.ResolvedModelStorageDirectory;
+
+            var gate = new MeteredNetworkDownloadGate(
+                sp.GetService<IDeviceContext>(),
+                opts.WifiOnlyModelDownload);
+
+            return new BundleModelLoader(
+                storageDir,
+                sp.GetRequiredService<ModelRegistryService>(),
+                gate);
+        });
+
+        // ---------------------------------------------------------------
         // IPromptTemplateEngine — Scriban-backed Jinja2 renderer. Reads
         // each model's chat_template from its tokenizer_config.json so
         // the SDK never hardcodes ChatML format.

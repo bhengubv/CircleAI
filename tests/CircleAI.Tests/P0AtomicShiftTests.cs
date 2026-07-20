@@ -240,8 +240,13 @@ public sealed class DeviceAwareModelSelectorTests
 
         var selection = selector.BestFit(DesktopProbe(), ChatCapability.Default);
 
-        // QualityRank ties broken by lowest MinRamGb when no entry fits.
-        Assert.Equal("huge", selection.ModelId); // 80 > 50 wins QualityRank ordering
+        // Was Assert.Equal("huge") — i.e. the LARGEST, contradicting both this
+        // test's own name and BestFit's docstring ("a wearable that can only run
+        // the smallest model should still get the smallest model"). The old
+        // assertion codified the bug: the no-fit branch ordered by QualityRank
+        // DESC, so an unfittable device was handed the biggest model in the
+        // catalogue. Fixed 2026-07-20; now ordered by MinRamGb ASC.
+        Assert.Equal("heavy", selection.ModelId); // 10_000 < 99_000 → smallest wins
     }
 
     [Fact]

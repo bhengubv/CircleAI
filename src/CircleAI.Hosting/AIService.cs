@@ -148,16 +148,24 @@ public sealed class AIService : IAIService
         CancellationToken ct = default)
     {
         ThrowIfDisposed();
-        if (_modelRegistry is null
-            || string.IsNullOrWhiteSpace(_options.ModelStorageDirectory))
-        {
+        if (_modelRegistry is null) return Array.Empty<CircleAI.Core.Models.UpgradeInfo>();
+
+        // Resolved, not ModelStorageDirectory directly. This method used to read
+        // ONLY that property while the loader defaulted to ModelStorageDir, so a
+        // host that set the other one had upgrade detection silently scan the
+        // wrong directory — or, when it was null, return "no upgrades" forever
+        // while models sat happily downloaded somewhere else.
+        var storageDir = _options.ResolvedModelStorageDirectory;
+
+        // Nothing downloaded yet is not an error, and the registry should not be
+        // asked to walk a directory that does not exist.
+        if (string.IsNullOrWhiteSpace(storageDir) || !System.IO.Directory.Exists(storageDir))
             return Array.Empty<CircleAI.Core.Models.UpgradeInfo>();
-        }
 
         try
         {
             return await _modelRegistry
-                .CheckForUpgradesAsync(_options.ModelStorageDirectory!, ct)
+                .CheckForUpgradesAsync(storageDir, ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -950,13 +958,24 @@ public sealed class AIService : IAIService
     ///   1. Augmented system prompt (persona hints + device context + RAG snippets)
     ///   2. Original conversation messages
     /// </summary>
-    private async Task<List<ChatMessage>> PrepareMessagesAsync(
+    // internal, not private: AssemblyInfo already grants CircleAI.Tests access
+    // (same reason ParseToolCall is internal). Prompt composition decides what
+    // the model can actually know, so it is worth asserting directly rather
+    // than inferring from a generated reply.
+    internal async Task<List<ChatMessage>> PrepareMessagesAsync(
         IReadOnlyList<ChatMessage> messages,
         string userQuery,
         CancellationToken ct)
     {
-        var systemContent = await BuildEnrichedSystemPromptAsync(userQuery, ct)
-            .ConfigureAwait(false);
+        // Enrichment is computed ONCE and used differently depending on whether
+        // the caller owns the system turn.
+        var enrichment = await BuildEnrichmentAsync(userQuery, ct).ConfigureAwait(false);
+
+        // Tool descriptions are a CAPABILITY CONTRACT. If a ToolBridge is
+        // registered and the model is never told the tools exist, tool calling
+        // silently no-ops and looks like a model failure — so this is appended
+        // regardless of who owns the system turn.
+        var toolBlock = await BuildToolBlockAsync(ct).ConfigureAwait(false);
 
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
@@ -965,26 +984,89 @@ public sealed class AIService : IAIService
 
         if (hasSystem)
         {
-            // Caller supplied their own system message — honour it exactly as-is.
-            // (Enrichment from options/persona/device/RAG is only applied when the
-            // caller has not taken ownership of the system turn.)
-            prepared.AddRange(messages);
+            // The caller's own instructions come FIRST and are never rewritten —
+            // what gets appended after them is grounding, not personality
+            // override.
+            //
+            // This used to append ONLY the tool block, silently discarding
+            // persona, device context, RAG recall and skill context. A host that
+            // set its own system prompt therefore lost memory grounding without
+            // any signal — the assistant simply stopped remembering, and looked
+            // like a bad model rather than a dropped feature.
+            var extra = _options.SystemPromptEnrichment == SystemPromptEnrichment.Always
+                ? Combine(enrichment, toolBlock)
+                : toolBlock;
+
+            var pending = extra;
+            foreach (var m in messages)
+            {
+                if (pending.Length > 0 &&
+                    string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
+                {
+                    prepared.Add(new ChatMessage("system", Combine(m.Content, pending)));
+                    pending = string.Empty;
+                }
+                else
+                {
+                    prepared.Add(m);
+                }
+            }
         }
         else
         {
             // Inject enriched system prompt only when it is non-empty.
-            if (!string.IsNullOrWhiteSpace(systemContent))
-                prepared.Add(new ChatMessage("system", systemContent));
+            var combined = Combine(Combine(_options.SystemPrompt, enrichment), toolBlock);
+            if (!string.IsNullOrWhiteSpace(combined))
+                prepared.Add(new ChatMessage("system", combined));
             prepared.AddRange(messages);
         }
 
         return prepared;
     }
 
-    private async Task<string> BuildEnrichedSystemPromptAsync(
+    /// <summary>
+    /// Renders the registered tools into a system-prompt block. Returns empty
+    /// when no bridge is configured, so callers append unconditionally.
+    /// </summary>
+    private async Task<string> BuildToolBlockAsync(CancellationToken ct)
+    {
+        if (_options.ToolBridge is null) return string.Empty;
+
+        try
+        {
+            var tools = await _options.ToolBridge.GetAvailableToolsAsync(ct)
+                .ConfigureAwait(false);
+            return ToolPromptRenderer.Render(tools);
+        }
+        catch
+        {
+            // A failing bridge must degrade to plain chat, never break the turn.
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Joins two prompt fragments, tolerating either being empty.</summary>
+    private static string Combine(string? first, string? second)
+    {
+        if (string.IsNullOrWhiteSpace(first))  return second ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(second)) return first;
+        return first + "\n\n" + second;
+    }
+
+    /// <summary>
+    /// The enrichment ONLY — persona, affect, device context, RAG recall and
+    /// skill context — without <see cref="AIOptions.SystemPrompt"/> in front.
+    /// <para>
+    /// Split out from the full prompt so it can be appended to a system turn the
+    /// CALLER owns. Previously enrichment and base prompt were one string, so
+    /// the only options were "use ours" or "use theirs" — and a host that set
+    /// its own system prompt silently lost RAG recall along with it.
+    /// </para>
+    /// </summary>
+    private async Task<string> BuildEnrichmentAsync(
         string userQuery, CancellationToken ct)
     {
-        var sb = new StringBuilder(_options.SystemPrompt);
+        var sb = new StringBuilder();
 
         // 1. Persona hints.
         try
@@ -1079,8 +1161,20 @@ public sealed class AIService : IAIService
             catch { /* skill context failure is non-fatal */ }
         }
 
-        return sb.ToString();
+        // Each section prefixes a newline, so an empty builder would otherwise
+        // hand back leading blank lines.
+        return sb.ToString().Trim();
     }
+
+    /// <summary>
+    /// <see cref="AIOptions.SystemPrompt"/> followed by everything
+    /// <see cref="BuildEnrichmentAsync"/> produces. Used when the caller has NOT
+    /// supplied a system turn of their own.
+    /// </summary>
+    private async Task<string> BuildEnrichedSystemPromptAsync(
+        string userQuery, CancellationToken ct)
+        => Combine(_options.SystemPrompt,
+                   await BuildEnrichmentAsync(userQuery, ct).ConfigureAwait(false));
 
     private SkillContextBuilder EnsureSkillContextBuilder()
     {

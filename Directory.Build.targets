@@ -1,0 +1,89 @@
+<!--
+  Directory.Build.targets  (CircleAI repo root)
+  ═══════════════════════════════════════════════════════════════════════════
+  Android native-library bundling for every in-repo Android head.
+
+  WHY THIS FILE EXISTS
+  ──────────────────────────────────────────────────────────────────────────
+  CircleAI.Inference.targets already knows how to register MNN as
+  AndroidNativeLibrary — but it is imported by CircleAI.Inference.csproj
+  ITSELF (see that csproj, ~line 72). An <Import> inside a csproj evaluates in
+  THAT project's build, where TargetPlatformIdentifier is 'net10.0' and never
+  'android'. So the Android block could never fire across a ProjectReference.
+  It only works when the SDK is consumed as a NuGet package, where the targets
+  land in the consumer's build context.
+
+  The consequence, measured on a Huawei MAR-LX1M on 2026-07-20: the APK shipped
+  with ZERO MNN libraries, the 433 MB model downloaded perfectly, and the first
+  inference died with "System.DllNotFoundException: mnnbridge". A build-time
+  omission surfacing as a runtime crash, on the SDK's headline capability.
+
+  Directory.Build.targets is auto-imported by every project beneath this
+  directory, so it evaluates in the ANDROID HEAD's context — which is the one
+  place TargetPlatformIdentifier is actually 'android'.
+
+  WHY ALL THE .so, NOT JUST TWO
+  ──────────────────────────────────────────────────────────────────────────
+  CircleAI.Inference.targets lists only libmnnbridge.so + libMNN.so. The
+  shipped runtime is eight files (libMNN_Express, libMNN_CL, libMNN_Vulkan,
+  libmnncore, libMNNAudio, libMNNOpenCV as well). Bundling a partial set risks
+  a dlopen failure on the dependency chain, so this globs the directory.
+
+  WHY BUNDLE ON ANDROID AT ALL
+  ──────────────────────────────────────────────────────────────────────────
+  The SDK's default is runtime-fetch (CircleAIBundleMnn=false) — sensible on a
+  server. On a phone it is not: it spends the user's mobile data on ~8 MB that
+  compresses into the APK anyway, and dlopen from an app-data directory is far
+  less reliable across Android versions than the OS-managed lib/ directory.
+  So Android defaults to bundling here.
+
+  OPTING OUT
+  ──────────────────────────────────────────────────────────────────────────
+  An Android head that does not use on-device inference can set
+  <CircleAIBundleMnn>false</CircleAIBundleMnn> and keep a thinner APK.
+-->
+<Project>
+
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
+    <!-- Bundle by default on Android. Reuses the SDK's existing knob name. -->
+    <CircleAIBundleMnn Condition="'$(CircleAIBundleMnn)' == ''">true</CircleAIBundleMnn>
+    <_CircleAIRuntimesRoot>$(MSBuildThisFileDirectory)src/CircleAI.Inference/runtimes/</_CircleAIRuntimesRoot>
+  </PropertyGroup>
+
+  <!--
+    Wildcards that match nothing are silently empty, so an absent RID folder
+    (e.g. android-x64) costs nothing and needs no Exists() guard.
+  -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleMnn)' == 'true'">
+    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-arm64/native/*.so">
+      <Abi>arm64-v8a</Abi>
+    </AndroidNativeLibrary>
+
+    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-arm/native/*.so">
+      <Abi>armeabi-v7a</Abi>
+    </AndroidNativeLibrary>
+
+    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-x64/native/*.so">
+      <Abi>x86_64</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+
+  <!--
+    Build-time visibility. The failure this replaces was invisible until first
+    inference on a physical device, so say plainly what did or did not ship.
+  -->
+  <Target Name="_CircleAIReportAndroidNativeLibs"
+          BeforeTargets="Build"
+          Condition="'$(TargetPlatformIdentifier)' == 'android'">
+    <Message Importance="high"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' != ''"
+             Text="[CircleAI] Bundling @(AndroidNativeLibrary->Count()) native lib(s) into the APK." />
+    <Warning Code="CIRCLEAI001"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' == ''"
+             Text="[CircleAI] CircleAIBundleMnn is true but no MNN native libraries were found under $(_CircleAIRuntimesRoot). On-device inference will fail at runtime with DllNotFoundException: mnnbridge." />
+    <Message Importance="high"
+             Condition="'$(CircleAIBundleMnn)' != 'true'"
+             Text="[CircleAI] CircleAIBundleMnn=false — no MNN in the APK. On-device inference requires a runtime fetch." />
+  </Target>
+
+</Project>

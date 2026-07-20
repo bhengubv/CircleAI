@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    IT — Android head. The SAME C# as the desktop console: it links IT's shared
+    core (ItSession + ItGenerator) and drives it from a MainActivity. Build the
+    ecosystem's standard way:  dotnet build -f net10.0-android -c Debug -m:1
+    then  adb install  the APK. This is "C# IT running on the phone."
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <RootNamespace>CircleAI.Samples.It.Mobile</RootNamespace>
+    <ApplicationId>com.bhengubv.itsample</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+
+    <!-- Plain APK so `adb install` just works (no bundletool step). -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+  </ItemGroup>
+
+  <!--
+    MNN native libraries are bundled automatically by the repo-root
+    Directory.Build.targets — this project needs no native-lib plumbing.
+
+    That file exists because a per-project workaround lived here first, which
+    meant every future Android head would have had to rediscover the same trap
+    (a build-time omission that only surfaces as DllNotFoundException on a
+    physical device). Opt out with <CircleAIBundleMnn>false</CircleAIBundleMnn>.
+  -->
+
+
+  <!--
+    Share IT's core source with the console head — one invention, two faces.
+
+    Globbed, not listed file by file. The previous explicit list silently
+    dropped any newly added shared file: adding ItToolBridge.cs broke this
+    build with "type or namespace not found" pointing at ItSession.cs, which
+    reads as a missing using rather than a missing Compile item.
+
+    Program.cs is EXCLUDED deliberately — it is the console's entry point, and
+    the Android head has its own (MainActivity). It cannot be globbed in.
+  -->
+  <ItemGroup>
+    <Compile Include="..\CircleAI.Samples.It\*.cs"
+             Exclude="..\CircleAI.Samples.It\Program.cs"
+             Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

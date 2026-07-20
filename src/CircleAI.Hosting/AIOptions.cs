@@ -24,6 +24,27 @@ using CircleAI.Tools;
 namespace CircleAI.Hosting;
 
 /// <summary>
+/// Controls whether context enrichment applies when the caller owns the system turn.
+/// </summary>
+public enum SystemPromptEnrichment
+{
+    /// <summary>
+    /// Persona, device context, RAG recall and skill context are appended AFTER
+    /// the caller's own system prompt. The caller's instructions still lead.
+    /// This is the default: silently losing memory grounding is worse than
+    /// receiving grounding you did not explicitly ask for.
+    /// </summary>
+    Always,
+
+    /// <summary>
+    /// Enrichment applies only when the caller supplies NO system turn — the
+    /// pre-2026-07-20 behaviour. Choose this for full control of the prompt,
+    /// accepting that RAG recall and persona will not be injected.
+    /// </summary>
+    OnlyWhenAbsent,
+}
+
+/// <summary>
 /// Configuration for <see cref="AIService"/> and the loopback transport.
 /// </summary>
 public sealed class AIOptions
@@ -99,6 +120,21 @@ public sealed class AIOptions
     // ------------------------------------------------------------------
     // Neuron — concierge per-turn routing
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Whether persona / device context / RAG recall / skill context are applied
+    /// when the CALLER supplies its own system turn.
+    /// <para>
+    /// Defaults to <see cref="SystemPromptEnrichment.Always"/>. Before
+    /// 2026-07-20 the behaviour was effectively
+    /// <see cref="SystemPromptEnrichment.OnlyWhenAbsent"/> and undocumented: a
+    /// host that set its own system prompt silently lost memory grounding, which
+    /// presents as "the assistant forgot" rather than as a dropped feature.
+    /// The caller's instructions still come first and are never rewritten.
+    /// </para>
+    /// </summary>
+    public SystemPromptEnrichment SystemPromptEnrichment { get; init; }
+        = SystemPromptEnrichment.Always;
 
     /// <summary>
     /// Optional concierge router. When set, <see cref="AIService"/> becomes a
@@ -283,16 +319,64 @@ public sealed class AIOptions
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Directory where downloaded GGUF model files are stored.
-    /// Defaults to <c>{AppContext.BaseDirectory}/models</c> on desktop
-    /// and the app's documents folder on mobile (set by the host).
+    /// Directory where downloaded model files are stored.
+    /// Defaults to <c>{AppContext.BaseDirectory}/models</c>.
     /// </summary>
+    /// <remarks>
+    /// DEPRECATED — use <see cref="ModelStorageDirectory"/>. Two public
+    /// properties described one concept and different code read different ones:
+    /// <c>CheckForUpgradesAsync</c> read <see cref="ModelStorageDirectory"/>
+    /// while the model loader defaulted to this. A host that set only one got
+    /// models downloaded to a directory upgrade detection never scanned — a
+    /// split brain that fails silently. Everything now resolves through
+    /// <see cref="ResolvedModelStorageDirectory"/>.
+    /// </remarks>
+    [Obsolete("Use ModelStorageDirectory. Both are honoured via " +
+              "ResolvedModelStorageDirectory, but ModelStorageDirectory wins.")]
     public string ModelStorageDir { get; init; } =
         Path.Combine(AppContext.BaseDirectory, "models");
 
     /// <summary>
-    /// When <c>true</c>, the model download service only downloads over
-    /// Wi-Fi / Ethernet. Defaults to <c>true</c> to protect mobile data.
+    /// The directory model storage ACTUALLY uses. Single source of truth:
+    /// <see cref="ModelStorageDirectory"/> when set, else the legacy
+    /// <see cref="ModelStorageDir"/>, else <c>{AppContext.BaseDirectory}/models</c>.
+    /// <para>
+    /// Read this rather than either property directly — that is the whole point
+    /// of it existing.
+    /// </para>
+    /// </summary>
+    public string ResolvedModelStorageDirectory
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(ModelStorageDirectory))
+                return ModelStorageDirectory!;
+
+#pragma warning disable CS0618 // resolving the legacy value is precisely this property's job
+            var legacy = ModelStorageDir;
+#pragma warning restore CS0618
+
+            return string.IsNullOrWhiteSpace(legacy)
+                ? Path.Combine(AppContext.BaseDirectory, "models")
+                : legacy;
+        }
+    }
+
+    /// <summary>
+    /// When <c>true</c>, model downloads are refused on a connection the host
+    /// reports as metered. Defaults to <c>true</c> to protect mobile data.
+    /// <para>
+    /// IMPORTANT: enforcement depends on <see cref="DeviceContext"/> reporting a
+    /// usable <c>NetworkType</c> ("wifi" / "cellular" / …). The built-in
+    /// <c>DefaultDeviceContext</c> can only answer "online" or "none", so on a
+    /// default host this CANNOT be enforced — the download proceeds and
+    /// <c>MeteredNetworkDownloadGate.IsEnforceable</c> reports <c>false</c>.
+    /// Mobile hosts must supply a real NetworkType for this to mean anything.
+    /// </para>
+    /// <para>
+    /// This property was entirely inert before 2026-07-20 — declared and
+    /// documented, but read by nothing.
+    /// </para>
     /// </summary>
     public bool WifiOnlyModelDownload { get; init; } = true;
 

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    IT — a runnable reference sample for building an on-device assistant on the
+    CircleAI Neuron. Single-file console app; depends only on CircleAI.Hosting
+    (which pulls the rest of the SDK). Runs with NO model download — the brain is
+    a placeholder generator. Swap that for QwenTextGenerator (MNN) for real
+    inference; nothing else changes.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <AssemblyName>it</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- Voice (ONNX TTS) is referenced by the CONSOLE head only. The Android
+         head has its own csproj that links this project's *.cs non-recursively,
+         so Voice/ItSpeaker.cs and this reference never reach the APK. -->
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+  </ItemGroup>
+
+</Project>

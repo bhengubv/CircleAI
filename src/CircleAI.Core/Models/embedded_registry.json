@@ -12,6 +12,9 @@
       "TotalBytes": 454473637,
       "QualityRank": 6,
       "MemoryHintBytes": 636000000,
+      "MinRamGb": 0.6,
+      "MinStorageGb": 0.5,
+      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -65,6 +68,9 @@
       "QualityRank": 8,
       "FallbackModelId": "Qwen3-0.6B-MNN",
       "MemoryHintBytes": 1730000000,
+      "MinRamGb": 1.7,
+      "MinStorageGb": 1.2,
+      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -118,6 +124,9 @@
       "QualityRank": 10,
       "FallbackModelId": "Qwen3-1.7B-MNN",
       "MemoryHintBytes": 3800000000,
+      "MinRamGb": 3.6,
+      "MinStorageGb": 2.6,
+      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -171,6 +180,9 @@
       "QualityRank": 12,
       "FallbackModelId": "Qwen3-4B-MNN",
       "MemoryHintBytes": 7700000000,
+      "MinRamGb": 7.2,
+      "MinStorageGb": 5.2,
+      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -234,6 +246,9 @@
       "QualityRank": 14,
       "FallbackModelId": "Qwen3-8B-MNN",
       "MemoryHintBytes": 13200000000,
+      "MinRamGb": 12.3,
+      "MinStorageGb": 8.9,
+      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -296,6 +311,9 @@
       "TotalBytes": 556809048,
       "QualityRank": 5,
       "MemoryHintBytes": 780000000,
+      "MinRamGb": 0.8,
+      "MinStorageGb": 0.6,
+      "Capabilities": [ "Default", "Tools", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -359,6 +377,9 @@
       "QualityRank": 7,
       "FallbackModelId": "Qwen2.5-0.5B-Instruct-MNN",
       "MemoryHintBytes": 1230000000,
+      "MinRamGb": 1.2,
+      "MinStorageGb": 0.9,
+      "Capabilities": [ "Default", "Tools", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -417,6 +438,9 @@
       "QualityRank": 9,
       "FallbackModelId": "Qwen2.5-1.5B-Instruct-MNN",
       "MemoryHintBytes": 3300000000,
+      "MinRamGb": 3.1,
+      "MinStorageGb": 2.3,
+      "Capabilities": [ "Default", "Tools", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -480,6 +504,9 @@
       "QualityRank": 11,
       "FallbackModelId": "Qwen2.5-3B-Instruct-MNN",
       "MemoryHintBytes": 7100000000,
+      "MinRamGb": 6.7,
+      "MinStorageGb": 4.8,
+      "Capabilities": [ "Default", "Tools", "LongContext" ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -530,6 +557,53 @@
           "Name": "tokenizer.txt",
           "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
           "SizeBytes": 3193477
+        }
+      ]
+    },
+    {
+      "Name": "Piper-en_US-lessac-medium",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Architecture": "vits",
+      "TotalBytes": 63206179,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.1,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+          "Sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+          "Sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
+          "SizeBytes": 4885
+        }
+      ]
+    },
+    {
+      "Name": "Whisper-tiny-ggml",
+      "Version": "1.0",
+      "Quantization": "ggml",
+      "Repo": "ggerganov/whisper.cpp",
+      "Source": "HuggingFace",
+      "Modality": "Asr",
+      "Architecture": "whisper",
+      "TotalBytes": 77691713,
+      "MinRamGb": 0.4,
+      "MinStorageGb": 0.1,
+      "QualityRank": 5,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ggml-tiny.bin",
+          "Sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+          "SizeBytes": 77691713
         }
       ]
     }

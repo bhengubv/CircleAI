@@ -152,25 +152,33 @@
        arm64-v8a  ← android-arm64
        x86_64     ← android-x64
        ═══════════════════════════════════════════════════════════════════ -->
+  <!--
+    Glob the whole native dir, do NOT name individual files.
+
+    This block previously listed only libmnnbridge.so + libMNN.so. The shipped
+    Android runtime is EIGHT libraries (also libMNN_Express, libMNN_CL,
+    libMNN_Vulkan, libmnncore, libMNNAudio, libMNNOpenCV), and a partial set
+    risks dlopen failing on the dependency chain — a runtime crash caused by a
+    build-time omission, which is exactly the failure mode this file is meant
+    to prevent. Wildcards that match nothing are silently empty, so an absent
+    RID folder needs no Exists() guard.
+
+    NOTE: an <Import> of this file from CircleAI.Inference.csproj evaluates in
+    THAT project's build, where TargetPlatformIdentifier is never 'android'.
+    This block therefore only fires for NuGet consumers. In-repo Android heads
+    are served by the repo-root Directory.Build.targets.
+  -->
   <ItemGroup Condition="'$(CircleAIBundleMnn)' == 'true' And '$(TargetPlatformIdentifier)' == 'android'">
     <AndroidNativeLibrary
-        Include="$(CircleAINativeLibRoot)runtimes/android-arm64/native/libmnnbridge.so"
-        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-arm64/native/libmnnbridge.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-arm64/native/*.so"
         Abi="arm64-v8a" />
 
     <AndroidNativeLibrary
-        Include="$(CircleAINativeLibRoot)runtimes/android-arm64/native/libMNN.so"
-        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-arm64/native/libMNN.so')"
-        Abi="arm64-v8a" />
+        Include="$(CircleAINativeLibRoot)runtimes/android-arm/native/*.so"
+        Abi="armeabi-v7a" />
 
     <AndroidNativeLibrary
-        Include="$(CircleAINativeLibRoot)runtimes/android-x64/native/libmnnbridge.so"
-        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-x64/native/libmnnbridge.so')"
-        Abi="x86_64" />
-
-    <AndroidNativeLibrary
-        Include="$(CircleAINativeLibRoot)runtimes/android-x64/native/libMNN.so"
-        Condition="Exists('$(CircleAINativeLibRoot)runtimes/android-x64/native/libMNN.so')"
+        Include="$(CircleAINativeLibRoot)runtimes/android-x64/native/*.so"
         Abi="x86_64" />
   </ItemGroup>
 

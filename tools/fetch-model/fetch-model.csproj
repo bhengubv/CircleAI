@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>fetch-model</AssemblyName>
+    <RootNamespace>CircleAI.Tools.FetchModel</RootNamespace>
+    <!-- Dev tool, not a shippable package. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Deliberately references the real loader rather than re-implementing
+         the fetch: the point of this tool is to exercise BundleModelLoader
+         end to end against the live CDN, not to prove the CDN serves files. -->
+    <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
+  </ItemGroup>
+</Project>

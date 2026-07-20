@@ -59,6 +59,25 @@ public interface IModelDownloadService
         CancellationToken ct);
 
     /// <summary>
+    /// <see cref="EnsureBundleAsync(string,string,IReadOnlyList{BundleFileSpec},IProgress{double},CancellationToken)"/>
+    /// with an explicit <paramref name="source"/> — ModelScope (chat ladder) or
+    /// Hugging Face (de-Googled speech models).
+    /// </summary>
+    /// <remarks>
+    /// A DEFAULT INTERFACE METHOD so existing implementers do not break; the
+    /// default ignores the source and calls the ModelScope path, which is what
+    /// every pre-speech caller wanted.
+    /// </remarks>
+    Task<string> EnsureBundleAsync(
+        string modelId,
+        string repo,
+        CircleAI.Core.ModelSource source,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        IProgress<double>? progress,
+        CancellationToken ct)
+        => EnsureBundleAsync(modelId, repo, bundleFiles, progress, ct);
+
+    /// <summary>
     /// Returns <see langword="true"/> if the model file (single-file shape) exists on disk.
     /// </summary>
     Task<bool> IsModelCachedAsync(string modelId, CancellationToken ct);

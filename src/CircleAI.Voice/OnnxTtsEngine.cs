@@ -5,32 +5,34 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 namespace CircleAI.Voice;
 
 /// <summary>
-/// <see cref="ITtsEngine"/> implementation that uses an ONNX Runtime session to
-/// run a VITS/Kokoro-style text-to-speech model. The model is expected to accept
-/// text token IDs as input and produce a float waveform as output.
+/// <see cref="ITtsEngine"/> implementation that runs a VITS/Piper-style
+/// text-to-speech model through ONNX Runtime.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The ONNX session is lazy-loaded on first synthesis and reused across calls.
-/// Thread safety is provided via <see cref="Lock"/> — ONNX Runtime sessions
-/// support concurrent <c>Run</c> calls, but we serialise to avoid contention
-/// on the tokenisation and output-conversion code.
+/// PHONEME-DRIVEN when a Piper <c>.onnx.json</c> config is present (the correct
+/// path): text → phonemes (<see cref="IPhonemizer"/>) → token ids
+/// (<see cref="PiperVoiceConfig.PhonemesToIds"/>, the model's real
+/// <c>phoneme_id_map</c> in Piper's BOS/pad/EOS layout) → waveform. Sample rate
+/// and the noise/length/noise_w scales come from the config, not from guesses.
 /// </para>
 /// <para>
-/// Tokenisation uses a character-level fallback: each character in the input
-/// text is mapped to its Unicode code point. Real production models may require
-/// a phonemizer or a model-specific vocabulary; subclass or replace the
-/// <see cref="TokeniseText"/> method as needed.
+/// This replaced a stub that mapped each TEXT character to <c>codepoint+1</c> and
+/// interleaved zeros — feeding the model ids it was never trained on, so it
+/// produced silence/garbage. That is why "OnnxTtsEngine cannot speak" was true.
 /// </para>
 /// <para>
-/// The output waveform (float[] in [-1, 1]) is converted to 16-bit signed PCM
-/// at the configured sample rate.
+/// When NO config sidecar is found the engine falls back to the legacy
+/// character-level tokeniser for generic non-Piper models — clearly a fallback,
+/// not the intended path.
 /// </para>
 /// </remarks>
 public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
 {
     private readonly string _modelPath;
     private readonly int _sampleRate;
+    private readonly PiperVoiceConfig? _config;
+    private readonly IPhonemizer _phonemizer;
     private readonly Lock _gate = new();
     private InferenceSession? _session;
     private bool _disposed;
@@ -59,27 +61,44 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
     private const string OutputName = "output";
 
     /// <summary>
-    /// Initialise a new ONNX-based TTS engine.
+    /// Piper-style engine. Loads the <c>&lt;model&gt;.onnx.json</c> sidecar for the
+    /// phoneme map, sample rate and inference scales.
     /// </summary>
-    /// <param name="modelPath">
-    /// Absolute path to the ONNX model file.
+    /// <param name="modelPath">Absolute path to the ONNX model file.</param>
+    /// <param name="phonemizer">
+    /// Text → phonemes. Defaults to <see cref="PassthroughPhonemizer"/> (input is
+    /// already phoneme symbols). For arbitrary English on an espeak-type voice,
+    /// pass an <see cref="EspeakPhonemizer"/>.
     /// </param>
-    /// <param name="sampleRate">
-    /// Output sample rate in Hz. Must match the model's training sample rate.
-    /// Default is 24000 (common for Kokoro/VITS models).
+    /// <param name="config">
+    /// Explicit config; when null the sidecar next to <paramref name="modelPath"/>
+    /// is loaded if present.
     /// </param>
-    /// <exception cref="ArgumentException">
-    /// Thrown when <paramref name="modelPath"/> is null or whitespace.
-    /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// Thrown when <paramref name="sampleRate"/> is not positive.
-    /// </exception>
+    public OnnxTtsEngine(string modelPath, IPhonemizer? phonemizer, PiperVoiceConfig? config = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+
+        _modelPath = modelPath;
+        _config = config ?? PiperVoiceConfig.TryLoadForModel(modelPath);
+        _phonemizer = phonemizer ?? new PassthroughPhonemizer();
+        _sampleRate = _config?.SampleRate ?? 22_050;
+    }
+
+    /// <summary>
+    /// Legacy generic constructor: no config, character-level tokeniser, explicit
+    /// sample rate. Retained for non-Piper models; the Piper path above is the
+    /// intended one.
+    /// </summary>
+    /// <param name="modelPath">Absolute path to the ONNX model file.</param>
+    /// <param name="sampleRate">Output sample rate in Hz. Must match the model.</param>
     public OnnxTtsEngine(string modelPath, int sampleRate = 24_000)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
 
         _modelPath = modelPath;
+        _config = null;
+        _phonemizer = new PassthroughPhonemizer();
         _sampleRate = sampleRate;
     }
 
@@ -195,9 +214,27 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
         ct.ThrowIfCancellationRequested();
 
         var session = EnsureSession();
-        var tokens = TokeniseText(text);
 
-        if (tokens.Length == 0)
+        // Phoneme path when a Piper config is present (correct); character path
+        // otherwise (legacy generic fallback).
+        long[] tokens;
+        float noiseScale, lengthScale, noiseW;
+        if (_config is { HasPhonemeMap: true })
+        {
+            var phonemes = _phonemizer.Phonemize(text);
+            tokens = _config.PhonemesToIds(phonemes, out _);
+            noiseScale  = _config.NoiseScale;
+            lengthScale = _config.LengthScale;
+            noiseW      = _config.NoiseW;
+        }
+        else
+        {
+            tokens = TokeniseText(text);
+            noiseScale = 0.667f; lengthScale = 1.0f; noiseW = 0.8f;
+        }
+
+        // A map of only BOS+pad+EOS (e.g. all phonemes unknown) is not speech.
+        if (tokens.Length <= 3)
         {
             return new TtsSynthesisResult(ReadOnlyMemory<byte>.Empty, _sampleRate, 1, 16);
         }
@@ -214,11 +251,12 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
         var inputLengths = new DenseTensor<long>(new[] { 1 });
         inputLengths[0] = tokens.Length;
 
-        // Scales: [3] — noise_scale, length_scale, noise_scale_w
+        // Scales: [3] — noise_scale, length_scale, noise_scale_w — from the
+        // voice config (or the generic defaults for the legacy path).
         var scales = new DenseTensor<float>(new[] { 3 });
-        scales[0] = 0.667f;  // noise_scale — controls expressiveness
-        scales[1] = 1.0f;    // length_scale — controls speed
-        scales[2] = 0.8f;    // noise_scale_w — controls phoneme duration variation
+        scales[0] = noiseScale;
+        scales[1] = lengthScale;
+        scales[2] = noiseW;
 
         var inputs = new List<NamedOnnxValue>
         {

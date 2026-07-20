@@ -42,6 +42,10 @@ public sealed class DeviceAwareModelSelector : IModelSelector
 
     /// <inheritdoc/>
     public ModelSelection BestFit(DeviceProbe probe, ChatCapability required)
+        => BestFit(probe, required, minQualityRank: 0);
+
+    /// <inheritdoc/>
+    public ModelSelection BestFit(DeviceProbe probe, ChatCapability required, int minQualityRank)
     {
         ArgumentNullException.ThrowIfNull(probe);
 
@@ -78,16 +82,32 @@ public sealed class DeviceAwareModelSelector : IModelSelector
                         (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
             .ToList();
 
-        var winner = (deviceOk.Count > 0 ? deviceOk : capabilityOk)
-            .OrderByDescending(e => e.QualityRank)
-            .ThenBy(e => e.MinRamGb)
-            .First();
+        // Something fits → best quality that fits.
+        // Nothing fits → honour the intent stated above and return the SMALLEST
+        // candidate. Ordering the fallback by QualityRank (as this did) handed a
+        // constrained device the LARGEST model in the catalogue — the exact
+        // opposite of "a wearable should still get the smallest model".
+        var somethingFits = deviceOk.Count > 0;
+
+        var winner = somethingFits
+            ? deviceOk.OrderByDescending(e => e.QualityRank).ThenBy(e => e.MinRamGb).First()
+            : capabilityOk.OrderBy(e => e.MinRamGb).ThenBy(e => e.TotalBytes).First();
+
+        // FIT IS NOT FUNCTION. Report which of the three situations this is, so
+        // a caller can tell "good choice" from "least-bad option on a device
+        // that can run nothing here" and escalate to cloud fallback instead of
+        // shipping something unusable.
+        var quality =
+            !somethingFits                        ? SelectionQuality.NothingFits
+            : winner.QualityRank < minQualityRank ? SelectionQuality.BelowFloor
+                                                  : SelectionQuality.Good;
 
         return new ModelSelection(
             ModelId:          winner.Name,
             RequiresDownload: true, // selector cannot tell — caller checks the cache
             EstimatedBytes:   winner.TotalBytes,
-            Tier:             tier);
+            Tier:             tier,
+            Quality:          quality);
     }
 
     /// <inheritdoc/>
@@ -95,13 +115,24 @@ public sealed class DeviceAwareModelSelector : IModelSelector
     {
         ArgumentNullException.ThrowIfNull(probe);
         var tier = probe.Classify();
+
+        var ramGb     = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+
         return EnumerateEntries()
             .OrderByDescending(e => e.QualityRank)
             .Select(e => new ModelSelection(
                 ModelId:          e.Name,
                 RequiresDownload: true,
                 EstimatedBytes:   e.TotalBytes,
-                Tier:             tier))
+                Tier:             tier,
+                // A "what could run here" listing that marks unrunnable entries
+                // as Good would be actively misleading — that is the whole point
+                // of this endpoint.
+                Quality:          (e.MinRamGb <= ramGb + 0.0001 &&
+                                   (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+                                      ? SelectionQuality.Good
+                                      : SelectionQuality.NothingFits))
             .ToList();
     }
 
@@ -110,7 +141,15 @@ public sealed class DeviceAwareModelSelector : IModelSelector
     // or via remote update once signature verification ships — surfaces it
     // here automatically. No SDK release required, no hardcoded model
     // names in source code.
-    private IEnumerable<ModelEntry> EnumerateEntries() => _registry.AllModels;
+    // CHAT ONLY. This is the single chokepoint every selection path funnels
+    // through (BestFit, AllCandidates, ChainFor), so filtering here guarantees a
+    // speech model (Asr/Tts/Vad/WakeWord) can never be handed to a caller asking
+    // for a chat brain. Without this, a Tts entry would parse to Default (see
+    // ParseCapabilities — unknown labels are dropped) and pollute chat
+    // selection. A future speech selector queries the registry by modality
+    // separately.
+    private IEnumerable<ModelEntry> EnumerateEntries()
+        => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat);
 
     /// <inheritdoc/>
     public IReadOnlyList<string> ChainFor(string headModelId)

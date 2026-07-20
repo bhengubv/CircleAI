@@ -16,4 +16,16 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>
+
+  <!--
+    The capability manifest, embedded so CapabilityManifestSkillStore can read it
+    ON DEVICE — a file at the repo root is not present on a phone.
+
+    LogicalName is pinned because the source lives outside this project
+    directory; without it the generated resource name would not be predictable.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\capabilities.json"
+                      LogicalName="CircleAI.Skills.capabilities.json" />
+  </ItemGroup>
 </Project>

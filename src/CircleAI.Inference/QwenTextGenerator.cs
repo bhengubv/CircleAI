@@ -112,7 +112,25 @@ public sealed class QwenTextGenerator : IChatGenerator
         if (contextSize == 0)
             throw new ArgumentOutOfRangeException(nameof(contextSize), "Context size must be > 0.");
 
-        var handle = MnnInterop.mnn_llm_create(modelPath);
+        // The FIRST P/Invoke is where a missing native runtime surfaces. Left
+        // bare it throws "DllNotFoundException: mnnbridge", which says nothing
+        // about the real cause — on Android that is a build-time packaging
+        // omission, and diagnosing it once cost an APK teardown.
+        MnnModelHandle handle;
+        try
+        {
+            handle = MnnInterop.mnn_llm_create(modelPath);
+        }
+        catch (DllNotFoundException ex)
+        {
+            throw MnnNativeDiagnostics.Explain(ex, modelPath);
+        }
+        catch (EntryPointNotFoundException ex)
+        {
+            // Library loaded but is the wrong build / an older ABI.
+            throw MnnNativeDiagnostics.Explain(ex, modelPath);
+        }
+
         if (handle.IsInvalid)
         {
             handle.Dispose();

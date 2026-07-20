@@ -116,9 +116,18 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
 
     // ── Bundle ────────────────────────────────────────────────────────────
 
+    public Task<string> EnsureBundleAsync(
+        string modelId,
+        string repo,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        IProgress<double>? progress,
+        CancellationToken ct)
+        => EnsureBundleAsync(modelId, repo, CircleAI.Core.ModelSource.ModelScope, bundleFiles, progress, ct);
+
     public async Task<string> EnsureBundleAsync(
         string modelId,
         string repo,
+        CircleAI.Core.ModelSource source,
         IReadOnlyList<BundleFileSpec> bundleFiles,
         IProgress<double>? progress,
         CancellationToken ct)
@@ -165,11 +174,11 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                     : new Progress<double>(p =>
                         ReportOverall(progress, doneBytes + (long)(file.SizeBytes * p), totalBytes));
 
-                // PrimaryUrl (API form) → FallbackUrl (CDN form). Either one is the
-                // same bytes; we try both before giving up so a transient CDN hiccup
-                // doesn't kill an otherwise viable bundle download.
-                var primary = BuildPrimaryUrl(repo, file.Name);
-                var fallback = BuildFallbackUrl(repo, file.Name);
+                // PrimaryUrl → FallbackUrl. Either one is the same bytes; we try
+                // both before giving up so a transient CDN hiccup doesn't kill an
+                // otherwise viable bundle download.
+                var primary = BuildPrimaryUrl(source, repo, file.Name);
+                var fallback = BuildFallbackUrl(source, repo, file.Name);
                 try
                 {
                     await DownloadToFileAsync(primary, tempPath, perFile, ct).ConfigureAwait(false);
@@ -212,18 +221,17 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
     /// <see cref="ModelRegistryService.CheckForUpgradesAsync"/> to detect
     /// drift against the live registry.
     /// <para>
-    /// Call this immediately after a successful
-    /// <see cref="EnsureBundleAsync"/> when you have the model's Version
-    /// string available (typically from the <see cref="ModelEntry"/> the
-    /// download was driven by). Best-effort — silent failures are
-    /// swallowed so a manifest hiccup never breaks a working install.
+    /// Call this immediately after a successful <c>EnsureBundleAsync</c> when you
+    /// have the model's Version string available (typically from the
+    /// <see cref="ModelEntry"/> the download was driven by). Best-effort — silent
+    /// failures are swallowed so a manifest hiccup never breaks a working install.
     /// </para>
     /// </summary>
-    /// <param name="modelDir">Absolute path returned by <see cref="EnsureBundleAsync"/>.</param>
+    /// <param name="modelDir">Absolute path returned by <c>EnsureBundleAsync</c>.</param>
     /// <param name="modelId">Model identifier (must match the registry's <see cref="ModelEntry.Name"/>).</param>
     /// <param name="version">Version string from the registry entry.</param>
-    /// <param name="repo">ModelScope repo path (e.g. <c>MNN/Qwen3-0.6B-MNN</c>).</param>
-    /// <param name="bundleFiles">The same file list passed to <see cref="EnsureBundleAsync"/>.</param>
+    /// <param name="repo">Repo path (e.g. <c>MNN/Qwen3-0.6B-MNN</c> or <c>rhasspy/piper-voices</c>).</param>
+    /// <param name="bundleFiles">The same file list passed to <c>EnsureBundleAsync</c>.</param>
     public async Task WriteInstalledManifestAsync(
         string                       modelDir,
         string                       modelId,
@@ -270,11 +278,20 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         WriteIndented = true,
     };
 
-    private static Uri BuildPrimaryUrl(string repo, string fileName) =>
-        new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}");
+    // A bundle-relative file name may contain '/', which must survive into the
+    // URL as a path separator, not be escaped to %2F. Escape each SEGMENT.
+    private static string EscapePath(string fileName)
+        => string.Join('/', fileName.Split('/').Select(Uri.EscapeDataString));
 
-    private static Uri BuildFallbackUrl(string repo, string fileName) =>
-        new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}");
+    private static Uri BuildPrimaryUrl(CircleAI.Core.ModelSource source, string repo, string fileName)
+        => source == CircleAI.Core.ModelSource.HuggingFace
+            ? new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}?download=true")
+            : new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}");
+
+    private static Uri BuildFallbackUrl(CircleAI.Core.ModelSource source, string repo, string fileName)
+        => source == CircleAI.Core.ModelSource.HuggingFace
+            ? new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}")
+            : new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}");
 
     private static void ReportOverall(IProgress<double>? p, long done, long total)
     {

@@ -1,0 +1,346 @@
+{
+  "SchemaVersion": "1.1",
+
+  "Purpose": [
+    "One machine-readable answer to 'what can CircleAI actually do?', with two consumers:",
+    "  1. An agent or developer navigating the repo — read this instead of 150 projects.",
+    "  2. The SDK at runtime — loads this into the capability/skill registry so the",
+    "     assistant can answer 'what can you do?' from fact instead of hallucination.",
+    "Status is the point. A feature that exists in name only says so here."
+  ],
+
+  "StatusDefinitions": {
+    "shipping": "Works end to end AND a test exercises the real behaviour (not a null object).",
+    "partial":  "Works, with named caveats. Every limitation is listed in Limits.",
+    "scaffold": "Contracts, plumbing or a runtime exist; no working implementation behind them.",
+    "planned":  "Declared surface or intent only. Nothing to call yet.",
+    "rejected": "Deliberately NOT being built. Reason is in Limits. Prevents rediscovery."
+  },
+
+  "Conventions": {
+    "EntryPoint": "path/to/File.cs#Symbol — the single best place to START reading.",
+    "Seam": "The interface to implement or replace in order to extend/swap this.",
+    "Requires": "Obligations on the HOST. If unmet, the feature does not work.",
+    "Limits": "What it deliberately does NOT do. Absence of limits is itself a claim.",
+    "VerifiedBy": "Tests asserted to cover it. These are CLAIMS — CapabilityManifestTests validates them.",
+    "Measured": "Observed on REAL hardware, with numbers and a date. Never inferred from source."
+  },
+
+  "Maintenance": [
+    "This file is load-bearing, not documentation. A test asserts that every entry with",
+    "status 'shipping' resolves to a real symbol and names at least one real test.",
+    "If you cannot honestly write 'shipping', write what is true instead.",
+    "",
+    "2026-07-20 — FIRST ON-DEVICE PASS. Huawei MAR-LX1M (P30 Lite, Kirin 710, ~1.1 GB",
+    "free RAM). Everything with a Measured block was observed on that handset. The pass",
+    "falsified FOUR claims previously written here from source-reading alone:",
+    "  1. 'Native MNN libraries DO ship' — they do NOT reach an APK across a",
+    "     ProjectReference. Inference died at DllNotFoundException after a good download.",
+    "  2. 'the inference BRIDGE collapses a request to a single user message' — false.",
+    "     Multi-turn history flows end to end.",
+    "  3. 'No wake-word model exists, so Hey B cannot trigger' — false. There are TWO",
+    "     detectors; the energy one needs no KWS model.",
+    "  4. Voice was called untestable. Its VAD is pure DSP and testable with no weights.",
+    "Treat any entry WITHOUT a Measured block as source-reading, not evidence."
+  ],
+
+  "Capabilities": [
+    {
+      "Id": "model.selection",
+      "Name": "Device-aware model selection",
+      "Status": "shipping",
+      "Summary": "Picks the best model the current device can actually hold, from capability + RAM + storage.",
+      "Package": "CircleAI.Inference",
+      "EntryPoint": "src/CircleAI.Inference/DeviceAwareModelSelector.cs#BestFit",
+      "Seam": "CircleAI.Inference.IModelSelector",
+      "VerifiedBy": [ "DeviceAwareModelSelectorTests", "DeviceAwareModelSelectorRegistryTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M, ~1.1 GB free RAM",
+        "Date": "2026-07-20",
+        "Result": "Selected Qwen3-0.6B-MNN, not the 14B. The MinRamGb gate is live."
+      },
+      "Limits": [
+        "Vision and Video are unsatisfiable — no such model is catalogued, so those requests throw by design.",
+        "Gates on RAM/storage only; ignores CPU, NPU and thermal headroom.",
+        "Gates on FIT, not on FUNCTION. There is no minimum-quality floor, so a device that can only hold an unusable model is handed it silently rather than told to use cloud fallback."
+      ]
+    },
+    {
+      "Id": "model.catalogue",
+      "Name": "Model catalogue",
+      "Status": "shipping",
+      "Summary": "Nine SHA-pinned MNN model bundles (Qwen3 and Qwen2.5-Instruct ladders) with fallback chains.",
+      "Package": "CircleAI.Core",
+      "EntryPoint": "src/CircleAI.Core/Models/embedded_registry.json",
+      "Seam": "CircleAI.Core.Models.ModelRegistryService",
+      "VerifiedBy": [ "ModelRegistryServiceTests", "DeviceAwareModelSelectorRegistryTests" ],
+      "Limits": [
+        "Text LLMs only. No speech (ASR/TTS), no vision, no VAD, no wake-word entries — which is the single reason the voice stack cannot be acquired the same catalogue-driven way.",
+        "A second, older registry (src/CircleAI.Core/registry.json) still exists and can drift."
+      ]
+    },
+    {
+      "Id": "model.download",
+      "Name": "Automatic model download",
+      "Status": "partial",
+      "Summary": "Fetches a model's multi-file bundle on first use, verifying every file by SHA-256.",
+      "Package": "CircleAI.Inference",
+      "EntryPoint": "src/CircleAI.Inference/BundleModelLoader.cs#DownloadModelAsync",
+      "Seam": "CircleAI.Core.IModelLoader",
+      "VerifiedBy": [],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M, over the phone's own WiFi",
+        "Date": "2026-07-20",
+        "Result": "429 MB in 738 s (~580 KB/s). All 8 files. llm.mnn.weight = 450,810,338 bytes, atomically renamed from .tmp. installed.json stamped. No sideloading."
+      },
+      "Limits": [
+        "No AUTOMATED regression test — the proof above was a one-off manual device run, so this can silently break.",
+        "AIOptions.WifiOnlyModelDownload (default true) appears INERT: BundleModelLoader builds ModelDownloadService with no connectivity gate, so nothing observed stops a download on mobile data. Costs users money rather than failing loudly.",
+        "AIOptions carries two properties for one concept — ModelStorageDirectory (read by CheckForUpgradesAsync) and ModelStorageDir. The DI registration now prefers the former, but the duplication remains and both are public API.",
+        "LocalModelLoader (the older IModelLoader) still cannot fetch bundle entries and returns a path MNN cannot load."
+      ]
+    },
+    {
+      "Id": "inference.ondevice",
+      "Name": "On-device inference (MNN)",
+      "Status": "partial",
+      "Summary": "Runs Qwen-family models locally through the MNN engine, streaming tokens as they decode.",
+      "Package": "CircleAI.Inference",
+      "EntryPoint": "src/CircleAI.Inference/QwenTextGenerator.cs",
+      "Seam": "CircleAI.Inference.IChatGenerator",
+      "VerifiedBy": [ "QwenTextGeneratorTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M (Kirin 710)",
+        "Date": "2026-07-20",
+        "Result": "Qwen3-0.6B-MNN loaded in 19 s from cache. 576,347 KB resident native heap. Coherent multi-turn output incl. correct algebra. ~34 s per turn."
+      },
+      "Requires": [
+        "Model weights — none ship; smallest catalogued bundle is 433 MB.",
+        "CRITICAL for .NET Android hosts using a ProjectReference: the native libs live under src/CircleAI.Inference/runtimes/<rid>/native/, which is the NuGet PACKAGE convention. They do NOT flow across a ProjectReference, so the APK ships with zero MNN libraries and the first inference throws 'System.DllNotFoundException: mnnbridge'. The host must add explicit <AndroidNativeLibrary Include=\"...runtimes/android-arm64/native/*.so\"><Abi>arm64-v8a</Abi></AndroidNativeLibrary> items. See samples/CircleAI.Samples.It.Android for the pattern.",
+        "On Android: AIOptions.NativeLibDir set to ApplicationInfo.NativeLibraryDir."
+      ],
+      "Limits": [
+        "The SDK should ship a .targets file so Android consumers get the native libs automatically. Until then every consumer rediscovers this at runtime, not at build time.",
+        "~34 s per turn on a Kirin 710 is slow enough to be felt in UX."
+      ]
+    },
+    {
+      "Id": "tools.calling",
+      "Name": "Tool calling",
+      "Status": "shipping",
+      "Summary": "Describes registered tools to the model, parses its tool call, executes it, and feeds the result back.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/ToolPromptRenderer.cs#Render",
+      "Seam": "CircleAI.Tools.IToolBridge",
+      "VerifiedBy": [ "ToolPromptRendererTests", "Circle33ToolCallingTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M, Qwen3-0.6B-MNN",
+        "Date": "2026-07-20",
+        "Result": "Both probes fired for real: get_battery_level() returned 100% (matched device truth) and lookup_price(sku=SKU-1001) returned 249.99 (matched the tool table). Arguments passed correctly. Invocation log proves execution, not just a plausible answer."
+      },
+      "Requires": [ "Host supplies AIOptions.ToolBridge." ],
+      "Limits": [
+        "Until 2026-07-20 the DESCRIBE half did not exist: AvailableTools was referenced nowhere in CircleAI.Hosting, so a real model was never told a tool name and could only emit a valid call by guessing. Circle33ToolCallingTests stayed green throughout because its fake generator emits a canned <tool_call> regardless of the prompt.",
+        "The tools block is injected even when the caller owns the system turn — deliberate, since a registered bridge the model is never told about is a silent no-op.",
+        "No automated end-to-end test against a REAL model; the device run above is manual.",
+        "Verified with two trivial tools. Multi-tool disambiguation and multi-step tool chains are untested."
+      ]
+    },
+    {
+      "Id": "chat.session",
+      "Name": "Conversation memory and session snapshot",
+      "Status": "partial",
+      "Summary": "Threads full history through each turn and can snapshot the session to survive a restart.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/Neuron/NeuronNode.cs#StreamAsync",
+      "Seam": "CircleAI.Hosting.Chat.IPersistableChatRuntime",
+      "VerifiedBy": [ "NeuronNodeTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M",
+        "Date": "2026-07-20",
+        "Result": "'my name is Thabo' then 'what is my name?' -> 'Your name is Thabo.' Multi-turn recall works on device."
+      },
+      "Limits": [
+        "Snapshot round-trip covered only against a fake generator; a real restore of a real KV cache is untested.",
+        "PrepareMessagesAsync SKIPS persona / device-context / RAG enrichment entirely when the caller supplies its own system message. Tool descriptions are exempted, but the rest is silently dropped — hosts that own their system prompt lose enrichment without being told."
+      ],
+      "Notes": [
+        "Corrected 2026-07-20: an earlier draft claimed the inference bridge collapsed a request to a single user message. That was WRONG. Traced end to end: NeuronNode.StreamAsync maps EVERY turn, AIService passes the whole list to PrepareMessagesAsync, and QwenTextGenerator renders all of it. `userQuery` is extracted only for routing and RAG lookup."
+      ]
+    },
+    {
+      "Id": "neuron.routing",
+      "Name": "Concierge routing",
+      "Status": "partial",
+      "Summary": "Decides per turn whether the warm generalist answers or a specialist should.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/Neuron/HeuristicNeuronRouter.cs#Route",
+      "Seam": "CircleAI.Hosting.Neuron.INeuronRouter",
+      "VerifiedBy": [ "NeuronRouterTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M",
+        "Date": "2026-07-20",
+        "Result": "'hi' -> Generalist. 'solve x^2 = 49 step by step' -> Specialist (Reasoning) [reasoning cue 'solve']. The DECISION varies correctly per turn."
+      },
+      "Limits": [
+        "The decision is verified; ACTING on it is not. In the device run the specialist was never hot-loaded — only one model existed on disk — so the generalist answered both.",
+        "Vision routing requires RouteContext.HasImage and is unreachable from any text-only host.",
+        "Keyword and length heuristics only — no learned intent classification."
+      ]
+    },
+    {
+      "Id": "neuron.twoslot",
+      "Name": "Two-slot residency",
+      "Status": "partial",
+      "Summary": "Keeps one generalist permanently warm and admits a second specialist only if RAM allows.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/Neuron/ResidentSlotManager.cs",
+      "Seam": "CircleAI.Hosting.AIOptions.Router",
+      "VerifiedBy": [ "ResidentSlotManagerTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M, ~1.1 GB free RAM",
+        "Date": "2026-07-20",
+        "Result": "With Router set, a Specialist decision degraded gracefully to the generalist and answered — no throw. Graceful degradation on constrained hardware is PROVEN."
+      },
+      "Limits": [
+        "A real specialist has never been hot-loaded beside a real generalist. Only one model was on disk, so admission could not have succeeded and the fallback path is what actually ran.",
+        "Proving genuine two-slot residency needs a second catalogued model downloaded to the same device."
+      ]
+    },
+    {
+      "Id": "neuron.brownout",
+      "Name": "Brownout and fallback chain",
+      "Status": "partial",
+      "Summary": "Under memory pressure, evicts the specialist and hot-swaps down to a smaller model.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/AIService.cs#BrownoutAsync",
+      "Seam": "CircleAI.Hosting.IMemoryPressureSource",
+      "VerifiedBy": [ "DeviceAwareModelSelectorRegistryTests" ],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M",
+        "Date": "2026-07-20",
+        "Result": "ManualMemoryPressureSource raised Critical; the next turn still answered normally. Pressure does not break serving."
+      },
+      "Limits": [
+        "Eviction ORDER is unproven: with no specialist resident there was nothing to evict, so 'specialist first, generalist never drops' was not actually exercised.",
+        "A real pressure-triggered model hot-swap has never been observed."
+      ]
+    },
+    {
+      "Id": "self.knowledge",
+      "Name": "Capability self-knowledge",
+      "Status": "partial",
+      "Summary": "Lets the assistant answer 'what can you do?' from fact rather than invention.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/ToolPromptRenderer.cs#Render",
+      "Seam": "CircleAI.Skills.ISkillStore",
+      "VerifiedBy": [],
+      "Measured": {
+        "Device": "Huawei MAR-LX1M",
+        "Date": "2026-07-20",
+        "Result": "Asked 'what can you do?' it answered accurately: 'retrieving battery level or looking up product prices'. Predicted to FAIL; it partially succeeded."
+      },
+      "Limits": [
+        "It works only as a SIDE EFFECT of the tools block being in the system prompt. ISkillStore is still never populated.",
+        "So it can describe its TOOLS but not its FEATURES — voice, vision, mesh, memory, offline operation are all invisible to it.",
+        "THIS FILE is the intended input for the feature half. Until it is wired, the assistant cannot describe what it is."
+      ]
+    },
+    {
+      "Id": "voice.ondevice",
+      "Name": "On-device speech (ASR, TTS, wake word, VAD)",
+      "Status": "scaffold",
+      "Summary": "Local speech-to-text, text-to-speech, VAD and wake-word spotting with no cloud round trip.",
+      "Package": "CircleAI.Voice",
+      "EntryPoint": "src/CircleAI.Voice/VoicePipeline.cs",
+      "Seam": "CircleAI.Voice.IVoiceTranscriber, ITtsEngine, IWakeWordDetector, IVoiceActivityDetector",
+      "VerifiedBy": [ "EnergyVadDetectorTests" ],
+      "Requires": [ "Host-supplied weights for ASR and TTS. None ship and none are catalogued." ],
+      "Limits": [
+        "Only the VAD is covered. EnergyVadDetector now has 5 passing tests (silence, loud-then-silence, below-threshold hum, threshold flip on identical audio, stream ending mid-speech) — written 2026-07-20 because this file had wrongly called voice untestable.",
+        "No speech model is in the catalogue, so weights cannot be acquired the catalogue-driven way the LLM ladder uses. That — not missing code — is the actual blocker.",
+        "WhisperTranscriber and OnnxTtsEngine have never been run.",
+        "CircleAI.Speech and CircleAI.Voice define two overlapping, incompatible contract families."
+      ],
+      "Notes": [
+        "Two claims previously in this file were WRONG and are corrected here:",
+        "(a) 'No wake-word model exists, so Hey B cannot trigger.' There are TWO detectors. KwsWakeWordDetector needs a KWS model; EnergyWakeWordDetector does NOT — it combines energy VAD with transcribe-and-string-match and its default wake word is literally 'hey b'. It does need a transcriber, and running one continuously is a battery problem, which is the real argument for a dedicated KWS model.",
+        "(b) 'Voice cannot be tested without weights.' EnergyVadDetector is pure managed DSP over PCM — no model, no microphone, no device."
+      ]
+    },
+    {
+      "Id": "voice.cloud",
+      "Name": "Cloud speech providers",
+      "Status": "partial",
+      "Summary": "Speech-to-text and text-to-speech via twelve hosted backends behind one contract.",
+      "Package": "CircleAI.Speech.Cloud",
+      "EntryPoint": "src/CircleAI.Speech.Cloud/ServiceCollectionExtensions.cs",
+      "Seam": "CircleAI.Speech contracts",
+      "VerifiedBy": [ "Circle33CloudSttTests", "Circle33CloudTtsTests" ],
+      "Requires": [ "Per-provider API keys — none supplied, so this is unverified against any live provider." ],
+      "Limits": [
+        "Batch only — no streaming partial transcripts.",
+        "Sends audio off-device, against the on-device-data stance. Opt-in fallback only."
+      ]
+    },
+    {
+      "Id": "voice.platform",
+      "Name": "Platform speech wrapper (Android SpeechRecognizer / TextToSpeech)",
+      "Status": "rejected",
+      "Summary": "Would use the phone's own recogniser and TTS — free, preinstalled, no model download.",
+      "Package": "(none)",
+      "EntryPoint": null,
+      "Seam": "CircleAI.Voice.IVoiceTranscriber, ITtsEngine",
+      "VerifiedBy": [],
+      "Limits": [
+        "REJECTED 2026-07-20 on the de-Googled rule. android.speech.SpeechRecognizer is Google-backed in practice, so it is a GMS dependency wearing an Android-framework costume. microG is not an acceptable substitute — it still proxies.",
+        "It also cannot run on the primary test handset: the Huawei P30 Lite has no GMS.",
+        "Nuance: android.speech.tts.TextToSpeech IS a pluggable framework, not inherently Google — eSpeak NG and RHVoice are installable engines. Platform TTS is therefore acceptable as a FALLBACK, but never a default, since it depends on the user having installed an engine.",
+        "Replaced by speech.catalogue (open stack)."
+      ]
+    },
+    {
+      "Id": "speech.catalogue",
+      "Name": "De-Googled speech model ladder",
+      "Status": "partial",
+      "Summary": "Open ASR + TTS models catalogued on Hugging Face, selected per device by modality — acquisition works; on-device synthesis does not yet.",
+      "Package": "CircleAI.Core",
+      "EntryPoint": "src/CircleAI.Inference/SpeechModelSelector.cs#BestFor",
+      "Seam": "CircleAI.Inference.ISpeechModelSelector",
+      "VerifiedBy": [ "SpeechModelSelectorTests", "ModelModalityTests", "RegistryDriftTests", "PiperVoiceConfigTests" ],
+      "Measured": {
+        "Device": "Windows x64 host — real ladder end to end, plus in the IT! sample",
+        "Date": "2026-07-21",
+        "Result": "TTS SYNTHESIS + FULL SAMPLE LOOP WORK. (1) Engine: IPA 'həlˈoʊ wˈɚld' → en_US-lessac-medium → 0.89 s @ 22050 Hz, RMS 0.1148 — real speech WAV. (2) IT! sample `--speak`: SpeechModelSelector picked Piper (Good) → ModelDownloadService fetched it from HuggingFace → espeak-ng phonemised → OnnxTtsEngine synthesised all 5 demo replies to WAVs whose durations track reply length (1.6 s 'IT out.' … 19.1 s reasoning reply), RMS 0.07–0.12. Arbitrary LLM-shaped text spoken, not fixed phonemes."
+      },
+      "Requires": [
+        "The ModelScope-only downloader was extended to Hugging Face (ModelSource.HuggingFace) so these are reachable.",
+        "Arbitrary English text → IPA needs espeak-ng (EspeakPhonemizer). Absent it, the engine still synthesises from supplied phonemes (PassthroughPhonemizer)."
+      ],
+      "Limits": [
+        "SYNTHESIS is now proven (Piper): OnnxTtsEngine was rewritten to feed phoneme ids in Piper's real BOS/pad/EOS layout from phoneme_id_map, at the config's sample rate — replacing the codepoint+1 stub that produced silence. Proven with real audio on a Windows host.",
+        "TEXT front end is the remaining seam: EspeakPhonemizer shells to espeak-ng, which is not present on every host and must be bundled + P/Invoked on Android/iOS. Where it is absent, arbitrary-text TTS does not run, but phoneme-in TTS does.",
+        "ASR (Whisper-tiny) is catalogued (real pins) but UN-RUNNABLE, not merely unrun: WhisperInterop P/Invokes whisper.dll / libwhisper.so and NO whisper native library ships anywhere in the repo or via NuGet (CircleAI.Voice references only Microsoft.ML.OnnxRuntime). So WhisperTranscriber would throw DllNotFoundException on every platform — the exact defect class the MNN packaging gap was. Closing it needs whisper.cpp natives built for each RID, or a from-scratch ONNX-Whisper transcriber on the already-shipping OnnxRuntime (as OnnxTtsEngine does for TTS). Found 2026-07-21.",
+        "Not yet run on a physical device — the audio proof is a Windows host, not the Huawei.",
+        "Only the floor rung exists. Kokoro/LuxTTS (TTS) and Zipformer (streaming ASR) are not catalogued.",
+        "VAD and wake-word MODELS (ten-vad, openWakeWord) are still absent — EnergyVadDetector/EnergyWakeWordDetector already work without weights, so this is an upgrade not a floor gap.",
+        "FIT is not FUNCTION: MinRamGb/QualityRank are conservative estimates, not SelfBench measurements.",
+        "None of this covers South African languages (isiZulu, isiXhosa, Sesotho). English-first is shippable but a real competitive gap."
+      ]
+    },
+    {
+      "Id": "vision.chat",
+      "Name": "Vision chat",
+      "Status": "scaffold",
+      "Summary": "Answers questions about an image.",
+      "Package": "CircleAI.Inference",
+      "EntryPoint": "src/CircleAI.Inference/KimiVlGenerator.cs",
+      "Seam": "CircleAI.Inference.IChatGenerator",
+      "VerifiedBy": [ "DeviceAwareModelSelectorRegistryTests" ],
+      "Limits": [
+        "No vision model is catalogued, so the selector can never choose one and Vision requests throw. That throw IS tested, so the current behaviour is honest — the feature simply does not exist.",
+        "KimiVlGenerator has never been executed."
+      ]
+    }
+  ]
+}

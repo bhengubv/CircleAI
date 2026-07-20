@@ -276,6 +276,12 @@ namespace CircleAI.Core.Models
             PropertyNameCaseInsensitive = true,
             ReadCommentHandling = JsonCommentHandling.Skip,
             AllowTrailingCommas = true,
+            // Required so Modality / Source deserialize from their NAMES ("Tts",
+            // "HuggingFace"). Without it System.Text.Json wants the numeric enum
+            // value and a string throws — which would take the whole registry
+            // load down. Backward-compatible: existing entries carry neither
+            // field, so they default to Chat / ModelScope untouched.
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
         };
 
         /// <summary>
@@ -344,6 +350,22 @@ namespace CircleAI.Core.Models
     {
         /// <summary>ModelScope repo path (e.g. <c>MNN/Qwen3-0.6B-MNN</c>) for bundle entries.</summary>
         public string? Repo { get; init; }
+
+        /// <summary>
+        /// Where this bundle's files are fetched from. Defaults to
+        /// <see cref="ModelSource.ModelScope"/> so every chat entry is unchanged;
+        /// speech models on Hugging Face set <see cref="ModelSource.HuggingFace"/>.
+        /// </summary>
+        public ModelSource Source { get; init; } = ModelSource.ModelScope;
+
+        /// <summary>
+        /// What KIND of model this is. Defaults to <see cref="ModelModality.Chat"/>
+        /// so every entry catalogued before modality existed keeps its meaning.
+        /// The chat selector filters to <see cref="ModelModality.Chat"/>, so a
+        /// speech entry (Asr/Tts/Vad/WakeWord) is invisible to chat selection and
+        /// cannot be loaded as a reasoning core by mistake.
+        /// </summary>
+        public ModelModality Modality { get; init; } = ModelModality.Chat;
 
         /// <summary>Sum of every <see cref="BundleFile.SizeBytes"/> when this is a bundle entry; 0 otherwise.</summary>
         public long TotalBytes { get; init; }
