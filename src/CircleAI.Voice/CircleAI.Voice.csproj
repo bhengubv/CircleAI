@@ -24,5 +24,15 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.21.0" />
+    <!-- Whisper ASR. Whisper.net wraps whisper.cpp AND ships its native library
+         per-RID via NuGet, closing the "no whisper.dll ships" gap by construction
+         — the same way Microsoft.ML.OnnxRuntime ships ONNX natives. Whisper.net
+         is de-Googled (whisper.cpp, MIT) and loads the ggml-tiny model the
+         registry already catalogues. Proven via tools/stt-hear (JFK sample
+         transcribed verbatim on Windows, 2026-07-21). Whisper.net.Runtime is the
+         desktop/server native package; Android/iOS heads add the matching
+         Whisper.net.Runtime.<rid> package, mirroring the MNN native-lib story. -->
+    <PackageReference Include="Whisper.net" Version="1.8.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
   </ItemGroup>
 </Project>

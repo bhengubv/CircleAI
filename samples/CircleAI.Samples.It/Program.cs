@@ -54,6 +54,37 @@ async Task Say(string reply)
     catch (Exception ex) { Console.WriteLine($"   (tts failed: {ex.Message})"); }
 }
 
+// --hear <wav>: IT! LISTENS. Transcribe the WAV via the real de-Googled ASR
+// ladder (select Asr by modality → download whisper-tiny from HF → Whisper.net),
+// then treat the text as the user's turn. With --speak too, the whole loop runs:
+// audio in → text → IT! → text → audio out.
+var hearIdx = Array.IndexOf(args, "--hear");
+var hearWav = hearIdx >= 0 && hearIdx + 1 < args.Length ? args[hearIdx + 1] : null;
+if (hearWav is not null)
+{
+    Console.WriteLine("  --hear: setting up ears…");
+    var earStore = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+    var (listener, lstatus) = await ItListener.TryCreateAsync(earStore, Console.WriteLine);
+    if (listener is null)
+    {
+        Console.WriteLine($"  ears OFF: {lstatus}");
+    }
+    else
+    {
+        await using (listener)
+        {
+            Console.WriteLine($"  listening to: {hearWav}");
+            var heard = await listener.HearAsync(hearWav);
+            Console.WriteLine($"\nyou (spoken) > {heard}");
+            var reply = await session.RunTurnStreamingAsync(heard, Console.WriteLine, Console.Write);
+            Console.WriteLine();
+            await Say(reply);
+        }
+    }
+    if (!args.Contains("--demo")) { speaker?.Dispose(); Console.WriteLine("IT out."); return; }
+}
+
 // --demo: run the scripted conversation and exit (no keyboard needed).
 if (args.Contains("--demo"))
 {
