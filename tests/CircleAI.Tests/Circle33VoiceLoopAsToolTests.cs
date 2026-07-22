@@ -69,14 +69,29 @@ public class Circle33VoiceLoopAsToolTests
     [Fact]
     public async Task Invoke_RespectsCallerCancellation()
     {
-        var tool = new VoiceLoopAsTool((_, ct) => Task.Run(async () =>
+        // DETERMINISTIC: the token is already cancelled before the call, and the
+        // runner blocks on a TCS the test controls — nothing depends on the
+        // scheduler winning a 50 ms race.
+        //
+        // The old version did cts.CancelAfter(50) against a Task.Delay(5000).
+        // Under load (full-suite run on a busy box) the 50 ms timer could fire
+        // late enough that the assertion had already been evaluated, so this
+        // failed intermittently — 7/7 alone, red inside a 13-minute run. A test
+        // that fails at random trains people to ignore red, which is how real
+        // regressions get waved through.
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var tool = new VoiceLoopAsTool(async (_, ct) =>
         {
-            await Task.Delay(5000, ct);
+            started.TrySetResult();
+            await using (ct.Register(() => release.TrySetCanceled(ct)))
+                await release.Task;               // completes only via cancellation
             return new VoiceLoopToolResult(true, "", "", TimeSpan.Zero, "", null);
-        }));
+        });
 
         using var cts = new CancellationTokenSource();
-        cts.CancelAfter(50);
+        cts.Cancel();                             // already cancelled — no timing window
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             tool.InvokeAsync(new VoiceLoopToolRequest("+1", "goal", MaxDuration: TimeSpan.FromMinutes(5)), cts.Token));

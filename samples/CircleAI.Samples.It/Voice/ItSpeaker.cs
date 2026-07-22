@@ -38,6 +38,13 @@ public sealed class ItSpeaker : IDisposable
     private ItSpeaker(OnnxTtsEngine engine) => _engine = engine;
 
     /// <summary>
+    /// The loaded TTS engine, so a caller can hand it to a
+    /// <see cref="VoiceLoop"/> and speak straight to the device speaker instead
+    /// of via a WAV file. Same instance — the voice model is loaded once.
+    /// </summary>
+    public ITtsEngine Engine => _engine;
+
+    /// <summary>
     /// Selects the best TTS voice the device can hold, downloads it (first run),
     /// and wires the synthesis engine. Returns null with a reason when the chain
     /// cannot be completed (no voice catalogued, or espeak-ng absent) — the
@@ -50,15 +57,29 @@ public sealed class ItSpeaker : IDisposable
         var selector = new SpeechModelSelector(registry);
 
         var probe = DeviceProbe.Snapshot();
-        var pick = selector.BestFor(probe, ModelModality.Tts);
-        if (pick is null)
-            return (null, "no TTS voice is catalogued");
 
-        var espeak = ResolveEspeak();
-        // Fail fast on the one dependency this needs, with an actionable message
-        // — a silent text-only fallback would hide why IT! never spoke.
-        if (espeak is null && !EspeakOnPath())
-            return (null, "espeak-ng not found (install it or add to PATH) — TTS needs it for arbitrary text");
+        // Plan, not a nullable pick — see ItListener. TTS likewise has no
+        // non-model fallback (the de-Googled rule rules out the platform engine),
+        // so unavailable means silent, and the plan says why in one sentence.
+        var plan = selector.PlanFor(probe, ModelModality.Tts);
+        if (!plan.IsAvailable || plan.Model is null)
+            return (null, plan.Reason);
+
+        var pick = plan.Model;
+
+        // PHONEMIZER CHOICE IS PLATFORM-DEPENDENT.
+        // Android/iOS have no espeak-ng *executable* to shell to, so the process
+        // phonemizer is desktop-only; mobile must bind libespeak-ng in-process.
+        var onMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+        string? espeak = null;
+        if (!onMobile)
+        {
+            espeak = ResolveEspeak();
+            // Fail fast on the one dependency this needs, with an actionable
+            // message — a silent text-only fallback would hide why IT! never spoke.
+            if (espeak is null && !EspeakOnPath())
+                return (null, "espeak-ng not found (install it or add to PATH) — TTS needs it for arbitrary text");
+        }
 
         var entry = registry.GetLatestModel(pick.ModelId);
         if (entry is null)
@@ -74,11 +95,15 @@ public sealed class ItSpeaker : IDisposable
             specs.Add(new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes));
 
         using var downloads = new ModelDownloadService(storageDir);
+        // See ItListener — MB / rate / ETA / file N of M / phase, not a bare %.
         var lastPct = -1;
-        var progress = new Progress<double>(p =>
+        var progress = new Progress<DownloadProgress>(p =>
         {
-            var pct = (int)(p * 100);
-            if (pct >= lastPct + 10) { lastPct = pct; log?.Invoke($"  download {pct}%"); }
+            var pct = (int)(p.Ratio * 100);
+            var notable = p.Phase is not DownloadPhase.Downloading;
+            if (!notable && pct < lastPct + 5) return;
+            if (!notable) lastPct = pct;
+            log?.Invoke($"  {p.Describe()}");
         });
 
         var dir = await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs, progress, ct)
@@ -90,8 +115,13 @@ public sealed class ItSpeaker : IDisposable
         if (onnx is null)
             return (null, $"no .onnx found under '{dir}'");
 
-        var engine = new OnnxTtsEngine(onnx, new EspeakPhonemizer("en-us", espeak));
-        log?.Invoke($"engine  : OnnxTtsEngine on {Path.GetFileName(onnx)} (espeak {(espeak ?? "on PATH")})");
+        IPhonemizer phonemizer = onMobile
+            ? new NativeEspeakPhonemizer("en-us")           // P/Invoke libespeak-ng
+            : new EspeakPhonemizer("en-us", espeak);         // shell to the binary
+
+        var engine = new OnnxTtsEngine(onnx, phonemizer);
+        log?.Invoke($"engine  : OnnxTtsEngine on {Path.GetFileName(onnx)} " +
+                    $"({(onMobile ? "native espeak" : espeak ?? "espeak on PATH")})");
         return (new ItSpeaker(engine), "ready");
     }
 

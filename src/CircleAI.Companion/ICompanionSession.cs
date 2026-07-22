@@ -6,6 +6,8 @@
 // synchronised across all other active sessions for the same identity.
 
 using System.Runtime.CompilerServices;
+using CircleAI.Core;        // ModelModality, DeviceProbe
+using CircleAI.Inference;   // ModalityPlan, SelectionQuality
 
 namespace CircleAI.Companion;
 
@@ -87,4 +89,29 @@ public interface ICompanionSession : IAsyncDisposable
     /// e.g. a goal check-in, a mood-triggered nudge, or a scheduled reminder.
     /// </summary>
     event EventHandler<CompanionProactiveEvent>? ProactiveMessageReady;
+
+    // ── Capability ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Whether a non-chat modality (vision, ASR, TTS, VAD, wake word) can be
+    /// served on this device, and how — a model, a built-in heuristic, or not
+    /// at all. Ask before offering the capability.
+    /// </summary>
+    /// <remarks>
+    /// On the INTERFACE, not just <see cref="CompanionSession"/>: hosts hold an
+    /// <see cref="ICompanionSession"/>, so a method on the class alone would
+    /// leave them unable to ask — exactly the defect this seam exists to remove.
+    /// <para>
+    /// Default returns <see cref="SelectionQuality.Unavailable"/>. An
+    /// implementation that has not wired a brain cannot know what models are
+    /// installed, and answering "available" would be the false claim the whole
+    /// seam is meant to prevent.
+    /// </para>
+    /// </remarks>
+    ModalityPlan PlanFor(ModelModality modality, DeviceProbe? probe = null)
+        => new(SelectionQuality.Unavailable, null,
+               $"this {nameof(ICompanionSession)} cannot select models, so {modality} is unavailable");
+
+    /// <summary>Can this modality be served at all — by a model OR a built-in?</summary>
+    bool CanServe(ModelModality modality) => PlanFor(modality).IsAvailable;
 }

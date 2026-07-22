@@ -11,6 +11,7 @@ public sealed class SkillContextBuilder
 {
     private readonly ISkillStore _store;
     private readonly int _maxSkills;
+    private readonly int _maxChars;
 
     /// <summary>
     /// Initialises the builder.
@@ -19,12 +20,20 @@ public sealed class SkillContextBuilder
     /// <param name="maxSkills">
     /// Maximum number of skills to include in the context block. Default 5.
     /// </param>
-    public SkillContextBuilder(ISkillStore store, int maxSkills = 5)
+    /// <param name="maxChars">
+    /// Hard ceiling on the emitted block. Default 1500 chars (~400 tokens) so
+    /// skill context cannot crowd out the conversation on a small on-device
+    /// model — measured: an unbounded block took a Huawei sweep from 4m33s to
+    /// over 20 minutes.
+    /// </param>
+    public SkillContextBuilder(ISkillStore store, int maxSkills = 5, int maxChars = 1500)
     {
         ArgumentNullException.ThrowIfNull(store);
         if (maxSkills < 1) throw new ArgumentOutOfRangeException(nameof(maxSkills), "Must be at least 1.");
+        if (maxChars < 100) throw new ArgumentOutOfRangeException(nameof(maxChars), "Must be at least 100.");
         _store = store;
         _maxSkills = maxSkills;
+        _maxChars = maxChars;
     }
 
     /// <summary>
@@ -41,11 +50,19 @@ public sealed class SkillContextBuilder
         if (string.IsNullOrWhiteSpace(userQuery))
             return string.Empty;
 
-        // Search for matching skills; fall back to the full list if nothing matches.
         var matches = await _store.SearchAsync(userQuery, cancellationToken).ConfigureAwait(false);
 
+        // NO-MATCH => COMPACT MODE, not "dump everything".
+        //
+        // This used to fall back to the full skill list WITH full Instructions on
+        // every unmatched turn. Measured on a Huawei P30 Lite (2026-07-21): with
+        // a capability-manifest store behind it, that pushed the on-device sweep
+        // from 4m33s to >20m — a 0.6B with a 4096-token window spends its whole
+        // budget re-reading skills the turn never asked about. Compact mode gives
+        // the model an awareness line without the prompt tax.
+        var matched = matches.Count > 0;
         IReadOnlyList<SkillSummary> candidates;
-        if (matches.Count > 0)
+        if (matched)
         {
             candidates = matches.Take(_maxSkills).ToList();
         }
@@ -53,7 +70,9 @@ public sealed class SkillContextBuilder
         {
             var all = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
             if (all.Count == 0) return string.Empty;
-            candidates = all.Take(_maxSkills).ToList();
+
+            var names = all.Take(_maxSkills).Select(s => s.Id);
+            return "## Available Skills (names only; ask to expand)\n" + string.Join(", ", names) + "\n";
         }
 
         // Load full detail so we can include instructions.
@@ -63,6 +82,17 @@ public sealed class SkillContextBuilder
         foreach (var summary in candidates)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Hard character budget. On a 4096-token window a few verbose skills
+            // can crowd out the actual conversation, which is how this block
+            // silently degraded answer quality AND speed on-device.
+            if (sb.Length >= _maxChars)
+            {
+                sb.AppendLine();
+                sb.AppendLine("(further skills omitted to preserve context budget)");
+                break;
+            }
+
             var detail = await _store.GetAsync(summary.Id, cancellationToken).ConfigureAwait(false);
             if (detail is null) continue;
 
@@ -70,8 +100,11 @@ public sealed class SkillContextBuilder
             sb.AppendLine($"**{detail.Id}** — {detail.Description}");
             if (!string.IsNullOrWhiteSpace(detail.Instructions))
             {
-                // Indent instructions for readability inside the system prompt.
-                foreach (var line in detail.Instructions.Split('\n'))
+                var remaining = Math.Max(0, _maxChars - sb.Length);
+                var text = detail.Instructions.Length > remaining
+                    ? detail.Instructions[..remaining] + " …"
+                    : detail.Instructions;
+                foreach (var line in text.Split('\n'))
                     sb.AppendLine($"  {line}");
             }
         }

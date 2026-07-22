@@ -15,7 +15,7 @@ namespace CircleAI.Inference;
 /// Picks a model by walking the embedded <see cref="ModelRegistryService"/>,
 /// filtering on capability + device fit, and ranking by <c>QualityRank</c>.
 /// </summary>
-public sealed class DeviceAwareModelSelector : IModelSelector
+public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
 {
     private readonly ModelRegistryService _registry;
     private readonly bool _ownsRegistry;
@@ -170,6 +170,17 @@ public sealed class DeviceAwareModelSelector : IModelSelector
             cursor = entry.FallbackModelId ?? string.Empty;
         }
         return chain;
+    }
+
+    /// <summary>
+    /// Disposes the registry ONLY when this selector created it. _ownsRegistry
+    /// was tracked but never acted on (CS0414: assigned, never used) — the
+    /// parameterless ctor built a ModelRegistryService and leaked it.
+    /// A caller-supplied registry is never disposed here; it belongs to them.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_ownsRegistry) _registry.Dispose();
     }
 
     private static bool SatisfiesCapability(ModelEntry entry, ChatCapability required)

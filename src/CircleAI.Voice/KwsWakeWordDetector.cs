@@ -48,7 +48,7 @@ public enum KwsInputKind { LogMel, RawWaveform }
 /// <param name="MinIntervalBetweenFires">Cooldown so a single utterance doesn't fire repeatedly.</param>
 public sealed record KwsConfig(
     string         ModelPath,
-    string         WakeWord                  = "hey b",
+    string         WakeWord                  = EnergyWakeWordDetector.DefaultWakeWord,
     KwsInputKind   InputKind                 = KwsInputKind.LogMel,
     int            SampleRateHz              = 16_000,
     int            WindowMs                  = 1000,
@@ -98,10 +98,34 @@ public sealed class KwsWakeWordDetector : IWakeWordDetector
         _inputName  = _session.InputMetadata.Keys.First();
         _outputName = _session.OutputMetadata.Keys.First();
 
-        WakeWord = config.WakeWord;
+        WakeWord  = config.WakeWord;
+        WakeWords = new[] { config.WakeWord };
     }
 
     public string WakeWord    { get; }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// ALWAYS a single phrase, and that is a real limitation rather than an
+    /// oversight: a KWS model scores the one phrase it was trained on, so this
+    /// detector cannot implement a per-person access list. It reports a
+    /// one-entry list honestly instead of accepting several and silently
+    /// matching only the first — which would look like access control while
+    /// granting everyone the same key.
+    /// <para>
+    /// A host that needs multiple phrases must use
+    /// <see cref="EnergyWakeWordDetector"/> (transcribe-and-match, any number of
+    /// phrases, more battery) or run one KWS model per phrase.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> WakeWords { get; }
+
+    /// <summary>
+    /// <c>false</c> — see <see cref="WakeWords"/>. Lets a caller check before
+    /// assuming a supplied access list will be honoured.
+    /// </summary>
+    public bool SupportsPerPhraseMatching => false;
+
     public bool   IsListening { get; private set; }
     public event EventHandler<WakeWordDetectedEventArgs>? WakeWordDetected;
 
@@ -141,9 +165,19 @@ public sealed class KwsWakeWordDetector : IWakeWordDetector
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
-        _disposed = true;
+
+        // STOP FIRST, THEN MARK DISPOSED. StopAsync guards on _disposed, so
+        // setting the flag first made this throw ObjectDisposedException every
+        // time — and because the throw escaped (the catch only covers
+        // cancellation), _session.Dispose() below never ran. Every teardown
+        // leaked the native ONNX session.
         try { await StopAsync().ConfigureAwait(false); }
         catch (OperationCanceledException) { /* tear-down */ }
+
+        _disposed = true;
+
+        // Outside the try: the session must be released even if stopping the
+        // loop failed for some other reason.
         _session.Dispose();
     }
 

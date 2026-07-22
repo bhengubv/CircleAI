@@ -11,6 +11,14 @@ namespace CircleAI.Core
     /// platform layer. Maps to Android <c>PowerManager.ThermalStatus</c>,
     /// iOS/macOS <c>ProcessInfo.thermalState</c>, and HarmonyOS thermal APIs.
     /// </summary>
+    /// <remarks>
+    /// NAME COLLISION — there is also <c>CircleAI.Hosting.ThermalState</c>.
+    /// Importing both namespaces yields <c>CS0104: ambiguous reference</c>;
+    /// qualify the one you mean. This enum is the raw DEVICE reading surfaced by
+    /// <c>IDeviceContext</c>; the Hosting one is the throttling ladder and is
+    /// numbered differently (Unknown = 0). They must not be merged without
+    /// renumbering every comparison and persisted value.
+    /// </remarks>
     public enum ThermalState
     {
         /// <summary>

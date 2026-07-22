@@ -9,6 +9,7 @@
 // goes THROUGH the brain, and exposes it (Brain) so a CompanionSession can sit on
 // top unchanged.
 
+using CircleAI.Core;        // ModelModality, DeviceProbe
 using CircleAI.Hosting.Chat;
 using CircleAI.Inference;
 
@@ -61,6 +62,24 @@ public sealed class NeuronNode : IChatRuntime, IPersistableChatRuntime
 
     /// <inheritdoc />
     public string StatusMessage => _brain.IsReady ? "ready" : "loading model…";
+
+    /// <summary>
+    /// Whether the Neuron can serve a non-chat modality on this device, and how.
+    /// Hosts should ask before putting a camera or microphone button on screen.
+    /// </summary>
+    /// <remarks>
+    /// Delegates straight to the brain — the Neuron does not get a second
+    /// opinion about what models exist. One selector, one answer, so the UI and
+    /// the inference path can never disagree about whether B! can see or hear.
+    /// </remarks>
+    public ModalityPlan PlanFor(ModelModality modality, DeviceProbe? probe = null)
+        => _brain.PlanFor(modality, probe);
+
+    /// <summary>
+    /// Convenience over <see cref="PlanFor"/>: can this modality be served at
+    /// all, by a model OR a built-in? Use to enable/disable a control.
+    /// </summary>
+    public bool CanServe(ModelModality modality) => PlanFor(modality).IsAvailable;
 
     /// <inheritdoc />
     public async IAsyncEnumerable<string> StreamAsync(

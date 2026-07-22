@@ -23,6 +23,30 @@ using CircleAI.Core.Models;
 
 namespace CircleAI.Inference;
 
+/// <summary>
+/// How a modality can be served on this device — the selector's decision, so
+/// each caller does not re-derive it from a bare null.
+/// </summary>
+/// <param name="Quality">
+/// <see cref="SelectionQuality.Good"/>/<see cref="SelectionQuality.BelowFloor"/>/
+/// <see cref="SelectionQuality.NothingFits"/> mean "use <paramref name="Model"/>".
+/// <see cref="SelectionQuality.HeuristicFallback"/> means "use the built-in, no
+/// model". <see cref="SelectionQuality.Unavailable"/> means "decline".
+/// </param>
+/// <param name="Model">The model to load, or <c>null</c> for fallback/unavailable.</param>
+/// <param name="Reason">Human-readable justification, safe to show a user or log.</param>
+public sealed record ModalityPlan(
+    SelectionQuality Quality,
+    ModelSelection?  Model,
+    string           Reason)
+{
+    /// <summary>The capability can be served at all — by a model OR the built-in.</summary>
+    public bool IsAvailable => Quality != SelectionQuality.Unavailable;
+
+    /// <summary>Serve this modality without loading anything.</summary>
+    public bool UsesBuiltIn => Quality == SelectionQuality.HeuristicFallback;
+}
+
 /// <summary>Picks the best speech model of a given modality the device can hold.</summary>
 public interface ISpeechModelSelector
 {
@@ -31,17 +55,51 @@ public interface ISpeechModelSelector
     /// when none of that modality is catalogued. <see cref="ModelSelection.Quality"/>
     /// reports fit-vs-function exactly as the chat selector does.
     /// </summary>
+    /// <remarks>
+    /// A <c>null</c> here is ambiguous by construction — it cannot distinguish
+    /// "nothing catalogued but the built-in covers it" from "cannot be done at
+    /// all". Prefer <see cref="PlanFor"/>, which answers the question callers
+    /// actually have. This overload is kept because existing callers bind to it.
+    /// </remarks>
     ModelSelection? BestFor(DeviceProbe probe, ModelModality modality, int minQualityRank = 0);
 
     /// <summary>Every catalogued model of a modality, quality-ranked, with fit marked.</summary>
     IReadOnlyList<ModelSelection> CandidatesFor(DeviceProbe probe, ModelModality modality);
+
+    /// <summary>
+    /// How to serve <paramref name="modality"/> on this device: load a model,
+    /// use the built-in heuristic, or decline. This is THE decision — callers
+    /// should branch on it rather than null-checking <see cref="BestFor"/>.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation so existing <see cref="ISpeechModelSelector"/>
+    /// implementers (test fakes included) keep compiling. It is deliberately
+    /// conservative: knowing nothing about built-ins, it can only report
+    /// model-or-<see cref="SelectionQuality.Unavailable"/>. The real selector
+    /// overrides it with the fallback table.
+    /// </remarks>
+    ModalityPlan PlanFor(DeviceProbe probe, ModelModality modality, int minQualityRank = 0)
+    {
+        var pick = BestFor(probe, modality, minQualityRank);
+        return pick is null
+            ? new ModalityPlan(SelectionQuality.Unavailable, null,
+                $"no {modality} model is catalogued")
+            : new ModalityPlan(pick.Quality, pick, $"{pick.ModelId} ({pick.Quality})");
+    }
 }
 
 /// <summary>
 /// <see cref="ISpeechModelSelector"/> over the embedded registry. Filters to the
-/// requested speech modality — it will never return a chat model, and the chat
+/// requested modality — it will never return a chat model, and the chat
 /// selector will never return one of these.
 /// </summary>
+/// <remarks>
+/// Named for speech because that was its first job, but it is really the
+/// selector for every NON-chat modality: <see cref="ModelModality.Vision"/> is
+/// selected here too, on the same device-fit maths. Kept under the existing name
+/// rather than renamed, because the name is load-bearing at several call sites
+/// and a rename buys nothing but churn.
+/// </remarks>
 public sealed class SpeechModelSelector : ISpeechModelSelector
 {
     private readonly ModelRegistryService _registry;
@@ -89,6 +147,51 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
             EstimatedBytes:   winner.TotalBytes,
             Tier:             tier,
             Quality:          quality);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The fallback table below is the whole point of this method, and every row
+    /// is a claim about code that actually ships — do not add a row without the
+    /// implementation to back it, or the selector starts lying about what the
+    /// device can do.
+    /// </remarks>
+    public ModalityPlan PlanFor(DeviceProbe probe, ModelModality modality, int minQualityRank = 0)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+
+        var pick = BestFor(probe, modality, minQualityRank);
+        if (pick is not null)
+            return new ModalityPlan(pick.Quality, pick,
+                $"{pick.ModelId} selected for {modality} ({pick.Quality})");
+
+        // Nothing catalogued. Is there a built-in that needs no model?
+        switch (modality)
+        {
+            // EnergyVadDetector is pure RMS arithmetic over the PCM frames — no
+            // model, no download, runs on anything. VAD is never unavailable.
+            case ModelModality.Vad:
+                return new ModalityPlan(SelectionQuality.HeuristicFallback, null,
+                    "no VAD model catalogued; using built-in energy VAD (works, lower accuracy in noise)");
+
+            // EnergyWakeWordDetector has no wake model either — it TRANSCRIBES
+            // short segments and string-matches. So its fallback is only real if
+            // ASR itself can be served; without ASR there is nothing to match on.
+            case ModelModality.WakeWord:
+                var asr = BestFor(probe, ModelModality.Asr);
+                return asr is null
+                    ? new ModalityPlan(SelectionQuality.Unavailable, null,
+                        "no wake-word model catalogued, and the energy detector's ASR fallback has no ASR model either")
+                    : new ModalityPlan(SelectionQuality.HeuristicFallback, null,
+                        $"no wake-word model catalogued; using energy VAD + '{asr.ModelId}' transcribe-and-match " +
+                        "(works, costs more battery than a keyword spotter)");
+
+            // ASR, TTS and Vision have no non-model implementation. Saying
+            // otherwise would mean claiming a capability that cannot run.
+            default:
+                return new ModalityPlan(SelectionQuality.Unavailable, null,
+                    $"no {modality} model is catalogued and there is no built-in fallback for it");
+        }
     }
 
     /// <inheritdoc/>

@@ -35,4 +35,15 @@ public enum ModelModality
 
     /// <summary>Wake-word / keyword spotting (openWakeWord).</summary>
     WakeWord,
+
+    /// <summary>
+    /// Vision / multimodal image understanding (Qwen-VL, SmolVLM, MiniCPM-V).
+    /// </summary>
+    /// <remarks>
+    /// Catalogued as its own modality rather than a <c>ChatCapability</c> flag
+    /// because a VLM bundle carries a separate vision encoder alongside the LLM
+    /// weights — the device-fit maths differs, and a text-only chat selection
+    /// must never return one by accident.
+    /// </remarks>
+    Vision,
 }

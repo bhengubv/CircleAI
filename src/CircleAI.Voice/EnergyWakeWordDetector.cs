@@ -21,6 +21,14 @@ namespace CircleAI.Voice;
 /// </remarks>
 public sealed class EnergyWakeWordDetector : IWakeWordDetector
 {
+    /// <summary>
+    /// Longest speech segment still considered a wake-phrase candidate. Anything
+    /// longer is conversation and is dropped WITHOUT transcription — see the
+    /// duration gate in the listen loop. Generous enough for "hey b" plus a
+    /// little leading/trailing speech.
+    /// </summary>
+    public double MaxWakePhraseSeconds { get; init; } = 2.5;
+
     private readonly IAudioCapture _capture;
     private readonly IVoiceTranscriber _transcriber;
     private readonly EnergyVadDetector _vad;
@@ -50,21 +58,59 @@ public sealed class EnergyWakeWordDetector : IWakeWordDetector
     public EnergyWakeWordDetector(
         IAudioCapture capture,
         IVoiceTranscriber transcriber,
-        string wakeWord = "hey b",
+        string wakeWord = DefaultWakeWord,
+        float energyThreshold = 0.02f)
+        : this(capture, transcriber, new[] { wakeWord }, energyThreshold)
+    {
+    }
+
+    /// <summary>
+    /// Listens for ANY phrase in <paramref name="wakeWords"/> — the access list.
+    /// See <see cref="IWakeWordDetector.WakeWords"/> for what that does and does
+    /// not protect.
+    /// </summary>
+    /// <param name="wakeWords">
+    /// One or more phrases. Blank entries are dropped and duplicates collapsed
+    /// (case-insensitively) so a sloppily-built list cannot produce a detector
+    /// that matches on an empty string — which would fire on every utterance.
+    /// </param>
+    public EnergyWakeWordDetector(
+        IAudioCapture capture,
+        IVoiceTranscriber transcriber,
+        IEnumerable<string> wakeWords,
         float energyThreshold = 0.02f)
     {
         ArgumentNullException.ThrowIfNull(capture);
         ArgumentNullException.ThrowIfNull(transcriber);
-        ArgumentException.ThrowIfNullOrWhiteSpace(wakeWord);
+        ArgumentNullException.ThrowIfNull(wakeWords);
+
+        var list = wakeWords
+            .Where(w => !string.IsNullOrWhiteSpace(w))
+            .Select(w => w.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (list.Length == 0)
+            throw new ArgumentException(
+                "At least one wake phrase is required. An empty list would match nothing " +
+                "and present as a dead microphone rather than a misconfiguration.",
+                nameof(wakeWords));
 
         _capture = capture;
         _transcriber = transcriber;
-        WakeWord = wakeWord.Trim();
+        WakeWords = list;
+        WakeWord = list[0];
         _vad = new EnergyVadDetector(energyThreshold, silenceFrames: 10, frameSizeBytes: 640);
     }
 
+    /// <summary>The product default. "Butler" is internal-only and never spoken.</summary>
+    public const string DefaultWakeWord = "Hey B!";
+
     /// <inheritdoc />
     public string WakeWord { get; }
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> WakeWords { get; }
 
     /// <inheritdoc />
     public bool IsListening { get; private set; }
@@ -139,8 +185,18 @@ public sealed class EnergyWakeWordDetector : IWakeWordDetector
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
-        _disposed = true;
 
+        // STOP FIRST, THEN MARK DISPOSED — order is load-bearing.
+        //
+        // StopAsync opens with ObjectDisposedException.ThrowIf(_disposed), so
+        // setting the flag before calling it made EVERY DisposeAsync throw
+        // ObjectDisposedException. The catch below only covers cancellation, so
+        // it escaped to the caller: stopping voice on the phone threw rather
+        // than releasing the microphone.
+        //
+        // It hid because VoiceLoop.StopAsync wraps _ears.StopAsync() in a
+        // swallowing catch — the throw only surfaced on a direct dispose, which
+        // nothing exercised until there was a test.
         try
         {
             await StopAsync().ConfigureAwait(false);
@@ -149,9 +205,46 @@ public sealed class EnergyWakeWordDetector : IWakeWordDetector
         {
             // Swallow — we're disposing.
         }
+
+        _disposed = true;
     }
 
     // ── Private helpers ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Lowercases, drops everything that is not a letter, digit or space, and
+    /// collapses runs of whitespace — so "Hey B!" and " hey, b. " compare equal.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately keeps digits: a household may well list "Hey B2". Uses
+    /// <see cref="char.IsLetterOrDigit(char)"/> rather than an ASCII range so
+    /// non-English phrases survive normalisation instead of being erased.
+    /// </remarks>
+    public static string Normalise(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+        var sb = new System.Text.StringBuilder(text.Length);
+        var lastWasSpace = true;              // trims the leading space too
+
+        foreach (var ch in text)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                sb.Append(char.ToLowerInvariant(ch));
+                lastWasSpace = false;
+            }
+            else if (!lastWasSpace)
+            {
+                sb.Append(' ');
+                lastWasSpace = true;
+            }
+        }
+
+        // A trailing separator became a single space — drop it.
+        if (sb.Length > 0 && sb[^1] == ' ') sb.Length--;
+        return sb.ToString();
+    }
 
     /// <summary>
     /// Background loop that captures audio, runs VAD, transcribes speech
@@ -169,6 +262,18 @@ public sealed class EnergyWakeWordDetector : IWakeWordDetector
                 ct.ThrowIfCancellationRequested();
 
                 if (!segment.IsSpeech || segment.Audio.Length == 0)
+                    continue;
+
+                // DURATION GATE — the cheapest battery win available here.
+                // A wake phrase ("hey b") is ~1 s. Without this we hand every
+                // utterance to the transcriber, so ordinary conversation in the
+                // room runs ASR continuously — the thing that makes a
+                // transcribe-and-match wake word a battery killer on a cheap
+                // phone. Segments longer than the gate cannot be the wake phrase,
+                // so skip them without ever waking the model.
+                var seconds = segment.Audio.Length /
+                              (double)(AudioFormat.Pcm16Mono16k.SampleRate * 2);
+                if (seconds > MaxWakePhraseSeconds)
                     continue;
 
                 // Transcribe the speech segment.
@@ -192,12 +297,22 @@ public sealed class EnergyWakeWordDetector : IWakeWordDetector
                 if (string.IsNullOrWhiteSpace(result.Text))
                     continue;
 
-                // Check for wake word (case-insensitive).
-                if (result.Text.Contains(WakeWord, StringComparison.OrdinalIgnoreCase))
+                // Match ANY phrase on the access list, comparing NORMALISED text.
+                // A raw Contains would never fire on the product default: the
+                // phrase is written "Hey B!" but a transcriber emits "hey b" —
+                // no exclamation mark, and often a trailing comma or period. The
+                // punctuation is a branding artifact, not something anyone says.
+                var heard = Normalise(result.Text);
+                var matched = WakeWords.FirstOrDefault(
+                    w => heard.Contains(Normalise(w), StringComparison.Ordinal));
+
+                if (matched is not null)
                 {
                     WakeWordDetected?.Invoke(this, new WakeWordDetectedEventArgs
                     {
-                        WakeWord = WakeWord,
+                        // Report the phrase AS CONFIGURED, not as transcribed, so
+                        // a host can tell which listed speaker woke it.
+                        WakeWord = matched,
                         DetectedAt = DateTimeOffset.UtcNow,
                         Confidence = result.Confidence
                     });

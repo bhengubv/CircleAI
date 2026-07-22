@@ -24,6 +24,9 @@ public class MainActivity : Activity
     EditText _input = null!;
     Button _send = null!;
     Button _tools = null!;
+#if IT_VOICE_ANDROID
+    Button _talk = null!;
+#endif
 
     static readonly Color Bg    = Color.ParseColor("#080d14");
     static readonly Color Panel = Color.ParseColor("#0f1927");
@@ -63,6 +66,9 @@ public class MainActivity : Activity
             _send.Enabled = true;
             _tools.Enabled = true;
             _input.Enabled = true;
+#if IT_VOICE_ANDROID
+            _talk.Enabled = true;
+#endif
             _input.RequestFocus();
         }
         catch (Exception ex)
@@ -130,6 +136,17 @@ public class MainActivity : Activity
         row.AddView(_tools, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
+#if IT_VOICE_ANDROID
+        // Hands-free. Only present when the APK was built with voice, because
+        // without the ONNX/whisper natives the button could only ever fail.
+        _talk = new Button(this) { Text = "Talk", Enabled = false };
+        _talk.SetTextColor(Ink);
+        _talk.SetBackgroundColor(Panel);
+        _talk.Click += (s, e) => ToggleVoiceLoop();
+        row.AddView(_talk, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+#endif
+
         _send = new Button(this) { Text = "Send", Enabled = false };
         _send.SetTextColor(Color.White);
         _send.SetBackgroundColor(Blue);
@@ -157,10 +174,15 @@ public class MainActivity : Activity
             // Routing line arrives first, then the reply streams in chunk by chunk.
             // Real decoding blocks in native code, so run the turn off the UI
             // thread — Append() already marshals each chunk back for rendering.
+            //
+            // onThinking is supplied, so the model's <think> trace streams too —
+            // rendered dimmed so it reads as scratchpad, not answer. Without it
+            // the plain StreamAsync path filters reasoning out entirely.
             await Task.Run(() => _session.RunTurnStreamingAsync(
                 text,
                 line => Append(line + "\n"),
-                chunk => Append(chunk)));
+                chunk => Append(chunk),
+                think => AppendThinking(think)));
             Append("\n");
         }
         catch (Exception ex)
@@ -243,6 +265,104 @@ public class MainActivity : Activity
         _send.Enabled  = true;
     }
 
+#if IT_VOICE_ANDROID
+    CircleAI.Voice.VoiceLoop? _voiceLoop;
+    // Held as fields, not locals: these own native ONNX/whisper handles that
+    // must outlive the setup method and be disposed deterministically.
+    CircleAI.Samples.It.Voice.ItSpeaker?  _speaker;
+    CircleAI.Samples.It.Voice.ItListener? _listener;
+
+    /// <summary>
+    /// Hands-free mode: wake word -> VAD -> Whisper -> IT! -> Piper -> speaker,
+    /// using the real microphone and speaker. Only compiled when the APK is
+    /// built with -p:ItVoiceOnAndroid=true, because it pulls ONNX Runtime and
+    /// whisper.cpp natives into the package.
+    /// </summary>
+    async void ToggleVoiceLoop()
+    {
+        // Captured into a local: the brain lambda below outlives this method,
+        // and the compiler cannot carry a null-check on a mutable field into a
+        // closure (CS8602). The local is provably non-null for the loop's life.
+        var brain = _session;
+        if (brain is null) return;
+
+        if (_voiceLoop is not null)
+        {
+            await _voiceLoop.DisposeAsync();
+            _voiceLoop = null;
+
+            // Release the mic and the two models — leaving them resident would
+            // hold AudioRecord open and keep ~100 MB of ASR/TTS weights in a
+            // process that already runs the chat brain.
+            if (_listener is not null) { await _listener.DisposeAsync(); _listener = null; }
+            _speaker?.Dispose(); _speaker = null;
+
+            RunOnUiThread(() => _talk.Text = "Talk");
+            Append("\n[voice] stopped listening\n");
+            return;
+        }
+
+        // RECORD_AUDIO is a runtime permission; without it AudioRecord silently
+        // yields nothing and the loop would look broken rather than blocked.
+        if (CheckSelfPermission(Android.Manifest.Permission.RecordAudio) != Android.Content.PM.Permission.Granted)
+        {
+            RequestPermissions([Android.Manifest.Permission.RecordAudio], 1001);
+            Append("\n[voice] microphone permission requested — tap Talk again once granted\n");
+            return;
+        }
+
+        Append("\n[voice] setting up ears and mouth…\n");
+        try
+        {
+            var store = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+
+            var (speaker, sStatus) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, s => Append(s + "\n"));
+            if (speaker is null) { Append($"[voice] OFF: {sStatus}\n"); return; }
+            _speaker = speaker;
+
+            var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener.TryCreateAsync(store, s => Append(s + "\n"));
+            if (listener is null) { Append($"[voice] OFF: {lStatus}\n"); return; }
+            _listener = listener;
+
+            // One mic, one Whisper instance, shared by the wake detector and the
+            // pipeline — a second AudioRecord on the same device would fail to
+            // open, and a second Whisper would double the RAM for no gain.
+            var mic = new AndroidAudioCapture();
+            // Access list. One phrase today (the product default); a host that
+            // wants to limit who can drive it by voice passes more here.
+            var (wake, wakeReason) = await listener.CreateWakeDetectorAsync(mic, storageDir: store);
+            Append($"[voice] wake: {wakeReason}\n");
+            var pipeline = new CircleAI.Voice.VoicePipeline(wake, listener.Transcriber, mic);
+
+            _voiceLoop = new CircleAI.Voice.VoiceLoop(
+                pipeline,
+                // The brain: same ItSession the typed UI uses, so voice turns
+                // land in the same memory and see the same tools.
+                async (heard, ct) =>
+                {
+                    Append($"\nyou (voice): {heard}\n");
+                    return await brain.RunTurnStreamingAsync(
+                        heard,
+                        line  => Append(line + "\n"),
+                        chunk => Append(chunk),
+                        think => AppendThinking(think)).ConfigureAwait(false);
+                },
+                speaker.Engine,
+                new AndroidAudioPlayer());
+
+            _voiceLoop.Faulted += (s, ex) => Append($"[voice] turn failed: {ex.Message}\n");
+            await _voiceLoop.StartAsync();
+            RunOnUiThread(() => _talk.Text = "Stop");
+            Append("[voice] listening — say \"hey b\"\n");
+        }
+        catch (Exception ex)
+        {
+            Append($"[voice] failed: {ex.Message}\n");
+        }
+    }
+#endif
+
     /// <summary>Current battery charge 0-100, or null when it cannot be read.</summary>
     int? ReadBatteryPercent()
     {
@@ -268,6 +388,26 @@ public class MainActivity : Activity
         RunOnUiThread(() =>
         {
             _transcript.Text += s;
+            _scroll.Post(() => _scroll.FullScroll(FocusSearchDirection.Down));
+        });
+    }
+
+    /// <summary>
+    /// Renders the model's reasoning trace in muted grey so it is visibly the
+    /// scratchpad, not the answer. Uses a SpannableString because the whole
+    /// transcript is one TextView — colouring only the appended run.
+    /// </summary>
+    void AppendThinking(string s)
+    {
+        RunOnUiThread(() =>
+        {
+            var start = _transcript.Text?.Length ?? 0;
+            var sb = new Android.Text.SpannableStringBuilder(_transcript.TextFormatted);
+            sb.Append(s);
+            sb.SetSpan(new Android.Text.Style.ForegroundColorSpan(Muted),
+                       start, start + s.Length,
+                       Android.Text.SpanTypes.ExclusiveExclusive);
+            _transcript.TextFormatted = sb;
             _scroll.Post(() => _scroll.FullScroll(FocusSearchDirection.Down));
         });
     }

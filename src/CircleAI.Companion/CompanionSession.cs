@@ -15,6 +15,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using CircleAI.Core;        // ModelModality, DeviceProbe
 using CircleAI.Domain;
 using CircleAI.Embeddings;
 using CircleAI.Hosting;
@@ -129,6 +130,34 @@ public sealed class CompanionSession : ICompanionSession
     public IReadOnlyList<CompanionTurn> History => _history.AsReadOnly();
 
     public CompanionContext GetContext() => _context;
+
+    /// <summary>
+    /// Whether the Companion can serve a non-chat modality (vision, ASR, TTS,
+    /// VAD, wake word) on this device, and how — a model, a built-in heuristic,
+    /// or not at all.
+    /// </summary>
+    /// <remarks>
+    /// Ask this before offering a capability in the UI. Delegates to the brain
+    /// so the Companion never forms a second opinion about what is installed —
+    /// one selector, one answer, so the screen and the inference path cannot
+    /// disagree about whether B! can see or hear.
+    /// <para>
+    /// With no AI service attached the Companion is offline, and offline means
+    /// no models: reported as <see cref="SelectionQuality.Unavailable"/> rather
+    /// than optimistically assumed, for the same reason
+    /// <see cref="ChatAsync"/> answers "[Companion offline]" instead of guessing.
+    /// </para>
+    /// </remarks>
+    public ModalityPlan PlanFor(ModelModality modality, DeviceProbe? probe = null)
+        => _ai?.PlanFor(modality, probe)
+           ?? new ModalityPlan(SelectionQuality.Unavailable, null,
+                  $"Companion has no AI service attached, so {modality} cannot be served");
+
+    /// <summary>
+    /// Convenience over <see cref="PlanFor"/>: can this modality be served at
+    /// all, by a model OR a built-in? Use it to enable or hide a control.
+    /// </summary>
+    public bool CanServe(ModelModality modality) => PlanFor(modality).IsAvailable;
 
     public async Task RefreshContextAsync(CancellationToken ct = default)
     {

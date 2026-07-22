@@ -3,12 +3,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Core;           // DownloadProgress, DownloadPhase
 using CircleAI.Core.Models;
 
 namespace CircleAI.Inference;
@@ -30,7 +33,65 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
     private readonly bool _ownsHttpClient;
 
     public ModelDownloadService(string storageDirectory)
-        : this(storageDirectory, new HttpClient(), ownsHttpClient: true) { }
+        : this(storageDirectory, new HttpClient(CreateResilientHandler()), ownsHttpClient: true) { }
+
+    /// <summary>
+    /// Builds the handler that survives a dead system resolver.
+    /// </summary>
+    /// <remarks>
+    /// The bypass belongs HERE, at the socket layer, not in the retry loop.
+    /// Rewriting the request URI to the resolved IP would send the wrong SNI and
+    /// fail certificate validation — the certificate is for <c>modelscope.cn</c>,
+    /// not for <c>47.251.62.57</c>. A <c>ConnectCallback</c> keeps the URI (and
+    /// therefore the Host header, the SNI and the cert check) intact while
+    /// pointing the socket at an address obtained out of band.
+    /// <para>
+    /// Applies to every request through this client, so nothing else has to know
+    /// the resolver might be broken.
+    /// </para>
+    /// </remarks>
+    private static SocketsHttpHandler CreateResilientHandler()
+    {
+        var preflight = new NetworkPreflight();
+
+        return new SocketsHttpHandler
+        {
+            // Bound the DNS cache so a stale record cannot outlive a network
+            // change for the length of a long-running app session.
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+
+            ConnectCallback = async (context, ct) =>
+            {
+                var host = context.DnsEndPoint.Host;
+                var port = context.DnsEndPoint.Port;
+
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    try
+                    {
+                        // Fast path: the system resolver, used by ConnectAsync.
+                        await socket.ConnectAsync(host, port, ct).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (NetworkDiagnosis.Classify(ex).Fault == NetworkFault.DnsFailure)
+                    {
+                        // Slow path: resolve out of band and connect to the address.
+                        var addresses = await preflight.ResolveAsync(host, ct).ConfigureAwait(false);
+                        if (addresses.Count == 0) throw;
+
+                        await socket.ConnectAsync(addresses.ToArray(), port, ct).ConfigureAwait(false);
+                    }
+
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            },
+        };
+    }
 
     public ModelDownloadService(string storageDirectory, HttpClient httpClient)
         : this(storageDirectory, httpClient, ownsHttpClient: false) { }
@@ -124,12 +185,60 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         CancellationToken ct)
         => EnsureBundleAsync(modelId, repo, CircleAI.Core.ModelSource.ModelScope, bundleFiles, progress, ct);
 
-    public async Task<string> EnsureBundleAsync(
+    /// <summary>
+    /// Bundle download reporting RICH progress — bytes, rate, ETA, file N of M,
+    /// and phase (downloading / resuming / retrying / verifying).
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="IProgress{T}"/>-of-<c>double</c> overloads compute all of
+    /// this internally and then throw it away, leaving a host with a bare 0..1
+    /// ratio. On a phone pulling 433 MB that is the difference between "10%…
+    /// 20%…" — indistinguishable from a hang — and a progress bar that shows MB,
+    /// rate, ETA, which file, and whether it is retrying.
+    /// <para>
+    /// The <c>double</c> overloads remain and simply adapt to this one, so no
+    /// existing caller changes.
+    /// </para>
+    /// <para>
+    /// ONE SOURCE-BREAKING CASE: a caller passing a bare <c>null</c> for
+    /// progress now hits CS0121, because <c>null</c> fits both
+    /// <c>IProgress&lt;DownloadProgress&gt;</c> and <c>IProgress&lt;double&gt;</c>.
+    /// Fix by casting — <c>(IProgress&lt;DownloadProgress&gt;?)null</c> — or by
+    /// passing a real reporter. Binary compatibility is unaffected; only source
+    /// with an untyped null needs the cast.
+    /// </para>
+    /// </remarks>
+    public Task<string> EnsureBundleAsync(
+        string modelId,
+        string repo,
+        CircleAI.Core.ModelSource source,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken ct)
+        => EnsureBundleCoreAsync(modelId, repo, source, bundleFiles, progress, ct);
+
+    public Task<string> EnsureBundleAsync(
         string modelId,
         string repo,
         CircleAI.Core.ModelSource source,
         IReadOnlyList<BundleFileSpec> bundleFiles,
         IProgress<double>? progress,
+        CancellationToken ct)
+    {
+        // Adapt the legacy ratio-only contract onto the rich one.
+        IProgress<DownloadProgress>? rich = progress is null
+            ? null
+            : new Progress<DownloadProgress>(p => progress.Report(p.Ratio));
+
+        return EnsureBundleCoreAsync(modelId, repo, source, bundleFiles, rich, ct);
+    }
+
+    private async Task<string> EnsureBundleCoreAsync(
+        string modelId,
+        string repo,
+        CircleAI.Core.ModelSource source,
+        IReadOnlyList<BundleFileSpec> bundleFiles,
+        IProgress<DownloadProgress>? progress,
         CancellationToken ct)
     {
         ValidateModelId(modelId);
@@ -146,6 +255,36 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         foreach (var f in bundleFiles) totalBytes += Math.Max(0, f.SizeBytes);
         var doneBytes = 0L;
 
+        // Rate/ETA are measured across the WHOLE bundle, not per file. Per-file
+        // figures would reset the ETA at every file boundary, which on a 7-file
+        // bundle reads as the estimate jumping around at random.
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+        var fileIndex = 0;
+
+        void Report(string name, long received, DownloadPhase phase, int attempt = 1)
+        {
+            if (progress is null) return;
+
+            var elapsed = startedAt.Elapsed.TotalSeconds;
+            var rate = elapsed > 0.5 ? received / elapsed : 0.0;
+            var remaining = rate > 0 && totalBytes > received
+                ? TimeSpan.FromSeconds((totalBytes - received) / rate)
+                : TimeSpan.Zero;
+
+            progress.Report(new DownloadProgress
+            {
+                FileName              = name,
+                BytesReceived         = received,
+                TotalBytes            = totalBytes,
+                BytesPerSecond        = rate,
+                EstimatedTimeRemaining = remaining,
+                Phase                 = phase,
+                FileIndex             = fileIndex,
+                FileCount             = bundleFiles.Count,
+                Attempt               = attempt,
+            });
+        }
+
         foreach (var file in bundleFiles)
         {
             ct.ThrowIfCancellationRequested();
@@ -153,26 +292,36 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 throw new InvalidOperationException(
                     $"Bundle for '{modelId}' contains a file with no Name.");
 
+            fileIndex++;
             var destPath = Path.Combine(modelDir, file.Name);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
-            // Skip when cached + valid.
-            if (File.Exists(destPath) &&
-                await VerifySha256Async(destPath, file.Sha256, ct).ConfigureAwait(false))
+            // Skip when cached + valid. Hashing a 400 MB file is not instant, so
+            // say so — otherwise a cached start looks like a freeze.
+            if (File.Exists(destPath))
             {
-                doneBytes += file.SizeBytes;
-                ReportOverall(progress, doneBytes, totalBytes);
-                continue;
+                Report(file.Name, doneBytes, DownloadPhase.Verifying);
+                if (await VerifySha256Async(destPath, file.Sha256, ct).ConfigureAwait(false))
+                {
+                    doneBytes += file.SizeBytes;
+                    Report(file.Name, doneBytes, DownloadPhase.Cached);
+                    continue;
+                }
+                File.Delete(destPath);
             }
-            if (File.Exists(destPath)) File.Delete(destPath);
 
             var tempPath = destPath + ".tmp";
             try
             {
+                // Resume shows up as a non-zero starting offset for this file.
+                var resumeFrom = File.Exists(tempPath) ? new FileInfo(tempPath).Length : 0L;
+                var startPhase = resumeFrom > 0 ? DownloadPhase.Resuming : DownloadPhase.Downloading;
+                Report(file.Name, doneBytes + resumeFrom, startPhase);
+
                 IProgress<double>? perFile = progress is null
                     ? null
                     : new Progress<double>(p =>
-                        ReportOverall(progress, doneBytes + (long)(file.SizeBytes * p), totalBytes));
+                        Report(file.Name, doneBytes + (long)(file.SizeBytes * p), DownloadPhase.Downloading));
 
                 // PrimaryUrl → FallbackUrl. Either one is the same bytes; we try
                 // both before giving up so a transient CDN hiccup doesn't kill an
@@ -181,13 +330,29 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 var fallback = BuildFallbackUrl(source, repo, file.Name);
                 try
                 {
-                    await DownloadToFileAsync(primary, tempPath, perFile, ct).ConfigureAwait(false);
+                    await DownloadWithRetryAsync(primary, tempPath, perFile, ct,
+                        attempt => Report(file.Name, doneBytes, DownloadPhase.Retrying, attempt))
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // The CALLER cancelled. The old `catch (Exception)` swallowed
+                    // this and started a second download against the fallback URL
+                    // — so cancelling a download made it download again.
+                    throw;
                 }
                 catch (Exception)
                 {
                     if (File.Exists(tempPath)) File.Delete(tempPath);
-                    await DownloadToFileAsync(fallback, tempPath, perFile, ct).ConfigureAwait(false);
+                    await DownloadWithRetryAsync(fallback, tempPath, perFile, ct,
+                        attempt => Report(file.Name, doneBytes, DownloadPhase.Retrying, attempt))
+                        .ConfigureAwait(false);
                 }
+
+                // Hashing hundreds of MB on a phone takes real seconds during
+                // which no bytes move. Name the phase so it does not read as a
+                // stall right at the finish line.
+                Report(file.Name, doneBytes + file.SizeBytes, DownloadPhase.Verifying);
 
                 if (!await VerifySha256Async(tempPath, file.Sha256, ct).ConfigureAwait(false))
                 {
@@ -199,7 +364,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 if (File.Exists(destPath)) File.Delete(destPath);
                 File.Move(tempPath, destPath);
                 doneBytes += file.SizeBytes;
-                ReportOverall(progress, doneBytes, totalBytes);
+                Report(file.Name, doneBytes, DownloadPhase.Downloading);
             }
             catch
             {
@@ -211,7 +376,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             }
         }
 
-        progress?.Report(1.0);
+        Report(string.Empty, totalBytes, DownloadPhase.Complete);
         return modelDir;
     }
 
@@ -348,22 +513,116 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             throw new ArgumentException("Model ID must not be empty.", nameof(modelId));
     }
 
+    /// <summary>Attempts per URL before giving up. 1 + 3 retries.</summary>
+    private const int MaxAttempts = 4;
+
+    /// <summary>
+    /// Downloads with backoff, RESUMING from whatever is already on disk.
+    /// </summary>
+    /// <remarks>
+    /// The download had no retry at all. On a phone that means one DNS blip or
+    /// one signal drop, at any point in a 433 MB transfer, threw the whole
+    /// thing away — and the retry (if a human pressed the button again) started
+    /// from byte 0. On a metered or rural connection that is not a nuisance, it
+    /// is the difference between the product working and not.
+    /// <para>
+    /// Only <see cref="NetworkDiagnosis.IsTransient"/> faults are retried:
+    /// spinning on a 404 or a failed TLS handshake is just a slower failure
+    /// with a worse error message.
+    /// </para>
+    /// </remarks>
+    private async Task DownloadWithRetryAsync(
+        Uri uri, string destPath, IProgress<double>? progress, CancellationToken ct,
+        Action<int>? onRetry = null)
+    {
+        NetworkDiagnosis? last = null;
+
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            try
+            {
+                await DownloadToFileAsync(uri, destPath, progress, ct).ConfigureAwait(false);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                last = NetworkDiagnosis.Classify(ex);
+
+                // A DNS failure here has ALREADY been through the DoH bypass —
+                // it lives in the ConnectCallback on the owned HttpClient (see
+                // CreateResilientHandler), so it applies to every request
+                // transparently and keeps the hostname for SNI and certificate
+                // validation. Reaching this point means both the system resolver
+                // AND the out-of-band resolvers failed, which means the link is
+                // genuinely dead rather than just the resolver.
+                if (!last.IsTransient || attempt == MaxAttempts)
+                {
+                    throw new ModelDownloadException(
+                        $"Download of '{uri}' failed after {attempt} attempt(s). {last}", last, ex);
+                }
+
+                // Tell the host we are retrying. Sitting silently through a
+                // backoff is indistinguishable from a hang, and it is the moment
+                // a user is most likely to force-quit.
+                onRetry?.Invoke(attempt + 1);
+
+                // Exponential backoff with jitter. Jitter matters because every
+                // device that lost the same access point would otherwise retry
+                // in lockstep the moment it returns.
+                var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt - 1))
+                            + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 750));
+                await Task.Delay(backoff, ct).ConfigureAwait(false);
+            }
+        }
+
+        throw new ModelDownloadException(
+            $"Download of '{uri}' failed. {last}", last ?? NetworkDiagnosis.Healthy, null);
+    }
+
     private async Task DownloadToFileAsync(
         Uri uri, string destPath, IProgress<double>? progress, CancellationToken ct)
     {
+        // RESUME: continue from whatever survived the last attempt.
+        var existing = File.Exists(destPath) ? new FileInfo(destPath).Length : 0L;
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (existing > 0)
+            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(existing, null);
+
         using var response = await _http
-            .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct)
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
+
+        // A server that ignores Range answers 200 with the WHOLE body. Appending
+        // that to a partial file silently produces a corrupt blob that fails the
+        // SHA check much later — so start over instead.
+        var resuming = existing > 0 && response.StatusCode == System.Net.HttpStatusCode.PartialContent;
+        if (existing > 0 && !resuming)
+        {
+            existing = 0;
+            if (File.Exists(destPath)) File.Delete(destPath);
+        }
+
         response.EnsureSuccessStatusCode();
 
-        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+        // ContentLength on a 206 is the length of the RANGE, not of the file.
+        var totalBytes = response.Content.Headers.ContentLength is { } len
+            ? len + existing
+            : -1L;
+
         await using var contentStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         await using var fileStream = new FileStream(
-            destPath, FileMode.Create, FileAccess.Write, FileShare.None,
+            destPath,
+            resuming ? FileMode.Append : FileMode.Create,
+            FileAccess.Write, FileShare.None,
             bufferSize: 81_920, useAsync: true);
 
         var buffer = new byte[81_920];
-        long bytesRead = 0L;
+        long bytesRead = existing;
         long bytesUntilNextReport = ProgressChunkBytes;
         int read;
 

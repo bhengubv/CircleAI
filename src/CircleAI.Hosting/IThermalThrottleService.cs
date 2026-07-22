@@ -13,6 +13,21 @@ namespace CircleAI.Hosting;
 /// Coarse thermal state, ordered from coolest to hottest so numeric
 /// comparisons (e.g. <c>&gt;= ThermalState.Serious</c>) are meaningful.
 /// </summary>
+/// <remarks>
+/// NAME COLLISION — there is also <c>CircleAI.Core.ThermalState</c>. A file that
+/// imports both namespaces gets <c>CS0104: ambiguous reference</c>; qualify it.
+/// <para>
+/// They are NOT interchangeable and must not be merged casually: this one has
+/// <see cref="Unknown"/> = 0 with Normal = 1 so the values sort coolest-to-hottest
+/// for threshold comparisons, whereas the Core enum starts at Normal = 0 and is a
+/// plain device-sensor reading. Unifying them would silently renumber every
+/// persisted or compared value.
+/// </para>
+/// <para>
+/// Rule of thumb: <c>CircleAI.Core.ThermalState</c> is what a DEVICE reports
+/// (<c>IDeviceContext</c>); this one is what the HOST throttles on.
+/// </para>
+/// </remarks>
 public enum ThermalState
 {
     /// <summary>State could not be determined (API unavailable or error).</summary>

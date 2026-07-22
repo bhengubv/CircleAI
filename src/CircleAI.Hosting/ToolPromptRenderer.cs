@@ -69,7 +69,19 @@ internal static class ToolPromptRenderer
             "within <tool_call></tool_call> XML tags:");
         sb.AppendLine("<tool_call>");
         sb.AppendLine("{\"name\": <function-name>, \"arguments\": <args-json-object>}");
-        sb.Append("</tool_call>");
+        sb.AppendLine("</tool_call>");
+
+        // OVERCLAIM GUARD. Observed on a real device: asked "can you make a cv
+        // for me", a 0.6B answered "I can assist with generating a CV once you
+        // provide the details" — a capability it does not have and cannot get.
+        // Small models are agreeable by default; the tool list alone does not
+        // stop them promising work they have no tool for. Naming the boundary
+        // explicitly is the cheapest correction available at this model size.
+        sb.AppendLine();
+        sb.AppendLine("Those are the ONLY actions you can perform. You have no other tools, and no");
+        sb.AppendLine("ability to create files, documents, images, or accounts. If the user asks for");
+        sb.AppendLine("something outside that list, say plainly that you cannot do it — do NOT offer");
+        sb.Append("to do it \"once they provide details\". Answering from your own knowledge is fine.");
 
         return sb.ToString();
     }

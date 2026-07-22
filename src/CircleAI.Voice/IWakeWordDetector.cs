@@ -10,9 +10,39 @@ namespace CircleAI.Voice;
 public interface IWakeWordDetector : IAsyncDisposable
 {
     /// <summary>
-    /// The phrase the detector listens for (e.g. "Hey B").
+    /// The PRIMARY phrase the detector listens for — the default is "Hey B!".
     /// </summary>
+    /// <remarks>
+    /// This is the first entry of <see cref="WakeWords"/>, kept as its own
+    /// member so existing callers and UI labels ("say Hey B!") keep working.
+    /// </remarks>
     string WakeWord { get; }
+
+    /// <summary>
+    /// Every phrase that may wake the assistant. Speaking any one of them
+    /// activates it; speaking anything else does not.
+    /// </summary>
+    /// <remarks>
+    /// This is the ACCESS LIST, not merely a convenience for synonyms. Voice is
+    /// an open microphone in a shared room: anyone within earshot can address a
+    /// single-phrase assistant. Giving each permitted person their own phrase
+    /// means an unlisted phrase is simply not a wake word, so a household or
+    /// office can decide who may drive it by voice at all.
+    /// <para>
+    /// Two consequences worth stating plainly, because a caller will otherwise
+    /// assume more than this delivers: phrases are a shared secret, not
+    /// biometrics — anyone who overhears one can repeat it, and the detector
+    /// cannot tell two speakers apart. Treat it as a door with a knock, not a
+    /// lock. Speaker identification, if it is ever wanted, is a separate model
+    /// and belongs behind <c>ISpeechModelSelector</c> like every other model.
+    /// </para>
+    /// <para>
+    /// Never empty: an empty list would wake on nothing, which reads as a broken
+    /// microphone rather than a configuration mistake. Implementations fall back
+    /// to <see cref="WakeWord"/>.
+    /// </para>
+    /// </remarks>
+    IReadOnlyList<string> WakeWords => new[] { WakeWord };
 
     /// <summary>
     /// True when the detector is actively listening for the wake word.

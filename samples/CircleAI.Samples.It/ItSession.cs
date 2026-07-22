@@ -36,6 +36,14 @@ public sealed class ItSession : IAsyncDisposable
     private readonly BundleModelLoader? _loader;
 
     /// <summary>
+    /// Selector for the non-chat modalities. Asked BEFORE attempting vision or
+    /// voice, so an uncatalogued capability is declined with a reason instead of
+    /// failing somewhere inside a runtime that never had a model.
+    /// Null in stub mode, where there is no registry to select from.
+    /// </summary>
+    private readonly ISpeechModelSelector? _speech;
+
+    /// <summary>
     /// Drives the brownout path. Wired so the two-slot Neuron is actually
     /// exercisable: without a pressure source the eviction branch is dead code
     /// no matter what the device does.
@@ -99,6 +107,7 @@ public sealed class ItSession : IAsyncDisposable
 
             _registry = new ModelRegistryService();
             _loader   = new BundleModelLoader(modelDir, _registry);
+            _speech   = new SpeechModelSelector(_registry);
             var selector = new DeviceAwareModelSelector(_registry);
 
             var options = new AIOptions
@@ -133,12 +142,59 @@ public sealed class ItSession : IAsyncDisposable
 
     // Mirrors what AddCircleAI wires: the template engine reads each model's own
     // chat_template from its tokenizer config, so nothing hardcodes ChatML.
+    //
+    // MODALITY-AWARE. This used to build QwenTextGenerator unconditionally, which
+    // meant KimiVlGenerator — a complete vision runtime that routes through
+    // mnn_llm_generate_with_image_stream_ex — was never constructed by anything.
+    // The image bytes were set on the turn and then silently ignored by a
+    // text-only generator, so vision read as "not implemented" when in fact it
+    // was written and merely unreachable.
     private static IChatGenerator BuildGenerator(string modelPath)
-        => new QwenTextGenerator(
-            modelPath,
-            contextSize: 4096,
-            threads: null,
-            templateEngine: new PromptTemplateEngine());
+        => IsVisionModel(modelPath)
+            ? new KimiVlGenerator(
+                modelPath,
+                contextSize: 4096,
+                threads: null,
+                templateEngine: new PromptTemplateEngine())
+            : new QwenTextGenerator(
+                modelPath,
+                contextSize: 4096,
+                threads: null,
+                templateEngine: new PromptTemplateEngine());
+
+    /// <summary>
+    /// Whether the resolved model is a vision-language model, and therefore
+    /// needs the VL generator rather than the text one.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the registry's <see cref="ModelModality"/> — the selector's own
+    /// classification — so the answer comes from the catalogue rather than from
+    /// guessing at a filename. Falls back to a name check only when the path
+    /// cannot be matched to an entry (a side-loaded model), because getting this
+    /// wrong in the safe direction costs a text-only answer, while getting it
+    /// wrong the other way loads a VL graph for every ordinary chat.
+    /// </remarks>
+    private static bool IsVisionModel(string modelPath)
+    {
+        try
+        {
+            using var registry = new ModelRegistryService();
+            foreach (var entry in registry.AllModels)
+            {
+                if (entry.Modality != ModelModality.Vision) continue;
+                if (modelPath.Contains(entry.Name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch
+        {
+            // Registry unavailable — fall through to the name heuristic.
+        }
+
+        return modelPath.Contains("-VL", StringComparison.OrdinalIgnoreCase)
+            || modelPath.Contains("Kimi-VL", StringComparison.OrdinalIgnoreCase)
+            || modelPath.Contains("VLM", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Resolves + downloads (first run) + loads + warms the model. On a cold
@@ -185,8 +241,21 @@ public sealed class ItSession : IAsyncDisposable
     /// IT!'s reply through <paramref name="onChunk"/> piece by piece as the model
     /// streams it — so a UI renders the answer arriving live.
     /// </summary>
+    /// <param name="onThinking">
+    /// When supplied, the model's REASONING is streamed here as it decodes,
+    /// separately from the answer — so you can watch IT! think.
+    /// <para>
+    /// This switches the turn onto <c>AIService.StreamFragmentsAsync</c>.
+    /// <c>NeuronNode</c>/<c>IChatRuntime</c> is deliberately a string-only
+    /// contract, and the plain <c>StreamAsync</c> path FILTERS
+    /// <c>&lt;think&gt;</c> out — so reasoning can only come from the brain's
+    /// fragment stream. Only the Qwen3 ladder emits it; other models tag
+    /// everything Content and this simply stays quiet.
+    /// </para>
+    /// </param>
     public async Task<string> RunTurnStreamingAsync(
-        string input, Action<string> emitLine, Action<string> onChunk)
+        string input, Action<string> emitLine, Action<string> onChunk,
+        Action<string>? onThinking = null)
     {
         var d = _concierge.Route(new RouteContext(input));
         var organ = d.Organ == Organ.Specialist ? $"{d.Organ} ({d.Capability})" : $"{d.Organ}";
@@ -194,15 +263,42 @@ public sealed class ItSession : IAsyncDisposable
 
         _history.Add(new ChatTurn("user", input));
 
-        onChunk("IT! > ");
         var sb = new StringBuilder();
-        await foreach (var chunk in _it.StreamAsync(_history))
-        {
-            sb.Append(chunk);
-            onChunk(chunk);
-        }
-        onChunk("\n");
 
+        if (onThinking is null)
+        {
+            onChunk("IT! > ");
+            await foreach (var chunk in _it.StreamAsync(_history))
+            {
+                sb.Append(chunk);
+                onChunk(chunk);
+            }
+        }
+        else
+        {
+            var msgs = _history.Select(t => new ChatMessage(t.Role, t.Content)).ToList();
+            var inThinking = false;
+            var startedAnswer = false;
+
+            await foreach (var f in _brain.StreamFragmentsAsync(msgs))
+            {
+                if (f.Kind == ChatFragmentKind.Reasoning)
+                {
+                    if (!inThinking) { onThinking("\n[thinking] "); inThinking = true; }
+                    onThinking(f.Text);
+                }
+                else
+                {
+                    if (inThinking) { onThinking("\n"); inThinking = false; }
+                    if (!startedAnswer) { onChunk("IT! > "); startedAnswer = true; }
+                    sb.Append(f.Text);
+                    onChunk(f.Text);
+                }
+            }
+            if (!startedAnswer) onChunk("IT! > ");
+        }
+
+        onChunk("\n");
         _history.Add(new ChatTurn("assistant", sb.ToString()));
         return sb.ToString();
     }
@@ -244,6 +340,61 @@ public sealed class ItSession : IAsyncDisposable
     /// <summary>Returns pressure to normal so the specialist may be admitted again.</summary>
     public ValueTask ClearMemoryPressureAsync()
         => Pressure.Raise(MemoryPressureLevel.Normal);
+
+    /// <summary>
+    /// Ask about an IMAGE. Routes to the vision organ and sends the bytes with
+    /// the turn (ChatMessage.ImageBytes), which KimiVlGenerator consumes.
+    /// <para>
+    /// This path existed in the engine but nothing ever fed it: no host set
+    /// ImageBytes, so RouteContext.HasImage was always false and the vision
+    /// generator was unreachable. Cataloguing a vision model is still required
+    /// for BestFit(Vision) to resolve — until then this surfaces the real
+    /// "no vision model" error instead of silently answering as if blind.
+    /// </para>
+    /// </summary>
+    public async Task<string> RunImageTurnAsync(
+        string question, byte[] imageBytes, Action<string> emitLine, Action<string> onChunk)
+    {
+        ArgumentNullException.ThrowIfNull(imageBytes);
+
+        // ASK THE SELECTOR FIRST. Whether B! can see is a selection decision, not
+        // something to discover by catching an exception thrown deep inside a
+        // generator that was handed an image it has no encoder for. The plan also
+        // distinguishes "no vision model shipped" from "this phone is too small
+        // for the one we ship" — different sentences to the user, different fixes.
+        var plan = _speech?.PlanFor(DeviceProbe.Snapshot(), ModelModality.Vision)
+                   ?? new ModalityPlan(SelectionQuality.Unavailable, null,
+                          "stub mode has no model registry to select a vision model from");
+        if (!plan.IsAvailable)
+        {
+            var msg = $"IT! > (I can't see images: {plan.Reason})\n";
+            onChunk(msg);
+            _history.Add(new ChatTurn("user", question + " [image]"));
+            _history.Add(new ChatTurn("assistant", msg));
+            return msg;
+        }
+
+        var d = _concierge.Route(new RouteContext(question, HasImage: true));
+        var organ = d.Organ == Organ.Specialist ? $"{d.Organ} ({d.Capability})" : $"{d.Organ}";
+        emitLine($"   -> concierge routes to: {organ}   [{d.Reason}]");
+        emitLine($"   -> vision: {plan.Reason}");
+
+        var msgs = _history.Select(t => new ChatMessage(t.Role, t.Content)).ToList();
+        msgs.Add(new ChatMessage("user", question) { ImageBytes = imageBytes });
+
+        var sb = new StringBuilder();
+        onChunk("IT! > ");
+        await foreach (var chunk in _brain.StreamAsync(msgs))
+        {
+            sb.Append(chunk);
+            onChunk(chunk);
+        }
+        onChunk("\n");
+
+        _history.Add(new ChatTurn("user", question + " [image]"));
+        _history.Add(new ChatTurn("assistant", sb.ToString()));
+        return sb.ToString();
+    }
 
     /// <summary>Prompts that should provoke a tool call, with unguessable answers.</summary>
     public static IReadOnlyList<string> ToolProbes { get; } = new[]

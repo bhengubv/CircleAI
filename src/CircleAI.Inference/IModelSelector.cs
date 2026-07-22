@@ -36,6 +36,34 @@ public enum SelectionQuality
     /// a normal selection.
     /// </summary>
     NothingFits,
+
+    /// <summary>
+    /// No model is catalogued for this modality, but a built-in NON-model
+    /// implementation covers it. The capability WORKS — at reduced accuracy,
+    /// with zero download and zero RAM.
+    /// </summary>
+    /// <remarks>
+    /// This is not a degraded form of <see cref="NothingFits"/>; it is a
+    /// different fact. <c>NothingFits</c> means "models exist, this device is
+    /// too small" — the answer is a smaller model or a better phone.
+    /// <c>HeuristicFallback</c> means "no model needed" — VAD is served by
+    /// <c>EnergyVadDetector</c> and wake word by <c>EnergyWakeWordDetector</c>,
+    /// both of which ship today and run on any device.
+    /// <para>
+    /// Collapsing the two into a null return was the original defect: it made an
+    /// uncatalogued modality look identical to a broken one, so callers disabled
+    /// features that were in fact working.
+    /// </para>
+    /// </remarks>
+    HeuristicFallback,
+
+    /// <summary>
+    /// Nothing is catalogued for this modality AND no fallback exists. The
+    /// capability genuinely does not exist on this build — decline it, do not
+    /// attempt it. Attempting anyway surfaces as a confusing failure deep in a
+    /// runtime that was never given a model.
+    /// </summary>
+    Unavailable,
 }
 
 /// <summary>

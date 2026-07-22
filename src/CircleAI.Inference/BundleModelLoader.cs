@@ -132,8 +132,13 @@ public sealed class BundleModelLoader : IModelLoader
 
             var spec = ToSpec(entry.BundleFiles!);
 
+            // Pass entry.Source explicitly. The 5-arg overload hard-codes
+            // ModelScope, so every HuggingFace-hosted entry (all the speech
+            // models — whisper.cpp, Piper) would be fetched from ModelScope URLs
+            // that do not exist. It fails as a 404 at download time, far from
+            // the registry entry that actually caused it.
             var modelDir = await _downloads
-                .EnsureBundleAsync(modelName, entry.Repo!, spec, relay, CancellationToken.None)
+                .EnsureBundleAsync(modelName, entry.Repo!, entry.Source, spec, relay, CancellationToken.None)
                 .ConfigureAwait(false);
 
             // Stamp installed.json so ModelRegistryService.CheckForUpgradesAsync
@@ -146,12 +151,7 @@ public sealed class BundleModelLoader : IModelLoader
             }
             catch { /* manifest is advisory */ }
 
-            var configPath = Path.Combine(modelDir, ConfigFileName);
-            if (!File.Exists(configPath))
-                throw new InvalidOperationException(
-                    $"Bundle '{modelName}' downloaded but '{ConfigFileName}' is missing in '{modelDir}'.");
-
-            return configPath;
+            return ResolveLoadPath(entry, modelDir, modelName);
         }
 
         // Legacy single-file entry.
@@ -178,11 +178,20 @@ public sealed class BundleModelLoader : IModelLoader
         var entry = _registry.GetLatestModel(modelName)
             ?? throw new FileNotFoundException($"Model '{modelName}' is not in the registry.");
 
-        // Bundles: ModelDownloadService writes them to {root}/{modelId}/ and MNN
-        // loads config.json from there.
-        return entry.IsBundle
-            ? Path.Combine(_storageRoot, modelName, ConfigFileName)
-            : Path.Combine(_storageRoot, modelName + ".gguf"); // single-file layout
+        if (!entry.IsBundle)
+            return Path.Combine(_storageRoot, modelName + ".gguf"); // single-file layout
+
+        // Bundles land in {root}/{modelId}/. WHICH file the runtime loads is
+        // modality-specific — resolve it when the bundle is on disk; otherwise
+        // return the conventional chat anchor so callers can File.Exists-test
+        // and trigger a download.
+        var modelDir = Path.Combine(_storageRoot, modelName);
+        if (Directory.Exists(modelDir))
+        {
+            try { return ResolveLoadPath(entry, modelDir, modelName); }
+            catch (InvalidOperationException) { /* not fully downloaded yet */ }
+        }
+        return Path.Combine(modelDir, ConfigFileName);
     }
 
     /// <summary>
@@ -200,12 +209,19 @@ public sealed class BundleModelLoader : IModelLoader
             if (entry.IsBundle)
             {
                 var modelDir = Path.Combine(_storageRoot, modelName);
+                if (!Directory.Exists(modelDir)) return false;
 
-                // MNN needs config.json to load at all.
-                if (!File.Exists(Path.Combine(modelDir, ConfigFileName))) return false;
+                // Chat (MNN) additionally requires config.json to load at all.
+                if (entry.Modality == ModelModality.Chat &&
+                    !File.Exists(Path.Combine(modelDir, ConfigFileName)))
+                    return false;
 
+                // Integrity anchor: the weight file for MNN, else the LARGEST
+                // catalogued file (Piper's .onnx, Whisper's ggml .bin) — biggest
+                // file means a hash mismatch is the most diagnostic.
                 var anchor = entry.BundleFiles!
-                    .FirstOrDefault(f => string.Equals(f.Name, AnchorFileName, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(f => string.Equals(f.Name, AnchorFileName, StringComparison.OrdinalIgnoreCase))
+                    ?? entry.BundleFiles!.OrderByDescending(f => f.SizeBytes).FirstOrDefault();
                 if (anchor is null) return false;
 
                 var anchorPath = Path.Combine(modelDir, anchor.Name);
@@ -234,6 +250,43 @@ public sealed class BundleModelLoader : IModelLoader
 
     private static IReadOnlyList<BundleFileSpec> ToSpec(IReadOnlyList<BundleFile> files)
         => files.Select(f => new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes)).ToList();
+
+    /// <summary>
+    /// The file a bundle's RUNTIME actually loads — which differs by modality.
+    /// MNN chat wants config.json; Piper TTS wants the .onnx; Whisper ASR wants
+    /// the ggml .bin. Hard-coding config.json (as this did) made the loader
+    /// MNN-only and it REJECTED every speech bundle outright.
+    /// </summary>
+    private static string ResolveLoadPath(ModelEntry entry, string modelDir, string modelName)
+    {
+        string? Find(params string[] patterns)
+        {
+            foreach (var p in patterns)
+            {
+                var hit = Directory.EnumerateFiles(modelDir, p, SearchOption.AllDirectories)
+                    .OrderBy(f => f.Length)   // prefer the shallowest/simplest match
+                    .FirstOrDefault();
+                if (hit is not null) return hit;
+            }
+            return null;
+        }
+
+        var path = entry.Modality switch
+        {
+            ModelModality.Tts      => Find("*.onnx"),
+            ModelModality.Asr      => Find("*.bin", "*.onnx"),
+            ModelModality.Vad      => Find("*.onnx"),
+            ModelModality.WakeWord => Find("*.onnx", "*.tflite"),
+            _                      => Find(ConfigFileName),   // Chat: MNN config.json
+        };
+
+        if (path is null)
+            throw new InvalidOperationException(
+                $"Bundle '{modelName}' ({entry.Modality}) downloaded to '{modelDir}' but no loadable " +
+                "model file was found for that modality.");
+
+        return path;
+    }
 
     /// <summary>
     /// Compares a file's SHA-256 against an expected value in either

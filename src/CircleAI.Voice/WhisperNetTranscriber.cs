@@ -77,13 +77,35 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         return new TranscriptionResult(text.ToString().Trim(), confidence, lang);
     }
 
+    /// <summary>
+    /// How much new audio must arrive before a partial re-decode. Lower feels
+    /// more live but costs a full decode each time; the whole buffer is
+    /// re-decoded, so cost grows with utterance length.
+    /// </summary>
+    public double PartialIntervalSeconds { get; init; } = 1.0;
+
+    /// <summary>
+    /// Longest audio a partial will re-decode. Past this only the final decode
+    /// runs, so a long monologue cannot drag the device into decoding a
+    /// minute of audio every second.
+    /// </summary>
+    public double MaxPartialSeconds { get; init; } = 30.0;
+
     /// <inheritdoc />
     /// <remarks>
-    /// Whisper is not a true streaming recogniser — it needs a whole utterance.
-    /// This buffers the incoming chunks and emits ONE final transcription when the
-    /// stream ends. It is honestly not incremental; callers wanting partials must
-    /// segment upstream (e.g. with a VAD) and call <see cref="TranscribeAsync"/>
-    /// per utterance.
+    /// Whisper is not natively a streaming recogniser — it decodes a whole
+    /// utterance. This emits real partials anyway, by re-decoding the buffer so
+    /// far each time roughly <see cref="PartialIntervalSeconds"/> of new audio
+    /// arrives, then one authoritative <c>IsFinal</c> result at end of stream.
+    /// <para>
+    /// Two honest consequences. Partials can CHANGE as more context arrives —
+    /// Whisper may revise earlier words — so a UI must replace the displayed
+    /// text, never append to it. And this trades CPU for latency: each partial
+    /// is a full decode of everything heard so far, which is why
+    /// <see cref="MaxPartialSeconds"/> exists. Callers that cannot afford that
+    /// should segment with a VAD and call <see cref="TranscribeAsync"/> per
+    /// utterance instead.
+    /// </para>
     /// </remarks>
     public async IAsyncEnumerable<PartialTranscription> StreamTranscribeAsync(
         IAsyncEnumerable<ReadOnlyMemory<byte>> audioChunks,
@@ -91,9 +113,48 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        const int bytesPerSecond = 16_000 * 2;          // PCM16 16 kHz mono
+        var partialEvery = (long)(PartialIntervalSeconds * bytesPerSecond);
+        var partialCeiling = (long)(MaxPartialSeconds * bytesPerSecond);
+
         using var buffer = new MemoryStream();
+        var lastPartialAt = 0L;
+        var lastText = string.Empty;
+
         await foreach (var chunk in audioChunks.WithCancellation(ct).ConfigureAwait(false))
+        {
             buffer.Write(chunk.Span);
+
+            if (buffer.Length - lastPartialAt < partialEvery) continue;
+            if (buffer.Length > partialCeiling) continue;
+
+            lastPartialAt = buffer.Length;
+
+            TranscriptionResult interim;
+            try
+            {
+                interim = await TranscribeAsync(buffer.ToArray(), ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // A failed partial is cosmetic — keep buffering so the FINAL
+                // decode still gets every sample. Dropping the utterance here
+                // would lose audio the user already spoke.
+                continue;
+            }
+
+            // Suppress no-change partials: Whisper often returns identical text
+            // for a second of trailing silence, and a UI that redraws on every
+            // emission would flicker for no reason.
+            if (string.IsNullOrWhiteSpace(interim.Text) || interim.Text == lastText) continue;
+
+            lastText = interim.Text;
+            yield return new PartialTranscription(interim.Text, IsFinal: false, interim.Confidence);
+        }
 
         var result = await TranscribeAsync(buffer.ToArray(), ct).ConfigureAwait(false);
         yield return new PartialTranscription(result.Text, IsFinal: true, result.Confidence);

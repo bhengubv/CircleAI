@@ -26,6 +26,35 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!--
+      ON-DEVICE VOICE. Opt in with -p:ItVoiceOnAndroid=true.
+
+      OFF by default: it adds ONNX Runtime + whisper.cpp natives (tens of MB) to
+      the APK, and mobile TTS additionally needs libespeak-ng.so + espeak-ng-data
+      bundled (see NativeEspeakPhonemizer). Kept as a deliberate switch so the
+      chat-only APK — the one proven on the Huawei — stays lean.
+    -->
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj"
+                      Condition="'$(ItVoiceOnAndroid)' == 'true'" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Voice/ is normally excluded (the *.cs glob below is non-recursive);
+       pull it in only when Android voice is switched on. -->
+  <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
+    <Compile Include="..\CircleAI.Samples.It\Voice\*.cs" Link="Shared\Voice\%(Filename)%(Extension)" />
+
+    <!--
+      RECORD_AUDIO must be in the manifest as well as granted at runtime.
+      Without the manifest entry, requestPermissions() is a silent no-op and
+      AudioRecord returns nothing but zeroes — the loop looks broken rather
+      than blocked. Declared only in the voice build; a chat-only APK asking
+      for the microphone would be an unexplained permission at install time.
+    -->
+    <AndroidPermission Include="android.permission.RECORD_AUDIO" />
   </ItemGroup>
 
   <!--

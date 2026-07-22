@@ -44,6 +44,35 @@ public sealed class AIService : IAIService
     private readonly Func<string, IChatGenerator>? _generatorFactory;
     private readonly IModelSelector? _modelSelector;
     private readonly CircleAI.Core.Models.ModelRegistryService? _modelRegistry;
+
+    /// <summary>
+    /// Whether a non-chat modality can be served on this device, and how —
+    /// a model, a built-in heuristic, or not at all.
+    /// </summary>
+    /// <remarks>
+    /// Hosts should call this BEFORE offering a capability, so an unavailable
+    /// one is declined with a reason instead of failing somewhere inside a
+    /// runtime that was never given a model. Every model question routes through
+    /// the selector; nothing here decides for itself what is installed.
+    /// <para>
+    /// Returns <see cref="SelectionQuality.Unavailable"/> when no registry was
+    /// supplied — without a catalogue there is nothing to select from, and
+    /// claiming otherwise would be a guess.
+    /// </para>
+    /// </remarks>
+    /// <param name="modality">The capability being considered.</param>
+    /// <param name="probe">Device snapshot; taken fresh when omitted.</param>
+    public ModalityPlan PlanFor(ModelModality modality, DeviceProbe? probe = null)
+    {
+        if (_modelRegistry is null)
+            return new ModalityPlan(SelectionQuality.Unavailable, null,
+                "no model registry is wired, so no model of any modality can be selected");
+
+        var device = probe
+            ?? (_options.DeviceContext is DefaultDeviceContext d ? d.BuildProbe() : DeviceProbe.Snapshot());
+
+        return new SpeechModelSelector(_modelRegistry).PlanFor(device, modality);
+    }
     private readonly ILogger<AIService> _logger;
 
     // Resolved at StartAsync time so the rest of the lifecycle (download,
@@ -502,6 +531,77 @@ public sealed class AIService : IAIService
             ct), ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Streaming variant that preserves the REASONING/CONTENT tag instead of
+    /// discarding the model's thinking.
+    /// <para>
+    /// <see cref="StreamAsync"/> calls <c>IChatGenerator.StreamAsync</c>, which
+    /// filters <c>&lt;think&gt;…&lt;/think&gt;</c> out for back-compat — so a host
+    /// wired to it can never show reasoning, no matter what the model emits.
+    /// This calls <c>StreamFragmentsAsync</c> instead and passes the tag through,
+    /// letting a UI render thinking separately from the answer.
+    /// </para>
+    /// <para>
+    /// Only reasoning-capable models (the Qwen3 ladder) emit Reasoning
+    /// fragments; for others the default generator implementation tags
+    /// everything Content, so this degrades to <see cref="StreamAsync"/>'s
+    /// behaviour rather than breaking.
+    /// </para>
+    /// </summary>
+    public async IAsyncEnumerable<ChatFragment> StreamFragmentsAsync(
+        IReadOnlyList<ChatMessage> messages,
+        GenerationOptions? options = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        await EnsureStartedAsync(ct).ConfigureAwait(false);
+
+        var userQuery = messages.LastOrDefault(m =>
+            string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content
+            ?? string.Empty;
+        var hasImage = messages.Any(m => m.ImageBytes is not null);
+
+        var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
+        var prepared = await PrepareMessagesAsync(messages, userQuery, ct).ConfigureAwait(false);
+        var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
+
+        var correlationId = Guid.NewGuid();
+        var sw = Stopwatch.StartNew();
+        var tokenCount = 0;
+        var firstToken = true;
+        var answer = new StringBuilder();
+
+        await foreach (var fragment in generator
+            .StreamFragmentsAsync(prepared, effectiveOptions, linked.Token)
+            .ConfigureAwait(false))
+        {
+            if (firstToken)
+            {
+                firstToken = false;
+                await FireObserverAsync(o => o.OnStreamStartedAsync(
+                    new AIStreamEvent(correlationId, prepared, sw.Elapsed, 0, DateTimeOffset.UtcNow),
+                    ct), ct).ConfigureAwait(false);
+            }
+
+            // Only the ANSWER is remembered — storing the thinking trace as the
+            // episode would poison recall with the model's scratchpad.
+            if (fragment.Kind == ChatFragmentKind.Content)
+                answer.Append(fragment.Text);
+
+            tokenCount++;
+            yield return fragment;
+        }
+
+        sw.Stop();
+        _ = TryStoreEpisodeAsync(userQuery, answer.ToString(), ct);
+
+        await FireObserverAsync(o => o.OnStreamCompletedAsync(
+            new AIStreamEvent(correlationId, prepared, sw.Elapsed, tokenCount, DateTimeOffset.UtcNow),
+            ct), ct).ConfigureAwait(false);
+    }
+
     /// <inheritdoc />
     public async Task<ToolResult> InvokeToolAsync(ToolInvocation invocation, CancellationToken ct = default)
     {
@@ -777,6 +877,23 @@ public sealed class AIService : IAIService
             var probe     = deviceCtx is DefaultDeviceContext ddc
                 ? ddc.BuildProbe()
                 : DeviceProbe.Snapshot(); // generic context — probe from runtime
+            // ASK THE MODALITY SELECTOR FIRST for anything that is not plain
+            // text. BestFit only knows the chat catalogue, so a Vision request
+            // it cannot satisfy comes back as a generic "no model satisfies
+            // required capabilities" — true, but it does not distinguish "we
+            // ship no VLM" from "this device is too small for the one we ship",
+            // which are different problems with different fixes. PlanFor draws
+            // that line and its Reason is written to be shown to a person.
+            if (_options.RequiredCapabilities.HasFlag(ChatCapability.Vision))
+            {
+                var visionPlan = PlanFor(ModelModality.Vision, probe);
+                if (!visionPlan.IsAvailable)
+                    throw new InvalidOperationException(
+                        $"Vision was requested but cannot be served: {visionPlan.Reason}. " +
+                        "Catalogue a vision model, or drop ChatCapability.Vision from " +
+                        "AIOptions.RequiredCapabilities.");
+            }
+
             var selection = _modelSelector.BestFit(probe, _options.RequiredCapabilities);
 
             modelId             = selection.ModelId;

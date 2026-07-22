@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Core;        // ModelModality, DeviceProbe
+using CircleAI.Inference;   // ModalityPlan, SelectionQuality
 using CircleAI.Memory;
 
 namespace CircleAI.Hosting;
@@ -139,4 +141,26 @@ public interface IAIService : IAsyncDisposable
     /// </summary>
     Task<bool> LoadSessionAsync(string path, CancellationToken ct = default)
         => Task.FromResult(false);
+
+    /// <summary>
+    /// Whether a non-chat modality (vision, ASR, TTS, VAD, wake word) can be
+    /// served on this device, and how — a model, a built-in heuristic, or not
+    /// at all. Ask BEFORE offering a capability.
+    /// </summary>
+    /// <remarks>
+    /// On the interface rather than only on <see cref="AIService"/> because the
+    /// facades that front the brain — <c>NeuronNode</c>, <c>CompanionSession</c>
+    /// — hold an <see cref="IAIService"/>. With the method on the concrete class
+    /// only, they had no way to ask, so they offered modalities blind and the
+    /// answer arrived as a failure from inside a runtime with no model.
+    /// <para>
+    /// Default returns <see cref="SelectionQuality.Unavailable"/>: an
+    /// implementation that has not wired a registry cannot know what is
+    /// installed, and guessing "available" would be exactly the false claim this
+    /// whole seam exists to prevent. <see cref="AIService"/> overrides it.
+    /// </para>
+    /// </remarks>
+    ModalityPlan PlanFor(ModelModality modality, DeviceProbe? probe = null)
+        => new(SelectionQuality.Unavailable, null,
+               $"this {nameof(IAIService)} implementation cannot select models, so {modality} is unavailable");
 }

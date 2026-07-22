@@ -29,6 +29,14 @@ public sealed class ItListener : IAsyncDisposable
     private ItListener(WhisperNetTranscriber t) => _transcriber = t;
 
     /// <summary>
+    /// The underlying transcriber, so a caller can build a full
+    /// <see cref="VoicePipeline"/>/<see cref="VoiceLoop"/> (wake word + VAD +
+    /// mic) around the SAME loaded Whisper model instead of loading it twice —
+    /// a second copy would be tens of MB of RAM on a phone that has none spare.
+    /// </summary>
+    public IVoiceTranscriber Transcriber => _transcriber;
+
+    /// <summary>
     /// Selects the best ASR model the device can hold, downloads it (first run),
     /// and wires Whisper. Returns null with a reason when the chain cannot be
     /// completed — the caller degrades rather than crashing.
@@ -40,10 +48,17 @@ public sealed class ItListener : IAsyncDisposable
         var selector = new SpeechModelSelector(registry);
 
         var probe = DeviceProbe.Snapshot();
-        var pick = selector.BestFor(probe, ModelModality.Asr);
-        if (pick is null)
-            return (null, "no ASR model is catalogued");
 
+        // Ask for the PLAN, not a nullable pick: the selector knows whether ASR
+        // can be served at all, and its Reason is the sentence to show the user.
+        // ASR has no non-model fallback, so an unavailable plan is genuinely the
+        // end of the road here — but the caller learns that from one decision
+        // rather than inferring it from a null.
+        var plan = selector.PlanFor(probe, ModelModality.Asr);
+        if (!plan.IsAvailable || plan.Model is null)
+            return (null, plan.Reason);
+
+        var pick = plan.Model;
         var entry = registry.GetLatestModel(pick.ModelId);
         if (entry is null || entry.BundleFiles is null || string.IsNullOrWhiteSpace(entry.Repo))
             return (null, $"'{pick.ModelId}' is not a downloadable bundle");
@@ -55,11 +70,19 @@ public sealed class ItListener : IAsyncDisposable
             specs.Add(new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes));
 
         using var downloads = new ModelDownloadService(storageDir);
+
+        // Rich progress: MB, rate, ETA, file N of M, and phase. The old version
+        // printed "download 10%" every 10% and nothing else — no way for a user
+        // to tell a slow link from a stalled one.
         var lastPct = -1;
-        var progress = new Progress<double>(p =>
+        var progress = new Progress<DownloadProgress>(p =>
         {
-            var pct = (int)(p * 100);
-            if (pct >= lastPct + 10) { lastPct = pct; log?.Invoke($"  download {pct}%"); }
+            // Always announce a phase change; otherwise throttle to every 5%.
+            var pct = (int)(p.Ratio * 100);
+            var notable = p.Phase is not DownloadPhase.Downloading;
+            if (!notable && pct < lastPct + 5) return;
+            if (!notable) lastPct = pct;
+            log?.Invoke($"  {p.Describe()}");
         });
 
         var dir = await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs, progress, ct)
@@ -72,6 +95,99 @@ public sealed class ItListener : IAsyncDisposable
         var transcriber = new WhisperNetTranscriber(ggml, "en");
         log?.Invoke($"engine  : WhisperNetTranscriber on {Path.GetFileName(ggml)}");
         return (new ItListener(transcriber), "ready");
+    }
+
+    /// <summary>
+    /// Builds the wake-word detector the SELECTOR chose for this device, rather
+    /// than hard-coding one.
+    /// </summary>
+    /// <remarks>
+    /// Today every device lands on <see cref="EnergyWakeWordDetector"/>, because
+    /// no keyword-spotting model is catalogued yet — but that is the selector's
+    /// verdict, not a decision baked into this call site. The moment an
+    /// openWakeWord entry is catalogued with a real hash, devices that can hold
+    /// it get it and this method does not change.
+    /// <para>
+    /// Returns the reason alongside, so the host can show WHY it is listening the
+    /// way it is: a transcribe-and-match wake word costs meaningfully more
+    /// battery than a keyword spotter, and that is worth surfacing rather than
+    /// hiding.
+    /// </para>
+    /// </remarks>
+    /// <param name="wakeWords">
+    /// The access list. Defaults to the product phrase alone; pass more to let
+    /// specific people wake it, or a different set to lock others out.
+    /// </param>
+    public async Task<(IWakeWordDetector detector, string reason)> CreateWakeDetectorAsync(
+        IAudioCapture capture,
+        IEnumerable<string>? wakeWords = null,
+        string? storageDir = null,
+        CancellationToken ct = default)
+    {
+        var phrases = wakeWords?.ToArray() is { Length: > 0 } supplied
+            ? supplied
+            : new[] { EnergyWakeWordDetector.DefaultWakeWord };
+
+        using var registry = new ModelRegistryService();
+        var plan = new SpeechModelSelector(registry)
+            .PlanFor(DeviceProbe.Snapshot(), ModelModality.WakeWord);
+
+        // The selector chose a keyword-spotting model — fetch and run it.
+        if (plan.Model is not null)
+        {
+            var entry = registry.GetLatestModel(plan.Model.ModelId);
+            if (entry?.BundleFiles is not null && !string.IsNullOrWhiteSpace(entry.Repo))
+            {
+                var dir = storageDir ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "CircleAI", "Models");
+
+                var specs = entry.BundleFiles
+                    .Select(f => new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes))
+                    .ToList();
+
+                using var downloads = new ModelDownloadService(dir);
+                // Cast required: a bare `null` is ambiguous between the
+                // IProgress<DownloadProgress> and IProgress<double> overloads.
+                var modelDir = await downloads
+                    .EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs,
+                        (IProgress<DownloadProgress>?)null, ct)
+                    .ConfigureAwait(false);
+
+                var onnx = Directory
+                    .EnumerateFiles(modelDir, "*.onnx", SearchOption.AllDirectories)
+                    .FirstOrDefault();
+
+                if (onnx is not null)
+                {
+                    // KwsWakeWordDetector is the runtime that already existed for
+                    // this — log-mel front end, configurable window/hop, target
+                    // class index, fire cooldown. Do not write another one.
+                    //
+                    // It scores ONE phrase, so a multi-phrase access list cannot
+                    // be honoured here. Rather than accept the list and quietly
+                    // match only the first — access control in appearance only —
+                    // fall back to the transcribing detector, which really does
+                    // distinguish phrases, and say why.
+                    if (phrases.Length > 1)
+                        return (new EnergyWakeWordDetector(capture, _transcriber, phrases),
+                                $"{plan.Reason} — using transcribe-and-match instead of the KWS model: " +
+                                $"{phrases.Length} wake phrases are configured and a KWS model scores only one");
+
+                    return (new KwsWakeWordDetector(capture, new KwsConfig(onnx, phrases[0])),
+                            plan.Reason);
+                }
+            }
+
+            // Catalogued but unusable. Fall back rather than go deaf — but SAY so,
+            // because a silent downgrade is how "we ship a keyword spotter"
+            // survives as a claim long after it stopped being true.
+            return (new EnergyWakeWordDetector(capture, _transcriber, phrases),
+                    $"{plan.Reason} — WARNING: wake model '{plan.Model.ModelId}' could not be " +
+                    "prepared; fell back to transcribe-and-match");
+        }
+
+        return (new EnergyWakeWordDetector(capture, _transcriber, phrases), plan.Reason);
     }
 
     /// <summary>Transcribes a WAV file to text (any rate/channels → 16 kHz mono).</summary>
