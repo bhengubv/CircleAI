@@ -28,6 +28,18 @@
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <!-- Offline document generation (CV, …). Pure-managed PDFsharp — no native .so. -->
     <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- Capability sweep: every "hands make things" + "systems" library the
+         CapabilitySweep exercises end-to-end. All pure-managed / offline. -->
+    <ProjectReference Include="..\..\src\CircleAI.Charts\CircleAI.Charts.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Presentations\CircleAI.Presentations.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Music\CircleAI.Music.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Media\CircleAI.Media.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.BusinessOps\CircleAI.BusinessOps.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Cast\CircleAI.Cast.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Mesh\CircleAI.Mesh.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.CodeAgent\CircleAI.CodeAgent.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Security.Defense\CircleAI.Security.Defense.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Security.Antibodies\CircleAI.Security.Antibodies.csproj" />
     <!--
       ON-DEVICE VOICE. Opt in with -p:ItVoiceOnAndroid=true.
 

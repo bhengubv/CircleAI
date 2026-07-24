@@ -236,6 +236,28 @@ public class MainActivity : Activity
                 log.Append(line);
             }
 
+            Append("\n[media] rendering an artifact from each media library:\n");
+            log.Append("\n[media]\n");
+            var media = await Task.Run(() => CapabilitySweep.RenderMediaSuiteAsync());
+            foreach (var (label, bytes, fileName) in media)
+            {
+                var path = System.IO.Path.Combine(FilesDir!.AbsolutePath, fileName);
+                await System.IO.File.WriteAllBytesAsync(path, bytes);
+                var line = $"  {label,-13} {bytes.Length,8:N0} bytes  {fileName}\n";
+                Append(line);
+                log.Append(line);
+            }
+
+            Append("\n[systems] one verdict from each remaining library:\n");
+            log.Append("\n[systems]\n");
+            var verdicts = await Task.Run(() => CapabilitySweep.BuildSystemVerdictsAsync());
+            foreach (var (label, verdict) in verdicts)
+            {
+                var line = $"  {label,-20} {verdict}\n";
+                Append(line);
+                log.Append(line);
+            }
+
             var reportPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "capability-report.txt");
             await System.IO.File.WriteAllTextAsync(reportPath, log.ToString());
 
