@@ -505,6 +505,30 @@ public class MainActivity : Activity
         }
     }
 
+    /// <summary>
+    /// The OS is asking apps to release memory. Fire the Neuron's brownout —
+    /// evict the hot specialist first, keep the always-warm generalist serving —
+    /// instead of letting the phone's low-memory killer take the whole process.
+    /// This is the "RAM is never held hostage" guarantee wired to the REAL OS
+    /// signal: the residency + evict-specialist-first logic already exists; this
+    /// triggers it from onTrimMemory rather than only from a manual signal. A
+    /// production app would also clear the pressure when memory recovers (e.g. on
+    /// resume) — the specialist is rebuildable from the registry.
+    /// </summary>
+    public override void OnTrimMemory([Android.Runtime.GeneratedEnum] TrimMemory level)
+    {
+        base.OnTrimMemory(level);
+        var session = _session;
+        if (session is null) return;
+
+        if (level is TrimMemory.RunningLow or TrimMemory.RunningCritical
+                  or TrimMemory.Complete or TrimMemory.Background)
+        {
+            Append($"\n[mem] OS memory pressure ({level}) — evicting the specialist, keeping the generalist\n");
+            _ = session.SignalCriticalMemoryAsync();
+        }
+    }
+
     void Append(string s)
     {
         RunOnUiThread(() =>

@@ -213,6 +213,18 @@ public sealed class ModalityPlanTests
     }
 
     [Fact]
+    public void Vision_JustAboveTheVlmRawSize_IsStillNothingFits_ByHeadroomMargin()
+    {
+        // 4.3 GB free would fit the ~3.9 GB VLM at 100% of free — but committing
+        // 100% of free RAM is exactly what OOM-killed the app on the P30 once the
+        // KV cache grew. The headroom margin (DeviceProbe.RamFitHeadroom = 0.85)
+        // reserves ~0.65 GB here, leaving ~3.65 GB usable → NothingFits, honestly.
+        var plan = Selector().PlanFor(Device(4.3), ModelModality.Vision);
+
+        Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
+    }
+
+    [Fact]
     public void UnavailablePlansCarryAReasonAUserCouldRead()
     {
         // The Reason is shown to a user ("I can't see images: ..."), so it must

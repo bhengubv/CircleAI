@@ -136,7 +136,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                 nameof(modality));
 
         var tier      = probe.Classify();
-        var ramGb     = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
+        var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
         var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
 
         var ofModality = _registry.AllModels.Where(e => e.Modality == modality).ToList();
@@ -262,7 +262,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
     {
         ArgumentNullException.ThrowIfNull(probe);
         var tier      = probe.Classify();
-        var ramGb     = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
+        var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
         var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
 
         return _registry.AllModels

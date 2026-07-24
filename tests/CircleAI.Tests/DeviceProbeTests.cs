@@ -97,4 +97,16 @@ public sealed class DeviceProbeTests
         Assert.Equal((long)(1.5 * Gb), p.RamAvailableBytes); // fit gate = free RAM
         Assert.Equal((long)(3.6 * Gb), p.RamTotalBytes);
     }
+
+    [Fact]
+    public void UsableRamGb_ReservesHeadroomBelowFreeRam()
+    {
+        // Fit must NOT commit 100% of free RAM — the KV cache grows during
+        // generation, so a model that fits at load can still OOM mid-output.
+        // UsableRamGb scales free RAM by RamFitHeadroom (0.85 → reserve ~15%).
+        var p = DeviceProbe.Snapshot(ramBytesOverride: 2 * Gb);
+
+        Assert.True(p.UsableRamGb < 2.0);
+        Assert.Equal(2.0 * DeviceProbe.RamFitHeadroom, p.UsableRamGb, 3);
+    }
 }

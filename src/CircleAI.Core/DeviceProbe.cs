@@ -111,6 +111,22 @@ public sealed record DeviceProbe(
     /// </summary>
     public long RamTotalBytes { get; init; }
 
+    /// <summary>
+    /// Fraction of FREE RAM the selector may commit to a model, leaving the rest
+    /// as headroom for KV-cache growth during generation + native runtime
+    /// overhead. Fitting a model into 100% of free RAM works until the first long
+    /// output, when the growing KV cache OOMs it. 0.85 reserves ~15%. Tunable.
+    /// </summary>
+    public const double RamFitHeadroom = 0.85;
+
+    /// <summary>
+    /// Free RAM in GB the selector may actually commit to a model — free RAM
+    /// scaled by <see cref="RamFitHeadroom"/>. Use this for MinRamGb fit checks,
+    /// NOT the raw <see cref="RamAvailableBytes"/>, or a model that fits at load
+    /// can still OOM once generation grows the KV cache.
+    /// </summary>
+    public double UsableRamGb => RamAvailableBytes * RamFitHeadroom / (1024.0 * 1024 * 1024);
+
     /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit.</summary>
     public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null);
 
