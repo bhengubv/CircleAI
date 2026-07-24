@@ -13,6 +13,7 @@
     <Project Path="src/CircleAI.Orchestration/CircleAI.Orchestration.csproj" />
     <Project Path="src/CircleAI.Search/CircleAI.Search.csproj" />
     <Project Path="src/CircleAI.Security/CircleAI.Security.csproj" />
+    <Project Path="src/CircleAI.Security.Defense/CircleAI.Security.Defense.csproj" />
     <Project Path="src/CircleAI.Skills/CircleAI.Skills.csproj" />
     <Project Path="src/CircleAI.Tools/CircleAI.Tools.csproj" />
     <Project Path="src/CircleAI.Voice/CircleAI.Voice.csproj" />

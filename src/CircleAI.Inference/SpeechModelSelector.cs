@@ -104,6 +104,24 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
 {
     private readonly ModelRegistryService _registry;
 
+    /// <summary>
+    /// Minimum <see cref="DeviceTier"/> at which on-device coding is even
+    /// attempted. Below it, <see cref="ModelModality.Coding"/> is
+    /// <see cref="SelectionQuality.Unavailable"/> on hardware grounds alone.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors <c>CircleAI.CodeAgent.CodingModelRequirements.Default.MinDeviceTier</c>
+    /// (Tablet — the RAM&#160;&#8805;&#160;6&#160;GB rung under
+    /// <see cref="DeviceProbe.Classify"/>). Duplicated as a local constant ON
+    /// PURPOSE: <c>CircleAI.CodeAgent</c> references <c>CircleAI.Inference</c>, so
+    /// this assembly must NOT reference back — sharing the constant would be a
+    /// dependency cycle. The coarse tier gate lives here; the precise RAM /
+    /// storage / hash-verified-bundle gate stays in <c>CodingCapabilityPlanner</c>,
+    /// the authority the agent loop actually consults. Kept in sync by comment
+    /// and by <c>ModalityPlanTests</c>.
+    /// </remarks>
+    private const DeviceTier CodingFloorTier = DeviceTier.Tablet;
+
     public SpeechModelSelector(ModelRegistryService registry)
         => _registry = registry ?? throw new ArgumentNullException(nameof(registry));
 
@@ -160,6 +178,22 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
     {
         ArgumentNullException.ThrowIfNull(probe);
 
+        // CODING HARDWARE FLOOR. Coding carries a tier floor the other rungs do
+        // not: a real 3-7B code model cannot run in a low-end phone's RAM budget,
+        // so below CodingFloorTier the answer is not "a smaller model," it is "not
+        // on this device" — Unavailable BY DESIGN, independent of the catalogue.
+        // Checked BEFORE BestFor so a catalogued toy entry that happens to fit a
+        // weak device's RAM cannot sneak it past the floor. This mirrors
+        // CircleAI.CodeAgent.CodingCapabilityPlanner's gate.
+        if (modality == ModelModality.Coding)
+        {
+            var tier = probe.Classify();
+            if (tier < CodingFloorTier)
+                return new ModalityPlan(SelectionQuality.Unavailable, null,
+                    $"on-device coding needs a device of tier >= {CodingFloorTier}; this device is {tier}. " +
+                    "Unavailable by design (mirrors CodingCapabilityPlanner's hardware floor).");
+        }
+
         var pick = BestFor(probe, modality, minQualityRank);
         if (pick is not null)
             return new ModalityPlan(pick.Quality, pick,
@@ -185,6 +219,35 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                     : new ModalityPlan(SelectionQuality.HeuristicFallback, null,
                         $"no wake-word model catalogued; using energy VAD + '{asr.ModelId}' transcribe-and-match " +
                         "(works, costs more battery than a keyword spotter)");
+
+            // ProceduralMusicBedGenerator synthesises a royalty-free chord/arpeggio
+            // bed straight to PCM with pure managed maths — no model, no download,
+            // runs on the lowest-end device. So music is NEVER unavailable; a neural
+            // music model (MusicBedBackend.Neural) supersedes the bed when catalogued.
+            case ModelModality.Music:
+                return new ModalityPlan(SelectionQuality.HeuristicFallback, null,
+                    "no music model catalogued; using the procedural music bed " +
+                    "(works offline, rule-based synthesis rather than a neural model)");
+
+            // ManagedMediaRenderer composites layers + text and walks the motion
+            // timeline entirely in managed code — the declarative render is real and
+            // offline. The neural encoder / HTML-capture path is a seam a catalogued
+            // model (or an IHtmlFrameProvider) fills; without one the declarative
+            // built-in still produces a clip, so video is never unavailable.
+            case ModelModality.Video:
+                return new ModalityPlan(SelectionQuality.HeuristicFallback, null,
+                    "no video model catalogued; using the programmatic media renderer " +
+                    "(works offline, deterministic composition rather than a neural encoder)");
+
+            // Coding cleared the hardware floor at the top of PlanFor (so this is a
+            // capable device), but there is no coding model catalogued AND no
+            // built-in can stand in — you cannot fake a 3-7B code model with
+            // arithmetic. Capable, still Unavailable, for the right reason. Mirrors
+            // CodingCapabilityPlanner's "device is capable, but no model installed".
+            case ModelModality.Coding:
+                return new ModalityPlan(SelectionQuality.Unavailable, null,
+                    "device clears the coding hardware floor, but no on-device coding model is " +
+                    "catalogued; a real 3-7B code model must be registered (see CircleAI.CodeAgent) to enable");
 
             // ASR, TTS and Vision have no non-model implementation. Saying
             // otherwise would mean claiming a capability that cannot run.

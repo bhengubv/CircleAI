@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Desktop render harness. Proves CircleAI.Documents produces a REAL, valid PDF
+    before any of it touches the slow Android build. Not shipped; a fast
+    verification loop (a screencap proves it rendered; this proves the bytes are
+    a PDF and the embedded font resolved). Run it with dotnet run on this project,
+    passing an output path after the argument separator.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+  </ItemGroup>
+
+</Project>

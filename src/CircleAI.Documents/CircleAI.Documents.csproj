@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.Documents — the "hands" of the organism: offline, on-device
+    document generation (CVs first, then cover letters, invoices, reports).
+
+    The CONTENT schema (CvDocument) and SEAM (IDocumentEngine) are
+    renderer-agnostic; the concrete renderer sits behind the seam so it never
+    leaks into callers.
+
+    Renderer: PDFsharp-MigraDoc 6.2.x — MIT, no revenue cap (fully free/open,
+    per the standing rule), and PURE-MANAGED, so there is NO native .so to
+    package or load on the Huawei and no collision with the MNN native bundling.
+    Swapping it out later is a one-class change behind IDocumentEngine.
+
+    Constraints (see ROADMAP.md): 100% offline at generation time, de-Googled,
+    runs on a Huawei P30 Lite and scales up via the model selector. The renderer
+    needs NO model — a CvDocument always produces a PDF; the model only fills the
+    words (Slice 1b), the template owns the layout.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Description>Offline on-device document generation for CircleAI — CVs, cover letters, invoices, reports.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT, no revenue cap, pure-managed. See fully-free-opensource-always. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+  </ItemGroup>
+
+  <!--
+    FONT: PDFsharp is pure-managed and has NO access to system fonts, so it needs
+    an IFontResolver backed by an EMBEDDED font (see EmbeddedFontResolver.cs).
+    DejaVu Sans (free licence, redistributable, NOT Google-origin) is embedded
+    here; LICENSE-DejaVu.txt sits alongside for attribution. Resource logical
+    names resolve to CircleAI.Documents.Assets.Fonts.DejaVuSans[-Bold].ttf.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\DejaVuSans.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\DejaVuSans-Bold.ttf" />
+  </ItemGroup>
+
+</Project>

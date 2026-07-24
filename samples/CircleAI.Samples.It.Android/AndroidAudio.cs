@@ -100,7 +100,7 @@ public sealed class AndroidAudioPlayer : IAudioPlayer
                 .SetUsage(AudioUsageKind.Assistant)!
                 .SetContentType(AudioContentType.Speech)!
                 .Build()!)!
-            .SetAudioFormat(new AudioFormat.Builder()
+            .SetAudioFormat(new Android.Media.AudioFormat.Builder()
                 .SetEncoding(Encoding.Pcm16bit)!
                 .SetSampleRate(sampleRate)!
                 .SetChannelMask(channelOut)!

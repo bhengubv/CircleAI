@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.Presentations — offline, on-device slide-deck generation.
+
+    Sibling to CircleAI.Documents (CVs/letters/invoices): same "content in, PDF
+    bytes out" philosophy, but the unit of output is a DECK of slides rendered one
+    slide per page in LANDSCAPE A4. Inspired by the presenton fork (outline -> slides
+    -> exported deck), reduced to the offline essentials: no cloud, no Google, no
+    network at generation time.
+
+    DEPENDENCIES: this project adds NONE of its own. It takes a single
+    ProjectReference on CircleAI.Documents and rides through it:
+      * PDFsharp-MigraDoc 6.2.x (MIT, pure-managed) flows in transitively — there
+        is NO native .so to bundle, so it runs on a low-end de-Googled phone.
+      * The embedded free/OFL font (DejaVu Sans) and its IFontResolver live in
+        CircleAI.Documents; we reuse them rather than embedding a second copy.
+
+    Nullable + ImplicitUsings + LangVersion are inherited from Directory.Build.props.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Description>Offline on-device slide-deck generation for CircleAI — outline in, one-slide-per-page landscape PDF out.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The ONLY dependency, and it is in-repo. PDFsharp-MigraDoc (MIT) is pulled in
+      transitively from CircleAI.Documents; we deliberately do NOT re-declare the
+      package here so there is one source of truth for its version. We also reuse
+      CircleAI.Documents' public DocumentResult and its embedded-font pipeline.
+    -->
+    <ProjectReference Include="..\CircleAI.Documents\CircleAI.Documents.csproj" />
+  </ItemGroup>
+
+</Project>

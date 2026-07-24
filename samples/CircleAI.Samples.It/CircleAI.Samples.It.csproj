@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- Offline document generation — shared with the Android head (ItSession uses it). -->
+    <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- Voice (ONNX TTS) is referenced by the CONSOLE head only. The Android
          head has its own csproj that links this project's *.cs non-recursively,
          so Voice/ItSpeaker.cs and this reference never reach the APK. -->

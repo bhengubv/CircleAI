@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.Charts — offline chart/graph rendering for reports and decks.
+
+    Draws bar, line and pie charts with PDFsharp's XGraphics primitives (lines,
+    rectangles, pies, text) so a chart can be painted straight onto a PDF page —
+    the exact surface CircleAI.Documents already renders onto. That means a chart
+    embeds into a report's PDF with NO rasterisation, NO image encoder, and NO
+    native code.
+
+    Renderer dependency: PDFsharp 6.2.4 (the CORE package, id "PDFsharp") — MIT,
+    no revenue cap (fully free/open, per fully-free-opensource-always), and
+    PURE-MANAGED, so there is NO native .so to package or load on a low-end
+    de-Googled Android device. CircleAI.Documents already brings PDFsharp 6.2.4
+    into the solution via the "PDFsharp-MigraDoc" metapackage, which depends on
+    this same core; we reference the core directly because chart drawing needs
+    XGraphics only and never touches MigraDoc.
+
+    We deliberately do NOT use the legacy PdfSharp.Charting API that also ships in
+    the package: the task calls for XGraphics primitives, which give full control
+    over layout and guarantee the pure-managed vector path.
+
+    Nullable + ImplicitUsings are inherited from the repo-root Directory.Build.props.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Description>Offline on-device chart rendering for CircleAI — bar, line and pie charts drawn with PDFsharp XGraphics primitives, embeddable into report/deck PDFs.</Description>
+    <PackageTags>circle-ai;charts;graph;pdf;pdfsharp;offline;on-device;bar;line;pie</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MIT, no revenue cap, pure-managed. Core PDFsharp only (no MigraDoc). -->
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
+  </ItemGroup>
+
+  <!--
+    FONT: PDFsharp is pure-managed and has NO access to system fonts, so text
+    drawing needs an IFontResolver backed by an EMBEDDED font. DejaVu Sans
+    (Bitstream Vera / public-domain-derived licence, redistributable, NOT
+    Google-origin) is embedded here; LICENSE-DejaVu.txt sits alongside for
+    attribution. Logical resource names resolve to
+    CircleAI.Charts.Assets.Fonts.DejaVuSans[-Bold].ttf. This mirrors what
+    CircleAI.Documents does, so a chart and its host report render with the same
+    typeface whichever library installs the resolver first (see ChartFonts).
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Fonts\DejaVuSans.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\DejaVuSans-Bold.ttf" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.CodeAgent</PackageId>
+    <Description>On-device coding agent — "code from my mobile." A real read -> propose-edit -> run-command -> observe -> iterate loop driven by the existing CircleAI.Hosting IAIService brain (no cloud, no new model runtime). Hardware-tiered: a capable phone runs a real 3-7B coding model locally; a weak phone reports Unavailable BY DESIGN via the existing SelectionQuality / ModalityPlan selector pattern. Reuses CircleAI.DevTools (ICodeEditor/FileEdit) and CircleAI.CodeUnderstanding (ICodeSearch). Adds the command-runner seam (fail-closed by default) and the coding-model catalogue seam (hash-verified; empty until a real bundle is registered — no faked model).</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;code-agent;coding-agent;on-device;mobile;agent-loop;degoogled;offline</PackageTags>
+  </PropertyGroup>
+
+  <!-- .NET 10 for new code (MEMORY: dotnet10-only). The referenced projects
+       multi-target net9.0;net10.0, so their net10.0 asset is selected here. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableRuntimeIdentifierChecking>false</EnableRuntimeIdentifierChecking>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <!-- Reference-only: the brain (Hosting/IAIService), the selector + result
+       types (Inference), the device probe/tier table (Core), and the existing
+       code seams (DevTools editor, CodeUnderstanding search). We do NOT edit any
+       of these — Hosting/Inference are other concerns. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <ProjectReference Include="..\CircleAI.DevTools\CircleAI.DevTools.csproj" />
+    <ProjectReference Include="..\CircleAI.CodeUnderstanding\CircleAI.CodeUnderstanding.csproj" />
+  </ItemGroup>
+
+  <!-- DI glue only. Microsoft.Extensions.DependencyInjection.Abstractions is
+       MIT + pure-managed (sovereign-stack safe), and already present in the
+       graph transitively via CircleAI.Hosting. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

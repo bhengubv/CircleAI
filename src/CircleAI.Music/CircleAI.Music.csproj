@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.Music
+    ─────────────────────────────────────────────────────────────────────────
+    Short music beds for clips / video-CVs, generated fully offline on-device.
+
+    Ships TWO things:
+      1. The SEAM: IMusicBedGenerator + MusicSpec (mood / tempo / duration / key)
+         + MusicBed result, so a real neural music model (catalogue-driven,
+         downloaded later — InspireMusic / Amphion class) can plug in via
+         MusicBedGeneratorResolver without any caller change.
+      2. A GENUINELY-WORKING pure-managed fallback (ProceduralMusicBedGenerator)
+         that synthesises a royalty-free chord/arpeggio bed straight to PCM/WAV,
+         so an artifact ALWAYS exists offline — no model, no download, no deps.
+
+    ZERO third-party dependencies. Raw PCM + RIFF/WAVE are written by hand in
+    managed code (WavWriter). Targets net10.0 and inherits the repo-root
+    Directory.Build.props (identity, analysers, nullable, implicit usings).
+  -->
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Music</PackageId>
+    <Title>CircleAI Music Beds</Title>
+    <Version>0.1.0</Version>
+    <Description>On-device, fully-offline short music-bed generation for clips and video CVs. Ships a genuinely-working pure-managed procedural synthesiser (chord/arpeggio to PCM/WAV, zero dependencies) behind an IMusicBedGenerator seam; a catalogue-driven neural model plugs in later via the selector.</Description>
+    <PackageTags>circle-ai;music;audio;procedural;wav;pcm;on-device;offline;music-bed</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>

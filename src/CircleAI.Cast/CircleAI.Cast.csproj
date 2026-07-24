@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>CircleAI.Cast</PackageId>
+    <Version>3.5.0</Version>
+    <Description>(3.5.0) De-Googled casting for CircleAI — fling generated media/decks to a smart TV over open UPnP/DLNA on the LAN. No Google Cast / Chromecast SDK, no cloud. Seams: ICastTarget (SSDP discovery), ICastSession (AVTransport push), ILocalMediaHost (pure-managed HTTP media host with Range), IDocumentCastAdapter (rasteriser seam). Pure BCL, zero external dependencies.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;cast;dlna;upnp;ssdp;smart-tv;de-googled;lan;offline</PackageTags>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Single TFM per task brief; all other quality/identity settings inherited from
+         ..\..\Directory.Build.props (SourceLink, analyzers, nullable, doc-file, etc.). -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <!-- Zero external / project dependencies: pure BCL (System.Net.Sockets,
+       System.Net.Http, System.Net.NetworkInformation, System.Xml.Linq, System.Security).
+       De-Googled + fully-managed by construction. -->
+</Project>

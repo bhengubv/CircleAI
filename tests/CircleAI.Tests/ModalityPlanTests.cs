@@ -91,19 +91,124 @@ public sealed class ModalityPlanTests
         Assert.NotEqual(SelectionQuality.HeuristicFallback, plan.Quality);
     }
 
-    // ── the honest hole ──────────────────────────────────────────────────────
+    [Fact]
+    public void Tts_ClimbsToTheHighVoice_WhenTheDeviceCanHoldIt()
+    {
+        // The rung above Piper: en_US-lessac-high (QualityRank 9) sits above
+        // en_US-lessac-medium (QualityRank 7). Any normal phone holds the 114 MB
+        // high voice, so the selector climbs to it — the floor is not the ceiling.
+        var plan = Selector().PlanFor(Device(4), ModelModality.Tts);
+
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.NotNull(plan.Model);
+        Assert.Equal("Piper-en_US-lessac-high", plan.Model!.ModelId);
+    }
 
     [Fact]
-    public void Vision_IsUnavailable_AndSaysWhy()
+    public void Tts_FallsBackToTheMediumVoice_WhenTheHighVoiceDoesNotFit()
     {
-        // No vision model is catalogued and there is no fallback. The selector
-        // must say so plainly. When a VLM IS catalogued with a real hash this
-        // test flips — and it should be UPDATED then, not deleted now.
-        var plan = Selector().PlanFor(Device(8), ModelModality.Vision);
+        // A device with room for the medium voice but not the high one (0.4 GB:
+        // above medium's 0.3 floor, below high's 0.5) degrades to medium rather
+        // than failing — the ladder has a real lower rung, not only a top.
+        var plan = Selector().PlanFor(Device(0.4), ModelModality.Tts);
+
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.NotNull(plan.Model);
+        Assert.Equal("Piper-en_US-lessac-medium", plan.Model!.ModelId);
+    }
+
+    // ── the model-backed modalities added in 3.5 (Music / Video / Coding) ──────
+
+    [Fact]
+    public void Music_IsAlwaysAvailable_ViaTheProceduralBed()
+    {
+        // ProceduralMusicBedGenerator synthesises a bed with pure managed maths —
+        // no model, no RAM, no download. Like VAD, music must never come back
+        // Unavailable, and the verdict is HeuristicFallback until a neural music
+        // model is catalogued.
+        var plan = Selector().PlanFor(Device(0.25, storageGb: 0.1), ModelModality.Music);
+
+        Assert.True(plan.IsAvailable);
+        Assert.True(plan.UsesBuiltIn);
+        Assert.Equal(SelectionQuality.HeuristicFallback, plan.Quality);
+        Assert.Null(plan.Model);
+    }
+
+    [Fact]
+    public void Video_IsAlwaysAvailable_ViaTheProgrammaticRenderer()
+    {
+        // ManagedMediaRenderer composites layers / text / motion in managed code,
+        // so a clip is always producible offline. The neural encoder / HTML path
+        // is a seam; its absence is HeuristicFallback, not Unavailable.
+        var plan = Selector().PlanFor(Device(0.25, storageGb: 0.1), ModelModality.Video);
+
+        Assert.True(plan.IsAvailable);
+        Assert.True(plan.UsesBuiltIn);
+        Assert.Equal(SelectionQuality.HeuristicFallback, plan.Quality);
+        Assert.Null(plan.Model);
+    }
+
+    [Fact]
+    public void Coding_IsUnavailableOnALowEndDevice_ByHardwareFloor()
+    {
+        // Mirrors CodingCapabilityPlanner: a real 3-7B code model cannot run in a
+        // low-end phone's RAM budget, so below the Tablet tier coding is declined
+        // on hardware ALONE — independent of the catalogue. 4 GB => Phone tier.
+        var plan = Selector().PlanFor(Device(4), ModelModality.Coding);
 
         Assert.False(plan.IsAvailable);
         Assert.Equal(SelectionQuality.Unavailable, plan.Quality);
         Assert.Null(plan.Model);
+        Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
+    }
+
+    [Fact]
+    public void Coding_IsUnavailableOnACapableDevice_WhenNoModelCatalogued()
+    {
+        // A capable device (8 GB => Tablet) clears the hardware floor, but coding
+        // still cannot run without a real model — there is no procedural coder to
+        // stand in. Unavailable, and never HeuristicFallback, for a DIFFERENT
+        // reason than the low-end case.
+        var plan = Selector().PlanFor(Device(8), ModelModality.Coding);
+
+        Assert.False(plan.IsAvailable);
+        Assert.Equal(SelectionQuality.Unavailable, plan.Quality);
+        Assert.NotEqual(SelectionQuality.HeuristicFallback, plan.Quality);
+        Assert.Null(plan.Model);
+    }
+
+    // ── the honest hole ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void Vision_IsServedByACataloguedVlm_OnACapableDevice()
+    {
+        // THE FLIP the old Vision_IsUnavailable test promised. A real VLM —
+        // Qwen2.5-VL-3B-Instruct-MNN, ~2.7 GB, needs ~3.9 GB RAM — is now
+        // catalogued with Modality=Vision and its real ModelScope hashes. A
+        // capable device clears the floor, so vision is Good and names the model.
+        // Vision is still a model-or-nothing modality; the model now exists.
+        var plan = Selector().PlanFor(Device(8), ModelModality.Vision);
+
+        Assert.True(plan.IsAvailable);
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.NotNull(plan.Model);
+        Assert.Equal("Qwen2.5-VL-3B-Instruct-MNN", plan.Model!.ModelId);
+        Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
+    }
+
+    [Fact]
+    public void Vision_OnAPhoneTooSmallForTheVlm_IsNothingFits_NotUnavailable()
+    {
+        // A 2.5 GB-class phone (P30 Lite) cannot hold a 3B VLM. Honest verdict:
+        // NothingFits — a vision model EXISTS, this device just can't run it —
+        // NOT Unavailable, which would mean none is catalogued. Different fixes
+        // (a smaller VLM vs cataloguing one), so the selector keeps them
+        // distinct. This is the "great on a Pixel, not on a P30" story, concrete.
+        var plan = Selector().PlanFor(Device(2.5), ModelModality.Vision);
+
+        Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
+        Assert.NotEqual(SelectionQuality.Unavailable, plan.Quality);
+        Assert.NotNull(plan.Model);   // the VLM, marked as not-fitting
         Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
     }
 

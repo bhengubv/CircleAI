@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.BusinessOps — the "operator" core: CircleAI running a small business
+    OFFLINE. v1 covers (1) invoicing orchestration, (2) a simple client book /
+    CRM, and (3) scheduling + follow-up primitives.
+
+    ARCHITECTURE (repo rule: decentralisation-first). There is NO central API, DB,
+    or cloud in here. Persistence is the IBusinessStore abstraction with an
+    in-memory default; a host may back it with on-device SQLite. Business data is
+    the user's and never leaves the device.
+
+    DEPENDENCIES. Zero NuGet packages. The single ProjectReference is the in-repo,
+    MIT-licensed CircleAI.CRM — reused (not duplicated) for the contact surface via
+    CrmBridge. Invoice PDF rendering is a seam (IInvoicePdfRenderer); the concrete
+    CircleAI.Documents-backed renderer (DocumentKind.Invoice) is wired at the host
+    layer so this library carries no PDF dependency and no coupling to that
+    still-landing invoice model.
+  -->
+
+  <PropertyGroup>
+    <PackageId>CircleAI.BusinessOps</PackageId>
+    <Version>0.1.0</Version>
+    <Description>The operator core — CircleAI running a small business offline. Invoicing orchestration, a simple client book / CRM, and scheduling + follow-up primitives. On-device, no central API/DB.</Description>
+    <Authors>The Geek Network</Authors>
+    <PackageTags>ai;circle-ai;business-ops;invoicing;crm;scheduling;offline;on-device</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuse the existing CRM contact surface rather than duplicate it. In-repo, MIT. -->
+    <ProjectReference Include="..\CircleAI.CRM\CircleAI.CRM.csproj" />
+  </ItemGroup>
+
+</Project>

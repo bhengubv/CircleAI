@@ -24,6 +24,7 @@ public class MainActivity : Activity
     EditText _input = null!;
     Button _send = null!;
     Button _tools = null!;
+    Button _cv = null!;
 #if IT_VOICE_ANDROID
     Button _talk = null!;
 #endif
@@ -136,6 +137,15 @@ public class MainActivity : Activity
         row.AddView(_tools, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
+        // Offline CV → PDF. Enabled immediately: it needs no model, so it proves
+        // the document engine on-device even before the brain finishes loading.
+        _cv = new Button(this) { Text = "CV", Enabled = true };
+        _cv.SetTextColor(Ink);
+        _cv.SetBackgroundColor(Panel);
+        _cv.Click += (s, e) => GenerateCv();
+        row.AddView(_cv, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+
 #if IT_VOICE_ANDROID
         // Hands-free. Only present when the APK was built with voice, because
         // without the ONNX/whisper natives the button could only ever fail.
@@ -158,6 +168,37 @@ public class MainActivity : Activity
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
         SetContentView(root);
+    }
+
+    // Slice 1a: prove the offline document engine on the actual phone. Renders a
+    // sample CV to PDF (pure-managed PDFsharp + embedded DejaVu, no model, no
+    // network) and writes it to internal app storage, readable via adb run-as.
+    async void GenerateCv()
+    {
+        _cv.Enabled = false;
+        Append("\n[cv] generating an offline PDF CV (no model, no network)…\n");
+        try
+        {
+            // Render off the UI thread — a 1-page CV is fast, but never block the UI.
+            var result = await Task.Run(() => ItSession.GenerateSampleCvAsync());
+
+            var path = System.IO.Path.Combine(FilesDir!.AbsolutePath, result.SuggestedFileName);
+            await System.IO.File.WriteAllBytesAsync(path, result.Bytes);
+
+            Append($"[cv] wrote {result.Bytes.Length:N0} bytes\n");
+            Append($"[cv] {path}\n");
+            Append("[cv] OK — pure-managed PDFsharp rendered a PDF on-device.\n");
+        }
+        catch (Exception ex)
+        {
+            // Full exception on failure — a device-only issue (font resource not
+            // found on ARM, etc.) needs the detail, not just the message.
+            Append($"[cv] FAILED: {ex}\n");
+        }
+        finally
+        {
+            _cv.Enabled = true;
+        }
     }
 
     async void Send()
@@ -315,7 +356,7 @@ public class MainActivity : Activity
         try
         {
             var store = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
 
             var (speaker, sStatus) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, s => Append(s + "\n"));
             if (speaker is null) { Append($"[voice] OFF: {sStatus}\n"); return; }

@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- Offline document generation (CV, …). Pure-managed PDFsharp — no native .so. -->
+    <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!--
       ON-DEVICE VOICE. Opt in with -p:ItVoiceOnAndroid=true.
 

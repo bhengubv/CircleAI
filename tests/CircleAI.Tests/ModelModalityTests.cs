@@ -119,21 +119,27 @@ public sealed class ModelModalityTests
     [Fact]
     public void RealRegistry_ChatEntriesStayedChat_SpeechEntriesAreClassified()
     {
-        // The nine chat models must NOT have been reclassified by the modality
-        // default (Qwen* are all Chat), AND the speech rungs added 2026-07-20
+        // The nine chat Qwen models must NOT have been reclassified by the
+        // modality default (they are all Chat), AND the speech + vision rungs
         // must carry their real modality — not silently default to Chat and
-        // pollute chat selection.
+        // pollute chat selection. Qwen2.5-VL is a Qwen BY NAME but a VISION
+        // model, so it is excluded from the chat assertion and checked on its own.
         using var registry = new ModelRegistryService();
 
-        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen")),
+        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen") && !e.Name.Contains("-VL-")),
             e => Assert.Equal(ModelModality.Chat, e.Modality));
 
         var byName = registry.AllModels.ToDictionary(e => e.Name);
-        Assert.Equal(ModelModality.Tts, byName["Piper-en_US-lessac-medium"].Modality);
-        Assert.Equal(ModelModality.Asr, byName["Whisper-tiny-ggml"].Modality);
+        Assert.Equal(ModelModality.Vision, byName["Qwen2.5-VL-3B-Instruct-MNN"].Modality);
+        Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-medium"].Modality);
+        Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-high"].Modality);
+        Assert.Equal(ModelModality.Asr,    byName["Whisper-tiny-ggml"].Modality);
 
-        // And the source: speech rungs are on Hugging Face, chat on ModelScope.
+        // Source: speech rungs are on Hugging Face; chat AND the MNN vision
+        // bundle are on ModelScope (the MNN namespace), so every Qwen* — VL
+        // included — is ModelScope-sourced.
         Assert.Equal(ModelSource.HuggingFace, byName["Piper-en_US-lessac-medium"].Source);
+        Assert.Equal(ModelSource.HuggingFace, byName["Piper-en_US-lessac-high"].Source);
         Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen")),
             e => Assert.Equal(ModelSource.ModelScope, e.Source));
     }

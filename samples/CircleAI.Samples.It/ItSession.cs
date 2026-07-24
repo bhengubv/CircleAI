@@ -9,8 +9,10 @@
 // QwenTextGenerator loads it. The consumer states intent; the SDK answers.
 
 using System.Text;
+using System.Text.Json;
 using CircleAI.Core;
 using CircleAI.Core.Models;
+using CircleAI.Documents;
 using CircleAI.Hosting;
 using CircleAI.Hosting.Chat;
 using CircleAI.Hosting.Neuron;
@@ -394,6 +396,360 @@ public sealed class ItSession : IAsyncDisposable
         _history.Add(new ChatTurn("user", question + " [image]"));
         _history.Add(new ChatTurn("assistant", sb.ToString()));
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Slice 1a: renders a SAMPLE CV to PDF through the offline document engine.
+    /// NO model — this proves the RENDERER runs on the device (pure-managed
+    /// PDFsharp + embedded DejaVu on ARM64 EMUI) and emits a valid PDF, before
+    /// the Neuron fills real content in a later slice. Bytes + suggested filename
+    /// come back; the host decides where they land.
+    /// </summary>
+    public static Task<DocumentResult> GenerateSampleCvAsync(CancellationToken ct = default)
+    {
+        // Static + model-free on purpose: the CV render is independent of the
+        // brain, so a host can prove the document engine on device without
+        // waiting for the (slow, ~433 MB) model to load.
+        var engine = new PdfSharpDocumentEngine();
+        return engine.RenderAsync(new DocumentRequest(DocumentKind.Cv, SampleCv()), ct).AsTask();
+    }
+
+    /// <summary>A realistic SA entry-level CV, used to prove the render path end to end.</summary>
+    private static CvDocument SampleCv() => new(
+        FullName: "Thabo Mokoena",
+        Headline: "Junior Software Developer",
+        Contact: new CvContact(
+            Email: "thabo.mokoena@example.co.za",
+            Phone: "+27 82 555 0142",
+            Location: "Soweto, Johannesburg",
+            Links: new[] { "github.com/thabomokoena" }),
+        Summary: "Motivated developer with a National Diploma in IT and hands-on experience "
+               + "building offline-first Android apps in C#. Keen to grow in a team that ships.",
+        Experience: new[]
+        {
+            new CvExperience("IT Support Intern", "Gauteng Community Hub", "Johannesburg", "Feb 2023", null,
+                new[]
+                {
+                    "Resolved 40+ hardware and network tickets a week, cutting turnaround from 3 days to 1.",
+                    "Built a small C# tool to automate monthly asset reports, saving ~6 hours a month.",
+                }),
+            new CvExperience("Retail Assistant", "Shoprite", "Soweto", "Jun 2021", "Jan 2023",
+                new[] { "Handled point-of-sale and daily cash-ups with zero shortfalls over 18 months." }),
+        },
+        Education: new[]
+        {
+            new CvEducation("National Diploma: Information Technology", "University of Johannesburg",
+                "Johannesburg", "2020", "2022", "Distinction in Software Development."),
+            new CvEducation("National Senior Certificate", "Morris Isaacson High School", "Soweto", null, "2019"),
+        },
+        Skills: new[] { "C#", ".NET / MAUI", "Android", "SQL", "Git", "Problem solving" },
+        Certifications: new[] { new CvCertification("Microsoft Certified: Azure Fundamentals", "Microsoft", "2023") },
+        Languages: new[] { "English", "isiZulu", "Sesotho" });
+
+    // ── Slice 1b: model-TAILORED CV ────────────────────────────────────────────
+
+    /// <summary>
+    /// Slice 1b: the MODEL fills a CV, tailored to a target role, and the offline
+    /// engine renders it to PDF. This is the CONTENT half that Slice 1a's static
+    /// render (<see cref="GenerateSampleCvAsync"/>) proved the plumbing for.
+    /// <para>
+    /// The on-device brain (<c>_brain</c>, the same <see cref="AIService"/> that
+    /// serves chat) is asked to emit JSON matching the <see cref="CvDocument"/>
+    /// schema — summary and experience bullets aligned to <paramref name="targetRole"/>
+    /// (role keywords, action-led, quantified where the source supports it).
+    /// <see cref="GenerationOptions.IncludeReasoning"/> is OFF so a Qwen3-class
+    /// model's &lt;think&gt; block never contaminates the JSON. The JSON is
+    /// deserialised into a <see cref="CvDocument"/> and rendered through the SAME
+    /// <see cref="PdfSharpDocumentEngine"/> the sample path uses.
+    /// </para>
+    /// <para>
+    /// GUARANTEE: a real PDF ALWAYS comes back. A 0.6B model can return imperfect
+    /// JSON; when parsing fails — or the brain itself errors, or there is no model
+    /// on this device at all — a DETERMINISTIC fallback builds a CvDocument straight
+    /// from <paramref name="rawProfile"/> so the user still gets a document made of
+    /// their own words rather than nothing.
+    /// </para>
+    /// </summary>
+    /// <param name="rawProfile">
+    /// The candidate's unstructured profile — pasted experience, an old CV's text,
+    /// a few lines about themselves. The model structures and tailors it; on the
+    /// fallback path it becomes the summary verbatim so nothing is lost.
+    /// </param>
+    /// <param name="targetRole">The role to tailor toward, e.g. "Data Analyst".</param>
+    /// <param name="fullName">
+    /// Optional identity from the HOST (the person's own name). Preferred over
+    /// anything the model emits — identity is not a thing to let a model guess.
+    /// Falls back to a best-effort read of the profile's first line, then "Candidate".
+    /// </param>
+    /// <param name="contact">
+    /// Optional contact block from the HOST. Preferred over the model's, for the
+    /// same reason — a CV must not carry a hallucinated phone number or email.
+    /// </param>
+    public async Task<DocumentResult> GenerateTailoredCvAsync(
+        string rawProfile,
+        string targetRole,
+        string? fullName = null,
+        CvContact? contact = null,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rawProfile);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetRole);
+
+        CvDocument cv;
+        try
+        {
+            var messages = new List<ChatMessage>
+            {
+                new("system", CvTailoringSystemPrompt),
+                new("user", BuildCvTailoringPrompt(rawProfile, targetRole)),
+            };
+
+            // IncludeReasoning=false → JSON-strict: the model still THINKS, but the
+            // reasoning is dropped so only the final answer (the JSON) reaches us.
+            // Low temperature keeps it on the schema instead of embellishing.
+            var options = new GenerationOptions
+            {
+                IncludeReasoning = false,
+                Temperature      = 0.2f,
+                TopP             = 0.9f,
+                MaxTokens        = 1024,
+            };
+
+            var reply = await _brain.ChatAsync(messages, options, ct).ConfigureAwait(false);
+            cv = ParseTailoredCv(reply, targetRole, fullName, contact)
+                 ?? BuildFallbackCv(rawProfile, targetRole, fullName, contact);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The brain itself failed (no model resolved for this device, a native
+            // OOM, a load error). A CV vertical that yields NOTHING on a bad turn is
+            // worse than one that yields a plain CV from the user's own words — so
+            // fall back rather than throw. Cancellation still propagates.
+            cv = BuildFallbackCv(rawProfile, targetRole, fullName, contact);
+        }
+
+        // Render through the SAME offline engine Slice 1a proved on the device.
+        var engine = new PdfSharpDocumentEngine();
+        try
+        {
+            return await engine
+                .RenderAsync(new DocumentRequest(DocumentKind.Cv, cv), ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Belt and braces on the ALWAYS-a-PDF promise: if some model-supplied
+            // value slipped past sanitisation and the layout engine rejected it,
+            // re-render the deterministic fallback, whose fields are fully
+            // controlled and known to render (it is what Slice 1a exercises).
+            var safe = BuildFallbackCv(rawProfile, targetRole, fullName, contact);
+            return await engine
+                .RenderAsync(new DocumentRequest(DocumentKind.Cv, safe), ct)
+                .ConfigureAwait(false);
+        }
+    }
+
+    // The JSON contract handed to the model. Field names match CvDocument's
+    // properties (matched case-insensitively on the way back in), so the reply
+    // deserialises straight into the record. Deliberately terse — every token
+    // spent here is a token off a 0.6B model's 4096 window.
+    private const string CvTailoringSystemPrompt =
+        "You are a professional CV writer. Output ONE JSON object and nothing else — no prose, " +
+        "no markdown, no code fences. Use exactly these fields:\n" +
+        "{\n" +
+        "  \"fullName\": string,\n" +
+        "  \"headline\": string,\n" +
+        "  \"contact\": { \"email\": string, \"phone\": string, \"location\": string, \"links\": [string] },\n" +
+        "  \"summary\": string,\n" +
+        "  \"experience\": [ { \"title\": string, \"organisation\": string, \"location\": string, \"startDate\": string, \"endDate\": string, \"highlights\": [string] } ],\n" +
+        "  \"education\": [ { \"qualification\": string, \"institution\": string, \"location\": string, \"startDate\": string, \"endDate\": string, \"notes\": string } ],\n" +
+        "  \"skills\": [string],\n" +
+        "  \"certifications\": [ { \"name\": string, \"issuer\": string, \"year\": string } ],\n" +
+        "  \"languages\": [string]\n" +
+        "}\n" +
+        "Tailor \"summary\" and every \"highlights\" bullet to the TARGET ROLE: mirror the role's " +
+        "keywords, start each bullet with an action verb, and quantify results where the source " +
+        "supports it. Do NOT invent facts absent from the source. A null \"endDate\" means \"Present\".";
+
+    private static string BuildCvTailoringPrompt(string rawProfile, string targetRole) =>
+        $"TARGET ROLE:\n{targetRole.Trim()}\n\nSOURCE PROFILE:\n{rawProfile.Trim()}\n\n" +
+        "Return the tailored CV as a single JSON object now.";
+
+    private static readonly JsonSerializerOptions CvJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling         = JsonCommentHandling.Skip,
+        AllowTrailingCommas         = true,
+    };
+
+    /// <summary>
+    /// Deserialises the model's reply into a render-ready <see cref="CvDocument"/>,
+    /// or returns <c>null</c> when the reply can't be trusted — the signal for the
+    /// deterministic fallback to take over. NEVER throws on bad model output:
+    /// imperfect JSON from a small model is expected, not exceptional.
+    /// </summary>
+    private static CvDocument? ParseTailoredCv(
+        string? modelReply, string targetRole, string? fullName, CvContact? contact)
+    {
+        var json = ExtractJsonObject(modelReply);
+        if (json is null) return null;
+
+        CvDocument? parsed;
+        try
+        {
+            parsed = JsonSerializer.Deserialize<CvDocument>(json, CvJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;   // unparseable — fall back to a deterministic CV
+        }
+        if (parsed is null) return null;
+
+        // The model owns the words; it does NOT own the render invariants. Host
+        // identity wins over model identity, and every collection is sanitised so a
+        // ragged item — a null title, a missing highlight — cannot reach (and NRE)
+        // the template, which only guards the top-level lists, not their contents.
+        var name       = FirstNonBlank(fullName, parsed.FullName);
+        var experience = SanitiseExperience(parsed.Experience);
+        var education  = SanitiseEducation(parsed.Education);
+        var skills     = SanitiseStrings(parsed.Skills);
+        var languages  = SanitiseStrings(parsed.Languages);
+        var summary    = string.IsNullOrWhiteSpace(parsed.Summary) ? null : parsed.Summary!.Trim();
+
+        // Nothing usable came back (e.g. the model emitted "{}"): defer to the
+        // deterministic fallback, which at least preserves the raw profile text.
+        if (name is null && summary is null &&
+            experience.Count == 0 && education.Count == 0 && skills.Count == 0)
+            return null;
+
+        return new CvDocument(
+            FullName:       name ?? "Candidate",
+            Headline:       FirstNonBlank(parsed.Headline, targetRole) ?? targetRole.Trim(),
+            Contact:        contact ?? parsed.Contact ?? new CvContact(),
+            Summary:        summary,
+            Experience:     experience,
+            Education:      education,
+            Skills:         skills,
+            Certifications: SanitiseCertifications(parsed.Certifications),
+            Languages:      languages.Count > 0 ? languages : null);
+    }
+
+    /// <summary>
+    /// The DETERMINISTIC fallback — no model. Guarantees a real PDF from the user's
+    /// own words when the brain returns unparseable JSON, errors, or is absent.
+    /// Career-ops still shows at the layout level: the target role becomes the
+    /// headline and the raw profile becomes the summary, so nothing typed is lost.
+    /// Built on <see cref="CvDocument.Minimal"/> — the schema's own fallback ctor.
+    /// </summary>
+    private static CvDocument BuildFallbackCv(
+        string rawProfile, string targetRole, string? fullName, CvContact? contact)
+    {
+        var name    = FirstNonBlank(fullName, GuessNameFromProfile(rawProfile)) ?? "Candidate";
+        var summary = rawProfile.Trim();
+        return CvDocument.Minimal(name, targetRole.Trim(), contact ?? new CvContact())
+            with { Summary = summary.Length == 0 ? null : summary };
+    }
+
+    /// <summary>
+    /// Pulls the outermost <c>{ … }</c> span from a reply that may wrap the JSON in
+    /// code fences or a stray sentence. A heuristic, not a validator — the
+    /// deserialise step decides whether the span is real JSON.
+    /// </summary>
+    private static string? ExtractJsonObject(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var start = text.IndexOf('{');
+        var end   = text.LastIndexOf('}');
+        return start >= 0 && end > start ? text.Substring(start, end - start + 1) : null;
+    }
+
+    /// <summary>
+    /// Best-effort name read for the fallback: a pasted profile often opens with the
+    /// person's name. Accepts a short, digit-free first line as the name; otherwise
+    /// returns <c>null</c> and the caller defaults to "Candidate". Never fabricates —
+    /// it only lifts text the user already wrote.
+    /// </summary>
+    private static string? GuessNameFromProfile(string rawProfile)
+    {
+        foreach (var raw in rawProfile.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) continue;
+            var words = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var looksLikeName =
+                line.Length <= 40 &&
+                words.Length is >= 1 and <= 4 &&
+                line.All(c => char.IsLetter(c) || c is ' ' or '-' or '\'' or '.');
+            return looksLikeName ? line : null;   // first non-empty line decides
+        }
+        return null;
+    }
+
+    // ── model-output sanitisers — coalesce nulls / drop unrenderable items ──────
+
+    /// <summary>First non-blank candidate, trimmed; <c>null</c> when all are blank.</summary>
+    private static string? FirstNonBlank(params string?[] candidates)
+    {
+        foreach (var c in candidates)
+            if (!string.IsNullOrWhiteSpace(c)) return c.Trim();
+        return null;
+    }
+
+    private static IReadOnlyList<CvExperience> SanitiseExperience(IReadOnlyList<CvExperience>? items)
+    {
+        if (items is not { Count: > 0 }) return Array.Empty<CvExperience>();
+        var list = new List<CvExperience>(items.Count);
+        foreach (var e in items)
+        {
+            // A role with no title can't render meaningfully — drop it rather than
+            // emit a headless bullet block.
+            if (e is null || string.IsNullOrWhiteSpace(e.Title)) continue;
+            list.Add(new CvExperience(
+                Title:        e.Title.Trim(),
+                Organisation: e.Organisation?.Trim() ?? string.Empty,
+                Location:     e.Location,
+                StartDate:    e.StartDate?.Trim() ?? string.Empty,
+                EndDate:      e.EndDate,
+                Highlights:   SanitiseStrings(e.Highlights)));
+        }
+        return list;
+    }
+
+    private static IReadOnlyList<CvEducation> SanitiseEducation(IReadOnlyList<CvEducation>? items)
+    {
+        if (items is not { Count: > 0 }) return Array.Empty<CvEducation>();
+        var list = new List<CvEducation>(items.Count);
+        foreach (var ed in items)
+        {
+            if (ed is null || string.IsNullOrWhiteSpace(ed.Qualification)) continue;
+            list.Add(new CvEducation(
+                Qualification: ed.Qualification.Trim(),
+                Institution:   ed.Institution?.Trim() ?? string.Empty,
+                Location:      ed.Location,
+                StartDate:     ed.StartDate,
+                EndDate:       ed.EndDate,
+                Notes:         ed.Notes));
+        }
+        return list;
+    }
+
+    private static IReadOnlyList<CvCertification>? SanitiseCertifications(IReadOnlyList<CvCertification>? items)
+    {
+        if (items is not { Count: > 0 }) return null;
+        var list = new List<CvCertification>(items.Count);
+        foreach (var c in items)
+            if (c is not null && !string.IsNullOrWhiteSpace(c.Name))
+                list.Add(new CvCertification(c.Name.Trim(), c.Issuer, c.Year));
+        return list.Count == 0 ? null : list;
+    }
+
+    private static IReadOnlyList<string> SanitiseStrings(IReadOnlyList<string>? items)
+    {
+        if (items is not { Count: > 0 }) return Array.Empty<string>();
+        var list = new List<string>(items.Count);
+        foreach (var s in items)
+            if (!string.IsNullOrWhiteSpace(s)) list.Add(s.Trim());
+        return list;
     }
 
     /// <summary>Prompts that should provoke a tool call, with unguessable answers.</summary>

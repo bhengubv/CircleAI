@@ -1,0 +1,54 @@
+# CircleAI.Security.Defense — starter defensive indicator set
+# =============================================================================
+# This file is BUNDLED as an EmbeddedResource and loaded at boot, fully offline.
+# It is the seed for the on-device network/threat monitor. It can be extended or
+# replaced at runtime via IIndicatorSource.RefreshFromAsync(...) with any of the
+# free / open feeds below (e.g. delivered over the AetherNet mesh) — but the
+# monitor works with zero network access using just this file.
+#
+# PRODUCTION FEEDS THIS SEED MODELS (all free / OSS / public-domain — verify the
+# licence FIRST, per repo policy; only redistribute lists whose licence permits it):
+#   * abuse.ch URLhaus         (malicious URL / host feed)     — CC0 1.0 (Public Domain)
+#   * abuse.ch Feodo Tracker   (botnet C2 IPv4 blocklist)      — CC0 1.0 (Public Domain)
+#   * abuse.ch ThreatFox       (IOC feed: IP/domain/hash)      — CC0 1.0 (Public Domain)
+#   * StevenBlack/hosts        (consolidated ad+malware hosts) — MIT License
+# CC0 and MIT both permit bundling and redistribution, so entries pulled from
+# those feeds may be committed straight into this file.
+#
+# WHY THE SHIPPED ENTRIES ARE SAFE PLACEHOLDERS
+# -----------------------------------------------------------------------------
+# So this repository never carries a live third-party malicious IP that could go
+# stale or be misattributed, the committed seed uses only reserved documentation
+# and example identifiers that are themselves public-domain (defined by IETF RFCs):
+#   * RFC 5737 — IPv4 documentation ranges (TEST-NET-1/2/3)
+#   * RFC 3849 — IPv6 documentation range (2001:db8::/32)
+#   * RFC 2606 / RFC 6761 — reserved example/test/invalid domains
+# These exercise every matcher path (exact IPv4, IPv4 CIDR, IPv6, domain +
+# parent-domain suffix, hosts-file style) end to end. Swap in a CC0/MIT feed for
+# real coverage.
+#
+# LINE FORMAT (comments start with '#'; inline comments after '#' are stripped):
+#   <domain>                 example.com
+#   <ipv4>                   203.0.113.7
+#   <ipv4>/<prefix>          198.51.100.0/24
+#   <ipv6>                   2001:db8::1
+#   0.0.0.0 <domain>         hosts-file style (the sink IP is ignored)
+# =============================================================================
+
+# ── Reserved documentation IPv4 ranges (RFC 5737) — safe CIDR placeholders ──
+192.0.2.0/24
+198.51.100.0/24
+203.0.113.0/24
+
+# ── A single documentation host, exact-IPv4 form (RFC 5737 TEST-NET-3) ──
+203.0.113.66
+
+# ── Reserved documentation IPv6 (RFC 3849) — safe exact-match placeholder ──
+2001:db8::bad
+
+# ── Reserved example / test / invalid domains (RFC 2606, RFC 6761) ──
+# Parent-domain match: any subdomain of these resolves as blocked too.
+malware.example
+c2.example
+phishing.test
+0.0.0.0 tracker.invalid

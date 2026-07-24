@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Mesh</PackageId>
+    <Description>
+      (RT-12 v2) The CircleAI mesh hand-off router. When the local device
+      cannot hold the model a turn needs, the router borrows a stronger
+      peer's brain: it queries the CircleAI.AetherNet IMeshCapabilityRegistry
+      for peers advertising that model with enough spare KV budget, picks the
+      best one, delegates the completion over any reachable INetworkTransport
+      (hotspot / LAN / Aether mesh), and falls back to a local or smaller
+      model when no peer is available or the peer fails. Also ships a real
+      IMeshCapabilityBroadcaster (AetherMeshCapabilityBroadcaster) that
+      publishes OUR advertisement over the transport, replacing the RT-12 v1
+      no-op. This package CONSUMES a transport; it does not implement one. The
+      zero-infrastructure BLE / Wi-Fi Direct peer discovery that lets phones
+      find each other with no router lives in AetherNet (the aether-protocol
+      repo), not here.
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Audited + reused, never duplicated:
+         - CircleAI.AetherNet  : MeshCapabilityAdvertisement, IMeshCapabilityRegistry,
+                                 IMeshCapabilityBroadcaster (the no-op we replace).
+         - CircleAI.Networking : INetworkTransport / NetworkPayload (the wire we ride).
+         - CircleAI.Core       : DeviceTier (carried on every advertisement).
+         We do NOT edit any of these projects. -->
+    <ProjectReference Include="..\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
+    <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- All MIT, part of the .NET platform (dotnet/runtime) - fully free / OSS,
+         nothing revenue-gated. Hosting.Abstractions provides IHostedService +
+         AddHostedService for the receive pump and the advert beacon; the rest
+         are the standard DI / Options / Logging seams. System.Text.Json
+         (source-generated below) is in-box - no extra package. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+</Project>

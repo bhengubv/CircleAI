@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Security.Antibodies</PackageId>
+    <Version>0.1.0</Version>
+    <Description>
+      Defensive-by-purpose threat-AWARENESS "antibodies" for CircleAI.
+      OSINT / threat-intel / malware-awareness seams that exist ONLY to warn and shield
+      the user — never to attack. Every capability sits behind an explicit, deny-by-default
+      authorized-use gate (NullAuthorizedUseGate denies everything) and runs only under a
+      defined threat. Fully offline, de-Googled, low-end-Android friendly — no live feeds,
+      no network calls, nothing bundled loose. See docs/SECURITY_AUTHORIZED_USE.md.
+    </Description>
+    <PackageTags>circle-ai;security;defensive;threat-awareness;osint;authorized-use;offline;thegeeknetwork</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!--
+    Deliberately dependency-free: pure BCL only. No project references and no NuGet
+    package references. A gated security component should carry the smallest possible
+    supply-chain surface, and an offline device should have nothing to restore. The
+    only inherited build-time analyzers/SourceLink come from Directory.Build.props and
+    are MIT-licensed with PrivateAssets=All (they do not flow to consumers).
+  -->
+
+</Project>

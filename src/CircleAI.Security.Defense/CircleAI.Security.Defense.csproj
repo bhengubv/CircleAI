@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Security.Defense</PackageId>
+    <Version>1.0.0</Version>
+    <Description>
+      Always-on, on-device DEFENSIVE immune system for Circle AI. A network/threat
+      monitor that shields the user by matching outbound/inbound network observations
+      (dialed IPs, DNS lookups, TLS SNI) against a bundled, offline, refreshable
+      indicator blocklist (known-bad IPv4/IPv6 addresses, CIDR ranges and domains)
+      and by flagging connection anomalies (scan fan-out, connection floods, C2
+      beaconing). Autonomic — started at boot, never user-launched.
+
+      Complements CircleAI.Security (peer trust + local runtime immune system): the
+      optional WatchdogThreatSink forwards confirmed network threats into the existing
+      ISecurityWatchdog. Pairs with Panik/Nope SOS via the ISosEscalation seam.
+      100% offline (blocklist bundled as an EmbeddedResource), de-Googled, low-end
+      Android friendly (synchronous, allocation-light hot path; no cloud, no GMS).
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- New code targets .NET 10 only (repo rule: new = net10, existing keeps net9). -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Bundled starter indicator set. Offline-first; refreshable at runtime via
+         IIndicatorSource.RefreshFromAsync. Public-domain / MIT seed only — see the
+         file header for source + licence. -->
+    <EmbeddedResource Include="Data\defense-blocklist.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Core gives CircleAIComponentBase (OTel + audit wrappers) + verification attr. -->
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <!-- Complement only: reused for the optional ThreatSignal -> AnomalySignal ->
+         ISecurityWatchdog bridge (Integration\WatchdogThreatSink). No files inside
+         CircleAI.Security are modified. -->
+    <ProjectReference Include="..\CircleAI.Security\CircleAI.Security.csproj" />
+  </ItemGroup>
+
+</Project>

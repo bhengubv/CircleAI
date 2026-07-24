@@ -1,5 +1,40 @@
 {
   "Notes": "Auto-populated from ModelScope file-listing API by tools/recalibrate-registry-sha. Each entry\u0027s BundleFiles array lists EVERY file MNN-LLM needs to load the model. Per-file SHA-256 comes from ModelScope\u0027s API; one file per entry is full-download verified to confirm the API SHAs are accurate. Re-run the tool to refresh.",
+  "Qwen2.5-VL-3B-Instruct-MNN": {
+    "Repo": "MNN/Qwen2.5-VL-3B-Instruct-MNN",
+    "Modality": "Vision",
+    "Architecture": "qwen2.5-vl",
+    "QuantizationType": "MNN-Q4",
+    "Version": "2.5",
+    "TotalBytes": 2736203848,
+    "BundleFiles": [
+      { "Name": ".gitattributes", "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82", "SizeBytes": 1642 },
+      { "Name": "config.json", "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815", "SizeBytes": 344 },
+      { "Name": "configuration.json", "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2", "SizeBytes": 46 },
+      { "Name": "embeddings_bf16.bin", "Sha256": "b84907567aa829c6f24cadbdeb68c3c44d25fc0a8be8e917fd603cb64f72810d", "SizeBytes": 622329856 },
+      { "Name": "llm.mnn", "Sha256": "860ac54071174f8d2961c3258224fe315dcf2bae78344005cdddee21e7d80aa3", "SizeBytes": 574000 },
+      { "Name": "llm.mnn.json", "Sha256": "04ae802933b4ff8e58c17b1246e8b64abd3267fb16c7b6642028771e87f88fcd", "SizeBytes": 2407071 },
+      { "Name": "llm.mnn.weight", "Sha256": "7326f768b816b5af71ad3a995dc1e321e07f85db487394e1430e5f07fd9627c6", "SizeBytes": 1737291202 },
+      { "Name": "llm_config.json", "Sha256": "00492942d0603aa638ec263341359f33feeb400e36ca96d11fe1dde1b9f79e77", "SizeBytes": 725 },
+      { "Name": "README.md", "Sha256": "8ed4004451e18f85a282cada7fcefd0ac589246e240777660c91e4f5bde02dcc", "SizeBytes": 1261 },
+      { "Name": "tokenizer.txt", "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b", "SizeBytes": 3193477 },
+      { "Name": "visual.mnn", "Sha256": "1caaa38f5c8e0073f7bbf29e496ccfbeda1b32df332652a031100d0ea306dd7f", "SizeBytes": 655328 },
+      { "Name": "visual.mnn.weight", "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81", "SizeBytes": 369748896 }
+    ]
+  },
+  "Piper-en_US-lessac-high": {
+    "Repo": "rhasspy/piper-voices",
+    "Source": "HuggingFace",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 113900084,
+    "BundleFiles": [
+      { "Name": "en/en_US/lessac/high/en_US-lessac-high.onnx", "Sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09", "SizeBytes": 113895201 },
+      { "Name": "en/en_US/lessac/high/en_US-lessac-high.onnx.json", "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f", "SizeBytes": 4883 }
+    ]
+  },
   "Piper-en_US-lessac-medium": {
     "Repo": "rhasspy/piper-voices",
     "Source": "HuggingFace",

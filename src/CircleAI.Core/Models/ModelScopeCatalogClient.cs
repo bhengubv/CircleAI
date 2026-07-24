@@ -350,15 +350,92 @@ public sealed class ModelScopeCatalogClient : IDisposable
 
         if (bundle.Count == 0) return null;
 
+        var modality = InferModality(name, repo);
+
+        // A VLM is only usable if vision selection can SEE it. Tag the vision
+        // capability so a caller asking "can this build understand an image"
+        // finds it; chat entries keep the default (null → Default only).
+        var capabilities = modality == ModelModality.Vision
+            ? new[] { "Default", "Vision" }
+            : null;
+
+        // Device-fit derivation. The listing API reports file sizes but no RAM
+        // guidance, so estimate conservatively from the on-disk footprint — the
+        // same shape tools/recalibrate-registry-sha stamps for the embedded
+        // entries (runtime RSS ≈ 1.4× bundle bytes). WITHOUT this a discovered
+        // entry carries MinRamGb = 0, and the selector would treat a 4B model as
+        // fitting a 2 GB phone — the exact OOM the embedded metadata prevents.
+        var memoryHint   = (long)(total * 1.4);
+        var minRamGb     = memoryHint / 1_000_000_000.0;
+        var minStorageGb = total      / 1_000_000_000.0;
+
         return new ModelEntry(
             Name:         name,
             Version:      "",   // ModelScope's listing API doesn't expose model version cleanly
             Quantization: "MNN")
         {
-            Repo        = repo,
-            TotalBytes  = total,
-            BundleFiles = bundle,
+            Repo            = repo,
+            TotalBytes      = total,
+            BundleFiles     = bundle,
+            Modality        = modality,
+            Capabilities    = capabilities,
+            MemoryHintBytes = memoryHint,
+            MinRamGb        = minRamGb,
+            MinStorageGb    = minStorageGb,
         };
+    }
+
+    /// <summary>
+    /// Infer a discovered repo's <see cref="ModelModality"/> from its name.
+    /// The ModelScope listing API does not report modality, so a
+    /// vision-language bundle (Qwen2-VL, Qwen2.5-VL, MiniCPM-V, SmolVLM,
+    /// InternVL, LLaVA) would otherwise be catalogued as the default
+    /// <see cref="ModelModality.Chat"/> and be invisible to vision selection —
+    /// the one thing that makes an on-device VLM usable. Anything not
+    /// recognised as a VLM stays <see cref="ModelModality.Chat"/>, exactly as
+    /// before this method existed.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately public + static so it is unit-testable offline without an
+    /// HTTP round-trip — the VLM-naming table is the load-bearing part of
+    /// cataloguing a vision model and must be pinned by a test.
+    /// </remarks>
+    public static ModelModality InferModality(string name, string? repo = null)
+    {
+        var hay = $"{name} {repo}";
+
+        // "VL" as a delimited token is MNN's own VLM marker
+        // (Qwen2-VL-2B-Instruct-MNN, Qwen2.5-VL-3B-Instruct-MNN). The named
+        // families below cover the VLMs whose marker is NOT a standalone "VL"
+        // token (InternVL, SmolVLM). "Vision" catches anything self-labelled.
+        if (ContainsToken(hay, "VL")
+            || hay.Contains("MiniCPM-V", StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("SmolVLM",   StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("InternVL",  StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("LLaVA",     StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("Vision",    StringComparison.OrdinalIgnoreCase))
+        {
+            return ModelModality.Vision;
+        }
+
+        return ModelModality.Chat;
+    }
+
+    // True when <paramref name="needle"/> appears in <paramref name="haystack"/>
+    // bounded by non-alphanumeric characters, so "VL" matches "Qwen2-VL-2B" but
+    // never the "VL" inside "InternVL" or "SmolVLM" (those get explicit checks).
+    private static bool ContainsToken(string haystack, string needle)
+    {
+        int i = 0;
+        while ((i = haystack.IndexOf(needle, i, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var beforeOk = i == 0 || !char.IsLetterOrDigit(haystack[i - 1]);
+            var afterIx  = i + needle.Length;
+            var afterOk  = afterIx >= haystack.Length || !char.IsLetterOrDigit(haystack[afterIx]);
+            if (beforeOk && afterOk) return true;
+            i = afterIx;
+        }
+        return false;
     }
 
     public void Dispose()
