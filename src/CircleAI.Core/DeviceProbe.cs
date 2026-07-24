@@ -100,6 +100,22 @@ public sealed record DeviceProbe(
     /// </summary>
     public double? VramGb { get; init; }
 
+    /// <summary>Real device memory, supplied by a platform head that can read it.</summary>
+    public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes);
+
+    /// <summary>
+    /// Optional platform hook. The platform-neutral Core cannot read a mobile
+    /// device's real RAM/storage: <see cref="GC.GetGCMemoryInfo"/> reports the
+    /// per-app GC heap limit (~100 MB in an Android sandbox) and
+    /// <see cref="DriveInfo"/> denies the sandboxed data partition, so a 3 GB
+    /// phone would be misclassified as a <see cref="DeviceTier.Wearable"/> and
+    /// every model would come back <c>NothingFits</c>. An Android / iOS head
+    /// sets this once at startup so every <see cref="Snapshot"/> reports real
+    /// hardware. Left <c>null</c> on desktop / server, where the heuristics are
+    /// accurate.
+    /// </summary>
+    public static Func<PlatformMemory>? PlatformMemoryProbe { get; set; }
+
     /// <summary>
     /// Build a probe from runtime facts. Free, allocation-light, callable
     /// per-startup. <paramref name="modelCacheDirectory"/> defaults to
@@ -110,23 +126,51 @@ public sealed record DeviceProbe(
         string?  modelCacheDirectory = null,
         GpuKind? gpuOverride         = null,
         ThermalClass? thermalOverride = null,
-        double?  vramGbOverride      = null)
+        double?  vramGbOverride      = null,
+        long?    ramBytesOverride     = null,
+        long?    storageBytesOverride = null)
     {
-        var gcInfo = GC.GetGCMemoryInfo();
-        var ram = Math.Max(0L, gcInfo.TotalAvailableMemoryBytes);
+        // Real hardware first: explicit overrides, then the platform hook (set by
+        // an Android / iOS head), then the platform-neutral heuristics. The
+        // heuristics are accurate on desktop / server but read the GC heap limit
+        // and the process drive, which a mobile sandbox reports as ~100 MB / 0 B.
+        if (ramBytesOverride is null || storageBytesOverride is null)
+        {
+            var pm = PlatformMemoryProbe?.Invoke();
+            ramBytesOverride     ??= pm?.RamAvailableBytes;
+            storageBytesOverride ??= pm?.StorageFreeBytes;
+        }
+
+        long ram;
+        if (ramBytesOverride is > 0)
+        {
+            ram = ramBytesOverride.Value;
+        }
+        else
+        {
+            var gcInfo = GC.GetGCMemoryInfo();
+            ram = Math.Max(0L, gcInfo.TotalAvailableMemoryBytes);
+        }
 
         long storage = 0;
-        try
+        if (storageBytesOverride is > 0)
         {
-            var probePath = modelCacheDirectory ?? AppContext.BaseDirectory;
-            var driveRoot = Path.GetPathRoot(Path.GetFullPath(probePath));
-            if (!string.IsNullOrWhiteSpace(driveRoot))
-                storage = new DriveInfo(driveRoot).AvailableFreeSpace;
+            storage = storageBytesOverride.Value;
         }
-        catch
+        else
         {
-            // Some hosts (Docker squash, sandboxed apps) deny DriveInfo —
-            // fall through with storage = 0; selector will skip size gating.
+            try
+            {
+                var probePath = modelCacheDirectory ?? AppContext.BaseDirectory;
+                var driveRoot = Path.GetPathRoot(Path.GetFullPath(probePath));
+                if (!string.IsNullOrWhiteSpace(driveRoot))
+                    storage = new DriveInfo(driveRoot).AvailableFreeSpace;
+            }
+            catch
+            {
+                // Some hosts (Docker squash, sandboxed apps) deny DriveInfo —
+                // fall through with storage = 0; selector will skip size gating.
+            }
         }
 
         var conn = NetworkInterface.GetIsNetworkAvailable()

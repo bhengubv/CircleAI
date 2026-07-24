@@ -38,12 +38,43 @@ public class MainActivity : Activity
     protected override async void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+
+        // Teach the platform-neutral device probe how to read THIS phone's real
+        // memory + storage. Without it the Core heuristic reads the GC heap limit
+        // (~100 MB in an Android sandbox) and misclassifies a 3 GB phone as a
+        // Wearable, so every model comes back NothingFits. Total physical RAM is
+        // the device-class budget the selector's tier + fit thresholds expect.
+        CircleAI.Core.DeviceProbe.PlatformMemoryProbe = () =>
+        {
+            long? ram = null, storage = null;
+            try
+            {
+                if (GetSystemService(Android.Content.Context.ActivityService) is Android.App.ActivityManager am)
+                {
+                    var mi = new Android.App.ActivityManager.MemoryInfo();
+                    am.GetMemoryInfo(mi);
+                    ram = mi.TotalMem;
+                }
+            }
+            catch { /* fall back to the Core heuristic */ }
+            try
+            {
+                var stat = new Android.OS.StatFs(FilesDir!.AbsolutePath);
+                storage = stat.AvailableBytes;
+            }
+            catch { /* fall back to the Core heuristic */ }
+            return new CircleAI.Core.DeviceProbe.PlatformMemory(ram, storage);
+        };
+
         BuildUi();
 
         Append("IT! - CircleAI Neuron, on-device (C#)\n\n");
         Append("Type a message and hit Send. Try:\n");
         Append("  \"my name is ...\"   then   \"what's my name?\"\n");
         Append("  \"solve ... step by step\"   -> routes to a specialist\n\n");
+
+        Append("Tap Caps now for the offline sweep — per-modality model verdicts\n");
+        Append("plus CV / cover letter / invoice / report PDFs. No model, no wait.\n\n");
 
         Append("Starting the Neuron. On first run it picks a model that fits\n");
         Append("this phone and downloads it (~433 MB), so this takes a while.\n");
@@ -137,12 +168,13 @@ public class MainActivity : Activity
         row.AddView(_tools, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
-        // Offline CV → PDF. Enabled immediately: it needs no model, so it proves
-        // the document engine on-device even before the brain finishes loading.
-        _cv = new Button(this) { Text = "CV", Enabled = true };
+        // Offline capability sweep. Enabled immediately: it needs no model, so it
+        // proves the catalogued-model verdicts AND the whole document engine
+        // on-device before the brain finishes loading.
+        _cv = new Button(this) { Text = "Caps", Enabled = true };
         _cv.SetTextColor(Ink);
         _cv.SetBackgroundColor(Panel);
-        _cv.Click += (s, e) => GenerateCv();
+        _cv.Click += (s, e) => RunCapabilities();
         row.AddView(_cv, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
@@ -170,35 +202,58 @@ public class MainActivity : Activity
         SetContentView(root);
     }
 
-    // Slice 1a: prove the offline document engine on the actual phone. Renders a
-    // sample CV to PDF (pure-managed PDFsharp + embedded DejaVu, no model, no
-    // network) and writes it to internal app storage, readable via adb run-as.
-    async void GenerateCv()
+    // The offline capability sweep — runnable the instant the app opens (no
+    // model, no network). Two halves that together prove the recent work on the
+    // actual phone: (1) the on-device model-selector verdict for every modality,
+    // so the catalogued vision/TTS/ASR models are shown resolving and device-fit
+    // gating is honest (vision NothingFits on a 3 GB phone, not a crash); (2)
+    // every document KIND rendered to a real PDF in internal storage.
+    async void RunCapabilities()
     {
         _cv.Enabled = false;
-        Append("\n[cv] generating an offline PDF CV (no model, no network)…\n");
+        Append("\n===== ON-DEVICE CAPABILITY SWEEP =====\n");
+        // Accumulate the whole sweep so it can be pulled off the phone as one
+        // file — a clean end-to-end check over adb, not a screen scrape.
+        var log = new System.Text.StringBuilder();
+        log.Append("CircleAI on-device capability sweep\n\n");
         try
         {
-            // Render off the UI thread — a 1-page CV is fast, but never block the UI.
-            var result = await Task.Run(() => ItSession.GenerateSampleCvAsync());
+            Append("\n[models] what this phone can run (from the embedded registry):\n");
+            var report = await Task.Run(CapabilitySweep.BuildModelReport);
+            Append(report);
+            log.Append("[models]\n").Append(report).Append('\n');
 
-            var path = System.IO.Path.Combine(FilesDir!.AbsolutePath, result.SuggestedFileName);
-            await System.IO.File.WriteAllBytesAsync(path, result.Bytes);
+            Append("\n[documents] rendering every kind to PDF (pure-managed, offline):\n");
+            log.Append("[documents]\n");
+            // Render off the UI thread — PDFsharp is synchronous CPU work.
+            var docs = await Task.Run(() => CapabilitySweep.RenderDocumentSuiteAsync());
+            foreach (var (label, doc) in docs)
+            {
+                var path = System.IO.Path.Combine(FilesDir!.AbsolutePath, doc.SuggestedFileName);
+                await System.IO.File.WriteAllBytesAsync(path, doc.Bytes);
+                var line = $"  {label,-13} {doc.Bytes.Length,8:N0} bytes  {doc.SuggestedFileName}\n";
+                Append(line);
+                log.Append(line);
+            }
 
-            Append($"[cv] wrote {result.Bytes.Length:N0} bytes\n");
-            Append($"[cv] {path}\n");
-            Append("[cv] OK — pure-managed PDFsharp rendered a PDF on-device.\n");
+            var reportPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "capability-report.txt");
+            await System.IO.File.WriteAllTextAsync(reportPath, log.ToString());
+
+            Append("\n[caps] OK. Pull the whole result off the phone with:\n");
+            Append("  adb exec-out run-as com.bhengubv.itsample cat files/capability-report.txt\n");
+            Append("  adb exec-out run-as com.bhengubv.itsample cat files/<name>.pdf > out.pdf\n");
         }
         catch (Exception ex)
         {
             // Full exception on failure — a device-only issue (font resource not
-            // found on ARM, etc.) needs the detail, not just the message.
-            Append($"[cv] FAILED: {ex}\n");
+            // found on ARM, a registry parse error, etc.) needs the detail.
+            Append($"[caps] FAILED: {ex}\n");
         }
         finally
         {
             _cv.Enabled = true;
         }
+        Append("===== CAPABILITY SWEEP DONE =====\n\n");
     }
 
     async void Send()
