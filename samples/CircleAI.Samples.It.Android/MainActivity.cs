@@ -40,20 +40,24 @@ public class MainActivity : Activity
         base.OnCreate(savedInstanceState);
 
         // Teach the platform-neutral device probe how to read THIS phone's real
-        // memory + storage. Without it the Core heuristic reads the GC heap limit
-        // (~100 MB in an Android sandbox) and misclassifies a 3 GB phone as a
-        // Wearable, so every model comes back NothingFits. Total physical RAM is
-        // the device-class budget the selector's tier + fit thresholds expect.
+        // memory + storage. Two DISTINCT numbers matter and were conflated before:
+        //   • AvailMem (FREE RAM) gates model FIT — a model needs its weight in free
+        //     RAM to load; picking against total RAM OOM-killed the app on a 3.6 GB
+        //     phone with only ~1.5 GB free (it selected a 4B model and died).
+        //   • TotalMem (device-class RAM) gates TIER — a 3.6 GB phone is a Phone.
+        // Without the hook the Core heuristic reads the GC heap limit (~100 MB) and
+        // the phone looks like a Wearable with everything NothingFits.
         CircleAI.Core.DeviceProbe.PlatformMemoryProbe = () =>
         {
-            long? ram = null, storage = null;
+            long? avail = null, total = null, storage = null;
             try
             {
                 if (GetSystemService(Android.Content.Context.ActivityService) is Android.App.ActivityManager am)
                 {
                     var mi = new Android.App.ActivityManager.MemoryInfo();
                     am.GetMemoryInfo(mi);
-                    ram = mi.TotalMem;
+                    avail = mi.AvailMem;   // free RAM → model fit
+                    total = mi.TotalMem;   // device class → tier
                 }
             }
             catch { /* fall back to the Core heuristic */ }
@@ -63,7 +67,7 @@ public class MainActivity : Activity
                 storage = stat.AvailableBytes;
             }
             catch { /* fall back to the Core heuristic */ }
-            return new CircleAI.Core.DeviceProbe.PlatformMemory(ram, storage);
+            return new CircleAI.Core.DeviceProbe.PlatformMemory(avail, storage, total);
         };
 
         BuildUi();

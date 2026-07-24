@@ -100,8 +100,19 @@ public sealed record DeviceProbe(
     /// </summary>
     public double? VramGb { get; init; }
 
-    /// <summary>Real device memory, supplied by a platform head that can read it.</summary>
-    public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes);
+    /// <summary>
+    /// Total physical RAM in bytes — the DEVICE CLASS, used by <see cref="Classify"/>
+    /// for tier (a 3 GB phone is a Phone even when momentarily busy). Distinct from
+    /// <see cref="RamAvailableBytes"/>, which is FREE RAM and gates model FIT: a
+    /// model needs its weight in free RAM to load, so selecting against total RAM
+    /// OOM-kills the app on a phone with little free (observed: a 3.6 GB / 1.5 GB-free
+    /// P30 picked a 4 B model and was OOM-killed on load). <c>0</c> = unknown; tier
+    /// then falls back to <see cref="RamAvailableBytes"/> (desktop, where they are close).
+    /// </summary>
+    public long RamTotalBytes { get; init; }
+
+    /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit.</summary>
+    public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null);
 
     /// <summary>
     /// Optional platform hook. The platform-neutral Core cannot read a mobile
@@ -128,17 +139,19 @@ public sealed record DeviceProbe(
         ThermalClass? thermalOverride = null,
         double?  vramGbOverride      = null,
         long?    ramBytesOverride     = null,
-        long?    storageBytesOverride = null)
+        long?    storageBytesOverride = null,
+        long?    ramTotalBytesOverride = null)
     {
         // Real hardware first: explicit overrides, then the platform hook (set by
         // an Android / iOS head), then the platform-neutral heuristics. The
         // heuristics are accurate on desktop / server but read the GC heap limit
         // and the process drive, which a mobile sandbox reports as ~100 MB / 0 B.
-        if (ramBytesOverride is null || storageBytesOverride is null)
+        if (ramBytesOverride is null || storageBytesOverride is null || ramTotalBytesOverride is null)
         {
             var pm = PlatformMemoryProbe?.Invoke();
-            ramBytesOverride     ??= pm?.RamAvailableBytes;
-            storageBytesOverride ??= pm?.StorageFreeBytes;
+            ramBytesOverride      ??= pm?.RamAvailableBytes;
+            storageBytesOverride  ??= pm?.StorageFreeBytes;
+            ramTotalBytesOverride ??= pm?.RamTotalBytes;
         }
 
         long ram;
@@ -151,6 +164,10 @@ public sealed record DeviceProbe(
             var gcInfo = GC.GetGCMemoryInfo();
             ram = Math.Max(0L, gcInfo.TotalAvailableMemoryBytes);
         }
+
+        // Device-class RAM for tiering. Defaults to the available figure when the
+        // host supplies no total (desktop / server, where free ≈ total).
+        var ramTotal = ramTotalBytesOverride is > 0 ? ramTotalBytesOverride.Value : ram;
 
         long storage = 0;
         if (storageBytesOverride is > 0)
@@ -192,6 +209,7 @@ public sealed record DeviceProbe(
             Connectivity:      conn)
         {
             VramGb = vramGbOverride,
+            RamTotalBytes = ramTotal,
         };
     }
 
@@ -207,7 +225,10 @@ public sealed record DeviceProbe(
         if (Thermal == ThermalClass.Wearable)
             return DeviceTier.Wearable;
 
-        var ramGb = RamAvailableBytes / (1024.0 * 1024 * 1024);
+        // Tier reflects the DEVICE CLASS (total RAM), not momentary free RAM — a
+        // 3 GB phone is a Phone even when busy. Model FIT uses RamAvailableBytes.
+        var classBytes = RamTotalBytes > 0 ? RamTotalBytes : RamAvailableBytes;
+        var ramGb = classBytes / (1024.0 * 1024 * 1024);
 
         // Workstation: 16+ cores, 32+ GB RAM, active cooling, GPU.
         if (CpuCores >= 16 && ramGb >= 32 && Thermal == ThermalClass.Active && Gpu != GpuKind.None)

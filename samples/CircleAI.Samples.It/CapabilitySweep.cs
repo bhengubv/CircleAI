@@ -59,11 +59,13 @@ public static class CapabilitySweep
         var probe    = DeviceProbe.Snapshot();
         var selector = new SpeechModelSelector(new ModelRegistryService());
 
-        var ramGb = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
-        var stoGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var freeGb  = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
+        var totalGb = (probe.RamTotalBytes > 0 ? probe.RamTotalBytes : probe.RamAvailableBytes) / (1024.0 * 1024 * 1024);
+        var stoGb   = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
 
         var sb = new StringBuilder();
-        sb.Append($"device: {ramGb:F1} GB RAM free, {stoGb:F0} GB storage free, tier {probe.Classify()}\n\n");
+        // Total = device class (tier). Free = what a model must fit into to load.
+        sb.Append($"device: {totalGb:F1} GB RAM ({freeGb:F1} GB free now), {stoGb:F0} GB storage free, tier {probe.Classify()}\n\n");
 
         // Chat is excluded on purpose: it selects through IModelSelector.BestFit,
         // not the speech selector, and PlanFor throws for it by contract.

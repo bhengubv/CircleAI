@@ -80,4 +80,21 @@ public sealed class DeviceProbeTests
         }
         finally { DeviceProbe.PlatformMemoryProbe = prev; }
     }
+
+    [Fact]
+    public void Tier_UsesTotalRam_ButFitUsesFreeRam_SoABusyPhoneStaysAPhone()
+    {
+        // The OOM found on the Huawei: a 3.6 GB phone with ~1.5 GB free must still
+        // classify as Phone (device class = TOTAL), yet only be offered models that
+        // fit the free RAM (~1.5 GB), never the full 3.6 GB. Reporting total as
+        // "available" is what made the selector pick a 4 B model and get OOM-killed.
+        var p = DeviceProbe.Snapshot(
+            ramBytesOverride:      (long)(1.5 * Gb),   // free RAM  → fit
+            storageBytesOverride:  20 * Gb,
+            ramTotalBytesOverride: (long)(3.6 * Gb));  // total RAM → tier
+
+        Assert.Equal(DeviceTier.Phone, p.Classify());        // class from total, not free
+        Assert.Equal((long)(1.5 * Gb), p.RamAvailableBytes); // fit gate = free RAM
+        Assert.Equal((long)(3.6 * Gb), p.RamTotalBytes);
+    }
 }
