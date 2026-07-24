@@ -195,6 +195,55 @@ public static class CapabilitySweep
         return v;
     }
 
+    // ── 5. vision: actually run a VLM on an image, on the device ─────────────
+
+    /// <summary>A distinctive image rendered on-device, fed to the VLM as the vision input.</summary>
+    public static byte[] MakeTestImagePng()
+        => ImageCodecs.EncodePng(new ManagedMediaRenderer().RenderStill(
+            MediaTemplates.SocialAd(RenderSize.Preview540x960, background: null,
+                                    headline: "CircleAI", subline: "offline on-device")));
+
+    /// <summary>
+    /// Proves vision END TO END on the phone: picks the best Vision model the
+    /// device can hold (SmolVLM-256M on a 3.6 GB phone; the 3B is gated off),
+    /// downloads it, loads it through <c>KimiVlGenerator</c> (MNN), and runs a
+    /// real image → text turn. The prompt template comes from the model's own
+    /// config, so a non-Qwen VLM formats correctly. Returns (model, description).
+    /// </summary>
+    public static async Task<(string Model, string Description)> RunVisionProbeAsync(
+        string? nativeLibDir, byte[] imageBytes, Action<string> log, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrEmpty(nativeLibDir)) NativeLibraryResolver.OverrideDirectory = nativeLibDir;
+        NativeLibraryResolver.EnsureRegistered();   // process-wide MNN native resolver
+
+        var registry = new ModelRegistryService();
+        var probe    = DeviceProbe.Snapshot();
+        var pick     = new SpeechModelSelector(registry).BestFor(probe, ModelModality.Vision);
+        if (pick is null) return ("(none)", "no vision model catalogued");
+
+        var entry = registry.AllModels.First(e => e.Name == pick.ModelId);
+        log($"[vision] selected {entry.Name} (~{entry.TotalBytes / 1_000_000} MB, {pick.Quality})");
+
+        var storageDir = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+        using var dl = new ModelDownloadService(storageDir);
+        var specs = entry.BundleFiles!.Select(b => new BundleFileSpec(b.Name, b.Sha256, b.SizeBytes)).ToList();
+        log($"[vision] ensuring {specs.Count} files on device…");
+        var dir = await dl.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs,
+            new Progress<double>(p => { if (p >= 0) log($"[vision]   {p:P0}"); }), ct).ConfigureAwait(false);
+
+        log("[vision] loading the VLM + running inference on the image…");
+        using var vlm = new KimiVlGenerator(System.IO.Path.Combine(dir, "llm.mnn"),
+                                            templateEngine: new PromptTemplateEngine());
+        var msgs = new List<ChatMessage>
+        {
+            new ChatMessage("user", "What is in this image? Answer in one short sentence.") { ImageBytes = imageBytes },
+        };
+        var resp = await vlm.GenerateResponseAsync(
+            msgs, new GenerationOptions { MaxTokens = 48, IncludeReasoning = false }, ct).ConfigureAwait(false);
+        return (entry.Name, resp.Text.Trim());
+    }
+
     // ── sample content (same fictional person as the CV, so the suite reads as
     //    one applicant's paperwork) ────────────────────────────────────────────
 

@@ -87,7 +87,7 @@ Evidence for ✅ rows: `adb exec-out run-as com.bhengubv.itsample cat files/capa
 | # | Item | P30 | Evidence |
 |---|------|:---:|---|
 | 50 | Voice on the phone | ◐ | Voice head compiles; loop not run. Selector: ASR/TTS `Good` |
-| 51 | Vision model | ◐ | VLM catalogued; 3B correctly `NothingFits`; SmolVLM-256M (fits) catalogued, inference in progress |
+| 51 | Vision model | ◐ | Pipeline **proven** on device: select → download (311 MB) → load SmolVLM-256M. But **inference blocked on this phone**: SmolVLM loads yet MNN's image path fails (`code -6` — its SigLIP arch isn't what the bridge's Qwen-VL/Kimi-VL vision generation supports); the Qwen-VL VLMs the bridge *does* support need ~2.4 GB+ and don't fit the ~1 GB free. Would run on a 4 GB+ phone. |
 | 52 | Document engine → PDF | ✅ | CV PDF on device (64,172 B) |
 | 53 | CV generator | ✅ | Rendered in the on-device suite |
 | 54 | Corpus audit | ⬚ | Documentation deliverable |

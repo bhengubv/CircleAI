@@ -25,6 +25,7 @@ public class MainActivity : Activity
     Button _send = null!;
     Button _tools = null!;
     Button _cv = null!;
+    Button _vision = null!;
 #if IT_VOICE_ANDROID
     Button _talk = null!;
 #endif
@@ -182,6 +183,15 @@ public class MainActivity : Activity
         row.AddView(_cv, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
+        // On-device vision: renders a test image and runs a real VLM on it
+        // (downloads a small vision model on first tap). Separate from the brain.
+        _vision = new Button(this) { Text = "Vision", Enabled = true };
+        _vision.SetTextColor(Ink);
+        _vision.SetBackgroundColor(Panel);
+        _vision.Click += (s, e) => RunVision();
+        row.AddView(_vision, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+
 #if IT_VOICE_ANDROID
         // Hands-free. Only present when the APK was built with voice, because
         // without the ONNX/whisper natives the button could only ever fail.
@@ -280,6 +290,43 @@ public class MainActivity : Activity
             _cv.Enabled = true;
         }
         Append("===== CAPABILITY SWEEP DONE =====\n\n");
+    }
+
+    // On-device vision — the real proof for #51. Renders a test image, then runs
+    // the best-fitting VLM (SmolVLM-256M on this phone; the 3B is gated off free
+    // RAM) on it via KimiVlGenerator. First tap downloads the ~311 MB model over
+    // Wi-Fi; later taps load from cache.
+    async void RunVision()
+    {
+        _vision.Enabled = false;
+        Append("\n===== ON-DEVICE VISION =====\n");
+        Append("[vision] rendering a test image, then running a VLM on it…\n");
+        try
+        {
+            var img = await Task.Run(() => CapabilitySweep.MakeTestImagePng());
+            Append($"[vision] test image: {img.Length:N0} bytes PNG\n");
+
+            var (model, desc) = await Task.Run(() =>
+                CapabilitySweep.RunVisionProbeAsync(ApplicationInfo?.NativeLibraryDir, img, line => Append(line + "\n")));
+
+            Append($"\n[vision] model:       {model}\n");
+            Append($"[vision] DESCRIPTION: {desc}\n");
+
+            var path = System.IO.Path.Combine(FilesDir!.AbsolutePath, "vision-result.txt");
+            await System.IO.File.WriteAllTextAsync(path, $"model: {model}\n\n{desc}\n");
+            Append("[vision] OK — a VLM ran on the phone. files/vision-result.txt\n");
+        }
+        catch (Exception ex)
+        {
+            // Full exception — a device-only vision issue (native VLM load, the
+            // MNN image bridge, a non-Qwen template) needs the detail.
+            Append($"[vision] FAILED: {ex}\n");
+        }
+        finally
+        {
+            _vision.Enabled = true;
+        }
+        Append("===== VISION DONE =====\n\n");
     }
 
     async void Send()

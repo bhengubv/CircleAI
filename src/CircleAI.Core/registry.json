@@ -22,6 +22,28 @@
       { "Name": "visual.mnn.weight", "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81", "SizeBytes": 369748896 }
     ]
   },
+  "SmolVLM-256M-Instruct-MNN": {
+    "Repo": "MNN/SmolVLM-256M-Instruct-MNN",
+    "Modality": "Vision",
+    "Architecture": "smolvlm",
+    "QuantizationType": "MNN-Q4",
+    "Version": "1.0",
+    "TotalBytes": 311431857,
+    "BundleFiles": [
+      { "Name": ".gitattributes", "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82", "SizeBytes": 1642 },
+      { "Name": "config.json", "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4", "SizeBytes": 291 },
+      { "Name": "configuration.json", "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2", "SizeBytes": 46 },
+      { "Name": "embeddings_bf16.bin", "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742", "SizeBytes": 56770560 },
+      { "Name": "llm.mnn", "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47", "SizeBytes": 475544 },
+      { "Name": "llm.mnn.json", "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506", "SizeBytes": 999332 },
+      { "Name": "llm.mnn.weight", "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691", "SizeBytes": 150050290 },
+      { "Name": "llm_config.json", "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40", "SizeBytes": 778 },
+      { "Name": "README.md", "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225", "SizeBytes": 1255 },
+      { "Name": "tokenizer.txt", "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95", "SizeBytes": 888755 },
+      { "Name": "visual.mnn", "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37", "SizeBytes": 228200 },
+      { "Name": "visual.mnn.weight", "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06", "SizeBytes": 102015164 }
+    ]
+  },
   "Piper-en_US-lessac-high": {
     "Repo": "rhasspy/piper-voices",
     "Source": "HuggingFace",

@@ -40,7 +40,7 @@ The OS + EMUI + cached apps hold ~2 GB. Most of that is **reclaimable cache** (A
 | **Business / mesh / security** | pure-managed | ✅ invoice totals, mesh advertise+list, blocklist match, deny-by-default gate |
 | **ASR** | Whisper-tiny (77 MB) | Selector: `Good` (fits) — inference not yet run on-device |
 | **TTS** | Piper-en_US-lessac-high (113 MB) | Selector: `Good`, climbs to the high voice — synthesis not yet run |
-| **Vision** | Qwen2.5-VL-3B (2.7 GB) / Qwen2-VL-2B (1.7 GB) | `NothingFits` at this free-RAM level; a **SmolVLM-256M** (311 MB) would fit |
+| **Vision** | SmolVLM-256M (311 MB) — fits + loads | ⚠ MNN image path fails (`code -6`): SmolVLM's SigLIP arch ≠ the bridge's Qwen-VL/Kimi-VL vision support. Bridge-supported Qwen-VL 2B+ needs ~2.4 GB → doesn't fit ~1 GB free. Pipeline (select→download→load) proven; **inference needs a 4 GB+ phone** |
 | **Coding (dedicated 3–7B agent)** | — | Tier-floored to Tablet (6 GB+); a general 1.5B still codes, see note |
 
 **Practical model ceiling on a 3.6 GB phone: ~1.5–2B parameters.** Downloads of 400–900 MB are practical over Wi-Fi; multi-GB is slow and won't fit free RAM anyway.
