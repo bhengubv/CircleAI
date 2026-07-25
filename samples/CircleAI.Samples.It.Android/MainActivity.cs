@@ -586,6 +586,27 @@ public class MainActivity : Activity
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
             var wavPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.wav");
 
+            // Voice-under-test: if a model was sideloaded to files/vut/model.onnx
+            // (e.g. a kasanoma African voice pushed over adb), prove THAT on the phone
+            // — any language, using the espeak voice from its own config — instead of
+            // the catalogued English default. The phrase comes from files/vut/phrase.txt.
+            var vut = System.IO.Path.Combine(FilesDir!.AbsolutePath, "vut", "model.onnx");
+            if (System.IO.File.Exists(vut))
+            {
+                var phraseFile = System.IO.Path.Combine(FilesDir!.AbsolutePath, "vut", "phrase.txt");
+                var phrase = System.IO.File.Exists(phraseFile)
+                    ? (await System.IO.File.ReadAllTextAsync(phraseFile)).Trim()
+                    : "The quick brown fox jumps over the lazy dog.";
+                Append("[tts] sideloaded voice-under-test found — proving it on the phone\n");
+                var vrep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
+                    vut, wavPath, phrase, s => Append("  " + s + "\n"));
+                await System.IO.File.WriteAllTextAsync(
+                    System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.txt"), vrep);
+                Append("\n" + vrep);
+                Append("[tts] pull: adb exec-out run-as com.bhengubv.itsample cat files/tts-result.txt\n");
+                return;
+            }
+
             var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunAsync(
                 store, wavPath, s => Append("  " + s + "\n"));
 

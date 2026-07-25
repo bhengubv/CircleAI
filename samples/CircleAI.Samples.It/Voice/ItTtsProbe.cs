@@ -87,4 +87,75 @@ public static class ItTtsProbe
             }
         }
     }
+
+    /// <summary>
+    /// Proves a SIDELOADED voice (any language) on the phone: loads
+    /// <paramref name="modelOnnxPath"/> through ONNX Runtime and phonemises with the
+    /// espeak voice named in its own <c>.onnx.json</c> (e.g. <c>lfn</c> for a kasanoma
+    /// African voice) — not the hardcoded en-us. This is how a catalogued African
+    /// voice is shown to actually synthesise on-device, per-language.
+    /// </summary>
+    public static async Task<string> RunLocalAsync(
+        string modelOnnxPath, string wavPath, string phrase, Action<string>? log = null, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        if (!File.Exists(modelOnnxPath))
+            return $"no sideloaded model at {modelOnnxPath}\n";
+
+        // The model's own espeak voice, read from the config — so the phonemizer
+        // speaks the right language rather than defaulting to English.
+        string voice = "en-us";
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(modelOnnxPath + ".json"));
+            if (doc.RootElement.TryGetProperty("espeak", out var es) && es.TryGetProperty("voice", out var v))
+                voice = v.GetString() ?? "en-us";
+        }
+        catch { /* keep en-us */ }
+        log?.Invoke($"voice-under-test: {Path.GetFileName(modelOnnxPath)}  espeak='{voice}'");
+
+        var phonemizer = ItSpeaker.MobilePhonemizerFactory?.Invoke(voice);
+        if (phonemizer is null)
+            return "on-device phonemizer not wired (ItSpeaker.MobilePhonemizerFactory)\n";
+
+        try
+        {
+            using var engine = new OnnxTtsEngine(modelOnnxPath, phonemizer);
+            var result = await engine.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
+            if (result.AudioData.Length == 0)
+                return $"engine LOADED on device but produced 0 audio bytes " +
+                       $"(phoneme-map miss for voice '{voice}'?) — model ran, phonemes didn't map.\n" +
+                       $"elapsed {sw.Elapsed:mm\\:ss}\n";
+            WriteWav(wavPath, result.AudioData.Span, result.SampleRate, result.Channels, result.BitsPerSample);
+            var len = new FileInfo(wavPath).Length;
+            log?.Invoke($"synthesised {len:N0} bytes @ {result.SampleRate} Hz");
+            return
+                "SYNTHESIS OK — the sideloaded voice ran on the device.\n" +
+                $"model : {Path.GetFileName(modelOnnxPath)}\nespeak: {voice}\n" +
+                $"wrote {len:N0} bytes ({result.SampleRate} Hz) to {Path.GetFileName(wavPath)} for \"{phrase}\"\n" +
+                $"elapsed {sw.Elapsed:mm\\:ss}\n";
+        }
+        catch (Exception ex)
+        {
+            return $"sideloaded voice '{voice}' FAILED on device after {sw.Elapsed:mm\\:ss}:\n{ex}\n";
+        }
+    }
+
+    private static void WriteWav(string path, ReadOnlySpan<byte> pcm, int sampleRate, int channels, int bits)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var fs = File.Create(path);
+        using var w = new BinaryWriter(fs);
+        int byteRate = sampleRate * channels * bits / 8;
+        short blockAlign = (short)(channels * bits / 8);
+        w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+        w.Write(36 + pcm.Length);
+        w.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+        w.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+        w.Write(16); w.Write((short)1); w.Write((short)channels);
+        w.Write(sampleRate); w.Write(byteRate); w.Write(blockAlign); w.Write((short)bits);
+        w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+        w.Write(pcm.Length);
+        w.Write(pcm);
+    }
 }
