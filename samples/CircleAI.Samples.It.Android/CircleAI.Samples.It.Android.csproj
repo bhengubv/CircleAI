@@ -60,16 +60,16 @@
        pull it in only when Android voice is switched on. -->
   <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
     <Compile Include="..\CircleAI.Samples.It\Voice\*.cs" Link="Shared\Voice\%(Filename)%(Extension)" />
-
-    <!--
-      RECORD_AUDIO must be in the manifest as well as granted at runtime.
-      Without the manifest entry, requestPermissions() is a silent no-op and
-      AudioRecord returns nothing but zeroes — the loop looks broken rather
-      than blocked. Declared only in the voice build; a chat-only APK asking
-      for the microphone would be an unexplained permission at install time.
-    -->
-    <AndroidPermission Include="android.permission.RECORD_AUDIO" />
   </ItemGroup>
+
+  <!--
+    RECORD_AUDIO (hands-free voice loop) is declared as an assembly-level
+    [UsesPermission] guarded by IT_VOICE_ANDROID — see Permissions.cs. It MUST be in
+    the manifest or requestPermissions() is a silent no-op and AudioRecord yields
+    only zeroes; the #if keeps it out of the chat-only APK so that build never asks
+    for the microphone. A prior <AndroidPermission Include="..."/> item here was a
+    no-op (not a recognized .NET Android build item), so it never took effect.
+  -->
 
   <!--
     MNN native libraries are bundled automatically by the repo-root
