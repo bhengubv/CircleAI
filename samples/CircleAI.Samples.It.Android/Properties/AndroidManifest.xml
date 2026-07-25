@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Base manifest for the IT! Android head. Almost everything is generated from
+    attributes (the launcher activity, MonoRuntimeProvider) and MSBuild items
+    (INTERNET, and RECORD_AUDIO in voice builds) and merged into this file — this
+    exists only to add the one thing that has no attribute/item form: <queries>.
+
+    Android 11+ (API 30) package visibility: without this, CircleAI's
+    contentResolver.Call to the out-of-process espeak G2P provider returns null
+    (the package is invisible), so on-device TTS would silently fall back to
+    text-only on newer phones. The P30 Lite is API 29 (Android 10), where visibility
+    is not enforced, so this is forward-compat — scoped to the ONE provider authority
+    CircleAI needs, nothing else.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<queries>
+		<provider android:authorities="com.bhengubv.espeakng.g2p" />
+	</queries>
+	<application android:allowBackup="true" />
+</manifest>
