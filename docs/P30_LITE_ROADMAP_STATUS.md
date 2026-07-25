@@ -86,13 +86,13 @@ Evidence for ✅ rows: `adb exec-out run-as com.bhengubv.itsample cat files/capa
 
 | # | Item | P30 | Evidence |
 |---|------|:---:|---|
-| 50 | Voice on the phone | ◐ | Voice head compiles + installs on device; the TTS half is now exercised on the phone (see #56 — select→download→ORT-load OK, speak-back walled at G2P). Full wake→ASR→TTS loop still needs a live mic. Selector: ASR/TTS `Good` |
+| 50 | Voice on the phone | ◐ | Voice head runs on device; the **TTS half now works fully** (see #56 — real speech WAV via out-of-process espeak). Full wake→ASR→TTS loop still needs a live mic (wake + ASR not yet run on-device). Selector: ASR/TTS `Good` |
 | 51 | Vision model | ◐ | Pipeline **proven** on device: select → download (311 MB) → load SmolVLM-256M. But **inference blocked on this phone**: SmolVLM loads yet MNN's image path fails (`code -6` — its SigLIP arch isn't what the bridge's Qwen-VL/Kimi-VL vision generation supports); the Qwen-VL VLMs the bridge *does* support need ~2.4 GB+ and don't fit the ~1 GB free. Would run on a 4 GB+ phone. |
 | 52 | Document engine → PDF | ✅ | CV PDF on device (64,172 B) |
 | 53 | CV generator | ✅ | Rendered in the on-device suite |
 | 54 | Corpus audit | ⬚ | Documentation deliverable |
 | 55 | HTML → video / stills | ◐ | PNG **still** on device (`89504E47`); H.264/MP4 is a seam |
-| 56 | TTS ladder | ◐ | Pipeline **proven** on device: select → `Piper-en_US-lessac-high` (Good) → download 113 MB **from HuggingFace** → **ONNX Runtime loads the voice** (the first ORT model run on this phone). Synthesis then **blocks at the last step** (grapheme→phoneme) in 29 s: `DllNotFoundException: espeak-ng` — `NativeEspeakPhonemizer` P/Invokes libespeak-ng, which this build does not bundle. Deeper: espeak-ng is **GPL-3.0**, so it can't be linked in-process without contaminating CircleAI's permissive licence (the DOOM/GPL rule = out-of-process only). Needs a licence-clean G2P, not a bigger phone. |
+| 56 | TTS ladder | ✅ | **Full on-device TTS, end to end.** select → `Piper-en_US-lessac-high` (Good) → download 108 MB (HF) → ONNX-Runtime load → grapheme→phoneme via the **out-of-process espeak G2P app** (`com.bhengubv.espeakng`, GPL-3.0, quarantined like DOOM) → a real **2.6 s, 114,732-byte WAV** (RIFF/WAVE, 22 050 Hz mono 16-bit, 71% peak amplitude = genuine speech, not silence). espeak-ng is **never linked into CircleAI**; CircleAI reaches it across a ContentProvider. If the G2P app is absent, TTS degrades to text. This closes the earlier `DllNotFoundException: espeak-ng` wall the licence-clean way. |
 | 57 | Charts | ✅ | Chart PDF on device (42,757 B) |
 | 58 | Presentations | ✅ | Deck PDF on device (63,388 B) |
 | 59 | Music beds | ✅ | WAV on device (705,644 B, `RIFF/WAVE`) |
@@ -112,13 +112,13 @@ Evidence for ✅ rows: `adb exec-out run-as com.bhengubv.itsample cat files/capa
 
 | P30 result | Count | Which |
 |---|---:|---|
-| ✅ Proven on device | **21** | 25,26,27,30,41,42,45,47,52,53,57,58,59,60,61,62,63,65,66,67,68 |
-| ◐ Exercised / verdict | **12** | 28,29,31,32,43,44,46,50,51,55,56,64 |
+| ✅ Proven on device | **22** | 25,26,27,30,41,42,45,47,52,53,56,57,58,59,60,61,62,63,65,66,67,68 |
+| ◐ Exercised / verdict | **11** | 28,29,31,32,43,44,46,50,51,55,64 |
 | ⬚ Not a P30 run (port / test / meta) | **33** | 1–6, 8–24, 33, 34–40, 48, 54 |
 | 🚫 Exception | **1** | 7 |
 
-**Read it as:** on the P30 itself, **21 items ran with verified output** and **12 more run as part of the live app** (verdicts or compiled-but-not-exercised). **33 are ports or cross-language tests** — validated against the C# reference and on their own runtimes, not this phone. **1** is the agreed exception.
+**Read it as:** on the P30 itself, **22 items ran with verified output** and **11 more run as part of the live app** (verdicts or compiled-but-not-exercised). **33 are ports or cross-language tests** — validated against the C# reference and on their own runtimes, not this phone. **1** is the agreed exception.
 
-Two ◐ convert to ✅ with more device work: the **voice loop** (needs a live mic) and **vision inference** (SmolVLM — needs a 4 GB+ phone; the bridge-supported VLMs don't fit here). **TTS synthesis** is a different kind of ◐: the pipeline runs on the phone (select → download → ONNX-Runtime load), but the last step is walled not by hardware but by **licensing** — the espeak-ng grapheme→phoneme native is GPL-3.0 and can't be linked in-process. It converts to ✅ once a licence-clean phonemizer is wired, not by a bigger phone. Coding already crossed the line.
+**TTS now works fully on the phone** — the earlier grapheme→phoneme licence wall was solved by moving espeak-ng out-of-process into its own GPL app (`com.bhengubv.espeakng`), which CircleAI calls across a ContentProvider; a real Piper WAV comes out and CircleAI stays permissive. Two ◐ remain that convert to ✅ with more device work: the **voice loop** (needs a live mic for wake + ASR) and **vision inference** (SmolVLM — needs a 4 GB+ phone; the bridge-supported VLMs don't fit here). Coding and TTS have both crossed the line.
 
 *Snapshot 2026-07 on MAR-LX1M. Updated as the ◐ inference paths are run on the device.*

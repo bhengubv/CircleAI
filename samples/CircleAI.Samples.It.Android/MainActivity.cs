@@ -72,6 +72,15 @@ public class MainActivity : Activity
             return new CircleAI.Core.DeviceProbe.PlatformMemory(avail, storage, total);
         };
 
+#if IT_VOICE_ANDROID
+        // On-device TTS phonemes come from the SEPARATE espeak G2P app
+        // (com.bhengubv.espeakng) across a process boundary — espeak-ng is GPL and is
+        // never linked into CircleAI. If that app is absent, TTS degrades to text
+        // (OutOfProcessEspeakPhonemizer throws a clear reason, caught by RunTts).
+        CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory =
+            voice => new OutOfProcessEspeakPhonemizer(this, voice);
+#endif
+
         BuildUi();
 
         Append("IT! - CircleAI Neuron, on-device (C#)\n\n");

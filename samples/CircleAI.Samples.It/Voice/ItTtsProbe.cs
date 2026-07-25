@@ -16,14 +16,12 @@
 //     → IPhonemizer.Phonemize                   → text → IPA  ← the last step
 //     → waveform → WAV
 //
-// The last step is where mobile TTS is walled: on Android the phonemizer is
-// NativeEspeakPhonemizer, which P/Invokes libespeak-ng — a native this build does
-// not bundle, and (more fundamentally) a GPL-3.0 library that cannot be linked
-// in-process without contaminating CircleAI's permissive licence. So this probe's
-// honest job is usually to prove everything UP TO synthesis works on the phone and
-// to capture the exact grapheme→phoneme failure, not to claim speech it cannot yet
-// make. If a licence-clean phonemizer is ever wired, the same probe starts writing
-// a real WAV with no other change.
+// On Android the last step (text → IPA) is served OUT-OF-PROCESS by the separate
+// espeak G2P app (com.bhengubv.espeakng): espeak-ng is GPL-3.0, so CircleAI never
+// links it — it calls that app across a process boundary. When the app is installed
+// this probe writes a real WAV; when it is absent OutOfProcessEspeakPhonemizer
+// throws a clear reason and the probe reports synthesis blocked (text-only) rather
+// than crashing. Either outcome lands in the pulled report.
 
 using System.Diagnostics;
 using CircleAI.Voice;

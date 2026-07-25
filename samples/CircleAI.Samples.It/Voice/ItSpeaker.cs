@@ -45,6 +45,14 @@ public sealed class ItSpeaker : IDisposable
     public ITtsEngine Engine => _engine;
 
     /// <summary>
+    /// Mobile-only hook that builds the phonemizer for on-device TTS. The Android
+    /// head sets this to the OUT-OF-PROCESS espeak client — CircleAI must not link
+    /// GPL espeak-ng in-process. The argument is the voice, e.g. "en-us". Left null
+    /// on mobile, TTS is reported unavailable rather than throwing.
+    /// </summary>
+    public static Func<string, IPhonemizer>? MobilePhonemizerFactory { get; set; }
+
+    /// <summary>
     /// Selects the best TTS voice the device can hold, downloads it (first run),
     /// and wires the synthesis engine. Returns null with a reason when the chain
     /// cannot be completed (no voice catalogued, or espeak-ng absent) — the
@@ -68,11 +76,19 @@ public sealed class ItSpeaker : IDisposable
         var pick = plan.Model;
 
         // PHONEMIZER CHOICE IS PLATFORM-DEPENDENT.
-        // Android/iOS have no espeak-ng *executable* to shell to, so the process
-        // phonemizer is desktop-only; mobile must bind libespeak-ng in-process.
+        // Desktop shells out to the espeak-ng *executable* (already out-of-process).
+        // On mobile there is no executable to launch, and espeak-ng is GPL-3.0 so it
+        // must not be linked in-process either — CircleAI is permissive-licensed. So
+        // mobile G2P crosses to a SEPARATE espeak app; the Android head wires that
+        // out-of-process client into MobilePhonemizerFactory.
         var onMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
         string? espeak = null;
-        if (!onMobile)
+        if (onMobile)
+        {
+            if (MobilePhonemizerFactory is null)
+                return (null, "on-device phonemizer not wired — set ItSpeaker.MobilePhonemizerFactory (the out-of-process espeak G2P client)");
+        }
+        else
         {
             espeak = ResolveEspeak();
             // Fail fast on the one dependency this needs, with an actionable
@@ -116,12 +132,12 @@ public sealed class ItSpeaker : IDisposable
             return (null, $"no .onnx found under '{dir}'");
 
         IPhonemizer phonemizer = onMobile
-            ? new NativeEspeakPhonemizer("en-us")           // P/Invoke libespeak-ng
+            ? MobilePhonemizerFactory!("en-us")             // out-of-process espeak service
             : new EspeakPhonemizer("en-us", espeak);         // shell to the binary
 
         var engine = new OnnxTtsEngine(onnx, phonemizer);
         log?.Invoke($"engine  : OnnxTtsEngine on {Path.GetFileName(onnx)} " +
-                    $"({(onMobile ? "native espeak" : espeak ?? "espeak on PATH")})");
+                    $"({(onMobile ? "out-of-process espeak" : espeak ?? "espeak on PATH")})");
         return (new ItSpeaker(engine), "ready");
     }
 
