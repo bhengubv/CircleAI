@@ -28,6 +28,7 @@ public class MainActivity : Activity
     Button _vision = null!;
 #if IT_VOICE_ANDROID
     Button _talk = null!;
+    Button _tts = null!;
 #endif
 
     static readonly Color Bg    = Color.ParseColor("#080d14");
@@ -140,10 +141,53 @@ public class MainActivity : Activity
         root.AddView(_scroll, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
-        // input row
+        // Utility-probe row — its OWN line above the input, so the button strip
+        // never crowds the text box off the screen. A phone fits ~4 buttons per
+        // row (1080 px portrait); keeping the always-available probes here and the
+        // model-driven Talk/TTS in the input row below means neither line ever
+        // overflows — no horizontal scroll to reach a button (voice builds used to
+        // push Send + TTS off the right edge). Weighted so the three share the row.
+        var probes = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        probes.SetBackgroundColor(Panel);
+        probes.SetPadding(16, 12, 16, 0);
+
+        // One tap runs the tool probes — questions whose answers the model
+        // cannot know unless it actually calls a tool.
+        _tools = new Button(this) { Text = "Sweep", Enabled = false };
+        _tools.SetTextColor(Ink);
+        _tools.SetBackgroundColor(Panel);
+        _tools.Click += (s, e) => RunFullSweep();
+        probes.AddView(_tools, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        // Offline capability sweep. Enabled immediately: it needs no model, so it
+        // proves the catalogued-model verdicts AND the whole document engine
+        // on-device before the brain finishes loading.
+        _cv = new Button(this) { Text = "Caps", Enabled = true };
+        _cv.SetTextColor(Ink);
+        _cv.SetBackgroundColor(Panel);
+        _cv.Click += (s, e) => RunCapabilities();
+        probes.AddView(_cv, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        // On-device vision: renders a test image and runs a real VLM on it
+        // (downloads a small vision model on first tap). Separate from the brain.
+        _vision = new Button(this) { Text = "Vision", Enabled = true };
+        _vision.SetTextColor(Ink);
+        _vision.SetBackgroundColor(Panel);
+        _vision.Click += (s, e) => RunVision();
+        probes.AddView(_vision, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WrapContent, 1f));
+
+        root.AddView(probes, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+
+        // input row — the text box plus the model-driven actions (Talk/TTS in
+        // voice builds) and Send. With the probes on their own line above, this
+        // holds the weighted input + at most three buttons, which fits portrait.
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetBackgroundColor(Panel);
-        row.SetPadding(20, 16, 20, 22);
+        row.SetPadding(20, 8, 20, 22);
 
         _input = new EditText(this) { Hint = "Say something to IT!", Enabled = false };
         _input.SetTextColor(Ink);
@@ -164,34 +208,6 @@ public class MainActivity : Activity
         row.AddView(_input, new LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        // One tap runs the tool probes — questions whose answers the model
-        // cannot know unless it actually calls a tool.
-        _tools = new Button(this) { Text = "Sweep", Enabled = false };
-        _tools.SetTextColor(Ink);
-        _tools.SetBackgroundColor(Panel);
-        _tools.Click += (s, e) => RunFullSweep();
-        row.AddView(_tools, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
-
-        // Offline capability sweep. Enabled immediately: it needs no model, so it
-        // proves the catalogued-model verdicts AND the whole document engine
-        // on-device before the brain finishes loading.
-        _cv = new Button(this) { Text = "Caps", Enabled = true };
-        _cv.SetTextColor(Ink);
-        _cv.SetBackgroundColor(Panel);
-        _cv.Click += (s, e) => RunCapabilities();
-        row.AddView(_cv, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
-
-        // On-device vision: renders a test image and runs a real VLM on it
-        // (downloads a small vision model on first tap). Separate from the brain.
-        _vision = new Button(this) { Text = "Vision", Enabled = true };
-        _vision.SetTextColor(Ink);
-        _vision.SetBackgroundColor(Panel);
-        _vision.Click += (s, e) => RunVision();
-        row.AddView(_vision, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
-
 #if IT_VOICE_ANDROID
         // Hands-free. Only present when the APK was built with voice, because
         // without the ONNX/whisper natives the button could only ever fail.
@@ -200,6 +216,17 @@ public class MainActivity : Activity
         _talk.SetBackgroundColor(Panel);
         _talk.Click += (s, e) => ToggleVoiceLoop();
         row.AddView(_talk, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+
+        // On-device TTS synthesis, non-interactive (no mic): downloads the best
+        // Piper voice, loads it through ONNX Runtime, and synthesises a phrase to
+        // a WAV — the pull-able proof for #56. Enabled immediately like Caps/Vision
+        // (it fetches its own voice, independent of the chat brain).
+        _tts = new Button(this) { Text = "TTS", Enabled = true };
+        _tts.SetTextColor(Ink);
+        _tts.SetBackgroundColor(Panel);
+        _tts.Click += (s, e) => RunTts();
+        row.AddView(_tts, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 #endif
 
@@ -529,6 +556,47 @@ public class MainActivity : Activity
         {
             Append($"[voice] failed: {ex.Message}\n");
         }
+    }
+
+    // On-device TTS — the pull-able proof for #56. Non-interactive: no mic, no
+    // "hey b". Selects the best Piper voice this phone can hold, downloads it
+    // (~113 MB first tap), loads it through ONNX Runtime, and synthesises a fixed
+    // phrase to a WAV. Reports exactly which stage it reached; on mobile the last
+    // step (grapheme→phoneme) needs libespeak-ng, which this build does not bundle
+    // (and, being GPL-3.0, cannot be linked in-process without contaminating the
+    // permissive licence) — so the honest result is "everything up to synthesis
+    // ran on the phone; G2P is the wall," captured verbatim from the device.
+    async void RunTts()
+    {
+        _tts.Enabled = false;
+        Append("\n===== ON-DEVICE TTS =====\n");
+        Append("[tts] selecting a voice, downloading it, loading it, then synthesising…\n");
+        try
+        {
+            var store = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+            var wavPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.wav");
+
+            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunAsync(
+                store, wavPath, s => Append("  " + s + "\n"));
+
+            var txtPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.txt");
+            await System.IO.File.WriteAllTextAsync(txtPath, report);
+
+            Append("\n" + report);
+            Append("[tts] pull the result:\n");
+            Append("  adb exec-out run-as com.bhengubv.itsample cat files/tts-result.txt\n");
+            Append("  adb exec-out run-as com.bhengubv.itsample cat files/tts-result.wav > tts.wav\n");
+        }
+        catch (Exception ex)
+        {
+            Append($"[tts] FAILED: {ex}\n");
+        }
+        finally
+        {
+            _tts.Enabled = true;
+        }
+        Append("===== TTS DONE =====\n\n");
     }
 #endif
 

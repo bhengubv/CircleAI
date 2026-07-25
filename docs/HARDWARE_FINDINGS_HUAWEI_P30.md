@@ -2,7 +2,7 @@
 
 What CircleAI actually does on a real low-RAM, de-Googled Android phone — measured, not assumed. Written for developers building on CircleAI who need to know the constraints before they hit them.
 
-**TL;DR:** on a 3.6 GB phone only ~1.5 GB is actually free. Model *fit* is against **free** RAM, not total. A ~1.5B chat model loads and writes correct code; a 4B model gets OOM-killed on load. Everything pure-managed (documents, charts, decks, music, image stills, business/security/mesh logic) runs with no RAM concern. Vision needs a sub-1B VLM at this free-RAM level.
+**TL;DR:** on a 3.6 GB phone only ~1.5 GB is actually free. Model *fit* is against **free** RAM, not total. A ~1.5B chat model loads and writes correct code; a 4B model gets OOM-killed on load. Everything pure-managed (documents, charts, decks, music, image stills, business/security/mesh logic) runs with no RAM concern. Vision and TTS both download and *load* on the phone but stop at inference — vision on MNN's vision-bridge architecture support, TTS on the espeak-ng phonemizer (GPL-3.0, can't be linked in-process). See "Two native walls," below.
 
 ---
 
@@ -39,7 +39,7 @@ The OS + EMUI + cached apps hold ~2 GB. Most of that is **reclaimable cache** (A
 | **Image still** | managed PNG encoder | ✅ 540×960 PNG (valid `89504E47` header) |
 | **Business / mesh / security** | pure-managed | ✅ invoice totals, mesh advertise+list, blocklist match, deny-by-default gate |
 | **ASR** | Whisper-tiny (77 MB) | Selector: `Good` (fits) — inference not yet run on-device |
-| **TTS** | Piper-en_US-lessac-high (113 MB) | Selector: `Good`, climbs to the high voice — synthesis not yet run |
+| **TTS** | Piper-en_US-lessac-high (113 MB) | ✅ select → download (113 MB **from HuggingFace**) → **ONNX Runtime loads the voice** (first ORT model on this phone). ⚠ synthesis then fails in 29 s: `DllNotFoundException: espeak-ng` — the grapheme→phoneme native isn't bundled, and espeak-ng is **GPL-3.0** so it can't be linked in-process. Pipeline proven; **synthesis needs a licence-clean phonemizer** (see below) |
 | **Vision** | SmolVLM-256M (311 MB) — fits + loads | ⚠ MNN image path fails (`code -6`): SmolVLM's SigLIP arch ≠ the bridge's Qwen-VL/Kimi-VL vision support. Bridge-supported Qwen-VL 2B+ needs ~2.4 GB → doesn't fit ~1 GB free. Pipeline (select→download→load) proven; **inference needs a 4 GB+ phone** |
 | **Coding (dedicated 3–7B agent)** | — | Tier-floored to Tablet (6 GB+); a general 1.5B still codes, see note |
 
@@ -52,6 +52,15 @@ The OS + EMUI + cached apps hold ~2 GB. Most of that is **reclaimable cache** (A
 2. **OOM crash from total-vs-free RAM.** The first fix reported **total** RAM (3.6 GB) as "available." The selector picked Qwen3-4B (needs 3.6 GB) and the app was **OOM-killed loading it**. **Fix:** `DeviceProbe` now carries two numbers — `RamTotalBytes` (→ tier) and `RamAvailableBytes` (→ fit). The Android head reports `AvailMem` for fit and `TotalMem` for tier.
 
 Both fixes are in `src/CircleAI.Core/DeviceProbe.cs`; the second is verified on-device (the phone now picks Qwen2.5-1.5B and runs).
+
+## Two native walls this testing hit (real, not bugs)
+
+Not every gap is a bug to fix — two are honest limits found by actually attempting inference on the phone, not by trusting the selector's "fits" verdict:
+
+- **Vision — `code -6`.** SmolVLM-256M downloads (311 MB) and *loads*, but MNN's image path rejects its SigLIP vision encoder: the bundled bridge generates from images only for the Qwen-VL/Kimi-VL family, which start ~2 GB and don't fit the ~1 GB free. A **hardware** wall — a 4 GB+ phone runs a bridge-supported 2B VLM.
+- **TTS — `DllNotFoundException: espeak-ng`.** The Piper voice downloads (113 MB from HuggingFace) and **ONNX Runtime loads it on the phone** — the synthesis half is real and works. But the *first* step, grapheme→phoneme, calls `NativeEspeakPhonemizer` → libespeak-ng, which this build does not ship. This is **not** a hardware wall and **not** merely a missing file: espeak-ng is **GPL-3.0**, and CircleAI is permissive-licensed (MIT/Apache/BSD only; its one GPL dependency, DOOM, is kept strictly out-of-process). Linking espeak-ng in-process would relicense the whole app. On-device TTS therefore needs a **licence-clean** phonemizer — espeak-ng isolated in a separate process (the DOOM pattern), a permissively-licensed G2P, or a non-espeak voice — a **licensing/design** choice, not a bigger phone.
+
+The shared lesson: **a model *loading* is not a model *running*.** Both walls surfaced only because the probe runs the actual inference on the device and reports the exact native error.
 
 ## Guidance for developers targeting low-RAM Android
 
