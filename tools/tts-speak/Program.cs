@@ -50,6 +50,14 @@ if (args.Length > 0 && args[0] == "--mms")
 if (args.Length > 0 && args[0] == "--toucan")
     return await RunToucan(args);
 
+// ── SA-11 mode ──────────────────────────────────────────────────────────────
+// One multi-lingual, multi-speaker VITS covering ALL ELEVEN official South
+// African languages — including isiNdebele, which no other model carries.
+// Character-driven, so no phonemizer is involved.
+//   dotnet run --project tools/tts-speak -- --sa11 <model.onnx> <lang> <outWav> [text...]
+if (args.Length > 0 && args[0] == "--sa11")
+    return await RunSa11(args);
+
 var outDir = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
     ? args[0]
     : Path.Combine(Path.GetTempPath(), "circleai-tts");
@@ -197,6 +205,78 @@ static void WriteWav(string path, ReadOnlySpan<byte> pcm, int sampleRate, int ch
     w.Write(Encoding.ASCII.GetBytes("data"));
     w.Write(pcm.Length);
     w.Write(pcm);
+}
+
+// SA-11 path: the multilingual VITS. Language is selected by the model's own
+// langid input, not by loading a different file, so all eleven live in one 116 MB
+// graph on the fast single-stage engine.
+async Task<int> RunSa11(string[] a)
+{
+    if (a.Length < 4)
+    {
+        Console.Error.WriteLine("usage: dotnet run --project tools/tts-speak -- --sa11 <model.onnx> <lang> <outWav> [text...]");
+        return 1;
+    }
+
+    var modelPath = a[1];
+    var lang = a[2];
+    var outWav = a[3];
+    var text = a.Length > 4 ? string.Join(' ', a.Skip(4)) : "Sawubona umhlaba.";
+
+    // Language ids as published in the model's own language_ids.json.
+    var langIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["afr"] = 0, ["eng"] = 1, ["nbl"] = 2, ["nso"] = 3, ["sot"] = 4, ["ssw"] = 5,
+        ["tsn"] = 6, ["tso"] = 7, ["ven"] = 8, ["xho"] = 9, ["zul"] = 10
+    };
+    if (!langIds.TryGetValue(lang, out var langId))
+    {
+        Console.Error.WriteLine($"FAIL: '{lang}' is not one of {string.Join(", ", langIds.Keys)}");
+        return 1;
+    }
+
+    var speaker = Environment.GetEnvironmentVariable("SA11_SPEAKER") is { } s && long.TryParse(s, out var sp) ? sp : 0L;
+
+    Console.WriteLine($"model : {Path.GetFileName(modelPath)}");
+    Console.WriteLine($"lang  : {lang} (id {langId})  speaker: {speaker}");
+    Console.WriteLine($"text  : {text}");
+
+    using var engine = new OnnxTtsEngine(modelPath, new PassthroughPhonemizer())
+    {
+        LanguageId = langId,
+        SpeakerId = speaker
+    };
+    var result = await engine.SynthesiseAsync(text);
+
+    var bytes = result.AudioData;
+    var samples = bytes.Length / 2;
+    var seconds = samples / (double)result.SampleRate;
+
+    double sumSq = 0;
+    var peak = 0;
+    var span = bytes.Span;
+    for (var i = 0; i + 1 < span.Length; i += 2)
+    {
+        short v = (short)(span[i] | (span[i + 1] << 8));
+        var f = v / 32768.0;
+        sumSq += f * f;
+        peak = Math.Max(peak, Math.Abs((int)v));
+    }
+    var rms = samples > 0 ? Math.Sqrt(sumSq / samples) : 0;
+
+    Directory.CreateDirectory(Path.GetDirectoryName(outWav)!);
+    WriteWav(outWav, span, result.SampleRate, result.Channels, result.BitsPerSample);
+    Console.WriteLine($"wav   : {outWav}");
+    Console.WriteLine($"audio : {seconds:F2}s @ {result.SampleRate}Hz  rms={rms:F4}  peak={peak}");
+
+    if (samples < result.SampleRate / 4 || rms < 0.005)
+    {
+        Console.Error.WriteLine("FAIL: output is not speech-shaped (too short or silent)");
+        return 1;
+    }
+
+    Console.WriteLine($"OK: {lang} spoke through the SA-11 voice");
+    return 0;
 }
 
 // ToucanTTS path: NchltPhonemizer (ours) -> articulatory features -> acoustic ONNX

@@ -79,6 +79,28 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
     /// <summary>Noise-w scalar input on sherpa-onnx / MMS VITS exports.</summary>
     private const string MmsNoiseWName = "noise_scale_w";
 
+    /// <summary>Speaker-id input on multi-speaker Coqui VITS exports.</summary>
+    private const string SpeakerIdName = "sid";
+
+    /// <summary>Language-id input on multi-lingual Coqui VITS exports.</summary>
+    private const string LanguageIdName = "langid";
+
+    private bool _hasSpeakerId;
+    private bool _hasLanguageId;
+
+    /// <summary>
+    /// Speaker to synthesise as, for multi-speaker voices. Ignored by models that
+    /// declare no <c>sid</c> input.
+    /// </summary>
+    public long SpeakerId { get; set; }
+
+    /// <summary>
+    /// Language to synthesise in, for multi-lingual voices — e.g. the 11-language
+    /// SA VITS uses 0=afr 1=eng 2=nbl 3=nso 4=sot 5=ssw 6=tsn 7=tso 8=ven 9=xho
+    /// 10=zul. Ignored by models that declare no <c>langid</c> input.
+    /// </summary>
+    public long LanguageId { get; set; }
+
     /// <summary>
     /// True when the loaded graph uses the sherpa-onnx / MMS input signature
     /// rather than Piper's. Decided from the model's own input metadata when the
@@ -220,19 +242,20 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
                     "Provide a valid VITS/Kokoro ONNX model file.");
             }
 
-            var opts = new SessionOptions
-            {
-                GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-                InterOpNumThreads = 1,
-                IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount / 2)
-            };
-
-            _session = new InferenceSession(_modelPath, opts);
+            // Same session handling as every other engine: reuse an ORT-optimised
+            // copy when there is one, write one when there is not. Re-optimising a
+            // large graph on a phone costs minutes, and this path serves most voices.
+            _session = OnnxSessionFactory.Open(_modelPath);
 
             // Which VITS export is this? Piper names the ids "input" and takes a
             // single scales[3]; sherpa-onnx/MMS names them "x"/"x_length" with the
             // scales as separate scalars. Ask the graph rather than assume.
             _useMmsLayout = _session.InputMetadata.ContainsKey(MmsInputName);
+
+            // Multi-speaker / multi-lingual Coqui exports add these; a model that
+            // declares them will not run unless they are supplied.
+            _hasSpeakerId = _session.InputMetadata.ContainsKey(SpeakerIdName);
+            _hasLanguageId = _session.InputMetadata.ContainsKey(LanguageIdName);
 
             return _session;
         }
@@ -310,6 +333,20 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
                 NamedOnnxValue.CreateFromTensor(InputLengthsName, inputLengths),
                 NamedOnnxValue.CreateFromTensor(ScalesName, scales)
             ];
+        }
+
+        if (_hasSpeakerId)
+        {
+            var sid = new DenseTensor<long>(new[] { 1 });
+            sid[0] = SpeakerId;
+            inputs.Add(NamedOnnxValue.CreateFromTensor(SpeakerIdName, sid));
+        }
+
+        if (_hasLanguageId)
+        {
+            var langId = new DenseTensor<long>(new[] { 1 });
+            langId[0] = LanguageId;
+            inputs.Add(NamedOnnxValue.CreateFromTensor(LanguageIdName, langId));
         }
 
         // Run inference.

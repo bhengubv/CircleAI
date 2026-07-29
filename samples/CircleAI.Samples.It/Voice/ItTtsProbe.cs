@@ -115,6 +115,8 @@ public static class ItTtsProbe
     // utterance was paying the entire model-load cost every time somebody spoke.
     private static ToucanOnnxTtsEngine? _cachedToucan;
     private static string _cachedToucanKey = "";
+    private static OnnxTtsEngine? _cachedSingle;
+    private static string _cachedSingleKey = "";
     private static Task? _preload;
 
     /// <summary>
@@ -238,9 +240,43 @@ public static class ItTtsProbe
         if (phonemizer is null)
             return "on-device phonemizer not wired (ItSpeaker.MobilePhonemizerFactory)\n";
 
+        // A multi-lingual voice (the 11-language SA VITS) picks its language from a
+        // langid input, not from which file was loaded. Without this it would
+        // silently synthesise every language as language 0.
+        long langIdValue = 0, speakerIdValue = 0;
+        var langIdFile = Path.Combine(Path.GetDirectoryName(modelOnnxPath)!, "langid.txt");
+        if (File.Exists(langIdFile))
+        {
+            var parts = File.ReadAllText(langIdFile).Trim().Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Length > 0) long.TryParse(parts[0], out langIdValue);
+            if (parts.Length > 1) long.TryParse(parts[1], out speakerIdValue);
+            log?.Invoke($"langid: {langIdValue}  speaker: {speakerIdValue}");
+        }
+
         try
         {
-            using var engine = new OnnxTtsEngine(modelOnnxPath, phonemizer);
+            // Cached for the same reason the ToucanTTS engine is: building the
+            // session is the expensive part, and rebuilding it per utterance was
+            // paying the whole model load every time somebody spoke.
+            var key = modelOnnxPath + "|" + (graphemeVoice ? "text" : voice);
+            if (_cachedSingle is null || _cachedSingleKey != key)
+            {
+                _cachedSingle?.Dispose();
+                _cachedSingle = new OnnxTtsEngine(modelOnnxPath, phonemizer);
+                _cachedSingleKey = key;
+                log?.Invoke("engine: cold (building session)");
+            }
+            else
+            {
+                log?.Invoke("engine: WARM (session reused)");
+            }
+
+            var engine = _cachedSingle;
+            // Language/speaker are per-utterance on a multi-lingual voice, so they
+            // are set on every call rather than baked in when the engine is built.
+            engine.LanguageId = langIdValue;
+            engine.SpeakerId = speakerIdValue;
+
             var result = await engine.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
             if (result.AudioData.Length == 0)
                 return $"engine LOADED on device but produced 0 audio bytes " +

@@ -102,27 +102,9 @@ public sealed class ToucanOnnxTtsEngine : ITtsEngine, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
 
-        // These graphs cost far more to LOAD than to run on a phone, so pick the
-        // cheapest-to-load form available:
-        //   .ort       — ORT's flatbuffer format: pre-optimised, no protobuf parse
-        //   _int8.onnx — fewer bytes to read (falls back if a kernel is missing)
-        //   .onnx      — plain
-        string Pick(string stem)
-        {
-            foreach (var candidate in new[]
-                     {
-                         Path.Combine(directory, stem + ".ort"),
-                         Path.Combine(directory, stem + "_int8.onnx"),
-                     })
-            {
-                if (File.Exists(candidate)) return candidate;
-            }
-            return Path.Combine(directory, stem + ".onnx");
-        }
-
-        var stageA = Pick("toucan_stage_a");
-        var stageB = Pick("toucan_stage_b");
-        var vocoder = Pick("toucan_vocoder");
+        var stageA = OnnxSessionFactory.PickModelFile(directory, "toucan_stage_a");
+        var stageB = OnnxSessionFactory.PickModelFile(directory, "toucan_stage_b");
+        var vocoder = OnnxSessionFactory.PickModelFile(directory, "toucan_vocoder");
         var featurePath = Path.Combine(directory, $"nchlt_features_{language}.json");
         var speakerPath = Path.Combine(directory, "speaker_embedding.json");
 
@@ -400,9 +382,9 @@ public sealed class ToucanOnnxTtsEngine : ITtsEngine, IDisposable
                     throw new InvalidOperationException($"ToucanTTS ONNX model not found at '{p}'.");
             }
 
-            _stageA ??= OpenSession(_stageAPath);
-            _stageB ??= OpenSession(_stageBPath);
-            _vocoder ??= OpenSession(_vocoderPath);
+            _stageA ??= OnnxSessionFactory.Open(_stageAPath);
+            _stageB ??= OnnxSessionFactory.Open(_stageBPath);
+            _vocoder ??= OnnxSessionFactory.Open(_vocoderPath);
         }
     }
 
@@ -416,67 +398,6 @@ public sealed class ToucanOnnxTtsEngine : ITtsEngine, IDisposable
     /// optimised graph out once and loading it thereafter with optimisation
     /// disabled turns that into a plain file read.
     /// </remarks>
-    private static InferenceSession OpenSession(string modelPath)
-    {
-        try
-        {
-            return OpenSessionCore(modelPath);
-        }
-        catch (OnnxRuntimeException) when (modelPath.Contains("_int8", StringComparison.Ordinal))
-        {
-            // A quantised model can load fine on a desktop and be unrunnable on the
-            // phone — Android's ONNX Runtime ships without some int8 kernels (e.g.
-            // ConvInteger). Losing the size win beats losing the voice.
-            var full = modelPath.Replace("_int8", "", StringComparison.Ordinal);
-            if (!File.Exists(full)) throw;
-            return OpenSessionCore(full);
-        }
-    }
-
-    private static InferenceSession OpenSessionCore(string modelPath)
-    {
-        // A .ort file is already optimised and needs no protobuf parse — running the
-        // optimiser over it again would throw away the reason for using it.
-        if (modelPath.EndsWith(".ort", StringComparison.OrdinalIgnoreCase))
-        {
-            var ortOpts = new SessionOptions
-            {
-                GraphOptimizationLevel = GraphOptimizationLevel.ORT_DISABLE_ALL,
-                InterOpNumThreads = 1,
-                IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount)
-            };
-            return new InferenceSession(modelPath, ortOpts);
-        }
-
-        var optimised = Path.ChangeExtension(modelPath, null) + ".ort.onnx";
-
-        if (File.Exists(optimised) && new FileInfo(optimised).Length > 1024)
-        {
-            var fast = new SessionOptions
-            {
-                // Already optimised on disk — re-optimising it would undo the point.
-                GraphOptimizationLevel = GraphOptimizationLevel.ORT_DISABLE_ALL,
-                InterOpNumThreads = 1,
-                IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount)
-            };
-            return new InferenceSession(optimised, fast);
-        }
-
-        var opts = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            InterOpNumThreads = 1,
-            IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount)
-        };
-
-        // Emit the optimised graph so the NEXT run skips this entirely. Best-effort:
-        // a read-only location must not stop us synthesising.
-        try { opts.OptimizedModelFilePath = optimised; }
-        catch { }
-
-        return new InferenceSession(modelPath, opts);
-    }
-
     private static byte[] FloatToPcm16(ReadOnlySpan<float> waveform)
     {
         var pcm = new byte[waveform.Length * 2];
