@@ -61,6 +61,32 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
     private const string OutputName = "output";
 
     /// <summary>
+    /// Token-id input on sherpa-onnx / MMS VITS exports. Those graphs name the
+    /// ids <c>x</c> and the length <c>x_length</c>, and take the three inference
+    /// scales as SEPARATE scalar tensors rather than one <c>scales[3]</c>.
+    /// </summary>
+    private const string MmsInputName = "x";
+
+    /// <summary>Sequence-length input on sherpa-onnx / MMS VITS exports.</summary>
+    private const string MmsInputLengthsName = "x_length";
+
+    /// <summary>Noise-scale scalar input on sherpa-onnx / MMS VITS exports.</summary>
+    private const string MmsNoiseScaleName = "noise_scale";
+
+    /// <summary>Length-scale scalar input on sherpa-onnx / MMS VITS exports.</summary>
+    private const string MmsLengthScaleName = "length_scale";
+
+    /// <summary>Noise-w scalar input on sherpa-onnx / MMS VITS exports.</summary>
+    private const string MmsNoiseWName = "noise_scale_w";
+
+    /// <summary>
+    /// True when the loaded graph uses the sherpa-onnx / MMS input signature
+    /// rather than Piper's. Decided from the model's own input metadata when the
+    /// session is created, so one engine serves both families without a flag.
+    /// </summary>
+    private bool _useMmsLayout;
+
+    /// <summary>
     /// Piper-style engine. Loads the <c>&lt;model&gt;.onnx.json</c> sidecar for the
     /// phoneme map, sample rate and inference scales.
     /// </summary>
@@ -202,6 +228,12 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
             };
 
             _session = new InferenceSession(_modelPath, opts);
+
+            // Which VITS export is this? Piper names the ids "input" and takes a
+            // single scales[3]; sherpa-onnx/MMS names them "x"/"x_length" with the
+            // scales as separate scalars. Ask the graph rather than assume.
+            _useMmsLayout = _session.InputMetadata.ContainsKey(MmsInputName);
+
             return _session;
         }
     }
@@ -251,19 +283,34 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
         var inputLengths = new DenseTensor<long>(new[] { 1 });
         inputLengths[0] = tokens.Length;
 
-        // Scales: [3] — noise_scale, length_scale, noise_scale_w — from the
-        // voice config (or the generic defaults for the legacy path).
-        var scales = new DenseTensor<float>(new[] { 3 });
-        scales[0] = noiseScale;
-        scales[1] = lengthScale;
-        scales[2] = noiseW;
-
-        var inputs = new List<NamedOnnxValue>
+        // Feed the scales in the shape this export actually declares: three
+        // separate scalars for sherpa-onnx/MMS, one scales[3] for Piper.
+        List<NamedOnnxValue> inputs;
+        if (_useMmsLayout)
         {
-            NamedOnnxValue.CreateFromTensor(InputName, inputTensor),
-            NamedOnnxValue.CreateFromTensor(InputLengthsName, inputLengths),
-            NamedOnnxValue.CreateFromTensor(ScalesName, scales)
-        };
+            inputs =
+            [
+                NamedOnnxValue.CreateFromTensor(MmsInputName, inputTensor),
+                NamedOnnxValue.CreateFromTensor(MmsInputLengthsName, inputLengths),
+                NamedOnnxValue.CreateFromTensor(MmsNoiseScaleName, Scalar(noiseScale)),
+                NamedOnnxValue.CreateFromTensor(MmsLengthScaleName, Scalar(lengthScale)),
+                NamedOnnxValue.CreateFromTensor(MmsNoiseWName, Scalar(noiseW))
+            ];
+        }
+        else
+        {
+            var scales = new DenseTensor<float>(new[] { 3 });
+            scales[0] = noiseScale;
+            scales[1] = lengthScale;
+            scales[2] = noiseW;
+
+            inputs =
+            [
+                NamedOnnxValue.CreateFromTensor(InputName, inputTensor),
+                NamedOnnxValue.CreateFromTensor(InputLengthsName, inputLengths),
+                NamedOnnxValue.CreateFromTensor(ScalesName, scales)
+            ];
+        }
 
         // Run inference.
         float[] waveform;
@@ -287,6 +334,17 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
         var pcmBytes = FloatWaveformToPcm16(waveform);
 
         return new TtsSynthesisResult(pcmBytes, _sampleRate, 1, 16);
+    }
+
+    /// <summary>
+    /// A one-element float tensor, the shape sherpa-onnx/MMS exports declare for
+    /// each individual inference scale.
+    /// </summary>
+    private static DenseTensor<float> Scalar(float value)
+    {
+        var t = new DenseTensor<float>(new[] { 1 });
+        t[0] = value;
+        return t;
     }
 
     /// <summary>

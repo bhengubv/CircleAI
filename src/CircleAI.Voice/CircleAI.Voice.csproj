@@ -34,5 +34,11 @@
          Whisper.net.Runtime.<rid> package, mirroring the MNN native-lib story. -->
     <PackageReference Include="Whisper.net" Version="1.8.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
+    <!-- NOTE: sherpa-onnx is deliberately NOT referenced here. Its native
+         statically links GPLv3 espeak-ng, which would taint this shipped,
+         permissive-licensed library. The multi-engine (Piper/mimic3/coqui/Kokoro/
+         Matcha) runtime runs OUT-OF-PROCESS behind the GPL wall — see the
+         com.bhengubv.espeakng pattern — and CircleAI reaches it by IPC. The
+         SherpaOnnxTtsEngine proof lives in the non-distributed tools/tts-speak. -->
   </ItemGroup>
 </Project>

@@ -442,6 +442,17 @@ namespace CircleAI.Core.Models
         /// the CPU path. Text-only models leave this null.
         /// </summary>
         public double? MinVramGb { get; init; }
+
+        /// <summary>
+        /// (3.3.0) BCP-47 / ISO-639 language tag this speech voice or ASR model
+        /// serves — e.g. <c>en</c>, <c>af</c>, <c>zu</c>, <c>xh</c>, <c>tw</c>,
+        /// <c>sw</c>. Drives language-aware speech selection in
+        /// <see cref="CircleAI.Inference.SpeechModelSelector"/>: a caller asking
+        /// for isiZulu TTS must never be handed the English voice. <c>null</c> =
+        /// language-agnostic / unspecified (every chat and legacy entry), which a
+        /// language-specific request does NOT match.
+        /// </summary>
+        public string? Language { get; init; }
     }
 
     /// <summary>

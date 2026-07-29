@@ -79,6 +79,30 @@ public class MainActivity : Activity
         // (OutOfProcessEspeakPhonemizer throws a clear reason, caught by RunTts).
         CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory =
             voice => new OutOfProcessEspeakPhonemizer(this, voice);
+
+        // Start warming ToucanTTS now. Its three graphs take minutes to load off
+        // storage but only ~4 s to synthesise once resident, so the load belongs at
+        // app start, in the background — not in front of the user's first sentence.
+        try
+        {
+            var warmRoot = GetExternalFilesDir(null)?.AbsolutePath;
+            if (!string.IsNullOrEmpty(warmRoot))
+            {
+                var warmDir = System.IO.Path.Combine(warmRoot, "toucan");
+                var warmLangFile = System.IO.Path.Combine(warmDir, "lang.txt");
+                if (System.IO.File.Exists(System.IO.Path.Combine(warmDir, "toucan_stage_a.ort")) ||
+                    System.IO.File.Exists(System.IO.Path.Combine(warmDir, "toucan_stage_a.onnx")))
+                {
+                    var warmLang = System.IO.File.Exists(warmLangFile)
+                        ? (await System.IO.File.ReadAllTextAsync(warmLangFile)).Trim()
+                        : "zul";
+                    CircleAI.Samples.It.Voice.ItTtsProbe.PreloadToucan(
+                        warmDir, System.IO.Path.Combine(warmDir, "nchlt"), warmLang);
+                    Append("[tts] warming ToucanTTS in the background…\n");
+                }
+            }
+        }
+        catch { /* warming is an optimisation, never a startup dependency */ }
 #endif
 
         BuildUi();
@@ -590,10 +614,56 @@ public class MainActivity : Activity
             // (e.g. a kasanoma African voice pushed over adb), prove THAT on the phone
             // — any language, using the espeak voice from its own config — instead of
             // the catalogued English default. The phrase comes from files/vut/phrase.txt.
+            // ToucanTTS (3-stage) takes priority when its assets are sideloaded:
+            // it is the only permissive voice for isiZulu, Sepedi, siSwati and
+            // Tshivenda, and it is driven by OUR NchltPhonemizer, not a neural G2P.
+            var extRoot = GetExternalFilesDir(null)?.AbsolutePath;
+            if (!string.IsNullOrEmpty(extRoot))
+            {
+                var toucanDir = System.IO.Path.Combine(extRoot, "toucan");
+                var stageA = System.IO.Path.Combine(toucanDir, "toucan_stage_a.onnx");
+                var langFile = System.IO.Path.Combine(toucanDir, "lang.txt");
+                if (System.IO.File.Exists(stageA) && System.IO.File.Exists(langFile))
+                {
+                    var lang = (await System.IO.File.ReadAllTextAsync(langFile)).Trim();
+                    var phraseF = System.IO.Path.Combine(toucanDir, "phrase.txt");
+                    var toucanPhrase = System.IO.File.Exists(phraseF)
+                        ? (await System.IO.File.ReadAllTextAsync(phraseF)).Trim()
+                        : "Sawubona umhlaba.";
+                    Append($"[tts] ToucanTTS assets found — proving {lang} on the phone\n");
+                    var trep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunToucanAsync(
+                        toucanDir, System.IO.Path.Combine(toucanDir, "nchlt"), lang,
+                        wavPath, toucanPhrase, s => Append("  " + s + "\n"));
+                    try { await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(toucanDir, "result.txt"), trep); }
+                    catch { }
+                    Append("\n" + trep);
+                    if (System.IO.File.Exists(wavPath)) await PlayWavAsync(wavPath);
+                    return;
+                }
+            }
+
             var vut = System.IO.Path.Combine(FilesDir!.AbsolutePath, "vut", "model.onnx");
+
+            // Also honour the app's EXTERNAL files dir. `run-as` only works on a
+            // debuggable build, so on a Release APK the private FilesDir above
+            // cannot be written over adb at all; /sdcard/Android/data/<pkg>/files
+            // can, with no root and no debug build. Sideloading a voice must not
+            // require shipping a debuggable APK.
+            if (!System.IO.File.Exists(vut))
+            {
+                var ext = GetExternalFilesDir(null)?.AbsolutePath;
+                if (!string.IsNullOrEmpty(ext))
+                {
+                    var extVut = System.IO.Path.Combine(ext, "vut", "model.onnx");
+                    if (System.IO.File.Exists(extVut)) vut = extVut;
+                }
+            }
+
             if (System.IO.File.Exists(vut))
             {
-                var phraseFile = System.IO.Path.Combine(FilesDir!.AbsolutePath, "vut", "phrase.txt");
+                // Beside whichever model won above — private or external.
+                var phraseFile = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(vut)!, "phrase.txt");
                 var phrase = System.IO.File.Exists(phraseFile)
                     ? (await System.IO.File.ReadAllTextAsync(phraseFile)).Trim()
                     : "The quick brown fox jumps over the lazy dog.";
@@ -602,7 +672,26 @@ public class MainActivity : Activity
                     vut, wavPath, phrase, s => Append("  " + s + "\n"));
                 await System.IO.File.WriteAllTextAsync(
                     System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.txt"), vrep);
+
+                // Mirror the report next to the sideloaded voice, in the EXTERNAL
+                // dir. A Release APK cannot be read with `run-as`, so without this
+                // a scripted sweep over many voices has no way to collect results
+                // except screenshotting the phone once per language.
+                try
+                {
+                    var extReport = System.IO.Path.Combine(
+                        System.IO.Path.GetDirectoryName(vut)!, "result.txt");
+                    await System.IO.File.WriteAllTextAsync(extReport, vrep);
+                }
+                catch { /* report mirroring is a convenience, never fail the run */ }
+
                 Append("\n" + vrep);
+
+                // A WAV on disk proves synthesis; it does not prove the phone can
+                // SPEAK. Play it out of the actual speaker — that is the only
+                // result that settles "it talks on the device".
+                if (System.IO.File.Exists(wavPath))
+                    await PlayWavAsync(wavPath);
                 Append("[tts] pull: adb exec-out run-as com.bhengubv.itsample cat files/tts-result.txt\n");
                 return;
             }
@@ -627,6 +716,37 @@ public class MainActivity : Activity
             _tts.Enabled = true;
         }
         Append("===== TTS DONE =====\n\n");
+    }
+#endif
+
+#if IT_VOICE_ANDROID
+    /// <summary>
+    /// Play a 16-bit PCM WAV out of the phone's speaker via AudioTrack. Reads the
+    /// sample rate from the header rather than assuming 16 kHz — Piper voices are
+    /// 22050 and MMS are 16000, and playing one at the other's rate is the classic
+    /// chipmunk/slow-motion bug.
+    /// </summary>
+    async Task PlayWavAsync(string wavPath)
+    {
+        try
+        {
+            var wav = await System.IO.File.ReadAllBytesAsync(wavPath);
+            if (wav.Length <= 44) { Append("[tts] wav too small to play\n"); return; }
+
+            var sampleRate = BitConverter.ToInt32(wav, 24);
+            var channels = BitConverter.ToInt16(wav, 22);
+            var pcm = new byte[wav.Length - 44];
+            Buffer.BlockCopy(wav, 44, pcm, 0, pcm.Length);
+
+            Append($"[tts] playing {pcm.Length:N0} bytes @ {sampleRate} Hz through the speaker…\n");
+            await using var player = new AndroidAudioPlayer();
+            await player.PlayAsync(pcm, sampleRate, channels < 1 ? 1 : channels, 16);
+            Append("[tts] PLAYED — the device spoke.\n");
+        }
+        catch (Exception ex)
+        {
+            Append($"[tts] playback FAILED: {ex.Message}\n");
+        }
     }
 #endif
 

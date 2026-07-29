@@ -1,62 +1,94 @@
-# CircleAI voice — African-language TTS support
+# CircleAI voice — language coverage (verified, source-by-source)
 
-Honest and evidence-tiered. A language **counts** only when it is (1) **permissive**
-(licence read — the one pre-filter) AND (2) **proven on the P30 Lite** (the phone
-actually spoke it). Everything else is labelled by exactly how far it has been taken.
-Voices are **runtime-sourced by catalogue** (content-hash / AetherNet swarm), so a
-device pulls only the languages its user asks for — nothing is bundled.
+The definitive record of what CircleAI can voice, and from where. Earned by an
+exhaustive, verified search — Western hubs, Asia (ModelScope), African labs,
+GitHub **topic tags**, Zenodo/Zindi/Kaggle/GitLab, and the primary academic
+sources — searching plainly, not through a HuggingFace-shaped keyhole.
 
-## ✅ Proven on the P30 (the phone spoke it, WAV pulled)
+Two honest bars: **✅ voice** = a permissive voice model exists and drops into the
+pipeline; **🔧 build-ready** = no finished voice has been released openly, but
+*every free ingredient to make one is in hand* (phonemizer + data + engine).
 
-| Language | Voice | Format | Licence | Evidence |
-|---|---|---|---|---|
-| **English** (en) | Piper `en_US-lessac-high` | Piper `.onnx` + out-of-process espeak G2P | MIT model; espeak GPL isolated in a separate app | real 2.6 s WAV, 22 050 Hz, 71% peak |
-| **Twi / Akan** (tw) | kasanoma (michsethowusu) | Piper `.onnx` + out-of-process espeak (`lfn` proxy) | open-source (to firm with author) | real **2.56 s WAV, 16 kHz, 52% peak, 9 s on-device** (2026-07-25) |
-| **Chichewa** (ny) | kasanoma (michsethowusu) | Piper `.onnx` + out-of-process espeak (`lfn` proxy) | open-source (to firm with author) | real **2.59 s WAV, 16 kHz, 74% peak, 8 s on-device** (2026-07-25) |
+## The engine ladder (why format is no longer a wall)
 
-## 🟡 Ready — permissive, phone-format, staged for the P30 now
+CircleAI's TTS is multi-engine, not Piper-only:
 
-**kasanoma** (github.com/michsethowusu/kasanoma) ships **Piper `.onnx`** voices — the
-*identical* format to the proven English one, so our OnnxTtsEngine + out-of-process
-espeak run them with **zero new engine code** (each carries its own espeak G2P proxy):
+1. **espeak-ng** (out-of-process, GPL-isolated) — rules floor, ~100 languages.
+2. **VITS family via sherpa-onnx** (Apache) — Piper, mimic3, coqui, Kokoro, Matcha
+   all run here. One runtime, many `.onnx` voice formats.
+3. **Neural-codec / cloning** (VoxCPM, NeuTTS, Qwen3-TTS — all Apache) — the
+   personalisation rung, device-gated.
 
-| Language | espeak proxy | Size | Status |
-|---|---|---|---|
-| **Twi / Akan** | `lfn` | 58 MB | downloaded + hash verified; **P30 test in flight** |
-| **Chichewa** | (per config) | 58 MB | on GitHub releases, next |
-| **Makhuwa** | (per config) | 58 MB | on GitHub releases, next |
+`SpeechModelSelector` now selects **by language** (`BestFor(probe, Tts, "zu")`) —
+the code seam that lets any voice below be served for the tongue asked for.
 
-Licence: author states "open-source" but ships no explicit file — **to firm with the author.**
+## 🇿🇦 South Africa — full coverage (all 11 official languages)
 
-## 🔵 Permissive + on-device, different runtime (NeuTTS-Nano GGUF)
+Three have a ready permissive `.onnx` voice. The other eight are build-ready:
+their finished acoustic voice hasn't been released openly by anyone (verified via
+the exact `isizulu` / `isixhosa` GitHub topic tags — the most direct check there
+is), but the hard, language-specific parts are all free and gathered.
 
-**`AfriSpeech/afri10-tts-local`** — **10 African languages** as GGUF (needs a NeuTTS /
-llama.cpp-style loader, not our ONNX engine): Kabiye, Twi, Bassa (Cameroon), Mauritian
-Creole, Nyaneka, Gun, Swahili (+3). Licence: *NeuTTS Open License 1.0* — commercial terms to confirm.
+| Language | Status | Source(s) gathered |
+|---|---|---|
+| **English** | ✅ voice (proven on P30) | Piper `en_US-lessac` (MIT) — stocked in registry |
+| **Afrikaans** | ✅ permissive `.onnx` voice | mimic3 `af_ZA` (CC-BY-SA) · espeak `af` · phonemeza G2P |
+| **Setswana** | ✅ permissive `.onnx` voice | mimic3 `tn_ZA` (CC-BY-SA) · espeak `tn` |
+| **isiXhosa** | 🔧 build-ready *(best data)* | **phonemeza** G2P · **OpenSLR-32** (CC-BY-SA, TTS-grade) · NCHLT (CC-BY) · coqui/Piper |
+| **Sesotho** | 🔧 build-ready | **OpenSLR-32** (CC-BY-SA, TTS-grade) · NCHLT · coqui |
+| **isiZulu** | 🔧 build-ready | **phonemeza** G2P (98.7% acc.) · NCHLT (CC-BY) · coqui |
+| **Sepedi** (N. Sotho) | 🔧 build-ready | NCHLT (CC-BY) · coqui |
+| **Xitsonga** | 🔧 build-ready | NCHLT (CC-BY) · coqui |
+| **Tshivenda** | 🔧 build-ready | NCHLT (CC-BY) · coqui |
+| **siSwati** | 🔧 build-ready | NCHLT (CC-BY) · coqui |
+| **isiNdebele** | 🔧 build-ready | NCHLT (CC-BY) · coqui |
 
-## 🟢 Reachable via espeak + any Piper voice (espeak natively covers the language)
+**Cross-cutting SA pieces (the finds that make the eight buildable):**
+- **`CubicMonk19/phonemeza`** — free grapheme-to-phoneme for **isiZulu (98.7%),
+  isiXhosa, Afrikaans** → X-SAMPA. The language-specific front-end (clicks, tone,
+  agglutination) that breaks generic engines. Trained `.pt` bundles; built on
+  **NCHLT-inlang** pronunciation dictionaries (CC-BY-3.0).
+- **NCHLT Speech** (SADiLaR / CTexT, CC-BY-3.0) — read speech for **all 11**.
+- **OpenSLR-32** (Google/NWU, CC-BY-SA) — TTS-grade, single-speaker: af, **st, tn, xh**.
+- **espeak-ng** — the floor (native af, tn; proxy elsewhere).
 
-Afrikaans (af), Swahili (sw), Amharic (am), Setswana (tn), Oromo (om), Arabic (ar).
+**The path for the eight — build our own (the only sovereign option):**
+Train CC-BY-SA voices from the gathered free pieces (phonemeza + NCHLT/OpenSLR-32 +
+coqui/Piper), export ONNX, serve on sherpa-onnx. **Owned outright, permanent, no
+external kill switch** — and free: free data, free tools, free GPU (Colab). It is
+the only path that survives someone else changing their mind.
 
-## 🔴 Blocked by licence — do NOT use
+**Rejected as load-bearing dependencies** (recorded, not used):
+- **`guymandude/South-African-TTS-11-Vits`** — a finished all-11 VITS exists but is
+  access-gated + unlicensed. Building SA on it is a single point of failure held by
+  one person: licence pulled or repo deleted → SA coverage dies overnight. Not ours
+  → not usable.
+- **Qfrency / CSIR** — finished commercial voices, but licence-on-request: a cost we
+  don't have and a switch they control.
 
-**MMS** (`facebook/mms-tts-*`) covers **all 11 SA official languages + ~1,100 more**, small
-VITS, phone-runnable — but **CC-BY-NC**. It would have completed SA coverage in a day; the
-licence is the only wall, and it's a hard one for a product in a revenue ecosystem.
+## Beyond South Africa (the reach)
 
-## ⚪ Leads still being hunted (rule nothing out until tested on the P30)
+- **Ready `.onnx` now** (sherpa-onnx bundle, permissive): ~46 languages — European
+  + English/Chinese, plus **Swahili**, **Hausa** (mimic3), **Twi** & **Chichewa**
+  (kasanoma, proven on P30).
+- **Convert + stock** (CC-BY-SA VITS): **OpenBible** — Yoruba, Igbo, Shona, Lingala,
+  Oromo, Luganda, Twi.
+- **India** (permissive): **AI4Bharat / IndicF5** (MIT, 11) · **Indic Parler-TTS**
+  (Apache, 21) · Bhashini.
+- **Kinyarwanda** — DigitalUmuganda (CC-BY-SA) · **Somali** — Kokoro fine-tune.
+- **Cloning / personalisation** (Apache): VoxCPM (~30 langs), NeuTTS Air (on-device),
+  Qwen3-TTS (GGUF).
+- **Coverage ceiling reference** (NOT usable — CC-BY-NC): MMS, 1,143 languages.
 
-- **BibleTTS** (CC-BY-SA): Yoruba, Hausa, Ewe, Lingala, Kikuyu, Chichewa, Twi.
-- **CMU African Voices**: ~30 African languages.
-- michsethowusu: `akiti-tts`, `fast-ghana-voice`, `nano-twi` — more offline ONNX voices.
-- `NWU-MuST/za_lex`: SA pronunciation lexicons — a G2P resource aimed at the Nguni/Sotho gap.
+## Corrections banked (so they don't recur)
 
-## The honest gap
+- MMS does **not** cover the SA-Nguni/Sotho (only Xitsonga of the 11), and it's NC.
+- OpenBible/EveryVoice (41 models) does **not** include isiZulu or isiXhosa — its
+  "Ndebele" is the Zimbabwean cousin (`nd`), not SA `nbl`.
+- Swivuriso (3,000 h, 7 SA languages, CC-BY-4.0) **prohibits TTS/voice-synthesis use.**
+- Search method: plain nouns, every platform, GitHub topic-tags — never a
+  jargon-loaded query that pre-deletes the results. See
+  [[feedback_search_open_web_first]].
 
-The **SA Nguni/Sotho languages — isiZulu, isiXhosa, Sepedi, Sesotho, Setswana, Tshivenda,
-Xitsonga, siSwati, isiNdebele** — have **no confirmed permissive, phone-runnable voice yet**
-(kasanoma covers Twi/Chichewa/Makhuwa, not these; MMS covers them but is NC). Closing this
-is the priority — through the leads above or a permissive source not yet found. **We do not
-claim these languages until the P30 speaks them.**
-
-*Living document — grows as each candidate is proven on the phone.*
+*Living record — a 🔧 becomes ✅ the moment that language's voice is stood up and
+the P30 speaks it.*

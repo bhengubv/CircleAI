@@ -15,4 +15,17 @@
          OnnxTtsEngine speaks, end to end. -->
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- sherpa-onnx (k2-fsa). Its native (sherpa-onnx-c-api) STATICALLY LINKS
+         GPLv3 espeak-ng — confirmed: espeak_ng_Synthesize / espeak_TextToPhonemes
+         symbols are in the binary. It is therefore confined to THIS
+         non-distributed proof tool (IsPackable=false) and MUST NOT be referenced
+         by any shipped CircleAI assembly. On device the same runtime runs
+         OUT-OF-PROCESS behind the GPL wall (the com.bhengubv.espeakng pattern),
+         so CircleAI calls it by IPC and never links GPL. This tool exists only to
+         prove SherpaOnnxTtsEngine produces real speech from a real voice bundle. -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx.runtime.win-x64" Version="1.13.4" />
+  </ItemGroup>
 </Project>

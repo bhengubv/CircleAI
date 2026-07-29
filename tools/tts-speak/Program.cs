@@ -16,6 +16,40 @@ using System.Security.Cryptography;
 using System.Text;
 using CircleAI.Voice;
 
+// ── Sherpa mode ─────────────────────────────────────────────────────────────
+// Proves SherpaOnnxTtsEngine speaks a real multi-engine voice BUNDLE
+// (Piper / mimic3 / coqui / Kokoro) — e.g. the Afrikaans mimic3 af_ZA voice, the
+// first South African voice above English. The bundle (model.onnx + tokens.txt +
+// espeak-ng-data/) is expected already extracted on disk.
+//   dotnet run --project tools/tts-speak -- --sherpa <bundleDir> [text...]
+if (args.Length > 0 && args[0] == "--sherpa")
+    return await RunSherpa(args);
+
+// ── G2P mode ────────────────────────────────────────────────────────────────
+// Proves NchltPhonemizer (sovereign, CC-BY, no espeak) turns SA text into
+// X-SAMPA. With no words it self-verifies the rule-engine port against the
+// dictionary and reports accuracy; a faithless port scores low.
+//   dotnet run --project tools/tts-speak -- --g2p <lang> [words...]
+if (args.Length > 0 && args[0] == "--g2p")
+    return await RunG2p(args);
+
+// ── MMS mode ────────────────────────────────────────────────────────────────
+// Proves OnnxTtsEngine speaks an MMS/sherpa-style VITS voice — the on-device
+// path for African languages. These voices are CHARACTER-driven
+// (phoneme_type "text"), so PassthroughPhonemizer feeds graphemes straight in:
+// no espeak, no neural G2P, nothing that cannot run on the phone.
+//   dotnet run --project tools/tts-speak -- --mms <model.onnx> <outWav> [text...]
+if (args.Length > 0 && args[0] == "--mms")
+    return await RunMms(args);
+
+// ── ToucanTTS mode ──────────────────────────────────────────────────────────
+// The four SA languages no ready-made voice covers — isiZulu, Sepedi, siSwati,
+// Tshivenda — via the two-stage Apache model driven by OUR NchltPhonemizer
+// instead of its neural G2P. No espeak, no Python, phone-runnable.
+//   dotnet run --project tools/tts-speak -- --toucan <assetDir> <nchltDataDir> <lang> <outWav> [text...]
+if (args.Length > 0 && args[0] == "--toucan")
+    return await RunToucan(args);
+
 var outDir = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
     ? args[0]
     : Path.Combine(Path.GetTempPath(), "circleai-tts");
@@ -163,4 +197,282 @@ static void WriteWav(string path, ReadOnlySpan<byte> pcm, int sampleRate, int ch
     w.Write(Encoding.ASCII.GetBytes("data"));
     w.Write(pcm.Length);
     w.Write(pcm);
+}
+
+// ToucanTTS path: NchltPhonemizer (ours) -> articulatory features -> acoustic ONNX
+// -> vocoder ONNX -> PCM. Proves the only permissive route to isiZulu, Sepedi,
+// siSwati and Tshivenda, with every stage available on Android.
+async Task<int> RunToucan(string[] a)
+{
+    if (a.Length < 5)
+    {
+        Console.Error.WriteLine("usage: dotnet run --project tools/tts-speak -- --toucan <assetDir> <nchltDataDir> <lang> <outWav> [text...]");
+        return 1;
+    }
+
+    var assetDir = a[1];
+    var nchltDir = a[2];
+    var lang = a[3];
+    var outWav = a[4];
+    var text = a.Length > 5 ? string.Join(' ', a.Skip(5)) : "Sawubona umhlaba.";
+
+    // ToucanTTS language-embedding ids, read from the model itself during export.
+    var langIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["zul"] = 7215, ["nso"] = 4491, ["ssw"] = 5611, ["ven"] = 6348
+    };
+    if (!langIds.TryGetValue(lang, out var langId))
+    {
+        Console.Error.WriteLine($"FAIL: no ToucanTTS language id for '{lang}' (have: {string.Join(", ", langIds.Keys)})");
+        return 1;
+    }
+
+    Console.WriteLine($"lang  : {lang} (ToucanTTS id {langId})");
+    Console.WriteLine($"text  : {text}");
+
+    var phonemizer = NchltPhonemizer.ForLanguage(nchltDir, lang);
+    var phones = phonemizer.Phonemize(text);
+    Console.WriteLine($"phones: {string.Join(' ', phones)}  ({phones.Count})");
+
+    using var engine = ToucanOnnxTtsEngine.FromDirectory(assetDir, lang, langId, phonemizer);
+    var result = await engine.SynthesiseAsync(text);
+
+    var bytes = result.AudioData;
+    var samples = bytes.Length / 2;
+    var seconds = samples / (double)result.SampleRate;
+
+    double sumSq = 0;
+    var peak = 0;
+    var span = bytes.Span;
+    for (var i = 0; i + 1 < span.Length; i += 2)
+    {
+        short s = (short)(span[i] | (span[i + 1] << 8));
+        var f = s / 32768.0;
+        sumSq += f * f;
+        peak = Math.Max(peak, Math.Abs((int)s));
+    }
+    var rms = samples > 0 ? Math.Sqrt(sumSq / samples) : 0;
+
+    Directory.CreateDirectory(Path.GetDirectoryName(outWav)!);
+    WriteWav(outWav, span, result.SampleRate, result.Channels, result.BitsPerSample);
+    Console.WriteLine($"wav   : {outWav}");
+    Console.WriteLine($"audio : {seconds:F2}s @ {result.SampleRate}Hz  rms={rms:F4}  peak={peak}  skippedPhones={engine.LastSkippedPhoneCount}");
+
+    if (samples < result.SampleRate / 4 || rms < 0.005)
+    {
+        Console.Error.WriteLine("FAIL: output is not speech-shaped (too short or silent)");
+        return 1;
+    }
+
+    Console.WriteLine($"OK: {lang} spoke through ToucanOnnxTtsEngine + NchltPhonemizer");
+    return 0;
+}
+
+// MMS path: run a character-driven MMS/sherpa VITS voice through the REAL
+// OnnxTtsEngine and report whether the output is speech-shaped. Everything here
+// — char→id via the sidecar map, ONNX Runtime, PCM16 — is available on Android,
+// which is the whole point of preferring these voices for the phone.
+async Task<int> RunMms(string[] a)
+{
+    var modelPath = a.Length > 1 ? a[1] : "";
+    if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
+    {
+        Console.Error.WriteLine($"FAIL: MMS model not found: '{modelPath}'");
+        Console.Error.WriteLine("usage: dotnet run --project tools/tts-speak -- --mms <model.onnx> <outWav> [text...]");
+        return 1;
+    }
+
+    var outWav = a.Length > 2 ? a[2] : Path.Combine(Path.GetTempPath(), "circleai-tts", "mms.wav");
+    var mmsText = a.Length > 3 ? string.Join(' ', a.Skip(3)) : "Avuxeni, mi amukeriwile.";
+    Directory.CreateDirectory(Path.GetDirectoryName(outWav)!);
+
+    var cfg = PiperVoiceConfig.TryLoadForModel(modelPath);
+    if (cfg is not { HasPhonemeMap: true })
+    {
+        Console.Error.WriteLine($"FAIL: no usable sidecar at {PiperVoiceConfig.SidecarPathFor(modelPath)}");
+        return 1;
+    }
+
+    Console.WriteLine($"model : {Path.GetFileName(modelPath)}");
+    Console.WriteLine($"text  : {mmsText}");
+    Console.WriteLine($"config: sampleRate={cfg.SampleRate} type={cfg.PhonemeType} scales=({cfg.NoiseScale},{cfg.LengthScale},{cfg.NoiseW})");
+
+    // Characters ARE the tokens for these voices.
+    using var engine = new OnnxTtsEngine(modelPath, new PassthroughPhonemizer());
+    var result = await engine.SynthesiseAsync(mmsText);
+
+    var bytes = result.AudioData;
+    var samples = bytes.Length / 2;
+    var seconds = samples / (double)result.SampleRate;
+
+    double sumSq = 0;
+    var peak = 0;
+    var span = bytes.Span;
+    for (var i = 0; i + 1 < span.Length; i += 2)
+    {
+        short s = (short)(span[i] | (span[i + 1] << 8));
+        var f = s / 32768.0;
+        sumSq += f * f;
+        peak = Math.Max(peak, Math.Abs((int)s));
+    }
+    var rms = samples > 0 ? Math.Sqrt(sumSq / samples) : 0;
+
+    WriteWav(outWav, span, result.SampleRate, result.Channels, result.BitsPerSample);
+    Console.WriteLine($"wav   : {outWav}");
+    Console.WriteLine($"audio : {seconds:F2}s @ {result.SampleRate}Hz  rms={rms:F4}  peak={peak}");
+
+    // Silence or a handful of samples means the tokenisation was wrong, not that
+    // the voice is quiet — fail rather than report a green that is not one.
+    if (samples < result.SampleRate / 4 || rms < 0.005)
+    {
+        Console.Error.WriteLine("FAIL: output is not speech-shaped (too short or silent)");
+        return 1;
+    }
+
+    Console.WriteLine("OK: MMS voice spoke through OnnxTtsEngine");
+    return 0;
+}
+
+// Sherpa path: construct SherpaOnnxTtsEngine from an extracted voice bundle and
+// prove it emits real, non-silent speech at the model's own sample rate — the
+// same bar the Piper proof above applies, applied to the multi-engine runtime.
+async Task<int> RunSherpa(string[] a)
+{
+    var bundleDir = a.Length > 1 ? a[1] : "";
+    if (string.IsNullOrWhiteSpace(bundleDir) || !Directory.Exists(bundleDir))
+    {
+        Console.Error.WriteLine($"FAIL: sherpa bundle directory not found: '{bundleDir}'");
+        Console.Error.WriteLine("usage: dotnet run --project tools/tts-speak -- --sherpa <bundleDir> [text...]");
+        return 1;
+    }
+
+    // Default line is Afrikaans — the first South African voice above English.
+    var sherpaText = a.Length > 2 ? string.Join(' ', a.Skip(2)) : "Hallo wêreld. Welkom by Circle.";
+    var sherpaOut = Path.Combine(Path.GetTempPath(), "circleai-tts");
+    Directory.CreateDirectory(sherpaOut);
+
+    Console.WriteLine($"sherpa bundle: {bundleDir}");
+    Console.WriteLine($"text in      : {sherpaText}");
+
+    using var engine = SherpaOnnxTtsEngine.FromBundleDirectory(bundleDir);
+    var result = await engine.SynthesiseAsync(sherpaText);
+
+    var bytes = result.AudioData;
+    var samples = bytes.Length / 2;
+    var seconds = samples / (double)result.SampleRate;
+
+    double sumSq = 0;
+    var span = bytes.Span;
+    var peak = 0;
+    for (var i = 0; i + 1 < span.Length; i += 2)
+    {
+        short s = (short)(span[i] | (span[i + 1] << 8));
+        var f = s / 32768.0;
+        sumSq += f * f;
+        peak = Math.Max(peak, Math.Abs((int)s));
+    }
+    var rms = samples > 0 ? Math.Sqrt(sumSq / samples) : 0;
+
+    var wavPath = Path.Combine(sherpaOut, "sherpa.wav");
+    WriteWav(wavPath, bytes.Span, result.SampleRate, result.Channels, result.BitsPerSample);
+
+    Console.WriteLine();
+    Console.WriteLine($"pcm bytes : {bytes.Length:N0}  ({samples:N0} samples)");
+    Console.WriteLine($"duration  : {seconds:F2} s @ {result.SampleRate} Hz");
+    Console.WriteLine($"rms       : {rms:F4}   peak: {peak}/32767");
+    Console.WriteLine($"wav       : {wavPath}");
+    Console.WriteLine();
+
+    var failures = new List<string>();
+    if (samples == 0) failures.Add("no audio produced");
+    if (seconds < 0.3) failures.Add($"duration {seconds:F2}s implausibly short for this phrase");
+    if (rms < 0.005) failures.Add($"rms {rms:F4} — effectively silent");
+
+    if (failures.Count > 0)
+    {
+        Console.Error.WriteLine("FAIL:");
+        foreach (var f in failures) Console.Error.WriteLine("  - " + f);
+        return 1;
+    }
+
+    Console.WriteLine("PASS: real, non-silent speech from the sherpa-onnx engine. Play the WAV to hear it.");
+    return 0;
+}
+
+// G2P path: exercise NchltPhonemizer and, with no words given, verify the
+// rule-engine port reproduces the CC-BY dictionary (high accuracy == faithful).
+async Task<int> RunG2p(string[] a)
+{
+    var lang = a.Length > 1 ? a[1] : "zul";
+    var dataDir = Path.Combine("src", "CircleAI.Voice", "Data", "nchlt");
+    if (!Directory.Exists(dataDir))
+    {
+        Console.Error.WriteLine($"FAIL: NCHLT data dir not found: '{Path.GetFullPath(dataDir)}'");
+        return 1;
+    }
+
+    var phon = NchltPhonemizer.ForLanguage(dataDir, lang);
+    Console.WriteLine($"NCHLT phonemizer loaded for '{lang}' from {dataDir}");
+
+    var words = a.Skip(2).ToArray();
+    if (words.Length > 0)
+    {
+        foreach (var w in words)
+        {
+            var ph = phon.Phonemize(w);
+            var via = phon.LastRulePredictedWords > 0 ? "rule" : "dict";
+            Console.WriteLine($"  {w}  [{via}]  ->  {string.Join(' ', ph)}");
+        }
+        return 0;
+    }
+
+    // Self-verify: run the rule engine against the dictionary's own pronunciations.
+    var gold = new List<(string word, string pron)>();
+    foreach (var line in await File.ReadAllLinesAsync(Path.Combine(dataDir, $"nchlt_{lang}.dict")))
+    {
+        var tab = line.IndexOf('\t');
+        if (tab > 0) gold.Add((line[..tab], line[(tab + 1)..].Trim()));
+    }
+
+    int n = 0, wordExact = 0, phoneTotal = 0, phoneHit = 0;
+    int stepBy = Math.Max(1, gold.Count / 3000);
+    for (int i = 0; i < gold.Count; i += stepBy)
+    {
+        var (word, goldPron) = gold[i];
+        var pred = string.Join(' ', phon.PredictWord(word));
+        n++;
+        if (pred == goldPron) wordExact++;
+        var gp = goldPron.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var pp = pred.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        phoneTotal += gp.Length;
+        int m = Math.Min(gp.Length, pp.Length);
+        for (int k = 0; k < m; k++) if (gp[k] == pp[k]) phoneHit++;
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"rule-engine vs dictionary ({n:N0} sampled words):");
+    Console.WriteLine($"  word  accuracy : {100.0 * wordExact / n:F1}%  ({wordExact:N0}/{n:N0})");
+    Console.WriteLine($"  phone accuracy : {100.0 * phoneHit / phoneTotal:F1}%  ({phoneHit:N0}/{phoneTotal:N0})");
+
+    var demo = lang switch
+    {
+        "zul" => "sawubona umhlaba ngiyabonga",
+        "xho" => "molo umhlaba enkosi",
+        _ => "hallo wêreld dankie",
+    };
+    Console.WriteLine();
+    Console.WriteLine($"demo — \"{demo}\":");
+    var demoPhones = phon.Phonemize(demo);
+    Console.WriteLine("  " + string.Join(' ', demoPhones));
+    Console.WriteLine($"  ({phon.LastRulePredictedWords} word(s) via rules, rest from dictionary)");
+
+    if (n == 0 || phoneTotal == 0) { Console.Error.WriteLine("FAIL: no data sampled"); return 1; }
+    if (100.0 * phoneHit / phoneTotal < 80.0)
+    {
+        Console.Error.WriteLine("FAIL: phone accuracy < 80% — the rule-engine port is not faithful.");
+        return 1;
+    }
+    Console.WriteLine();
+    Console.WriteLine("PASS: sovereign CC-BY phonemizer works — SA text → X-SAMPA, no espeak, no GPL.");
+    return 0;
 }

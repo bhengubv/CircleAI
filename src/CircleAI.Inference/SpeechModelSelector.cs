@@ -86,6 +86,37 @@ public interface ISpeechModelSelector
                 $"no {modality} model is catalogued")
             : new ModalityPlan(pick.Quality, pick, $"{pick.ModelId} ({pick.Quality})");
     }
+
+    /// <summary>
+    /// Best model of <paramref name="modality"/> for this device that actually
+    /// serves <paramref name="language"/> (BCP-47 / ISO-639), or <c>null</c> when
+    /// none of that language is catalogued. This is what makes the node
+    /// multilingual: a request for isiZulu TTS must never return the English voice.
+    /// </summary>
+    /// <remarks>
+    /// Default is conservative — knowing nothing about the catalogue's language
+    /// tags, it declines. The real <see cref="SpeechModelSelector"/> overrides it
+    /// with a language filter over the registry, mirroring how
+    /// <see cref="PlanFor(DeviceProbe, ModelModality, int)"/> is defaulted here and
+    /// overridden there.
+    /// </remarks>
+    ModelSelection? BestFor(DeviceProbe probe, ModelModality modality, string language, int minQualityRank = 0)
+        => null;
+
+    /// <summary>
+    /// How to serve <paramref name="modality"/> in <paramref name="language"/> on
+    /// this device: load that language's model, or decline. THE language-aware
+    /// decision — callers branch on it instead of null-checking.
+    /// </summary>
+    ModalityPlan PlanFor(DeviceProbe probe, ModelModality modality, string language, int minQualityRank = 0)
+    {
+        var pick = BestFor(probe, modality, language, minQualityRank);
+        return pick is null
+            ? new ModalityPlan(SelectionQuality.Unavailable, null,
+                $"no {modality} model is catalogued for language '{language}'")
+            : new ModalityPlan(pick.Quality, pick,
+                $"{pick.ModelId} for {modality} [{language}] ({pick.Quality})");
+    }
 }
 
 /// <summary>
@@ -278,5 +309,69 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                                      ? SelectionQuality.Good
                                      : SelectionQuality.NothingFits))
             .ToList();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The language filter is the whole point: only entries tagged for
+    /// <paramref name="language"/> are considered, so a specific-language request
+    /// can never be served a different language's voice — speaking the wrong tongue
+    /// is worse than declining (the fit-vs-function rule, applied to language). The
+    /// device-fit maths is identical to the language-agnostic
+    /// <see cref="BestFor(DeviceProbe, ModelModality, int)"/>.
+    /// </remarks>
+    public ModelSelection? BestFor(DeviceProbe probe, ModelModality modality, string language, int minQualityRank = 0)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentException.ThrowIfNullOrWhiteSpace(language);
+        if (modality == ModelModality.Chat)
+            throw new ArgumentException(
+                "Chat selection goes through IModelSelector.BestFit, not the speech selector.",
+                nameof(modality));
+
+        var tier      = probe.Classify();
+        var ramGb     = probe.UsableRamGb;
+        var storageGb = probe.StorageFreeBytes / (1024.0 * 1024 * 1024);
+
+        var ofLanguage = _registry.AllModels
+            .Where(e => e.Modality == modality && LanguageMatches(e.Language, language))
+            .ToList();
+        if (ofLanguage.Count == 0) return null;   // nothing catalogued for this language — honest null
+
+        var deviceOk = ofLanguage
+            .Where(e => e.MinRamGb <= ramGb + 0.0001 &&
+                        (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+            .ToList();
+
+        var somethingFits = deviceOk.Count > 0;
+        var winner = somethingFits
+            ? deviceOk.OrderByDescending(e => e.QualityRank).ThenBy(e => e.MinRamGb).First()
+            : ofLanguage.OrderBy(e => e.MinRamGb).ThenBy(e => e.TotalBytes).First();
+
+        var quality =
+            !somethingFits                        ? SelectionQuality.NothingFits
+            : winner.QualityRank < minQualityRank ? SelectionQuality.BelowFloor
+                                                  : SelectionQuality.Good;
+
+        return new ModelSelection(
+            ModelId:          winner.Name,
+            RequiresDownload: true,
+            EstimatedBytes:   winner.TotalBytes,
+            Tier:             tier,
+            Quality:          quality);
+    }
+
+    /// <summary>
+    /// Language-tag match: a request matches an entry when their PRIMARY subtags
+    /// are equal, case-insensitively — so <c>zu</c> matches <c>zu-ZA</c>/<c>zu_ZA</c>
+    /// and <c>en</c> matches <c>en_US</c>. An entry with NO language tag never
+    /// matches a specific request: an untagged voice is not assumed to be any
+    /// particular language.
+    /// </summary>
+    internal static bool LanguageMatches(string? entryLanguage, string requestedLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(entryLanguage)) return false;
+        static string Primary(string s) => s.Trim().ToLowerInvariant().Split('-', '_')[0];
+        return Primary(entryLanguage) == Primary(requestedLanguage);
     }
 }

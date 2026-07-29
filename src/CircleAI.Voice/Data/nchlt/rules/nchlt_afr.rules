@@ -1,0 +1,1665 @@
+A;;;G;0;4
+A;;r;0;1;2
+A;;n;a;2;1
+B;;;a;0;2
+C;;;L;0;6
+C;; ;E;1;1
+C;d;;L;2;1
+D;;;0;0;5
+D;;t;E;1;3
+D;;l;L;2;2
+D;;n;E;3;1
+D;;D;J;4;1
+E;;;L;0;149
+E;; ;E;1;27
+E;;g;E;2;1
+F;;;0;0;158
+F;i;;J;1;53
+F;o;;C;2;39
+F;i;n;E;3;28
+F;;i;D;4;7
+F;;t;C;5;4
+F;o;l;0;6;4
+F;;w;J;7;2
+F;;ra;0;8;2
+F;;d;J;9;1
+F;;m;E;10;1
+F;a;;i;11;1
+F;e;t;E;12;1
+F;o;t;J;13;1
+F;;n ;0;14;1
+F;;ff;0;15;1
+F;;va;J;16;1
+F;;rf;L;17;1
+F;;kl;i;18;1
+F;;ks;E;19;1
+F;ge; ;C;20;1
+F; we;;C;21;1
+F;tre; ;C;22;1
+F;molo;;0;23;1
+F;;vier ;C;24;1
+F;ygele;;C;25;1
+F;dvari;teite;0;26;1
+G;;;C;0;1
+H;;;C;0;24
+H;;e;i;1;7
+H;e;s;i;2;4
+H;;d;i;3;3
+H;;t;i;4;2
+H;;g;i;5;2
+H;;l;i;6;2
+H;;r;i;7;1
+H;;ni;i;8;1
+H;;ne;i;9;1
+H;;tief;C;10;1
+I;;;u;0;2
+I;;f;O;1;1
+I;; ;K;2;1
+I;;L;F;3;1
+J;;;O;0;4
+K;;;0;0;19
+K;e;;K;1;1
+L;;;0;0;1
+L;;l;9;1;1
+M;;;9;0;1
+a;;;a;0;4483
+a;;a;G;1;2276
+a;a;;0;2;2276
+a;;sie;G;3;337
+a;;re;G;4;109
+a;;me;G;5;102
+a;w;te;G;6;89
+a;;le;G;7;80
+a;;ke;G;8;72
+a;;e;G;9;67
+a;;ling;G;10;57
+a;;de;G;11;52
+a;;ri;G;12;50
+a;;w;G;13;37
+a;;te ;G;14;32
+a;m;ti;G;15;26
+a;;di;G;16;24
+a;n;v;G;17;23
+a;;pe;G;18;23
+a;d;ta;G;19;19
+a;b;si;G;20;16
+a;;gi;G;21;15
+a;n;ge;G;22;15
+a;;king;G;23;15
+a;d;ns;G;24;14
+a;dr; ;G;25;14
+a;;ne ;G;26;11
+a;;lig;G;27;10
+a;d;t0;G;28;9
+a;gr;d;a;29;9
+a;l;si;G;30;8
+a;;se ;G;31;8
+a;n;m;G;32;7
+a;l;ti;G;33;7
+a;;ties;G;34;7
+a;b;te;G;35;6
+a;t;fe;G;36;6
+a;d;ni;G;37;6
+a;tr;d;a;38;6
+a;;sem;G;39;6
+a;;ner;G;40;6
+a;;riF;a;41;6
+a;;fies;G;42;6
+a;vr;;G;43;5
+a;;rie;a;44;5
+a;;ment;a;45;5
+a;l; ;G;46;4
+a;k;d;G;47;4
+a;a;r;0;48;4
+a;ak;;a;49;4
+a;h;lw;G;50;4
+a;l;te;G;51;4
+a;n;la;G;52;4
+a;rn; ;G;53;4
+a; k;l;a;54;4
+a;;ria;a;55;4
+a;h;d;G;56;3
+a;b;b;G;57;3
+a;te;;G;58;3
+a;n;ko;G;59;3
+a;;pin;G;60;3
+a;ss;si;C;61;3
+a;g;nie;G;62;3
+a;k;ker;a;63;3
+a;;tiew;a;64;3
+a;;lent;a;65;3
+a;;t0us;G;66;3
+a;g;r;a;67;2
+a;p;k;a;68;2
+a;n;b;G;69;2
+a;;sa;G;70;2
+a;s;me;G;71;2
+a; n;d;G;72;2
+a;;lie;G;73;2
+a;;fik;G;74;2
+a;;tik;a;75;2
+a;;dik;a;76;2
+a;;nin;G;77;2
+a;;ses;G;78;2
+a;;mera;a;79;2
+a;;siee;a;80;2
+a; par;;a;81;2
+a;al;ns ;G;82;2
+a;;u;0;83;1
+a;;c;G;84;1
+a;t;i;D;85;1
+a;d;r;a;86;1
+a;w; ;G;87;1
+a;r;H;G;88;1
+a;a;d;0;89;1
+a;s;w;a;90;1
+a;r;o;0;91;1
+a;j; ;G;92;1
+a;;ww;a;93;1
+a;pe;;0;94;1
+a;mn;;G;95;1
+a;n;ga;G;96;1
+a;n;sl;G;97;1
+a;t;te;G;98;1
+a;r;ki;G;99;1
+a;n;gr;G;100;1
+a;n;sk;G;101;1
+a;f;ra;G;102;1
+a; n; ;G;103;1
+a; p;l;a;104;1
+a;kr;s;a;105;1
+a;ed;r;G;106;1
+a;kr;n;G;107;1
+a;rb;s;G;108;1
+a;ol;r;a;109;1
+a;en;d;G;110;1
+a;;lik;G;111;1
+a;;gis;a;112;1
+a;;ma ;G;113;1
+a;;byg;a;114;1
+a;;tig;G;115;1
+a;;mao;G;116;1
+a;;reg;a;117;1
+a;;kee;a;118;1
+a;;res;a;119;1
+a;okl;;a;120;1
+a;lem;;a;121;1
+a;kur;;G;122;1
+a;rel;;a;123;1
+a;l;nss;G;124;1
+a; sl;g;a;125;1
+a;;nie ;G;126;1
+a;;trik;G;127;1
+a;nbal;;G;128;1
+a;fant;;a;129;1
+a; k;mel;a;130;1
+a; k;ns ;G;131;1
+a;nst;be;G;132;1
+a;r;reas;H;133;1
+a;k;nse ;G;134;1
+a;;frika ;G;135;1
+a;;frikanerk;G;136;1
+b;;;b;0;3039
+b;b;;0;1;19
+b;a;s;p;2;3
+b;;pr;0;3;1
+b;;su;b;4;1
+c;;;k;0;8
+c;;i;s;1;4
+c;;hri;x;2;3
+c;;he;x;3;2
+c;i;h;S;4;1
+d;;;d;0;5066
+d;; ;t;1;948
+d;;s;t;2;464
+d;;h;t;3;129
+d;d;;0;4;88
+d;;b;t;5;73
+d;;v;t;6;73
+d;;g;t;7;46
+d;;l;t;8;27
+d;;w;t;9;25
+d;;m;t;10;23
+d;;k;t;11;23
+d;;t;t;12;20
+d;;p;t;13;19
+d; ;;d;14;14
+d; gron;;t;15;10
+d; a;m;d;16;9
+d;;ji;k;17;7
+d;n;j;N;18;6
+d;e;w;d;19;6
+d;a;ji;i;20;5
+d;;oor;t;21;4
+d;;een;t;22;3
+d;raa;;t;23;3
+d;ul;er;t;24;3
+d;;n;t;25;2
+d;;f;t;26;2
+d;n;i;d;27;2
+d;n;ar;t;28;2
+d;l;re;t;29;2
+d;r;wy;d;30;2
+d;n;re;t;31;2
+d;r;aan;t;32;2
+d;a;o;t;33;1
+d;;ja;t;34;1
+d;;ei;t;35;1
+d;n;op;t;36;1
+d;n;e ;d;37;1
+d;n;et;t;38;1
+d;r;do;t;39;1
+d;rd;o;d;40;1
+d;;ind;t;41;1
+d;;inv;t;42;1
+d;;ont;t;43;1
+d;;inl;t;44;1
+d;oe;ry;t;45;1
+d;or;or;t;46;1
+d;rel;r;t;47;1
+d;on;om ;t;48;1
+d;ron;es;t;49;1
+e;;;C;0;14162
+e;i;;0;1;1974
+e;e;;0;2;1746
+e;;e;J;3;1712
+e;;i;D;4;1322
+e;o;;0;5;1213
+e;w;rk;L;6;276
+e;st;l;L;7;261
+e;;nt;E;8;248
+e;;u;A;9;198
+e;;de ;J;10;134
+e;;nsi;E;11;122
+e;h;r;L;12;121
+e;;wing;J;13;119
+e;;kt;E;14;117
+e;s;s;E;15;110
+e;r;g;L;16;110
+e;;ring;J;17;103
+e;l;w;J;18;91
+e;;ken;J;19;89
+e;n;m;J;20;79
+e;;tt;E;21;75
+e;;F;J;22;73
+e;ei;;C;23;71
+e;d;r;C;24;61
+e;;ks;E;25;61
+e;w;t;E;26;60
+e;tr;k;L;27;60
+e;w;rp;L;28;56
+e;;le ;J;29;55
+e;k;nn;E;30;54
+e;r;ge;C;31;51
+e;i;F;C;32;50
+e;;lf;L;33;49
+e;e;n;0;34;43
+e; ;r;L;35;37
+e;;ker;J;36;36
+e;o;k;0;37;39
+e;r;d;J;38;35
+e;st;m;E;39;35
+e;;gg;L;40;34
+e;si;;0;41;34
+e;m;ns;E;42;34
+e;;nig;J;43;34
+e;r;f;E;44;33
+e;t;ri;J;45;33
+e;pr;s;E;46;33
+e;m;d;J;47;32
+e;b;sig;J;48;32
+e;;gn;L;49;31
+e;m;rk;L;50;31
+e;g;ld;L;51;31
+e;;kk;L;52;28
+e;r;a;i;53;27
+e;w;gi;J;54;27
+e;p;rk;L;55;26
+e;e;k;0;56;25
+e;ie;;J;57;25
+e;sk;p;E;58;25
+e;i;d;0;59;23
+e;o;r;0;60;22
+e;v;s;E;61;22
+e;lew;ri;C;62;22
+e;l;d;J;63;21
+e; k;r;L;64;21
+e; p;r;L;65;21
+e;w;l;L;66;20
+e;d;nk;E;67;20
+e;;valu;i;68;20
+e;p;si;E;69;19
+e;sk;r;L;70;19
+e;;wen;J;71;19
+e; t;ru;0;72;19
+e;s;p;E;73;18
+e;j;k;E;74;18
+e;t;r0;L;75;18
+e;w;te;J;76;18
+e;s;rt;L;77;18
+e;fd;l;J;78;18
+e;sk;m;J;79;18
+e;;ndi;E;80;18
+e;;ssi;E;81;18
+e; st;r;L;82;18
+e;h;l;L;83;17
+e;t;o;i;84;17
+e; t;l;L;85;17
+e;n;t;E;86;16
+e;v;l;L;87;16
+e;ui;;C;88;16
+e;;lik;C;89;16
+e;iv;rs;L;90;16
+e;;gt;L;91;15
+e;w;se;J;92;15
+e;r;gi;E;93;15
+e;r;ki;J;94;15
+e;;tie;J;95;15
+e;sek;;C;96;15
+e;b;ken;C;97;15
+e;sp;l;L;98;14
+e;;ter;J;99;14
+e;ert;l;L;100;14
+e;bek;n;E;101;14
+e;g;F;C;102;13
+e;sk;n;E;103;13
+e;d;f;E;104;12
+e;;ng;E;105;12
+e;;tj;i;106;12
+e;w;rw;L;107;12
+e;gr;n;E;108;12
+e;;gul;E;109;12
+e;verd;;J;110;12
+e;s;t;E;111;11
+e;;rf;L;112;11
+e;ai;;C;113;11
+e;n;de;J;114;11
+e;b;rg;L;115;11
+e; d;r;L;116;11
+e;;me ;J;117;11
+e;r;we ;J;118;11
+e;i;e;0;119;10
+e;;mp;E;120;10
+e;;ff;E;121;10
+e;oi;;C;122;10
+e;l;ni;J;123;10
+e;m;ld;L;124;10
+e;r;ko;E;125;10
+e;l;k ;L;126;10
+e;egv;;L;127;10
+e;i;k;0;128;9
+e; ;n;E;129;9
+e;o;d;0;130;9
+e;i;l;0;131;9
+e;d;mo;E;132;9
+e;e;ng;0;133;9
+e;r;ke;J;134;9
+e; t;n;E;135;9
+e; w;g;L;136;9
+e;;mie;J;137;9
+e; b;nd;E;138;9
+e;sp;le;J;139;9
+e;r;die;C;140;9
+e;bet;r;C;141;9
+e;;serv;E;142;9
+e;g;wers;J;143;9
+e; ;l;i;144;8
+e;e;u;0;145;8
+e;k;t;E;146;8
+e; ;w;J;147;8
+e;;ol;i;148;8
+e;;eu;i;149;8
+e;;mm;E;150;8
+e; ;ni;J;151;8
+e;omm;;C;152;8
+e;od;rn;L;153;8
+e;r;dene;C;154;8
+e;H;;0;155;7
+e; ;k;E;156;7
+e;s;rw;L;157;7
+e;i;ri;0;158;7
+e;s;ns;E;159;7
+e;r;md;E;160;7
+e;m;ni;J;161;7
+e;v;ns;E;162;7
+e; r;l;E;163;7
+e; w;n;E;164;7
+e; w;d;J;165;7
+e;ew;n;C;166;7
+e;sam;;C;167;7
+e;p;sie;J;168;7
+e;;rend;J;169;7
+e;;leme;E;170;7
+e;o;F;C;171;6
+e;i;t;0;172;6
+e;;og;i;173;6
+e;s;de;J;174;6
+e;l;g ;L;175;6
+e;r;si;C;176;6
+e;m;ti;J;177;6
+e;r;kw;i;178;6
+e;w;si;J;179;6
+e; n;g;J;180;6
+e; w;b;E;181;6
+e;st;d;J;182;6
+e; d;s;E;183;6
+e; l;s;J;184;6
+e; s;l;L;185;6
+e;;dit;E;186;6
+e;uiw;;C;187;6
+e;d;lig;J;188;6
+e;nt;rpr;L;189;6
+e;p;rsoo;C;190;6
+e;;ganis;E;191;6
+e;d;a;i;192;5
+e;a;s;0;193;5
+e;h;g;L;194;5
+e;h;f;E;195;5
+e;g;k;C;196;5
+e;h;m;J;197;5
+e;h;w;J;198;5
+e;f;r;C;199;5
+e;t;wi;J;200;5
+e;d;re;C;201;5
+e;d;k ;L;202;5
+e;l;kv;L;203;5
+e; k;n;E;204;5
+e;uw;l;C;205;5
+e;dr;s;E;206;5
+e;kl;m;E;207;5
+e;sn;l;L;208;5
+e;;rim;E;209;5
+e;;fle;J;210;5
+e;;rif;E;211;5
+e;idd;;C;212;5
+e;d;leg;E;213;5
+e;s;lek;E;214;5
+e;rad;r;J;215;5
+e; pl;k;L;216;5
+e;gek;n;E;217;5
+e;;volu;E;218;5
+e;buit;;C;219;5
+e;;giste;C;220;5
+e;b;F;C;221;4
+e; ;s;E;222;4
+e;o;n;0;223;4
+e;t;so;E;224;4
+e;r;k ;L;225;4
+e;v;li;J;226;4
+e;o;re;0;227;4
+e;l;rk;L;228;4
+e;w;k ;L;229;4
+e;w;ds;E;230;4
+e; ;mo;i;231;4
+e;ys;s;C;232;4
+e;;kol;J;233;4
+e;ost;;C;234;4
+e;ask;;C;235;4
+e;st;rk;L;236;4
+e;nd;ns;E;237;4
+e;d;pon;E;238;4
+e;kal;n;E;239;4
+e;;rvar;L;240;4
+e;;dding;E;241;4
+e;aand;le;J;242;4
+e;;ffekte;i;243;4
+e;t;a;i;244;3
+e;p;k;E;245;3
+e;h;t;E;246;3
+e; ;p;J;247;3
+e;v;g;L;248;3
+e;o;l;0;249;3
+e;l;l;J;250;3
+e;o;t;0;251;3
+e;d;se;J;252;3
+e;w;sb;E;253;3
+e;t;ma;C;254;3
+e;l;ss;E;255;3
+e;s;ko;E;256;3
+e;m;tr;J;257;3
+e;w;gs;L;258;3
+e;h;le;J;259;3
+e;t;k ;E;260;3
+e;r;t ;E;261;3
+e;v;r ;L;262;3
+e;l;gi;J;263;3
+e;s;te;J;264;3
+e;l;t ;E;265;3
+e;w;kk;E;266;3
+e;l;gd;L;267;3
+e;nn;r;C;268;3
+e;tr;s;E;269;3
+e; p;n;E;270;3
+e;ng;w;C;271;3
+e; r;p;E;272;3
+e; g;r;C;273;3
+e;gr;s;E;274;3
+e;ms;n;E;275;3
+e;eu;l;0;276;3
+e;;rio;J;277;3
+e;uss;;C;278;3
+e;wes;;C;279;3
+e;wat;;C;280;3
+e;nem;;C;281;3
+e; r;di;L;282;3
+e;es;ls;L;283;3
+e; w;st;E;284;3
+e; m;tr;E;285;3
+e;em;ne;J;286;3
+e; t;ma;J;287;3
+e;st;rw;L;288;3
+e;rk;n ;E;289;3
+e;lt;rn;L;290;3
+e;t;rap;E;291;3
+e;m;dik;E;292;3
+e;v;rti;L;293;3
+e;d;rke;L;294;3
+e;t;ris;C;295;3
+e; ;kos;J;296;3
+e;tab;l;L;297;3
+e;get;l;L;298;3
+e;opt;l;L;299;3
+e;;todo;E;300;3
+e;p;r0mi;C;301;3
+e;g;wer ;J;302;3
+e;ngew;n;E;303;3
+e; gen;s;J;304;3
+e;eoord;;J;305;3
+e;;rsonee;L;306;3
+e;F;;J;307;2
+e;s;a;i;308;2
+e;h;d;J;309;2
+e;i;m;0;310;2
+e;f;u;0;311;2
+e; ;g;L;312;2
+e;w;m;E;313;2
+e;f;k;E;314;2
+e;f;s;E;315;2
+e;a;l;0;316;2
+e; ;t;J;317;2
+e;h;b;E;318;2
+e;;gp;L;319;2
+e;;ot;i;320;2
+e;;dl;E;321;2
+e;we;;0;322;2
+e;sf;;J;323;2
+e;bb;;C;324;2
+e;w;g ;L;325;2
+e;h;k ;E;326;2
+e;b;s ;E;327;2
+e;i;nt;0;328;2
+e;r;so;E;329;2
+e;m;lt;L;330;2
+e;w;ke;J;331;2
+e;t;la;C;332;2
+e;r;d ;E;333;2
+e;r;kr;E;334;2
+e; ;ss;i;335;2
+e;w;ge;J;336;2
+e;r;su;E;337;2
+e;d;fe;J;338;2
+e;r;ti;J;339;2
+e; ;lk;L;340;2
+e;d;no;i;341;2
+e;l;te;J;342;2
+e;m;lo;E;343;2
+e;k;pe;J;344;2
+e;b;kk;E;345;2
+e;v;se;J;346;2
+e;t;ki;J;347;2
+e; ;ll;J;348;2
+e; ;re;J;349;2
+e;t;m ;E;350;2
+e;v;le;J;351;2
+e;p;rf;C;352;2
+e;gep;;L;353;3
+e;n;g ;L;354;2
+e;f;r0;L;355;2
+e;ek;t;C;356;2
+e; l;r;J;357;2
+e;ir;k;E;358;2
+e;ei;r;C;359;2
+e;al;w;C;360;2
+e;sk;l;L;361;2
+e;eg;n;C;362;2
+e;as;s;C;363;2
+e; n;t;E;364;2
+e;;bit;E;365;2
+e;;ros;J;366;2
+e;;rg ;L;367;2
+e;;roH;E;368;2
+e;;rns;L;369;2
+e;lid;;J;370;2
+e;oem;;C;371;2
+e;it;r0;C;372;2
+e; r;st;E;373;2
+e; s;di;E;374;2
+e;nt;r0;C;375;2
+e; s;re;E;376;2
+e;ll;ge;d;377;2
+e;ni;Fr;J;378;2
+e;kr;te;J;379;2
+e;er;s ;E;380;2
+e;kl;re;J;381;2
+e;od;ri;J;382;2
+e; s;nd;E;383;2
+e;ll;ga;J;384;2
+e;w;ls ;C;385;2
+e;g;te ;J;386;2
+e;d;kor;E;387;2
+e;t;gri;L;388;2
+e;m;rsi;L;389;2
+e;w;lde;C;390;2
+e;g;we ;J;391;2
+e;l;ge ;i;392;2
+e;v;rs ;L;393;2
+e;p;rse;L;394;2
+e; ;van;J;395;2
+e;t;rig;C;396;2
+e;t;reo;J;397;2
+e;t;rsa;L;398;2
+e;pst;r;C;399;2
+e;leg; ;Z;400;2
+e;imp;r;E;401;2
+e;kst;r;L;402;2
+e;str;p;J;403;2
+e;;dena;C;404;2
+e;;ries;J;405;2
+e;;todi;E;406;2
+e;;batt;E;407;2
+e;;mier;C;408;2
+e;;rsep;C;409;2
+e;;lle ;L;410;2
+e;;rre ;L;411;2
+e; g;wen;C;412;2
+e;ng;lie;J;413;2
+e; r;spo;E;414;2
+e;ard;ri;J;415;2
+e;l;sing;J;416;2
+e;s;kwes;E;417;2
+e;kand;r;J;418;2
+e; gew;n;E;419;2
+e;edel;g;i;420;2
+e; inv;r;L;421;2
+e;worst;;C;422;2
+e;ind;lin;J;423;2
+e;ist;rin;C;424;2
+e;erv;rsi;L;425;2
+e;kond;ri;J;426;2
+e;;lektro;E;427;2
+e;;sidensiF;E;428;2
+e;;rsoneell;C;429;2
+e;;E;i;430;1
+e;z;;J;431;1
+e;m;s;C;432;1
+e;m;m;E;433;1
+e;r;h;i;434;1
+e;v;t;E;435;1
+e;p;a;i;436;1
+e;t;H;i;437;1
+e;i;g;0;438;1
+e;s;m;C;439;1
+e;w;p;J;440;1
+e; ;d;J;441;1
+e;n;a;i;442;1
+e;h;s;J;443;1
+e;f;H;i;444;1
+e;;om;i;445;1
+e;;tn;E;446;1
+e;;tE;C;447;1
+e;ap;;C;448;1
+e;Fi;;C;449;1
+e;fp;;L;450;1
+e;vo;;0;451;1
+e;re;;0;452;1
+e;tk;;E;453;1
+e;vi;;0;454;1
+e;ma;;0;455;1
+e;so;;0;456;1
+e;l;ke;J;457;1
+e;r;d0;E;458;1
+e;m;t ;E;459;1
+e;n;ti;J;460;1
+e;k;ln;L;461;1
+e;s;rf;C;462;1
+e;d;kr;J;463;1
+e;h;md;E;464;1
+e;s;we;J;465;1
+e;g;le;C;466;1
+e;v;ll;C;467;1
+e;w;nn;E;468;1
+e;l;gs;L;469;1
+e;n;te;J;470;1
+e;s;se;J;471;1
+e;d;te;J;472;1
+e;m;tj;i;473;1
+e;s;pi;J;474;1
+e;d;r ;C;475;1
+e;r;rg;L;476;1
+e;t;nk;E;477;1
+e;t;ke;J;478;1
+e;b;k ;L;479;1
+e;k;ng;C;480;1
+e; ;tl;E;481;1
+e;t;ms;E;482;1
+e; ;no;J;483;1
+e;m;op;i;484;1
+e;d;kt;L;485;1
+e;g;F ;J;486;1
+e;m;lk;L;487;1
+e; ;k ;L;488;1
+e;t;li;C;489;1
+e;r;wo;E;490;1
+e;p;rd;L;491;1
+e;r;ga;C;492;1
+e;s;sl;C;493;1
+e;d;un;0;494;1
+e;p;na;C;495;1
+e;t;ti;J;496;1
+e;n;le;J;497;1
+e; ;ro;J;498;1
+e;n;k ;L;499;1
+e;h;la;J;500;1
+e;h;li;E;501;1
+e;n;tr;C;502;1
+e;r;da;E;503;1
+e;n;rf;C;504;1
+e;k;te;J;505;1
+e;r;kv;L;506;1
+e;s;f ;E;507;1
+e;d;mi;J;508;1
+e;r;fu;C;509;1
+e;m;da;C;510;1
+e;p;te;C;511;1
+e;n;we;J;512;1
+e;k;to;C;513;1
+e; ;mi;J;514;1
+e;l;ts;E;515;1
+e;k;le;C;516;1
+e;s;ti;J;517;1
+e;l;da;C;518;1
+e;b;d ;E;519;1
+e;l;p ;E;520;1
+e;vr;s;J;521;1
+e;nw;n;E;522;1
+e;ds;n;E;523;1
+e; w;r;L;524;1
+e;0m;d;i;525;1
+e;rn;l;C;526;1
+e;es;d;C;527;1
+e;rk;k;E;528;1
+e;ar;n;C;529;1
+e;ei;t;C;530;1
+e;nt;s;C;531;1
+e;nh;r;i;532;1
+e;at;k;i;533;1
+e;ur;n;C;534;1
+e;vl;s;J;535;1
+e;fw;n;E;536;1
+e;us;s;C;537;1
+e;kw;n;E;538;1
+e;ep;n;E;539;1
+e;op;r;C;540;1
+e; s;g;E;541;1
+e;nk;r;C;542;1
+e;ow;r;C;543;1
+e; n;s;E;544;1
+e;kr;s;J;545;1
+e;em;d;C;546;1
+e;ar;s;E;547;1
+e; r;m;E;548;1
+e;ri;n;0;549;1
+e;ol;w;C;550;1
+e;as;l;L;551;1
+e;ot;l;L;552;1
+e;ys;n;C;553;1
+e; g;t;C;554;1
+e;;kul;E;555;1
+e;;nio;i;556;1
+e;;pid;E;557;1
+e;;kut;E;558;1
+e;;nki;E;559;1
+e;;kot;J;560;1
+e;;rfy;C;561;1
+e;;tai;i;562;1
+e;;pis;E;563;1
+e;;spi;E;564;1
+e;;kwi;E;565;1
+e;;sso;E;566;1
+e;;leu;C;567;1
+e;;nia;J;568;1
+e;;nea;J;569;1
+e;;ram;E;570;1
+e;;rfi;C;571;1
+e;;taf;J;572;1
+e;;diu;i;573;1
+e;hem;;C;574;1
+e; sm;;J;575;1
+e;ggr;;C;576;1
+e;isk;;J;577;1
+e;adt;;L;578;1
+e; ed;;C;579;1
+e;top;;J;580;1
+e;rko;;0;581;1
+e;ded;;J;582;1
+e;vid;;E;583;1
+e;los;;C;584;1
+e;vor;;C;585;1
+e;tt;re;C;586;1
+e;ot;s ;E;587;1
+e;nt;se;J;588;1
+e;nt;ns;E;589;1
+e; r;pr;i;590;1
+e;nb;ls;L;591;1
+e; g;r0;L;592;1
+e;pr;te;C;593;1
+e; t;st;E;594;1
+e;er;se;E;595;1
+e;ot;sa;E;596;1
+e;er;ko;J;597;1
+e; b;l ;L;598;1
+e; m;s ;E;599;1
+e;kr;de;C;600;1
+e;rb;te;J;601;1
+e;sp;li;J;602;1
+e;ns;lw;L;603;1
+e;sw;rf;C;604;1
+e; b;kk;L;605;1
+e;fd;li;J;606;1
+e;nt;st;E;607;1
+e; k;re;J;608;1
+e;mv;rg;L;609;1
+e;od;la;L;610;1
+e;eb;ll;L;611;1
+e;am;ns;C;612;1
+e;eb;l ;L;613;1
+e; d;ks;L;614;1
+e;in;e ;i;615;1
+e; s;rv;L;616;1
+e;ss;st;C;617;1
+e;rr;k ;E;618;1
+e; s;mi;E;619;1
+e; w;s ;E;620;1
+e;s;rek;i;621;1
+e; ;leg;E;622;1
+e;m;tee;E;623;1
+e;b;ne ;J;624;1
+e;r;sia;i;625;1
+e; ;ne ;J;626;1
+e;f;te ;J;627;1
+e;m;tab;J;628;1
+e; ;ntr;a;629;1
+e;t;rko;C;630;1
+e; ;mot;J;631;1
+e;t;rro;L;632;1
+e;l;rgi;L;633;1
+e; ;ros;i;634;1
+e;v;re ;J;635;1
+e;p;rsp;L;636;1
+e;t;die;C;637;1
+e; ;tik;E;638;1
+e;t;lse;L;639;1
+e;v;rsr;L;640;1
+e;r;kst;E;641;1
+e;w;re ;J;642;1
+e;r;gie;J;643;1
+e;b;we ;J;644;1
+e;b;re ;J;645;1
+e; ;ngh;C;646;1
+e;get;n;E;647;1
+e;kst;n;J;648;1
+e;asp;r;C;649;1
+e;pos;s;C;650;1
+e;bed;l;J;651;1
+e;kst;w;J;652;1
+e;ges;d;E;653;1
+e;ieg;n;J;654;1
+e;esk;d;E;655;1
+e;emm;r;C;656;1
+e;und;r;J;657;1
+e;nad;l;J;658;1
+e;dig;r;C;659;1
+e;;sigt;C;660;1
+e;;gies;J;661;1
+e;;rrew;L;662;1
+e;;disy;C;663;1
+e;;rres;E;664;1
+e;;leks;C;665;1
+e;;siaa;i;666;1
+e; erk;;E;667;1
+e; ell;;E;668;1
+e;toek;;E;669;1
+e;nett;;C;670;1
+e;toed;;J;671;1
+e;skam;;C;672;1
+e;rs;nd ;E;673;1
+e;rd;lin;J;674;1
+e; d;lin;J;675;1
+e;emp;ri;C;676;1
+e;ged;kt;E;677;1
+e;ger;di;E;678;1
+e;rar;as;0;679;1
+e;ges;l ;L;680;1
+e;w;stre;i;681;1
+e; ;ners;J;682;1
+e;v;rbal;L;683;1
+e;v;rder;L;684;1
+e;b;keri;C;685;1
+e;b;ste ;E;686;1
+e;v;rrei;L;687;1
+e;;siale;i;688;1
+e;;rbaal;L;689;1
+e;;ffek ;i;690;1
+e;;presi;J;691;1
+e;;rsoni;C;692;1
+e;;roHes;J;693;1
+e;;rderf;C;694;1
+e;nstab;;C;695;1
+e;est;ril;E;696;1
+e;v;rste ;L;697;1
+e;naang;w;J;698;1
+e;;kondes;C;699;1
+e;;batte ;C;700;1
+e;;rsone ;C;701;1
+e;;rsent ;C;702;1
+e;;rsyde ;L;703;1
+e;;konde ;C;704;1
+e; d;legee;C;705;1
+e;naangew;;C;706;1
+e;epr;ssief;C;707;1
+e;;pressief;E;708;1
+e;ompl;mente;i;709;1
+f;;;f;0;1381
+f;f;;0;1;88
+f;;v;0;2;28
+g;;;x;0;5611
+g;n;;0;1;2838
+g;g;;0;2;101
+g;aan;;x;3;98
+g; on;;x;4;78
+g; in;;x;5;71
+g;ur;er;g;6;14
+g;ng;;x;7;9
+g;een;;x;8;9
+g;r;e ;g;9;7
+g;l;e ;g;10;4
+g;n;es;x;11;4
+g;yn;;x;12;3
+g;oon;;x;13;3
+g;;an;x;14;2
+g;n;ro;x;15;2
+g;n;ew;x;16;2
+g;on;r;x;17;2
+g;le;es;Z;18;2
+g;le;e ;d;19;2
+g;an;el;x;20;2
+g;er;er ;g;21;2
+g;;u;x;22;1
+g;n;ed;x;23;1
+g;n;ev;x;24;1
+g;;eba;x;25;1
+g;;elu;x;26;1
+g;;eld;x;27;1
+g;ebesor;;g;28;1
+h;;;I;0;1785
+h;c;;0;1;12
+h;c;D;D;2;1
+i;;;C;0;6554
+i;;e;i;1;2224
+i;e;;0;2;1310
+i;u;;0;3;570
+i;;teit;i;4;169
+i;;o;i;5;132
+i;;ka;i;6;105
+i;;see;i;7;104
+i;;si;i;8;99
+i;;a;i;9;95
+i;;F;i;10;87
+i;oe;;i;11;65
+i;a;;i;12;59
+i;;fi;i;13;54
+i;;ta;i;14;49
+i;;na;i;15;47
+i;;ser;i;16;43
+i;o;;i;17;36
+i;;sa;i;18;35
+i;kt;;i;19;34
+i;;ve;i;20;24
+i; ;d;i;21;23
+i;om;t;i;22;23
+i;u;s;0;23;18
+i;m;ssi;i;24;18
+i;;neer;i;25;18
+i;;r;i;26;17
+i;;ma;i;27;16
+i;on;t;i;28;14
+i;s;k;i;29;13
+i;;pe;i;30;12
+i;t;ke;i;31;11
+i;b;li;i;32;10
+i;;ment;i;33;10
+i;;lo;i;34;9
+i;;nisi;i;35;9
+i;ou;;C;36;8
+i;t;te;i;37;8
+i;r;va;i;38;8
+i;am;l;i;39;8
+i;ipl;;i;40;8
+i;F;;0;41;7
+i; ;l;i;42;7
+i;;da;i;43;7
+i;is;p;i;44;7
+i;b;t;i;45;6
+i;r;ti;i;46;6
+i;il;te;i;47;6
+i;;geer;i;48;6
+i;s;r;C;49;5
+i;kw;;C;50;5
+i;ed;t;i;51;5
+i;;tEre;i;52;5
+i;;c;i;53;4
+i;;E;i;54;4
+i;g;t;i;55;4
+i;;F ;0;56;4
+i;e;si;0;57;4
+i;l;de;i;58;4
+i;d;ne;i;59;4
+i;;ties;i;60;4
+i;;niee;i;61;4
+i;;d0ua;i;62;4
+i;c;;i;63;3
+i;t;w;i;64;3
+i;;nE;i;65;3
+i;;su;i;66;3
+i;;ku;i;67;3
+i;t;ne;i;68;3
+i; ;na;C;69;3
+i; t;p;i;70;3
+i;;mmu;i;71;3
+i;;nim;i;72;3
+i; ps;;i;73;3
+i;l;fik;C;74;3
+i;;sint;C;75;3
+i;;sier ;C;76;3
+i;;u;i;77;2
+i;f;r;C;78;2
+i;h;d;i;79;2
+i;e;n;0;80;2
+i;;mE;i;81;2
+i;;ga;i;82;2
+i;;fa;i;83;2
+i;ab;;i;84;2
+i;p;ni;i;85;2
+i;m;to;i;86;2
+i;r;so;i;87;2
+i;m;no;i;88;2
+i;n;ke;i;89;2
+i;n;eu;0;90;2
+i;ir;t;y;91;2
+i;;mum;i;92;2
+i;;gur;i;93;2
+i;;seu;i;94;2
+i; ep;;i;95;2
+i;d;kan;C;96;2
+i;s;fie;C;97;2
+i;f;nis;C;98;2
+i;;tiek;C;99;2
+i;f;siek;C;100;2
+i;;D;i;101;1
+i;h;s;i;102;1
+i;t;f;i;103;1
+i;l;b;i;104;1
+i;v;k;i;105;1
+i;a;l;0;106;1
+i;l;r;C;107;1
+i;v;r;C;108;1
+i; ;s;i;109;1
+i; ;g;i;110;1
+i;k;d;i;111;1
+i;v;b;i;112;1
+i;t;d;i;113;1
+i;;do;i;114;1
+i;;ko;i;115;1
+i;sj;;i;116;1
+i;bs;;i;117;1
+i;ke;;0;118;1
+i;t;nu;i;119;1
+i;t;mi;i;120;1
+i;b;tt;C;121;1
+i;m;kr;i;122;1
+i;n;pu;i;123;1
+i;tr;g;i;124;1
+i;st;n;C;125;1
+i; m;g;i;126;1
+i;ag;s;i;127;1
+i;ns;l;i;128;1
+i;;noo;i;129;1
+i;;git;i;130;1
+i;;nen;i;131;1
+i;;tic;i;132;1
+i;;saa;C;133;1
+i;lam;;i;134;1
+i;lol;;i;135;1
+i;al;se;i;136;1
+i;el;gi;i;137;1
+i;pl;si;C;138;1
+i;il;tE;C;139;1
+i;;sker;i;140;1
+i;;nies;i;141;1
+i;;gie ;C;142;1
+i;;ndiF;i;143;1
+i;rdef;;i;144;1
+i; res;;i;145;1
+i;eval;;C;146;1
+i; red;;i;147;1
+i;;alisd;0;148;1
+i;;ndies;i;149;1
+i;pdiss;;i;150;1
+i;idiss;;i;151;1
+i;fdiss;;i;152;1
+i;insp;re;C;153;1
+i;s;alisa;0;154;1
+i;ngediss;;i;155;1
+i;;rekteur ;C;156;1
+i; sert;fikat;C;157;1
+j;;;j;0;148
+j;;i;0;1;74
+j;nd;;k;2;6
+j;at;;k;3;5
+j;ad;i;k;4;5
+j;s;u;0;5;2
+j;t;e;S;6;2
+j;n;;j;7;1
+j;s;e;0;8;1
+j;;ov;0;9;1
+j;ot;;k;10;1
+k;;;k;0;6281
+k;k;;0;1;353
+l;;;l;0;6532
+l;l;;0;1;352
+l;;eges;i;2;2
+m;;;m;0;3153
+m;m;;0;1;237
+n;;;n;0;7650
+n;;g;N;1;2842
+n;n;;0;2;236
+n;;k;N;3;111
+n;aa;;n;4;116
+n; i;;n;5;100
+n; o;;n;6;83
+n;;ko;n;7;50
+n;;tj;N;8;12
+n;ee;;n;9;11
+n;;dj;i;10;6
+n;oo;g;n;11;4
+n;y;g;n;12;3
+n;ei;;n;13;3
+n;;tji;N;14;3
+n;;ges;n;15;3
+n;se;;n;16;2
+n;o;gr;n;17;2
+n;;gew;n;18;2
+n;a;gel;n;19;2
+n;e;ku;n;20;1
+n;e;gr;n;21;1
+n;oo;k;n;22;1
+n;ba;k;N;23;1
+n;;ged;n;24;1
+n;;gev;n;25;1
+n;bro;;n;26;1
+o;;;O;0;3446
+o;;o;K;1;1437
+o;o;;0;2;1437
+o;;e;u;3;1225
+o;;u;F;4;323
+o;pr;;u;5;193
+o;;ne;u;6;89
+o;;pe;K;7;59
+o;;F;K;8;52
+o;;lo;u;9;49
+o;;de;K;10;45
+o;;ti;K;11;44
+o;;lis;u;12;40
+o;;gi;K;13;39
+o;;ri;K;14;38
+o;i;;u;15;49
+o;;si;K;16;32
+o;;me;K;17;29
+o;;re ;K;18;26
+o;;w;K;19;24
+o;;gie ;u;20;23
+o;;ni;K;21;21
+o;;sed;O;22;21
+o;;ming;K;23;21
+o;;sis;u;24;20
+o;;ne ;K;25;20
+o;;K;K;26;19
+o;;pi;K;27;18
+o;;to;K;28;17
+o;;te ;K;29;17
+o;;rit;O;30;16
+o;;v;K;31;15
+o;m;de;u;32;15
+o;;mmissi;u;33;15
+o;;nit;O;34;14
+o;ot;r;C;35;13
+o;;le;K;36;12
+o;;gr;u;37;12
+o;te;;u;38;12
+o;n;di;K;39;12
+o;g;ri;u;40;12
+o;;se ;K;41;12
+o;f;ru;K;42;11
+o;;d0us;O;43;11
+o;; ;u;44;10
+o;t;ra;u;45;10
+o;;nom;u;46;10
+o;;lie;K;47;10
+o;orp;;u;48;9
+o;;nis;u;49;8
+o;s;d;K;50;7
+o;;ki;K;51;7
+o;il;;u;52;7
+o;pr;n;O;53;7
+o; s;ne;K;54;7
+o; ;n;O;55;6
+o;;ww;O;56;6
+o;;mies;K;57;6
+o;o;l;0;58;5
+o;;ta;u;59;5
+o;;ke;K;60;5
+o;w;ne;K;61;5
+o; n;t;K;62;5
+o;;ten;u;63;5
+o; pr;k;O;64;5
+o;;d0ukti;O;65;5
+o; pr;sess;O;66;5
+o;;b;u;67;4
+o;;H;u;68;4
+o;f;k;K;69;4
+o; ;b;O;70;4
+o;;kr;u;71;4
+o;;ka;u;72;4
+o;;ma;u;73;4
+o;s;fi;K;74;4
+o;m;no;K;75;4
+o;t;do;u;76;4
+o;;tee;u;77;4
+o;;mie ;u;78;4
+o;;reer;u;79;4
+o;;gieF;u;80;4
+o;k;rrek;u;81;4
+o;;j;u;82;3
+o;d;s;u;83;3
+o;;lu;u;84;3
+o;Hs;;u;85;3
+o;i;de;K;86;3
+o;l;te;K;87;3
+o;h;mo;K;88;3
+o;v;re;K;89;3
+o;gr;t;K;90;3
+o;em;d;O;91;3
+o;;met;u;92;3
+o;gsp;l;K;93;3
+o;;h;u;94;2
+o;e;t;u;95;2
+o;l; ;K;96;2
+o;n;l;u;97;2
+o; ;l;K;98;2
+o;b; ;K;99;2
+o;b;g;K;100;2
+o; ;s;u;101;2
+o;;lE;u;102;2
+o;;ur;u;103;2
+o;;nE;u;104;2
+o;hr;;K;105;2
+o; ;ra;K;106;2
+o;m;da;u;107;2
+o;d;na;u;108;2
+o;r;ve;u;109;2
+o;s;la;K;110;2
+o;k;li;K;111;2
+o;n;po;K;112;2
+o;t;di;u;113;2
+o;m;se;u;114;2
+o; m;r;u;115;2
+o;;pee;O;116;2
+o;;gre;K;117;2
+o;;ped;O;118;2
+o;;ntj;i;119;2
+o; ek;;u;120;2
+o; r;me;u;121;2
+o;m;sio;u;122;2
+o;;ries;K;123;2
+o;;die ;u;124;2
+o;;test;O;125;2
+o;;liek;u;126;2
+o;gepr;s;O;127;2
+o;;llega;u;128;2
+o;;deller;O;129;2
+o;;a;u;130;1
+o;s; ;O;131;1
+o;d;b;O;132;1
+o;k;d;K;133;1
+o;a; ;K;134;1
+o;j;g;K;135;1
+o;o;r;0;136;1
+o;i;o;K;137;1
+o;r;o;K;138;1
+o;w;t;K;139;1
+o;n;v;u;140;1
+o;j;v;u;141;1
+o;w;l;O;142;1
+o;b;b;K;143;1
+o;s;s;K;144;1
+o;;fe;u;145;1
+o;;mu;u;146;1
+o;;br;K;147;1
+o;;pa;u;148;1
+o;;go;K;149;1
+o;;ko;u;150;1
+o;;ge;K;151;1
+o;;Ft;u;152;1
+o;np;;K;153;1
+o;ko;;0;154;1
+o;mn;;K;155;1
+o;di;;u;156;1
+o;k;la;K;157;1
+o;l;se;K;158;1
+o;r;st;O;159;1
+o;p;la;K;160;1
+o;h;te;u;161;1
+o;v;lo;O;162;1
+o;b;ka;K;163;1
+o;r;po;u;164;1
+o;i;n ;O;165;1
+o;t;le;O;166;1
+o;l;to;O;167;1
+o;k;nn;u;168;1
+o;e;pp;O;169;1
+o;r;bi;K;170;1
+o;m;rs;O;171;1
+o;m;ri;u;172;1
+o;k;ra;u;173;1
+o;d;si;K;174;1
+o;h;fi;K;175;1
+o;f;re;u;176;1
+o;b;st;K;177;1
+o;k;pr;u;178;1
+o;t;pe;u;179;1
+o;b;na;K;180;1
+o;d;nn;u;181;1
+o;at; ;K;182;1
+o;al;r;u;183;1
+o;rr;r;u;184;1
+o;pr; ;K;185;1
+o;vr;l;K;186;1
+o;;nes;K;187;1
+o;;stk;F;188;1
+o;;det;K;189;1
+o;;ral;u;190;1
+o;;fe ;K;191;1
+o;;sto;u;192;1
+o;;Hes;K;193;1
+o;;rru;u;194;1
+o; r;te;u;195;1
+o;tr;lo;C;196;1
+o;0m;ni;u;197;1
+o;s;lie;u;198;1
+o;s;ner;K;199;1
+o;r;mit;K;200;1
+o;r;ler;u;201;1
+o; em;t;u;202;1
+o;;mieF;u;203;1
+o;;nies;K;204;1
+o;;ritE;u;205;1
+o;;bali;K;206;1
+o;;pieF;u;207;1
+o;;lis ;K;208;1
+o;;liss;K;209;1
+o;;mine;O;210;1
+o;;dies;K;211;1
+o;sass;;u;212;1
+o;m;d0us;K;213;1
+o;r;ller;u;214;1
+o;;mmoda;u;215;1
+o;;blema;O;216;1
+o;;polis;K;217;1
+o;;fetee;O;218;1
+o; d;mine;K;219;1
+o;;sesse ;u;220;1
+o;;rrekti;O;221;1
+o;;lities;u;222;1
+o;;mmando;u;223;1
+o;ever0m;;u;224;1
+o; ev;lusio;O;225;1
+o;;gressiew;O;226;1
+o;;stmoderni;F;227;1
+p;;;p;0;3041
+p;p;;0;1;167
+p; ;s;0;2;3
+r;;;r;0;12946
+r;r;;0;1;128
+r;ra;eas;i;2;1
+s;;;s;0;11878
+s;s;;0;1;393
+s;;io;S;2;84
+s;;ia;S;3;41
+s;po;is;z;4;19
+s;;sio;0;5;7
+s;;ue;S;6;5
+s;e;erw;z;7;4
+s;a;j;S;8;3
+s;so;i;S;9;3
+s;;iFn;S;10;3
+s;o;j;Z;11;2
+s;;ua;S;12;2
+s;;ones;z;13;2
+s; ini;;S;14;2
+s;D;;z;15;1
+s; ;j;S;16;1
+s;i;u;Z;17;1
+s; ;i;s;18;1
+s;F;i;z;19;1
+s;n;jo;S;20;1
+s;s;ia;0;21;1
+s;;uel;S;22;1
+s;;iF ;S;23;1
+s;npo;;z;24;1
+s;kei;;z;25;1
+s;pou;;z;26;1
+s;Hni;;S;27;1
+s;fi;iF;S;28;1
+t;;;t;0;8258
+t;t;;0;1;186
+t;;ji;k;2;65
+t;d;;0;3;20
+t;a;j;i;4;5
+t;o;j;i;5;1
+u;;;0;0;861
+u;;i;B;1;570
+u;;u;y;2;329
+u;k;;9;3;156
+u;;k;9;4;140
+u;;s;9;5;78
+u;m;;y;6;66
+u;;l;9;7;49
+u;0;r;y;8;48
+u;;me;y;9;44
+u;;nk;9;10;32
+u;p;;9;11;30
+u;0;d;y;12;30
+u;;le;y;13;29
+u;o;;0;14;28
+u;;m ;9;15;27
+u;r;g;9;16;26
+u;;w;y;17;23
+u;al;;y;18;23
+u;0;a;u;19;20
+u;ek;;y;20;20
+u;b;r;9;21;17
+u;0;e;y;22;16
+u;e;;0;23;15
+u; ;n;y;24;15
+u;0;b;9;25;14
+u;;ms;9;26;14
+u;k;i;B;27;13
+u;;si;y;28;12
+u;0;se;y;29;12
+u;s;b;9;30;11
+u;ee;;u;31;8
+u;g;n;9;32;7
+u;;la;y;33;7
+u;u;;0;34;6
+u;s;e;y;35;6
+u;;lE;y;36;6
+u;n;t;9;37;5
+u;m;s;9;38;4
+u;o;w;0;39;4
+u;;ra;y;40;4
+u;kl;;9;41;4
+u;;H;y;42;3
+u;f;n;9;43;3
+u;b;n;9;44;3
+u; ;r;y;45;3
+u;h;r;y;46;3
+u;s;r;y;47;3
+u;;lu;y;48;3
+u;0;rf;9;49;3
+u;k;rr;y;50;3
+u;e;l;y;51;2
+u;h;m;y;52;2
+u;n;s;y;53;2
+u;r;e;y;54;2
+u;s;a;y;55;2
+u;0;t;y;56;2
+u;l;g;9;57;2
+u;k;u;y;58;2
+u;v;r;y;59;2
+u;k; ;y;60;2
+u;0; ;y;61;2
+u;r;t;y;62;2
+u;l;m;9;63;2
+u;j;r;y;64;2
+u;rn;;y;65;2
+u;;f;9;66;1
+u;a;;u;67;1
+u;i;;9;68;1
+u;s;g;9;69;1
+u;g;H;u;70;1
+u;0;p;u;71;1
+u;s;n;y;72;1
+u;u;r;0;73;1
+u;r;b;a;74;1
+u;e;r;0;75;1
+u;r;d;u;76;1
+u;j; ;y;77;1
+u;l;i;B;78;1
+u;l;r;9;79;1
+u; ;s;y;80;1
+u;p;i;B;81;1
+u;s;s;9;82;1
+u;r;p;9;83;1
+u;k;b;y;84;1
+u;h;t;9;85;1
+u;j;w;u;86;1
+u;;kr;y;87;1
+u;;lo;y;88;1
+u;;mp;9;89;1
+u;;na;y;90;1
+u;o;n;0;91;1
+u;;nt;9;92;1
+u;gl;;y;93;1
+u;bs;;9;94;1
+u;k;te;y;95;1
+u;0;be;y;96;1
+u;b;ro;y;97;1
+u;0;rg;0;98;1
+u;e;nt;y;99;1
+u;b;re;y;100;1
+u;p;ta;y;101;1
+u;j;ri;u;102;1
+u;rk;r;y;103;1
+u;is;a;u;104;1
+u; n;m;u;105;1
+u;;ra ;9;106;1
+u;;sik;y;107;1
+u;;siE;u;108;1
+u;;Htief;u;109;1
+u;irit0;;y;110;1
+u;d0;alise;y;111;1
+v;;;f;0;3129
+v;;alu;v;1;22
+v;di;;v;2;21
+v;;isi;v;3;13
+v;ni;;v;4;8
+v;o;is;v;5;5
+v;;olu;v;6;5
+v; ;eri;v;7;5
+v;;ariF;v;8;5
+v;r;en;v;9;4
+v;;isu;v;10;3
+v;;erti;v;11;3
+v;ro;e;v;12;2
+v; ;ari;v;13;2
+v; in;er;v;14;2
+v;;ik;v;15;1
+v;;eo;v;16;1
+v;;ib;v;17;1
+v;wi;;v;18;1
+v;r;as;v;19;1
+v; ;ali;v;20;1
+v;;erbal;v;21;1
+v; ;isier;f;22;1
+v;;erbaal;v;23;1
+w;;;v;0;2443
+w;k;;w;1;43
+w; s;;w;2;34
+w; t;;w;3;16
+w;k;aar;v;4;15
+w; d;;w;5;14
+w;w;;0;6;7
+w;ed;;w;7;6
+w;es;;w;8;6
+w;;at;v;9;4
+w;;oo;v;10;4
+w;s;aai;w;11;4
+w;vers;;w;12;4
+w;;et;v;13;3
+w;uk;;v;14;3
+w;;yf;w;15;2
+w;k;in;v;16;2
+w;d;yn;w;17;2
+w;nk;;v;18;1
+w;ms;;w;19;1
+w;ak;;v;20;1
+w;ls;;w;21;1
+w;k;el;v;22;1
+w;et;i;w;23;1
+w;;eek;v;24;1
+w; k;;w;25;1
+w;igs;;w;26;1
+y;;;D;0;1064
+z;;;z;0;1
+0;;;0;0;829
+0;vor;;C;1;34
+0;sker;;C;2;19
+0;t;ua;S;3;17
+0;war;;C;4;10
+0;;me ;0;5;6
+0; ar;;C;6;6
+0;;uree;S;7;5
+0;wel;;C;8;4
+0;tor;;C;9;4
+0;;ural;S;10;3
+0;lekt;;S;11;3
+0;individ;ua;Z;12;3
+0;;mh;C;13;2
+0;l;m ;C;14;2
+0;;ms;C;15;1
+0;;ming;C;16;1
+0;irit;;S;17;1
+0;enor;;C;18;1
+0;kt;urel;S;19;1
+0; vor;mi;0;20;1
+0; vor;me;0;21;1
