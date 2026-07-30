@@ -206,6 +206,38 @@ public sealed class PiperVoiceConfig
         if (!string.Equals(lower, symbol, StringComparison.Ordinal)
             && _phonemeIdMap.TryGetValue(lower, out ids!)) return true;
 
+        // A GRAPHEME CLUSTER the vocabulary stores as separate codepoints.
+        //
+        // Text is split into clusters, so Burmese "ကြို" (consonant + medial +
+        // two vowel signs) arrives as ONE symbol while the voice's vocabulary
+        // holds each codepoint on its own. Measured on the P30: Burmese lost
+        // twelve distinct clusters outright, and Thai — whose vowels are also
+        // combining marks — was mangled far more quietly. Its clusters fell
+        // through to the diacritic fold below, which threw the vowel sign away
+        // and kept the bare consonant, turning a 15 s paragraph into 4.3 s of
+        // consonants that reported no error whatsoever.
+        //
+        // Splitting the cluster back into codepoints keeps every mark, so this
+        // must be tried BEFORE any approximation.
+        if (symbol.Length > 1)
+        {
+            var parts = new List<long>();
+            var whole = true;
+            foreach (var rune in symbol.EnumerateRunes())
+            {
+                var s = rune.ToString();
+                if (_phonemeIdMap.TryGetValue(s, out var part) ||
+                    _phonemeIdMap.TryGetValue(s.ToLowerInvariant(), out part))
+                    parts.AddRange(part);
+                else { whole = false; break; }
+            }
+            if (whole && parts.Count > 0)
+            {
+                ids = parts.ToArray();
+                return true;   // exact, not an approximation — nothing was lost
+            }
+        }
+
         // A letter the voice never learned. Dropping it deletes a consonant from
         // the middle of a word — measured on this voice, Sepedi lost every 'š' and
         // Tshivenda every 'ṱ ḓ ṋ', which is most of what makes those two languages
@@ -238,9 +270,35 @@ public sealed class PiperVoiceConfig
         if (symbol is "ṅ" or "Ṅ") yield return "ŋ";
         if (symbol is "š" or "Š") yield return "ʃ";
 
+        // Folding a diacritic away is only defensible where the mark modifies a
+        // letter that still carries most of the sound without it — Latin 'š'→'s',
+        // 'ṱ'→'t'. In Thai, Burmese, Devanagari, Arabic and Vietnamese the marks
+        // ARE the vowels and tones; dropping them does not approximate the word,
+        // it deletes it. Thai measured 4.3 s instead of ~15 s because every vowel
+        // sign was folded off a consonant and the result was filed as a harmless
+        // approximation.
         var stripped = StripDiacritics(symbol);
-        if (stripped.Length > 0 && !string.Equals(stripped, symbol, StringComparison.Ordinal))
-            yield return stripped;
+        if (stripped.Length == 0 || string.Equals(stripped, symbol, StringComparison.Ordinal))
+            yield break;
+
+        // Judge the BASE that remains, not the composed character: Tshivenda 'ṱ'
+        // lives in Latin Extended Additional (U+1E71), far above the Latin block,
+        // yet strips to a plain 't'. Thai 'วั' strips to 'ว', which is not Latin
+        // at all — and that is the case that must be refused.
+        if (!IsLatinBase(stripped)) yield break;
+
+        yield return stripped;
+    }
+
+    /// <summary>
+    /// True when the symbol's base character is Latin, i.e. when stripping its
+    /// marks leaves a letter that still approximates the original sound.
+    /// </summary>
+    private static bool IsLatinBase(string stripped)
+    {
+        foreach (var rune in stripped.EnumerateRunes())
+            if (rune.Value > 0x024F) return false;   // beyond Latin Extended-B
+        return stripped.Length > 0;
     }
 
     /// <summary>Decomposes and removes combining marks: <c>ṱ</c> → <c>t</c>.</summary>

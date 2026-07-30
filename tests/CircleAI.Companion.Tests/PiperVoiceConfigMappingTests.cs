@@ -94,6 +94,54 @@ public class PiperVoiceConfigMappingTests
     }
 
     [Fact]
+    public void Splits_a_grapheme_cluster_into_the_codepoints_the_vocabulary_holds()
+    {
+        // Text arrives as grapheme clusters, so Burmese "ကြို" is ONE symbol while
+        // the vocabulary stores its consonant, medial and vowel signs separately.
+        // Measured on the P30: Burmese lost twelve clusters outright.
+        var voice = Voice("ကြို");          // က ြ ိ ု
+
+        var ids = voice.PhonemesToIds(
+            new[] { "ကြို" }, out var skipped, out var dropped, out var approx);
+
+        Assert.Equal(0, skipped);
+        Assert.Empty(dropped);
+        Assert.Empty(approx);                 // decomposition is exact, not approximate
+        Assert.Equal(4, ids.Length);          // every mark survived
+    }
+
+    [Fact]
+    public void Never_folds_a_mark_away_in_a_script_where_marks_are_the_vowels()
+    {
+        // Thai measured 4.3 s instead of ~15 s: each vowel sign was folded off its
+        // consonant and filed as a harmless "approximation". Dropping a Thai vowel
+        // does not approximate the word — it deletes it. With the vowel absent
+        // from the vocabulary the correct answer is to report it, not to invent
+        // a consonant-only rendering that reports success.
+        var voice = Voice("ว");                            // ว only, no ั
+
+        var ids = voice.PhonemesToIds(
+            new[] { "วั" }, out var skipped, out var dropped, out var approx);
+
+        Assert.Equal(1, skipped);
+        Assert.Empty(approx);
+        Assert.Empty(ids);
+    }
+
+    [Fact]
+    public void Still_folds_a_latin_diacritic_where_that_genuinely_helps()
+    {
+        // The Sepedi/Tshivenda case must keep working — this is the one place the
+        // fold is right, because the base letter carries most of the sound.
+        var voice = Voice("stdn");
+
+        voice.PhonemesToIds(Chars("š"), out var skipped, out _, out var approx);
+
+        Assert.Equal(0, skipped);
+        Assert.Single(approx);
+    }
+
+    [Fact]
     public void Reports_a_symbol_it_cannot_map_at_all()
     {
         // Punctuation and foreign scripts have no stand-in. Being told is the whole

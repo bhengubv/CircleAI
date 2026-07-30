@@ -322,12 +322,20 @@ public static class ItTtsProbe
             // the phrasing pass compensates for.
             var lost = phrased.LastSkippedSymbols.Where(s => s.Length > 0 && char.IsLetterOrDigit(s[0])).ToList();
 
+            // Approximations were invisible here, and that hid a real defect: Thai
+            // rendered 4.3 s of a 15 s paragraph because every vowel sign had been
+            // folded off its consonant and filed as "approximate". The report said
+            // nothing. A compromise the listener will hear must appear in the report
+            // the listener's engineer reads.
+            var approx = phrased.LastApproximatedSymbols;
+
             return
                 "SYNTHESIS OK — the sideloaded voice ran on the device.\n" +
                 $"model : {Path.GetFileName(modelOnnxPath)}\n" +
                 (graphemeVoice ? "g2p   : grapheme (no espeak)\n" : $"espeak: {voice}\n") +
                 $"phrase: {phrased.LastSegmentCount} sentence segment(s)\n" +
                 (lost.Count > 0 ? $"LOST  : voice has no token for {string.Join(" ", lost)}\n" : "") +
+                (approx.Count > 0 ? $"APPROX: spoken via a near-equivalent, not the true sound: {string.Join(" ", approx)}\n" : "") +
                 $"wrote {len:N0} bytes ({result.SampleRate} Hz) to {Path.GetFileName(wavPath)} for \"{phrase}\"\n" +
                 $"elapsed {sw.Elapsed:mm\\:ss}\n";
         }
