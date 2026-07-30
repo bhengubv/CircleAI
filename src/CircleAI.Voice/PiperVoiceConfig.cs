@@ -58,6 +58,25 @@ public sealed class PiperVoiceConfig
     public bool HasPhonemeMap => _phonemeIdMap.Count > 0;
 
     /// <summary>
+    /// True when the vocabulary contains Ethiopic characters.
+    /// </summary>
+    /// <remarks>
+    /// A voice that holds only Latin cannot read Ge'ez, however Ethiopic the text
+    /// is — MMS ships Amharic and Tigrinya expecting romanised input. Asking the
+    /// vocabulary is more reliable than trusting a flag to be set correctly.
+    /// </remarks>
+    public bool HasEthiopic
+    {
+        get
+        {
+            foreach (var k in _phonemeIdMap.Keys)
+                foreach (var c in k)
+                    if (c is >= 'ሀ' and <= '፿') return true;
+            return false;
+        }
+    }
+
+    /// <summary>
     /// The conventional sidecar path for a model file:
     /// <c>en_US-lessac-medium.onnx</c> → <c>en_US-lessac-medium.onnx.json</c>.
     /// </summary>

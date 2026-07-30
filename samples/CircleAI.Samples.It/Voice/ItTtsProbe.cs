@@ -261,8 +261,25 @@ public static class ItTtsProbe
         var lexiconPath = Path.Combine(Path.GetDirectoryName(modelOnnxPath)!, "lexicon.txt");
         var lexicalVoice = File.Exists(lexiconPath);
 
+        // Ethiopic text against a Latin-only vocabulary means the voice was shipped
+        // with is_uroman=true: MMS's Amharic and Tigrinya hold 28 and 27 LATIN
+        // letters and have never seen an Ethiopic codepoint. Measured on the P30,
+        // Amharic lost 43 distinct characters that way. Decide from the two things
+        // we can actually see — the script of the text and the contents of the
+        // vocabulary — rather than trusting a flag someone has to remember to set.
+        var voiceConfig = PiperVoiceConfig.TryLoadForModel(modelOnnxPath);
+        var needsRomanising = GeezRomanizer.IsEthiopic(phrase)
+                              && voiceConfig is { HasPhonemeMap: true }
+                              && !voiceConfig.HasEthiopic;
+
         IPhonemizer? phonemizer;
-        if (lexicalVoice)
+        if (needsRomanising)
+        {
+            var geez = new GeezPhonemizer();
+            log?.Invoke($"voice-under-test: {Path.GetFileName(modelOnnxPath)}  Ethiopic → Latin (uroman-style)");
+            phonemizer = geez;
+        }
+        else if (lexicalVoice)
         {
             var lex = LexiconPhonemizer.Load(lexiconPath);
             log?.Invoke($"voice-under-test: {Path.GetFileName(modelOnnxPath)}  lexicon-driven ({lex.EntryCount:N0} entries)");
@@ -304,7 +321,7 @@ public static class ItTtsProbe
             // one filename, so a path-only key would keep serving the previous
             // language's session after the model underneath had been replaced.
             var key = OnnxSessionFactory.ModelIdentity(modelOnnxPath)
-                      + "|" + (lexicalVoice ? "lex" : graphemeVoice ? "text" : voice);
+                      + "|" + (needsRomanising ? "geez" : lexicalVoice ? "lex" : graphemeVoice ? "text" : voice);
             if (_cachedSingle is null || _cachedSingleKey != key)
             {
                 _cachedSingle?.Dispose();
@@ -353,6 +370,8 @@ public static class ItTtsProbe
                 $"model : {Path.GetFileName(modelOnnxPath)}\n" +
                 (lexicalVoice
                     ? "g2p   : lexicon (no espeak, no python)\n"
+                    : needsRomanising
+                    ? "g2p   : Ethiopic -> Latin (uroman-style), then grapheme\n"
                     : graphemeVoice ? "g2p   : grapheme (no espeak)\n" : $"espeak: {voice}\n") +
                 $"phrase: {phrased.LastSegmentCount} sentence segment(s)\n" +
                 (lost.Count > 0 ? $"LOST  : voice has no token for {string.Join(" ", lost)}\n" : "") +

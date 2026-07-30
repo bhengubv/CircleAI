@@ -1,4 +1,4 @@
-# Voice provenance — 72 languages verified on the Huawei P30 Lite
+# Voice provenance — 74 languages verified on the Huawei P30 Lite
 
 Recorded so provenance stays visible, not because anything here is a problem.
 
@@ -93,11 +93,10 @@ Known limitations, recorded rather than left to be found:
 - Guarani approximates g-tilde; Kanuri's vocabulary lacks 'z'.
 
 ## Blocked
-- **Amharic, Tigrinya** — exported to ONNX successfully, but MMS ships them with
-  is_uroman=True: the models take ROMANISED text, not Ethiopic, and their
-  vocabularies are 28 and 27 Latin letters. Needs a Ge'ez -> Latin transliterator.
-  Ge'ez is a regular syllabary (consonant x seven vowel forms), so a ~300-entry
-  table does it — the same shape as the lexicon work that solved Chinese.
+- ~~Amharic, Tigrinya~~ — SOLVED. GeezRomanizer transliterates Ethiopic to Latin
+  before the grapheme path. Amharic 3.2s -> 11.5s, Tigrinya 2.1s -> 6.7s, and all
+  43 previously-lost characters now reach the model. Both CC-BY-NC (MMS), exported
+  from facebook/mms-tts-amh and -tir.
 - **Pashto, Wolof, Tshiluba, Kikongo** — no model anywhere. Not in Meta's full
   1,140-model MMS set, not in OpenBible, nothing phone-sized and licensed on
   HuggingFace. Wolof exists (galsenai/wolof-tts) but is 1.67 GB of Parler-TTS
