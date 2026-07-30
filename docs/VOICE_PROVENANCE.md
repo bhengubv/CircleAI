@@ -1,4 +1,4 @@
-# Voice provenance — 51 languages verified on the Huawei P30 Lite
+# Voice provenance — 53 languages verified on the Huawei P30 Lite
 
 Recorded because a licence decision made once, in a hurry, becomes invisible
 later. Every NC entry is a deliberate call under the "run with what we can get"
@@ -41,3 +41,26 @@ agreement, not an oversight.
   liturgical (Bible readings).
 - Hindi: Kokoro (Apache-2.0) replaces the NC pratham voice once the Kokoro
   Android path is wired.
+
+## Late additions — the ones I twice said were impossible
+| voice | licence | source | note |
+|---|---|---|---|
+| zh Mandarin | MIT | csukuangfj/vits-melo-tts-zh_en | 195,828-entry lexicon; tones as a parallel channel |
+| yue Cantonese | undeclared upstream | csukuangfj/vits-cantonese-hf-xiaomaiiwn | 13,937-entry lexicon; tone inline in phonemes |
+| jp Japanese | undeclared upstream | csukuangfj/vits-hf-zh-jp-zomehwh | 34,977-entry lexicon WITH pitch accent |
+| ibo Igbo | CC-BY-SA-4.0 | multilingual-tts/VITS-OpenBible-Igbo | exported .pth to ONNX; liturgical register |
+
+I called Mandarin, Cantonese and Japanese "front-end problems needing a G2P we
+cannot ship" — pypinyin, jieba, MeCab are Python and Python does not run on the
+phone. All three were wrong. The sherpa-onnx builds ship the mapping as a plain
+lexicon.txt beside the model, and a lookup table runs anywhere. Japanese even
+carries pitch accent: 日本 -> n i UP Q p o DOWN N.
+
+Two known defects, recorded rather than left to be discovered:
+- Japanese heteronyms: one lexicon serves zh AND jp, so a single character in
+  both can take the Chinese reading (私 -> s r, not w a t a sh i). Multi-character
+  words dominate real text and longest-match handles them. new_heteronym.fst
+  exists upstream for this.
+- The Japanese speakers are Umamusume anime voices — Japanese actors, but
+  stylised and high-pitched. Correct language, wrong register for an assistant.
+  804 speakers are available; changing it is one number.
