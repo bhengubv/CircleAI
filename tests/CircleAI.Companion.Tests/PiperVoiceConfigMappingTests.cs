@@ -141,6 +141,26 @@ public class PiperVoiceConfigMappingTests
         Assert.Single(approx);
     }
 
+
+    [Fact]
+    public void Ignores_zero_width_formatting_inside_a_cluster()
+    {
+        // U+200C, the zero-width non-joiner, controls how text is DRAWN and says
+        // nothing about sound. Persian writes it constantly and so do the Indic
+        // scripts — and because it binds into the grapheme cluster, one invisible
+        // character was failing the whole cluster. Measured on the P30: Persian
+        // and Telugu each lost real consonants to a mark nobody can see.
+        var voice = Voice("نی");            // Arabic noon + farsi yeh
+
+        var ids = voice.PhonemesToIds(
+            new[] { "ن‌" }, out var skipped, out var dropped, out var approx);
+
+        Assert.Equal(0, skipped);
+        Assert.Empty(dropped);
+        Assert.Empty(approx);
+        Assert.Single(ids);          // the joiner contributed nothing, the letter spoke
+    }
+
     [Fact]
     public void Reports_a_symbol_it_cannot_map_at_all()
     {

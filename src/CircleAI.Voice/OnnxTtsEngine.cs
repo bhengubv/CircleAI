@@ -79,6 +79,16 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
     /// </summary>
     private const string TonesName = "tones";
 
+    /// <summary>
+    /// HuggingFace-transformers VITS names its inputs <c>input_ids</c> and
+    /// <c>attention_mask</c>, and bakes the noise/length scales into the config
+    /// rather than exposing them. A model exported straight from <c>VitsModel</c>
+    /// arrives in this shape — which is how MMS ships the languages that have no
+    /// pre-converted ONNX, Amharic and Tigrinya among them.
+    /// </summary>
+    private const string HfInputIdsName = "input_ids";
+    private const string HfAttentionMaskName = "attention_mask";
+
     /// <summary>Noise-scale scalar input on sherpa-onnx / MMS VITS exports.</summary>
     private const string MmsNoiseScaleName = "noise_scale";
 
@@ -350,7 +360,22 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         // Feed the scales in the shape this export actually declares: three
         // separate scalars for sherpa-onnx/MMS, one scales[3] for Piper.
         List<NamedOnnxValue> inputs;
-        if (_useMmsLayout)
+        if (_session.InputMetadata.ContainsKey(HfInputIdsName))
+        {
+            // transformers VITS: ids + a mask of ones. No scales — the model holds
+            // them. Detected from the graph's own metadata, like the other layouts,
+            // so a model that declares this shape is simply served correctly rather
+            // than being asked for inputs it does not have.
+            var mask = new DenseTensor<long>(new[] { 1, tokens.Length });
+            for (int i = 0; i < tokens.Length; i++) mask[0, i] = 1;
+
+            inputs =
+            [
+                NamedOnnxValue.CreateFromTensor(HfInputIdsName, inputTensor),
+                NamedOnnxValue.CreateFromTensor(HfAttentionMaskName, mask),
+            ];
+        }
+        else if (_useMmsLayout)
         {
             inputs =
             [

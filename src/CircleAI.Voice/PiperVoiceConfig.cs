@@ -225,6 +225,15 @@ public sealed class PiperVoiceConfig
             var whole = true;
             foreach (var rune in symbol.EnumerateRunes())
             {
+                // Zero-width formatting characters shape how text is DRAWN and say
+                // nothing about how it sounds. Persian writes them constantly
+                // (زبان‌های), as do Hindi, Bengali, Urdu and most Indic scripts —
+                // and because they bind into the grapheme cluster, one invisible
+                // character was failing the whole cluster. Measured on the P30:
+                // Persian and Telugu each lost real consonants to a mark nobody
+                // can even see.
+                if (Rune.GetUnicodeCategory(rune) == UnicodeCategory.Format) continue;
+
                 var s = rune.ToString();
                 if (_phonemeIdMap.TryGetValue(s, out var part) ||
                     _phonemeIdMap.TryGetValue(s.ToLowerInvariant(), out part))

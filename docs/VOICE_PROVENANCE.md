@@ -1,4 +1,4 @@
-# Voice provenance — 53 languages verified on the Huawei P30 Lite
+# Voice provenance — 72 languages verified on the Huawei P30 Lite
 
 Recorded so provenance stays visible, not because anything here is a problem.
 
@@ -75,3 +75,30 @@ Two known defects, recorded rather than left to be discovered:
 - The Japanese speakers are Umamusume anime voices — Japanese actors, but
   stylised and high-pitched. Correct language, wrong register for an assistant.
   804 speakers are available; changing it is one number.
+
+## Wave two — 19 more, verified on the P30
+| voice | licence | source |
+|---|---|---|
+| Arabic (MSA), Persian/Dari, Sundanese, Telugu, Marathi, Tamil, Gujarati, Kannada, Malayalam, Punjabi, Malagasy, Kanuri, Guarani, Moore, Haitian Creole, Quechua | CC-BY-NC-4.0 | willwade/mms-tts-multilingual-models-onnx |
+| Sinhala | **MIT** | chan4lk/piper-tts-sinhala |
+| Lingala, Nepali | **CC-BY-SA-4.0** | multilingual-tts OpenBible, exported .pth -> ONNX |
+
+Known limitations, recorded rather than left to be found:
+- Arabic is MSA only. No dialect model exists that is both permissively licensed
+  and phone-sized: the Egyptian candidate (mohammedaly22/VoiceTut-TTS, Apache-2.0)
+  is 2.3 GB of OmniVoice weights, and kimbolingo/arabic-piper-tts is the right
+  format and size but declares no licence at all. MSA is the written register;
+  comprehension of it tracks schooling, which is backwards for this project's
+  users. Egyptian Arabic is the highest-value training job available.
+- Guarani approximates g-tilde; Kanuri's vocabulary lacks 'z'.
+
+## Blocked
+- **Amharic, Tigrinya** — exported to ONNX successfully, but MMS ships them with
+  is_uroman=True: the models take ROMANISED text, not Ethiopic, and their
+  vocabularies are 28 and 27 Latin letters. Needs a Ge'ez -> Latin transliterator.
+  Ge'ez is a regular syllabary (consonant x seven vowel forms), so a ~300-entry
+  table does it — the same shape as the lexicon work that solved Chinese.
+- **Pashto, Wolof, Tshiluba, Kikongo** — no model anywhere. Not in Meta's full
+  1,140-model MMS set, not in OpenBible, nothing phone-sized and licensed on
+  HuggingFace. Wolof exists (galsenai/wolof-tts) but is 1.67 GB of Parler-TTS
+  weights with no declared licence. These four need training from corpus data.
