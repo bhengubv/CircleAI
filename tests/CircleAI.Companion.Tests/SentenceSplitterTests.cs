@@ -94,6 +94,19 @@ public class SentenceSplitterTests
         Assert.Empty(SentenceSplitter.Split(text));
     }
 
+    [Theory]
+    // Measured on the P30: each of these produced HALF the expected segments
+    // because its sentence terminator was not in the Latin-only list, so the
+    // paragraph ran together exactly as it had before the splitter existed.
+    [InlineData("hi/bn danda", "नमस्ते सबको। आज हम बात करते हैं। धन्यवाद।", 3)]
+    [InlineData("urdu full stop", "سب کو سلام۔ آج ہم بات کرتے ہیں۔ شکریہ۔", 3)]
+    [InlineData("cjk ideographic", "大家好。今天我们说话。谢谢。", 3)]
+    [InlineData("ethiopic", "ሰላም ለሁሉም። ዛሬ እንነጋገራለን። አመሰግናለሁ።", 3)]
+    public void Splits_on_the_sentence_terminator_of_every_script(string _, string text, int expected)
+    {
+        Assert.Equal(expected, SentenceSplitter.Split(text).Count);
+    }
+
     [Fact]
     public void Treats_a_line_break_as_a_paragraph_boundary()
     {

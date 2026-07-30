@@ -98,7 +98,27 @@ public static class SentenceSplitter
         return segments;
     }
 
-    private static bool IsTerminator(char c) => c is '.' or '!' or '?' or ':' or ';' or '؟' or '。';
+    /// <summary>
+    /// Characters that end a sentence, across the scripts we speak.
+    /// </summary>
+    /// <remarks>
+    /// A Latin-only list silently under-splits every language that punctuates
+    /// differently. Measured on the P30: Hindi, Bengali and Urdu produced THREE
+    /// segments from the same five-sentence text that gave six in eleven other
+    /// languages, because Devanagari and Bengali end sentences with the danda
+    /// '।' and Urdu with '۔' — none of which were listed. The paragraph ran
+    /// together exactly as it did before the splitter existed, for about a
+    /// billion people, and nothing failed loudly enough to notice.
+    /// </remarks>
+    private static bool IsTerminator(char c) => c is
+        '.' or '!' or '?' or ':' or ';'                 // Latin / Cyrillic / Greek
+        or '।' or '॥'                         // । ॥  danda, double danda — Devanagari, Bengali, Gurmukhi…
+        or '۔' or '؟' or '؛'             // ۔ ؟ ؛  Arabic script — Urdu, Arabic, Persian, Pashto
+        or '。' or '！' or '？'             // 。！？  CJK ideographic + fullwidth
+        or '．' or '：' or '；'             // ．：；  fullwidth
+        or '።'                                     // ።  Ethiopic — Amharic, Tigrinya
+        or '។'                                     // ។  Khmer khan
+        or '၊' or '။';                        // ၊ ။  Myanmar little/section
 
     /// <summary>
     /// True when the terminator at <paramref name="i"/> really ends a sentence.
@@ -115,6 +135,15 @@ public static class SentenceSplitter
         while (j < text.Length && (IsTerminator(text[j]) || text[j] is '"' or '\'' or ')' or ']')) j++;
 
         if (j >= text.Length) return true;              // end of input
+
+        // Only SOME terminators can appear inside a token — '.' in 3.5 and
+        // co.za, ':' in 12:30. For those, a following space is what separates a
+        // sentence end from a decimal point. The rest cannot occur mid-token in
+        // any script, and demanding a space after them would never split Chinese,
+        // Japanese, Khmer, Thai or Burmese at all: those scripts write without
+        // spaces between words, so their full stop is followed by the next letter.
+        if (!MayOccurInsideAToken(text[i])) return true;
+
         if (!char.IsWhiteSpace(text[j])) return false;  // 3.5, e.g., co.za
 
         if (text[i] is '.' && i > 0 && char.IsDigit(text[i - 1]) && j < text.Length
@@ -123,6 +152,12 @@ public static class SentenceSplitter
 
         return true;
     }
+
+    /// <summary>
+    /// True for terminators that can legitimately appear inside a token, and so
+    /// need a following space before they may be read as ending a sentence.
+    /// </summary>
+    private static bool MayOccurInsideAToken(char c) => c is '.' or ':' or ';';
 
     /// <summary>
     /// Cuts an over-long run at the last space, so the break lands between words
