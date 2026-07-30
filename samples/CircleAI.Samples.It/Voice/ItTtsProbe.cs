@@ -252,9 +252,28 @@ public static class ItTtsProbe
             ? $"voice-under-test: {Path.GetFileName(modelOnnxPath)}  grapheme-driven (no espeak needed)"
             : $"voice-under-test: {Path.GetFileName(modelOnnxPath)}  espeak='{voice}'");
 
-        var phonemizer = graphemeVoice
-            ? new PassthroughPhonemizer()
-            : ItSpeaker.MobilePhonemizerFactory?.Invoke(voice);
+        // A lexicon.txt beside the model means the script does not encode sound and
+        // the mapping ships as data: Chinese characters carry meaning, not
+        // pronunciation, so neither graphemes nor espeak can read them. The usual
+        // answer is a Python G2P (pypinyin, jieba) which cannot run here; the
+        // sherpa builds ship the whole table instead — 195k entries for Mandarin,
+        // 14k for Cantonese — and a table is something the phone can do.
+        var lexiconPath = Path.Combine(Path.GetDirectoryName(modelOnnxPath)!, "lexicon.txt");
+        var lexicalVoice = File.Exists(lexiconPath);
+
+        IPhonemizer? phonemizer;
+        if (lexicalVoice)
+        {
+            var lex = LexiconPhonemizer.Load(lexiconPath);
+            log?.Invoke($"voice-under-test: {Path.GetFileName(modelOnnxPath)}  lexicon-driven ({lex.EntryCount:N0} entries)");
+            phonemizer = lex;
+        }
+        else
+        {
+            phonemizer = graphemeVoice
+                ? new PassthroughPhonemizer()
+                : ItSpeaker.MobilePhonemizerFactory?.Invoke(voice);
+        }
         if (phonemizer is null)
             return "on-device phonemizer not wired (ItSpeaker.MobilePhonemizerFactory)\n";
 
@@ -285,7 +304,7 @@ public static class ItTtsProbe
             // one filename, so a path-only key would keep serving the previous
             // language's session after the model underneath had been replaced.
             var key = OnnxSessionFactory.ModelIdentity(modelOnnxPath)
-                      + "|" + (graphemeVoice ? "text" : voice);
+                      + "|" + (lexicalVoice ? "lex" : graphemeVoice ? "text" : voice);
             if (_cachedSingle is null || _cachedSingleKey != key)
             {
                 _cachedSingle?.Dispose();
@@ -332,7 +351,9 @@ public static class ItTtsProbe
             return
                 "SYNTHESIS OK — the sideloaded voice ran on the device.\n" +
                 $"model : {Path.GetFileName(modelOnnxPath)}\n" +
-                (graphemeVoice ? "g2p   : grapheme (no espeak)\n" : $"espeak: {voice}\n") +
+                (lexicalVoice
+                    ? "g2p   : lexicon (no espeak, no python)\n"
+                    : graphemeVoice ? "g2p   : grapheme (no espeak)\n" : $"espeak: {voice}\n") +
                 $"phrase: {phrased.LastSegmentCount} sentence segment(s)\n" +
                 (lost.Count > 0 ? $"LOST  : voice has no token for {string.Join(" ", lost)}\n" : "") +
                 (approx.Count > 0 ? $"APPROX: spoken via a near-equivalent, not the true sound: {string.Join(" ", approx)}\n" : "") +

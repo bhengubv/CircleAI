@@ -70,6 +70,15 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
     /// <summary>Sequence-length input on sherpa-onnx / MMS VITS exports.</summary>
     private const string MmsInputLengthsName = "x_length";
 
+    /// <summary>MeloTTS spells the same input <c>x_lengths</c>, with an s.</summary>
+    private const string MeloInputLengthsName = "x_lengths";
+
+    /// <summary>
+    /// Parallel tone ids, declared by MeloTTS-family voices. Supplied by an
+    /// <see cref="IToneSource"/> phonemizer; absent voices never see it.
+    /// </summary>
+    private const string TonesName = "tones";
+
     /// <summary>Noise-scale scalar input on sherpa-onnx / MMS VITS exports.</summary>
     private const string MmsNoiseScaleName = "noise_scale";
 
@@ -346,11 +355,36 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             inputs =
             [
                 NamedOnnxValue.CreateFromTensor(MmsInputName, inputTensor),
-                NamedOnnxValue.CreateFromTensor(MmsInputLengthsName, inputLengths),
+                NamedOnnxValue.CreateFromTensor(
+                    _session.InputMetadata.ContainsKey(MmsInputLengthsName)
+                        ? MmsInputLengthsName : MeloInputLengthsName, inputLengths),
                 NamedOnnxValue.CreateFromTensor(MmsNoiseScaleName, Scalar(noiseScale)),
                 NamedOnnxValue.CreateFromTensor(MmsLengthScaleName, Scalar(lengthScale)),
                 NamedOnnxValue.CreateFromTensor(MmsNoiseWName, Scalar(noiseW))
             ];
+
+            // MeloTTS carries TONE as a channel of its own, parallel to the
+            // phonemes, rather than as symbols inside them: its lexicon gives
+            // "一 y i 1 1" — phonemes y,i and tones 1,1. Cantonese takes the other
+            // approach and writes tone into the phoneme string (˥), which is why
+            // it needs none of this. A tone array that drifts out of step with the
+            // phonemes would not fail; it would mispronounce every syllable after
+            // the drift, in a language where tone IS the word.
+            if (_session.InputMetadata.ContainsKey(TonesName))
+            {
+                var tones = new DenseTensor<long>(new[] { 1, tokens.Length });
+                var supplied = (_phonemizer as IToneSource)?.LastTones;
+                for (int i = 0; i < tokens.Length; i++)
+                    tones[0, i] = supplied is not null && i < supplied.Count ? supplied[i] : 0;
+                inputs.Add(NamedOnnxValue.CreateFromTensor(TonesName, tones));
+            }
+
+            if (_session.InputMetadata.ContainsKey(SpeakerIdName))
+            {
+                var sid = new DenseTensor<long>(new[] { 1 });
+                sid[0] = SpeakerId;
+                inputs.Add(NamedOnnxValue.CreateFromTensor(SpeakerIdName, sid));
+            }
         }
         else
         {
