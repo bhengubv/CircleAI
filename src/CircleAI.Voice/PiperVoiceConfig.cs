@@ -16,6 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace CircleAI.Voice;
@@ -124,9 +125,37 @@ public sealed class PiperVoiceConfig
     /// a single unknown symbol must not abort the whole utterance.
     /// </summary>
     public long[] PhonemesToIds(IEnumerable<string> phonemes, out int skipped)
+        => PhonemesToIds(phonemes, out skipped, out _);
+
+    /// <summary>
+    /// As <see cref="PhonemesToIds(IEnumerable{string}, out int)"/>, additionally
+    /// reporting WHICH symbols were dropped. Callers should surface these: a
+    /// dropped symbol is inaudible, so the only evidence of a broken front-end is
+    /// this list.
+    /// </summary>
+    public long[] PhonemesToIds(
+        IEnumerable<string> phonemes, out int skipped, out IReadOnlyList<string> skippedSymbols)
+        => PhonemesToIds(phonemes, out skipped, out skippedSymbols, out _);
+
+    /// <summary>
+    /// As above, also reporting symbols that were APPROXIMATED rather than spoken
+    /// exactly — a diacritic the voice lacks, folded to its base letter.
+    /// </summary>
+    /// <remarks>
+    /// An approximation is a compromise, not a success, and it must be visible.
+    /// Sepedi's <c>š</c> and Tshivenda's <c>ṱ ḓ ṋ</c> are absent from this voice's
+    /// vocabulary; folding them to <c>s t d n</c> keeps the word audible instead of
+    /// deleting a consonant mid-word, but it is not the language's true sound and
+    /// a native speaker will hear the difference.
+    /// </remarks>
+    public long[] PhonemesToIds(
+        IEnumerable<string> phonemes, out int skipped,
+        out IReadOnlyList<string> skippedSymbols, out IReadOnlyList<string> approximatedSymbols)
     {
         ArgumentNullException.ThrowIfNull(phonemes);
         skipped = 0;
+        var dropped = new List<string>();
+        var approximated = new List<string>();
 
         var ids = new List<long>(64);
 
@@ -137,18 +166,97 @@ public sealed class PiperVoiceConfig
 
         foreach (var p in phonemes)
         {
-            if (!_phonemeIdMap.TryGetValue(p, out var mapped))
+            if (!TryMapSymbol(p, out var mapped, out var wasApproximated))
             {
                 skipped++;
+                if (!dropped.Contains(p)) dropped.Add(p);
                 continue;
             }
+            if (wasApproximated && !approximated.Contains(p)) approximated.Add(p);
             ids.AddRange(mapped);
             if (pad is not null) ids.AddRange(pad);
         }
 
         if (_phonemeIdMap.TryGetValue(Eos, out var eos)) ids.AddRange(eos);
 
+        skippedSymbols = dropped;
+        approximatedSymbols = approximated;
         return ids.ToArray();
+    }
+
+    /// <summary>
+    /// Looks up one symbol, falling back to its lower-case form.
+    /// </summary>
+    /// <remarks>
+    /// A grapheme voice's vocabulary is built AFTER the training text has been
+    /// through the model's own cleaner, and every cleaner in use here lower-cases
+    /// (Coqui's <c>multilingual_cleaners</c>, MMS's uroman path). Such a vocab
+    /// therefore contains no capitals at all, so matching on the raw character
+    /// silently discarded every sentence-initial letter and every proper noun —
+    /// the model received "awubona" for "Sawubona". Exact match is tried first,
+    /// so a genuinely case-bearing vocabulary is unaffected.
+    /// </remarks>
+    private bool TryMapSymbol(string symbol, out long[] ids, out bool approximated)
+    {
+        approximated = false;
+
+        if (_phonemeIdMap.TryGetValue(symbol, out ids!)) return true;
+
+        var lower = symbol.ToLowerInvariant();
+        if (!string.Equals(lower, symbol, StringComparison.Ordinal)
+            && _phonemeIdMap.TryGetValue(lower, out ids!)) return true;
+
+        // A letter the voice never learned. Dropping it deletes a consonant from
+        // the middle of a word — measured on this voice, Sepedi lost every 'š' and
+        // Tshivenda every 'ṱ ḓ ṋ', which is most of what makes those two languages
+        // sound like themselves. An approximation is worth more than a hole, so
+        // long as it is declared rather than passed off as correct.
+        foreach (var candidate in Approximations(symbol))
+        {
+            if (_phonemeIdMap.TryGetValue(candidate, out ids!)
+                || _phonemeIdMap.TryGetValue(candidate.ToLowerInvariant(), out ids!))
+            {
+                approximated = true;
+                return true;
+            }
+        }
+
+        ids = Array.Empty<long>();
+        return false;
+    }
+
+    /// <summary>
+    /// Nearest stand-ins for <paramref name="symbol"/>, best first: an exact
+    /// phonetic equivalent where one exists, then the base letter with its
+    /// diacritics stripped.
+    /// </summary>
+    private static IEnumerable<string> Approximations(string symbol)
+    {
+        // Where the vocabulary happens to carry the true phoneme under a different
+        // spelling, use it — Tshivenda's 'ṅ' IS /ŋ/, and 'ŋ' is in this map, so
+        // that substitution loses nothing at all.
+        if (symbol is "ṅ" or "Ṅ") yield return "ŋ";
+        if (symbol is "š" or "Š") yield return "ʃ";
+
+        var stripped = StripDiacritics(symbol);
+        if (stripped.Length > 0 && !string.Equals(stripped, symbol, StringComparison.Ordinal))
+            yield return stripped;
+    }
+
+    /// <summary>Decomposes and removes combining marks: <c>ṱ</c> → <c>t</c>.</summary>
+    private static string StripDiacritics(string s)
+    {
+        string decomposed;
+        try { decomposed = s.Normalize(NormalizationForm.FormD); }
+        catch (ArgumentException) { return s; }   // not normalisable — leave it alone
+
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
     /// <summary>

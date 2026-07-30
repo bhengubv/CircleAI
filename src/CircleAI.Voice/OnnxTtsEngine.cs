@@ -27,7 +27,7 @@ namespace CircleAI.Voice;
 /// not the intended path.
 /// </para>
 /// </remarks>
-public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
+public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDisposable
 {
     private readonly string _modelPath;
     private readonly int _sampleRate;
@@ -100,6 +100,29 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
     /// 10=zul. Ignored by models that declare no <c>langid</c> input.
     /// </summary>
     public long LanguageId { get; set; }
+
+    /// <summary>
+    /// How many symbols the last synthesis could not map, and so did not speak.
+    /// Anything above zero means the audio is missing sound that the text asked
+    /// for; treat a non-trivial count as a broken front-end, not a rounding error.
+    /// </summary>
+    public int LastSkippedCount { get; private set; }
+
+    // Implements ITtsFrontEndDiagnostics — see that interface for why this is not
+    // merely a debug counter.
+
+    /// <summary>
+    /// The distinct symbols dropped by the last synthesis — the actionable half of
+    /// <see cref="LastSkippedCount"/>, since it names what to add to the map.
+    /// </summary>
+    public IReadOnlyList<string> LastSkippedSymbols { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Symbols folded to a near-equivalent because this voice has no token for
+    /// them — e.g. Sepedi <c>š</c> or Tshivenda <c>ṱ ḓ ṋ</c> on a voice whose
+    /// vocabulary omits them.
+    /// </summary>
+    public IReadOnlyList<string> LastApproximatedSymbols { get; private set; } = Array.Empty<string>();
 
     /// <summary>
     /// True when the loaded graph uses the sherpa-onnx / MMS input signature
@@ -277,7 +300,16 @@ public sealed class OnnxTtsEngine : ITtsEngine, IDisposable
         if (_config is { HasPhonemeMap: true })
         {
             var phonemes = _phonemizer.Phonemize(text);
-            tokens = _config.PhonemesToIds(phonemes, out _);
+            tokens = _config.PhonemesToIds(
+                phonemes, out var skipped, out var droppedSymbols, out var approxSymbols);
+            LastApproximatedSymbols = approxSymbols;
+
+            // A dropped symbol makes no sound, so nothing downstream can reveal it:
+            // the audio is merely shorter, and every acoustic metric still passes.
+            // This went unnoticed until a listener heard the missing syllables. Record
+            // it so the front-end can be inspected instead of inferred.
+            LastSkippedCount = skipped;
+            LastSkippedSymbols = droppedSymbols;
             noiseScale  = _config.NoiseScale;
             lengthScale = _config.LengthScale;
             noiseW      = _config.NoiseW;

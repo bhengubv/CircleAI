@@ -215,8 +215,16 @@ public static class ItTtsProbe
         }
     }
 
+    /// <param name="langIdOverride">
+    /// Language to speak, when the caller is walking several in one session rather
+    /// than reading <c>langid.txt</c>. Speaking eleven languages by restarting the
+    /// app between each one keeps killing a warm engine — and, from the phone in
+    /// somebody's hand, looks exactly like a crash loop. Passing the id lets one
+    /// live session say them all.
+    /// </param>
     public static async Task<string> RunLocalAsync(
-        string modelOnnxPath, string wavPath, string phrase, Action<string>? log = null, CancellationToken ct = default)
+        string modelOnnxPath, string wavPath, string phrase, Action<string>? log = null, CancellationToken ct = default,
+        long? langIdOverride = null)
     {
         var sw = Stopwatch.StartNew();
         if (!File.Exists(modelOnnxPath))
@@ -260,8 +268,13 @@ public static class ItTtsProbe
             var parts = File.ReadAllText(langIdFile).Trim().Split(',', StringSplitOptions.TrimEntries);
             if (parts.Length > 0) long.TryParse(parts[0], out langIdValue);
             if (parts.Length > 1) long.TryParse(parts[1], out speakerIdValue);
-            log?.Invoke($"langid: {langIdValue}  speaker: {speakerIdValue}");
         }
+
+        // An explicit id beats the file, so one warm session can walk several
+        // languages without a script rewriting langid.txt and restarting the app
+        // between each one.
+        if (langIdOverride.HasValue) langIdValue = langIdOverride.Value;
+        log?.Invoke($"langid: {langIdValue}  speaker: {speakerIdValue}");
 
         try
         {
@@ -291,7 +304,11 @@ public static class ItTtsProbe
             engine.LanguageId = langIdValue;
             engine.SpeakerId = speakerIdValue;
 
-            var result = await engine.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
+            // Speak sentence by sentence. These voices have no token for a full
+            // stop, so without this a paragraph arrives as one unbroken run — and
+            // on a phone the whole paragraph must render before any of it plays.
+            using var phrased = new PhrasedTtsEngine(engine);
+            var result = await phrased.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
             if (result.AudioData.Length == 0)
                 return $"engine LOADED on device but produced 0 audio bytes " +
                        $"(phoneme-map miss for voice '{voice}'?) — model ran, phonemes didn't map.\n" +
@@ -299,10 +316,18 @@ public static class ItTtsProbe
             WriteWav(wavPath, result.AudioData.Span, result.SampleRate, result.Channels, result.BitsPerSample);
             var len = new FileInfo(wavPath).Length;
             log?.Invoke($"synthesised {len:N0} bytes @ {result.SampleRate} Hz");
+
+            // A dropped LETTER is lost speech and must be visible from the device
+            // report; dropped punctuation is expected for these voices and is what
+            // the phrasing pass compensates for.
+            var lost = phrased.LastSkippedSymbols.Where(s => s.Length > 0 && char.IsLetterOrDigit(s[0])).ToList();
+
             return
                 "SYNTHESIS OK — the sideloaded voice ran on the device.\n" +
                 $"model : {Path.GetFileName(modelOnnxPath)}\n" +
                 (graphemeVoice ? "g2p   : grapheme (no espeak)\n" : $"espeak: {voice}\n") +
+                $"phrase: {phrased.LastSegmentCount} sentence segment(s)\n" +
+                (lost.Count > 0 ? $"LOST  : voice has no token for {string.Join(" ", lost)}\n" : "") +
                 $"wrote {len:N0} bytes ({result.SampleRate} Hz) to {Path.GetFileName(wavPath)} for \"{phrase}\"\n" +
                 $"elapsed {sw.Elapsed:mm\\:ss}\n";
         }

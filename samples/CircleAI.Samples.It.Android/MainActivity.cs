@@ -274,6 +274,19 @@ public class MainActivity : Activity
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
 
         SetContentView(root);
+
+        // Let a script run the TTS probe directly:
+        //   adb shell am start -n <pkg>/.MainActivity --ez run_tts true
+        //
+        // Sweeping thirty-one languages otherwise means synthesising a tap at fixed
+        // screen coordinates, once per language. That is not a test — it is a guess
+        // about where a button is. It has already misfired: after this app lost
+        // focus the taps went into a DIFFERENT app entirely and opened its country
+        // picker, while the sweep reported progress. An explicit trigger cannot
+        // land in the wrong place.
+#if IT_VOICE_ANDROID
+        if (Intent?.GetBooleanExtra("run_tts", false) == true) RunTts();
+#endif
     }
 
     // The offline capability sweep — runnable the instant the app opens (no
@@ -659,6 +672,26 @@ public class MainActivity : Activity
                 }
             }
 
+            // A whole language TOUR in one session, when files/vut/sweep.tsv is
+            // present: each line is "code<TAB>langid<TAB>phrase".
+            //
+            // The alternative — a script that rewrites langid.txt and restarts the
+            // app once per language — force-stops the process mid-sentence, throws
+            // away a warm 122 MB session every time, and to anyone holding the
+            // phone looks exactly like the app crash-looping. It also cut every
+            // phrase off before it finished, because the report file is written
+            // before playback begins. Walking the list in-process fixes all three.
+            if (System.IO.File.Exists(vut))
+            {
+                var sweepFile = System.IO.Path.Combine(
+                    System.IO.Path.GetDirectoryName(vut)!, "sweep.tsv");
+                if (System.IO.File.Exists(sweepFile))
+                {
+                    await RunLanguageTourAsync(vut, wavPath, sweepFile);
+                    return;
+                }
+            }
+
             if (System.IO.File.Exists(vut))
             {
                 // Beside whichever model won above — private or external.
@@ -679,11 +712,19 @@ public class MainActivity : Activity
                 // except screenshotting the phone once per language.
                 try
                 {
-                    var extReport = System.IO.Path.Combine(
-                        System.IO.Path.GetDirectoryName(vut)!, "result.txt");
-                    await System.IO.File.WriteAllTextAsync(extReport, vrep);
+                    var extDir = System.IO.Path.GetDirectoryName(vut)!;
+                    await System.IO.File.WriteAllTextAsync(
+                        System.IO.Path.Combine(extDir, "result.txt"), vrep);
+
+                    // Mirror the AUDIO as well, not just the report. The report says
+                    // how many bytes were written; only the waveform says whether the
+                    // words are right. It was being written to the app's private
+                    // FilesDir, which a Release APK will not surrender over adb — so
+                    // every "it spoke" claim rested on a byte count nobody could hear.
+                    if (System.IO.File.Exists(wavPath))
+                        System.IO.File.Copy(wavPath, System.IO.Path.Combine(extDir, "tts-result.wav"), true);
                 }
-                catch { /* report mirroring is a convenience, never fail the run */ }
+                catch { /* mirroring is a convenience, never fail the run */ }
 
                 Append("\n" + vrep);
 
@@ -726,6 +767,101 @@ public class MainActivity : Activity
     /// 22050 and MMS are 16000, and playing one at the other's rate is the classic
     /// chipmunk/slow-motion bug.
     /// </summary>
+    /// <summary>
+    /// Speaks every language listed in <paramref name="sweepFile"/>, one after the
+    /// other, in a single session — synthesise, play to the end, then the next.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A line is <c>code TAB langid TAB phrase</c>, or
+    /// <c>code TAB langid TAB model TAB phrase</c> when each language has its OWN
+    /// model rather than sharing one multi-lingual voice. The eleven South African
+    /// languages come from a single 122 MB model selected by langid; the twenty
+    /// continental ones are twenty separate models, so the path travels per line.
+    /// An empty model column means "keep using the default".
+    /// </para>
+    /// <para>
+    /// The engine is cached on model identity, so a shared model is loaded once and
+    /// every language after the first follows in seconds. A language that fails is
+    /// reported and the tour continues — one bad voice must not silence the rest.
+    /// </para>
+    /// </remarks>
+    async Task RunLanguageTourAsync(string vut, string wavPath, string sweepFile)
+    {
+        var lines = await System.IO.File.ReadAllLinesAsync(sweepFile);
+        var log = new System.Text.StringBuilder();
+        var spoken = 0;
+        var attempted = 0;
+
+        Append($"\n===== SPEAKING {lines.Length} LANGUAGES =====\n");
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var f = line.Split('\t');
+            if (f.Length < 3) continue;
+
+            var code = f[0].Trim();
+            long.TryParse(f[1].Trim(), out var langId);
+
+            var model = vut;
+            string phrase;
+            if (f.Length >= 4)
+            {
+                var m = f[2].Trim();
+                if (m.Length > 0)
+                {
+                    model = m.Contains('/')
+                        ? m
+                        : System.IO.Path.Combine(System.IO.Path.GetDirectoryName(vut)!, m);
+                }
+                phrase = f[3].Trim();
+            }
+            else
+            {
+                phrase = f[2].Trim();
+            }
+
+            attempted++;
+            if (!System.IO.File.Exists(model))
+            {
+                Append($"\n▶ {code} — SKIPPED, no model at {model}\n");
+                log.Append($"--- {code} --- missing model {model}\n");
+                continue;
+            }
+
+            Append($"\n▶ {code} (langid {langId})\n");
+            try
+            {
+                var rep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
+                    model, wavPath, phrase, s => Append("  " + s + "\n"), default, langId);
+                log.Append($"--- {code} ---\n{rep}\n");
+
+                // Play to completion BEFORE moving on. Returning early here is what
+                // made every phrase sound truncated.
+                if (System.IO.File.Exists(wavPath))
+                {
+                    await PlayWavAsync(wavPath);
+                    spoken++;
+                }
+            }
+            catch (Exception ex)
+            {
+                Append($"  {code} FAILED: {ex.Message}\n");
+                log.Append($"--- {code} --- FAILED: {ex}\n");
+            }
+        }
+
+        Append($"\n===== DONE — {spoken}/{lines.Length} languages spoke =====\n");
+        try
+        {
+            await System.IO.File.WriteAllTextAsync(
+                System.IO.Path.Combine(System.IO.Path.GetDirectoryName(vut)!, "sweep-result.txt"),
+                log.ToString());
+        }
+        catch { }
+    }
+
     async Task PlayWavAsync(string wavPath)
     {
         try

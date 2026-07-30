@@ -31,6 +31,33 @@ public interface ITtsEngine
 }
 
 /// <summary>
+/// Reports what an engine's text front-end could NOT turn into sound.
+/// </summary>
+/// <remarks>
+/// A symbol that fails to map is simply not spoken, and silence leaves no trace:
+/// the audio is merely shorter, while duration, pitch, voicing and rhythm all
+/// still measure healthy. A lower-case-only vocabulary once ate the first letter
+/// of every sentence in eleven languages and every acoustic check still passed —
+/// only a listener noticed. This seam exists so that failure is inspectable
+/// instead of inaudible.
+/// </remarks>
+public interface ITtsFrontEndDiagnostics
+{
+    /// <summary>Symbols the last synthesis could not map, and so did not speak.</summary>
+    int LastSkippedCount { get; }
+
+    /// <summary>The distinct unmapped symbols — the actionable half of the count.</summary>
+    IReadOnlyList<string> LastSkippedSymbols { get; }
+
+    /// <summary>
+    /// Symbols spoken only APPROXIMATELY — a letter the voice lacks, folded to its
+    /// nearest available sound. Audible, but not the language's true consonant, so
+    /// it is reported rather than quietly accepted.
+    /// </summary>
+    IReadOnlyList<string> LastApproximatedSymbols => Array.Empty<string>();
+}
+
+/// <summary>
 /// Result of a single-shot TTS synthesis operation.
 /// </summary>
 /// <param name="AudioData">

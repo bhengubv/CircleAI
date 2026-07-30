@@ -190,6 +190,44 @@ static async Task<string> Sha256(string path)
     return Convert.ToHexString(await sha.ComputeHashAsync(s)).ToLowerInvariant();
 }
 
+// A symbol the voice could not map is simply not spoken, so it leaves no trace in
+// the waveform: duration, pitch and rhythm all still look healthy. That is exactly
+// how a lower-case-only vocabulary silently ate every capital letter — and every
+// sentence's first syllable with it — while the acoustic checks reported green.
+//
+// Letters and punctuation are reported differently on purpose. These voices were
+// trained on punctuation-stripped text, so a dropped comma is expected and is
+// already compensated by the phrasing pass; a dropped LETTER is lost speech. If
+// both shouted equally, the shout would stop meaning anything.
+static void ReportSkipped(ITtsFrontEndDiagnostics engine)
+{
+    if (engine.LastSkippedCount == 0) return;
+
+    var lost = new List<string>();
+    var expected = new List<string>();
+    foreach (var s in engine.LastSkippedSymbols)
+        (s.Length > 0 && char.IsLetterOrDigit(s[0]) ? lost : expected).Add(s);
+
+    if (lost.Count > 0)
+        Console.WriteLine(
+            $"WARNING: speech was LOST — the voice has no token for: {string.Join(" ", lost)}");
+
+    if (expected.Count > 0)
+        Console.WriteLine(
+            $"note  : punctuation not in this voice's vocabulary (pauses come from phrasing): {string.Join(" ", expected)}");
+}
+
+// An approximation is audible but wrong-ish, so it gets its own line: a native
+// speaker should be told which sounds are stand-ins rather than left to wonder
+// why a familiar word sounds slightly off.
+static void ReportApproximations(ITtsFrontEndDiagnostics engine)
+{
+    if (engine.LastApproximatedSymbols.Count == 0) return;
+    Console.WriteLine(
+        $"approx: spoken via nearest available sound (voice lacks the exact letter): " +
+        string.Join(" ", engine.LastApproximatedSymbols));
+}
+
 static void WriteWav(string path, ReadOnlySpan<byte> pcm, int sampleRate, int channels, int bits)
 {
     using var fs = File.Create(path);
@@ -246,7 +284,11 @@ async Task<int> RunSa11(string[] a)
         LanguageId = langId,
         SpeakerId = speaker
     };
-    var result = await engine.SynthesiseAsync(text);
+    // The voice has no token for '.', so the pause between sentences has to be
+    // supplied around the model rather than by it.
+    using var phrased = new PhrasedTtsEngine(engine);
+    var result = await phrased.SynthesiseAsync(text);
+    Console.WriteLine($"phrase: {phrased.LastSegmentCount} sentence segment(s)");
 
     var bytes = result.AudioData;
     var samples = bytes.Length / 2;
@@ -268,6 +310,8 @@ async Task<int> RunSa11(string[] a)
     WriteWav(outWav, span, result.SampleRate, result.Channels, result.BitsPerSample);
     Console.WriteLine($"wav   : {outWav}");
     Console.WriteLine($"audio : {seconds:F2}s @ {result.SampleRate}Hz  rms={rms:F4}  peak={peak}");
+    ReportSkipped(phrased);
+    ReportApproximations(phrased);
 
     if (samples < result.SampleRate / 4 || rms < 0.005)
     {
@@ -379,7 +423,9 @@ async Task<int> RunMms(string[] a)
 
     // Characters ARE the tokens for these voices.
     using var engine = new OnnxTtsEngine(modelPath, new PassthroughPhonemizer());
-    var result = await engine.SynthesiseAsync(mmsText);
+    using var phrased = new PhrasedTtsEngine(engine);
+    var result = await phrased.SynthesiseAsync(mmsText);
+    Console.WriteLine($"phrase: {phrased.LastSegmentCount} sentence segment(s)");
 
     var bytes = result.AudioData;
     var samples = bytes.Length / 2;
@@ -400,6 +446,8 @@ async Task<int> RunMms(string[] a)
     WriteWav(outWav, span, result.SampleRate, result.Channels, result.BitsPerSample);
     Console.WriteLine($"wav   : {outWav}");
     Console.WriteLine($"audio : {seconds:F2}s @ {result.SampleRate}Hz  rms={rms:F4}  peak={peak}");
+    ReportSkipped(phrased);
+    ReportApproximations(phrased);
 
     // Silence or a handful of samples means the tokenisation was wrong, not that
     // the voice is quiet — fail rather than report a green that is not one.
