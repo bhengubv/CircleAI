@@ -46,10 +46,11 @@ repository; the repository is open source.)
 | yue (Cantonese) | csukuangfj/vits-cantonese-hf-xiaomaiiwn — no licence declared upstream |
 
 ## Permissive alternatives, if a future use ever needs them
-- 14+ African languages have CC-BY-SA VITS builds at `multilingual-tts/*-OpenBible-*`
-  (Hausa, Swahili, Yoruba, Luganda, Kikuyu, Chichewa, Shona, Oromo, Ewe, Twi,
-  Ndebele, Lingala, Igbo). They ship as .pth and need ONNX export; register is
-  liturgical (Bible readings).
+- 14+ African languages have CC-BY-SA VITS builds published at
+  `multilingual-tts/*-OpenBible-*` (Hausa, Swahili, Yoruba, Luganda, Kikuyu,
+  Chichewa, Shona, Oromo, Ewe, Twi, Ndebele, Lingala, Igbo). They ship as .pth,
+  so using them means exporting the published checkpoint to ONNX — the same step
+  already done for Igbo, Lingala and Nepali. Register is liturgical.
 - Hindi: Kokoro (Apache-2.0) replaces the NC pratham voice once the Kokoro
   Android path is wired.
 
@@ -89,7 +90,8 @@ Known limitations, recorded rather than left to be found:
   is 2.3 GB of OmniVoice weights, and kimbolingo/arabic-piper-tts is the right
   format and size but declares no licence at all. MSA is the written register;
   comprehension of it tracks schooling, which is backwards for this project's
-  users. Egyptian Arabic is the highest-value training job available.
+  users. No Egyptian dialect model exists that is both licensed and phone-sized,
+  so Arabic stays MSA-only until one is published.
 - Guarani approximates g-tilde; Kanuri's vocabulary lacks 'z'.
 
 ## Blocked
@@ -100,4 +102,12 @@ Known limitations, recorded rather than left to be found:
 - **Pashto, Wolof, Tshiluba, Kikongo** — no model anywhere. Not in Meta's full
   1,140-model MMS set, not in OpenBible, nothing phone-sized and licensed on
   HuggingFace. Wolof exists (galsenai/wolof-tts) but is 1.67 GB of Parler-TTS
-  weights with no declared licence. These four need training from corpus data.
+  weights with no declared licence. Nothing usable exists for these four yet.
+
+## How voices get here
+CircleAI **hunts and reuses**. Every voice above is someone else's published
+model, sourced and made to run on the phone. Where a checkpoint ships as .pth we
+export it to ONNX; where a script needs transliteration or a lexicon we write
+that in C#. We do not train or fine-tune models — when nothing usable is
+published for a language, it is simply not available yet, and it stays on the
+list until someone publishes one.
