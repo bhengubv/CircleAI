@@ -362,7 +362,13 @@ public static class ItTtsProbe
         }
         catch (Exception ex)
         {
-            return $"sideloaded voice '{voice}' FAILED on device after {sw.Elapsed:mm\\:ss}:\n{ex}\n";
+            // Concise on screen; the full exception goes to a file beside the
+            // voice. Dumping it verbatim fills a phone screen with runtime frames
+            // and reads like a crash even when the failure was handled cleanly.
+            DeviceDiagnostics.WriteDetail(
+                Path.GetDirectoryName(modelOnnxPath)!, $"sideloaded voice '{voice}'", ex);
+            return $"sideloaded voice '{voice}' FAILED on device after {sw.Elapsed:mm\\:ss}\n"
+                 + DeviceDiagnostics.Summarise(ex);
         }
     }
 

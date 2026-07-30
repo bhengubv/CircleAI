@@ -284,6 +284,32 @@ public class MainActivity : Activity
         // focus the taps went into a DIFFERENT app entirely and opened its country
         // picker, while the sweep reported progress. An explicit trigger cannot
         // land in the wrong place.
+        // If the last run left a breadcrumb, it died without running a single
+        // handler — a stack overflow, an OOM kill, or a native crash. That is the
+        // only evidence such a death leaves, so say it plainly on the way back up.
+        try
+        {
+            var ext = GetExternalFilesDir(null)?.AbsolutePath;
+            if (!string.IsNullOrEmpty(ext))
+            {
+                var stateDir = System.IO.Path.Combine(ext, "vut");
+
+                // Every diagnostic lands here, wherever the failing asset lives.
+                CircleAI.Samples.It.DeviceDiagnostics.DiagnosticsDirectory = stateDir;
+
+                var died = CircleAI.Samples.It.DeviceDiagnostics.PreviousCrash(stateDir);
+                if (died is not null)
+                {
+                    Append($"\n⚠ THE PREVIOUS RUN DIED — no handler ran.\n" +
+                           $"  it was in: {died}\n" +
+                           $"  that means a stack overflow, an out-of-memory kill, or a native crash;\n" +
+                           $"  none of those are catchable, so this note is the only record.\n\n");
+                    CircleAI.Samples.It.DeviceDiagnostics.EndRisky(stateDir);
+                }
+            }
+        }
+        catch { /* a diagnostic must never be the reason startup fails */ }
+
 #if IT_VOICE_ANDROID
         if (Intent?.GetBooleanExtra("run_tts", false) == true) RunTts();
 #endif
@@ -830,7 +856,23 @@ public class MainActivity : Activity
                 continue;
             }
 
+            // Refuse input too large to synthesise safely rather than discovering
+            // the limit as a crash. Unbounded input is how a phone dies without a
+            // catchable exception.
+            if (CircleAI.Samples.It.DeviceDiagnostics.TooLargeToSynthesise(phrase, out var why))
+            {
+                Append($"\n▶ {code} — REFUSED: {why}\n");
+                log.Append($"--- {code} --- refused: {why}\n");
+                continue;
+            }
+
             Append($"\n▶ {code} (langid {langId})\n");
+
+            // A stack overflow, an OOM kill or a native SIGSEGV runs NO handler —
+            // the process is simply gone. Writing down what we are about to attempt
+            // is the only way the next launch can say what killed the last one.
+            var stateDir = System.IO.Path.GetDirectoryName(vut)!;
+            CircleAI.Samples.It.DeviceDiagnostics.BeginRisky(stateDir, $"{code} ({langId}) — {model}");
             try
             {
                 var rep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
@@ -845,10 +887,31 @@ public class MainActivity : Activity
                     spoken++;
                 }
             }
+            catch (OutOfMemoryException ex)
+            {
+                // The likeliest real death on this phone: ~110 MB per voice against
+                // ~1.5 GB free, loaded and released dozens of times. Drop what we
+                // can and keep going — one language must not end the run.
+                Append($"  {code} OUT OF MEMORY — releasing and continuing\n");
+                log.Append($"--- {code} --- OOM\n{ex}\n");
+                CircleAI.Samples.It.DeviceDiagnostics.WriteDetail(
+                    System.IO.Path.GetDirectoryName(vut)!, $"OOM during {code}", ex);
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
             catch (Exception ex)
             {
-                Append($"  {code} FAILED: {ex.Message}\n");
-                log.Append($"--- {code} --- FAILED: {ex}\n");
+                // Concise on screen, complete in a file. Printing the exception
+                // verbatim fills a phone screen with runtime frames and reads like
+                // a crash even when the failure was handled.
+                Append($"  {code} FAILED\n  {CircleAI.Samples.It.DeviceDiagnostics.Summarise(ex)}");
+                log.Append($"--- {code} --- FAILED\n{ex}\n");
+                CircleAI.Samples.It.DeviceDiagnostics.WriteDetail(
+                    System.IO.Path.GetDirectoryName(vut)!, $"failure during {code}", ex);
+            }
+            finally
+            {
+                CircleAI.Samples.It.DeviceDiagnostics.EndRisky(System.IO.Path.GetDirectoryName(vut)!);
             }
         }
 
