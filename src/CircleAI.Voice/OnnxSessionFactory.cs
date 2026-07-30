@@ -79,7 +79,11 @@ public static class OnnxSessionFactory
 
         var optimised = Path.ChangeExtension(modelPath, null) + ".ort.onnx";
 
-        if (File.Exists(optimised) && new FileInfo(optimised).Length > 1024)
+        // Only reuse the optimised copy if it was built from THIS model. Voices are
+        // commonly sideloaded by overwriting one well-known filename, so a cache
+        // keyed on the path alone would serve the previous language's graph — and
+        // it survives app restarts, so the wrong voice would persist silently.
+        if (IsUsableOptimisedCopy(modelPath, optimised))
             return new InferenceSession(optimised, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
 
         var opts = Options(GraphOptimizationLevel.ORT_ENABLE_ALL);
@@ -90,6 +94,41 @@ public static class OnnxSessionFactory
         catch { }
 
         return new InferenceSession(modelPath, opts);
+    }
+
+    /// <summary>
+    /// True when <paramref name="optimised"/> was built from the current
+    /// <paramref name="modelPath"/> — i.e. it exists, is non-trivial, and is not
+    /// older than the model it claims to optimise.
+    /// </summary>
+    private static bool IsUsableOptimisedCopy(string modelPath, string optimised)
+    {
+        if (!File.Exists(optimised)) return false;
+
+        var cache = new FileInfo(optimised);
+        if (cache.Length <= 1024) return false;
+
+        var source = new FileInfo(modelPath);
+        if (!source.Exists) return false;
+
+        // Overwriting the model updates its timestamp; anything not newer than the
+        // model was built from something else.
+        return cache.LastWriteTimeUtc >= source.LastWriteTimeUtc;
+    }
+
+    /// <summary>
+    /// An identity for a model file — path plus size plus last-write time. Callers
+    /// that cache engines must key on THIS, not on the path: sideloading a voice
+    /// usually means overwriting one filename, and a path-only key hands back the
+    /// previous voice.
+    /// </summary>
+    public static string ModelIdentity(string modelPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        var f = new FileInfo(modelPath);
+        return f.Exists
+            ? $"{f.FullName}|{f.Length}|{f.LastWriteTimeUtc.Ticks}"
+            : modelPath;
     }
 
     private static SessionOptions Options(GraphOptimizationLevel level) => new()

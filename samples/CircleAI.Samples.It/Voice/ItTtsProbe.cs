@@ -131,6 +131,16 @@ public static class ItTtsProbe
     /// speaks. Fire-and-forget: a failure here must not break startup, and the
     /// normal path will surface the real error if it recurs.
     /// </remarks>
+    /// <summary>
+    /// Cache key for a ToucanTTS asset directory, including the identity of the
+    /// stage-A file. Assets are sideloaded into a fixed directory, so keying on
+    /// directory+language alone would keep a stale engine after they are replaced.
+    /// </summary>
+    private static string ToucanCacheKey(string assetDir, string language)
+        => OnnxSessionFactory.ModelIdentity(
+               OnnxSessionFactory.PickModelFile(assetDir, "toucan_stage_a"))
+           + "|" + language;
+
     public static void PreloadToucan(string assetDir, string nchltDataDir, string language)
     {
         if (_preload is not null) return;
@@ -139,7 +149,7 @@ public static class ItTtsProbe
             try
             {
                 if (!ToucanLanguageIds.TryGetValue(language, out var langId)) return;
-                var key = assetDir + "|" + language;
+                var key = ToucanCacheKey(assetDir, language);
                 if (_cachedToucan is not null && _cachedToucanKey == key) return;
 
                 var phonemizer = NchltPhonemizer.ForLanguage(nchltDataDir, language);
@@ -168,7 +178,7 @@ public static class ItTtsProbe
             var phones = phonemizer.Phonemize(phrase);
             log?.Invoke($"phones: {string.Join(' ', phones)} ({phones.Count})");
 
-            var key = assetDir + "|" + language;
+            var key = ToucanCacheKey(assetDir, language);
             if (_cachedToucan is null || _cachedToucanKey != key)
             {
                 _cachedToucan?.Dispose();
@@ -258,7 +268,11 @@ public static class ItTtsProbe
             // Cached for the same reason the ToucanTTS engine is: building the
             // session is the expensive part, and rebuilding it per utterance was
             // paying the whole model load every time somebody spoke.
-            var key = modelOnnxPath + "|" + (graphemeVoice ? "text" : voice);
+            // Key on the FILE, not the path. Voices are sideloaded by overwriting
+            // one filename, so a path-only key would keep serving the previous
+            // language's session after the model underneath had been replaced.
+            var key = OnnxSessionFactory.ModelIdentity(modelOnnxPath)
+                      + "|" + (graphemeVoice ? "text" : voice);
             if (_cachedSingle is null || _cachedSingleKey != key)
             {
                 _cachedSingle?.Dispose();
