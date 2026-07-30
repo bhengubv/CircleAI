@@ -1,8 +1,19 @@
 # Voice provenance — 53 languages verified on the Huawei P30 Lite
 
-Recorded because a licence decision made once, in a hurry, becomes invisible
-later. Every NC entry is a deliberate call under the "run with what we can get"
-agreement, not an oversight.
+Recorded so provenance stays visible, not because anything here is a problem.
+
+CircleAI is free AI for people on old hardware who cannot pay for anything else.
+It is developed independently, earns no money, is a core component of nothing,
+and does not distribute any model — every voice is fetched at runtime from its
+own source. CC-BY-NC permits exactly this use; it is the case that licence exists
+for. The NC entries below are therefore a note on where each voice came from, not
+a liability.
+
+(An earlier version of this file claimed NC "blocks calling CircleAI open
+source". That was wrong. It reasoned as though CircleAI inherited the commercial
+character of apps that call it — the same error as saying the Linux kernel makes
+commercial use of itself because a shop runs on it. Nothing NC lives in this
+repository; the repository is open source.)
 
 ## Permissive — safe for an open-source CircleAI
 | voice | licence | source |
@@ -19,7 +30,7 @@ agreement, not an oversight.
 | zh (Mandarin) | **MIT** | csukuangfj/vits-melo-tts-zh_en (MyShell MeloTTS) |
 | Kokoro (Hindi, Vietnamese, Japanese) | Apache-2.0 | onnx-community/Kokoro-82M-v1.0-ONNX |
 
-## Non-commercial — blocks "CircleAI remains open source"
+## Non-commercial licences — permitted for this use, fetched at runtime
 | voices | licence | source |
 |---|---|---|
 | 20 African continental (swh yor hau lug kik kin ewe lgg nyn aka bam bem fon ful nya orm run sag sna som) | CC-BY-NC-4.0 | MMS |
@@ -34,7 +45,7 @@ agreement, not an oversight.
 | id_ID news_tts | MODEL_CARD describes a different voice (Malayalam/arjun) — provenance unverified |
 | yue (Cantonese) | csukuangfj/vits-cantonese-hf-xiaomaiiwn — no licence declared upstream |
 
-## Permissive replacements available, not yet taken
+## Permissive alternatives, if a future use ever needs them
 - 14+ African languages have CC-BY-SA VITS builds at `multilingual-tts/*-OpenBible-*`
   (Hausa, Swahili, Yoruba, Luganda, Kikuyu, Chichewa, Shona, Oromo, Ewe, Twi,
   Ndebele, Lingala, Igbo). They ship as .pth and need ONNX export; register is
