@@ -1,7 +1,6 @@
 {
   "RegistryUrl": "https://modelscope.cn/api/v1/circle-ai/registry.json",
-  "LastUpdated": "2026-06-07T11:27:45.0961085\u002B02:00",
-  "Notes": "Auto-populated by tools/recalibrate-registry-sha \u2014 see ../registry.json header.",
+  "Notes": "Auto-populated by tools/recalibrate-registry-sha — see ../registry.json header.",
   "Models": [
     {
       "Name": "Qwen3-0.6B-MNN",
@@ -14,7 +13,12 @@
       "MemoryHintBytes": 636000000,
       "MinRamGb": 0.6,
       "MinStorageGb": 0.5,
-      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -70,7 +74,12 @@
       "MemoryHintBytes": 1730000000,
       "MinRamGb": 1.7,
       "MinStorageGb": 1.2,
-      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -126,7 +135,12 @@
       "MemoryHintBytes": 3800000000,
       "MinRamGb": 3.6,
       "MinStorageGb": 2.6,
-      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -182,7 +196,12 @@
       "MemoryHintBytes": 7700000000,
       "MinRamGb": 7.2,
       "MinStorageGb": 5.2,
-      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -248,7 +267,12 @@
       "MemoryHintBytes": 13200000000,
       "MinRamGb": 12.3,
       "MinStorageGb": 8.9,
-      "Capabilities": [ "Default", "Tools", "Reasoning", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -313,7 +337,11 @@
       "MemoryHintBytes": 780000000,
       "MinRamGb": 0.8,
       "MinStorageGb": 0.6,
-      "Capabilities": [ "Default", "Tools", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -379,7 +407,11 @@
       "MemoryHintBytes": 1230000000,
       "MinRamGb": 1.2,
       "MinStorageGb": 0.9,
-      "Capabilities": [ "Default", "Tools", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -440,7 +472,11 @@
       "MemoryHintBytes": 3300000000,
       "MinRamGb": 3.1,
       "MinStorageGb": 2.3,
-      "Capabilities": [ "Default", "Tools", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -506,7 +542,11 @@
       "MemoryHintBytes": 7100000000,
       "MinRamGb": 6.7,
       "MinStorageGb": 4.8,
-      "Capabilities": [ "Default", "Tools", "LongContext" ],
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -621,7 +661,10 @@
       "MemoryHintBytes": 4100000000,
       "MinRamGb": 3.9,
       "MinStorageGb": 2.6,
-      "Capabilities": [ "Default", "Vision" ],
+      "Capabilities": [
+        "Default",
+        "Vision"
+      ],
       "BundleFiles": [
         {
           "Name": ".gitattributes",
@@ -697,20 +740,71 @@
       "MemoryHintBytes": 450000000,
       "MinRamGb": 0.5,
       "MinStorageGb": 0.35,
-      "Capabilities": [ "Default", "Vision" ],
+      "Capabilities": [
+        "Default",
+        "Vision"
+      ],
       "BundleFiles": [
-        { "Name": ".gitattributes", "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82", "SizeBytes": 1642 },
-        { "Name": "config.json", "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4", "SizeBytes": 291 },
-        { "Name": "configuration.json", "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2", "SizeBytes": 46 },
-        { "Name": "embeddings_bf16.bin", "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742", "SizeBytes": 56770560 },
-        { "Name": "llm.mnn", "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47", "SizeBytes": 475544 },
-        { "Name": "llm.mnn.json", "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506", "SizeBytes": 999332 },
-        { "Name": "llm.mnn.weight", "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691", "SizeBytes": 150050290 },
-        { "Name": "llm_config.json", "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40", "SizeBytes": 778 },
-        { "Name": "README.md", "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225", "SizeBytes": 1255 },
-        { "Name": "tokenizer.txt", "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95", "SizeBytes": 888755 },
-        { "Name": "visual.mnn", "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37", "SizeBytes": 228200 },
-        { "Name": "visual.mnn.weight", "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06", "SizeBytes": 102015164 }
+        {
+          "Name": ".gitattributes",
+          "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+          "SizeBytes": 1642
+        },
+        {
+          "Name": "config.json",
+          "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4",
+          "SizeBytes": 291
+        },
+        {
+          "Name": "configuration.json",
+          "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+          "SizeBytes": 46
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742",
+          "SizeBytes": 56770560
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47",
+          "SizeBytes": 475544
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506",
+          "SizeBytes": 999332
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691",
+          "SizeBytes": 150050290
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40",
+          "SizeBytes": 778
+        },
+        {
+          "Name": "README.md",
+          "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225",
+          "SizeBytes": 1255
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95",
+          "SizeBytes": 888755
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37",
+          "SizeBytes": 228200
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06",
+          "SizeBytes": 102015164
+        }
       ]
     },
     {
@@ -738,6 +832,1587 @@
           "Name": "en/en_US/lessac/high/en_US-lessac-high.onnx.json",
           "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f",
           "SizeBytes": 4883
+        }
+      ]
+    },
+    {
+      "Name": "MMS-aka",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ak",
+      "Architecture": "vits",
+      "TotalBytes": 114011066,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "aka/model.onnx",
+          "Sha256": "f2794ba3bd6ea7d89148562fb111d0341a0584d3da72047e8eb91832963f2fdc",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "aka/tokens.txt",
+          "Sha256": "e45ba292dd337d7dd2a83bd81aed813c706412d6e6887c91329d943e02abd300",
+          "SizeBytes": 258
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ara",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ar",
+      "Architecture": "vits",
+      "TotalBytes": 114017943,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ara/model.onnx",
+          "Sha256": "17b82dca9a87ba590c4b24701cb16c4f465972d3f02f309ed4ef1bfb8e8dca40",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "ara/tokens.txt",
+          "Sha256": "410e2609def202a337fb77e0ab50e866c77c0bdaf9d1cd748968fe4aa8b32eff",
+          "SizeBytes": 223
+        }
+      ]
+    },
+    {
+      "Name": "MMS-bam",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "bm",
+      "Architecture": "vits",
+      "TotalBytes": 114015732,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "bam/model.onnx",
+          "Sha256": "22309af4670d326196c3552cae33dcc9e77caa8737272b5930915c2cf0ad17be",
+          "SizeBytes": 114015416
+        },
+        {
+          "Name": "bam/tokens.txt",
+          "Sha256": "1aac384d1a5f612b7c123066cb736bf661ae4a304a62667ca24af005cd36e962",
+          "SizeBytes": 316
+        }
+      ]
+    },
+    {
+      "Name": "MMS-bem",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "bem",
+      "Architecture": "vits",
+      "TotalBytes": 114013412,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "bem/model.onnx",
+          "Sha256": "7bc37346a57008fe8b85ebd4e00199e54d728e6429c75c514e3b9d965b88ef40",
+          "SizeBytes": 114013112
+        },
+        {
+          "Name": "bem/tokens.txt",
+          "Sha256": "3bd05cc9fb0fedaa994ada8d0e6a361b5bb0f01b9c4023800fb4b95b4faaa81e",
+          "SizeBytes": 300
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ewe",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ee",
+      "Architecture": "vits",
+      "TotalBytes": 114027439,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ewe/model.onnx",
+          "Sha256": "e9baf897e7efd5619278173a8887b82ebeae3315b245956c14fda7e0ca0af600",
+          "SizeBytes": 114026936
+        },
+        {
+          "Name": "ewe/tokens.txt",
+          "Sha256": "4991afa36af2598579b09c25cad441eea04d78a0dea47fd1f560b9cdf2687cdf",
+          "SizeBytes": 503
+        }
+      ]
+    },
+    {
+      "Name": "MMS-fas",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "fa",
+      "Architecture": "vits",
+      "TotalBytes": 114021810,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "fas/model.onnx",
+          "Sha256": "35104189f5d0ad1d629c6688df2cfb3805579dc6809e8cc1698edf206320197c",
+          "SizeBytes": 114021560
+        },
+        {
+          "Name": "fas/tokens.txt",
+          "Sha256": "3de1b505f31f18b107f08523b3d5c9ffb8db70c798c7c9d4b437762784640f98",
+          "SizeBytes": 250
+        }
+      ]
+    },
+    {
+      "Name": "MMS-fon",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "fon",
+      "Architecture": "vits",
+      "TotalBytes": 114023543,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "fon/model.onnx",
+          "Sha256": "df3c906e14d3d205bf2f90b16885bc0105924cc5ca75c10acfe792606f118898",
+          "SizeBytes": 114023096
+        },
+        {
+          "Name": "fon/tokens.txt",
+          "Sha256": "642ce204be8f71d47d6afb3aa7335cbaf0730a8891a670e2144f946558474c33",
+          "SizeBytes": 447
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ful",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ff",
+      "Architecture": "vits",
+      "TotalBytes": 114019584,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ful/model.onnx",
+          "Sha256": "22ed9e41b444c1ebc489a2aaefa1022365e018bd2669c8b300ffb10fc8c6a750",
+          "SizeBytes": 114019256
+        },
+        {
+          "Name": "ful/tokens.txt",
+          "Sha256": "b34fca4aa77eee1b64b709eed4b83252dc25ea9132fea1b1d6e938d6bf1d753e",
+          "SizeBytes": 328
+        }
+      ]
+    },
+    {
+      "Name": "MMS-grn",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "gn",
+      "Architecture": "vits",
+      "TotalBytes": 114028942,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "grn/model.onnx",
+          "Sha256": "d25dba2dbb0cf23f6af37b69d1bd38e4227168c271faeb5596a69ab538d46b56",
+          "SizeBytes": 114028472
+        },
+        {
+          "Name": "grn/tokens.txt",
+          "Sha256": "3a82f4a962da76b81e91428205d8b98a423b96a21960006c5794cef8d22cff97",
+          "SizeBytes": 470
+        }
+      ]
+    },
+    {
+      "Name": "MMS-guj",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "gu",
+      "Architecture": "vits",
+      "TotalBytes": 114034250,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "guj/model.onnx",
+          "Sha256": "59f073b2e63771dd7d7972c17577e05a903ae6f4aa8c65a6dc1d9eb1a9812ed2",
+          "SizeBytes": 114033848
+        },
+        {
+          "Name": "guj/tokens.txt",
+          "Sha256": "2d855f2affb7586cc6be095a4382eb0bee2a22242deda32c86aab6b1a810d8c4",
+          "SizeBytes": 402
+        }
+      ]
+    },
+    {
+      "Name": "MMS-hat",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ht",
+      "Architecture": "vits",
+      "TotalBytes": 114012628,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "hat/model.onnx",
+          "Sha256": "347006bc40b8d5430e99fd8084fa054ae936ad616c4a95b3cf3e99f511fae06c",
+          "SizeBytes": 114012344
+        },
+        {
+          "Name": "hat/tokens.txt",
+          "Sha256": "79e3717b32acb413d43cd28aa801222409fb3701f9515ff54eb7332372b1194c",
+          "SizeBytes": 284
+        }
+      ]
+    },
+    {
+      "Name": "MMS-hau",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ha",
+      "Architecture": "vits",
+      "TotalBytes": 114014184,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "hau/model.onnx",
+          "Sha256": "24e0f5b88b35e36975ed3b69c065e571e51fdf612c72a26bc5048bfecc1d532c",
+          "SizeBytes": 114013880
+        },
+        {
+          "Name": "hau/tokens.txt",
+          "Sha256": "78b39313ddfc60be59cc12a957f11bf0f5dd4d1cdd3d5c16fe0bf3fae165d0c9",
+          "SizeBytes": 304
+        }
+      ]
+    },
+    {
+      "Name": "MMS-jav",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "jv",
+      "Architecture": "vits",
+      "TotalBytes": 114007962,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "jav/model.onnx",
+          "Sha256": "124f4e4ffda0fa0696d0128a95757d6293e69133d6d5fae2f68a2cb59afd9423",
+          "SizeBytes": 114007736
+        },
+        {
+          "Name": "jav/tokens.txt",
+          "Sha256": "bb92676f9376fbb68d9b686e77cacfd060199608b6f0e056fac964353c743184",
+          "SizeBytes": 226
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kan",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "kn",
+      "Architecture": "vits",
+      "TotalBytes": 114045855,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "kan/model.onnx",
+          "Sha256": "8b6f313ebfdf423991ab6444a4520a72cc506a5b262a5d0c0c467ed7d8555834",
+          "SizeBytes": 114045368
+        },
+        {
+          "Name": "kan/tokens.txt",
+          "Sha256": "a4a44037f7492c9e5b69a4483250e54af9a2d528bd4e19de95a21ff0c5e82a8a",
+          "SizeBytes": 487
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kby",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "kr",
+      "Architecture": "vits",
+      "TotalBytes": 114011062,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "kby/model.onnx",
+          "Sha256": "846e3090b7242a6a31b790f11bc59dcfc2452e9f8370d93de0bd82c90bf9a629",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "kby/tokens.txt",
+          "Sha256": "29f9b048000ff445f79ff350b107ada9f342a4144994feb313458c1c50eb4931",
+          "SizeBytes": 254
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kik",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ki",
+      "Architecture": "vits",
+      "TotalBytes": 114016492,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "kik/model.onnx",
+          "Sha256": "d146e40d1e14e8271df3b3be13d0d1136a999169c72c251338133e48094c9106",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "kik/tokens.txt",
+          "Sha256": "333d41d3ad489a23fc7826f71262c1ded4a07c4fb68ebf15e151e99907e89ff2",
+          "SizeBytes": 308
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kin",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "rw",
+      "Architecture": "vits",
+      "TotalBytes": 114021916,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "kin/model.onnx",
+          "Sha256": "c007efdbfa24ee8e97c83aa7cf4449dd88f7c26f411f63d7d80b14153f71ccfd",
+          "SizeBytes": 114021560
+        },
+        {
+          "Name": "kin/tokens.txt",
+          "Sha256": "2ab58191eec47a2cf944503c11ce307a05b13bc9e908a3c29c1e06d2881b4ee4",
+          "SizeBytes": 356
+        }
+      ]
+    },
+    {
+      "Name": "MMS-lgg",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "lgg",
+      "Architecture": "vits",
+      "TotalBytes": 114014157,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "lgg/model.onnx",
+          "Sha256": "2508724808353de5ee60ec9e4a8a4b6d2742149bf8abee8a9335c1c44cecf131",
+          "SizeBytes": 114013880
+        },
+        {
+          "Name": "lgg/tokens.txt",
+          "Sha256": "1a38e4ed80aa5539c2f32fd9ea8581e6b54f467d01b7859c71d094bf31ae0c2b",
+          "SizeBytes": 277
+        }
+      ]
+    },
+    {
+      "Name": "MMS-lug",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "lg",
+      "Architecture": "vits",
+      "TotalBytes": 114011066,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "lug/model.onnx",
+          "Sha256": "0d5bb8a21a1046029701c818a7037c3b3cd11d0f0e7f36c69bc7e3d9fb68be93",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "lug/tokens.txt",
+          "Sha256": "5a6a6c8aa49c1c44811a8aa5041cb8728b0d219024fee3901cb982b025538adf",
+          "SizeBytes": 258
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mal",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ml",
+      "Architecture": "vits",
+      "TotalBytes": 114052851,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mal/model.onnx",
+          "Sha256": "13965d4eeed2f5198c53689e192ce7095e167fb11dd0e72ae5cd8a3bf117374b",
+          "SizeBytes": 114052280
+        },
+        {
+          "Name": "mal/tokens.txt",
+          "Sha256": "3a752c36593cc519193c8caa6c00371369b423366fa6ead8d91945a28b2c46a3",
+          "SizeBytes": 571
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mar",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "mr",
+      "Architecture": "vits",
+      "TotalBytes": 114044322,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mar/model.onnx",
+          "Sha256": "03021bb722e8a19a44be6bb327a441c4061a0c75cbd565f3455e64c84713f03a",
+          "SizeBytes": 114043832
+        },
+        {
+          "Name": "mar/tokens.txt",
+          "Sha256": "4d968029d0754b41633cb0871cce6796a5ab3d3bc2b9b91c5721cfdf85156083",
+          "SizeBytes": 490
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mlg",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "mg",
+      "Architecture": "vits",
+      "TotalBytes": 114011081,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mlg/model.onnx",
+          "Sha256": "b1e0d538bd71f66c96a8b62ec879ec96ec3d620fa551f01c15f926749df3c3ce",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "mlg/tokens.txt",
+          "Sha256": "3820c57711dd3efd606524206de79451726b39e7c643179960e13d926c873321",
+          "SizeBytes": 273
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mos",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "mos",
+      "Architecture": "vits",
+      "TotalBytes": 114014969,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mos/model.onnx",
+          "Sha256": "432e029d1c5481aaa39897d81d678aca6763d3be0bcc09d3f375653e8dcb413d",
+          "SizeBytes": 114014648
+        },
+        {
+          "Name": "mos/tokens.txt",
+          "Sha256": "785218808f07e80b9007543b261c207d49ba0875bb1f95abd3c6d99f638eaf0e",
+          "SizeBytes": 321
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mya",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "my",
+      "Architecture": "vits",
+      "TotalBytes": 114031929,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mya/model.onnx",
+          "Sha256": "9cc2be621aa70461da190cf9a050e8194a46257012ef7c421ae67d57742fb519",
+          "SizeBytes": 114031544
+        },
+        {
+          "Name": "mya/tokens.txt",
+          "Sha256": "cd0a6ecfb0c91dde4d8ced1a6f8d18a7bc48086a438a179ae00230b86d5e76e3",
+          "SizeBytes": 385
+        }
+      ]
+    },
+    {
+      "Name": "MMS-nya",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ny",
+      "Architecture": "vits",
+      "TotalBytes": 114018023,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "nya/model.onnx",
+          "Sha256": "4f4e105e47f4edb3c341a1a5396be481040ac007cd6003770ecc4ecc931205cf",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "nya/tokens.txt",
+          "Sha256": "e6868455fdd5ee56329d9a51512f7a0902911cc36ecdcd6cf5c05498563b7e2c",
+          "SizeBytes": 303
+        }
+      ]
+    },
+    {
+      "Name": "MMS-nyn",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "nyn",
+      "Architecture": "vits",
+      "TotalBytes": 114009513,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "nyn/model.onnx",
+          "Sha256": "7736f62d564338491b30a482bf230657ebb8815b9f8670282811efba11058231",
+          "SizeBytes": 114009272
+        },
+        {
+          "Name": "nyn/tokens.txt",
+          "Sha256": "09a616648d5c62c5436013599c2620a64339e8c7d3765720f00c7273fb3034ec",
+          "SizeBytes": 241
+        }
+      ]
+    },
+    {
+      "Name": "MMS-orm",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "om",
+      "Architecture": "vits",
+      "TotalBytes": 114010292,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "orm/model.onnx",
+          "Sha256": "a7ef1b425a99cc647b1a2ef2634936372e8d04026a4ef1b47bcd667c5b882a2b",
+          "SizeBytes": 114010040
+        },
+        {
+          "Name": "orm/tokens.txt",
+          "Sha256": "46e28b6027703c5c408615085599063f334236984519c299ea387716e458a4e1",
+          "SizeBytes": 252
+        }
+      ]
+    },
+    {
+      "Name": "MMS-pan",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "pa",
+      "Architecture": "vits",
+      "TotalBytes": 114033477,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "pan/model.onnx",
+          "Sha256": "670104b5e7ea4b6505442304c3f3d5a4422b1d0edba8110e00c3fc1af6572860",
+          "SizeBytes": 114033080
+        },
+        {
+          "Name": "pan/tokens.txt",
+          "Sha256": "91344d6f3d6287e8adc71e66c7e9ca83f5f6e9a7d0c24f043a219773d9dec163",
+          "SizeBytes": 397
+        }
+      ]
+    },
+    {
+      "Name": "MMS-quy",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "qu",
+      "Architecture": "vits",
+      "TotalBytes": 114015751,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "quy/model.onnx",
+          "Sha256": "a1e7c4194ea2a8d13bd6d627d47469e8681eb937e1380dd66335003b1346f6b6",
+          "SizeBytes": 114015416
+        },
+        {
+          "Name": "quy/tokens.txt",
+          "Sha256": "91d2d9049dc739ea4094ff7aa9067f9d152dbb5ef99372795fde841c35dab896",
+          "SizeBytes": 335
+        }
+      ]
+    },
+    {
+      "Name": "MMS-run",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "rn",
+      "Architecture": "vits",
+      "TotalBytes": 114010288,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "run/model.onnx",
+          "Sha256": "de9edce91f75744aaa8ca3db6c6d95c80510ccd4c3028b69d32a5b62f7bddf7d",
+          "SizeBytes": 114010040
+        },
+        {
+          "Name": "run/tokens.txt",
+          "Sha256": "f8aef360a3fcd3b367721d8a1ad571ada76818d075dda2015302ac06609ae4ba",
+          "SizeBytes": 248
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sag",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "sg",
+      "Architecture": "vits",
+      "TotalBytes": 114018864,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "sag/model.onnx",
+          "Sha256": "2340006ebee959f12783b42d66637e790516f7b4c428ddcca89976d0fecebf80",
+          "SizeBytes": 114018488
+        },
+        {
+          "Name": "sag/tokens.txt",
+          "Sha256": "79a6e4e39028178cfb281d4ef846ef56ee63902fae46f27d4acd6538e437eab4",
+          "SizeBytes": 376
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sna",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "sn",
+      "Architecture": "vits",
+      "TotalBytes": 114013384,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "sna/model.onnx",
+          "Sha256": "5fb5767d4c8ee2bd89f3add7e80a7188432c98e385a7ea254e6d9e5de22d9f65",
+          "SizeBytes": 114013112
+        },
+        {
+          "Name": "sna/tokens.txt",
+          "Sha256": "98391f18dc3ba8db4876b75abe253a0053d49c02b85c4295f1db8c6af646f443",
+          "SizeBytes": 272
+        }
+      ]
+    },
+    {
+      "Name": "MMS-som",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "so",
+      "Architecture": "vits",
+      "TotalBytes": 114008736,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "som/model.onnx",
+          "Sha256": "fdf0e803ca83a3f76920f792cfece40ff28612db3043efe330cbccdc3cf24789",
+          "SizeBytes": 114008504
+        },
+        {
+          "Name": "som/tokens.txt",
+          "Sha256": "7735b35bace882ce0116589b5243f4072d7ff26f76903353bf879e3501c9b088",
+          "SizeBytes": 232
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sun",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "su",
+      "Architecture": "vits",
+      "TotalBytes": 114016465,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "sun/model.onnx",
+          "Sha256": "0a6a0ab428d4ee117ac98c88ece778fd04231c7242c6f0e0b3343a31eb78b18a",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "sun/tokens.txt",
+          "Sha256": "b0803ad9a381188f7ecb9fcb6b677596b42550ef084d8533ae5540f546e8dde4",
+          "SizeBytes": 281
+        }
+      ]
+    },
+    {
+      "Name": "MMS-swh",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "sw",
+      "Architecture": "vits",
+      "TotalBytes": 114018024,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "swh/model.onnx",
+          "Sha256": "2b156adeaec2bdafdf6e685ba40f78b5b5993d26c071de11e640fc85882ad269",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "swh/tokens.txt",
+          "Sha256": "783097de87c5fbd965298ffd8733986d6f4d2e7d14749965a2836f96f198a293",
+          "SizeBytes": 304
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tam",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ta",
+      "Architecture": "vits",
+      "TotalBytes": 114032687,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "tam/model.onnx",
+          "Sha256": "c86cf0a0657d57577d937b806d7b63d638cff522b5687cb650dde24bc71c5c88",
+          "SizeBytes": 114032312
+        },
+        {
+          "Name": "tam/tokens.txt",
+          "Sha256": "0b3f692319bb5fae8658e2f84bf252bca92450d0207bbba7273caa1a182d81b8",
+          "SizeBytes": 375
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tel",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "te",
+      "Architecture": "vits",
+      "TotalBytes": 114038123,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "tel/model.onnx",
+          "Sha256": "e82525ab1e662ba96ef81346ff1943c5bb731853c1f96d02fbff2e7a0284824c",
+          "SizeBytes": 114037688
+        },
+        {
+          "Name": "tel/tokens.txt",
+          "Sha256": "528152cb4121272e6e71f7a1d91c8d4922b92fae414ae599db608cb92a738bb7",
+          "SizeBytes": 435
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tgl",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "tl",
+      "Architecture": "vits",
+      "TotalBytes": 114021129,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "tgl/model.onnx",
+          "Sha256": "1217c7026d1c433a72976c6452967558722629ab8180f28005be59e15154ee62",
+          "SizeBytes": 114020792
+        },
+        {
+          "Name": "tgl/tokens.txt",
+          "Sha256": "5f4883ec7ba2128b7467cda01aa875d02bee8d600dc5822843216d8a14224ab0",
+          "SizeBytes": 337
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tha",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "th",
+      "Architecture": "vits",
+      "TotalBytes": 114042769,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "tha/model.onnx",
+          "Sha256": "0231a4919672699a75c862646236086519a2b7ed350f79212c69d816179aabb2",
+          "SizeBytes": 114042296
+        },
+        {
+          "Name": "tha/tokens.txt",
+          "Sha256": "7e1f455df08c2bed0583f91b91921d6fc4d149bc232511a0ae11041cf489d798",
+          "SizeBytes": 473
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tpi",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "tpi",
+      "Architecture": "vits",
+      "TotalBytes": 114016468,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "tpi/model.onnx",
+          "Sha256": "b9fd8fb1ccbddb8803b674b6cad416a1c538cb15a1555bd7522ada50ecc0af61",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "tpi/tokens.txt",
+          "Sha256": "b8b5e19bcd0ecb08559454283b5fad293666b92620698b0c001f3e8cf888e56f",
+          "SizeBytes": 284
+        }
+      ]
+    },
+    {
+      "Name": "MMS-vie",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "vi",
+      "Architecture": "vits",
+      "TotalBytes": 114061854,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vie/model.onnx",
+          "Sha256": "df38476c7d0afaa05167e096b2a09b2c2e804c839e30de7dc602e5eb27d2f19f",
+          "SizeBytes": 114060728
+        },
+        {
+          "Name": "vie/tokens.txt",
+          "Sha256": "8a57eabd6f4c64caf8682f3464c44a07a5ca13bd68eb57e54f6c48d8ad89deb4",
+          "SizeBytes": 1126
+        }
+      ]
+    },
+    {
+      "Name": "MMS-yor",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "willwade/mms-tts-multilingual-models-onnx",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "yo",
+      "Architecture": "vits",
+      "TotalBytes": 114021208,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "yor/model.onnx",
+          "Sha256": "3443efa50b32b5629448fde59b707fdc3e2e361f6b4e6211de7352cf3607143e",
+          "SizeBytes": 114020792
+        },
+        {
+          "Name": "yor/tokens.txt",
+          "Sha256": "3fca3219266d24915a05e358f16fc57e7f748150cf25d1ffe5b8b6e530f915f0",
+          "SizeBytes": 416
+        }
+      ]
+    },
+    {
+      "Name": "Melo-zh",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "csukuangfj/vits-melo-tts-zh_en",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "zh",
+      "Architecture": "vits",
+      "TotalBytes": 177267876,
+      "MinRamGb": 0.36,
+      "MinStorageGb": 0.215,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "model.onnx",
+          "Sha256": "bf30582eb1b012250a35b1a4a80e7dfbcf8485e7bb9de0d95efbbeef0e4ad86d",
+          "SizeBytes": 170429550
+        },
+        {
+          "Name": "lexicon.txt",
+          "Sha256": "7236884b02435ac5d10cf69b4be40a61b45aa676b5300f0e412f185748fee528",
+          "SizeBytes": 6837671
+        },
+        {
+          "Name": "tokens.txt",
+          "Sha256": "d18664a7e12bd7ea1022ddaf951e534e136815016c5a809d6b64156bffb4369d",
+          "SizeBytes": 655
+        }
+      ]
+    },
+    {
+      "Name": "Piper-bn_BD",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "bn",
+      "Architecture": "vits",
+      "TotalBytes": 76788009,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.093,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "bn/bn_BD/google/medium/bn_BD-google-medium.onnx",
+          "Sha256": "f2e7518ed5534a755024a48c71b80bf617efaf12570bbdf3ce255a9526a8afd3",
+          "SizeBytes": 76782515
+        },
+        {
+          "Name": "bn/bn_BD/google/medium/bn_BD-google-medium.onnx.json",
+          "Sha256": "bc7e5e39e2a874bdad186620576ce18089b5a06c5645e258bcea3d56fdb11c0a",
+          "SizeBytes": 5494
+        }
+      ]
+    },
+    {
+      "Name": "Piper-si_LK",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "chan4lk/piper-tts-sinhala",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "si",
+      "Architecture": "vits",
+      "TotalBytes": 63520919,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "si_LK-sinhala-medium.onnx",
+          "Sha256": "64265b84e6ea227070b0eed61838dd03463a17cf0c34a2cc64297cdbbee9b5d3",
+          "SizeBytes": 63516050
+        },
+        {
+          "Name": "si_LK-sinhala-medium.onnx.json",
+          "Sha256": "ab55a924395e70c73819d20ea620860a08821a6f1776ccfbac4bbf9f42074598",
+          "SizeBytes": 4869
+        }
+      ]
+    },
+    {
+      "Name": "VITS-jp",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "csukuangfj/vits-hf-zh-jp-zomehwh",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ja",
+      "Architecture": "vits",
+      "TotalBytes": 122682113,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.149,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-hf-zh-jp-zomehwh.onnx",
+          "Sha256": "227f68cec4ee79e80845b2f7bbb9f9f654b95cab1d69be54e78af46c33e07935",
+          "SizeBytes": 121899993
+        },
+        {
+          "Name": "lexicon.txt",
+          "Sha256": "aa22a421a2caaf32809bba165fb38814199b96ab48ad55f6696db6dc22a1fecf",
+          "SizeBytes": 781852
+        },
+        {
+          "Name": "tokens.txt",
+          "Sha256": "ca85bcef54e1cb549875df82f2e9f23259abf1c52a34e79c2bccba2511ef47d1",
+          "SizeBytes": 268
+        }
+      ]
+    },
+    {
+      "Name": "VITS-yue",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "csukuangfj/vits-cantonese-hf-xiaomaiiwn",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "yue",
+      "Architecture": "vits",
+      "TotalBytes": 114354545,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-cantonese-hf-xiaomaiiwn.onnx",
+          "Sha256": "7d8d4f5550b607999417a99131b034c8cc2b8dca69f9e9fdefeff6655643c139",
+          "SizeBytes": 114059955
+        },
+        {
+          "Name": "lexicon.txt",
+          "Sha256": "337845cd7ea6221e69684329beda84198dc8678699a4936670a08a9449c84acb",
+          "SizeBytes": 294061
+        },
+        {
+          "Name": "tokens.txt",
+          "Sha256": "e6c853092480206c9611101c1eb82d930f07d79e1d399bf9ca5b6acfaf443af3",
+          "SizeBytes": 529
+        }
+      ]
+    },
+    {
+      "Name": "Piper-es_ES",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "es",
+      "Architecture": "vits",
+      "TotalBytes": 63206111,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx",
+          "Sha256": "6658b03b1a6c316ee4c265a9896abc1393353c2d9e1bca7d66c2c442e222a917",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json",
+          "Sha256": "0e0dda87c732f6f38771ff274a6380d9252f327dca77aa2963d5fbdf9ec54842",
+          "SizeBytes": 4817
+        }
+      ]
+    },
+    {
+      "Name": "Piper-es_MX",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "es",
+      "Architecture": "vits",
+      "TotalBytes": 63127272,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.076,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "es/es_MX/claude/high/es_MX-claude-high.onnx",
+          "Sha256": "3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0",
+          "SizeBytes": 63122309
+        },
+        {
+          "Name": "es/es_MX/claude/high/es_MX-claude-high.onnx.json",
+          "Sha256": "1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d",
+          "SizeBytes": 4963
+        }
+      ]
+    },
+    {
+      "Name": "Piper-fr_FR",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "fr",
+      "Architecture": "vits",
+      "TotalBytes": 63206169,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx",
+          "Sha256": "641d1ab097da2b81128c076810edb052b385decc8be3381814802a64a73baf99",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json",
+          "Sha256": "39479916c2db192b5ac9764daddd0c744d83e023ad890c6976c0633ae4df8959",
+          "SizeBytes": 4875
+        }
+      ]
+    },
+    {
+      "Name": "Piper-hi_IN",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "hi",
+      "Architecture": "vits",
+      "TotalBytes": 63521020,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx",
+          "Sha256": "169964b0871667f6793416d4b35e97357a68ba1ad01df8580c28048989ee7693",
+          "SizeBytes": 63516050
+        },
+        {
+          "Name": "hi/hi_IN/pratham/medium/hi_IN-pratham-medium.onnx.json",
+          "Sha256": "b68edd2cd7950dd436314013b7cd12e9699e5a3f6fe5af5af94294cf6aa7b9fd",
+          "SizeBytes": 4970
+        }
+      ]
+    },
+    {
+      "Name": "Piper-id_ID",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "id",
+      "Architecture": "vits",
+      "TotalBytes": 62955094,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.076,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "id/id_ID/news_tts/medium/id_ID-news_tts-medium.onnx",
+          "Sha256": "ed8f02aa593f7af6b19acbdb8142e0da0dd72f46194eb33d38e0eb10a52597e8",
+          "SizeBytes": 62950044
+        },
+        {
+          "Name": "id/id_ID/news_tts/medium/id_ID-news_tts-medium.onnx.json",
+          "Sha256": "1ef677072668a5e172e0759b1d3871f129009d1167f093325a17607f7add5ad7",
+          "SizeBytes": 5050
+        }
+      ]
+    },
+    {
+      "Name": "Piper-nl_BE",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "nl",
+      "Architecture": "vits",
+      "TotalBytes": 63206173,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "nl/nl_BE/nathalie/medium/nl_BE-nathalie-medium.onnx",
+          "Sha256": "49cf48023861f9fd42e13a8632f068fee67d1ce244a6ee38f29595afbf0a6be4",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "nl/nl_BE/nathalie/medium/nl_BE-nathalie-medium.onnx.json",
+          "Sha256": "4704af2736022e910a3f32672480d5530dd39da5c2bcc079f315f604166ff0de",
+          "SizeBytes": 4879
+        }
+      ]
+    },
+    {
+      "Name": "Piper-nl_NL",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "nl",
+      "Architecture": "vits",
+      "TotalBytes": 63536441,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "nl/nl_NL/alex/medium/nl_NL-alex-medium.onnx",
+          "Sha256": "22f0497c4d895a09fbc6a469459aa8954ea0955d3c6e19dbcc2e23acbb93e30b",
+          "SizeBytes": 63531476
+        },
+        {
+          "Name": "nl/nl_NL/alex/medium/nl_NL-alex-medium.onnx.json",
+          "Sha256": "9ea643871742c038511b6aaf20e6fc098a78a11968122d2f6ca3e50403423f95",
+          "SizeBytes": 4965
+        }
+      ]
+    },
+    {
+      "Name": "Piper-pt_BR",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "pt",
+      "Architecture": "vits",
+      "TotalBytes": 63206149,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx",
+          "Sha256": "858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json",
+          "Sha256": "7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f",
+          "SizeBytes": 4855
+        }
+      ]
+    },
+    {
+      "Name": "Piper-pt_PT",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "pt",
+      "Architecture": "vits",
+      "TotalBytes": 63206320,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx",
+          "Sha256": "223a7aaca69a155c61897e8ada7c3b13bc306e16c72dbb9c2fed733e2b0927d4",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "pt/pt_PT/tugão/medium/pt_PT-tugão-medium.onnx.json",
+          "Sha256": "fe0918dfc0f1a89264a6eea4afe8e95d8e9fed3cc6c81b5c2f87fcb2b50c7320",
+          "SizeBytes": 5026
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ru_RU",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ru",
+      "Architecture": "vits",
+      "TotalBytes": 63206117,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ru/ru_RU/denis/medium/ru_RU-denis-medium.onnx",
+          "Sha256": "15fab56e11a097858ee115545d0f697fc2a316c41a291a5362349fb870411b0a",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "ru/ru_RU/denis/medium/ru_RU-denis-medium.onnx.json",
+          "Sha256": "831c860dac0b5073eaa81610a0a638ec23d90a6cf8e5f871b4485c2cec3767c8",
+          "SizeBytes": 4823
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ur_PK",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ur",
+      "Architecture": "vits",
+      "TotalBytes": 63535161,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ur/ur_PK/fasih/medium/ur_PK-fasih-medium.onnx",
+          "Sha256": "46d590b90fbb41e4d4f2c54ded44874917f8b11b6e0500de2a89e5d3731b5917",
+          "SizeBytes": 63532015
+        },
+        {
+          "Name": "ur/ur_PK/fasih/medium/ur_PK-fasih-medium.onnx.json",
+          "Sha256": "cfcf484a50b4036cb55675b6bbcdb9ddb9061ac10a51cfb2b3ce8391213205ec",
+          "SizeBytes": 3146
         }
       ]
     }
