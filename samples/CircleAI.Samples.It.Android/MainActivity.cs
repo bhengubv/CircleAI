@@ -712,6 +712,77 @@ public class MainActivity : Activity
 
 #if IT_VOICE_ANDROID
     CircleAI.Voice.VoiceLoop? _voiceLoop;
+
+    // How THIS person says borrowed words, learned from listening to them. Kept in
+    // private storage: it never leaves the device and is never merged with anyone
+    // else's, so two phones will pronounce the same word differently. Loaded once
+    // and held, because both the ear (learning) and the mouth (speaking) use it.
+    CircleAI.Voice.PersonalRespellings? _respellings;
+
+    string RespellingsPath =>
+        System.IO.Path.Combine(FilesDir!.AbsolutePath, "respellings.json");
+
+    /// <summary>
+    /// The language being spoken, which decides whether these spellings apply at all.
+    /// </summary>
+    /// <remarks>
+    /// The test harness passes it (<c>--es tts_host zu</c>); otherwise it comes from
+    /// the phone's own language. A phone set to English gets an empty table and
+    /// learns nothing, which is correct — these are isiZulu letter values, and
+    /// applying them to an English speaker's transcript would teach nonsense.
+    /// </remarks>
+    string VoiceHostLanguage =>
+        Intent?.GetStringExtra("tts_host")
+        ?? Java.Util.Locale.Default?.Language
+        ?? "en";
+
+    CircleAI.Voice.PersonalRespellings Respellings =>
+        _respellings ??= CircleAI.Voice.PersonalRespellings.Load(RespellingsPath);
+
+    /// <summary>
+    /// English pronunciation for words no table has, or null when unavailable.
+    /// </summary>
+    /// <remarks>
+    /// Out-of-process espeak — it is GPL-3.0 and CircleAI never links it. Absent
+    /// (the separate app is not installed) the curated table still works and
+    /// unknown words are left as written.
+    /// </remarks>
+    CircleAI.Voice.IPhonemizer? TryEnglishPhonemizer()
+    {
+        try { return CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Learns from one thing the person said, and remembers it across restarts.
+    /// </summary>
+    /// <remarks>
+    /// Written only when something actually changed. The commonest transcript by
+    /// far contains no borrowed word at all, and re-serialising the table on every
+    /// utterance would put a flash write on the critical path of every turn — on a
+    /// phone whose storage is the slowest thing in it.
+    /// </remarks>
+    void LearnFromWhatTheySaid(string? heard, string hostLanguage)
+    {
+        try
+        {
+            var table = CircleAI.Voice.LoanwordRespeller.Table(hostLanguage);
+            if (table.Count == 0) return;          // not a language these spellings fit
+
+            var changed = Respellings.LearnFrom(heard, table);
+            if (changed.Count == 0) return;
+
+            Respellings.Save(RespellingsPath);
+            foreach (var word in changed)
+                Append($"[voice] learned: {word} → {Respellings.Respell(word)}\n");
+        }
+        catch (Exception ex)
+        {
+            // Learning is a bonus, never a reason to lose a turn. A full disk or a
+            // locked file must not take the conversation down with it.
+            Append($"[voice] could not learn: {ex.Message}\n");
+        }
+    }
     // Held as fields, not locals: these own native ONNX/whisper handles that
     // must outlive the setup method and be disposed deterministically.
     CircleAI.Samples.It.Voice.ItSpeaker?  _speaker;
@@ -793,10 +864,23 @@ public class MainActivity : Activity
                         chunk => Append(chunk),
                         think => AppendThinking(think)).ConfigureAwait(false);
                 },
-                speaker.Engine,
+                // The mouth, respelling borrowings on the way out — including
+                // anything this person has taught us. Without this the learning
+                // would change nothing anyone hears.
+                speaker.RespellingEngine(
+                    VoiceHostLanguage,
+                    Respellings,
+                    TryEnglishPhonemizer()),
                 new AndroidAudioPlayer());
 
             _voiceLoop.Faulted += (s, ex) => Append($"[voice] turn failed: {ex.Message}\n");
+
+            // THE LEARNING SEAM. Every turn already produces a transcript of what
+            // this person said, in their own spelling — so a borrowed word arrives
+            // written the way THEY say it, at no cost to them. They are not
+            // correcting anything or filling in a form; they asked their phone to
+            // do something, and the answer to "how do you say WiFi" came with it.
+            _voiceLoop.Exchanged += (s, e) => LearnFromWhatTheySaid(e.Heard, VoiceHostLanguage);
             await _voiceLoop.StartAsync();
             RunOnUiThread(() => _talk.Text = "Stop listening");
             Append("[voice] listening — say \"hey b\"\n");
@@ -1025,6 +1109,10 @@ public class MainActivity : Activity
                     cadenceRatio: vutCadence,
                     langTagForRespell: vutHost,
                     englishPhonemizer: engG2p,
+                    // What this person has taught us by talking, which outranks
+                    // both the shipped table and anything derived. Absent on a
+                    // fresh install; it fills in as they use the phone.
+                    personal: Respellings,
                     // How much to stretch a respelt word so every syllable is
                     // heard. 118 = 1.18x.   --ei tts_syllable 118
                     syllableFullness: (Intent?.GetIntExtra("tts_syllable", 118) ?? 118) / 100f);

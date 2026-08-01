@@ -376,7 +376,8 @@ public static class ItTtsProbe
         long? foreignSpeakerId = null, float? noiseW = null, int sentencesPerUtterance = 1,
         int leadInPads = 0, int leadInSilenceMs = 0, int tailSilenceMs = 0,
         float cadenceRatio = 1.20f, string langTagForRespell = "",
-        IPhonemizer? englishPhonemizer = null, float syllableFullness = 1.18f)
+        IPhonemizer? englishPhonemizer = null, float syllableFullness = 1.18f,
+        CircleAI.Voice.PersonalRespellings? personal = null)
     {
         var sw = Stopwatch.StartNew();
         if (!File.Exists(modelOnnxPath))
@@ -528,6 +529,16 @@ public static class ItTtsProbe
             // plausible — the word was simply read as written, which is exactly the
             // symptom respelling exists to fix. Nothing failed; it just never ran.
             var canRespell = !string.IsNullOrWhiteSpace(langTagForRespell);
+            // The same chain the live voice uses — this person's own spelling, then
+            // the language's settled one, then a derivation. Held here rather than
+            // rebuilt per span so the probe and the conversation cannot drift apart.
+            var respeller = new CircleAI.Voice.Respeller
+            {
+                HostLanguage      = langTagForRespell,
+                Personal          = personal,
+                EnglishPhonemizer = englishPhonemizer,
+                Log               = log,
+            };
             var spans = foreignLangId is null && !canRespell
                 ? System.Array.Empty<CircleAI.Voice.LanguageSpan>()
                 : CircleAI.Voice.LanguageSpanSplitter.Split(phrase);
@@ -558,35 +569,10 @@ public static class ItTtsProbe
                     // cadence, and there is no switch left to make seamless.
                     // Settled spellings first, then derive one for anything else.
                     var word = span.Text.Trim();
-                    var respelt = span.IsForeign
-                        ? CircleAI.Voice.LoanwordRespeller.Respell(word, langTagForRespell)
-                        : null;
-
-                    // Nobody has written this word down yet, so do what a speaker
-                    // does with an unfamiliar one: hear it, then spell it in their
-                    // own orthography. espeak supplies the English pronunciation
-                    // (out of process — it is GPL and never linked), and the Nguni
-                    // consonant-vowel rule turns that into a spelling this voice
-                    // can actually read.
-                    if (respelt is null && span.IsForeign && englishPhonemizer is not null)
-                    {
-                        try
-                        {
-                            var ipa = string.Concat(englishPhonemizer.Phonemize(word));
-                            var derived = CircleAI.Voice.NguniRespeller.FromIpa(ipa);
-                            if (!string.IsNullOrWhiteSpace(derived))
-                            {
-                                respelt = derived;
-                                log?.Invoke($"derived \"{word}\" -> \"{derived}\" (from {ipa})");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            // No English G2P on this device: fall through to the
-                            // language-switch path rather than invent a spelling.
-                            log?.Invoke($"no English pronunciation for \"{word}\": {ex.Message}");
-                        }
-                    }
+                    // THIS PERSON'S OWN spelling first, then what the language has
+                    // settled, then a derivation — one chain, shared with the live
+                    // voice so what the ear learns is what the mouth says.
+                    var respelt = span.IsForeign ? respeller.For(word) : null;
 
                     var spoken = respelt
                         ?? (span.IsForeign

@@ -45,6 +45,34 @@ public sealed class ItSpeaker : IDisposable
     public ITtsEngine Engine => _engine;
 
     /// <summary>
+    /// The same voice, but respelling borrowings for <paramref name="hostLanguage"/>
+    /// on the way out.
+    /// </summary>
+    /// <remarks>
+    /// This is what makes learning worth anything. Without it the respelling chain
+    /// only ever ran inside the test probe, so a person could teach their phone how
+    /// they say a word and the conversation would go on saying it the old way.
+    ///
+    /// A language with no respelling table gets the plain engine back rather than a
+    /// wrapper that would rewrite nothing — one less layer on the audio path of the
+    /// slowest phone we support.
+    /// </remarks>
+    public ITtsEngine RespellingEngine(
+        string hostLanguage,
+        PersonalRespellings? personal = null,
+        IPhonemizer? englishPhonemizer = null)
+    {
+        if (!LoanwordRespeller.IsNguniOrSotho(hostLanguage ?? "")) return _engine;
+
+        return new RespellingTtsEngine(_engine, new Respeller
+        {
+            HostLanguage      = hostLanguage!,
+            Personal          = personal,
+            EnglishPhonemizer = englishPhonemizer,
+        });
+    }
+
+    /// <summary>
     /// Mobile-only hook that builds the phonemizer for on-device TTS. The Android
     /// head sets this to the OUT-OF-PROCESS espeak client — CircleAI must not link
     /// GPL espeak-ng in-process. The argument is the voice, e.g. "en-us". Left null

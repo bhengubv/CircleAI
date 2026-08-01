@@ -24,6 +24,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CircleAI.Voice;
 
@@ -103,6 +104,21 @@ public static class LoanwordRespeller
     public static IReadOnlyCollection<string> Known => Zulu.Keys;
 
     /// <summary>
+    /// Every word and how we say it today, for a listener learning how one person
+    /// actually says them.
+    /// </summary>
+    /// <remarks>
+    /// Learning needs to know what it is comparing against: a transcript token only
+    /// means something next to the spelling currently in use. An unsupported host
+    /// language yields an empty table, so nothing is learned for a language whose
+    /// letters these spellings were never written for.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string> Table(string hostLanguage) =>
+        IsNguniOrSotho(hostLanguage)
+            ? Zulu.ToDictionary(kv => kv.Key, kv => kv.Value.Spelling, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>();
+
+    /// <summary>
     /// Do these languages share the orthography this table is written for?
     /// </summary>
     /// <remarks>
@@ -111,7 +127,7 @@ public static class LoanwordRespeller
     /// explicitly rather than assumed: applying isiZulu spellings to, say, Afrikaans
     /// would mangle words Afrikaans already has its own forms for.
     /// </remarks>
-    private static bool IsNguniOrSotho(string tag) => tag.ToLowerInvariant() switch
+    public static bool IsNguniOrSotho(string tag) => tag.ToLowerInvariant() switch
     {
         "zu" or "zul" or "xh" or "xho" or "ss" or "ssw" or "nr" or "nbl" => true,
         "st" or "sot" or "nso" or "tn" or "tsn" => true,
