@@ -4,6 +4,7 @@
 // the concierge pick which organ answers, watch the reply stream in word by word.
 // The whole brain is the shared ItSession (same C# the desktop console runs).
 
+using System.Linq;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -762,25 +763,34 @@ public class MainActivity : Activity
     /// utterance would put a flash write on the critical path of every turn — on a
     /// phone whose storage is the slowest thing in it.
     /// </remarks>
-    void LearnFromWhatTheySaid(string? heard, string hostLanguage)
+    /// <returns>The words whose spelling changed because of this utterance.</returns>
+    System.Collections.Generic.IReadOnlyList<string> LearnFromWhatTheySaid(string? heard, string hostLanguage)
     {
+        var none = System.Array.Empty<string>();
         try
         {
             var table = CircleAI.Voice.LoanwordRespeller.Table(hostLanguage);
-            if (table.Count == 0) return;          // not a language these spellings fit
+            if (table.Count == 0) return none;      // not a language these spellings fit
 
             var changed = Respellings.LearnFrom(heard, table);
-            if (changed.Count == 0) return;
 
+            // Save on ANY change, not only a changed spelling. The sixth hearing
+            // confirms without altering anything, and partial progress towards a
+            // word is worth keeping — saving only on `changed` meant a word could
+            // never reach a persisted Confirmed state on the phone.
+            if (!Respellings.HasUnsavedChanges) return none;
             Respellings.Save(RespellingsPath);
+            if (changed.Count == 0) return none;
             foreach (var word in changed)
                 Append($"[voice] learned: {word} → {Respellings.Respell(word)}\n");
+            return changed;
         }
         catch (Exception ex)
         {
             // Learning is a bonus, never a reason to lose a turn. A full disk or a
             // locked file must not take the conversation down with it.
             Append($"[voice] could not learn: {ex.Message}\n");
+            return none;
         }
     }
     // Held as fields, not locals: these own native ONNX/whisper handles that
@@ -1096,8 +1106,70 @@ public class MainActivity : Activity
                 try { engG2p = CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
                 catch { /* no G2P app: the curated table still works */ }
 
+                // Drive the learning from the command line, so adoption can be
+                // proved on the phone without saying the same sentence five times
+                // into a microphone.
+                //
+                //   --ez forget_learning true                     start from clean
+                //   --es learn_heard "ngicela i-wayifayi ekhaya"  one transcript
+                //   --ei learn_times 5                            how many hearings
+                //
+                // This calls the SAME method the voice loop calls with the
+                // transcriber's output. The only thing not exercised is Whisper
+                // producing the string — everything downstream of it is real:
+                // the thresholds, the file in private storage, and the audio.
+                // Collected into the report, not just the on-screen log. A Release
+                // APK will not surrender its private FilesDir over adb, so a claim
+                // that lives only in the UI can be checked by screenshot and
+                // nothing else — which is how "it rendered" gets mistaken for "it
+                // worked".
+                var learnLog = new System.Text.StringBuilder();
+                void Learn(string line) { Append(line + "\n"); learnLog.AppendLine(line); }
+
+                if (Intent?.GetBooleanExtra("forget_learning", false) == true)
+                {
+                    if (System.IO.File.Exists(RespellingsPath)) System.IO.File.Delete(RespellingsPath);
+                    _respellings = null;
+                    Learn("[learn] forgot everything — starting clean");
+                }
+
+                var learnHeard = Intent?.GetStringExtra("learn_heard");
+                if (!string.IsNullOrWhiteSpace(learnHeard))
+                {
+                    // Several transcripts separated by "|", so a SHARED PHONE can be
+                    // put through in one run: three people saying the same borrowed
+                    // word three different ways is the case that must teach nothing,
+                    // and it cannot be shown with a single repeated sentence.
+                    var heardList = learnHeard.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    var times = Intent?.GetIntExtra("learn_times", 1) ?? 1;
+                    var n = 0;
+                    for (var round = 1; round <= times; round++)
+                        foreach (var one in heardList)
+                        {
+                            var changed = LearnFromWhatTheySaid(one.Trim(), vutHost);
+                            Learn($"[learn] hearing {++n}: \"{one.Trim()}\"" +
+                                  (changed.Count == 0 ? "" : "  -> CHANGED " + string.Join(", ", changed)));
+                        }
+                }
+
+                // What the table knows now, so the report shows the state machine
+                // and not just its verdict — 3 of 5 hearings is a real state, and
+                // a run that changed nothing must be distinguishable from one that
+                // never counted anything.
+                var learned = Respellings.All();
+                Learn(learned.Count == 0
+                    ? "[learn] table: empty"
+                    : "[learn] table: " + string.Join("  ", learned.Select(w =>
+                        $"{w.Word}={w.Spelling ?? "-"}({w.State}," +
+                        $"{string.Join("/", w.Candidates.Select(c => $"{c.Key}:{c.Value}"))})")));
+
                 var vrep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
-                    vut, wavPath, phrase, s => Append("  " + s + "\n"),
+                    // "respelt X as Y" is the line that says which spelling the
+                    // voice was actually handed, and it was going to the screen
+                    // only. The summary underneath reports byte counts, which look
+                    // identical whichever spelling won.
+                    vut, wavPath, phrase,
+                    s => { Append("  " + s + "\n"); learnLog.AppendLine("  " + s); },
                     ct: default,
                     langIdOverride: null, speakerOverride: null,
                     foreignLangId: vutEngLang, foreignSpeakerId: vutEngSpk,
@@ -1127,7 +1199,18 @@ public class MainActivity : Activity
                 {
                     var extDir = System.IO.Path.GetDirectoryName(vut)!;
                     await System.IO.File.WriteAllTextAsync(
-                        System.IO.Path.Combine(extDir, "result.txt"), vrep);
+                        System.IO.Path.Combine(extDir, "result.txt"),
+                        learnLog.Length == 0 ? vrep : learnLog.ToString() + "\n" + vrep);
+
+                    // The learned table itself, so what the phone believes can be
+                    // read rather than inferred from how the audio sounds. Removed
+                    // when there is no table — a leftover copy beside a run that
+                    // started clean is evidence of something that is not there.
+                    var mirror = System.IO.Path.Combine(extDir, "respellings.json");
+                    if (System.IO.File.Exists(RespellingsPath))
+                        System.IO.File.Copy(RespellingsPath, mirror, true);
+                    else if (System.IO.File.Exists(mirror))
+                        System.IO.File.Delete(mirror);
 
                     // Mirror the AUDIO as well, not just the report. The report says
                     // how many bytes were written; only the waveform says whether the

@@ -251,6 +251,56 @@ public class PersonalRespellingsTests
     }
 
     [Fact]
+    public void Confirmation_survives_a_restart_too()
+    {
+        // Found on the phone, not here: the sixth hearing confirmed in memory and
+        // the file still said "adopted", because confirming changes no spelling and
+        // the caller only saved when a spelling changed. A word could therefore
+        // never reach a persisted Confirmed state — every restart put it back to
+        // awaiting its check, leaving months of agreement one mishearing away from
+        // being undone.
+        var path = Path.Combine(Path.GetTempPath(), $"respell-{Guid.NewGuid():N}.json");
+        try
+        {
+            var p = Heard(5, Theirs);
+            p.Save(path);
+
+            p.Observe(Word, Theirs);                        // the check
+            Assert.Equal(LearningState.Confirmed, p.All().Single().State);
+            Assert.True(p.HasUnsavedChanges);               // ...and it must be written
+
+            p.Save(path);
+            Assert.Equal(LearningState.Confirmed, PersonalRespellings.Load(path).All().Single().State);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void Progress_short_of_adoption_is_worth_saving()
+    {
+        // Three hearings in is a real state. A caller that saved only on adoption
+        // would make the person teach the same word from scratch every restart.
+        var p = new PersonalRespellings();
+        Assert.False(p.HasUnsavedChanges);
+
+        p.Observe(Word, Theirs, Ours);
+        Assert.True(p.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public void A_hearing_that_teaches_nothing_leaves_nothing_behind()
+    {
+        // A rejected hearing must not create an entry. Every unrelated word in
+        // earshot would otherwise litter the table and show up in a "words your
+        // CircleAI knows" view as words it had never actually learned.
+        var p = new PersonalRespellings();
+        p.Observe(Word, "ngiyabonga", Ours);
+
+        Assert.Empty(p.All());
+        Assert.False(p.HasUnsavedChanges);
+    }
+
+    [Fact]
     public void A_missing_or_broken_file_starts_empty_rather_than_throwing()
     {
         // Losing the learning is bad. Refusing to start because of it is worse —

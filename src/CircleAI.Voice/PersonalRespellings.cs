@@ -96,6 +96,23 @@ public sealed class PersonalRespellings
     /// </remarks>
     private readonly object _gate = new();
 
+    private bool _dirty;
+
+    /// <summary>Has anything changed since the table was last written?</summary>
+    /// <remarks>
+    /// Not the same question as "did a word change how it is spoken". The sixth
+    /// hearing CONFIRMS a spelling without altering it, and three hearings towards
+    /// a word is real progress — a caller that saved only on a changed spelling
+    /// would lose both. On the phone that meant a word could never reach a
+    /// persisted Confirmed state: every restart dropped it back to awaiting its
+    /// check, leaving months of agreement one mishearing away from being undone.
+    ///
+    /// Also why this is not simply "save every time": most utterances contain no
+    /// borrowing at all, and rewriting the table on each one puts a flash write on
+    /// the critical path of every spoken turn.
+    /// </remarks>
+    public bool HasUnsavedChanges { get { lock (_gate) return _dirty; } }
+
     private sealed class Entry
     {
         public Dictionary<string, int> Candidates { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -144,12 +161,17 @@ public sealed class PersonalRespellings
 
     private bool ObserveLocked(string word, string heard, string? currentSpelling)
     {
-        var entry = _words.TryGetValue(word, out var e) ? e : _words[word] = new Entry();
-        var reference = entry.Spelling ?? currentSpelling ?? word;
+        _words.TryGetValue(word, out var existing);
+        var reference = existing?.Spelling ?? currentSpelling ?? word;
 
         // Too far from the word to be that word: the speaker was saying something
-        // else and this hearing is not evidence about anything.
+        // else and this hearing is not evidence about anything. Checked BEFORE the
+        // entry is created, so a rejected hearing leaves no trace — otherwise every
+        // unrelated word in earshot would litter the table with empty entries and
+        // show up in a "words your CircleAI knows" view.
         if (!IsSameWord(reference, heard)) return false;
+
+        var entry = existing ?? (_words[word] = new Entry());
 
         // THE CHECK. A word adopted last time is now being said our new way; this
         // hearing is the test of whether we got it right.
@@ -158,6 +180,7 @@ public sealed class PersonalRespellings
             if (Agrees(entry.Spelling!, heard))
             {
                 entry.State = LearningState.Confirmed;
+                _dirty = true;
                 return false;                       // confirmed, but nothing changed
             }
 
@@ -166,6 +189,7 @@ public sealed class PersonalRespellings
             entry.Candidates.Remove(entry.Spelling!);
             entry.Spelling = null;
             entry.State = LearningState.Listening;
+            _dirty = true;
         }
 
         // They said it the way we already say it. That is agreement, not a lesson —
@@ -176,6 +200,7 @@ public sealed class PersonalRespellings
 
         var count = entry.Candidates.TryGetValue(heard, out var n) ? n + 1 : 1;
         entry.Candidates[heard] = count;
+        _dirty = true;
 
         if (count < AdoptAfter) return false;
 
@@ -239,7 +264,7 @@ public sealed class PersonalRespellings
     }
 
     /// <summary>Forgets a word, so it falls back to the shipped or derived spelling.</summary>
-    public void Forget(string word) { lock (_gate) _words.Remove(word); }
+    public void Forget(string word) { lock (_gate) _dirty |= _words.Remove(word); }
 
     // ── keeping it between sessions ──────────────────────────────────────────
     //
@@ -269,6 +294,10 @@ public sealed class PersonalRespellings
         var temp = path + ".tmp";
         System.IO.File.WriteAllText(temp, json);
         System.IO.File.Move(temp, path, overwrite: true);
+
+        // Only once the bytes are actually in place. Clearing it before the move
+        // would mean a failed write leaves the table looking saved.
+        lock (_gate) _dirty = false;
     }
 
     /// <summary>Reads a table back, or returns an empty one when there is none.</summary>
