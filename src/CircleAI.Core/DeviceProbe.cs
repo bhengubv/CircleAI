@@ -176,6 +176,48 @@ public sealed record DeviceProbe(
     /// </summary>
     public static Func<PlatformMemory>? PlatformMemoryProbe { get; set; }
 
+    /// <summary>Where <see cref="RamAvailableBytes"/> actually came from.</summary>
+    public enum RamMeasurement
+    {
+        /// <summary>A caller stated it outright (tests, hosts that already know).</summary>
+        Explicit,
+
+        /// <summary>Read from the device by a platform head via <see cref="PlatformMemoryProbe"/>.</summary>
+        PlatformMeasured,
+
+        /// <summary>Nobody supplied one, so it was inferred. On mobile that is a guess.</summary>
+        Heuristic,
+    }
+
+    /// <summary>How the RAM figure was obtained. Defaults to <see cref="RamMeasurement.Explicit"/>.</summary>
+    /// <remarks>
+    /// A probe that GUESSED used to be indistinguishable from one that MEASURED, and
+    /// every verdict downstream was then stated with full confidence about a number
+    /// that is the GC heap limit — roughly 100 MB inside an Android sandbox. The
+    /// device reads as a wearable, every model comes back NothingFits, and nothing
+    /// anywhere says the input was invented. Recording the source is what lets the
+    /// answer admit it.
+    /// </remarks>
+    public RamMeasurement RamSource { get; init; } = RamMeasurement.Explicit;
+
+    /// <summary>
+    /// A plain-language warning when the RAM figure is a guess that looks wrong, or
+    /// null when there is nothing to say.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately narrow. The heuristic is perfectly good on desktop and server,
+    /// where it returns GB-scale numbers, and warning there would be noise nobody
+    /// reads. It fires only on the actual signature of the bug: an inferred figure
+    /// too small for any real device, which is what a mobile head that never set
+    /// <see cref="PlatformMemoryProbe"/> produces.
+    /// </remarks>
+    public string? MeasurementWarning =>
+        RamSource == RamMeasurement.Heuristic && RamAvailableBytes < 512L * 1024 * 1024
+            ? $"this device's RAM was not measured — {RamAvailableBytes / (1024.0 * 1024):0} MB is the " +
+              "managed heap limit, not the hardware. The platform head has not set " +
+              "DeviceProbe.PlatformMemoryProbe, so every size decision here is based on a guess"
+            : null;
+
     /// <summary>
     /// Build a probe from runtime facts. Free, allocation-light, callable
     /// per-startup. <paramref name="modelCacheDirectory"/> defaults to
@@ -195,23 +237,34 @@ public sealed record DeviceProbe(
         // an Android / iOS head), then the platform-neutral heuristics. The
         // heuristics are accurate on desktop / server but read the GC heap limit
         // and the process drive, which a mobile sandbox reports as ~100 MB / 0 B.
+        var platformSuppliedRam = false;
         if (ramBytesOverride is null || storageBytesOverride is null || ramTotalBytesOverride is null)
         {
             var pm = PlatformMemoryProbe?.Invoke();
+            if (ramBytesOverride is null && pm?.RamAvailableBytes is > 0)
+                platformSuppliedRam = true;
+
             ramBytesOverride      ??= pm?.RamAvailableBytes;
             storageBytesOverride  ??= pm?.StorageFreeBytes;
             ramTotalBytesOverride ??= pm?.RamTotalBytes;
         }
 
         long ram;
+        RamMeasurement ramSource;
         if (ramBytesOverride is > 0)
         {
             ram = ramBytesOverride.Value;
+            // Distinguishes "a head read the hardware" from "a caller passed a
+            // number", because only the first says anything about this device.
+            ramSource = platformSuppliedRam
+                ? RamMeasurement.PlatformMeasured
+                : RamMeasurement.Explicit;
         }
         else
         {
             var gcInfo = GC.GetGCMemoryInfo();
             ram = Math.Max(0L, gcInfo.TotalAvailableMemoryBytes);
+            ramSource = RamMeasurement.Heuristic;
         }
 
         // Device-class RAM for tiering. Defaults to the available figure when the
@@ -259,6 +312,7 @@ public sealed record DeviceProbe(
         {
             VramGb = vramGbOverride,
             RamTotalBytes = ramTotal,
+            RamSource = ramSource,
         };
     }
 

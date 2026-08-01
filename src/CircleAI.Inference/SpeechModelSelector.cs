@@ -209,6 +209,27 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
     {
         ArgumentNullException.ThrowIfNull(probe);
 
+        var plan = PlanForCore(probe, modality, minQualityRank);
+
+        // A "no" built on a GUESSED memory figure has to say so. Without this a
+        // mobile head that never set DeviceProbe.PlatformMemoryProbe gets a
+        // confident, specific, wrong refusal for every model — the device reads as
+        // ~100 MB, everything is NothingFits, and the reason names the model rather
+        // than the missing measurement. Whoever reads it goes looking for a model
+        // problem that is not there.
+        //
+        // Only on a negative verdict: a Good plan chosen on a bad number is a
+        // different question, and warning on every success trains people to skip
+        // the text.
+        var warning = probe.MeasurementWarning;
+        if (warning is null || plan.Quality is SelectionQuality.Good or SelectionQuality.BelowFloor)
+            return plan;
+
+        return plan with { Reason = $"{plan.Reason} — NOTE: {warning}" };
+    }
+
+    private ModalityPlan PlanForCore(DeviceProbe probe, ModelModality modality, int minQualityRank)
+    {
         // CODING HARDWARE FLOOR. Coding carries a tier floor the other rungs do
         // not: a real 3-7B code model cannot run in a low-end phone's RAM budget,
         // so below CodingFloorTier the answer is not "a smaller model," it is "not

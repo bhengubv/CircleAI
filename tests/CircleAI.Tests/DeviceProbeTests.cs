@@ -140,6 +140,56 @@ public sealed class DeviceProbeTests
     }
 
     [Fact]
+    public void AGuessedMemoryFigureSaysSoInsteadOfPassingAsMeasured()
+    {
+        // The root cause of the whole mobile-memory class of bug: a probe that
+        // GUESSED was indistinguishable from one that MEASURED, so every verdict
+        // downstream was stated with full confidence about the GC heap limit
+        // (~100 MB in an Android sandbox). Nothing said the input was invented.
+        try
+        {
+            DeviceProbe.PlatformMemoryProbe = null;
+            var guessed = DeviceProbe.Snapshot();
+            Assert.Equal(DeviceProbe.RamMeasurement.Heuristic, guessed.RamSource);
+
+            // A head that reads the hardware is recorded as such, and says nothing.
+            DeviceProbe.PlatformMemoryProbe = () =>
+                new DeviceProbe.PlatformMemory(3_000_000_000, 20_000_000_000, 3_600_000_000);
+            var measured = DeviceProbe.Snapshot();
+
+            Assert.Equal(DeviceProbe.RamMeasurement.PlatformMeasured, measured.RamSource);
+            Assert.Null(measured.MeasurementWarning);
+        }
+        finally { DeviceProbe.PlatformMemoryProbe = null; }
+    }
+
+    [Fact]
+    public void TheWarningFiresOnlyWhenTheGuessIsImplausible()
+    {
+        // Narrow on purpose. The heuristic is fine on desktop and server, where it
+        // returns GB-scale numbers — warning there is noise people learn to skip.
+        // It must fire on the actual signature of the bug: an INFERRED figure too
+        // small for any real device.
+        var phoneSandbox = new DeviceProbe(
+            RamAvailableBytes: 100L * 1024 * 1024,     // the ~100 MB heap limit
+            StorageFreeBytes:  8L * 1024 * 1024 * 1024,
+            Gpu: GpuKind.None, CpuCores: 8,
+            Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
+        { RamSource = DeviceProbe.RamMeasurement.Heuristic };
+
+        Assert.NotNull(phoneSandbox.MeasurementWarning);
+        Assert.Contains("PlatformMemoryProbe", phoneSandbox.MeasurementWarning);
+
+        // Same heuristic, a desktop-sized answer: nothing to complain about.
+        var desktop = phoneSandbox with { RamAvailableBytes = 16L * 1024 * 1024 * 1024 };
+        Assert.Null(desktop.MeasurementWarning);
+
+        // And a figure somebody stated outright is not a guess, however small.
+        var stated = phoneSandbox with { RamSource = DeviceProbe.RamMeasurement.Explicit };
+        Assert.Null(stated.MeasurementWarning);
+    }
+
+    [Fact]
     public void StorageIsMeasuredInTheSameUnitAsTheCatalogue()
     {
         // Five call sites each divided StorageFreeBytes by 2^30 for themselves,

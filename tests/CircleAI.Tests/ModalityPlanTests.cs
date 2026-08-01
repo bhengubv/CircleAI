@@ -302,6 +302,38 @@ public sealed class ModalityPlanTests
     }
 
     [Fact]
+    public void ARefusalBuiltOnAGuessedMemoryFigureAdmitsIt()
+    {
+        // The 100 MB an Android sandbox reports when the head never set
+        // PlatformMemoryProbe. Every model comes back NothingFits — correctly, for
+        // that input — but the reason used to name the MODEL, sending whoever read
+        // it hunting for a catalogue problem that does not exist. The refusal has
+        // to point at the missing measurement instead.
+        var sandbox = new DeviceProbe(
+            RamAvailableBytes: 100L * 1024 * 1024,
+            StorageFreeBytes:  8L * 1024 * 1024 * 1024,
+            Gpu: GpuKind.None, CpuCores: 8,
+            Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
+        { RamSource = DeviceProbe.RamMeasurement.Heuristic };
+
+        var plan = Selector().PlanFor(sandbox, ModelModality.Vision);
+
+        Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
+        Assert.Contains("PlatformMemoryProbe", plan.Reason);
+    }
+
+    [Fact]
+    public void AWorkingDeviceIsNotNaggedAboutMeasurement()
+    {
+        // Success stays clean. Warning on every good answer is how a warning stops
+        // being read at all.
+        var plan = Selector().PlanFor(Device(8), ModelModality.Vision);
+
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.DoesNotContain("PlatformMemoryProbe", plan.Reason);
+    }
+
+    [Fact]
     public void UnavailablePlansCarryAReasonAUserCouldRead()
     {
         // The Reason is shown to a user ("I can't see images: ..."), so it must
