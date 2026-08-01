@@ -26,6 +26,13 @@
 //
 // So: do not compare the files wholesale — they legitimately differ in shape
 // and in runtime-only fields. Compare the facts that must never diverge.
+//
+// And note there are now TWO ways a model gets catalogued: the ModelScope tool
+// that writes registry.json, and the HuggingFace voice bucket
+// (thegeekco/circleai-voices) that only ever lands in embedded_registry.json.
+// "Present in both files" is therefore no longer a usable stand-in for "someone
+// checked this hash" — see EveryRuntimeModelDeclaresAVerifiableSourceAndRealHashes,
+// which asserts that property directly instead of inferring it from provenance.
 
 using System;
 using System.Collections.Generic;
@@ -139,23 +146,68 @@ public sealed class RegistryDriftTests
     }
 
     [Fact]
-    public void ModelsPresentInOneButNotTheOther_AreReportedNotIgnored()
+    public void ModelsInTheLegacyFileAreAllVisibleToTheRuntime()
     {
-        var legacy   = LegacyBundles();
-        var embedded = EmbeddedBundles();
-
-        var onlyLegacy   = legacy.Keys.Except(embedded.Keys, StringComparer.OrdinalIgnoreCase).ToList();
-        var onlyEmbedded = embedded.Keys.Except(legacy.Keys, StringComparer.OrdinalIgnoreCase).ToList();
-
-        // A model catalogued in the runtime file but absent from the tool's
-        // output was almost certainly hand-written, so its hashes were never
-        // verified against ModelScope.
-        Assert.True(onlyEmbedded.Count == 0,
-            "In embedded_registry.json but NOT produced by recalibrate-registry-sha " +
-            "(hashes unverified): " + string.Join(", ", onlyEmbedded));
+        var onlyLegacy = LegacyBundles().Keys
+            .Except(EmbeddedBundles().Keys, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         Assert.True(onlyLegacy.Count == 0,
             "In registry.json but never transcribed into embedded_registry.json, " +
             "so the runtime cannot see it: " + string.Join(", ", onlyLegacy));
+    }
+
+    [Fact]
+    public void EveryRuntimeModelDeclaresAVerifiableSourceAndRealHashes()
+    {
+        // This replaces "every runtime model must also appear in registry.json".
+        //
+        // That rule was a PROXY for the thing that matters — no model ships with a
+        // hash nobody checked — and it worked while ModelScope, via
+        // recalibrate-registry-sha, was the only way a model got catalogued. The 58
+        // voices now come from a HuggingFace bucket instead, so the proxy started
+        // reporting a provenance it simply did not know about, and a green build
+        // would have required either hand-writing them into the tool's own output
+        // file or deleting the check.
+        //
+        // So assert the real invariant directly: every bundled file names a source
+        // and carries a hash that is actually a SHA-256. That still catches the
+        // hazard the original was written for — a hand-added entry with an empty,
+        // truncated or placeholder digest, which the runtime only discovers AFTER
+        // spending the user's data. On the measured Huawei run that was 429 MB.
+        using var doc = JsonDocument.Parse(File.ReadAllText(EmbeddedPath));
+        var problems = new List<string>();
+
+        foreach (var m in doc.RootElement.GetProperty("Models").EnumerateArray())
+        {
+            var name = m.GetProperty("Name").GetString() ?? "(unnamed)";
+
+            if (!m.TryGetProperty("Repo", out var repo) || string.IsNullOrWhiteSpace(repo.GetString()))
+                problems.Add($"{name}: no Repo — nothing says where this came from or how to re-verify it");
+
+            if (!m.TryGetProperty("BundleFiles", out var files) || files.GetArrayLength() == 0)
+            {
+                problems.Add($"{name}: no BundleFiles — nothing to download or verify");
+                continue;
+            }
+
+            foreach (var f in files.EnumerateArray())
+            {
+                var fileName = f.GetProperty("Name").GetString() ?? "(unnamed)";
+                var sha      = f.GetProperty("Sha256").GetString() ?? "";
+
+                if (sha.Length != 64 || !sha.All(Uri.IsHexDigit))
+                    problems.Add($"{name}/{fileName}: Sha256 is not a SHA-256 ('{sha}')");
+                else if (sha.All(c => c == '0'))
+                    problems.Add($"{name}/{fileName}: Sha256 is all zeroes — a placeholder, not a digest");
+
+                if (f.GetProperty("SizeBytes").GetInt64() <= 0)
+                    problems.Add($"{name}/{fileName}: SizeBytes is not positive");
+            }
+        }
+
+        Assert.True(problems.Count == 0,
+            "Models that would fail verification only after the download:\n  " +
+            string.Join("\n  ", problems));
     }
 }

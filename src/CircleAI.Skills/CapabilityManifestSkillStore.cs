@@ -72,8 +72,11 @@ public sealed class CapabilityManifestSkillStore : ISkillStore
 
         var q = query.Trim();
 
+        // ID first — it is the handle the compact listing hands out, so a lookup by
+        // id has to resolve. Kept identical to the other stores.
         bool Hit(SkillDetail s)
-            => s.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+            => s.Id.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || s.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
             || s.Description.Contains(q, StringComparison.OrdinalIgnoreCase)
             || s.Tags.Any(t => t.Contains(q, StringComparison.OrdinalIgnoreCase));
 

@@ -268,11 +268,17 @@ public sealed class SkillContextBuilderTests
     [Fact]
     public async Task BuildContextAsync_MatchingSkill_ContainsSkillName()
     {
+        // The query has to actually MATCH. This test used to ask "show me my
+        // schedule" against a skill whose only calendar-ish word was the tag
+        // "calendar", and passed anyway because a no-match once dumped every skill
+        // in full. It was asserting the dump, not the match.
         var store = new InMemorySkillStore();
         await store.UpsertAsync("calendar-summariser",
             new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
         var builder = new SkillContextBuilder(store);
-        var result = await builder.BuildContextAsync("show me my schedule");
+
+        var result = await builder.BuildContextAsync("calendar");
+
         Assert.Contains("calendar-summariser", result);
         Assert.Contains("Summarises events", result);
     }
@@ -280,12 +286,52 @@ public sealed class SkillContextBuilderTests
     [Fact]
     public async Task BuildContextAsync_ContainsInstructions()
     {
+        // Looked up by ID, which is the handle the compact listing hands out.
         var store = new InMemorySkillStore();
         await store.UpsertAsync("test-skill",
             new SkillDraft("Test", "Desc", "Follow these exact steps.", Array.Empty<string>()));
         var builder = new SkillContextBuilder(store);
+
         var result = await builder.BuildContextAsync("test-skill");
+
         Assert.Contains("Follow these exact steps", result);
+    }
+
+    [Fact]
+    public async Task BuildContextAsync_NoMatch_ListsNamesOnly_RatherThanEverything()
+    {
+        // The behaviour the two tests above were silently relying on, now asserted
+        // on purpose. A no-match must NOT dump every skill in full: on a 4096-token
+        // window a few verbose skills crowd out the conversation itself, which is
+        // how this block quietly degraded both answer quality and speed on-device.
+        var store = new InMemorySkillStore();
+        await store.UpsertAsync("calendar-summariser",
+            new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
+        var builder = new SkillContextBuilder(store);
+
+        var result = await builder.BuildContextAsync("something else entirely");
+
+        Assert.Contains("calendar-summariser", result);          // the handle is offered
+        Assert.DoesNotContain("Call the calendar tool", result); // the body is not
+    }
+
+    [Fact]
+    public async Task BuildContextAsync_TheCompactListingsIdsCanBeLookedBackUp()
+    {
+        // Closes the loop the compact listing opens. It prints ids and invites the
+        // model to "ask to expand" — so asking BY THAT ID has to return the body.
+        // Search covered name, description and tags but not the id, so the only
+        // handle on offer was the one thing that retrieved nothing.
+        var store = new InMemorySkillStore();
+        await store.UpsertAsync("calendar-summariser",
+            new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
+        var builder = new SkillContextBuilder(store);
+
+        var listing = await builder.BuildContextAsync("nothing matches this");
+        Assert.Contains("calendar-summariser", listing);
+
+        var expanded = await builder.BuildContextAsync("calendar-summariser");
+        Assert.Contains("Call the calendar tool", expanded);
     }
 
     [Fact]

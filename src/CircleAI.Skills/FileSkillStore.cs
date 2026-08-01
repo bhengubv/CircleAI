@@ -219,7 +219,15 @@ public sealed class FileSkillStore : ISkillStore
     private static SkillSummary ToSummary(SkillDetail d) =>
         new(d.Id, d.Name, d.Description, d.Tags, d.Source);
 
+    /// <summary>Does this skill answer <paramref name="query"/>?</summary>
+    /// <remarks>
+    /// ID first — it is the handle the compact listing hands out, so it has to be
+    /// the one thing a lookup is guaranteed to find. Kept identical to the other
+    /// stores: a skill that resolves in memory and not on disk is a bug that only
+    /// shows up on someone's phone.
+    /// </remarks>
     private static bool MatchesQuery(SkillDetail s, string query) =>
+        s.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Tags.Any(t => t.Contains(query, StringComparison.OrdinalIgnoreCase));

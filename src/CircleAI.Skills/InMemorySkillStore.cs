@@ -80,7 +80,16 @@ public sealed class InMemorySkillStore : ISkillStore
     private static SkillSummary ToSummary(SkillDetail d) =>
         new(d.Id, d.Name, d.Description, d.Tags, d.Source);
 
+    /// <summary>Does this skill answer <paramref name="query"/>?</summary>
+    /// <remarks>
+    /// The ID is matched FIRST because it is the handle we hand out. When no skill
+    /// matches, <c>SkillContextBuilder</c> falls back to listing ids and inviting
+    /// the model to "ask to expand" — and the only way to ask is to name the id.
+    /// Searching everything except the id meant that invitation went nowhere: the
+    /// listing advertised a handle that retrieved nothing.
+    /// </remarks>
     private static bool MatchesQuery(SkillDetail s, string query) =>
+        s.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         s.Tags.Any(t => t.Contains(query, StringComparison.OrdinalIgnoreCase));
