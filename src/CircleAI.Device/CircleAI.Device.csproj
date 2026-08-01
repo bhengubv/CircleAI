@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Device</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Android hosting for Circle AI: the resident device service that owns the models, and the memory probe every Android head must install.</Description>
+  </PropertyGroup>
+
+  <!-- Plain Android, NOT MAUI. The MAUI hosting lives in CircleAI.Maui and pulls
+       the whole MAUI stack with it; an app that just wants the device service
+       should not have to take that. The sample app is a bare Android app and is
+       this library's first consumer, which keeps the dependency honest. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsBindingProject>false</IsBindingProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+  </ItemGroup>
+
+</Project>

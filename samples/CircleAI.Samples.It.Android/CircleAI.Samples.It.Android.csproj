@@ -30,6 +30,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- The resident device service + the memory probe every Android head must
+         install. This sample is its first consumer, which is what keeps the
+         library honest about what a plain (non-MAUI) Android app needs. -->
+    <ProjectReference Include="..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
     <!-- Offline document generation (CV, …). Pure-managed PDFsharp — no native .so. -->
     <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- Capability sweep: every "hands make things" + "systems" library the

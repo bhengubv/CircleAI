@@ -61,36 +61,11 @@ public class MainActivity : Activity
     {
         base.OnCreate(savedInstanceState);
 
-        // Teach the platform-neutral device probe how to read THIS phone's real
-        // memory + storage. Two DISTINCT numbers matter and were conflated before:
-        //   • AvailMem (FREE RAM) gates model FIT — a model needs its weight in free
-        //     RAM to load; picking against total RAM OOM-killed the app on a 3.6 GB
-        //     phone with only ~1.5 GB free (it selected a 4B model and died).
-        //   • TotalMem (device-class RAM) gates TIER — a 3.6 GB phone is a Phone.
-        // Without the hook the Core heuristic reads the GC heap limit (~100 MB) and
-        // the phone looks like a Wearable with everything NothingFits.
-        CircleAI.Core.DeviceProbe.PlatformMemoryProbe = () =>
-        {
-            long? avail = null, total = null, storage = null;
-            try
-            {
-                if (GetSystemService(Android.Content.Context.ActivityService) is Android.App.ActivityManager am)
-                {
-                    var mi = new Android.App.ActivityManager.MemoryInfo();
-                    am.GetMemoryInfo(mi);
-                    avail = mi.AvailMem;   // free RAM → model fit
-                    total = mi.TotalMem;   // device class → tier
-                }
-            }
-            catch { /* fall back to the Core heuristic */ }
-            try
-            {
-                var stat = new Android.OS.StatFs(FilesDir!.AbsolutePath);
-                storage = stat.AvailableBytes;
-            }
-            catch { /* fall back to the Core heuristic */ }
-            return new CircleAI.Core.DeviceProbe.PlatformMemory(avail, storage, total);
-        };
+        // Teach the platform-neutral device probe how to read THIS phone. Was
+        // thirty lines of ActivityManager here, which is exactly the shape every
+        // head was expected to copy and none of them did. One call now, and the
+        // device service makes it for anything hosted in it.
+        CircleAI.Device.AndroidDeviceMemory.Install(this);
 
 #if IT_VOICE_ANDROID
         // On-device TTS phonemes come from the SEPARATE espeak G2P app
@@ -487,9 +462,100 @@ public class MainActivity : Activity
         }
         catch { /* a diagnostic must never be the reason startup fails */ }
 
+        // The resident device service, on demand:
+        //   --ez run_service true    start it, bind, report what the phone reports
+        //   --ez stop_service true   stop it and release the models
+        //
+        // Behind a flag because this sample is also the voice test rig, and a
+        // second process holding a 122 MB model while the rig loads its own is the
+        // fastest way to OOM a P30.
+        if (Intent?.GetBooleanExtra("stop_service", false) == true) StopDeviceService();
+        if (Intent?.GetBooleanExtra("run_service",  false) == true) RunDeviceService();
+
 #if IT_VOICE_ANDROID
         if (Intent?.GetBooleanExtra("run_tts", false) == true) RunTts();
 #endif
+    }
+
+    CircleAI.Device.CircleNeuronConnection? _neuron;
+
+    /// <summary>
+    /// Starts the resident service, binds to it, and writes down what happened.
+    /// </summary>
+    /// <remarks>
+    /// The report goes to the EXTERNAL dir for the same reason every other one
+    /// does: a Release APK will not surrender its private FilesDir over adb, and a
+    /// claim that can only be screenshotted is a claim nobody can check.
+    /// </remarks>
+    async void RunDeviceService()
+    {
+        var log = new System.Text.StringBuilder();
+        void Say(string s) { Append(s + "\n"); log.AppendLine(s); }
+
+        try
+        {
+            Say("===== RESIDENT DEVICE SERVICE =====");
+            Say(CircleAI.Device.AndroidDeviceMemory.Describe());
+
+            // What the service will host. The sample has no chat model staged, so
+            // this is the same AIOptions the typed UI uses — the point being that
+            // ONE process owns it, not that this particular brain is special.
+            CircleAI.Device.CircleNeuronService.OptionsFactory ??= () => new CircleAI.Hosting.AIOptions
+            {
+                ModelStorageDirectory = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                    "CircleAI", "Models"),
+            };
+
+            Say("[service] starting + binding…");
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            var (node, connection) = await CircleAI.Device.CircleNeuronConnection.ConnectAsync(
+                this, TimeSpan.FromSeconds(90));
+            _neuron = connection;
+
+            Say($"[service] status : {CircleAI.Device.CircleNeuronService.Status}");
+            Say($"[service] elapsed: {started.Elapsed:mm\\:ss}");
+            Say(node is null
+                ? "[service] NO NODE — see status above"
+                : $"[service] node   : {node.Id}  ready={node.IsReady}  engine={node.EngineLabel}");
+
+            // The claim worth proving: bind AGAIN and get the SAME object back. If
+            // these differ, every app is loading its own copy and the service is
+            // decoration.
+            var (again, second) = await CircleAI.Device.CircleNeuronConnection.ConnectAsync(
+                this, TimeSpan.FromSeconds(10));
+            Say(ReferenceEquals(node, again)
+                ? "[service] SHARED — a second bind returned the same node"
+                : "[service] NOT SHARED — a second bind built another node");
+            second.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Say($"[service] FAILED: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            try
+            {
+                var ext = GetExternalFilesDir(null)?.AbsolutePath;
+                if (!string.IsNullOrEmpty(ext))
+                    await System.IO.File.WriteAllTextAsync(
+                        System.IO.Path.Combine(ext, "service-result.txt"), log.ToString());
+            }
+            catch { /* mirroring is a convenience, never fail the run */ }
+        }
+    }
+
+    void StopDeviceService()
+    {
+        try
+        {
+            _neuron?.Dispose();
+            _neuron = null;
+            CircleAI.Device.CircleNeuronService.Stop(this);
+            Append("[service] stopped — models released\n");
+        }
+        catch (Exception ex) { Append($"[service] stop failed: {ex.Message}\n"); }
     }
 
     // The offline capability sweep — runnable the instant the app opens (no

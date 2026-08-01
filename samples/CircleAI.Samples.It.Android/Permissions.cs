@@ -14,6 +14,25 @@
 [assembly: Android.App.UsesPermission("android.permission.INTERNET")]
 [assembly: Android.App.UsesPermission("android.permission.ACCESS_NETWORK_STATE")]
 
+// The resident device service (CircleNeuronService) runs in the FOREGROUND, and
+// on Android that is a permission, not a choice:
+//
+//   FOREGROUND_SERVICE            API 28+. Without it startForegroundService
+//                                 throws and the models never load.
+//   FOREGROUND_SERVICE_DATA_SYNC  API 34+. From 14 the TYPE must be declared
+//                                 separately or the start is refused outright.
+//   POST_NOTIFICATIONS            API 33+. A foreground service must show a
+//                                 notification; denied, the service can still run
+//                                 but the user has no way to see it is holding
+//                                 their RAM, which is the thing the notification
+//                                 exists to be honest about.
+//
+// Declared unguarded because the device service is the point of the arrangement —
+// a build that cannot host it is not a smaller build, it is a broken one.
+[assembly: Android.App.UsesPermission("android.permission.FOREGROUND_SERVICE")]
+[assembly: Android.App.UsesPermission("android.permission.FOREGROUND_SERVICE_DATA_SYNC")]
+[assembly: Android.App.UsesPermission("android.permission.POST_NOTIFICATIONS")]
+
 #if IT_VOICE_ANDROID
 
 // Permissions.cs
