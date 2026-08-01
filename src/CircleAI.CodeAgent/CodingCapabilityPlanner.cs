@@ -64,29 +64,49 @@ public sealed class CodingCapabilityPlanner : ICodingCapabilityPlanner
     {
         probe ??= DeviceProbe.Snapshot();
 
-        var tier      = probe.Classify();
-        var ramGb     = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
-        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var tier = probe.Classify();
+
+        // TWO different questions, and they were being asked with one number.
+        //
+        // The FLOOR below is a hand-picked product gate — "~8 GB RAM", chosen in
+        // the units a device is sold in. Kept at 2^30 deliberately, like
+        // DeviceProbe.Classify and BackendSelector: nothing there is compared
+        // against the catalogue, and changing the divisor would silently move a
+        // threshold somebody tuned.
+        var floorRamGb    = probe.RamAvailableBytes / (1024.0 * 1024 * 1024);
+        var floorStorage  = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+
+        // The per-model FIT below is a different question entirely: it compares
+        // against CodingModelDescriptor.MinRamGb, which is a property of a BUNDLE,
+        // in the catalogue's units — so it gets the catalogue's units and, more
+        // importantly, the KV-growth headroom every other selector already applies.
+        //
+        // Coding is the most KV-hungry thing we run: long generations, big
+        // contexts. Fitting a coding model into 100% of free RAM is precisely the
+        // OOM that RamFitHeadroom exists to prevent, and this was the one selector
+        // still doing it.
+        var fitRamGb     = probe.UsableRamGb;
+        var fitStorageGb = probe.StorageFreeGb;
 
         // 1. HARDWARE FLOOR. A real 3-7B coding model cannot run in a weak
         //    phone's RAM budget. Below floor => Unavailable BY DESIGN. This is
         //    the P30 Lite path and it does not depend on the catalogue at all.
-        if (tier < _req.MinDeviceTier || ramGb + 0.0001 < _req.MinRamGb)
+        if (tier < _req.MinDeviceTier || floorRamGb + 0.0001 < _req.MinRamGb)
         {
             return new ModalityPlan(
                 SelectionQuality.Unavailable, null,
-                $"on-device coding needs ~{_req.MinRamGb:0.#} GB RAM and tier >= {_req.MinDeviceTier}; " +
-                $"this device reports {ramGb:0.#} GB and tier {tier}. Unavailable by design.");
+                $"on-device coding needs ~{_req.MinRamGb:0.#} GB free RAM and tier >= {_req.MinDeviceTier}; " +
+                $"this device has {floorRamGb:0.#} GB free and is tier {tier}. Unavailable by design.");
         }
 
         // Storage floor is advisory — skip it when the host could not read free
         // space (StorageFreeBytes == 0), exactly as the chat selector does.
-        if (storageGb > 0 && storageGb + 0.0001 < _req.MinFreeStorageGb)
+        if (floorStorage > 0 && floorStorage + 0.0001 < _req.MinFreeStorageGb)
         {
             return new ModalityPlan(
                 SelectionQuality.Unavailable, null,
                 $"a {_req.MinParametersBillion}B+ coding model needs ~{_req.MinFreeStorageGb:0.#} GB free storage; " +
-                $"only {storageGb:0.#} GB available.");
+                $"only {floorStorage:0.#} GB available.");
         }
 
         // 2. CATALOGUE. Even a capable phone cannot code without a real,
@@ -106,8 +126,8 @@ public sealed class CodingCapabilityPlanner : ICodingCapabilityPlanner
         var fits = _catalog.Available
             .Where(m => (m.Capabilities & _req.RequiredCapabilities) == _req.RequiredCapabilities)
             .Where(m => m.ParametersBillion >= _req.MinParametersBillion)
-            .Where(m => m.MinRamGb <= ramGb + 0.0001 &&
-                        (storageGb <= 0 || m.MinFreeStorageGb <= storageGb + 0.0001))
+            .Where(m => m.MinRamGb <= fitRamGb + 0.0001 &&
+                        (fitStorageGb <= 0 || m.MinFreeStorageGb <= fitStorageGb + 0.0001))
             .OrderByDescending(m => m.ParametersBillion)
             .ToList();
 

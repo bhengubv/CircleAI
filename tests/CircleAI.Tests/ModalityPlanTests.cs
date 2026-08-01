@@ -182,17 +182,29 @@ public sealed class ModalityPlanTests
     [Fact]
     public void Vision_IsServedByACataloguedVlm_OnACapableDevice()
     {
-        // THE FLIP the old Vision_IsUnavailable test promised. A real VLM —
-        // Qwen2.5-VL-3B-Instruct-MNN, ~2.7 GB, needs ~3.9 GB RAM — is now
-        // catalogued with Modality=Vision and its real ModelScope hashes. A
-        // capable device clears the floor, so vision is Good and names the model.
-        // Vision is still a model-or-nothing modality; the model now exists.
-        var plan = Selector().PlanFor(Device(8), ModelModality.Vision);
+        // THE FLIP the old Vision_IsUnavailable test promised: vision used to be
+        // model-or-nothing with no model, and now a real VLM is catalogued. A
+        // capable device clears the floor, so vision is Good and names a model.
+        //
+        // It names THE BIGGEST ONE THAT FITS rather than a specific id. Pinning
+        // the id is what made the two tests below go red when a smaller VLM was
+        // added — cataloguing a better model is the goal, not a regression, and a
+        // test that has to be edited every time we improve the ladder is a test
+        // people learn to edit without reading.
+        // The selector's own rule: best quality that fits, ties broken by the
+        // smaller model. Sized so everything catalogued fits, so this is asking
+        // "which does it PREFER", not "which can it afford".
+        var best = CataloguedVlms()
+            .OrderByDescending(e => e.QualityRank)
+            .ThenBy(e => e.MinRamGb)
+            .First();
+        var roomForAll = CataloguedVlms().Max(e => e.MinRamGb) / DeviceProbe.RamFitHeadroom * 1.5;
+        var plan = Selector().PlanFor(Device(roomForAll), ModelModality.Vision);
 
         Assert.True(plan.IsAvailable);
         Assert.Equal(SelectionQuality.Good, plan.Quality);
         Assert.NotNull(plan.Model);
-        Assert.Equal("Qwen2.5-VL-3B-Instruct-MNN", plan.Model!.ModelId);
+        Assert.Equal(best.Name, plan.Model!.ModelId);
         Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
     }
 
