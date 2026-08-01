@@ -120,12 +120,45 @@ public sealed record DeviceProbe(
     public const double RamFitHeadroom = 0.85;
 
     /// <summary>
+    /// Bytes per GB in the catalogue's units — decimal, 10^9.
+    /// </summary>
+    /// <remarks>
+    /// Not 2^30, and the difference was a real bug. <c>MinRamGb</c> and
+    /// <c>MinStorageGb</c> are derived from file sizes divided by 10^9, while every
+    /// device-side number here was divided by 2^30, and then the two were compared
+    /// to each other. A GiB figure is ~7% numerically smaller than the same
+    /// quantity in GB, so the fit check was really demanding a model fit in 79.2%
+    /// of free RAM while the constant next to it said 85%.
+    ///
+    /// It failed in the quiet direction: models were REFUSED that would have run
+    /// fine, so the smallest phones — the ones this exists for — got told a
+    /// capability was unavailable when it was not. Nothing crashed, so nothing
+    /// pointed at it.
+    ///
+    /// The catalogue's unit wins because it is persisted: 78 entries already carry
+    /// values derived at 10^9, and reinterpreting them would silently change what
+    /// every one of them means.
+    /// </remarks>
+    public const double BytesPerGb = 1_000_000_000.0;
+
+    /// <summary>
     /// Free RAM in GB the selector may actually commit to a model — free RAM
     /// scaled by <see cref="RamFitHeadroom"/>. Use this for MinRamGb fit checks,
     /// NOT the raw <see cref="RamAvailableBytes"/>, or a model that fits at load
     /// can still OOM once generation grows the KV cache.
     /// </summary>
-    public double UsableRamGb => RamAvailableBytes * RamFitHeadroom / (1024.0 * 1024 * 1024);
+    public double UsableRamGb => RamAvailableBytes * RamFitHeadroom / BytesPerGb;
+
+    /// <summary>
+    /// Free storage in GB, in the same units as <c>MinStorageGb</c>.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so no caller divides for itself. Five call sites each wrote their
+    /// own <c>/ (1024.0 * 1024 * 1024)</c>, which is exactly how the unit drift got
+    /// in and stayed in — one shared property is the only version of this that
+    /// cannot go out of step again.
+    /// </remarks>
+    public double StorageFreeGb => StorageFreeBytes / BytesPerGb;
 
     /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit.</summary>
     public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null);
@@ -244,6 +277,12 @@ public sealed record DeviceProbe(
         // Tier reflects the DEVICE CLASS (total RAM), not momentary free RAM — a
         // 3 GB phone is a Phone even when busy. Model FIT uses RamAvailableBytes.
         var classBytes = RamTotalBytes > 0 ? RamTotalBytes : RamAvailableBytes;
+
+        // 2^30 here ON PURPOSE, unlike the fit checks which use BytesPerGb. The
+        // thresholds below are hand-picked against how devices are SOLD — "a 4 GB
+        // phone", "a 16 GB laptop" — and those figures are binary. Nothing is
+        // compared against the catalogue here, so there is no unit to agree with;
+        // switching this to 10^9 would silently move every tier boundary.
         var ramGb = classBytes / (1024.0 * 1024 * 1024);
 
         // Workstation: 16+ cores, 32+ GB RAM, active cooling, GPU.

@@ -104,9 +104,50 @@ public sealed class DeviceProbeTests
         // Fit must NOT commit 100% of free RAM — the KV cache grows during
         // generation, so a model that fits at load can still OOM mid-output.
         // UsableRamGb scales free RAM by RamFitHeadroom (0.85 → reserve ~15%).
-        var p = DeviceProbe.Snapshot(ramBytesOverride: 2 * Gb);
+        //
+        // Stated in the CATALOGUE's unit, which is the only one that means
+        // anything here: this number exists to be compared against MinRamGb.
+        // Writing it in GiB — as this test used to — is what let the two drift.
+        const long twoGb = (long)(2 * DeviceProbe.BytesPerGb);
+        var p = DeviceProbe.Snapshot(ramBytesOverride: twoGb);
 
         Assert.True(p.UsableRamGb < 2.0);
         Assert.Equal(2.0 * DeviceProbe.RamFitHeadroom, p.UsableRamGb, 3);
+    }
+
+    [Fact]
+    public void TheFitCheckReservesExactlyTheHeadroomItAdvertises()
+    {
+        // The bug this pins: MinRamGb is derived from file bytes / 10^9, while
+        // every device-side number was bytes / 2^30, and the two were compared to
+        // each other. A GiB figure is ~7% numerically smaller than the same
+        // quantity in GB, so the check really demanded a model fit in 79.2% of
+        // free RAM while the constant beside it said 85%.
+        //
+        // It failed silently and in the mean direction — models REFUSED that would
+        // have run — so the cheapest phones were told a capability was unavailable
+        // when it was not. Nothing crashed, so nothing pointed at it.
+        const long freeBytes = 4_000_000_000;
+        var p = DeviceProbe.Snapshot(ramBytesOverride: freeBytes);
+
+        // A model needing exactly the advertised share of free RAM must fit...
+        var exactlyTheBudget = freeBytes * DeviceProbe.RamFitHeadroom / DeviceProbe.BytesPerGb;
+        Assert.True(exactlyTheBudget <= p.UsableRamGb + 0.0001,
+            $"a model needing {exactlyTheBudget:0.####} GB was refused {p.UsableRamGb:0.####} GB of budget");
+
+        // ...and a hair more must not.
+        Assert.False(exactlyTheBudget * 1.01 <= p.UsableRamGb);
+    }
+
+    [Fact]
+    public void StorageIsMeasuredInTheSameUnitAsTheCatalogue()
+    {
+        // Five call sites each divided StorageFreeBytes by 2^30 for themselves,
+        // then compared the result against MinStorageGb, which comes from bytes /
+        // 10^9. One shared property is the only version that cannot go out of step.
+        const long freeBytes = 32_000_000_000;
+        var p = DeviceProbe.Snapshot(storageBytesOverride: freeBytes);
+
+        Assert.Equal(32.0, p.StorageFreeGb, 3);
     }
 }

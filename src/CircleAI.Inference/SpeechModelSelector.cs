@@ -168,7 +168,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
 
         var tier      = probe.Classify();
         var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
-        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
         var ofModality = _registry.AllModels.Where(e => e.Modality == modality).ToList();
         if (ofModality.Count == 0) return null;   // this modality is not catalogued — honest null
@@ -294,7 +294,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         ArgumentNullException.ThrowIfNull(probe);
         var tier      = probe.Classify();
         var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
-        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
         return _registry.AllModels
             .Where(e => e.Modality == modality)
@@ -331,7 +331,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
 
         var tier      = probe.Classify();
         var ramGb     = probe.UsableRamGb;
-        var storageGb = probe.StorageFreeBytes / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
         var ofLanguage = _registry.AllModels
             .Where(e => e.Modality == modality && LanguageMatches(e.Language, language))

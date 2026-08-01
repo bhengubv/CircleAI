@@ -56,7 +56,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
                 "Model registry is empty. Cannot select a model.");
 
         var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
-        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
         // 1. Filter by capability flags. An entry must declare every required flag.
         var capabilityOk = entries
@@ -117,7 +117,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         var tier = probe.Classify();
 
         var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
-        var storageGb = probe.StorageFreeBytes  / (1024.0 * 1024 * 1024);
+        var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
         return EnumerateEntries()
             .OrderByDescending(e => e.QualityRank)
