@@ -196,32 +196,97 @@ public sealed class ModalityPlanTests
         Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
     }
 
+    // ── vision fit, derived from the catalogue rather than frozen against it ──
+    //
+    // These two used to hardcode "a 2.5 GB phone cannot do vision", which was true
+    // when a 3B VLM was the only one catalogued. Adding SmolVLM-256M made both go
+    // red while the selector was behaving perfectly — the catalogue had improved
+    // and the tests were asserting an old fact about the world.
+    //
+    // A test that fails when the product gets BETTER teaches the wrong lesson: the
+    // next person reads red and starts looking for a bug in the selector. So these
+    // now derive their thresholds from whatever is catalogued today. The property
+    // under test is the RULE — nothing-fits stays distinct from nothing-exists, and
+    // the headroom margin excludes a model that would fit only on paper — not this
+    // month's line-up.
+
+    private static System.Collections.Generic.IReadOnlyList<ModelEntry> CataloguedVlms() =>
+        new ModelRegistryService().AllModels
+            .Where(e => e.Modality == ModelModality.Vision)
+            .OrderBy(e => e.MinRamGb)
+            .ToList();
+
     [Fact]
-    public void Vision_OnAPhoneTooSmallForTheVlm_IsNothingFits_NotUnavailable()
+    public void Vision_OnADeviceBelowEveryCataloguedVlm_IsNothingFits_NotUnavailable()
     {
-        // A 2.5 GB-class phone (P30 Lite) cannot hold a 3B VLM. Honest verdict:
-        // NothingFits — a vision model EXISTS, this device just can't run it —
-        // NOT Unavailable, which would mean none is catalogued. Different fixes
-        // (a smaller VLM vs cataloguing one), so the selector keeps them
-        // distinct. This is the "great on a Pixel, not on a P30" story, concrete.
-        var plan = Selector().PlanFor(Device(2.5), ModelModality.Vision);
+        // Half of what the SMALLEST catalogued VLM needs, whatever that is today.
+        // Honest verdict: NothingFits — a vision model EXISTS, this device just
+        // cannot run it — NOT Unavailable, which would mean none is catalogued at
+        // all. The fixes differ (ship a smaller VLM vs catalogue one), so the
+        // selector must keep them distinct.
+        var smallest = CataloguedVlms().First();
+        var ramGb    = smallest.MinRamGb / DeviceProbe.RamFitHeadroom / 2;
+
+        var plan = Selector().PlanFor(Device(ramGb), ModelModality.Vision);
 
         Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
         Assert.NotEqual(SelectionQuality.Unavailable, plan.Quality);
-        Assert.NotNull(plan.Model);   // the VLM, marked as not-fitting
+        Assert.NotNull(plan.Model);   // the smallest VLM, named but marked not-fitting
         Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
     }
 
     [Fact]
-    public void Vision_JustAboveTheVlmRawSize_IsStillNothingFits_ByHeadroomMargin()
+    public void Vision_AModelThatFitsOnPaperButNotInPractice_IsNotSelected()
     {
-        // 4.3 GB free would fit the ~3.9 GB VLM at 100% of free — but committing
-        // 100% of free RAM is exactly what OOM-killed the app on the P30 once the
-        // KV cache grew. The headroom margin (DeviceProbe.RamFitHeadroom = 0.85)
-        // reserves ~0.65 GB here, leaving ~3.65 GB usable → NothingFits, honestly.
-        var plan = Selector().PlanFor(Device(4.3), ModelModality.Vision);
+        // The biggest VLM's BUNDLE would sit in free RAM, but its runtime working
+        // set (~1.4x bundle) plus the 0.85 headroom will not. Committing all of
+        // free RAM is exactly what OOM-killed the app on the P30 once the KV cache
+        // grew, so the margin has to exclude it.
+        //
+        // What changed is the CONSEQUENCE, and it is the better one: with a smaller
+        // VLM catalogued the device now degrades to it instead of losing vision
+        // entirely. Same rule, kinder outcome.
+        var vlms    = CataloguedVlms();
+        var biggest = vlms.Last();
+        var rawGiB  = biggest.TotalBytes / (1024.0 * 1024 * 1024);
 
-        Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
+        // The margin has to exist at all, or this test proves nothing.
+        Assert.True(biggest.MinRamGb > rawGiB,
+            $"{biggest.Name} declares no working-set margin over its {rawGiB:0.##} GiB bundle");
+
+        // Free RAM landing between "the bundle fits" and "the working set fits".
+        var ramGb = (rawGiB + biggest.MinRamGb) / 2 / DeviceProbe.RamFitHeadroom;
+        var plan  = Selector().PlanFor(Device(ramGb), ModelModality.Vision);
+
+        Assert.NotEqual(biggest.Name, plan.Model?.ModelId);
+
+        if (vlms.Count > 1)
+        {
+            // A smaller one exists, so this is a downgrade, not a refusal.
+            Assert.Equal(SelectionQuality.Good, plan.Quality);
+            Assert.True(plan.Model!.EstimatedBytes < biggest.TotalBytes);
+        }
+        else
+        {
+            Assert.Equal(SelectionQuality.NothingFits, plan.Quality);
+        }
+    }
+
+    [Fact]
+    public void Vision_OnAP30ClassPhone_WorksBecauseASmallVlmIsCatalogued()
+    {
+        // The mission as an assertion. A 2.5 GB phone got nothing until a small
+        // VLM was catalogued; that is the whole point of curating a ladder rather
+        // than one good model. If this goes red it means the cheapest phones lost
+        // vision — which IS worth a red build, unlike the two tests above going red
+        // because they gained it.
+        var plan = Selector().PlanFor(Device(2.5), ModelModality.Vision);
+
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.NotNull(plan.Model);
+        Assert.True(plan.Model!.EstimatedBytes < 1_000_000_000,
+            $"expected a small VLM on a 2.5 GB phone, got {plan.Model.ModelId} " +
+            $"at {plan.Model.EstimatedBytes / 1e9:0.##} GB");
     }
 
     [Fact]
