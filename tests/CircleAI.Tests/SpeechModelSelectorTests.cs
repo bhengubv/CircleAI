@@ -120,4 +120,44 @@ public sealed class SpeechModelSelectorTests
         Assert.Equal(SelectionQuality.NothingFits, list.Single(c => c.ModelId == "tts-toobig").Quality);
         Assert.Equal(SelectionQuality.Good,        list.Single(c => c.ModelId == "tts-fits").Quality);
     }
+
+    /// <summary>
+    /// One model can speak many languages, and the catalogue says so with a
+    /// comma-separated tag. Every one of those languages must be selectable.
+    /// </summary>
+    /// <remarks>
+    /// This shipped broken. The eleven-language South African voice is tagged
+    /// "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu"; the matcher compared that entire string
+    /// against the request, so all eleven reported "nothing catalogued" while the
+    /// model sat in the registry — including isiNdebele, for which no other voice
+    /// exists anywhere. Nothing failed loudly: declining a language is
+    /// indistinguishable from not having it, so only tapping it on a phone found it.
+    /// </remarks>
+    [Theory]
+    [InlineData("af")]  [InlineData("nr")]  [InlineData("zu")]
+    [InlineData("xh")]  [InlineData("nso")] [InlineData("ve")]
+    public void A_multi_language_voice_is_found_by_each_language_it_speaks(string tag)
+    {
+        var eleven = Tts("sa-11", rank: 7, ramGb: 0.5) with
+        {
+            Language = "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+        };
+        using var reg = new MixedRegistry(new[] { eleven });
+
+        var pick = new SpeechModelSelector(reg).BestFor(Device(4.0), ModelModality.Tts, tag);
+
+        Assert.NotNull(pick);
+        Assert.Equal("sa-11", pick!.ModelId);
+    }
+
+    [Fact]
+    public void A_language_the_multi_voice_does_not_speak_is_still_declined()
+    {
+        // The comma split must not turn into "matches anything": serving the wrong
+        // language is worse than serving none.
+        var eleven = Tts("sa-11", rank: 7, ramGb: 0.5) with { Language = "af,zu,xh" };
+        using var reg = new MixedRegistry(new[] { eleven });
+
+        Assert.Null(new SpeechModelSelector(reg).BestFor(Device(4.0), ModelModality.Tts, "ja"));
+    }
 }

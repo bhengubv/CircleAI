@@ -1,5 +1,5 @@
 {
-  "Notes": "Auto-populated from ModelScope file-listing API by tools/recalibrate-registry-sha. Each entry\u0027s BundleFiles array lists EVERY file MNN-LLM needs to load the model. Per-file SHA-256 comes from ModelScope\u0027s API; one file per entry is full-download verified to confirm the API SHAs are accurate. Re-run the tool to refresh.",
+  "Notes": "Auto-populated from ModelScope file-listing API by tools/recalibrate-registry-sha. Each entry's BundleFiles array lists EVERY file MNN-LLM needs to load the model. Per-file SHA-256 comes from ModelScope's API; one file per entry is full-download verified to confirm the API SHAs are accurate. Re-run the tool to refresh.",
   "Qwen2.5-VL-3B-Instruct-MNN": {
     "Repo": "MNN/Qwen2.5-VL-3B-Instruct-MNN",
     "Modality": "Vision",
@@ -8,18 +8,66 @@
     "Version": "2.5",
     "TotalBytes": 2736203848,
     "BundleFiles": [
-      { "Name": ".gitattributes", "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82", "SizeBytes": 1642 },
-      { "Name": "config.json", "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815", "SizeBytes": 344 },
-      { "Name": "configuration.json", "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2", "SizeBytes": 46 },
-      { "Name": "embeddings_bf16.bin", "Sha256": "b84907567aa829c6f24cadbdeb68c3c44d25fc0a8be8e917fd603cb64f72810d", "SizeBytes": 622329856 },
-      { "Name": "llm.mnn", "Sha256": "860ac54071174f8d2961c3258224fe315dcf2bae78344005cdddee21e7d80aa3", "SizeBytes": 574000 },
-      { "Name": "llm.mnn.json", "Sha256": "04ae802933b4ff8e58c17b1246e8b64abd3267fb16c7b6642028771e87f88fcd", "SizeBytes": 2407071 },
-      { "Name": "llm.mnn.weight", "Sha256": "7326f768b816b5af71ad3a995dc1e321e07f85db487394e1430e5f07fd9627c6", "SizeBytes": 1737291202 },
-      { "Name": "llm_config.json", "Sha256": "00492942d0603aa638ec263341359f33feeb400e36ca96d11fe1dde1b9f79e77", "SizeBytes": 725 },
-      { "Name": "README.md", "Sha256": "8ed4004451e18f85a282cada7fcefd0ac589246e240777660c91e4f5bde02dcc", "SizeBytes": 1261 },
-      { "Name": "tokenizer.txt", "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b", "SizeBytes": 3193477 },
-      { "Name": "visual.mnn", "Sha256": "1caaa38f5c8e0073f7bbf29e496ccfbeda1b32df332652a031100d0ea306dd7f", "SizeBytes": 655328 },
-      { "Name": "visual.mnn.weight", "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81", "SizeBytes": 369748896 }
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815",
+        "SizeBytes": 344
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "b84907567aa829c6f24cadbdeb68c3c44d25fc0a8be8e917fd603cb64f72810d",
+        "SizeBytes": 622329856
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "860ac54071174f8d2961c3258224fe315dcf2bae78344005cdddee21e7d80aa3",
+        "SizeBytes": 574000
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "04ae802933b4ff8e58c17b1246e8b64abd3267fb16c7b6642028771e87f88fcd",
+        "SizeBytes": 2407071
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "7326f768b816b5af71ad3a995dc1e321e07f85db487394e1430e5f07fd9627c6",
+        "SizeBytes": 1737291202
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "00492942d0603aa638ec263341359f33feeb400e36ca96d11fe1dde1b9f79e77",
+        "SizeBytes": 725
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "8ed4004451e18f85a282cada7fcefd0ac589246e240777660c91e4f5bde02dcc",
+        "SizeBytes": 1261
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+        "SizeBytes": 3193477
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "1caaa38f5c8e0073f7bbf29e496ccfbeda1b32df332652a031100d0ea306dd7f",
+        "SizeBytes": 655328
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81",
+        "SizeBytes": 369748896
+      }
     ]
   },
   "SmolVLM-256M-Instruct-MNN": {
@@ -30,36 +78,92 @@
     "Version": "1.0",
     "TotalBytes": 311431857,
     "BundleFiles": [
-      { "Name": ".gitattributes", "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82", "SizeBytes": 1642 },
-      { "Name": "config.json", "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4", "SizeBytes": 291 },
-      { "Name": "configuration.json", "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2", "SizeBytes": 46 },
-      { "Name": "embeddings_bf16.bin", "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742", "SizeBytes": 56770560 },
-      { "Name": "llm.mnn", "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47", "SizeBytes": 475544 },
-      { "Name": "llm.mnn.json", "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506", "SizeBytes": 999332 },
-      { "Name": "llm.mnn.weight", "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691", "SizeBytes": 150050290 },
-      { "Name": "llm_config.json", "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40", "SizeBytes": 778 },
-      { "Name": "README.md", "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225", "SizeBytes": 1255 },
-      { "Name": "tokenizer.txt", "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95", "SizeBytes": 888755 },
-      { "Name": "visual.mnn", "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37", "SizeBytes": 228200 },
-      { "Name": "visual.mnn.weight", "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06", "SizeBytes": 102015164 }
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4",
+        "SizeBytes": 291
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742",
+        "SizeBytes": 56770560
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47",
+        "SizeBytes": 475544
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506",
+        "SizeBytes": 999332
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691",
+        "SizeBytes": 150050290
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40",
+        "SizeBytes": 778
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225",
+        "SizeBytes": 1255
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95",
+        "SizeBytes": 888755
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37",
+        "SizeBytes": 228200
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06",
+        "SizeBytes": 102015164
+      }
     ]
   },
   "Piper-en_US-lessac-high": {
-    "Repo": "rhasspy/piper-voices",
-    "Source": "HuggingFace",
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
     "Modality": "Tts",
     "Architecture": "vits",
     "QuantizationType": "ONNX",
     "Version": "1.0",
     "TotalBytes": 113900084,
     "BundleFiles": [
-      { "Name": "en/en_US/lessac/high/en_US-lessac-high.onnx", "Sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09", "SizeBytes": 113895201 },
-      { "Name": "en/en_US/lessac/high/en_US-lessac-high.onnx.json", "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f", "SizeBytes": 4883 }
+      {
+        "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx",
+        "Sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09",
+        "SizeBytes": 113895201
+      },
+      {
+        "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx.json",
+        "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f",
+        "SizeBytes": 4883
+      }
     ]
   },
   "Piper-en_US-lessac-medium": {
-    "Repo": "rhasspy/piper-voices",
-    "Source": "HuggingFace",
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
     "Modality": "Tts",
     "Architecture": "vits",
     "QuantizationType": "ONNX",
@@ -67,12 +171,12 @@
     "TotalBytes": 63206179,
     "BundleFiles": [
       {
-        "Name": "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+        "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx",
         "Sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
         "SizeBytes": 63201294
       },
       {
-        "Name": "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+        "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx.json",
         "Sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
         "SizeBytes": 4885
       }
@@ -587,6 +691,137 @@
         "Name": "tokenizer.txt",
         "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
         "SizeBytes": 3193477
+      }
+    ]
+  },
+  "Vits-11ZA": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 122139761,
+    "BundleFiles": [
+      {
+        "Name": "vits-11za/model.onnx",
+        "Sha256": "5a4d16f2534e478c64bc12512c89720b240a6326436452ac9a64d2a0a5d7f6a2",
+        "SizeBytes": 122137693
+      },
+      {
+        "Name": "vits-11za/model.onnx.json",
+        "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+        "SizeBytes": 1911
+      },
+      {
+        "Name": "vits-11za/language_ids.json",
+        "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+        "SizeBytes": 157
+      }
+    ]
+  },
+  "MMS-ibo": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 114245506,
+    "BundleFiles": [
+      {
+        "Name": "mms-ibo/model.onnx",
+        "Sha256": "bbc471c6529502da4116b12c764413abe702ccab096bf5f923567acaede1c110",
+        "SizeBytes": 114244509
+      },
+      {
+        "Name": "mms-ibo/model.onnx.json",
+        "Sha256": "c46847c5c4c4ca915093cd0642de0d9c1e7b19a7bad831299d7260155d6e6f06",
+        "SizeBytes": 997
+      }
+    ]
+  },
+  "MMS-lin": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 114220542,
+    "BundleFiles": [
+      {
+        "Name": "mms-lin/model.onnx",
+        "Sha256": "787e25e9fe8ee66e1dcecd1aaf82a1e366dab6ccc28684821d5ff0a334671816",
+        "SizeBytes": 114219933
+      },
+      {
+        "Name": "mms-lin/model.onnx.json",
+        "Sha256": "8a96a531dbe3a4c99ff251b85a61c0b7e3ba7218981a0dcbb736a46d5dabdf69",
+        "SizeBytes": 609
+      }
+    ]
+  },
+  "MMS-amh": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 114308580,
+    "BundleFiles": [
+      {
+        "Name": "mms-amh/model.onnx",
+        "Sha256": "237e7418099ff67afceaa9afa68e4de1663d0577c91192a826ea30533c3530b9",
+        "SizeBytes": 114308116
+      },
+      {
+        "Name": "mms-amh/model.onnx.json",
+        "Sha256": "dab1a2eba1656906656bfe75c013db93dcb45a65bf8cf2c6da835a60c9381ad7",
+        "SizeBytes": 464
+      }
+    ]
+  },
+  "MMS-tir": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 114307801,
+    "BundleFiles": [
+      {
+        "Name": "mms-tir/model.onnx",
+        "Sha256": "8c64ff0de8ad66b75506fcea2c08a1299461e57f2258e32c74119de61a32bd10",
+        "SizeBytes": 114307348
+      },
+      {
+        "Name": "mms-tir/model.onnx.json",
+        "Sha256": "267950fb1ac020ab33ebdb47d47e694766628aa59aa705a5a5e1566fada8ebba",
+        "SizeBytes": 453
+      }
+    ]
+  },
+  "MMS-npi": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "ONNX",
+    "Version": "1.0",
+    "TotalBytes": 114264301,
+    "BundleFiles": [
+      {
+        "Name": "mms-npi/model.onnx",
+        "Sha256": "77dce7a3a2f60a61175fa72dc8dd792948ae0e18604e8da923802c8a95110aa6",
+        "SizeBytes": 114262941
+      },
+      {
+        "Name": "mms-npi/model.onnx.json",
+        "Sha256": "e2f48de23dbefd5ae32dfd9e8ae9989f47bd02c0635e12a3f7d1b7e402fdfaeb",
+        "SizeBytes": 1360
       }
     ]
   }

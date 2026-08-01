@@ -368,10 +368,27 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
     /// matches a specific request: an untagged voice is not assumed to be any
     /// particular language.
     /// </summary>
+    /// <remarks>
+    /// An entry may list SEVERAL languages, comma-separated, because one model can
+    /// serve many: the South African VITS voice is tagged
+    /// <c>af,en,nr,nso,st,ss,tn,ts,ve,xh,zu</c> and speaks all eleven.
+    ///
+    /// Splitting only on '-' and '_' meant such an entry matched no request at all
+    /// — the whole eleven-language tag was compared as one opaque string, so every
+    /// one of those languages reported "nothing catalogued" while the voice sat in
+    /// the registry. That included the only isiNdebele voice we have ever found.
+    /// The failure was silent: declining to serve a language looks exactly like
+    /// not having it.
+    /// </remarks>
     internal static bool LanguageMatches(string? entryLanguage, string requestedLanguage)
     {
         if (string.IsNullOrWhiteSpace(entryLanguage)) return false;
         static string Primary(string s) => s.Trim().ToLowerInvariant().Split('-', '_')[0];
-        return Primary(entryLanguage) == Primary(requestedLanguage);
+
+        var wanted = Primary(requestedLanguage);
+        foreach (var tag in entryLanguage.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (Primary(tag) == wanted) return true;
+
+        return false;
     }
 }

@@ -1,13 +1,42 @@
-# Voice provenance — 74 languages verified on the Huawei P30 Lite
+# Voice provenance — 71 languages verified on the Huawei P30 Lite
 
 Recorded so provenance stays visible, not because anything here is a problem.
 
+**71 distinct languages.** The figure "74" appears in older notes and counts the
+three pairs where two regional voices serve one language — Spanish (Spain and
+Mexico), Portuguese (Brazil and Portugal), Dutch (Netherlands and Flemish
+Belgium). Both numbers describe the same set of voices.
+
 CircleAI is free AI for people on old hardware who cannot pay for anything else.
-It is developed independently, earns no money, is a core component of nothing,
-and does not distribute any model — every voice is fetched at runtime from its
-own source. CC-BY-NC permits exactly this use; it is the case that licence exists
+It is developed independently, earns no money, and is a core component of
+nothing. CC-BY-NC permits exactly this use; it is the case that licence exists
 for. The NC entries below are therefore a note on where each voice came from, not
 a liability.
+
+## We now host copies — 2026-07-31
+
+Until this date CircleAI distributed no model: every voice was fetched at runtime
+from whichever stranger's repository published it. That is no longer true, and
+the change is deliberate.
+
+All 66 voices now live in one bucket we control,
+[thegeekco/circleai-voices](https://huggingface.co/thegeekco/circleai-voices)
+(135 files, 6.91 GB, public). The catalogue points there and nowhere else.
+
+Two reasons. First, a speaker of Bemba should not lose their voice because
+someone else's repository went away. Second, the hours spent working out which
+model, which ONNX input layout, and which front-end each language needs should
+not have to be spent by the next person — one address is the whole point.
+
+This makes us a redistributor, which the previous wording explicitly said we were
+not. CC-BY-NC and CC-BY-SA both permit redistribution and both require
+attribution, so the bucket carries a README crediting every upstream author and
+naming the licence for each voice individually. The obligation is met by that
+file; if it is ever removed, the redistribution is no longer compliant.
+
+Six voices in the bucket exist in no other public place — the 11-language South
+African model, plus Igbo, Lingala, Amharic, Tigrinya and Nepali. For those, the
+bucket is not a mirror, it is the only copy.
 
 (An earlier version of this file claimed NC "blocks calling CircleAI open
 source". That was wrong. It reasoned as though CircleAI inherited the commercial
@@ -29,8 +58,9 @@ repository; the repository is open source.)
 | bn_BD google | CC-BY-SA-4.0 | rhasspy/piper-voices (openSLR 37) |
 | zh (Mandarin) | **MIT** | csukuangfj/vits-melo-tts-zh_en (MyShell MeloTTS) |
 | Kokoro (Hindi, Vietnamese, Japanese) | Apache-2.0 | onnx-community/Kokoro-82M-v1.0-ONNX |
+| en_US lessac (medium, high) | Blizzard 2013 Lessac dataset licence — see [licence URL](https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html) | rhasspy/piper-voices — the two English voices that predate this work; bespoke research terms, not an SPDX identifier |
 
-## Non-commercial licences — permitted for this use, fetched at runtime
+## Non-commercial licences — permitted for this use, credited in the bucket README
 | voices | licence | source |
 |---|---|---|
 | 20 African continental (swh yor hau lug kik kin ewe lgg nyn aka bam bem fon ful nya orm run sag sna som) | CC-BY-NC-4.0 | MMS |

@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Base manifest for the IT! Android head. Almost everything is generated from
-    attributes (the launcher activity, MonoRuntimeProvider) and MSBuild items
-    (INTERNET, and RECORD_AUDIO in voice builds) and merged into this file — this
-    exists only to add the one thing that has no attribute/item form: <queries>.
+    assembly attributes (the launcher activity, MonoRuntimeProvider, and the
+    permissions in Permissions.cs) and merged into this file — this exists only to
+    add the one thing that has no attribute form: <queries>.
+
+    This comment used to say INTERNET came "from MSBuild items". It did not. There
+    is no <AndroidPermission> build item, so no permission ever arrived that way and
+    nothing warned. The app shipped with no INTERNET permission at all until
+    2026-07-31 and nobody noticed, because every model had been sideloaded over adb.
+    Permissions are declared in Permissions.cs as [assembly: UsesPermission].
 
     Android 11+ (API 30) package visibility: without this, CircleAI's
     contentResolver.Call to the out-of-process espeak G2P provider returns null

@@ -85,10 +85,74 @@ public sealed class PhrasedTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDis
         _approximatedSymbols.Clear();
     }
 
+    /// <summary>
+    /// How many sentences to synthesise together as one utterance. Default 1.
+    /// </summary>
+    /// <remarks>
+    /// Every utterance opens with <c>[BOS, PAD, …]</c> whose duration the model
+    /// predicts with nothing to its left, and it tends to over-lengthen there —
+    /// heard as the first syllable of each sentence being dragged. One utterance
+    /// per sentence pays that once per sentence; grouping pays it once per group.
+    ///
+    /// The cost is latency and memory: a group must be fully synthesised before
+    /// any of it plays, and on a cheap phone a long paragraph rendered in one go
+    /// is exactly the freeze that per-sentence splitting was introduced to avoid.
+    /// So this trades smoothness against time-to-first-sound, and 2 or 3 is the
+    /// useful part of that range.
+    /// </remarks>
+    public int SentencesPerUtterance { get; set; } = 1;
+
+    /// <summary>
+    /// Silence placed before the first word, in milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// A person draws breath before speaking. A synthesiser starts on the first
+    /// sample, which lands as abrupt — and on a phone the audio path often eats
+    /// the opening milliseconds while the output stream spins up, so the first
+    /// consonant is clipped as well as sudden. A short lead-in fixes both: the
+    /// speaker sounds like they took a breath, and the hardware has something
+    /// disposable to swallow.
+    /// </remarks>
+    public int LeadInSilenceMs { get; set; }
+
+    /// <summary>
+    /// Silence placed after the last word, in milliseconds.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart. Without it the audio stops on the final sample, which
+    /// truncates the natural decay of the last syllable and, worse, invites the
+    /// player to cut the tail while it is still draining. It also gives a listener
+    /// the beat of quiet that tells them the turn has ended, rather than leaving
+    /// them unsure whether more is coming.
+    /// </remarks>
+    public int TailSilenceMs { get; set; }
+
+    /// <summary>
+    /// Joins consecutive sentences into groups of <paramref name="size"/>.
+    /// </summary>
+    /// <remarks>
+    /// The pause after a group is the pause the LAST sentence in it asked for, so
+    /// a paragraph break that fell at a group boundary still lands. Pauses inside a
+    /// group are given back to the model as ordinary punctuation, which is what it
+    /// was trained on and generally reads better than an inserted gap.
+    /// </remarks>
+    private static IReadOnlyList<SpeechSegment> Group(IReadOnlyList<SpeechSegment> segments, int size)
+    {
+        var grouped = new List<SpeechSegment>((segments.Count / size) + 1);
+        for (var i = 0; i < segments.Count; i += size)
+        {
+            var take = Math.Min(size, segments.Count - i);
+            var text = string.Join(" ", Enumerable.Range(i, take).Select(k => segments[k].Text));
+            grouped.Add(new SpeechSegment(text, segments[i + take - 1].TrailingPauseMs));
+        }
+        return grouped;
+    }
+
     public async Task<TtsSynthesisResult> SynthesiseAsync(
         string text, CancellationToken cancellationToken = default)
     {
         var segments = SentenceSplitter.Split(text);
+        if (SentencesPerUtterance > 1) segments = Group(segments, SentencesPerUtterance);
         LastSegmentCount = segments.Count;
         ResetDiagnostics();
 
@@ -97,7 +161,12 @@ public sealed class PhrasedTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDis
 
         // One sentence needs no joining — hand the inner result back untouched so
         // a single-sentence utterance is byte-identical to the unwrapped engine.
-        if (segments.Count == 1)
+        //
+        // Unless breathing room was asked for. This path is easy to forget and
+        // easy to hit: grouping sentences collapses a whole paragraph to a single
+        // segment, so the common case ends up here, and skipping the padding would
+        // silently apply it to short text and not to long.
+        if (segments.Count == 1 && LeadInSilenceMs <= 0 && TailSilenceMs <= 0)
         {
             var only = await _inner.SynthesiseAsync(segments[0].Text, cancellationToken).ConfigureAwait(false);
             CollectDiagnostics();
@@ -108,6 +177,7 @@ public sealed class PhrasedTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDis
         TtsSynthesisResult? format = null;
         var total = 0;
 
+        var first = true;
         foreach (var segment in segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -117,6 +187,17 @@ public sealed class PhrasedTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDis
             if (part.AudioData.Length == 0) continue;
 
             format ??= part;
+
+            // The breath before the first word. Added once the format is known,
+            // because silence has to match the sample rate and width of the audio
+            // it sits against or the join is a click.
+            if (first)
+            {
+                first = false;
+                var lead = Silence(part, LeadInSilenceMs);
+                if (lead.Length > 0) { buffers.Add(lead); total += lead.Length; }
+            }
+
             buffers.Add(part.AudioData);
             total += part.AudioData.Length;
 
@@ -130,6 +211,11 @@ public sealed class PhrasedTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDis
 
         if (format is null)
             return new TtsSynthesisResult(ReadOnlyMemory<byte>.Empty, 16000, 1, 16);
+
+        // And the beat of quiet at the end, so the last syllable is allowed to
+        // decay and the listener hears the turn finish rather than stop.
+        var tail = Silence(format, TailSilenceMs);
+        if (tail.Length > 0) { buffers.Add(tail); total += tail.Length; }
 
         var joined = new byte[total];
         var offset = 0;

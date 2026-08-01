@@ -908,8 +908,22 @@ public sealed class AIService : IAIService
             .ConfigureAwait(false);
 
         // 3. Already on disk? Use it.
+        //
+        // Ask the loader whether the model is COMPLETE — do not just test that
+        // GetModelPath's file exists. For an MNN bundle that path is config.json:
+        // 403 bytes, downloaded first, and present long before the 450 MB weight
+        // file beside it. A download interrupted after those first few KB left a
+        // directory that passed this gate forever, so the download was skipped on
+        // every subsequent launch and MNN failed with "load failed" every time.
+        // The model could never repair itself, and on the P30 Lite it never did:
+        // chat was dead on that phone from the first interrupted fetch onward.
+        //
+        // ModelExists checks the weight file, which is the thing that actually
+        // has to be there.
         var existing = _modelLoader.GetModelPath(modelId!);
-        if (!string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing))
+        if (!string.IsNullOrEmpty(existing) &&
+            System.IO.File.Exists(existing) &&
+            _modelLoader.ModelExists(modelId!))
             return existing;
 
         // 4. Fetch via the loader.
@@ -985,8 +999,13 @@ public sealed class AIService : IAIService
             throw new InvalidOperationException(
                 $"Building model '{modelId}' by id requires an IModelLoader.");
 
+        // Completeness, not mere presence — see ResolveModelPathAsync. Testing
+        // only that GetModelPath's file exists accepts a bundle whose config.json
+        // arrived and whose weights did not.
         var existing = _modelLoader.GetModelPath(modelId);
-        var modelPath = !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing)
+        var modelPath = !string.IsNullOrEmpty(existing) &&
+                        System.IO.File.Exists(existing) &&
+                        _modelLoader.ModelExists(modelId)
             ? existing
             : await _modelLoader.DownloadModelAsync(modelId).ConfigureAwait(false);
         if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))

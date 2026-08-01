@@ -15,7 +15,26 @@ using CircleAI.Samples.It;
 
 namespace CircleAI.Samples.It.Mobile;
 
-[Activity(Label = "IT!", MainLauncher = true, WindowSoftInputMode = SoftInput.AdjustResize)]
+// The chat screen. No longer the launcher — HomeActivity is, because this one
+// opens by downloading 433 MB and then showing a log, which is the wrong first
+// impression of anything. Reached deliberately, from "Ask it something".
+// Exported so a test script can drive it: the voice sweeps launch it with
+// --es tts_lang / --ei tts_speaker, and once it stopped being the launcher it
+// stopped being exported by default, which broke every scripted run with a
+// permission denial. It holds nothing private — it is the chat screen of a
+// sample app — and the alternative is synthesising taps at fixed screen
+// coordinates, which has already landed in the wrong app once.
+// SingleTop so a second intent reaches the RUNNING instance instead of stacking a
+// new one. Without it the only way to deliver fresh parameters was to force-stop
+// and relaunch, which threw away the warm ONNX session with the process — 122 MB
+// reloaded from storage for every comparison, turning a four-second synthesis into
+// a minute. Tuning a voice by ear means dozens of those, and per-language work
+// means dozens more.
+[Activity(Label = "Ask CircleAI",
+          ParentActivity = typeof(HomeActivity),
+          Exported = true,
+          LaunchMode = Android.Content.PM.LaunchMode.SingleTop,
+          WindowSoftInputMode = SoftInput.AdjustResize)]
 public class MainActivity : Activity
 {
     ItSession? _session;
@@ -107,17 +126,23 @@ public class MainActivity : Activity
 
         BuildUi();
 
-        Append("IT! - CircleAI Neuron, on-device (C#)\n\n");
-        Append("Type a message and hit Send. Try:\n");
-        Append("  \"my name is ...\"   then   \"what's my name?\"\n");
-        Append("  \"solve ... step by step\"   -> routes to a specialist\n\n");
+        // Written for somebody who has never heard of this project. The old text
+        // opened with "CircleAI Neuron" and told them to tap "Caps" for a
+        // "per-modality sweep" — three pieces of in-house vocabulary before the
+        // first full stop.
+        Append("Everything here runs on this phone.\n");
+        Append("No account. No cloud. Nothing you type or say is sent anywhere.\n\n");
 
-        Append("Tap Caps now for the offline sweep — per-modality model verdicts\n");
-        Append("plus CV / cover letter / invoice / report PDFs. No model, no wait.\n\n");
+        Append("Tap Languages to hear it speak in any of 71 languages.\n");
+        Append("Tap What it can do to see what this phone can run — that one\n");
+        Append("needs no download and answers straight away.\n\n");
 
-        Append("Starting the Neuron. On first run it picks a model that fits\n");
-        Append("this phone and downloads it (~433 MB), so this takes a while.\n");
-        Append("Later runs load straight from cache.\n\n");
+        Append("Type a message below and it will answer. Try telling it your\n");
+        Append("name, then asking what your name is — it remembers, on device.\n\n");
+
+        Append("Getting ready. The first answer needs a model that fits this\n");
+        Append("phone, about 433 MB, so it takes a few minutes on the first run.\n");
+        Append("After that it starts from what is already here.\n\n");
 
         try
         {
@@ -144,35 +169,156 @@ public class MainActivity : Activity
         }
         catch (Exception ex)
         {
-            // Full detail, not just Message — the first real-model run is the
-            // one where native/model failures actually need diagnosing.
-            Append("ERROR starting the Neuron:\n" + ex + "\n");
+            // A stack trace is the correct thing to KEEP and the wrong thing to
+            // SHOW. This used to print the whole exception on the first screen: a
+            // stranger opening the app met "QwenTextGenerator..ctor(String
+            // modelPath, UInt32 contextSize, Nullable`1 threads...)" and reasonably
+            // concluded the thing was broken. Say what happened, say what still
+            // works, and keep the detail on disk for whoever can use it.
+            Append("The chat model could not start on this phone.\n\n");
+            Append($"Reason: {Summarise(ex)}\n\n");
+            Append("Languages and What it can do still work — they do not need\n");
+            Append("the chat model. Tap Languages to hear the phone speak.\n");
+
+            try
+            {
+                // The exception alone does not say WHY the load failed. MNN's
+                // "load failed" arrives after the config parsed successfully, so
+                // the useful evidence is what is actually on disk beside it — a
+                // missing or short weight file looks identical from the C# side.
+                // Written to external storage as well, because a Release build's
+                // private directory cannot be read over adb at all.
+                var report = new System.Text.StringBuilder()
+                    .AppendLine(ex.ToString())
+                    .AppendLine()
+                    .AppendLine("── model storage ──")
+                    .ToString() + DescribeModelStorage();
+
+                await System.IO.File.WriteAllTextAsync(
+                    System.IO.Path.Combine(FilesDir!.AbsolutePath, "startup-error.txt"), report);
+
+                var ext = GetExternalFilesDir(null)?.AbsolutePath;
+                if (!string.IsNullOrEmpty(ext))
+                    await System.IO.File.WriteAllTextAsync(
+                        System.IO.Path.Combine(ext, "startup-error.txt"), report);
+            }
+            catch { /* the message above already told them what matters */ }
+        }
+    }
+
+    /// <summary>Every model file on this device, with its real size on disk.</summary>
+    string DescribeModelStorage()
+    {
+        var sb = new System.Text.StringBuilder();
+        try
+        {
+            var root = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "CircleAI", "Models");
+            sb.AppendLine($"root: {root}");
+            if (!System.IO.Directory.Exists(root)) return sb.AppendLine("  (does not exist)").ToString();
+
+            foreach (var dir in System.IO.Directory.EnumerateDirectories(root))
+            {
+                sb.AppendLine($"  {System.IO.Path.GetFileName(dir)}/");
+                foreach (var f in System.IO.Directory.EnumerateFiles(dir, "*", System.IO.SearchOption.AllDirectories))
+                    sb.AppendLine($"    {new System.IO.FileInfo(f).Length,14:N0}  {System.IO.Path.GetRelativePath(dir, f)}");
+            }
+
+            // Free RAM at the moment of failure, since "not enough memory" and
+            // "file missing" produce the same MNN return code.
+            if (GetSystemService(Android.Content.Context.ActivityService) is Android.App.ActivityManager am)
+            {
+                var mi = new Android.App.ActivityManager.MemoryInfo();
+                am.GetMemoryInfo(mi);
+                sb.AppendLine($"\nfree RAM: {mi.AvailMem / 1_000_000:N0} MB of {mi.TotalMem / 1_000_000:N0} MB" +
+                              $"   lowMemory={mi.LowMemory}  threshold={mi.Threshold / 1_000_000:N0} MB");
+            }
+        }
+        catch (Exception ex) { sb.AppendLine("  (could not read: " + ex.Message + ")"); }
+        return sb.ToString();
+    }
+
+    /// <summary>One sentence a non-developer can act on, from an exception.</summary>
+    static string Summarise(Exception ex)
+    {
+        var msg = ex.GetBaseException().Message;
+        // Checked first, because the MNN message ALSO contains the word "RAM" and
+        // a full internal file path — matching on "memory" further down let the
+        // raw path through onto the first screen.
+        if (msg.Contains("MNN model load failed", StringComparison.OrdinalIgnoreCase))
+            return "the model file on this phone could not be opened. Re-downloading it usually fixes it.";
+        if (msg.Contains("memory", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("OutOfMemory", StringComparison.OrdinalIgnoreCase))
+            return "not enough free memory. Closing other apps usually fixes it.";
+        if (msg.Contains("Permission denied", StringComparison.OrdinalIgnoreCase))
+            return "the phone blocked a file or network request.";
+        if (msg.Contains("No such file", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            return "part of the model is missing — it may still be downloading.";
+        if (ex is System.Net.Http.HttpRequestException or System.Net.Sockets.SocketException)
+            return "the download could not reach the internet.";
+        return msg.Length > 160 ? msg[..160] + "…" : msg;
+    }
+
+    /// <summary>
+    /// Accepts a new set of parameters without restarting, so the loaded voice
+    /// stays loaded.
+    /// </summary>
+    /// <remarks>
+    /// The tuning knobs arrive as intent extras, which <see cref="OnCreate"/>
+    /// reads — and OnCreate runs once. Delivering new values therefore used to
+    /// mean force-stopping the app, which killed the process, which discarded the
+    /// cached ONNX session. Every comparison then paid a fresh 122 MB model load:
+    /// about a minute per variant, for a synthesis that takes four seconds warm.
+    ///
+    /// Handling the intent here keeps the session alive between runs. Android
+    /// leaves <see cref="Activity.Intent"/> pointing at the ORIGINAL intent unless
+    /// it is reassigned, so that assignment is the whole fix — without it the new
+    /// extras are delivered and then ignored, which looks exactly like the
+    /// parameter having no effect.
+    /// </remarks>
+    protected override void OnNewIntent(Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        if (intent is null) return;
+
+        Intent = intent;
+        if (intent.GetBooleanExtra("run_tts", false))
+        {
+            Append("\n───────────────\n");
+            RunTts();
         }
     }
 
     void BuildUi()
     {
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        root.SetBackgroundColor(Bg);
+        root.SetBackgroundColor(Ui.Bg);
 
-        // header
-        var header = new TextView(this) { Text = "IT!", TextSize = 22f };
-        header.SetTypeface(null, TypefaceStyle.Bold);
-        header.SetTextColor(Ink);
-        header.SetPadding(36, 40, 36, 26);
-        header.SetBackgroundColor(Panel);
-        root.AddView(header, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+        // Header. There used to be two of these stacked — the ActionBar said "IT!"
+        // and so did the view right under it. One title is enough.
+        ActionBar?.Hide();
+        var header = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        header.SetBackgroundColor(Ui.Surface);
+        header.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 22), Ui.Dp(this, 20), Ui.Dp(this, 16));
+        header.AddView(Ui.Label(this, "CircleAI", 24f, Ui.Ink, bold: true));
+        var tagline = Ui.Label(this, "Free AI that runs on your phone", 14f, Ui.InkSoft);
+        tagline.SetPadding(0, Ui.Dp(this, 4), 0, 0);
+        header.AddView(tagline);
+        root.AddView(header, Ui.Fill());
 
         // transcript (fills the middle)
         _scroll = new ScrollView(this);
-        _transcript = new TextView(this) { TextSize = 13f };
-        _transcript.SetTextColor(Ink);
-        _transcript.SetPadding(30, 28, 30, 28);
+        _scroll.VerticalScrollBarEnabled = false;      // house rule: no visible scrollbars
+        _transcript = new TextView(this) { TextSize = 15f };   // 13sp was unreadable on the P30
+        _transcript.SetTextColor(Ui.Ink);
+        _transcript.SetLineSpacing(0f, 1.25f);
+        _transcript.SetPadding(Ui.Dp(this, 18), Ui.Dp(this, 16),
+                               Ui.Dp(this, 18), Ui.Dp(this, 16));
         _transcript.SetTextIsSelectable(true);
         _scroll.AddView(_transcript);
-        root.AddView(_scroll, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, 0, 1f));
+        root.AddView(_scroll, Ui.Fill(1f));
 
         // Utility-probe row — its OWN line above the input, so the button strip
         // never crowds the text box off the screen. A phone fits ~4 buttons per
@@ -180,52 +326,90 @@ public class MainActivity : Activity
         // model-driven Talk/TTS in the input row below means neither line ever
         // overflows — no horizontal scroll to reach a button (voice builds used to
         // push Send + TTS off the right edge). Weighted so the three share the row.
+        // Every one of these used to be an in-house word — Sweep, Caps, Vision,
+        // TTS. Nobody outside this project could guess what any of them did. They
+        // now say what happens when you press them.
         var probes = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-        probes.SetBackgroundColor(Panel);
-        probes.SetPadding(16, 12, 16, 0);
+        probes.SetBackgroundColor(Ui.Surface);
+        probes.SetPadding(Ui.Dp(this, 12), Ui.Dp(this, 10), Ui.Dp(this, 12), Ui.Dp(this, 4));
 
-        // One tap runs the tool probes — questions whose answers the model
-        // cannot know unless it actually calls a tool.
-        _tools = new Button(this) { Text = "Sweep", Enabled = false };
-        _tools.SetTextColor(Ink);
-        _tools.SetBackgroundColor(Panel);
-        _tools.Click += (s, e) => RunFullSweep();
-        probes.AddView(_tools, new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WrapContent, 1f));
+        var cell = new Func<LinearLayout.LayoutParams>(() =>
+        {
+            var p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+            p.SetMargins(Ui.Dp(this, 4), 0, Ui.Dp(this, 4), Ui.Dp(this, 6));
+            return p;
+        });
 
-        // Offline capability sweep. Enabled immediately: it needs no model, so it
-        // proves the catalogued-model verdicts AND the whole document engine
-        // on-device before the brain finishes loading.
-        _cv = new Button(this) { Text = "Caps", Enabled = true };
-        _cv.SetTextColor(Ink);
-        _cv.SetBackgroundColor(Panel);
+        // Needs no model and no network, so it answers immediately — the right
+        // thing to offer while the chat model is still downloading.
+        _cv = Ui.Action(this, "What it can do", primary: false);
+        _cv.Enabled = true;
         _cv.Click += (s, e) => RunCapabilities();
-        probes.AddView(_cv, new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WrapContent, 1f));
+        probes.AddView(_cv, cell());
 
-        // On-device vision: renders a test image and runs a real VLM on it
-        // (downloads a small vision model on first tap). Separate from the brain.
-        _vision = new Button(this) { Text = "Vision", Enabled = true };
-        _vision.SetTextColor(Ink);
-        _vision.SetBackgroundColor(Panel);
+        // Reads an image on the device (fetches a small vision model on first tap).
+        _vision = Ui.Action(this, "Read an image", primary: false);
+        _vision.Enabled = true;
         _vision.Click += (s, e) => RunVision();
-        probes.AddView(_vision, new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WrapContent, 1f));
+        probes.AddView(_vision, cell());
 
-        root.AddView(probes, new LinearLayout.LayoutParams(
+
+#if IT_VOICE_ANDROID
+        // THE headline feature, so it gets a row to itself above the others rather
+        // than a third of one. Sharing the row wrapped the word to "Languag / es",
+        // which is the sort of detail that decides whether somebody trusts the rest.
+        var hero = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        hero.SetBackgroundColor(Ui.Surface);
+        hero.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 12), Ui.Dp(this, 16), 0);
+        var languages = Ui.Action(this, "Speak in 71 languages", primary: true);
+        languages.Click += (s, e) => StartActivity(new Intent(this, typeof(LanguagePickerActivity)));
+        hero.AddView(languages, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+        root.AddView(hero, Ui.Fill());
+#endif
+
+        root.AddView(probes, Ui.Fill());
+
+        // Two per row, not three. At 1080 px three of these labels ellipsized to
+        // "What it…", "Read a…", "Use the…" — every button on the screen truncated,
+        // which is worse than the jargon it replaced. Two per row leaves each one
+        // enough width to say what it does.
+        var probes2 = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        probes2.SetBackgroundColor(Ui.Surface);
+        probes2.SetPadding(Ui.Dp(this, 12), 0, Ui.Dp(this, 12), Ui.Dp(this, 8));
+
+#if IT_VOICE_ANDROID
+        _talk = Ui.Action(this, "Use the mic", primary: false);
+        _talk.Enabled = false;
+        _talk.Click += (s, e) => ToggleVoiceLoop();
+        probes2.AddView(_talk, cell());
+#endif
+
+        // A developer diagnostic, kept but not competing with the real features.
+        _tools = Ui.Action(this, "Run the tool check", primary: false);
+        _tools.Enabled = false;
+        _tools.Click += (s, e) => RunFullSweep();
+        probes2.AddView(_tools, cell());
+        root.AddView(probes2, Ui.Fill());
 
         // input row — the text box plus the model-driven actions (Talk/TTS in
         // voice builds) and Send. With the probes on their own line above, this
         // holds the weighted input + at most three buttons, which fits portrait.
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-        row.SetBackgroundColor(Panel);
-        row.SetPadding(20, 8, 20, 22);
+        row.SetBackgroundColor(Ui.Surface);
+        row.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 6), Ui.Dp(this, 16), Ui.Dp(this, 16));
+        row.SetGravity(GravityFlags.CenterVertical);
 
-        _input = new EditText(this) { Hint = "Say something to IT!", Enabled = false };
-        _input.SetTextColor(Ink);
-        _input.SetHintTextColor(Muted);
+        // The hint used to be "Say something to IT!" and the field was so narrow it
+        // rendered as "Say some" — the app's own prompt to the user was cut off.
+        _input = new EditText(this) { Hint = "Type a message", Enabled = false };
+        _input.SetTextColor(Ui.Ink);
+        _input.SetHintTextColor(Ui.InkSoft);
         _input.SetSingleLine(true);
+        _input.TextSize = 16f;
+        _input.Background = Ui.Rounded(this, Ui.Raised, 10f);
+        _input.SetPadding(Ui.Dp(this, 14), Ui.Dp(this, 12), Ui.Dp(this, 14), Ui.Dp(this, 12));
+        _input.SetMinimumHeight(Ui.Dp(this, 48));
         _input.ImeOptions = ImeAction.Send;
         // Send on the IME action OR a plain Enter. (A hardware/adb Enter arrives
         // with an unspecified action id, so checking ImeAction.Send alone misses it.)
@@ -238,40 +422,32 @@ public class MainActivity : Activity
                 e.Handled = true;
             }
         };
-        row.AddView(_input, new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WrapContent, 1f));
+        var inputLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
+        inputLp.RightMargin = Ui.Dp(this, 8);
+        row.AddView(_input, inputLp);
 
 #if IT_VOICE_ANDROID
-        // Hands-free. Only present when the APK was built with voice, because
-        // without the ONNX/whisper natives the button could only ever fail.
-        _talk = new Button(this) { Text = "Talk", Enabled = false };
-        _talk.SetTextColor(Ink);
-        _talk.SetBackgroundColor(Panel);
-        _talk.Click += (s, e) => ToggleVoiceLoop();
-        row.AddView(_talk, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+        // The microphone lives with the other feature buttons, not in the typing
+        // row. Sharing that row with the text box squeezed the box until its own
+        // placeholder read "Type a messag" — the input is the most-used control on
+        // the screen and should not lose space to anything.
+        _talk.Enabled = false;
 
-        // On-device TTS synthesis, non-interactive (no mic): downloads the best
-        // Piper voice, loads it through ONNX Runtime, and synthesises a phrase to
-        // a WAV — the pull-able proof for #56. Enabled immediately like Caps/Vision
-        // (it fetches its own voice, independent of the chat brain).
-        _tts = new Button(this) { Text = "TTS", Enabled = true };
-        _tts.SetTextColor(Ink);
-        _tts.SetBackgroundColor(Panel);
-        _tts.Click += (s, e) => RunTts();
-        row.AddView(_tts, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+        // The old "TTS" button lives on in the Languages screen, which does the
+        // same thing but lets the user choose which of the 71 they hear. Keeping a
+        // second, English-only speak button here would just be the worse version of
+        // the feature sitting next to the better one.
+        _tts = Ui.Action(this, "TTS", primary: false);
+        _tts.Visibility = ViewStates.Gone;
 #endif
 
-        _send = new Button(this) { Text = "Send", Enabled = false };
-        _send.SetTextColor(Color.White);
-        _send.SetBackgroundColor(Blue);
+        _send = Ui.Action(this, "Send", primary: true);
+        _send.Enabled = false;
         _send.Click += (s, e) => Send();
         row.AddView(_send, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
 
-        root.AddView(row, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));
+        root.AddView(row, Ui.Fill());
 
         SetContentView(root);
 
@@ -374,9 +550,10 @@ public class MainActivity : Activity
             var reportPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "capability-report.txt");
             await System.IO.File.WriteAllTextAsync(reportPath, log.ToString());
 
-            Append("\n[caps] OK. Pull the whole result off the phone with:\n");
-            Append("  adb exec-out run-as com.bhengubv.itsample cat files/capability-report.txt\n");
-            Append("  adb exec-out run-as com.bhengubv.itsample cat files/<name>.pdf > out.pdf\n");
+            // This used to print two `adb exec-out run-as` command lines. The person
+            // reading it is holding a phone; telling them to open a desktop shell is
+            // the app admitting it was only ever built for its own authors.
+            Append("\nDone. The full report and the PDFs are saved on this phone.\n");
         }
         catch (Exception ex)
         {
@@ -565,7 +742,7 @@ public class MainActivity : Activity
             if (_listener is not null) { await _listener.DisposeAsync(); _listener = null; }
             _speaker?.Dispose(); _speaker = null;
 
-            RunOnUiThread(() => _talk.Text = "Talk");
+            RunOnUiThread(() => _talk.Text = "Use the mic");
             Append("\n[voice] stopped listening\n");
             return;
         }
@@ -621,7 +798,7 @@ public class MainActivity : Activity
 
             _voiceLoop.Faulted += (s, ex) => Append($"[voice] turn failed: {ex.Message}\n");
             await _voiceLoop.StartAsync();
-            RunOnUiThread(() => _talk.Text = "Stop");
+            RunOnUiThread(() => _talk.Text = "Stop listening");
             Append("[voice] listening — say \"hey b\"\n");
         }
         catch (Exception ex)
@@ -656,6 +833,71 @@ public class MainActivity : Activity
             // ToucanTTS (3-stage) takes priority when its assets are sideloaded:
             // it is the only permissive voice for isiZulu, Sepedi, siSwati and
             // Tshivenda, and it is driven by OUR NchltPhonemizer, not a neural G2P.
+            // CATALOGUE PROOF, and it must come before every sideload branch below.
+            // Those branches load a model already on the phone, which proves the
+            // engine while skipping the download entirely — so if a stale sideloaded
+            // voice is lying around, the "it fetched from our bucket" claim would be
+            // made by a run that never fetched anything.
+            //   adb shell am start -n <pkg>/.MainActivity --ez run_tts true --es tts_lang zu
+            var catalogueLang = Intent?.GetStringExtra("tts_lang");
+            if (!string.IsNullOrWhiteSpace(catalogueLang))
+            {
+                var catPhrase = Intent?.GetStringExtra("tts_phrase") ?? "Sawubona umhlaba.";
+
+                // Optional speaker id. The South African model carries 130 voices
+                // with no published mapping to language, so choosing the one that
+                // sounds native is an ear exercise, not a lookup: this lets a
+                // sweep play the same sentence in several of them for comparison.
+                //   --es tts_lang zu --ei tts_speaker 118
+                long? speaker = Intent?.HasExtra("tts_speaker") == true
+                    ? Intent.GetIntExtra("tts_speaker", 0)
+                    : null;
+                if (speaker is not null) Append($"[tts] speaker {speaker}\n");
+
+                // Force a language id, overriding what the tag resolves to. Needed
+                // to hear one model speak a language it is not selected for: asking
+                // for "en" picks the best English voice in the WHOLE catalogue (the
+                // 22 kHz Piper one), so the South African model's own English can
+                // only be reached by pinning its id.
+                //   --es tts_lang zu --ei tts_langid 1   → SA model, English
+                long? forcedLangId = Intent?.HasExtra("tts_langid") == true
+                    ? Intent.GetIntExtra("tts_langid", 0)
+                    : null;
+                if (forcedLangId is not null) Append($"[tts] forced language id {forcedLangId}\n");
+
+                // Which voice says the embedded English. Needed because every
+                // speaker in the SA model recorded exactly one language, so an
+                // English span has to come from a speaker who actually has English
+                // — and which of the 130 those are is not published anywhere, so it
+                // is auditioned rather than looked up.
+                //   --es tts_lang zu --ei tts_speaker 129 --ei tts_engspk 18
+                long? engSpeaker = Intent?.HasExtra("tts_engspk") == true
+                    ? Intent.GetIntExtra("tts_engspk", 0)
+                    : null;
+                if (engSpeaker is not null) Append($"[tts] English spoken by speaker {engSpeaker}\n");
+
+                Append($"[tts] catalogue proof: '{catalogueLang}' — select, download, speak\n");
+                var crep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                    store, catalogueLang!, catPhrase, wavPath, s => Append("  " + s + "\n"),
+                    default, speaker, forcedLangId, engSpeaker);
+                var extOut = GetExternalFilesDir(null)?.AbsolutePath;
+                if (!string.IsNullOrEmpty(extOut))
+                {
+                    try
+                    {
+                        await System.IO.File.WriteAllTextAsync(
+                            System.IO.Path.Combine(extOut, "catalogue-result.txt"), crep);
+                        if (System.IO.File.Exists(wavPath))
+                            System.IO.File.Copy(wavPath,
+                                System.IO.Path.Combine(extOut, "catalogue-result.wav"), true);
+                    }
+                    catch { /* mirroring is a convenience, never fail the run */ }
+                }
+                Append("\n" + crep);
+                if (System.IO.File.Exists(wavPath)) await PlayWavAsync(wavPath);
+                return;
+            }
+
             var extRoot = GetExternalFilesDir(null)?.AbsolutePath;
             if (!string.IsNullOrEmpty(extRoot))
             {
@@ -727,8 +969,65 @@ public class MainActivity : Activity
                     ? (await System.IO.File.ReadAllTextAsync(phraseFile)).Trim()
                     : "The quick brown fox jumps over the lazy dog.";
                 Append("[tts] sideloaded voice-under-test found — proving it on the phone\n");
+
+                // Three knobs for the dragged-first-syllable hunt, all optional and
+                // all no-ops when absent:
+                //   --ei tts_noisew 30   duration-predictor noise, as a percentage
+                //   --ei tts_group  3    sentences synthesised per utterance
+                //   --ei tts_leadpads 4  silent tokens before the first real sound
+                float? tuneNoiseW = Intent?.HasExtra("tts_noisew") == true
+                    ? Intent.GetIntExtra("tts_noisew", 80) / 100f
+                    : null;
+                var tuneGroup = Intent?.GetIntExtra("tts_group", 1) ?? 1;
+                var tuneLead  = Intent?.GetIntExtra("tts_leadpads", 0) ?? 0;
+                // Breathing room, in milliseconds, around the whole utterance.
+                //   --ei tts_pre 250 --ei tts_post 400
+                var tunePre   = Intent?.GetIntExtra("tts_pre", 0) ?? 0;
+                var tunePost  = Intent?.GetIntExtra("tts_post", 0) ?? 0;
+                // The language id embedded English switches TO, and optionally a
+                // different speaker for it. Passing only the language keeps the
+                // same voice — which is the test that matters for a blended
+                // speaker: can one identity carry both languages, or does it
+                // still need a second person for the English?
+                //   --ei tts_englang 1 [--ei tts_engspk 13]
+                long? vutEngLang = Intent?.HasExtra("tts_englang") == true
+                    ? Intent.GetIntExtra("tts_englang", 1) : null;
+                long? vutEngSpk  = Intent?.HasExtra("tts_engspk") == true
+                    ? Intent.GetIntExtra("tts_engspk", 0) : null;
+                // Cadence ratio as a percentage: how much slower the host
+                // language runs than the borrowed one. 120 = the measured
+                // isiZulu-to-English figure.  --ei tts_cadence 120
+                var vutCadence = (Intent?.GetIntExtra("tts_cadence", 120) ?? 120) / 100f;
+                // The HOST language, as a tag. The sideloaded path only knows a
+                // numeric langid from langid.txt, and the loanword table is keyed
+                // by language — without this the respelling silently never fires,
+                // which looks exactly like the table being wrong.
+                //   --es tts_host zu
+                var vutHost = Intent?.GetStringExtra("tts_host") ?? "";
+                // English pronunciation for words the loanword table has never
+                // seen. Out-of-process espeak — it is GPL-3.0 and CircleAI never
+                // links it. Absent (the separate app not installed), respelling
+                // simply falls back to the language-switch path.
+                CircleAI.Voice.IPhonemizer? engG2p = null;
+                try { engG2p = CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
+                catch { /* no G2P app: the curated table still works */ }
+
                 var vrep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
-                    vut, wavPath, phrase, s => Append("  " + s + "\n"));
+                    vut, wavPath, phrase, s => Append("  " + s + "\n"),
+                    ct: default,
+                    langIdOverride: null, speakerOverride: null,
+                    foreignLangId: vutEngLang, foreignSpeakerId: vutEngSpk,
+                    noiseW: tuneNoiseW,
+                    sentencesPerUtterance: tuneGroup,
+                    leadInPads: tuneLead,
+                    leadInSilenceMs: tunePre,
+                    tailSilenceMs: tunePost,
+                    cadenceRatio: vutCadence,
+                    langTagForRespell: vutHost,
+                    englishPhonemizer: engG2p,
+                    // How much to stretch a respelt word so every syllable is
+                    // heard. 118 = 1.18x.   --ei tts_syllable 118
+                    syllableFullness: (Intent?.GetIntExtra("tts_syllable", 118) ?? 118) / 100f);
                 await System.IO.File.WriteAllTextAsync(
                     System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.txt"), vrep);
 
@@ -759,7 +1058,7 @@ public class MainActivity : Activity
                 // result that settles "it talks on the device".
                 if (System.IO.File.Exists(wavPath))
                     await PlayWavAsync(wavPath);
-                Append("[tts] pull: adb exec-out run-as com.bhengubv.itsample cat files/tts-result.txt\n");
+                Append("Saved on this phone.\n");
                 return;
             }
 
@@ -770,9 +1069,7 @@ public class MainActivity : Activity
             await System.IO.File.WriteAllTextAsync(txtPath, report);
 
             Append("\n" + report);
-            Append("[tts] pull the result:\n");
-            Append("  adb exec-out run-as com.bhengubv.itsample cat files/tts-result.txt\n");
-            Append("  adb exec-out run-as com.bhengubv.itsample cat files/tts-result.wav > tts.wav\n");
+            Append("Saved on this phone.\n");
         }
         catch (Exception ex)
         {
@@ -929,23 +1226,36 @@ public class MainActivity : Activity
     {
         try
         {
-            var wav = await System.IO.File.ReadAllBytesAsync(wavPath);
-            if (wav.Length <= 44) { Append("[tts] wav too small to play\n"); return; }
-
-            var sampleRate = BitConverter.ToInt32(wav, 24);
-            var channels = BitConverter.ToInt16(wav, 22);
-            var pcm = new byte[wav.Length - 44];
-            Buffer.BlockCopy(wav, 44, pcm, 0, pcm.Length);
-
-            Append($"[tts] playing {pcm.Length:N0} bytes @ {sampleRate} Hz through the speaker…\n");
-            await using var player = new AndroidAudioPlayer();
-            await player.PlayAsync(pcm, sampleRate, channels < 1 ? 1 : channels, 16);
+            Append("[tts] playing through the speaker…\n");
+            await PlayWavStaticAsync(wavPath);
             Append("[tts] PLAYED — the device spoke.\n");
         }
         catch (Exception ex)
         {
             Append($"[tts] playback FAILED: {ex.Message}\n");
         }
+    }
+
+    /// <summary>
+    /// Plays a WAV out of the device speaker. Static because the language picker
+    /// is a separate Activity and playback has nothing to do with this screen's
+    /// transcript — it only ever needed the file and the speaker.
+    /// </summary>
+    public static async Task PlayWavStaticAsync(string wavPath)
+    {
+        var wav = await System.IO.File.ReadAllBytesAsync(wavPath);
+        if (wav.Length <= 44) return;                       // header only: nothing to play
+
+        // Read the format out of the header rather than assuming 22.05 kHz mono:
+        // the voices in the catalogue do not all share a sample rate, and playing
+        // one at another's rate is the chipmunk bug.
+        var sampleRate = BitConverter.ToInt32(wav, 24);
+        var channels = BitConverter.ToInt16(wav, 22);
+        var pcm = new byte[wav.Length - 44];
+        Buffer.BlockCopy(wav, 44, pcm, 0, pcm.Length);
+
+        await using var player = new AndroidAudioPlayer();
+        await player.PlayAsync(pcm, sampleRate, channels < 1 ? 1 : channels, 16);
     }
 #endif
 

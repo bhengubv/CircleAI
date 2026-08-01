@@ -1,3 +1,19 @@
+// INTERNET, for fetching models from the catalogue. NOT guarded: a chat-only build
+// downloads models too, and this is the permission that decides whether the phone
+// can reach anything at all.
+//
+// It was missing entirely until 2026-07-31, and nothing caught it because every
+// voice had been pushed over adb — the app had never opened a socket. The first
+// real download died as SocketException(13) "Permission denied", which reads like a
+// filesystem or server problem and is neither.
+//
+// The base AndroidManifest.xml claimed this arrived "from MSBuild items". It did
+// not, for exactly the reason spelled out below about RECORD_AUDIO: there is no
+// <AndroidPermission> build item, so writing one adds nothing and warns about
+// nothing. Both permissions now come from attributes, which do work.
+[assembly: Android.App.UsesPermission("android.permission.INTERNET")]
+[assembly: Android.App.UsesPermission("android.permission.ACCESS_NETWORK_STATE")]
+
 #if IT_VOICE_ANDROID
 
 // Permissions.cs

@@ -121,6 +121,66 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
     public long LanguageId { get; set; }
 
     /// <summary>
+    /// Overrides the model's own <c>length_scale</c> for the next synthesis.
+    /// Larger is slower. Null uses whatever the voice's config declares.
+    /// </summary>
+    /// <remarks>
+    /// This exists for very short utterances. A VITS voice predicts duration from
+    /// context, and given a single word with no sentence around it — which is what
+    /// a code-switched name like "CircleAI" becomes once it is cut out of its
+    /// isiZulu sentence to be said in English — it rushes the word into a mumble.
+    /// Lengthening a short span is the standard mitigation. It changes nothing for
+    /// ordinary sentences, which is why it is opt-in per call rather than a new
+    /// default.
+    /// </remarks>
+    public float? LengthScaleOverride { get; set; }
+
+    /// <summary>
+    /// Overrides the model's <c>noise_w</c> (duration-predictor noise) for the next
+    /// synthesis. Lower is steadier. Null uses the voice's own value.
+    /// </summary>
+    /// <remarks>
+    /// Duration noise is what gives a long sentence natural variation; on a
+    /// one-word utterance it is just jitter with nothing to average out, and it
+    /// makes a short span land differently every time it is spoken.
+    /// </remarks>
+    public float? NoiseWOverride { get; set; }
+
+    /// <summary>
+    /// Extra silent tokens to place at the start of each utterance, whose audio is
+    /// then trimmed away. Zero (the default) changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// The token layout is <c>[BOS, PAD, char, PAD, char, …, EOS]</c>, and the
+    /// duration predictor sets a length for every one of those with nothing to its
+    /// left to condition on. With one utterance per sentence it over-lengthens the
+    /// opening every time — heard as the first syllable of each sentence being
+    /// dragged.
+    ///
+    /// Padding the front gives that stretch somewhere inert to land: it happens on
+    /// silence instead of on the first real sound, and silence is safe to cut
+    /// because its boundary is unambiguous. The alternative — trimming into actual
+    /// speech — risks clipping the very syllable being rescued.
+    /// </remarks>
+    public int LeadInPads { get; set; }
+
+    /// <summary>
+    /// Overrides the model's <c>noise_scale</c> for the next synthesis. Lower is
+    /// cleaner and flatter; null uses the voice's own value.
+    /// </summary>
+    /// <remarks>
+    /// This is the breathiness control, and it is a different thing from
+    /// <see cref="NoiseWOverride"/>: noise_w perturbs how LONG each sound is,
+    /// noise_scale perturbs the sound ITSELF. When a voice is asked for a language
+    /// its speaker embedding has no evidence for, the model is uncertain about the
+    /// waveform rather than the timing, and that uncertainty comes out as breath —
+    /// heard as speaking through a gust of wind. Turning this down trades some
+    /// natural variation for a steadier sound, which is the right trade on a span
+    /// that would otherwise be noise.
+    /// </remarks>
+    public float? NoiseScaleOverride { get; set; }
+
+    /// <summary>
     /// How many symbols the last synthesis could not map, and so did not speak.
     /// Anything above zero means the audio is missing sound that the text asked
     /// for; treat a non-trivial count as a broken front-end, not a rounding error.
@@ -339,10 +399,27 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             noiseScale = 0.667f; lengthScale = 1.0f; noiseW = 0.8f;
         }
 
+        // Caller overrides win, whichever path produced the defaults above.
+        if (LengthScaleOverride is { } ls) lengthScale = ls;
+        if (NoiseWOverride is { } nw) noiseW = nw;
+        if (NoiseScaleOverride is { } ns) noiseScale = ns;
+
         // A map of only BOS+pad+EOS (e.g. all phonemes unknown) is not speech.
         if (tokens.Length <= 3)
         {
             return new TtsSynthesisResult(ReadOnlyMemory<byte>.Empty, _sampleRate, 1, 16);
+        }
+
+        // Give the opening stretch somewhere inert to land — see LeadInPads. The
+        // pads go in after BOS, so the utterance still starts the way the model
+        // expects; only the run of silence before the first real sound grows.
+        if (LeadInPads > 0 && tokens.Length > 1)
+        {
+            var padded = new long[tokens.Length + LeadInPads];
+            padded[0] = tokens[0];                                   // BOS
+            for (var i = 0; i < LeadInPads; i++) padded[1 + i] = PadTokenId;
+            Array.Copy(tokens, 1, padded, 1 + LeadInPads, tokens.Length - 1);
+            tokens = padded;
         }
 
         // Build input tensors.
@@ -458,6 +535,11 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             }
         }
 
+        // Cut the silence the lead-in pads produced. Only ever trims a leading run
+        // that is genuinely quiet, so if the model put speech there — nothing to
+        // stretch, no drag to absorb — this does nothing and takes nothing.
+        if (LeadInPads > 0) waveform = TrimLeadingSilence(waveform);
+
         // Convert float waveform [-1, 1] to 16-bit signed PCM.
         var pcmBytes = FloatWaveformToPcm16(waveform);
 
@@ -505,7 +587,33 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         return result.ToArray();
     }
 
+    /// <summary>The id of the PAD token, or 0 when the voice declares none.</summary>
+    private long PadTokenId => _config?.PadId ?? 0;
+
     /// <summary>
+    /// Drops a leading run of near-silence, keeping a short natural head.
+    /// </summary>
+    /// <remarks>
+    /// Conservative on purpose. It stops at the first sample above the threshold
+    /// and leaves 20 ms in front of it, because cutting flush to the first sample
+    /// of speech clips the attack — which would trade a dragged syllable for a
+    /// chopped one.
+    /// </remarks>
+    private float[] TrimLeadingSilence(float[] waveform, float threshold = 0.01f)
+    {
+        var first = 0;
+        while (first < waveform.Length && MathF.Abs(waveform[first]) < threshold) first++;
+        if (first >= waveform.Length) return waveform;      // all quiet: leave it alone
+
+        var keepBefore = _sampleRate / 50;                  // 20 ms of run-up
+        var start = Math.Max(0, first - keepBefore);
+        if (start == 0) return waveform;
+
+        var trimmed = new float[waveform.Length - start];
+        Array.Copy(waveform, start, trimmed, 0, trimmed.Length);
+        return trimmed;
+    }
+
     /// Convert a float waveform (values in [-1, 1]) to 16-bit signed PCM
     /// as a byte array (little-endian).
     /// </summary>

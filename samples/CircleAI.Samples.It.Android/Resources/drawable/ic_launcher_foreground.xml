@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    App icon foreground: a circle opening into a speech arc.
+
+    The mark has to say two things at a glance on a crowded launcher — that this
+    is Circle-something, and that it talks. A wordmark would be unreadable at
+    48dp, so it is one closed ring (the circle) with a gap and three widening
+    arcs leaving it (sound). Vector, not PNG, so it stays sharp on every density
+    without shipping five bitmaps.
+
+    Drawn inside the 72dp safe zone of the 108dp adaptive-icon canvas: anything
+    outside that can be cropped away by the launcher's mask.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- the circle, open on the right where the sound leaves -->
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 62 30 A 24 24 0 1 0 62 78" />
+
+    <!-- three arcs, widening: the voice -->
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 66 45 A 12 12 0 0 1 66 63" />
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 74 38 A 21 21 0 0 1 74 70" />
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M 82 31 A 30 30 0 0 1 82 77" />
+</vector>

@@ -135,11 +135,13 @@ public sealed class ModelModalityTests
         Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-high"].Modality);
         Assert.Equal(ModelModality.Asr,    byName["Whisper-tiny-ggml"].Modality);
 
-        // Source: speech rungs are on Hugging Face; chat AND the MNN vision
-        // bundle are on ModelScope (the MNN namespace), so every Qwen* — VL
-        // included — is ModelScope-sourced.
-        Assert.Equal(ModelSource.HuggingFace, byName["Piper-en_US-lessac-medium"].Source);
-        Assert.Equal(ModelSource.HuggingFace, byName["Piper-en_US-lessac-high"].Source);
+        // Source: every voice now comes from our own Hugging Face bucket rather
+        // than from whichever stranger's repository first published it — see
+        // docs/VOICE_PROVENANCE.md. Chat AND the MNN vision bundle stay on
+        // ModelScope (the MNN namespace), so every Qwen* — VL included — is
+        // ModelScope-sourced.
+        Assert.All(registry.AllModels.Where(e => e.Modality == ModelModality.Tts),
+            e => Assert.Equal(ModelSource.HuggingFaceBucket, e.Source));
         Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen")),
             e => Assert.Equal(ModelSource.ModelScope, e.Source));
     }

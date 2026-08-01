@@ -449,14 +449,27 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         => string.Join('/', fileName.Split('/').Select(Uri.EscapeDataString));
 
     private static Uri BuildPrimaryUrl(CircleAI.Core.ModelSource source, string repo, string fileName)
-        => source == CircleAI.Core.ModelSource.HuggingFace
-            ? new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}?download=true")
-            : new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}");
+        => source switch
+        {
+            // Buckets take no branch segment — "resolve/main/x" would 404.
+            CircleAI.Core.ModelSource.HuggingFaceBucket =>
+                new($"https://huggingface.co/buckets/{repo}/resolve/{EscapePath(fileName)}?download=true"),
+            CircleAI.Core.ModelSource.HuggingFace =>
+                new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}?download=true"),
+            _ =>
+                new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}"),
+        };
 
     private static Uri BuildFallbackUrl(CircleAI.Core.ModelSource source, string repo, string fileName)
-        => source == CircleAI.Core.ModelSource.HuggingFace
-            ? new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}")
-            : new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}");
+        => source switch
+        {
+            CircleAI.Core.ModelSource.HuggingFaceBucket =>
+                new($"https://huggingface.co/buckets/{repo}/resolve/{EscapePath(fileName)}"),
+            CircleAI.Core.ModelSource.HuggingFace =>
+                new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}"),
+            _ =>
+                new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}"),
+        };
 
     private static void ReportOverall(IProgress<double>? p, long done, long total)
     {
@@ -467,14 +480,53 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
 
     // ── Common ───────────────────────────────────────────────────────────
 
+    /// <summary>Is this model fully downloaded and usable?</summary>
+    /// <remarks>
+    /// "The directory exists" is NOT the answer, though it used to be the one
+    /// this returned. <see cref="EnsureBundleCoreAsync"/> creates that directory
+    /// before fetching a single byte, so an interrupted download leaves a folder
+    /// that reports itself cached forever — and a model that can never repair
+    /// itself, because nothing will re-download something already "cached".
+    ///
+    /// The completion marker is <c>installed.json</c>, written only after every
+    /// file has landed and verified. Its contents are checked against the disk,
+    /// so a manifest left over from a since-deleted file does not count either.
+    /// </remarks>
     public Task<bool> IsModelCachedAsync(string modelId, CancellationToken ct)
     {
         ValidateModelId(modelId);
         ct.ThrowIfCancellationRequested();
+
         var singleFile = GetSingleFilePath(modelId);
         if (File.Exists(singleFile)) return Task.FromResult(true);
+
         var dir = Path.Combine(_storageDirectory, modelId);
-        return Task.FromResult(Directory.Exists(dir));
+        if (!Directory.Exists(dir)) return Task.FromResult(false);
+
+        var manifestPath = Path.Combine(dir, "installed.json");
+        if (!File.Exists(manifestPath)) return Task.FromResult(false);
+
+        try
+        {
+            var manifest = JsonSerializer.Deserialize<InstalledManifest>(File.ReadAllText(manifestPath));
+            if (manifest?.Files is null || manifest.Files.Count == 0) return Task.FromResult(false);
+
+            foreach (var f in manifest.Files)
+            {
+                var path = Path.Combine(dir, f.Name);
+                // Size, not just existence: a truncated weight file is the exact
+                // failure this is here to catch.
+                if (!File.Exists(path) || new FileInfo(path).Length != f.SizeBytes)
+                    return Task.FromResult(false);
+            }
+            return Task.FromResult(true);
+        }
+        catch
+        {
+            // An unreadable manifest means we cannot prove the model is complete,
+            // and "re-download" is the safe answer to that.
+            return Task.FromResult(false);
+        }
     }
 
     public Task DeleteModelAsync(string modelId, CancellationToken ct)
@@ -589,46 +641,100 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         // RESUME: continue from whatever survived the last attempt.
         var existing = File.Exists(destPath) ? new FileInfo(destPath).Length : 0L;
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        if (existing > 0)
-            request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(existing, null);
-
-        using var response = await _http
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
-
-        // A server that ignores Range answers 200 with the WHOLE body. Appending
-        // that to a partial file silently produces a corrupt blob that fails the
-        // SHA check much later — so start over instead.
-        var resuming = existing > 0 && response.StatusCode == System.Net.HttpStatusCode.PartialContent;
-        if (existing > 0 && !resuming)
+        var response = await SendRangeAwareAsync(uri, existing, ct).ConfigureAwait(false);
+        try
         {
-            existing = 0;
-            if (File.Exists(destPath)) File.Delete(destPath);
+            var resuming = response.Resuming;
+            if (!resuming) existing = 0;
+
+            response.Message.EnsureSuccessStatusCode();
+
+            // ContentLength on a ranged reply is the length of the RANGE, not of
+            // the file, so the whole-file total is range-length + what we already have.
+            var totalBytes = response.Message.Content.Headers.ContentLength is { } len
+                ? len + existing
+                : -1L;
+
+            await using var contentStream =
+                await response.Message.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            await using var fileStream = new FileStream(
+                destPath,
+                resuming ? FileMode.Append : FileMode.Create,
+                FileAccess.Write, FileShare.None,
+                bufferSize: 81_920, useAsync: true);
+            await PumpAsync(contentStream, fileStream, existing, totalBytes, progress, ct)
+                .ConfigureAwait(false);
         }
+        finally { response.Message.Dispose(); }
+    }
 
-        response.EnsureSuccessStatusCode();
+    private readonly record struct RangeAwareResponse(HttpResponseMessage Message, bool Resuming);
 
-        // ContentLength on a 206 is the length of the RANGE, not of the file.
-        var totalBytes = response.Content.Headers.ContentLength is { } len
-            ? len + existing
-            : -1L;
+    /// <summary>
+    /// GETs <paramref name="uri"/>, resuming from <paramref name="existing"/> when
+    /// the server will genuinely serve that byte range.
+    /// </summary>
+    /// <remarks>
+    /// Deciding "am I resuming?" from a 206 status alone is wrong, and it
+    /// corrupted every large download from one of our two ModelScope endpoints.
+    /// The two disagree:
+    ///
+    ///   resolve/master/…            honours Range, replies 206  (as expected)
+    ///   api/v1/…/repo?FilePath=…    honours Range, replies 200 WITH Content-Range
+    ///
+    /// On the second one the old code saw "not 206", concluded the server had
+    /// ignored the range, deleted the partial file — and then wrote the ranged
+    /// TAIL it had already asked for into a fresh file as though it were the whole
+    /// thing. Retries alternating between the two endpoints appended tails onto
+    /// tails: the 450 MB Qwen3 weight file arrived as 775 MB of garbage, failed
+    /// its SHA-256, was deleted, and left a directory that every later launch read
+    /// as "already downloaded". That is why chat never once worked on the P30.
+    ///
+    /// So: trust Content-Range, not the status line, and require that the range
+    /// actually starts where we asked. Anything else means discard and refetch
+    /// from zero — with a SECOND request, because the body in hand is a tail and
+    /// writing it as a whole file is precisely the bug being fixed.
+    /// </remarks>
+    private async Task<RangeAwareResponse> SendRangeAwareAsync(Uri uri, long existing, CancellationToken ct)
+    {
+        if (existing <= 0)
+            return new(await GetAsync(uri, from: null, ct).ConfigureAwait(false), Resuming: false);
 
-        await using var contentStream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        await using var fileStream = new FileStream(
-            destPath,
-            resuming ? FileMode.Append : FileMode.Create,
-            FileAccess.Write, FileShare.None,
-            bufferSize: 81_920, useAsync: true);
+        var ranged = await GetAsync(uri, from: existing, ct).ConfigureAwait(false);
+
+        var cr = ranged.Content.Headers.ContentRange;
+        var servesOurRange = cr is { HasRange: true, From: { } from } && from == existing;
+
+        if (servesOurRange && ranged.IsSuccessStatusCode)
+            return new(ranged, Resuming: true);
+
+        // Not a usable partial. Ask again for the whole file; the caller opens the
+        // destination with FileMode.Create, which truncates whatever was there.
+        ranged.Dispose();
+        return new(await GetAsync(uri, from: null, ct).ConfigureAwait(false), Resuming: false);
+    }
+
+    private async Task<HttpResponseMessage> GetAsync(Uri uri, long? from, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        if (from is { } f) request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(f, null);
+        return await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task PumpAsync(
+        Stream source, Stream destination, long existing, long totalBytes,
+        IProgress<double>? progress, CancellationToken ct)
+    {
 
         var buffer = new byte[81_920];
         long bytesRead = existing;
         long bytesUntilNextReport = ProgressChunkBytes;
         int read;
 
-        while ((read = await contentStream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
         {
-            await fileStream.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
             bytesRead += read;
             bytesUntilNextReport -= read;
             if (progress is not null && bytesUntilNextReport <= 0)

@@ -29,6 +29,16 @@ public sealed class PiperVoiceConfig
 {
     // Piper's special phoneme symbols (piper-phonemize defaults).
     private const string Pad = "_";  // id 0 — interspersed between phonemes
+
+    /// <summary>
+    /// The id this voice uses for PAD, so a caller can lengthen the silent opening
+    /// of an utterance without having to know the vocabulary's private spelling.
+    /// Falls back to 0, which is the PAD id in every Piper-layout voice we ship.
+    /// </summary>
+    public long PadId =>
+        _phonemeIdMap is not null && _phonemeIdMap.TryGetValue(Pad, out var p) && p is { Length: > 0 }
+            ? p[0]
+            : 0;
     private const string Bos = "^";  // id 1 — beginning of sentence
     private const string Eos = "$";  // id 2 — end of sentence
 
@@ -177,6 +187,7 @@ public sealed class PiperVoiceConfig
         var approximated = new List<string>();
 
         var ids = new List<long>(64);
+        // (PadId below exposes the same token for callers that pad the opening.)
 
         if (_phonemeIdMap.TryGetValue(Bos, out var bos)) ids.AddRange(bos);
         if (_phonemeIdMap.TryGetValue(Pad, out var padAfterBos)) ids.AddRange(padAfterBos);
