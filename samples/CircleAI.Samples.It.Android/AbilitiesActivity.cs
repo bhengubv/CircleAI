@@ -81,6 +81,7 @@ public class AbilitiesActivity : Activity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        ActionBar?.Hide();      // it repeated the title, and it is system-themed
         AndroidDeviceMemory.Install(this);
 
         _modelDir = System.IO.Path.Combine(
@@ -101,7 +102,7 @@ public class AbilitiesActivity : Activity
         var header = new LinearLayout(this) { Orientation = Orientation.Vertical };
         header.SetBackgroundColor(Ui.Surface);
         header.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 16), Ui.Dp(this, 20), 0);
-        header.AddView(Ui.Label(this, "Circle AI", 24f, Ui.Ink, bold: true));
+        header.AddView(Ui.Label(this, "Circle AI", 24f, Ui.Blue, bold: true));
 
         // The tabs live in the header, under the title, where every phone puts
         // them. A segmented row rather than Android's TabHost: two items do not
@@ -132,7 +133,7 @@ public class AbilitiesActivity : Activity
         {
             var index    = i;
             var selected = i == _tab;
-            var tab = Ui.Label(this, TabNames[i], 15f, selected ? Ui.Ink : Ui.InkSoft, bold: selected);
+            var tab = Ui.Label(this, TabNames[i], 15f, selected ? Ui.Blue : Ui.InkSoft, bold: selected);
             tab.Gravity = GravityFlags.Center;
             tab.SetPadding(0, Ui.Dp(this, 12), 0, Ui.Dp(this, 12));   // 48dp target
             tab.Clickable = true;
@@ -198,7 +199,7 @@ public class AbilitiesActivity : Activity
         void Line(string title, string value)
         {
             card.AddView(Ui.Label(this, title, 13f, Ui.InkSoft));
-            var v = Ui.Label(this, value, 16f, Ui.Ink);
+            var v = Ui.Label(this, value, 16f, Ui.Blue);
             v.SetPadding(0, Ui.Dp(this, 2), 0, Ui.Dp(this, 14));
             card.AddView(v);
         }
@@ -281,7 +282,7 @@ public class AbilitiesActivity : Activity
         row.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 12), Ui.Dp(this, 14), Ui.Dp(this, 12));
 
         var text = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        text.AddView(Ui.Label(this, ability.Title, 16f, Ui.Ink, bold: true));
+        text.AddView(Ui.Label(this, ability.Title, 16f, Ui.Blue, bold: true));
         var sub = installed is not null
             ? ability.Blurb
             : best is not null
@@ -302,7 +303,7 @@ public class AbilitiesActivity : Activity
             var get = Compact("Turn on");
             var bar = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal)
             { Max = 1000, Visibility = ViewStates.Gone };
-            var pct = Ui.Label(this, "", 11.5f, Ui.Ink);
+            var pct = Ui.Label(this, "", 11.5f, Ui.Blue);
             pct.Visibility = ViewStates.Gone;
             row.AddView(get);
 
@@ -327,6 +328,15 @@ public class AbilitiesActivity : Activity
             // starts the download.
             get.Click += (_, _) => { meta.Visibility = ViewStates.Visible; Turn(best, get, bar, pct); };
             return wrap;
+        }
+        else if (candidates.Count == 0)
+        {
+            // NOTHING CATALOGUED. Different from "will not fit", and the screen
+            // must not confuse them: "needs more memory" tells a person their
+            // phone is the problem and invites them to go buy a better one, for a
+            // model that does not exist on any phone yet. That is our gap and it
+            // should read like our gap.
+            row.AddView(Ui.Label(this, "Not ready yet", 12f, Ui.InkSoft));
         }
         else
         {
