@@ -25,7 +25,7 @@ using Android.Widget;
 
 namespace CircleAI.Samples.It.Mobile;
 
-[Activity(Label = "CircleAI",
+[Activity(Label = "Circle AI",   // the launcher name, under the icon
           Icon = "@mipmap/ic_launcher",
           RoundIcon = "@mipmap/ic_launcher_round",
           MainLauncher = true,
@@ -73,7 +73,12 @@ public class HomeActivity : Activity
         var pad = Ui.Dp(this, 24);
 
         // Wordmark, small. The product name is not the pitch.
-        var name = Ui.Label(this, "CircleAI", 18f, Ui.InkSoft, bold: true);
+        // "Circle AI", with the space. Set solid, the two capitals collide —
+        // "CircleAI" reads as one long word with a stutter in the middle, and at a
+        // glance the eye lands on "leAI". The same fix the voice needed: the
+        // synthesiser said it as one mangled word until it was written apart.
+        // A product name has to survive being seen quickly and said aloud.
+        var name = Ui.Label(this, "Circle AI", 18f, Ui.InkSoft, bold: true);
         name.SetPadding(pad, Ui.Dp(this, 28), pad, 0);
         name.Gravity = GravityFlags.Center;
         root.AddView(name, Ui.Fill());
@@ -123,15 +128,40 @@ public class HomeActivity : Activity
         var nav = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         nav.SetPadding(pad, 0, pad, Ui.Dp(this, 28));
 
-        var langs = Ui.Action(this, "All 71 languages", primary: true);
-        langs.Click += (s, e) => StartActivity(new Intent(this, typeof(LanguagePickerActivity)));
-        var lp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f);
-        lp1.RightMargin = Ui.Dp(this, 8);
-        nav.AddView(langs, lp1);
-
-        var chat = Ui.Action(this, "Ask it something", primary: false);
+        // ONE thing to do, then two quiet ways to explore.
+        //
+        // It was three buttons of near-equal weight — a menu, not a path. Three
+        // choices of the same size is the screen refusing to say what it is for,
+        // and the person has to read all three and rank them before they can move.
+        // The hero above is already the loudest thing here ("tap to hear it
+        // speak"), so a second shouting button next to two more competes with it
+        // and with itself.
+        //
+        // Now: the real product is asking it something, so that is the button.
+        // Languages and abilities are places to look, so they are links.
+        var chat = Ui.Action(this, "Ask it something", primary: true);
         chat.Click += (s, e) => StartActivity(new Intent(this, typeof(MainActivity)));
-        nav.AddView(chat, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        var clp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        clp.LeftMargin = clp.RightMargin = pad;
+        root.AddView(chat, clp);
+
+        // Two quiet, equal siblings. Text buttons rather than outlined boxes: an
+        // outline reads as "a thing to press NOW", and these are for later.
+        nav.SetPadding(pad, Ui.Dp(this, 4), pad, Ui.Dp(this, 24));
+
+        void Quiet(string text, Type screen)
+        {
+            var b = Ui.Label(this, text, 15f, Ui.Blue, bold: true);
+            b.SetPadding(0, Ui.Dp(this, 14), 0, Ui.Dp(this, 14));   // 48dp target
+            b.Gravity = GravityFlags.Center;
+            b.Clickable = true;
+            b.Click += (s, e) => StartActivity(new Intent(this, screen));
+            nav.AddView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+        }
+
+        Quiet("71 languages", typeof(LanguagePickerActivity));
+        Quiet("What it can do", typeof(AbilitiesActivity));
 
         root.AddView(nav, Ui.Fill());
         SetContentView(root);

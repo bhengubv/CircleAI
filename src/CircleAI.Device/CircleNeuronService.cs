@@ -74,6 +74,44 @@ public sealed class CircleNeuronService : Service
     /// <summary>What the service is doing, safe to show a user.</summary>
     public static string Status { get; private set; } = "not started";
 
+    /// <summary>Where the service has got to.</summary>
+    public enum ServiceState
+    {
+        /// <summary>Not started, or stopped.</summary>
+        Idle,
+
+        /// <summary>Started; the model is being read off storage.</summary>
+        Loading,
+
+        /// <summary>The node is up and answering.</summary>
+        Ready,
+
+        /// <summary>It tried and could not. <see cref="Status"/> says why.</summary>
+        Failed,
+    }
+
+    /// <summary>
+    /// The memory manager. Live once the service has started.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so a host can call <see cref="AndroidMemoryPressure.Touch"/> on real
+    /// use and so a screen can show what pressure the phone is under. Wired by the
+    /// service rather than left to the host, because "release memory you are not
+    /// using" is not a feature an app should have to opt into.
+    /// </remarks>
+    public static AndroidMemoryPressure? Memory { get; private set; }
+
+    /// <summary>The current state. A caller waits on this, not on a clock.</summary>
+    /// <remarks>
+    /// Failed exists because without it a client can only ask "ready yet?" and has
+    /// no way to hear "I have given up". Measured on the P30: the service reported
+    /// a terminal failure in about two seconds and the connection still waited its
+    /// full ninety-second timeout, because polling a ready-flag cannot tell the
+    /// difference between still-loading and never-going-to. To a person that is an
+    /// app that hangs.
+    /// </remarks>
+    public static ServiceState State { get; private set; } = ServiceState.Idle;
+
     private static readonly object Gate = new();
 
     /// <summary>Starts the resident service if it is not already running.</summary>
@@ -118,6 +156,7 @@ public sealed class CircleNeuronService : Service
         catch (Exception ex)
         {
             Status = $"could not go foreground: {ex.Message}";
+            State  = ServiceState.Failed;
             return StartCommandResult.Sticky;
         }
 
@@ -126,6 +165,22 @@ public sealed class CircleNeuronService : Service
         // before anything asks — otherwise the first answers are made on the GC
         // heap limit and the device looks like a wearable.
         AndroidDeviceMemory.Install(this);
+
+        // The memory manager, before the models exist — so the first thing that
+        // gets loaded is already being watched. Registered as a ComponentCallbacks2
+        // on the APPLICATION: onTrimMemory is delivered to registered callbacks,
+        // and a Service that does not register simply never hears Android ask.
+        if (Memory is null)
+        {
+            Memory = new AndroidMemoryPressure();
+            try { ApplicationContext?.RegisterComponentCallbacks(Memory); }
+            catch (Exception ex)
+            {
+                // Without this we are deaf to pressure and will be killed rather
+                // than asked. Worth saying out loud, not worth refusing to start.
+                Status = $"memory signals unavailable: {ex.Message}";
+            }
+        }
 
         _ = System.Threading.Tasks.Task.Run(BuildNodeAsync);
         return StartCommandResult.Sticky;
@@ -139,18 +194,31 @@ public sealed class CircleNeuronService : Service
             if (factory is null)
             {
                 Status = "no brain configured — set CircleNeuronService.OptionsFactory before Start";
+                State  = ServiceState.Failed;
                 Notify(Status);
                 return;
             }
 
             Status = "loading the model…";
+            State  = ServiceState.Loading;
             Notify(Status);
 
             NeuronNode node;
             lock (Gate)
             {
-                if (Node is not null) { Status = "ready"; Notify(Status); return; }
-                node = new NeuronNode(new AIService(factory()));
+                if (Node is not null) { Status = "ready"; State = ServiceState.Ready; Notify(Status); return; }
+
+                // The memory manager goes IN, not alongside. Passed here it reaches
+                // AIService's brownout path — the one that downshifts and releases —
+                // so Android's onTrimMemory and the idle timer both end up pulling
+                // the same lever the design already built.
+                node = new NeuronNode(new AIService(
+                    factory(),
+                    modelLoader:          null,
+                    generatorFactory:     null,
+                    modelSelector:        null,
+                    modelRegistry:        null,
+                    memoryPressureSource: Memory));
                 Node = node;
             }
 
@@ -159,6 +227,12 @@ public sealed class CircleNeuronService : Service
             await node.Brain.StartAsync().ConfigureAwait(false);
 
             Status = node.IsReady ? "ready" : node.StatusMessage;
+            State  = node.IsReady ? ServiceState.Ready : ServiceState.Failed;
+
+            // Only once there is something worth releasing. Started earlier it
+            // would spend the whole cold load counting the model as idle.
+            if (node.IsReady) Memory?.StartIdleWatch();
+
             Notify(Status);
         }
         catch (Exception ex)
@@ -167,6 +241,7 @@ public sealed class CircleNeuronService : Service
             // the models may still load on a later attempt, and a bound client can
             // read Status and say something true instead of hanging.
             Status = $"failed to load: {ex.Message}";
+            State  = ServiceState.Failed;
             Notify(Status);
         }
     }
@@ -178,7 +253,16 @@ public sealed class CircleNeuronService : Service
             (Node?.Brain as IDisposable)?.Dispose();
             Node = null;
         }
+
+        // Hand the callback back. A ComponentCallbacks2 left registered against a
+        // destroyed service is a leak Android holds for the life of the process —
+        // the exact sin this class exists to avoid committing.
+        try { if (Memory is not null) ApplicationContext?.UnregisterComponentCallbacks(Memory); }
+        catch { /* already torn down */ }
+        Memory?.Dispose();
+        Memory = null;
         Status = "stopped";
+        State  = ServiceState.Idle;
         StopForeground(StopForegroundFlags.Remove);
         base.OnDestroy();
     }

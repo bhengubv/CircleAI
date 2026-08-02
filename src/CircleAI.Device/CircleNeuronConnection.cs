@@ -69,16 +69,27 @@ public sealed class CircleNeuronConnection : Java.Lang.Object, IServiceConnectio
         // has an object to hand over, which is long before a 122 MB model has been
         // read off eMMC — returning here would give the caller a node that answers
         // "not ready" to everything and look like a broken brain.
+        //
+        // But wait on the STATE, not the clock. Measured on the P30: the service
+        // reported a terminal failure in about two seconds and this loop still sat
+        // for its full ninety, because "is it ready" cannot distinguish
+        // still-loading from never-going-to. Ninety seconds of nothing is how a
+        // working app gets uninstalled.
         var giveUpAt = DateTime.UtcNow + deadline;
         while (DateTime.UtcNow < giveUpAt)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (CircleNeuronService.State == CircleNeuronService.ServiceState.Failed)
+                return (null, connection);          // it already knows; say so now
+
             var node = binder.Node;
             if (node is { IsReady: true }) return (node, connection);
+
             await Task.Delay(250, cancellationToken).ConfigureAwait(false);
         }
 
-        return (binder.Node, connection);   // whatever it got to; Status explains
+        return (binder.Node, connection);   // timed out; Status explains
     }
 
     private static async Task<T?> WaitOrNull<T>(Task<T?> task, TimeSpan timeout, CancellationToken ct)
