@@ -98,7 +98,7 @@ public class HomeActivity : Activity
         _prompt.SetPadding(pad, Ui.Dp(this, 28), pad, 0);
         root.AddView(_prompt, Ui.Fill());
 
-        _caption = Ui.Label(this, "isiZulu — one of 71", 15f, Ui.InkSoft);
+        _caption = Ui.Label(this, "isiZulu — one of 74", 15f, Ui.InkSoft);
         _caption.Gravity = GravityFlags.Center;
         _caption.SetPadding(pad, Ui.Dp(this, 8), pad, 0);
         root.AddView(_caption, Ui.Fill());
@@ -113,7 +113,7 @@ public class HomeActivity : Activity
         claims.SetPadding(pad, 0, pad, Ui.Dp(this, 20));
         foreach (var line in new[]
                  {
-                     "71 languages, spoken out loud",
+                     "74 languages, spoken out loud",
                      "Runs on the phone — works with no signal",
                      "Free, no account, nothing sent anywhere",
                  })
@@ -160,7 +160,7 @@ public class HomeActivity : Activity
             nav.AddView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         }
 
-        Quiet("71 languages", typeof(LanguagePickerActivity));
+        Quiet("74 languages", typeof(LanguagePickerActivity));
         Quiet("What it can do", typeof(AbilitiesActivity));
 
         root.AddView(nav, Ui.Fill());
@@ -176,7 +176,7 @@ public class HomeActivity : Activity
         var (tag, label, phrase) = Greetings[_next % Greetings.Length];
         _next++;
 
-        _caption.Text = $"{label} — one of 71";
+        _caption.Text = $"{label} — one of 74";
         _prompt.Text = "…";
         _mark.SetBusy(true);
 

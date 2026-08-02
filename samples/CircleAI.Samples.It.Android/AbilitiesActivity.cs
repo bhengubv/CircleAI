@@ -49,7 +49,7 @@ public class AbilitiesActivity : Activity
 
     static readonly Ability[] Abilities =
     {
-        new("Talking",   "Reads things out loud, in 71 languages",        ModelModality.Tts),
+        new("Talking",   "Reads things out loud, in 74 languages",        ModelModality.Tts),
         new("Listening", "Understands you when you speak",                ModelModality.Asr),
         new("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         new("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),

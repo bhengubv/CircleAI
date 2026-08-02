@@ -1,6 +1,6 @@
 // LanguagePickerActivity.cs
 //
-// The front door. CircleAI speaks 71 languages entirely on the phone, and until
+// The front door. CircleAI speaks 74 languages entirely on the phone, and until
 // this screen existed there was no way for a person holding the device to hear
 // any of them — the language was an adb intent extra, so the single most
 // remarkable thing about the project was reachable only by its authors.
@@ -47,7 +47,11 @@ public class LanguagePickerActivity : Activity
         ["bn"]   = ("Bengali",         "বাংলা",         "হ্যালো বিশ্ব। আপনি কেমন আছেন?"),
         ["ee"]   = ("Ewe",             "Eʋegbe",       null),
         ["en"]   = ("English",         "English",      "Hello world. How are you today?"),
-        ["es"]   = ("Spanish",         "Español",      "Hola mundo. ¿Cómo estás hoy?"),
+        // es-ES and es-MX are separate rows because they are separate to the
+        // people who speak them. Collapsing them under "Spanish" served one and
+        // silently told the other they were the same, which they are not.
+        ["es-ES"] = ("Spanish (Spain)",  "Español (España)", "Hola mundo. ¿Cómo estás hoy?"),
+        ["es-MX"] = ("Spanish (Mexico)", "Español (México)", "Hola mundo. ¿Cómo estás hoy?"),
         ["fa"]   = ("Persian",         "فارسی",         "سلام دنیا. حال شما چطور است؟"),
         ["ff"]   = ("Fula",            "Fulfulde",     null),
         ["fon"]  = ("Fon",             "Fɔngbè",       null),
@@ -73,14 +77,16 @@ public class LanguagePickerActivity : Activity
         ["mr"]   = ("Marathi",         "मराठी",         "नमस्कार जग. तुम्ही कसे आहात?"),
         ["my"]   = ("Burmese",         "မြန်မာ",        "မင်္ဂလာပါ ကမ္ဘာ။ နေကောင်းလား။"),
         ["ne"]   = ("Nepali",          "नेपाली",         "नमस्ते संसार। तपाईं कस्तो हुनुहुन्छ?"),
-        ["nl"]   = ("Dutch",           "Nederlands",   "Hallo wereld. Hoe gaat het met je?"),
+        ["nl-NL"] = ("Dutch",           "Nederlands",         "Hallo wereld. Hoe gaat het met je?"),
+        ["nl-BE"] = ("Flemish",         "Vlaams",             "Hallo wereld. Hoe gaat het met je?"),
         ["nr"]   = ("isiNdebele",      "isiNdebele",   "Lotjhani phasi. Unjani namhlanje?"),
         ["nso"]  = ("Sepedi",          "Sepedi",       "Dumela lefase. O kae lehono?"),
         ["ny"]   = ("Chichewa",        "Chichewa",     null),
         ["nyn"]  = ("Nyankole",        "Runyankole",   null),
         ["om"]   = ("Oromo",           "Afaan Oromoo", null),
         ["pa"]   = ("Punjabi",         "ਪੰਜਾਬੀ",         "ਸਤ ਸ੍ਰੀ ਅਕਾਲ ਦੁਨੀਆ। ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?"),
-        ["pt"]   = ("Portuguese",      "Português",    "Olá mundo. Como você está hoje?"),
+        ["pt-BR"] = ("Portuguese (Brazil)",   "Português (Brasil)",   "Olá mundo. Como você está hoje?"),
+        ["pt-PT"] = ("Portuguese (Portugal)", "Português (Portugal)", "Olá mundo. Como está hoje?"),
         ["qu"]   = ("Quechua",         "Runa Simi",    null),
         ["rn"]   = ("Kirundi",         "Ikirundi",     null),
         ["ru"]   = ("Russian",         "Русский",      "Привет мир. Как дела сегодня?"),
@@ -149,7 +155,7 @@ public class LanguagePickerActivity : Activity
         _status.SetPadding(0, Ui.Dp(this, 6), 0, 0);
         head.AddView(_status);
 
-        _search = new EditText(this) { Hint = "Search 71 languages" };
+        _search = new EditText(this) { Hint = "Search 74 languages" };
         _search.SetTextColor(Ui.Ink);
         _search.SetHintTextColor(Ui.InkSoft);
         _search.SetSingleLine(true);
