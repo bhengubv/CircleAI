@@ -22,9 +22,8 @@
 //                      out-of-range samples are MIRRORED, not zero-padded. This
 //                      changes both the frame count and the first frames'
 //                      contents.
-//   x 32768            The model was trained on int16-scaled audio. Float
-//                      [-1,1] straight in is 90 dB quiet and every energy is
-//                      wrong by a constant that log() turns into an offset.
+//   NO x 32768         Samples go in at [-1, 1] and are used AS THEY ARE. See
+//                      the note on ScaleToInt16 below — this one cost a day.
 //   povey window       (0.5 - 0.5cos)^0.85, not Hamming, not Hann.
 //   preemph + DC       Per frame, in that order: subtract the frame mean, then
 //                      pre-emphasise at 0.97, THEN window.
@@ -59,7 +58,22 @@ namespace CircleAI.Voice;
 /// Kaldi's <c>snip_edges</c>. FALSE (sherpa's default) centres frames and mirrors
 /// at the boundaries; true starts frame 0 at sample 0 and drops the tail.
 /// </param>
-/// <param name="ScaleToInt16">Multiply float samples by 32768 before anything else.</param>
+/// <param name="ScaleToInt16">
+/// Multiply float samples by 32768 before anything else. OFF, because sherpa's
+/// models are trained on [-1, 1] audio.
+/// <para>
+/// This defaulted to ON, from reading sherpa's <c>normalize_samples = true</c>
+/// backwards: it does not mean "normalise these for me", it means "these are
+/// ALREADY normalised, use them as they are" — the ×32768 is what happens when
+/// the flag is FALSE. Getting it inverted adds a constant +20.8 to every mel bin
+/// (log of the squared factor), which is a uniform offset, so the features still
+/// look completely plausible: right shape, right range, right relative contours.
+/// The zipformer simply produced blank on every frame. Greedy decoding of a
+/// 6.6-second sentence emitted NOT ONE TOKEN, and the same graphs driven by
+/// sherpa transcribed it in full — which is the comparison that found this after
+/// the decoder above had been rewritten three times looking for the fault.
+/// </para>
+/// </param>
 public sealed record KaldiFbankOptions(
     int   SampleRateHz            = 16_000,
     int   NumMelBins              = 80,
@@ -70,7 +84,7 @@ public sealed record KaldiFbankOptions(
     float PreemphasisCoefficient  = 0.97f,
     bool  RemoveDcOffset          = true,
     bool  SnipEdges               = false,
-    bool  ScaleToInt16            = true)
+    bool  ScaleToInt16            = false)
 {
     /// <summary>Window length in samples — 400 at the defaults.</summary>
     public int FrameLength => (int)(SampleRateHz * FrameLengthMs / 1000f);
@@ -118,9 +132,9 @@ public sealed class KaldiFbank
     /// <summary>Adds audio. Samples are float in [-1, 1].</summary>
     public void AcceptWaveform(ReadOnlySpan<float> samples)
     {
-        // The int16 scaling belongs HERE, once, before anything reads a sample —
-        // the model's training pipeline scaled first and everything downstream
-        // (DC offset, energies, the log) inherits the factor.
+        // If scaling is asked for it belongs HERE, once, before anything reads a
+        // sample — everything downstream (DC offset, energies, the log) inherits
+        // the factor. It is OFF by default; see KaldiFbankOptions.ScaleToInt16.
         var scale = _o.ScaleToInt16 ? 32768f : 1f;
         foreach (var s in samples) _samples.Add(s * scale);
         Recount(flush: false);

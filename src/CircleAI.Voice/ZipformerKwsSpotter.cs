@@ -12,9 +12,9 @@
 // through every chunk.
 //
 // THE PROPERTY THAT MADE IT WORTH THE WORK: keywords are TEXT, not a trained
-// class. The model emits BPE tokens and we look for the keyword's token sequence
-// in the stream, so "Hey B" is a line in a file rather than a training run on a
-// GPU we do not have and would not use.
+// class. The model emits BPE tokens and the search looks for the keyword's token
+// sequence, so "Hey B" is a line in a file rather than a training run on a GPU we
+// do not have and would not use.
 //
 // Streaming shape, from the model's own metadata rather than assumed:
 //   T = 45                each encoder call sees 45 feature frames
@@ -26,45 +26,50 @@
 // time the model is updated — wrong-shaped zeros do not throw, they just make the
 // thing deaf.
 //
-// ============================================================================
-// INCOMPLETE: RUNS AND COMPLETES KEYWORDS, BUT DOES NOT DISCRIMINATE YET.
-// Do not wire it to a microphone.
-// ============================================================================
+// WHERE THE BUG ACTUALLY WAS, recorded because the search is not where anyone
+// would look and it is where four rewrites went. This decoder was written three
+// times from an understanding of the algorithm — greedy, then a per-keyword
+// score, then a beam with a hand-rolled position counter — and then a fourth time
+// as a faithful port of the reference. None of them detected anything, and the
+// reason was never in any of them:
 //
-// GROUND TRUTH, established by running sherpa-onnx's own Python package on the
-// same files: it detects LIGHT UP in 0.wav and LOVELY CHILD + FOREVER in 1.wav.
-// So the model, the audio and the keyword encodings are all correct, and any
-// remaining gap is in this implementation. That check is worth more than any
-// amount of reasoning about it and should be the first move next time.
+//   KaldiFbank WAS SCALING THE AUDIO BY 32768. sherpa's normalize_samples = true
+//   means "these samples are already in [-1, 1]", not "normalise them for me".
+//   Read backwards it adds a constant 20.794 to every mel bin, which is a UNIFORM
+//   offset — so the features keep their shape, their range and their contours, and
+//   look right by every eye check. The zipformer just emitted blank forever.
 //
-// PROVEN HERE:
-//   - features bit-compatible with the C++ reference (KaldiFbankTests)
-//   - three graphs, 36 state tensors threaded across chunks, encoder responds to
-//     audio; identical to the same pipeline driven from Python; 17-24x realtime
-//   - modified beam search with keyword boosting now COMPLETES phrases at
-//     sherpa's own default boost of 1.0
+// WHAT FOUND IT, after reasoning had failed repeatedly: running sherpa's own
+// Python package on the same files as a greedy recogniser. It transcribed 6.6
+// seconds of speech in full from THE SAME ONNX GRAPHS; the same loop here emitted
+// not one token. That single comparison localised the fault to the input side in
+// one step. The lesson is cheap to state and was expensive to learn — when an
+// implementation and a reference disagree, run the reference, do not reason about
+// it. It should be the first move, not the last.
 //
-// TWO REAL BUGS FIXED ON THE WAY, both silent:
+// THE PORT WAS STILL WORTH DOING. Three real defects came out of it, each of
+// which would have surfaced the moment the features were fixed:
 //
 //   THE MEAN WAS THE WRONG MEAN. sherpa stores exp(logprob) per token and takes
 //   the ARITHMETIC mean of probabilities. Averaging log-probs and exponentiating
-//   is the GEOMETRIC mean, which one weak token drags to nearly zero — it read
-//   0.013 against a 0.25 threshold, so nothing could ever fire.
+//   is the GEOMETRIC mean, which one weak token drags to nearly zero.
 //
-//   THE DECODER HISTORY MUST RESET WITH THE MATCH. A keyword's tokens are scored
-//   conditioned on blank and then on its own prefix, not on the sentence that
-//   happened to precede it. Carrying the surrounding speech made keyword tokens
-//   so unlikely that the path needed EIGHT times the published boost to survive;
-//   with the reset it survives at 1.0.
+//   THE KEYWORD MUST NOT BE HANDED A CANDIDATE SLOT. Forcing each phrase's next
+//   expected token into the candidate set every frame guarantees the phrase can
+//   always complete — a search that cannot say no. Here top-k is GLOBAL over
+//   (hypotheses x vocabulary) on acoustics alone, and a keyword survives only by
+//   carrying a high enough hypothesis score from the boost it has already earned.
 //
-// WHAT IS STILL WRONG: separation. On 0.wav the phrase that IS present completes
-// at mean probability 0.124, and a phrase that is ABSENT completes at 0.106 —
-// against a 0.25 threshold neither fires, and the two are too close to separate
-// by moving the threshold. Something in the search still differs from sherpa;
-// candidates are the global top-k over (hypotheses x vocab) rather than per
-// hypothesis, hypothesis merging by log-add rather than max, and the terminal
-// node_score bonus on completion. The next session should diff against the C++
-// decoder frame by frame rather than reason about it.
+//   DETECTION IS TESTED ON THE LEADING HYPOTHESIS ONLY. Firing whenever ANY beam
+//   entry finished a phrase is what turns a search into a rubber stamp.
+//
+// PROVEN, against sherpa-onnx 1.13.4 as the oracle on its own shipped audio:
+//   0.wav -> LIGHT UP at p=0.741;  1.wav -> LOVELY CHILD 0.626, FOREVER 0.686
+//   — the same three detections the oracle makes, and nothing else fires. Phrases
+//   that are absent stall after one token at p≈0.02, so the 0.25 threshold sits in
+//   a gap of more than thirty times, not on a knife edge.
+//   Features bit-compatible with the C++ reference (KaldiFbankTests); three
+//   graphs and 36 state tensors threaded across chunks at 20-24x realtime.
 
 using System;
 using System.Collections.Generic;
@@ -79,12 +84,16 @@ namespace CircleAI.Voice;
 /// <summary>One keyword: what to listen for, and what to call it when heard.</summary>
 /// <param name="Tokens">The BPE token ids that spell the phrase.</param>
 /// <param name="Phrase">Human-readable form, surfaced on detection.</param>
-public sealed record KwsKeyword(IReadOnlyList<int> Tokens, string Phrase);
+/// <param name="Boost">Per-token boost, or 0 to use the spotter's default.</param>
+/// <param name="Threshold">Acceptance threshold, or 0 to use the spotter's default.</param>
+public sealed record KwsKeyword(IReadOnlyList<int> Tokens, string Phrase,
+                                float Boost = 0f, float Threshold = 0f);
 
 /// <summary>A keyword was heard.</summary>
 /// <param name="Phrase">The phrase, as written in keywords_raw.txt.</param>
 /// <param name="AtFrame">Encoder frame index where the last token landed.</param>
-public sealed record KwsDetection(string Phrase, int AtFrame);
+/// <param name="Probability">Mean acoustic probability it scored, boost excluded.</param>
+public sealed record KwsDetection(string Phrase, int AtFrame, double Probability);
 
 /// <summary>
 /// Streaming keyword spotter over a sherpa-onnx zipformer2 KWS bundle.
@@ -98,19 +107,17 @@ public sealed class ZipformerKwsSpotter : IDisposable
 
     private readonly string[] _stateInNames, _stateOutNames;
     private readonly DenseTensor<float>[] _states;
-    private readonly int[] _stateDims;
 
     private long _processedLens;
     private readonly int _chunkFrames;     // 45  — what the encoder consumes
     private readonly int _advanceFrames;   // 32  — how far we move each call
     private readonly int _contextSize;     // 2   — decoder history width
+    private readonly int _unkId;           // treated as blank, like sherpa
 
     private readonly List<float[]> _features = new();
     private int _featureCursor;
-
-    /// <summary>Token ids emitted so far, for keyword matching.</summary>
-    private readonly List<int> _emitted = new();
     private int _encoderFrame;
+    private int _vocab;
 
     /// <summary>Blank in a k2 transducer is always id 0.</summary>
     private const int Blank = 0;
@@ -119,7 +126,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
     public event EventHandler<KwsDetection>? Detected;
 
     /// <summary>
-    /// Raised for every token the decoder emits, with its text.
+    /// Raised for every token the leading hypothesis emits, with its text.
     /// </summary>
     /// <remarks>
     /// Diagnostics, and the only honest way to tell a BROKEN PIPELINE from a
@@ -137,7 +144,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
     public sealed record KwsProgress(string Phrase, int Matched, int Total, double MeanProbability);
 
     /// <summary>
-    /// Raised as a keyword is partially matched.
+    /// Raised as the leading hypothesis walks into a keyword.
     /// </summary>
     /// <remarks>
     /// This is how a threshold gets set from evidence instead of taste: it shows
@@ -150,14 +157,28 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// <summary>Loads a bundle directory (encoder/decoder/joiner + tokens + keywords).</summary>
     /// <param name="directory">Extracted bundle path.</param>
     /// <param name="keywordsFile">Defaults to keywords.txt beside the models.</param>
-    public ZipformerKwsSpotter(string directory, string? keywordsFile = null)
+    /// <param name="preferQuantized">
+    /// Use the int8 graphs when the bundle ships both. Smaller and faster; the
+    /// probabilities come out flatter, which costs separation.
+    /// </param>
+    public ZipformerKwsSpotter(string directory, string? keywordsFile = null, bool preferQuantized = false)
     {
+        // WHICH GRAPH GETS PICKED IS A DECISION, NOT AN ACCIDENT. These bundles
+        // ship both float and int8 copies of all three models, and the int8 name
+        // sorts FIRST, so "take the first file matching *encoder*" quietly ran the
+        // quantized stack. It loads, it runs, it is fast — and its output
+        // distribution is flat enough that keyword tokens sat around p=0.01 where
+        // the float graphs put them above 0.3. Nothing errors; the wake word
+        // simply never fires. Float is the default and int8 is opt-in.
         string Find(string contains, string ext = ".onnx")
         {
-            var f = Directory.GetFiles(directory, "*" + ext)
-                .FirstOrDefault(p => Path.GetFileName(p).Contains(contains, StringComparison.OrdinalIgnoreCase))
-                ?? throw new FileNotFoundException($"no *{contains}*{ext} in {directory}");
-            return f;
+            var all = Directory.GetFiles(directory, "*" + ext)
+                .Where(p => Path.GetFileName(p).Contains(contains, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (all.Count == 0) throw new FileNotFoundException($"no *{contains}*{ext} in {directory}");
+
+            bool IsInt8(string p) => Path.GetFileName(p).Contains("int8", StringComparison.OrdinalIgnoreCase);
+            return all.FirstOrDefault(p => IsInt8(p) == preferQuantized) ?? all[0];
         }
 
         var opts = new SessionOptions { InterOpNumThreads = 1, IntraOpNumThreads = 1 };
@@ -181,27 +202,32 @@ public sealed class ZipformerKwsSpotter : IDisposable
                        : "new_" + n)
             .ToArray();
 
-        _states    = new DenseTensor<float>[_stateInNames.Length];
-        _stateDims = new int[_stateInNames.Length];
+        _states = new DenseTensor<float>[_stateInNames.Length];
         for (var i = 0; i < _stateInNames.Length; i++)
         {
             var dims = inputs[_stateInNames[i]].Dimensions.Select(d => d < 0 ? 1 : d).ToArray();
-            _stateDims[i] = dims.Length;
             if (_stateInNames[i] != "processed_lens")
                 _states[i] = new DenseTensor<float>(dims);      // zeros = fresh stream
         }
 
         _fbank = new KaldiFbank();
         var tokensPath = Path.Combine(directory, "tokens.txt");
+        var ids = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var line in File.ReadLines(tokensPath))
         {
             var sp = line.LastIndexOf(' ');
-            if (sp > 0 && int.TryParse(line[(sp + 1)..], out var tid)) _tokenText[tid] = line[..sp];
+            if (sp <= 0) continue;
+            if (!int.TryParse(line[(sp + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var tid))
+                continue;
+            _tokenText[tid] = line[..sp];
+            ids[line[..sp]] = tid;
         }
 
-        _keywords = LoadKeywords(keywordsFile ?? Path.Combine(directory, "keywords.txt"),
-                                 Path.Combine(directory, "keywords_raw.txt"),
-                                 tokensPath);
+        // <unk> is scored as blank rather than as a token, so a garbled frame
+        // neither advances a keyword nor breaks one.
+        _unkId = ids.TryGetValue("<unk>", out var unk) ? unk : -1;
+
+        _keywords = LoadKeywords(keywordsFile ?? Path.Combine(directory, "keywords.txt"), ids, _tokenText);
     }
 
     /// <summary>The phrases this spotter is listening for.</summary>
@@ -211,41 +237,72 @@ public sealed class ZipformerKwsSpotter : IDisposable
         m.TryGetValue(key, out var v) && int.TryParse(v, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
-    private static List<KwsKeyword> LoadKeywords(string keywordsPath, string rawPath, string tokensPath)
+    /// <summary>
+    /// Reads sherpa's keywords.txt: tokens, then optional <c>:boost</c>,
+    /// <c>#threshold</c> and <c>@phrase</c>.
+    /// </summary>
+    /// <remarks>
+    /// The human-readable phrase comes from <c>@</c>, else from the matching
+    /// <c>*_raw.txt</c>, else from gluing the tokens back together. The raw file
+    /// is looked up FROM THE KEYWORDS FILE'S OWN NAME rather than always taking
+    /// the bundle's keywords_raw.txt — those two only line up when the caller is
+    /// using the bundle's default keyword list, and when they don't, every
+    /// detection gets confidently mislabelled with someone else's phrase.
+    /// </remarks>
+    private static List<KwsKeyword> LoadKeywords(
+        string keywordsPath, Dictionary<string, int> ids, Dictionary<int, string> tokenText)
     {
-        var ids = new Dictionary<string, int>(StringComparer.Ordinal);
-        foreach (var line in File.ReadLines(tokensPath))
-        {
-            var sp = line.LastIndexOf(' ');
-            if (sp <= 0) continue;
-            if (int.TryParse(line[(sp + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
-                ids[line[..sp]] = id;
-        }
-
+        var rawPath = Path.Combine(
+            Path.GetDirectoryName(keywordsPath) ?? ".",
+            Path.GetFileNameWithoutExtension(keywordsPath) + "_raw" + Path.GetExtension(keywordsPath));
         var raw = File.Exists(rawPath) ? File.ReadAllLines(rawPath) : Array.Empty<string>();
+
         var list = new List<KwsKeyword>();
         var i = 0;
+
         foreach (var line in File.ReadLines(keywordsPath))
         {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            var toks = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (string.IsNullOrWhiteSpace(line)) { i++; continue; }
+
             var seq = new List<int>();
+            var phrase = string.Empty;
+            float boost = 0, threshold = 0;
             var ok = true;
-            foreach (var t in toks)
+
+            foreach (var w in line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
-                // A token that is not in the vocabulary would silently become a
-                // keyword that can never match, so it is dropped loudly instead.
-                if (!ids.TryGetValue(t, out var id)) { ok = false; break; }
-                seq.Add(id);
+                if (ids.TryGetValue(w, out var id)) { seq.Add(id); continue; }
+                switch (w[0])
+                {
+                    case ':': boost     = Num(w); break;
+                    case '#': threshold = Num(w); break;
+                    case '@': phrase    = w[1..].Replace('_', ' '); break;
+                    // A token that is not in the vocabulary would silently become a
+                    // keyword that can never match, so the line is dropped instead.
+                    default: ok = false; break;
+                }
+                if (!ok) break;
             }
-            var phrase = i < raw.Length ? raw[i].Trim() : string.Join(" ", toks);
-            if (ok && seq.Count > 0) list.Add(new KwsKeyword(seq, phrase));
+
+            if (phrase.Length == 0)
+                phrase = i < raw.Length && raw[i].Trim().Length > 0
+                    ? raw[i].Trim()
+                    // "▁ L IGHT ▁UP" -> "LIGHT UP": the sentencepiece marker IS
+                    // the word boundary, so the tokens rebuild the phrase exactly.
+                    : string.Concat(seq.Select(t => tokenText.GetValueOrDefault(t, "")))
+                            .Replace('▁', ' ').Trim();
+
+            if (ok && seq.Count > 0) list.Add(new KwsKeyword(seq, phrase, boost, threshold));
             i++;
         }
+
         if (list.Count == 0)
             throw new InvalidOperationException(
-                $"no usable keywords in {keywordsPath} — every line had a token missing from {tokensPath}");
+                $"no usable keywords in {keywordsPath} — every line had a token outside the vocabulary");
         return list;
+
+        static float Num(string w) =>
+            float.TryParse(w[1..], NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0f;
     }
 
     /// <summary>Feeds audio. Float samples in [-1, 1] at 16 kHz.</summary>
@@ -316,7 +373,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
             _states[i] = byName[_stateOutNames[i]].AsTensor<float>().ToDenseTensor();
         }
 
-        DecodeBeam(encOut, frames, width);
+        Decode(encOut, frames, width);
     }
 
     /// <summary>Beam width — sherpa's max_active_paths.</summary>
@@ -326,9 +383,10 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// <remarks>
     /// THE reason this works where greedy did not. The model is trained to sit on
     /// blank, so a keyword's tokens never win an unbiased argmax. The boost is not
-    /// a thumb on the scale for a wrong answer — it is what keeps the keyword path
-    /// ALIVE IN THE BEAM long enough to be judged on its acoustics, which is what
-    /// <see cref="Threshold"/> then does, with the boost removed.
+    /// a thumb on the scale for a wrong answer — it is a LOAN that keeps the
+    /// keyword path alive in the beam long enough to be judged on its acoustics,
+    /// repaid in full by <see cref="KwsContextGraph"/> the moment the path falls
+    /// off the phrase.
     /// </remarks>
     public double KeywordBoost { get; init; } = 1.0;
 
@@ -342,169 +400,210 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// <summary>Blanks required after the phrase before it is called finished.</summary>
     public int TrailingBlanksRequired { get; init; } = 1;
 
+    private KwsContextGraph? _graph;
+
+    /// <summary>
+    /// The keyword trie, built on first use.
+    /// </summary>
+    /// <remarks>
+    /// Not built in the constructor because <see cref="KeywordBoost"/> and
+    /// <see cref="Threshold"/> are init-only properties — an object initializer
+    /// assigns them AFTER the constructor body has run, so a graph built there
+    /// would silently bake in the defaults and ignore whatever the caller asked
+    /// for.
+    /// </remarks>
+    private KwsContextGraph Graph => _graph ??= new KwsContextGraph(
+        _keywords.Select(k => k.Tokens).ToList(),
+        (float)KeywordBoost, (float)Threshold,
+        _keywords.Select(k => k.Boost).ToList(),
+        _keywords.Select(k => k.Phrase).ToList(),
+        _keywords.Select(k => k.Threshold).ToList());
+
     private sealed class Hyp
     {
-        public List<int> Tokens = new() { Blank, Blank };
-        public double    LogProb;
-        public int[]     Pos    = Array.Empty<int>();      // tokens matched, per keyword
-        public double[]  AcSum  = Array.Empty<double>();   // sum of PROBABILITIES, per keyword
-        public int       Blanks;
-        public int       Pending = -1;                     // matched, awaiting trailing blanks
+        /// <summary>Tokens decoded so far, primed with the decoder's start context.</summary>
+        public List<int> Ys = null!;
+
+        /// <summary>Acoustic PROBABILITY (not log) of each token in <see cref="Ys"/>.</summary>
+        public List<double> YsProbs = new();
+
+        public double LogProb;
+        public KwsContextState State = null!;
+        public int TrailingBlanks;
+
+        /// <summary>Token appended this frame, or -1 for a blank.</summary>
+        public int LastToken = -1;
 
         public Hyp Clone() => new()
         {
-            Tokens = new List<int>(Tokens), LogProb = LogProb,
-            Pos = (int[])Pos.Clone(), AcSum = (double[])AcSum.Clone(),
-            Blanks = Blanks, Pending = Pending,
+            Ys = new List<int>(Ys), YsProbs = new List<double>(YsProbs),
+            LogProb = LogProb, State = State, TrailingBlanks = TrailingBlanks,
         };
+
+        public string Key => string.Join("-", Ys);
     }
 
-    private List<Hyp>? _beam;
+    private Dictionary<string, Hyp>? _hyps;
 
-    /// <summary>Modified beam search over the keyword set — sherpa's algorithm.</summary>
+    /// <summary>
+    /// The decoder's start context: <c>context_size</c> entries, all -1 but the
+    /// last, which is blank.
+    /// </summary>
     /// <remarks>
-    /// Greedy emitted nothing on this model, and scoring a keyword's path in
-    /// isolation separated nothing (measured on the shipped audio: present
-    /// -3.127/token, absent -3.148). Both fail the same way — the keyword never
-    /// has to COMPETE. Here it does: boosted enough to hold a beam slot, then
-    /// accepted only if its unboosted acoustics clear the threshold.
+    /// The -1 is not a mistake and not a sentinel that gets filtered out — it is
+    /// fed to the decoder verbatim, where ONNX Gather reads a negative index from
+    /// the END of the embedding table. sherpa does exactly this, so the start
+    /// context is the last vocabulary row, and priming with blanks instead would
+    /// score every phrase's first token against a different conditioning.
     /// </remarks>
-    private void DecodeBeam(Tensor<float> encOut, int frames, int width)
+    private List<int> StartContext()
     {
-        var nk = _keywords.Count;
-        _beam ??= new List<Hyp> { new() { Pos = new int[nk], AcSum = new double[nk] } };
+        var ys = Enumerable.Repeat(-1, _contextSize).ToList();
+        ys[^1] = Blank;
+        return ys;
+    }
+
+    private Dictionary<string, Hyp> StartHyps()
+    {
+        var h = new Hyp { Ys = StartContext(), State = Graph.Root };
+        return new Dictionary<string, Hyp> { [h.Key] = h };
+    }
+
+    /// <summary>
+    /// Modified beam search with a context graph — a structural port of sherpa's
+    /// TransducerKeywordDecoder::Decode.
+    /// </summary>
+    private void Decode(Tensor<float> encOut, int frames, int width)
+    {
+        _hyps ??= StartHyps();
 
         for (var t = 0; t < frames; t++, _encoderFrame++)
         {
             var enc = new DenseTensor<float>(new[] { 1, width });
             for (var d = 0; d < width; d++) enc[0, d] = encOut[0, t, d];
 
-            var next = new List<Hyp>();
-            foreach (var h in _beam)
+            var prev = _hyps.Values.ToList();
+
+            // Two arrays, and the difference between them is the whole design:
+            // ACOUSTIC is what a token is worth on this frame's audio and is what
+            // the threshold later judges; RANKED adds the hypothesis's running
+            // score, including every boost it has earned, and is what the search
+            // ranks on. Mixing them up either hides the keyword from the beam or
+            // lets the boost vote for its own acceptance.
+            var acoustic = new float[prev.Count][];
+            for (var i = 0; i < prev.Count; i++)
+                acoustic[i] = LogSoftmax(JoinerLogits(enc, DecoderFor(prev[i].Ys)));
+            _vocab = acoustic[0].Length;
+
+            var ranked = new double[prev.Count * _vocab];
+            for (var i = 0; i < prev.Count; i++)
+                for (var v = 0; v < _vocab; v++)
+                    ranked[i * _vocab + v] = acoustic[i][v] + prev[i].LogProb;
+
+            // GLOBAL top-k over (hypotheses x vocabulary) — not top-k per
+            // hypothesis, and with nothing seeded into the candidate set. A
+            // keyword token gets considered because the hypothesis carrying it is
+            // already scoring well, which is the only evidence that means anything.
+            var next = new Dictionary<string, Hyp>();
+            foreach (var k in TopK(ranked, BeamSize))
             {
-                var logp = LogSoftmax(JoinerLogits(enc, DecoderFor(h.Tokens)));
+                var i   = k / _vocab;
+                var tok = k % _vocab;
+                var h   = prev[i].Clone();
+                var contextScore = 0f;
 
-                // The best few tokens PLUS every keyword's next expected token.
-                // Without the second half a keyword token can be pruned before the
-                // boost ever reaches it — which is precisely the bug being fixed.
-                var cand = new HashSet<int> { Blank };
-                foreach (var k in TopK(logp, BeamSize)) cand.Add(k);
-                for (var k = 0; k < nk; k++)
-                    if (h.Pos[k] < _keywords[k].Tokens.Count) cand.Add(_keywords[k].Tokens[h.Pos[k]]);
-
-                foreach (var tok in cand)
+                if (tok != Blank && tok != _unkId)
                 {
-                    var n = h.Clone();
-                    var boost = 0.0;
+                    h.Ys.Add(tok);
+                    h.YsProbs.Add(Math.Exp(acoustic[i][tok]));
+                    h.TrailingBlanks = 0;
+                    h.LastToken = tok;
 
-                    if (tok == Blank)
+                    (contextScore, h.State, _) = Graph.ForwardOneStep(h.State, tok);
+
+                    // Back at the root means this token belonged to no phrase, so
+                    // the decoder history starts over: a keyword's tokens must be
+                    // scored as if the phrase were beginning, not conditioned on
+                    // whatever sentence happened to precede it.
+                    if (h.State.Token == -1)
                     {
-                        n.Blanks++;
-                        if (n.Pending >= 0 && n.Blanks > TrailingBlanksRequired)
-                        {
-                            Detected?.Invoke(this, new KwsDetection(
-                                _keywords[n.Pending].Phrase, _encoderFrame));
-                            n.Pending = -1;
-                            Array.Clear(n.Pos); Array.Clear(n.AcSum);
-                        }
+                        h.Ys = StartContext();
+                        h.YsProbs.Clear();
                     }
-                    else
-                    {
-                        n.Blanks = 0;
-                        n.Tokens.Add(tok);
-                        TokenEmitted?.Invoke(this,
-                            _tokenText.TryGetValue(tok, out var tx) ? tx : $"<{tok}>");
+                }
+                else h.TrailingBlanks++;
 
-                        for (var k = 0; k < nk; k++)
-                        {
-                            var kw = _keywords[k].Tokens;
-                            if (n.Pos[k] < kw.Count && kw[n.Pos[k]] == tok)
-                            {
-                                boost = KeywordBoost;
-                                // exp() FIRST, then average — the arithmetic mean
-                                // of probabilities, which is what sherpa compares
-                                // against the threshold. Averaging the LOG-probs
-                                // and exponentiating gives the geometric mean, and
-                                // that is a different and far smaller number: one
-                                // weak token drags it to nearly zero. Measured
-                                // wrong-way-round it read 0.013 against a 0.25
-                                // threshold and nothing ever fired.
-                                n.AcSum[k] += Math.Exp(logp[tok]);
-                                n.Pos[k]++;
-                                KeywordProgress?.Invoke(this, new KwsProgress(
-                                    _keywords[k].Phrase, n.Pos[k], kw.Count,
-                                    n.AcSum[k] / n.Pos[k]));
-                                if (n.Pos[k] == kw.Count)
-                                {
-                                    if (n.AcSum[k] / kw.Count >= Threshold) n.Pending = k;
-                                    n.Pos[k] = 0; n.AcSum[k] = 0;
-                                }
-                            }
-                            else if (n.Pos[k] > 0)
-                            {
-                                // Mismatch restarts the phrase. A full trie would
-                                // fall back to the longest matching prefix; across a
-                                // handful of short wake phrases that costs a
-                                // re-detect a syllable later, not a miss.
-                                n.Pos[k] = 0; n.AcSum[k] = 0;
-                            }
-                        }
+                h.LogProb = ranked[k] + contextScore;
 
-                        // DECODER HISTORY IS RESET WITH THE MATCH, exactly as
-                        // sherpa does it. A keyword's tokens must be scored as if
-                        // the phrase were starting — conditioned on blank, then on
-                        // its own first token — not on whatever sentence happened
-                        // to precede it. Carrying the surrounding speech into the
-                        // decoder is why the keyword's probabilities were so low
-                        // that it needed four times the published boost to survive.
-                        if (n.Pos.All(v => v == 0) && n.Pending < 0)
-                            n.Tokens = new List<int> { Blank, Blank };
-                        {
-                        }
-                    }
+                // Same token sequence reached two ways is ONE hypothesis, and its
+                // score is the log-sum of both routes. Merging by max instead
+                // would under-count a sequence the model reached several ways;
+                // not merging at all fills the beam with blank-extensions of the
+                // same path and prunes the one genuinely distinct entry.
+                if (next.TryGetValue(h.Key, out var seen)) seen.LogProb = LogAdd(seen.LogProb, h.LogProb);
+                else next[h.Key] = h;
+            }
 
-                    n.LogProb = h.LogProb + logp[tok] + boost;
-                    next.Add(n);
+            var best = next.Values.Aggregate((a, b) => b.LogProb > a.LogProb ? b : a);
+
+            if (best.LastToken >= 0)
+                TokenEmitted?.Invoke(this,
+                    _tokenText.TryGetValue(best.LastToken, out var tx) ? tx : $"<{best.LastToken}>");
+
+            // Progress reports the DEEPEST hypothesis in the beam, not the leader.
+            // The leader is almost always the all-blank path — blank is the most
+            // likely symbol on nearly every frame — so reporting it would say
+            // "nothing happened" even while a phrase was being tracked. What a
+            // threshold needs to be set from is how far the phrase actually got.
+            if (KeywordProgress is not null)
+            {
+                var deepest = next.Values.Aggregate((a, b) =>
+                    b.State.Level > a.State.Level ||
+                    (b.State.Level == a.State.Level && b.LogProb > a.LogProb) ? b : a);
+                if (deepest.State.Level > 0)
+                    KeywordProgress.Invoke(this, new KwsProgress(
+                        deepest.State.PrefixPhrase, deepest.State.Level, deepest.State.PrefixLength,
+                        MeanProbability(deepest, deepest.State.Level)));
+            }
+
+            // Only the LEADING hypothesis can trigger. Any beam entry finishing a
+            // phrase is not evidence the phrase was said — it is evidence the
+            // search considered it.
+            var (matched, endState) = Graph.IsMatched(best.State);
+            if (matched && endState is not null && best.TrailingBlanks > TrailingBlanksRequired)
+            {
+                var p = MeanProbability(best, endState.Level);
+                if (p >= endState.AcThreshold)
+                {
+                    Detected?.Invoke(this, new KwsDetection(endState.Phrase, _encoderFrame, p));
+                    next = StartHyps();
                 }
             }
 
-            // MERGE BY TOKEN SEQUENCE, then prune. This is the "modified" in
-            // modified beam search and it is not an optimisation — it is what
-            // makes the search work at all.
-            //
-            // Blank does not extend the sequence, so every blank-extension of a
-            // hypothesis is the SAME hypothesis. Without merging they are four
-            // separate entries, they fill the beam with copies of each other, and
-            // the keyword path — the one genuinely distinct sequence — is pruned
-            // every single frame. Measured before this fix: keywords reached 1-2
-            // of their tokens and never finished.
-            var merged = new Dictionary<string, Hyp>();
-            foreach (var h in next)
-            {
-                var key = string.Join(",", h.Tokens);
-                if (merged.TryGetValue(key, out var seen))
-                {
-                    // Same sequence reached two ways: keep the better score, and
-                    // the further-advanced keyword state with it.
-                    if (h.LogProb > seen.LogProb) merged[key] = h;
-                }
-                else merged[key] = h;
-            }
-
-            next = merged.Values.ToList();
-            next.Sort((a, b) => b.LogProb.CompareTo(a.LogProb));
-            if (next.Count > BeamSize) next.RemoveRange(BeamSize, next.Count - BeamSize);
-
-            // Re-base to the leader, or an always-on stream walks the scores to
-            // -infinity over hours and every comparison becomes meaningless.
-            var top = next[0].LogProb;
-            foreach (var x in next)
-            {
-                x.LogProb -= top;
-                if (x.Tokens.Count > 64) x.Tokens.RemoveRange(0, x.Tokens.Count - 8);
-            }
-            _beam = next;
+            _hyps = next;
         }
+    }
+
+    /// <summary>Mean acoustic probability of a phrase's tokens — arithmetic, on probabilities.</summary>
+    /// <remarks>
+    /// Deliberately divides by <paramref name="level"/> even when fewer
+    /// probabilities were recorded, so a truncated history scores LOW rather than
+    /// flattering itself on a short average.
+    /// </remarks>
+    private static double MeanProbability(Hyp h, int level)
+    {
+        if (level <= 0) return 0;
+        double sum = 0;
+        for (var i = 0; i < level && i < h.YsProbs.Count; i++) sum += h.YsProbs[i];
+        return sum / level;
+    }
+
+    /// <summary>log(exp(x) + exp(y)), without leaving log space.</summary>
+    private static double LogAdd(double x, double y)
+    {
+        if (x < y) (x, y) = (y, x);
+        var diff = y - x;
+        return diff < -36.04 ? x : x + Math.Log(1 + Math.Exp(diff));
     }
 
     private float[] JoinerLogits(DenseTensor<float> enc, DenseTensor<float> dec)
@@ -531,12 +630,12 @@ public sealed class ZipformerKwsSpotter : IDisposable
         return o;
     }
 
-    private static IEnumerable<int> TopK(float[] v, int k)
+    private static IEnumerable<int> TopK(double[] v, int k)
     {
         var idx = new int[v.Length];
         for (var i = 0; i < v.Length; i++) idx[i] = i;
         Array.Sort(idx, (a, b) => v[b].CompareTo(v[a]));
-        return idx.Take(k);
+        return idx.Take(Math.Clamp(k, 1, v.Length));
     }
 
     private readonly Dictionary<(int, int), DenseTensor<float>> _decCache = new();
@@ -568,7 +667,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
         _fbank.Reset();
         _features.Clear();
         _featureCursor = 0;
-        _beam = null;                 // rebuilt on the next chunk
+        _hyps = null;                 // rebuilt on the next chunk
         _processedLens = 0;
         _encoderFrame = 0;
         for (var i = 0; i < _stateInNames.Length; i++)

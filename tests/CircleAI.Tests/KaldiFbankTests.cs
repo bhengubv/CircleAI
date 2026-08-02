@@ -13,6 +13,18 @@
 // Verified separately over a real 6.6 s utterance: 663 frames x 80 bins against
 // the same C++ reference, max absolute difference 0.001084, mean 4.4e-6 — float
 // accumulation-order noise, not a semantic gap.
+//
+// AND IT STILL MISSED THE BUG THAT MATTERED, which is worth recording. Every
+// number below was originally generated with the input scaled by 32768 — the
+// same wrong assumption the implementation made — so the reference agreed with
+// the code and the suite was green while the zipformer produced blank on every
+// frame of real speech. A test written from the same misunderstanding as the code
+// checks the arithmetic and certifies the mistake.
+//
+// What was missing was a test of the CONVENTION rather than the computation, so
+// TheDefaultIsUnscaledAudio is now here and is the one that would have caught it.
+// The general lesson: reference values are only worth what the thing that
+// produced them was fed.
 
 using System;
 using CircleAI.Voice;
@@ -50,10 +62,11 @@ public class KaldiFbankTests
     }
 
     [Theory]
-    // frame, then the first six mel bins as kaldi-native-fbank computes them.
-    [InlineData(0,  16.6147f, 17.1950f, 17.4196f, 17.7260f, 18.1731f, 18.6284f)]
-    [InlineData(25,  9.7071f, 10.6730f, 10.1627f,  9.0838f, 10.0228f, 11.3768f)]
-    [InlineData(49, 16.6539f, 17.7450f, 17.9574f, 18.1052f, 18.4428f, 18.8257f)]
+    // frame, then the first six mel bins as kaldi-native-fbank computes them,
+    // fed the SAME [-1, 1] samples this class is given.
+    [InlineData(0,   -4.1797f,  -3.5994f,  -3.3748f,  -3.0684f,  -2.6213f,  -2.1660f)]
+    [InlineData(25, -11.0873f, -10.1215f, -10.6317f, -11.7107f, -10.7716f,  -9.4176f)]
+    [InlineData(49,  -4.1405f,  -3.0494f,  -2.8370f,  -2.6892f,  -2.3516f,  -1.9687f)]
     public void FeaturesMatchTheCppReference(int frame, params float[] expected)
     {
         var fb = new KaldiFbank();
@@ -63,6 +76,52 @@ public class KaldiFbankTests
         var got = fb.GetFrame(frame);
         for (var i = 0; i < expected.Length; i++)
             Assert.Equal(expected[i], got[i], 3);   // 3 dp — well inside float noise
+    }
+
+    [Fact]
+    public void TheDefaultIsUnscaledAudio()
+    {
+        // THE TEST THAT WOULD HAVE CAUGHT IT. sherpa's normalize_samples = true
+        // means "these samples are already in [-1, 1], use them as they are" —
+        // the x32768 is what happens when that flag is FALSE. Read the other way
+        // round, every mel bin gains a constant 2*ln(32768) = 20.794. A uniform
+        // offset leaves the features looking entirely plausible — right shape,
+        // right dynamic range, right contours — and makes the zipformer emit
+        // blank on every single frame of real speech.
+        Assert.False(new KaldiFbankOptions().ScaleToInt16);
+
+        var plain = new KaldiFbank();
+        plain.AcceptWaveform(Tone());
+        plain.Flush();
+
+        var scaled = new KaldiFbank(new KaldiFbankOptions(ScaleToInt16: true));
+        scaled.AcceptWaveform(Tone());
+        scaled.Flush();
+
+        // Pin the SIZE of the mistake, not just its direction, so this fails
+        // loudly rather than drifting if the scaling is ever reintroduced.
+        var a = plain.GetFrame(25);
+        var b = scaled.GetFrame(25);
+        var offset = 2 * Math.Log(32768);       // 20.7944
+        // NOT float.Epsilon — that is .NET's smallest denormal (1.4e-45), a
+        // different quantity from C's FLT_EPSILON (2^-23) that Kaldi floors on.
+        var floor  = Math.Log(Math.Pow(2, -23));   // -15.9424
+
+        // Only the bins that are NOT clamped carry the clean offset. At [-1, 1]
+        // a quiet frame pushes a good share of the filterbank onto Kaldi's log
+        // floor, where the difference is smaller because the unscaled side has
+        // been truncated — kaldi-native-fbank does exactly the same, so this is
+        // agreement with the reference and not an approximation of it.
+        var clamped = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            if (a[i] <= floor + 1e-4) { clamped++; Assert.True(b[i] - a[i] < offset); }
+            else Assert.Equal(offset, b[i] - a[i], 3);
+        }
+        Assert.True(clamped > 0, "expected some bins on the log floor at [-1,1] scale");
+
+        // And an absolute anchor: [-1, 1] audio lands NEGATIVE through the log.
+        Assert.True(a[0] < 0, $"unscaled features must be log-negative, got {a[0]}");
     }
 
     [Fact]
