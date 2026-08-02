@@ -2582,6 +2582,61 @@
           "SizeBytes": 1360
         }
       ]
+    },
+    {
+      "Name": "KWS-Zipformer-HeyB",
+      "Repo": "thegeekco/circleai-voices",
+      "Modality": "WakeWord",
+      "Architecture": "zipformer-transducer-kws",
+      "QuantizationType": "int8",
+      "Version": "2024-01-01",
+      "TotalBytes": 5477339,
+      "BundleFiles": [
+        {
+          "Name": "kws-hey-b/encoder.int8.onnx",
+          "Sha256": "7d5a25fbc14b423074fe0c58e1be388ccf3f1a815c649980232a0c47f81875e4",
+          "SizeBytes": 4000908
+        },
+        {
+          "Name": "kws-hey-b/decoder.onnx",
+          "Sha256": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
+          "SizeBytes": 1063189
+        },
+        {
+          "Name": "kws-hey-b/joiner.int8.onnx",
+          "Sha256": "eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c",
+          "SizeBytes": 163380
+        },
+        {
+          "Name": "kws-hey-b/tokens.txt",
+          "Sha256": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53",
+          "SizeBytes": 5006
+        },
+        {
+          "Name": "kws-hey-b/bpe.model",
+          "Sha256": "c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24",
+          "SizeBytes": 244837
+        },
+        {
+          "Name": "kws-hey-b/keywords.txt",
+          "Sha256": "832f936783910b6bf17568247a0bab0778e5867bc10f4a96ce02ff03c96f5707",
+          "SizeBytes": 13
+        },
+        {
+          "Name": "kws-hey-b/keywords_raw.txt",
+          "Sha256": "b5f0324faf4c719f100487035f2e0285e999247bcc94740312accdab9b6ca018",
+          "SizeBytes": 6
+        }
+      ],
+      "MinRamGb": 0.15,
+      "MinStorageGb": 0.02,
+      "MemoryHintBytes": 150000000,
+      "QualityRank": 10,
+      "Capabilities": [
+        "Default",
+        "WakeWord"
+      ],
+      "Language": "en"
     }
   ]
 }

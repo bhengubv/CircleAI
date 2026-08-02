@@ -247,11 +247,21 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         }
 
         var pick = BestFor(probe, modality, minQualityRank);
-        if (pick is not null)
+
+        // A model that FITS wins outright. One that does not must not shut the door
+        // on a built-in that needs no model at all.
+        //
+        // This was a real regression the moment a wake-word model was catalogued:
+        // before it, a small phone fell through to energy VAD + transcribe-and-match
+        // and had a working "Hey B". After it, BestFor returned the spotter marked
+        // NothingFits, this returned early, and the cheapest phones LOST the
+        // capability — because we added a model. Adding a rung must never remove
+        // the floor.
+        if (pick is not null && pick.Quality is not SelectionQuality.NothingFits)
             return new ModalityPlan(pick.Quality, pick,
                 $"{pick.ModelId} selected for {modality} ({pick.Quality})");
 
-        // Nothing catalogued. Is there a built-in that needs no model?
+        // Nothing catalogued FITS. Is there a built-in that needs no model?
         switch (modality)
         {
             // EnergyVadDetector is pure RMS arithmetic over the PCM frames — no
@@ -265,11 +275,13 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
             // ASR itself can be served; without ASR there is nothing to match on.
             case ModelModality.WakeWord:
                 var asr = BestFor(probe, ModelModality.Asr);
+                var why = pick is null ? "no wake-word model catalogued"
+                                       : $"'{pick.ModelId}' does not fit this device";
                 return asr is null
-                    ? new ModalityPlan(SelectionQuality.Unavailable, null,
-                        "no wake-word model catalogued, and the energy detector's ASR fallback has no ASR model either")
+                    ? new ModalityPlan(SelectionQuality.Unavailable, pick,
+                        $"{why}, and the energy detector's ASR fallback has no ASR model either")
                     : new ModalityPlan(SelectionQuality.HeuristicFallback, null,
-                        $"no wake-word model catalogued; using energy VAD + '{asr.ModelId}' transcribe-and-match " +
+                        $"{why}; using energy VAD + '{asr.ModelId}' transcribe-and-match " +
                         "(works, costs more battery than a keyword spotter)");
 
             // ProceduralMusicBedGenerator synthesises a royalty-free chord/arpeggio
@@ -304,8 +316,15 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
             // ASR, TTS and Vision have no non-model implementation. Saying
             // otherwise would mean claiming a capability that cannot run.
             default:
-                return new ModalityPlan(SelectionQuality.Unavailable, null,
-                    $"no {modality} model is catalogued and there is no built-in fallback for it");
+                // A catalogued model that does not fit is NOT "nothing is
+                // catalogued" — it is NothingFits, and the caller needs the
+                // difference: one is fixed by a smaller model, the other by
+                // cataloguing one at all.
+                return pick is not null
+                    ? new ModalityPlan(pick.Quality, pick,
+                        $"{pick.ModelId} selected for {modality} ({pick.Quality})")
+                    : new ModalityPlan(SelectionQuality.Unavailable, null,
+                        $"no {modality} model is catalogued and there is no built-in fallback for it");
         }
     }
 

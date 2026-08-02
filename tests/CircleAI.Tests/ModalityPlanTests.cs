@@ -58,16 +58,37 @@ public sealed class ModalityPlanTests
     }
 
     [Fact]
-    public void WakeWord_FallsBackToTranscribeAndMatch_WhenAsrIsAvailable()
+    public void WakeWord_UsesAKeywordSpotter_WhenOneIsCatalogued()
     {
-        // EnergyWakeWordDetector has no wake model — it transcribes and matches.
-        // Given an ASR model is catalogued, wake word is served, not missing.
-        var probe = Device(4);
+        // A real spotter now exists (Apache-2.0, ~5.5 MB), so this is the good
+        // path: a dedicated model, not transcribe-and-match. This test used to
+        // assert HeuristicFallback and went red the moment one was catalogued —
+        // the same shape as the vision tests. Cataloguing a model is the goal.
+        var plan = Selector().PlanFor(Device(4), ModelModality.WakeWord);
+
+        Assert.Equal(SelectionQuality.Good, plan.Quality);
+        Assert.NotNull(plan.Model);
+    }
+
+    [Fact]
+    public void WakeWord_FallsBackToTranscribeAndMatch_WhenNoSpotterFits()
+    {
+        // The rule the old test was really protecting, stated so it survives the
+        // catalogue changing: on a device too small for ANY spotter, wake word is
+        // still SERVED — EnergyWakeWordDetector transcribes and string-matches —
+        // rather than reported as missing. It costs battery, and the reason has to
+        // say so, because that is the trade someone is unknowingly making.
+        var smallest = new ModelRegistryService().AllModels
+            .Where(e => e.Modality == ModelModality.WakeWord)
+            .OrderBy(e => e.MinRamGb)
+            .First();
+        var tooSmall = Device(smallest.MinRamGb / DeviceProbe.RamFitHeadroom / 2);
+
+        // The premise: transcribe-and-match needs ASR, and ASR must still fit.
         var selector = Selector();
+        Assert.NotNull(selector.BestFor(tooSmall, ModelModality.Asr));
 
-        Assert.NotNull(selector.BestFor(probe, ModelModality.Asr));   // premise
-
-        var plan = selector.PlanFor(probe, ModelModality.WakeWord);
+        var plan = selector.PlanFor(tooSmall, ModelModality.WakeWord);
         Assert.Equal(SelectionQuality.HeuristicFallback, plan.Quality);
         Assert.Contains("battery", plan.Reason, StringComparison.OrdinalIgnoreCase);
     }
