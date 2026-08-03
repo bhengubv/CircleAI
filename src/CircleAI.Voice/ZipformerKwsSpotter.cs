@@ -313,8 +313,23 @@ public sealed class ZipformerKwsSpotter : IDisposable
     }
 
     /// <summary>Marks the end of the audio, releasing the final frames.</summary>
+    /// <remarks>
+    /// PADS WITH SILENCE FIRST, and that is not a nicety. The encoder only runs on
+    /// FULL 45-frame chunks, so the last part of an utterance is never decoded at
+    /// all; worse, a keyword is only accepted once TRAILING BLANKS follow it, so a
+    /// phrase spoken at the very end of a recording gets matched and then thrown
+    /// away for want of the silence after it. Measured: "Hey B" reached all three
+    /// of its tokens and never fired. sherpa's own command-line tool pads with
+    /// exactly this trailing silence, which is why it fired on the same file.
+    /// <para>
+    /// It costs nothing live — a microphone keeps delivering — but a file-based
+    /// check without it quietly under-reports, which is the worst kind of test.
+    /// </para>
+    /// </remarks>
     public void Flush()
     {
+        Span<float> silence = stackalloc float[1600];       // 100 ms
+        for (var i = 0; i < 5; i++) _fbank.AcceptWaveform(silence);
         _fbank.Flush();
         Drain();
     }

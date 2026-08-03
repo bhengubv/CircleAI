@@ -266,11 +266,30 @@ public class AbilitiesActivity : Activity
         return layers;
     }
 
+    /// <summary>The screen that demonstrates an ability, where one exists.</summary>
+    static Type? ScreenFor(ModelModality modality) => modality switch
+    {
+#if IT_VOICE_ANDROID
+        ModelModality.WakeWord => typeof(WakeWordActivity),
+#endif
+        _ => null,
+    };
+
     /// <summary>One compact row: what it does on the left, its state on the right.</summary>
     View Row(Ability ability, DeviceProbe probe)
     {
         var candidates = _registry!.AllModels.Where(m => m.Modality == ability.Modality).ToList();
         var installed  = candidates.FirstOrDefault(m => Installed(m.Name));
+
+#if IT_VOICE_ANDROID
+        // A bundle the owner copied onto the phone counts as installed. Without
+        // this the list offers to download something that is already sitting on
+        // the device, which is precisely the wrong answer for someone who
+        // side-loaded it because they have no data to spend.
+        if (installed is null && ability.Modality == ModelModality.WakeWord &&
+            WakeWordActivity.SideloadedBundle(this) is not null)
+            installed = candidates.FirstOrDefault();
+#endif
         var best       = installed
                       ?? candidates.Where(m => Fits(m, probe))
                                    .OrderByDescending(m => m.QualityRank)
@@ -295,8 +314,17 @@ public class AbilitiesActivity : Activity
 
         if (installed is not null)
         {
-            var on = Ui.Label(this, "✓ On", 14f, Ui.Blue, bold: true);
-            row.AddView(on);
+            // An ability that is ON should be somewhere you can GO, not just a
+            // tick. Waking has a screen of its own; the rest do not yet, and a
+            // row that looks tappable and does nothing is worse than a plain one.
+            var screen = ScreenFor(ability.Modality);
+            if (screen is not null)
+            {
+                row.AddView(Ui.Label(this, "Try it  ›", 14f, Ui.Blue, bold: true));
+                row.Clickable = true;
+                row.Click += (_, _) => StartActivity(new Intent(this, screen));
+            }
+            else row.AddView(Ui.Label(this, "✓ On", 14f, Ui.Blue, bold: true));
         }
         else if (best is not null)
         {

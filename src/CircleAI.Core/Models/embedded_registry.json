@@ -2590,12 +2590,12 @@
       "Architecture": "zipformer-transducer-kws",
       "QuantizationType": "int8",
       "Version": "2024-01-01",
-      "TotalBytes": 5477339,
+      "TotalBytes": 6762672,
       "BundleFiles": [
         {
           "Name": "kws-hey-b/encoder.int8.onnx",
-          "Sha256": "7d5a25fbc14b423074fe0c58e1be388ccf3f1a815c649980232a0c47f81875e4",
-          "SizeBytes": 4000908
+          "Sha256": "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
+          "SizeBytes": 4807159
         },
         {
           "Name": "kws-hey-b/decoder.onnx",
@@ -2603,9 +2603,9 @@
           "SizeBytes": 1063189
         },
         {
-          "Name": "kws-hey-b/joiner.int8.onnx",
-          "Sha256": "eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c",
-          "SizeBytes": 163380
+          "Name": "kws-hey-b/joiner.onnx",
+          "Sha256": "0d7a37e749d8055223029318d6ffae82db1dae2d315d0892a68ba5dad17c1d2d",
+          "SizeBytes": 642462
         },
         {
           "Name": "kws-hey-b/tokens.txt",
