@@ -93,7 +93,18 @@ public sealed record KwsKeyword(IReadOnlyList<int> Tokens, string Phrase,
 /// <param name="Phrase">The phrase, as written in keywords_raw.txt.</param>
 /// <param name="AtFrame">Encoder frame index where the last token landed.</param>
 /// <param name="Probability">Mean acoustic probability it scored, boost excluded.</param>
-public sealed record KwsDetection(string Phrase, int AtFrame, double Probability);
+/// <param name="StartFrame">Encoder frame where the phrase's FIRST token landed.</param>
+public sealed record KwsDetection(string Phrase, int AtFrame, double Probability, int StartFrame = -1)
+{
+    /// <summary>Milliseconds of audio per encoder frame — 4x subsampling of 10 ms hops.</summary>
+    public const double MsPerFrame = 40.0;
+
+    /// <summary>Where the phrase began, in milliseconds from the start of the stream.</summary>
+    public double StartMs => (StartFrame < 0 ? AtFrame : StartFrame) * MsPerFrame;
+
+    /// <summary>Where the phrase ended, in milliseconds from the start of the stream.</summary>
+    public double EndMs => AtFrame * MsPerFrame;
+}
 
 /// <summary>
 /// Streaming keyword spotter over a sherpa-onnx zipformer2 KWS bundle.
@@ -455,6 +466,9 @@ public sealed class ZipformerKwsSpotter : IDisposable
         /// <summary>Acoustic PROBABILITY (not log) of each token in <see cref="Ys"/>.</summary>
         public List<double> YsProbs = new();
 
+        /// <summary>Encoder frame each token landed on, cleared alongside YsProbs.</summary>
+        public List<int> Timestamps = new();
+
         public double LogProb;
         public KwsContextState State = null!;
         public int TrailingBlanks;
@@ -465,6 +479,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
         public Hyp Clone() => new()
         {
             Ys = new List<int>(Ys), YsProbs = new List<double>(YsProbs),
+            Timestamps = new List<int>(Timestamps),
             LogProb = LogProb, State = State, TrailingBlanks = TrailingBlanks,
         };
 
@@ -544,6 +559,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
                 {
                     h.Ys.Add(tok);
                     h.YsProbs.Add(Math.Exp(acoustic[i][tok]));
+                    h.Timestamps.Add(_encoderFrame);
                     h.TrailingBlanks = 0;
                     h.LastToken = tok;
 
@@ -557,6 +573,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
                     {
                         h.Ys = StartContext();
                         h.YsProbs.Clear();
+                        h.Timestamps.Clear();
                     }
                 }
                 else h.TrailingBlanks++;
@@ -603,7 +620,14 @@ public sealed class ZipformerKwsSpotter : IDisposable
                 var p = MeanProbability(best, endState.Level);
                 if (p >= endState.AcThreshold)
                 {
-                    Detected?.Invoke(this, new KwsDetection(endState.Phrase, _encoderFrame, p));
+                    // The LAST `level` timestamps are the matched phrase — a
+                    // hypothesis can carry earlier tokens that reached this node
+                    // through a fail link, and those are not part of the keyword.
+                    var start = best.Timestamps.Count >= endState.Level
+                        ? best.Timestamps[^endState.Level]
+                        : _encoderFrame;
+                    Detected?.Invoke(this,
+                        new KwsDetection(endState.Phrase, _encoderFrame, p, start));
                     next = StartHyps();
                 }
             }

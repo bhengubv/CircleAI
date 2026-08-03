@@ -199,14 +199,21 @@ public class WakeWordActivity : Activity
     /// <summary>Microphone in, keyword out. Runs off the UI thread.</summary>
     async Task ListenLoop(string bundleDir, CancellationToken ct)
     {
-        using var kws = new ZipformerKwsSpotter(bundleDir);
+        // TWO STAGES. Stage one is generous so the wake never misses; stage two
+        // throws out the ones that were the word rather than the wake — "let us
+        // circle back" — by checking the phrase STARTED what was being said.
+        using var kws = new ConfirmedKeywordSpotter(new ZipformerKwsSpotter(bundleDir));
         Log.Info(Tag, $"listening for: {string.Join(" | ", kws.Keywords)}  (bundle {bundleDir})");
+        foreach (var (phrase, by) in kws.ShadowedKeywords)
+            Log.Warn(Tag, $"\"{phrase}\" can never fire — \"{by}\" finishes inside it");
 
-        kws.Detected += (_, d) =>
+        kws.Woke += (_, d) =>
         {
             Log.Info(Tag, $"HEARD \"{d.Phrase}\" at frame {d.AtFrame} p={d.Probability:F4}");
             RunOnUiThread(() => Woke(d.Phrase));
         };
+        kws.Rejected += (_, r) =>
+            Log.Info(Tag, $"VETOED \"{r.Detection.Phrase}\" p={r.Detection.Probability:F4} — {r.Reason}");
 
         await using var mic = new AndroidAudioCapture();
         var pcm = new float[1600];
@@ -281,14 +288,15 @@ public class WakeWordActivity : Activity
             {
                 try
                 {
-                    using var kws = new ZipformerKwsSpotter(
-                        _bundleDir, File.Exists(keywords) ? keywords : null);
+                    using var kws = new ConfirmedKeywordSpotter(new ZipformerKwsSpotter(
+                        _bundleDir, File.Exists(keywords) ? keywords : null));
                     var found = new List<string>();
-                    kws.Detected += (_, d) =>
+                    kws.Woke += (_, d) =>
                     {
                         found.Add($"{d.Phrase} p={d.Probability:F4} @{d.AtFrame}");
                         hits++;
                     };
+                    kws.Rejected += (_, r) => found.Add($"[vetoed {r.Detection.Phrase} — {r.Reason}]");
 
                     var audio = ReadWav(wav);
                     var sw = System.Diagnostics.Stopwatch.StartNew();
