@@ -175,6 +175,46 @@ public class KwsContextGraphTests
     }
 
     [Fact]
+    public void APhraseThatCanNeverFireIsReported()
+    {
+        // "Hey Circle" and "Hey Circle AI" together: the shorter one fires at the
+        // end of "circle" and the longer name never appears in a detection.
+        // Measured across eighteen recordings — every one reported the short form.
+        // That is defensible behaviour but a silent surprise, so it is surfaced.
+        var g = new KwsContextGraph(
+            new[] { new[] { 1, 2 }, new[] { 1, 2, 3 }, new[] { 7, 8 } }, 1.0f, 0.25f,
+            phrases: new[] { "hey circle", "hey circle ai", "okay circle" });
+
+        var dead = Assert.Single(g.ShadowedPhrases);
+        Assert.Equal("hey circle ai", dead.Phrase);
+        Assert.Equal("hey circle", dead.ShadowedBy);
+    }
+
+    [Fact]
+    public void PhrasesThatMerelyOverlapAreNotReportedAsShadowed()
+    {
+        // "2 3" is a SUFFIX of "1 2 3", not a prefix, so both can still fire —
+        // saying "one two three" reports the longer one. Only a phrase that ends
+        // part-way ALONG another is unreachable, and conflating the two would
+        // warn about a perfectly good keyword list.
+        Assert.Empty(Graph().ShadowedPhrases);
+    }
+
+    [Fact]
+    public void ShadowingIsFoundRegardlessOfTheOrderPhrasesWereAdded()
+    {
+        // The long phrase listed FIRST. A single-pass check during the build would
+        // miss this, because the phrase that shadows it does not exist yet.
+        var g = new KwsContextGraph(
+            new[] { new[] { 1, 2, 3 }, new[] { 1, 2 } }, 1.0f, 0.25f,
+            phrases: new[] { "long", "short" });
+
+        var dead = Assert.Single(g.ShadowedPhrases);
+        Assert.Equal("long", dead.Phrase);
+        Assert.Equal("short", dead.ShadowedBy);
+    }
+
+    [Fact]
     public void ProgressReportingKnowsWhichPhraseAPrefixBelongsTo()
     {
         var g = Graph();

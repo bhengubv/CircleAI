@@ -41,8 +41,23 @@ public sealed class AndroidAudioCapture : IAudioCapture
         if (min <= 0) min = SampleRate; // conservative fallback
         var bufferSize = min * 2;
 
+        // VOICE_RECOGNITION, NOT MIC — and this is worth the paragraph, because
+        // MEASURED it is the difference between a wake word and a decoration.
+        //
+        // AudioSource.Mic hands back one raw capsule with no processing. Played
+        // through a room at desk distance, "Hey B" was heard ONE time in TEN at
+        // full volume and never once at any attenuation — while the very same
+        // audio fed from a file scored 0.39 and fired every time. Every number
+        // measured on files was, in that sense, meaningless.
+        //
+        // VoiceRecognition is the source Android tunes for exactly this job: on a
+        // multi-microphone phone it engages the array and its far-field
+        // processing, and unlike VoiceCommunication it does not apply the
+        // aggressive comms-grade suppression that eats the consonants a keyword
+        // spotter needs. It is one constant, and it is the single highest-value
+        // line in this file.
         _record = new AudioRecord(
-            AudioSource.Mic, SampleRate, ChannelIn.Mono, Encoding.Pcm16bit, bufferSize);
+            AudioSource.VoiceRecognition, SampleRate, ChannelIn.Mono, Encoding.Pcm16bit, bufferSize);
 
         if (_record.State != State.Initialized)
         {
@@ -51,6 +66,7 @@ public sealed class AndroidAudioCapture : IAudioCapture
             yield break; // no mic / permission denied — stay silent rather than crash
         }
 
+        AttachFarFieldEffects(_record.AudioSessionId);
         _record.StartRecording();
         var buffer = new byte[3200]; // 100 ms at 16 kHz mono 16-bit
 
@@ -72,8 +88,62 @@ public sealed class AndroidAudioCapture : IAudioCapture
         }
     }
 
+    private readonly List<Android.Media.Audiofx.AudioEffect> _effects = new();
+
+    /// <summary>
+    /// Turns on the platform's gain and noise handling for this capture session.
+    /// </summary>
+    /// <remarks>
+    /// AUTOMATIC GAIN CONTROL IS THE ONE THAT BUYS DISTANCE. Speech falls off with
+    /// the square of it, so a voice four metres away arrives at a sixteenth of the
+    /// power it has at one — and without AGC that arrives as a near-silent
+    /// waveform whose log-mel features look nothing like the training data.
+    /// <para>
+    /// Every one of these is OPTIONAL on Android and absent on plenty of phones,
+    /// which is why each is attempted separately and a failure is shrugged off. A
+    /// missing effect must degrade the range, never take the microphone down with
+    /// it.
+    /// </para>
+    /// </remarks>
+    private void AttachFarFieldEffects(int sessionId)
+    {
+        void Try(string what, Func<Android.Media.Audiofx.AudioEffect?> make)
+        {
+            try
+            {
+                var fx = make();
+                if (fx is null) return;
+                fx.SetEnabled(true);
+                _effects.Add(fx);
+            }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Info("CircleAI.Kws", $"{what} unavailable: {ex.Message}");
+            }
+        }
+
+        if (Android.Media.Audiofx.AutomaticGainControl.IsAvailable)
+            Try("AGC", () => Android.Media.Audiofx.AutomaticGainControl.Create(sessionId));
+        if (Android.Media.Audiofx.NoiseSuppressor.IsAvailable)
+            Try("noise suppressor", () => Android.Media.Audiofx.NoiseSuppressor.Create(sessionId));
+        // Echo cancellation matters once the device can talk back: without it the
+        // assistant's own voice reaches the microphone and it answers itself.
+        if (Android.Media.Audiofx.AcousticEchoCanceler.IsAvailable)
+            Try("echo canceller", () => Android.Media.Audiofx.AcousticEchoCanceler.Create(sessionId));
+
+        Android.Util.Log.Info("CircleAI.Kws",
+            $"capture: VoiceRecognition + {_effects.Count} effect(s)");
+    }
+
     public ValueTask DisposeAsync()
     {
+        foreach (var fx in _effects)
+        {
+            try { fx.SetEnabled(false); } catch { }
+            try { fx.Release(); fx.Dispose(); } catch { }
+        }
+        _effects.Clear();
+
         try { _record?.Stop(); } catch { }
         _record?.Release();
         _record?.Dispose();

@@ -233,6 +233,19 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// <summary>The phrases this spotter is listening for.</summary>
     public IReadOnlyList<string> Keywords => _keywords.Select(k => k.Phrase).ToList();
 
+    /// <summary>
+    /// Registered phrases that can never fire, each with the shorter phrase that
+    /// swallows it. Empty is the healthy case.
+    /// </summary>
+    /// <remarks>
+    /// Surfaced rather than silently tolerated. A wake phrase that cannot fire
+    /// looks identical, from outside, to one the model simply is not hearing —
+    /// and someone would reasonably spend a day on the audio before suspecting
+    /// the keyword list. Check it after construction and say something.
+    /// </remarks>
+    public IReadOnlyList<(string Phrase, string ShadowedBy)> ShadowedKeywords =>
+        Graph.ShadowedPhrases;
+
     private static int MetaInt(IReadOnlyDictionary<string, string> m, string key, int fallback) =>
         m.TryGetValue(key, out var v) && int.TryParse(v, NumberStyles.Integer,
             CultureInfo.InvariantCulture, out var n) ? n : fallback;
