@@ -39,8 +39,7 @@ namespace CircleAI.Samples.It.Mobile;
 public class MainActivity : Activity
 {
     ItSession? _session;
-    TextView _transcript = null!;
-    ScrollView _scroll = null!;
+    ChatView _chat = null!;
     EditText _input = null!;
     Button _send = null!;
     Button _tools = null!;
@@ -135,6 +134,17 @@ public class MainActivity : Activity
             });
 
             Append($"status: {_session.StatusLine}\n\n");
+
+            // Ready means READY TO BE USED, not "here is a status string". The
+            // suggestions do the teaching: three taps that each show a different
+            // thing it can do, so nobody has to invent an example or read about
+            // one. The last is deliberately playful — a child opening this should
+            // find something for them in the first three seconds.
+            _chat.ShowWelcome("What can I help you with?",
+                ("What is the weather like today?", () => SendSuggested("What is the weather like today?")),
+                ("Write a short thank-you message", () => SendSuggested("Write a short thank-you message")),
+                ("Tell me a joke", () => SendSuggested("Tell me a joke")));
+
             _send.Enabled = true;
             _tools.Enabled = true;
             _input.Enabled = true;
@@ -190,7 +200,7 @@ public class MainActivity : Activity
         {
             var root = System.IO.Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+                "Circle AI", "Models");
             sb.AppendLine($"root: {root}");
             if (!System.IO.Directory.Exists(root)) return sb.AppendLine("  (does not exist)").ToString();
 
@@ -278,23 +288,16 @@ public class MainActivity : Activity
         var header = new LinearLayout(this) { Orientation = Orientation.Vertical };
         header.SetBackgroundColor(Ui.Surface);
         header.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 22), Ui.Dp(this, 20), Ui.Dp(this, 16));
-        header.AddView(Ui.Label(this, "CircleAI", 24f, Ui.Ink, bold: true));
+        header.AddView(Ui.Label(this, "Circle AI", 24f, Ui.Ink, bold: true));
         var tagline = Ui.Label(this, "Free AI that runs on your phone", 14f, Ui.InkSoft);
         tagline.SetPadding(0, Ui.Dp(this, 4), 0, 0);
         header.AddView(tagline);
         root.AddView(header, Ui.Fill());
 
-        // transcript (fills the middle)
-        _scroll = new ScrollView(this);
-        _scroll.VerticalScrollBarEnabled = false;      // house rule: no visible scrollbars
-        _transcript = new TextView(this) { TextSize = 15f };   // 13sp was unreadable on the P30
-        _transcript.SetTextColor(Ui.Ink);
-        _transcript.SetLineSpacing(0f, 1.25f);
-        _transcript.SetPadding(Ui.Dp(this, 18), Ui.Dp(this, 16),
-                               Ui.Dp(this, 18), Ui.Dp(this, 16));
-        _transcript.SetTextIsSelectable(true);
-        _scroll.AddView(_transcript);
-        root.AddView(_scroll, Ui.Fill(1f));
+        // The conversation. Bubbles, not a text dump — see ChatView for why the
+        // shape matters more than the styling.
+        _chat = new ChatView(this);
+        root.AddView(_chat, Ui.Fill(1f));
 
         // Utility-probe row — its OWN line above the input, so the button strip
         // never crowds the text box off the screen. A phone fits ~4 buttons per
@@ -362,7 +365,12 @@ public class MainActivity : Activity
 #endif
 
         // A developer diagnostic, kept but not competing with the real features.
+        // A DEVELOPER DIAGNOSTIC, and it used to sit in the main row beside
+        // "Use the mic" wearing the same clothes — with its label truncated to
+        // "Run the tool ch…", which is how you know it never belonged there.
+        // Long-press the wordmark to reach it.
         _tools = Ui.Action(this, "Run the tool check", primary: false);
+        _tools.Visibility = ViewStates.Gone;
         _tools.Enabled = false;
         _tools.Click += (s, e) => RunFullSweep();
         probes2.AddView(_tools, cell());
@@ -504,7 +512,7 @@ public class MainActivity : Activity
             {
                 ModelStorageDirectory = System.IO.Path.Combine(
                     System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                    "CircleAI", "Models"),
+                    "Circle AI", "Models"),
             };
 
             Say("[service] starting + binding…");
@@ -679,27 +687,34 @@ public class MainActivity : Activity
 
         _input.Text = "";
         _send.Enabled = false;
-        Append($"you > {text}\n");
+        Say("you", text);
 
         try
         {
-            // Routing line arrives first, then the reply streams in chunk by chunk.
-            // Real decoding blocks in native code, so run the turn off the UI
-            // thread — Append() already marshals each chunk back for rendering.
+            // THREE DESTINATIONS, AND THEY ARE NOT THE SAME PLACE. The routing
+            // line is machinery and goes to the log; the chunks are the answer and
+            // go in a bubble; the reasoning trace is a scratchpad and goes nowhere
+            // a person can see. All three used to land in one TextView, which is
+            // how "you > " and a model's internal monologue ended up sharing a
+            // screen with the reply.
             //
-            // onThinking is supplied, so the model's <think> trace streams too —
-            // rendered dimmed so it reads as scratchpad, not answer. Without it
-            // the plain StreamAsync path filters reasoning out entirely.
+            // Real decoding blocks in native code, so the turn runs off the UI
+            // thread — Say() marshals each chunk back for rendering.
+            RunOnUiThread(() => _chat.BeginReply());
             await Task.Run(() => _session.RunTurnStreamingAsync(
                 text,
                 line => Append(line + "\n"),
-                chunk => Append(chunk),
-                think => AppendThinking(think)));
-            Append("\n");
+                chunk => Say("it", chunk),
+                think => { /* reasoning is a scratchpad, not an answer — logcat only */ }));
+            RunOnUiThread(() => { _chat.EndReply(); _chat.Status(null); });
         }
         catch (Exception ex)
         {
-            Append("\nERROR: " + ex.Message + "\n");
+            // Kept in the log, not shown. A stack trace in a chat bubble tells the
+            // person nothing they can act on and makes the whole app look broken
+            // rather than the one thing that failed.
+            Android.Util.Log.Error("CircleAI.It", ex.ToString());
+            RunOnUiThread(() => { _chat.EndReply(); _chat.Note("That did not work. Try again?"); });
         }
 
         _send.Enabled = true;
@@ -938,7 +953,7 @@ public class MainActivity : Activity
         try
         {
             var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "Circle AI", "Models");
 
             var (speaker, sStatus) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, s => Append(s + "\n"));
             if (speaker is null) { Append($"[voice] OFF: {sStatus}\n"); return; }
@@ -970,12 +985,20 @@ public class MainActivity : Activity
                 // land in the same memory and see the same tools.
                 async (heard, ct) =>
                 {
-                    Append($"\nyou (voice): {heard}\n");
-                    return await brain.RunTurnStreamingAsync(
-                        heard,
-                        line  => Append(line + "\n"),
-                        chunk => Append(chunk),
-                        think => AppendThinking(think)).ConfigureAwait(false);
+                    // A spoken turn is a turn. It gets the same bubble a typed one
+                    // does — not a "you (voice):" prefix in a log, which framed
+                    // talking as a debug mode rather than as using the thing.
+                    Say("you", heard);
+                    RunOnUiThread(() => _chat.BeginReply());
+                    try
+                    {
+                        return await brain.RunTurnStreamingAsync(
+                            heard,
+                            line  => Append(line + "\n"),
+                            chunk => Say("it", chunk),
+                            think => { /* scratchpad — logcat only */ }).ConfigureAwait(false);
+                    }
+                    finally { RunOnUiThread(() => _chat.EndReply()); }
                 },
                 // The mouth, respelling borrowings on the way out — including
                 // anything this person has taught us. Without this the learning
@@ -1020,7 +1043,7 @@ public class MainActivity : Activity
         try
         {
             var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "Circle AI", "Models");
             var wavPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.wav");
 
             // Voice-under-test: if a model was sideloaded to files/vut/model.onnx
@@ -1577,32 +1600,87 @@ public class MainActivity : Activity
         }
     }
 
+    /// <summary>
+    /// Sends one of the welcome suggestions as if the person had typed it.
+    /// </summary>
+    /// <remarks>
+    /// Puts the text in the box first, then sends. The extra step is the point: a
+    /// suggestion that fires invisibly leaves someone wondering what just got
+    /// asked, and seeing their words appear teaches that the box is where their
+    /// own questions go.
+    /// </remarks>
+    void SendSuggested(string text)
+    {
+        _input.Text = text;
+        Send();
+    }
+
+    /// <summary>
+    /// Machine chatter. Goes to logcat, and at most changes the status line.
+    /// </summary>
+    /// <remarks>
+    /// THIS USED TO PUT ITS ARGUMENT IN THE CONVERSATION. Everything that called
+    /// it — download progress, engine names, file paths, SHA-256 mismatches —
+    /// landed in the same place the person was trying to talk to the assistant.
+    /// The call sites have not changed; where the text goes has.
+    /// <para>
+    /// The rule applied in <see cref="PlainStatus"/>: if a line would not make
+    /// sense read aloud to whoever is holding the phone, they never see it.
+    /// </para>
+    /// </remarks>
     void Append(string s)
     {
+        if (string.IsNullOrWhiteSpace(s)) return;
+        Android.Util.Log.Info("CircleAI.It", s.TrimEnd());
+
+        var plain = PlainStatus(s);
+        if (plain is null) return;
+        RunOnUiThread(() => _chat.Status(plain));
+    }
+
+    /// <summary>Words the person actually said or the assistant actually replied.</summary>
+    void Say(string who, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
         RunOnUiThread(() =>
         {
-            _transcript.Text += s;
-            _scroll.Post(() => _scroll.FullScroll(FocusSearchDirection.Down));
+            _chat.Status(null);
+            if (who == "you") _chat.You(text.Trim());
+            else _chat.Reply(text);
         });
     }
 
     /// <summary>
-    /// Renders the model's reasoning trace in muted grey so it is visibly the
-    /// scratchpad, not the answer. Uses a SpannableString because the whole
-    /// transcript is one TextView — colouring only the appended run.
+    /// Turns an engine log line into something worth showing, or nothing.
     /// </summary>
-    void AppendThinking(string s)
+    /// <remarks>
+    /// Deliberately a SMALL allowlist rather than a filter of things to hide. A
+    /// blocklist lets every new log line reach the screen by default, which is how
+    /// "engine : OnnxTtsEngine on en_US-lessac-high.onnx (out-of-process espeak)"
+    /// ended up in front of a person in the first place.
+    /// </remarks>
+    static string? PlainStatus(string raw)
     {
-        RunOnUiThread(() =>
-        {
-            var start = _transcript.Text?.Length ?? 0;
-            var sb = new Android.Text.SpannableStringBuilder(_transcript.TextFormatted);
-            sb.Append(s);
-            sb.SetSpan(new Android.Text.Style.ForegroundColorSpan(Muted),
-                       start, start + s.Length,
-                       Android.Text.SpanTypes.ExclusiveExclusive);
-            _transcript.TextFormatted = sb;
-            _scroll.Post(() => _scroll.FullScroll(FocusSearchDirection.Down));
-        });
+        var s = raw.Trim();
+        if (s.Length == 0) return null;
+
+        if (s.Contains("%", StringComparison.Ordinal) &&
+            s.Contains("MB", StringComparison.OrdinalIgnoreCase)) return "Getting things ready…";
+        if (s.StartsWith("[voice] stopped", StringComparison.OrdinalIgnoreCase)) return null;
+        if (s.StartsWith("[voice] setting up", StringComparison.OrdinalIgnoreCase)) return "Turning on the microphone…";
+        if (s.StartsWith("[voice] listening", StringComparison.OrdinalIgnoreCase)) return "Listening";
+        if (s.Contains("download complete", StringComparison.OrdinalIgnoreCase)) return "Ready";
+        if (s.Contains("verifying", StringComparison.OrdinalIgnoreCase)) return "Checking the download…";
+
+        // Failures are the one thing worth interrupting for, said without the
+        // machinery: a person can act on "the microphone did not start", not on a
+        // SHA-256 mismatch for a bundle file.
+        if (s.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("error", StringComparison.OrdinalIgnoreCase))
+            return s.StartsWith("[voice]", StringComparison.OrdinalIgnoreCase)
+                ? "Voice could not start — the details are in the log"
+                : "Something did not work — the details are in the log";
+
+        return null;
     }
 }
