@@ -244,8 +244,9 @@ public sealed class AgenticChatTests : IDisposable
 
         await svc.AgenticChatAsync("store this please");
 
-        // Give the fire-and-forget store task time to complete.
-        await Task.Delay(100);
+        await Eventually.TrueAsync(
+            async () => await memory.CountAsync() == 1,
+            "the fire-and-forget store to land the turn");
 
         Assert.Equal(1, await memory.CountAsync());
     }
@@ -504,8 +505,9 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         await svc.AskAsync("remember this");
 
-        // Give the fire-and-forget store task a moment.
-        await Task.Delay(100);
+        await Eventually.TrueAsync(
+            async () => await memory.CountAsync() == 1,
+            "the fire-and-forget store to land the turn");
 
         Assert.Equal(1, await memory.CountAsync());
         var recent = await memory.GetRecentAsync(1);

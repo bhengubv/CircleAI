@@ -77,9 +77,13 @@ public class Circle33CircuitBreakerTests
         var cb = new CircuitBreakerToolRegistry(
             inner,
             defaultPolicy: new ToolCallPolicy(Timeout: TimeSpan.FromMilliseconds(50)));
+        // Never respond, rather than respond in 500 ms against a 50 ms timeout. A
+        // 10x margin is more comfortable than the 4x that actually flaked elsewhere,
+        // but it is the same bet on two timer callbacks landing in order under load.
+        // The timeout cancels ct, so this returns promptly either way.
         cb.RegisterLocal(AnyTool, async (_, ct) =>
         {
-            await Task.Delay(500, ct);
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             return "{}";
         });
 

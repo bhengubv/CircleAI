@@ -160,7 +160,10 @@ public sealed class AetherNetCompanionStateChannelTests
             Priority = 5,
         });
 
-        await Task.Delay(50); // event invocation is async void
+        // The channel's MessageReceived handler is `async void`, so delivery
+        // continues on a pool thread after the raise returns. Wait for the envelope
+        // rather than guessing how long that takes.
+        await Eventually.TrueAsync(() => received is not null, "the inbound envelope to be handled");
         Assert.NotNull(received);
         Assert.Equal(SyncEnvelopeKind.Announce, received!.Kind);
         Assert.Equal("uhid-B", received.FromNodeId);
@@ -186,7 +189,7 @@ public sealed class AetherNetCompanionStateChannelTests
             Priority = 5,
         });
 
-        await Task.Delay(50);
+        await Eventually.SettleAsync("the unrelated message type to be ignored");
         Assert.False(fired);
     }
 
@@ -210,7 +213,7 @@ public sealed class AetherNetCompanionStateChannelTests
             Priority = 5,
         });
 
-        await Task.Delay(50);
+        await Eventually.SettleAsync("our own message to be ignored");
         Assert.False(fired);
     }
 
@@ -232,7 +235,7 @@ public sealed class AetherNetCompanionStateChannelTests
             CreatedAt = DateTime.UtcNow,
             Priority = 5,
         });
-        await Task.Delay(50);
+        await Eventually.SettleAsync("the malformed payload to be swallowed");
         // no exception
     }
 
@@ -243,7 +246,7 @@ public sealed class AetherNetCompanionStateChannelTests
         using var ch = new AetherNetCompanionStateChannel(msg, "uhid-A", new[] { "uhid-B" });
 
         int callCount = 0;
-        var sub = ch.Subscribe((_, _) => { callCount++; return Task.CompletedTask; });
+        var sub = ch.Subscribe((_, _) => { Interlocked.Increment(ref callCount); return Task.CompletedTask; });
 
         MeshMessage Build() => new()
         {
@@ -257,12 +260,14 @@ public sealed class AetherNetCompanionStateChannelTests
             Priority = 5,
         };
 
-        msg.RaiseReceived(Build()); await Task.Delay(50);
-        Assert.Equal(1, callCount);
+        msg.RaiseReceived(Build());
+        await Eventually.TrueAsync(() => Volatile.Read(ref callCount) == 1,
+            "the subscribed handler to be called once");
 
         sub.Dispose();
-        msg.RaiseReceived(Build()); await Task.Delay(50);
-        Assert.Equal(1, callCount); // not incremented
+        msg.RaiseReceived(Build());
+        await Eventually.SettleAsync("the disposed handler to stay silent");
+        Assert.Equal(1, Volatile.Read(ref callCount)); // not incremented
     }
 
     [Fact]
@@ -271,7 +276,7 @@ public sealed class AetherNetCompanionStateChannelTests
         var msg = new FakeMessagingService();
         var ch = new AetherNetCompanionStateChannel(msg, "uhid-A", new[] { "uhid-B" });
         int callCount = 0;
-        ch.Subscribe((_, _) => { callCount++; return Task.CompletedTask; });
+        ch.Subscribe((_, _) => { Interlocked.Increment(ref callCount); return Task.CompletedTask; });
         ch.Dispose();
 
         msg.RaiseReceived(new MeshMessage
@@ -285,7 +290,7 @@ public sealed class AetherNetCompanionStateChannelTests
             CreatedAt = DateTime.UtcNow,
             Priority = 5,
         });
-        await Task.Delay(50);
-        Assert.Equal(0, callCount);
+        await Eventually.SettleAsync("the disposed channel to stay silent");
+        Assert.Equal(0, Volatile.Read(ref callCount));
     }
 }

@@ -24,7 +24,8 @@ public class Circle34HerJarvisRealTests
         Assert.False(p.IsRunning);
         await p.StartAsync();
         Assert.True(p.IsRunning);
-        await Task.Delay(120);
+        await Eventually.TrueAsync(() => p.Heartbeats >= 2,
+            "the 50 ms heartbeat to fire at least twice");
         Assert.True(p.Heartbeats >= 2);
         await p.StopAsync();
         Assert.False(p.IsRunning);
@@ -209,9 +210,18 @@ public class Circle34HerJarvisRealTests
                 if (received.Count >= 1) break;
             }
         });
-        await Task.Delay(100);
-        k.Publish(new WorldFact("weather", "{\"temp\":25}", DateTimeOffset.UtcNow));
-        await task.WaitAsync(TimeSpan.FromSeconds(2));
+        // SubscribeAsync attaches asynchronously, so a single Publish can land before
+        // anyone is listening and the fact is simply lost — the 100 ms sleep was
+        // betting the attach won that race. Republish until it is heard: this
+        // consumer breaks after the first fact, so repeats cannot inflate the count.
+        await Eventually.TrueAsync(
+            () =>
+            {
+                k.Publish(new WorldFact("weather", "{\"temp\":25}", DateTimeOffset.UtcNow));
+                return task.IsCompleted;
+            },
+            "the subscriber to attach and receive a published fact");
+        await Eventually.CompletesAsync(task, "the subscription loop to finish");
         cts.Cancel();
         Assert.Single(received);
     }
@@ -273,14 +283,11 @@ public class Circle34HerJarvisRealTests
             System.IO.File.WriteAllLines(tempFile, new[] { "a", "b", "c" });
             var t = new InMemoryFederatedFineTuner();
             var jobId = await t.StartAsync("base-model", tempFile);
-            FineTuneJobStatus status;
-            for (var i = 0; i < 50; i++)
-            {
-                status = await t.StatusAsync(jobId);
-                if (status.Progress >= 1.0) { Assert.Null(status.Error); return; }
-                await Task.Delay(50);
-            }
-            Assert.Fail("training never completed");
+            // 50 polls x 50 ms was a 2.5 s budget — a scheduling guess like any other.
+            await Eventually.TrueAsync(
+                async () => (await t.StatusAsync(jobId)).Progress >= 1.0,
+                "the in-memory fine-tune job to reach 100%");
+            Assert.Null((await t.StatusAsync(jobId)).Error);
         }
         finally { System.IO.File.Delete(tempFile); }
     }

@@ -141,7 +141,7 @@ public sealed class NullWakeWordDetectorTests
         detector.WakeWordDetected += (_, _) => raised = true;
 
         await detector.StartAsync();
-        await Task.Delay(50);
+        await Eventually.SettleAsync("the null detector to stay silent");
         await detector.StopAsync();
 
         Assert.False(raised);

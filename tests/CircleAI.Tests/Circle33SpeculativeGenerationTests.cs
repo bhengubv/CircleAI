@@ -103,16 +103,23 @@ public class Circle33SpeculativeGenerationTests
     public async Task Speculate_Divergent_CancelsPreviousGenerator()
     {
         bool firstCancelled = false;
+        // The first draft must be IN FLIGHT before the second supersedes it —
+        // otherwise there is nothing to cancel and the assertion fails for reasons
+        // unrelated to superseding. Signal it instead of sleeping on it.
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var g = new DefaultSpeculativeGenerator(minPartialLength: 3);
         g.Speculate("hello", async (t, ct) =>
         {
+            firstStarted.TrySetResult();
             try { await Task.Delay(5000, ct); return "draft1"; }
-            catch (OperationCanceledException) { firstCancelled = true; throw; }
+            catch (OperationCanceledException) { Volatile.Write(ref firstCancelled, true); throw; }
         });
 
-        await Task.Delay(50);
+        await Eventually.CompletesAsync(firstStarted.Task, "the first draft to start");
         g.Speculate("goodbye", (_, _) => Task.FromResult("draft2"));
-        await Task.Delay(50);
+        await Eventually.TrueAsync(() => Volatile.Read(ref firstCancelled),
+            "the superseded first draft to be cancelled");
 
         Assert.True(firstCancelled);
     }

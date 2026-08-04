@@ -156,7 +156,8 @@ public sealed class VoicePipelineTests
 
         // This should not trigger the pipeline (it's disposed)
         wake.FireWakeWord();
-        await Task.Delay(100);
+        await Eventually.SettleAsync("the disposed pipeline to ignore the wake word",
+            TimeSpan.FromMilliseconds(100));
 
         Assert.False(triggered);
     }
@@ -299,9 +300,11 @@ public sealed class VoicePipelineTests
         await pipeline.StartAsync();
         wake.FireWakeWord();
 
-        // Give RunActivationAsync time to complete — NullVoiceTranscriber
-        // drains immediately and yields nothing, so this is near-instant.
-        await Task.Delay(200);
+        // RunActivationAsync must actually RUN before "it did not fire" means
+        // anything — too short and this passes vacuously. Hence the wide window:
+        // for a negative assertion, generous is strictly safer.
+        await Eventually.SettleAsync("the activation to run and yield nothing",
+            TimeSpan.FromMilliseconds(200));
 
         // Empty stream → ToFinalAsync returns null → result is null →
         // Transcribed must NOT fire; ActivationFailed must NOT fire.

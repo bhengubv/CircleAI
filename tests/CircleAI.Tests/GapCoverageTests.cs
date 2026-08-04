@@ -126,8 +126,9 @@ public sealed class StreamAsyncEpisodicStorageTests : IDisposable
         // Drain the full stream to ensure the episodic store fires.
         await foreach (var _ in svc.StreamAsync(new[] { new ChatMessage("user", "store me") })) { }
 
-        // Give the fire-and-forget a moment.
-        await Task.Delay(100);
+        await Eventually.TrueAsync(
+            async () => await memory.CountAsync() == 1,
+            "the fire-and-forget store to land the streamed turn");
 
         Assert.Equal(1, await memory.CountAsync());
         var recent = await memory.GetRecentAsync(1);

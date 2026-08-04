@@ -52,10 +52,17 @@ public class Circle33PacaConversationsTests
         rt.Queue("c1", "p1", "agent1", "Hello");
         var startTask = rt.StartAsync("c1", Permissive);
 
-        await Task.Delay(50);
+        // WAIT FOR IT TO BE RUNNING, not for 50 milliseconds. The sleep here was a
+        // guess about how quickly this machine schedules a task, and under a full
+        // parallel suite the guess is wrong: Stop arrives before the conversation
+        // has started, so there is nothing to stop and it never reaches Stopped.
+        await Eventually.TrueAsync(
+            () => rt.Get("c1")?.State == ConversationState.Running,
+            "the conversation to start before stopping it");
+
         rt.Stop("c1");
 
-        await startTask;
+        await Eventually.CompletesAsync(startTask, "the run to unwind after Stop");
         Assert.Equal(ConversationState.Stopped, rt.Get("c1")!.State);
     }
 

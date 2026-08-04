@@ -125,7 +125,17 @@ public class Circle33ConsultEscalationTests
     [Fact]
     public async Task HttpWebhookChannel_Timeout_ReturnsNull()
     {
-        var handler = new TimedHandler(TimeSpan.FromMilliseconds(200));
+        // TWO TIMERS IN A FOOT RACE. This was a 200 ms handler against a 50 ms
+        // timeout — a 4x margin, which reads like plenty until 2,500 parallel tests
+        // saturate the pool and BOTH timer callbacks land late. Nothing guarantees
+        // they land late in the same order, so the response occasionally beat the
+        // timeout and AskAsync returned an answer.
+        //
+        // A bigger margin would only move the odds. A handler that never responds
+        // removes the race outright: the timeout is now the only reachable outcome.
+        // It costs nothing — AskAsync cancels the send, so this still finishes in
+        // ~50 ms rather than waiting on the delay.
+        var handler = new TimedHandler(Timeout.InfiniteTimeSpan);
         var channel = new HttpWebhookConsultChannel(new HttpClient(handler),
             new Uri("https://example.com/consult"));
 

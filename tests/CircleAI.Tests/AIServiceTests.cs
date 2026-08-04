@@ -862,16 +862,17 @@ public sealed class AIServiceTests : IDisposable
             ModelPath   = _modelPath,
             WarmOnStart = false,
         };
+        var blocking = new BlockingChatGenerator();
         await using var svc = new AIService(butlerOpts,
-            generatorFactory: _ => new BlockingChatGenerator());
+            generatorFactory: _ => blocking);
 
         await svc.StartAsync();
 
         // Start a chat call that blocks until cancelled.
         var chatTask = svc.ChatAsync(new[] { new ChatMessage("user", "hi") });
 
-        // Give the generator a moment to enter its blocking await.
-        await Task.Delay(50);
+        await Eventually.CompletesAsync(blocking.Entered.Task,
+            "the generator to reach its blocking await");
 
         // StopAsync cancels the shutdown CTS → the blocking GenerateAsync should throw.
         await svc.StopAsync();
@@ -921,11 +922,22 @@ public sealed class AIServiceTests : IDisposable
     /// </summary>
     private sealed class BlockingChatGenerator : IChatGenerator
     {
+        /// <summary>Completes the moment the generator is actually inside the block.</summary>
+        /// <remarks>
+        /// The cancellation tests need the generator BLOCKING before they call Stop;
+        /// otherwise Stop runs first and there is nothing to cancel. That precondition
+        /// used to be a 50 ms sleep — a guess about scheduling that a loaded suite
+        /// breaks. Now the fake says when it is ready.
+        /// </remarks>
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async Task<string> GenerateAsync(
             IReadOnlyList<ChatMessage> messages,
             GenerationOptions? options = null,
             CancellationToken ct = default)
         {
+            Entered.TrySetResult();
             await Task.Delay(Timeout.Infinite, ct); // blocks until ct is cancelled
             return "never";
         }
@@ -935,6 +947,7 @@ public sealed class AIServiceTests : IDisposable
             GenerationOptions? options = null,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         {
+            Entered.TrySetResult();
             await Task.Delay(Timeout.Infinite, ct);
             yield break;
         }
@@ -1730,8 +1743,9 @@ public sealed class AIServiceStreamContractTests : IDisposable
     public async Task StopAsync_WhileStreamAsyncBlocking_CancelsPendingStream()
     {
         var butlerOpts = new AIOptions { ModelPath = _modelPath, WarmOnStart = false };
+        var blocking = new InfiniteBlockingStreamGenerator();
         await using var svc = new AIService(butlerOpts,
-            generatorFactory: _ => new InfiniteBlockingStreamGenerator());
+            generatorFactory: _ => blocking);
 
         await svc.StartAsync();
 
@@ -1742,8 +1756,8 @@ public sealed class AIServiceStreamContractTests : IDisposable
                 new[] { new ChatMessage("user", "hi") })) { }
         });
 
-        // Give the generator a moment to enter its blocking delay.
-        await Task.Delay(50);
+        await Eventually.CompletesAsync(blocking.Entered.Task,
+            "the stream generator to reach its blocking await");
 
         // StopAsync cancels _shutdownCts → linked token fires → OCE propagates.
         await svc.StopAsync();
@@ -1770,8 +1784,9 @@ public sealed class AIServiceStreamContractTests : IDisposable
             WarmOnStart = false,
             Observer    = observer,
         };
+        var blocking = new InfiniteBlockingStreamGenerator();
         await using var svc = new AIService(opts,
-            generatorFactory: _ => new InfiniteBlockingStreamGenerator());
+            generatorFactory: _ => blocking);
         await svc.StartAsync();
 
         using var cts = new CancellationTokenSource();
@@ -1782,8 +1797,8 @@ public sealed class AIServiceStreamContractTests : IDisposable
                 new[] { new ChatMessage("user", "hi") }, ct: cts.Token)) { }
         });
 
-        // Give the stream time to enter the blocking wait inside the generator.
-        await Task.Delay(50);
+        await Eventually.CompletesAsync(blocking.Entered.Task,
+            "the stream to reach the blocking wait inside the generator");
 
         cts.Cancel();
 
@@ -1811,11 +1826,17 @@ public sealed class AIServiceStreamContractTests : IDisposable
             CancellationToken ct = default)
             => Task.FromResult("ok");
 
+        /// <summary>Completes the moment the stream is actually inside the block.</summary>
+        /// <remarks>Same purpose as BlockingChatGenerator.Entered — see the note there.</remarks>
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public async IAsyncEnumerable<string> StreamAsync(
             IReadOnlyList<ChatMessage> messages,
             GenerationOptions? options = null,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
         {
+            Entered.TrySetResult();
             await Task.Delay(Timeout.Infinite, ct); // blocks until ct is cancelled
             yield break;
         }

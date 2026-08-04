@@ -19,13 +19,23 @@ public sealed class AetherAIObserverTests
     private static readonly IReadOnlyList<ChatMessage> SampleMessages =
         new[] { new ChatMessage("user", "hello") };
 
+    // WRITTEN BY THE OBSERVER'S FIRE-AND-FORGET THREAD, READ BY THE TEST THREAD.
+    // This used to be a bare List<T>, which meant every assertion below enumerated a
+    // collection another thread could be appending to — a real data race that the
+    // 50 ms sleep only made unlikely, not impossible. Snapshot under a lock so both
+    // the polling and the assertions see a stable copy.
     private sealed class FakeTransport : ICircleAetherTransport
     {
-        public List<(string Topic, byte[] Payload)> Published { get; } = new();
+        private readonly List<(string Topic, byte[] Payload)> _published = new();
+
+        public IReadOnlyList<(string Topic, byte[] Payload)> Published
+        {
+            get { lock (_published) return _published.ToArray(); }
+        }
 
         public Task PublishAsync(string topic, ReadOnlyMemory<byte> payload, CancellationToken ct = default)
         {
-            Published.Add((topic, payload.ToArray()));
+            lock (_published) _published.Add((topic, payload.ToArray()));
             return Task.CompletedTask;
         }
     }
@@ -46,8 +56,9 @@ public sealed class AetherAIObserverTests
 
         await observer.OnChatCompletedAsync(chatEvent);
 
-        // Allow fire-and-forget to complete
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => transport.Published.Count > 0,
+            "the observer to publish the completed chat");
 
         Assert.Contains(transport.Published, p => p.Topic == "butler/response");
     }
@@ -61,7 +72,8 @@ public sealed class AetherAIObserverTests
             Guid.NewGuid(), SampleMessages, "The answer", TimeSpan.Zero, DateTimeOffset.UtcNow);
 
         await observer.OnChatCompletedAsync(chatEvent);
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => transport.Published.Count > 0, "the response payload to be published");
 
         var entry = Assert.Single(transport.Published);
         var doc = JsonDocument.Parse(entry.Payload);
@@ -76,7 +88,8 @@ public sealed class AetherAIObserverTests
 
         observer.OnError(new InvalidOperationException("oops"));
 
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => transport.Published.Count > 0, "the error to be published");
 
         Assert.Contains(transport.Published, p => p.Topic == "butler/error");
     }
@@ -89,7 +102,8 @@ public sealed class AetherAIObserverTests
 
         observer.OnError(new InvalidOperationException("bad state"));
 
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => transport.Published.Count > 0, "the error payload to be published");
 
         var entry = Assert.Single(transport.Published);
         var doc = JsonDocument.Parse(entry.Payload);
@@ -112,7 +126,7 @@ public sealed class AetherAIObserverTests
         var observer = new AetherAIObserver(transport);
 
         await observer.OnStartedAsync();
-        await Task.Delay(50);
+        await Eventually.SettleAsync("nothing to be published");
 
         Assert.Empty(transport.Published);
     }
@@ -124,7 +138,7 @@ public sealed class AetherAIObserverTests
         var observer = new AetherAIObserver(transport);
 
         await observer.OnStoppedAsync();
-        await Task.Delay(50);
+        await Eventually.SettleAsync("nothing to be published");
 
         Assert.Empty(transport.Published);
     }
@@ -138,7 +152,7 @@ public sealed class AetherAIObserverTests
             Guid.NewGuid(), SampleMessages, TimeSpan.Zero, 0, DateTimeOffset.UtcNow);
 
         await observer.OnStreamStartedAsync(streamEvent);
-        await Task.Delay(50);
+        await Eventually.SettleAsync("nothing to be published");
 
         Assert.Empty(transport.Published);
     }
@@ -152,7 +166,7 @@ public sealed class AetherAIObserverTests
             Guid.NewGuid(), SampleMessages, TimeSpan.FromSeconds(1), 10, DateTimeOffset.UtcNow);
 
         await observer.OnStreamCompletedAsync(streamEvent);
-        await Task.Delay(50);
+        await Eventually.SettleAsync("nothing to be published");
 
         Assert.Empty(transport.Published);
     }
@@ -167,13 +181,20 @@ public sealed class PushAIObserverTests
     private static readonly IReadOnlyList<ChatMessage> SampleMessages =
         new[] { new ChatMessage("user", "push me") };
 
+    // Locked for the same reason as FakeTransport above: the observer writes from a
+    // fire-and-forget thread while the test reads.
     private sealed class FakeSender : IPushNotificationSender
     {
-        public List<(string Token, string Title, string Body)> Sent { get; } = new();
+        private readonly List<(string Token, string Title, string Body)> _sent = new();
+
+        public IReadOnlyList<(string Token, string Title, string Body)> Sent
+        {
+            get { lock (_sent) return _sent.ToArray(); }
+        }
 
         public Task SendAsync(string deviceToken, string title, string body, CancellationToken ct = default)
         {
-            Sent.Add((deviceToken, title, body));
+            lock (_sent) _sent.Add((deviceToken, title, body));
             return Task.CompletedTask;
         }
     }
@@ -207,7 +228,8 @@ public sealed class PushAIObserverTests
             Guid.NewGuid(), SampleMessages, "Hi there", TimeSpan.Zero, DateTimeOffset.UtcNow);
 
         await observer.OnChatCompletedAsync(chatEvent);
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => sender.Sent.Count > 0, "the push to be sent");
 
         var entry = Assert.Single(sender.Sent);
         Assert.Equal("Hi there", entry.Body);
@@ -225,7 +247,8 @@ public sealed class PushAIObserverTests
             Guid.NewGuid(), SampleMessages, longText, TimeSpan.Zero, DateTimeOffset.UtcNow);
 
         await observer.OnChatCompletedAsync(chatEvent);
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => sender.Sent.Count > 0, "the truncated push to be sent");
 
         var entry = Assert.Single(sender.Sent);
         // 100 chars + 1 ellipsis character = 101 max
@@ -240,7 +263,8 @@ public sealed class PushAIObserverTests
         var observer = new PushAIObserver(sender, "device-abc");
 
         observer.OnError(new InvalidOperationException("something failed"));
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => sender.Sent.Count > 0, "the error push to be sent");
 
         var entry = Assert.Single(sender.Sent);
         Assert.Equal("B! Error", entry.Title);
@@ -255,7 +279,8 @@ public sealed class PushAIObserverTests
         var longMsg = new string('e', 200);
 
         observer.OnError(new Exception(longMsg));
-        await Task.Delay(50);
+        await Eventually.TrueAsync(
+            () => sender.Sent.Count > 0, "the long error push to be sent");
 
         var entry = Assert.Single(sender.Sent);
         Assert.True(entry.Body.Length <= 101);
@@ -277,7 +302,7 @@ public sealed class PushAIObserverTests
         var observer = new PushAIObserver(sender, "device-abc");
 
         await observer.OnStartedAsync();
-        await Task.Delay(50);
+        await Eventually.SettleAsync("no push to be sent");
 
         Assert.Empty(sender.Sent);
     }
@@ -289,7 +314,7 @@ public sealed class PushAIObserverTests
         var observer = new PushAIObserver(sender, "device-abc");
 
         await observer.OnStoppedAsync();
-        await Task.Delay(50);
+        await Eventually.SettleAsync("no push to be sent");
 
         Assert.Empty(sender.Sent);
     }
@@ -303,7 +328,7 @@ public sealed class PushAIObserverTests
             Guid.NewGuid(), SampleMessages, TimeSpan.Zero, 0, DateTimeOffset.UtcNow);
 
         await observer.OnStreamStartedAsync(streamEvent);
-        await Task.Delay(50);
+        await Eventually.SettleAsync("no push to be sent");
 
         Assert.Empty(sender.Sent);
     }
@@ -317,7 +342,7 @@ public sealed class PushAIObserverTests
             Guid.NewGuid(), SampleMessages, TimeSpan.FromSeconds(2), 15, DateTimeOffset.UtcNow);
 
         await observer.OnStreamCompletedAsync(streamEvent);
-        await Task.Delay(50);
+        await Eventually.SettleAsync("no push to be sent");
 
         Assert.Empty(sender.Sent);
     }

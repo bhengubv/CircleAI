@@ -133,25 +133,10 @@ public sealed class CompanionRuntimeTests
 
     // ── Tick loops actually tick ──────────────────────────────────────────
 
-    /// <summary>
-    /// Polls <paramref name="condition"/> every 50 ms until it returns true
-    /// or <paramref name="timeout"/> elapses. Returns true when the
-    /// condition was met before the timeout, false otherwise. Used in
-    /// timer-driven tests where the exact tick boundary isn't predictable —
-    /// the assertion is "this happened within a generous window", not "this
-    /// happened on a precise schedule".
-    /// </summary>
-    private static async Task<bool> WaitForAsync(
-        Func<bool> condition, TimeSpan timeout)
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        while (sw.Elapsed < timeout)
-        {
-            if (condition()) return true;
-            await Task.Delay(50).ConfigureAwait(false);
-        }
-        return condition();
-    }
+    // The local WaitForAsync that used to live here got the principle right — poll a
+    // generous window rather than assert a precise schedule — but a second copy of
+    // Eventually is how the next person ends up copying the wrong one. Same
+    // behaviour, better failure message, one implementation.
 
     [Fact]
     public async Task DailyTickLoop_FiresWithinShortInterval()
@@ -168,10 +153,8 @@ public sealed class CompanionRuntimeTests
         await rt.StartAsync(CancellationToken.None);
         try
         {
-            // Generous polling window — tolerates slow CI / cold JIT.
-            var fired = await WaitForAsync(() => c.Kinds.Contains(SleepKind.Daily),
-                TimeSpan.FromSeconds(5));
-            Assert.True(fired, $"Daily tick did not fire within 5 s; saw {c.Kinds.Count} kinds total.");
+            await Eventually.TrueAsync(() => c.Kinds.Contains(SleepKind.Daily),
+                "the daily tick to fire");
         }
         finally { await rt.StopAsync(CancellationToken.None); }
     }
@@ -195,9 +178,8 @@ public sealed class CompanionRuntimeTests
         await rt.StartAsync(CancellationToken.None);
         try
         {
-            var fired = await WaitForAsync(() => sync.SyncCount >= 1,
-                TimeSpan.FromSeconds(5));
-            Assert.True(fired, $"Sync broadcast did not fire within 5 s; SyncCount={sync.SyncCount}.");
+            await Eventually.TrueAsync(() => sync.SyncCount >= 1,
+                "the sync broadcast to fire");
         }
         finally { await rt.StopAsync(CancellationToken.None); }
     }

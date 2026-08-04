@@ -110,12 +110,42 @@ public class Circle33ReassuranceFillerTests
             return ValueTask.FromResult<ReadOnlyMemory<byte>>(new byte[] { 1 });
         };
 
-        // 3 sequential slow runs to advance the rotation.
+        // THE WORK ENDS WHEN THE FILLER HAS SPOKEN, not after a fixed 100 ms.
+        //
+        // It used to race: a 30 ms filler timer against 100 ms of pretend work, so
+        // the test passed only if the timer got a thread inside a 70 ms window.
+        // Under the full suite it often does not, the filler never speaks, and the
+        // assertion fails for a reason that has nothing to do with rotation.
+        //
+        // Now each run BLOCKS until this run's filler has been said, which is the
+        // precondition the assertion actually depends on. Slow machine, fast
+        // machine, loaded machine — same result, and the rotation is what is being
+        // tested rather than the scheduler.
         for (int i = 0; i < 3; i++)
         {
+            var spokeThisRun = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var before = 0;
+            lock (seen) before = seen.Count;
+
+            BriefingSynthesiser watching = (text, ct) =>
+            {
+                lock (seen) seen.Add(text);
+                spokeThisRun.TrySetResult();
+                return ValueTask.FromResult<ReadOnlyMemory<byte>>(new byte[] { 1 });
+            };
+
             await filler.RunWithFillerAsync(
-                async ct => { await Task.Delay(100, ct); return i; },
-                session, tts);
+                async ct =>
+                {
+                    await Eventually.CompletesAsync(spokeThisRun.Task,
+                        $"the filler to speak on run {i + 1}");
+                    return i;
+                },
+                session, watching);
+
+            lock (seen)
+                Assert.True(seen.Count > before, $"run {i + 1} produced no filler");
         }
 
         lock (seen)

@@ -54,7 +54,14 @@ public class Circle34LoopbackRealtimeTests
     {
         var svc = new LoopbackRealtimeService();
         await using var s = await svc.StartSessionAsync(NewConfig());
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        // A THREE-SECOND DEADLINE IN A TEST ABOUT CONTENT. This asserts what the
+        // bytes ARE, not how fast they arrive — but the token cancelled the pump
+        // after 3 s, so under a loaded suite it collected nothing and failed on
+        // Assert.Single with no hint that scheduling, not the code, was at fault.
+        // The timeout is now a safety net that fails with a sentence rather than a
+        // performance budget nobody meant to assert.
+        using var cts = new CancellationTokenSource(Eventually.DefaultTimeout);
 
         var frames = new List<RealtimeAudioFrame>();
         var pump = Task.Run(async () =>
@@ -67,7 +74,7 @@ public class Circle34LoopbackRealtimeTests
         }, cts.Token);
 
         await s.SendTextAsync("two words here");
-        await pump;
+        await Eventually.CompletesAsync(pump, "the first audio frame to arrive");
 
         Assert.Single(frames);
         // 3 words × 80ms × 24kHz × 2 bytes = 11520 bytes
