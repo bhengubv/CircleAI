@@ -40,6 +40,9 @@ public class MainActivity : Activity
 {
     ItSession? _session;
     ChatView _chat = null!;
+
+    /// <summary>Intent extra: open straight into listening rather than typing.</summary>
+    public const string StartListeningExtra = "circleai.start_listening";
     EditText _input = null!;
     Button _send = null!;
     Button _tools = null!;
@@ -134,6 +137,19 @@ public class MainActivity : Activity
             });
 
             Append($"status: {_session.StatusLine}\n\n");
+
+            // Arrived by pressing the circle rather than "Or type instead", so
+            // start listening without a second tap. Making someone press twice to
+            // do the thing they already asked for is how a voice-first product
+            // quietly turns back into a text one.
+            if (Intent?.GetBooleanExtra(StartListeningExtra, false) == true)
+            {
+#if IT_VOICE_ANDROID
+                _chat.Note("Listening — say what you need.");
+                ToggleVoiceLoop();
+                return;
+#endif
+            }
 
             // Ready means READY TO BE USED, not "here is a status string". The
             // suggestions do the teaching: three taps that each show a different

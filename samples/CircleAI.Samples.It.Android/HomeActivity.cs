@@ -9,8 +9,22 @@
 // claims underneath are three short lines, because a person who has just heard
 // it speak Yoruba does not need a paragraph.
 //
-// Everything else — the chat, the capability probe, the vision demo — is one tap
-// away and none of it competes for this screen.
+// VOICE IS THE PRODUCT; TYPING IS THE FALLBACK. It read the other way round: the
+// loudest control was "Ask it something", which opened a text box — the ChatGPT
+// shape, where the assistant is a thing you write to. But the assistants people
+// actually live with are spoken to. Nobody types at Alexa. So the circle IS the
+// assistant now, pressing it talks to it, and the text box is a quiet line at the
+// bottom for when speaking aloud is not on.
+//
+// IT NEVER SAID WHETHER IT WAS READY. A finished-looking screen that does nothing
+// for half a minute, and no way to tell the difference between thinking and
+// broken. Measured on the P30 with everything downloaded: 35 seconds from launch
+// to the first answer, because readiness was one gate that waited on the 433 MB
+// brain. It is now staged — see Readiness — so the circle comes alive as soon as
+// it can HEAR and SPEAK, which is a second or two, and says so in words.
+//
+// Everything else — the capability probe, the vision demo — is one tap away and
+// none of it competes for this screen.
 
 using System;
 using System.Collections.Generic;
@@ -57,11 +71,77 @@ public class HomeActivity : Activity
     int _next;
     CancellationTokenSource? _speaking;
 
+    Readiness _ready = new(ReadyStage.Waking, "Getting ready", "", false);
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
         ActionBar?.Hide();
         BuildUi();
+        _ = CheckReadyAsync();
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        // Re-checked on every return, because someone may have just turned
+        // something on in the abilities screen and come straight back here
+        // expecting the circle to be alive.
+        _ = CheckReadyAsync();
+    }
+
+    /// <summary>
+    /// Works out what it can do right now and says so.
+    /// </summary>
+    /// <remarks>
+    /// A FILESYSTEM CHECK, NOT A MODEL LOAD, so it answers in milliseconds. The
+    /// old screen had no readiness notion at all and the chat screen found out by
+    /// loading the brain — 35 seconds. What a person needs to know first is not
+    /// "has the 433 MB model finished initialising" but "will pressing this do
+    /// anything", and that is answerable from what is on disk.
+    /// </remarks>
+    async Task CheckReadyAsync()
+    {
+        try
+        {
+            var next = await Task.Run(() =>
+            {
+                var store = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                    "CircleAI", "Models");
+
+                using var registry = new CircleAI.Core.Models.ModelRegistryService();
+                using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
+
+                bool Has(CircleAI.Core.ModelModality m) => registry.AllModels
+                    .Where(e => e.Modality == m)
+                    .Any(e => loader.ModelExists(e.Name));
+
+                var voice = Has(CircleAI.Core.ModelModality.Tts);
+                var ears  = Has(CircleAI.Core.ModelModality.Asr);
+                var brain = Has(CircleAI.Core.ModelModality.Chat);
+
+                return Readiness.From(voice, ears, brain, voice || ears || brain);
+            });
+
+            RunOnUiThread(() => Apply(next));
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error("CircleAI.It", "readiness check failed: " + ex);
+        }
+    }
+
+    void Apply(Readiness r)
+    {
+        _ready = r;
+        _prompt.Text = r.Headline;
+        _caption.Text = r.Caption;
+        _caption.Visibility = string.IsNullOrEmpty(r.Caption) ? ViewStates.Gone : ViewStates.Visible;
+
+        // The circle keeps breathing until it can actually be used, so "alive"
+        // and "usable" are the same signal rather than two things to reconcile.
+        _mark.SetBusy(!r.CanTalk);
     }
 
     void BuildUi()
@@ -89,16 +169,33 @@ public class HomeActivity : Activity
         var markLp = new LinearLayout.LayoutParams(markSize, markSize);
         markLp.TopMargin = Ui.Dp(this, 40);
         markLp.Gravity = GravityFlags.CenterHorizontal;
+        // PRESSING THE CIRCLE TALKS TO IT. That is the product, and it is the only
+        // large control on the screen. Before it can listen, pressing it makes it
+        // say hello in one of the 74 languages instead of doing nothing — because
+        // "nothing happens" is indistinguishable from "broken", and hearing it
+        // speak is the fastest way to understand what this is.
         _mark.Clickable = true;
-        _mark.Click += (s, e) => SpeakNext();
+        _mark.Click += (s, e) =>
+        {
+            if (!_ready.CanTalk) { SpeakNext(); return; }
+
+            // The same screen the text box opens, told to start listening. A
+            // separate talking screen would mean a second copy of the voice loop
+            // wiring, and two places for it to drift.
+            var talk = new Intent(this, typeof(MainActivity));
+            talk.PutExtra(MainActivity.StartListeningExtra, true);
+            StartActivity(talk);
+        };
         root.AddView(_mark, markLp);
 
-        _prompt = Ui.Label(this, "Tap to hear it speak", 20f, Ui.Ink, bold: true);
+        // The headline is set by Readiness, not hard-coded, so the screen can
+        // never claim to be usable before it is — the exact failure this replaces.
+        _prompt = Ui.Label(this, "Getting ready", 20f, Ui.Ink, bold: true);
         _prompt.Gravity = GravityFlags.Center;
         _prompt.SetPadding(pad, Ui.Dp(this, 28), pad, 0);
         root.AddView(_prompt, Ui.Fill());
 
-        _caption = Ui.Label(this, "isiZulu — one of 74", 15f, Ui.InkSoft);
+        _caption = Ui.Label(this, "You can talk to it in a moment.", 15f, Ui.InkSoft);
         _caption.Gravity = GravityFlags.Center;
         _caption.SetPadding(pad, Ui.Dp(this, 8), pad, 0);
         root.AddView(_caption, Ui.Fill());
@@ -110,7 +207,7 @@ public class HomeActivity : Activity
 
         // ── three claims, three lines ────────────────────────────────────
         var claims = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        claims.SetPadding(pad, 0, pad, Ui.Dp(this, 20));
+        claims.SetPadding(pad, 0, pad, Ui.Dp(this, 16));
         foreach (var line in new[]
                  {
                      "74 languages, spoken out loud",
@@ -137,14 +234,21 @@ public class HomeActivity : Activity
         // speak"), so a second shouting button next to two more competes with it
         // and with itself.
         //
-        // Now: the real product is asking it something, so that is the button.
-        // Languages and abilities are places to look, so they are links.
-        var chat = Ui.Action(this, "Ask it something", primary: true);
-        chat.Click += (s, e) => StartActivity(new Intent(this, typeof(MainActivity)));
+        // TYPING IS THE FALLBACK, so it is a link and not the loudest control on
+        // the screen. It used to be a full-width blue button reading "Ask it
+        // something", which made the text box the headline act and quietly
+        // announced this as a thing you write to. The circle above is the product;
+        // this is here for the library, the late-night kitchen, and anyone who
+        // would simply rather not talk out loud.
+        var typeInstead = Ui.Label(this, "Or type instead", 15f, Ui.Blue, bold: true);
+        typeInstead.Gravity = GravityFlags.Center;
+        typeInstead.SetPadding(0, Ui.Dp(this, 14), 0, Ui.Dp(this, 14));   // 48dp target
+        typeInstead.Clickable = true;
+        typeInstead.Click += (s, e) => StartActivity(new Intent(this, typeof(MainActivity)));
         var clp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
         clp.LeftMargin = clp.RightMargin = pad;
-        root.AddView(chat, clp);
+        root.AddView(typeInstead, clp);
 
         // Two quiet, equal siblings. Text buttons rather than outlined boxes: an
         // outline reads as "a thing to press NOW", and these are for later.
