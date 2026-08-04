@@ -2636,7 +2636,8 @@
         "Default",
         "WakeWord"
       ],
-      "Language": "en"
+      "Language": "en",
+      "Source": "HuggingFaceBucket"
     }
   ]
 }

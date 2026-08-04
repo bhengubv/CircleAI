@@ -870,6 +870,37 @@ public class MainActivity : Activity
     /// built with -p:ItVoiceOnAndroid=true, because it pulls ONNX Runtime and
     /// whisper.cpp natives into the package.
     /// </summary>
+    /// <summary>
+    /// Installs a side-loaded wake bundle into the model store, if one is there.
+    /// </summary>
+    /// <remarks>
+    /// Verified against the catalogue's published SHA-256 before it is trusted —
+    /// a model that arrived by Bluetooth or memory card is held to exactly the
+    /// standard a downloaded one is. Silent when there is nothing to import, and
+    /// never fatal: the loop can still fall back to fetching one.
+    /// </remarks>
+    async Task ImportSideloadedWakeWordAsync(string store)
+    {
+        try
+        {
+            var folder = ResidentWakeWord.SideloadedBundleFolder(this);
+            if (folder is null) return;
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            var importer = new CircleAI.Inference.SideloadedBundleImporter(registry, store);
+            var result = await importer.ImportAsync("KWS-Zipformer-HeyB", folder);
+
+            if (result.Usable)
+                Append($"[voice] wake word: {result.Detail} ({result.Files} files verified)\n");
+            else
+                Append($"[voice] side-loaded wake word not used: {result.Detail}\n");
+        }
+        catch (Exception ex)
+        {
+            Append($"[voice] side-load check skipped: {ex.Message}\n");
+        }
+    }
+
     async void ToggleVoiceLoop()
     {
         // Captured into a local: the brain lambda below outlives this method,
@@ -916,6 +947,12 @@ public class MainActivity : Activity
             var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener.TryCreateAsync(store, s => Append(s + "\n"));
             if (listener is null) { Append($"[voice] OFF: {lStatus}\n"); return; }
             _listener = listener;
+
+            // A bundle the owner already copied onto the phone counts as installed.
+            // Without this the loop asks the catalogue for a wake model that is
+            // sitting on the device already, and spends their data re-fetching it —
+            // or, as happened here, fails outright because the bucket is behind.
+            await ImportSideloadedWakeWordAsync(store);
 
             // One mic, one Whisper instance, shared by the wake detector and the
             // pipeline — a second AudioRecord on the same device would fail to

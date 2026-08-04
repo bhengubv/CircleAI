@@ -343,7 +343,12 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 }
                 catch (Exception)
                 {
-                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                    // KEEP THE PARTIAL. This used to delete it before trying the
+                    // other URL, so a hiccup on the primary at 600 MB threw away
+                    // 600 MB — on a phone, that is somebody's data bundle spent
+                    // twice for nothing. Both URLs serve the SAME bytes and both
+                    // honour Range, so the fallback simply carries on from where
+                    // the primary stopped.
                     await DownloadWithRetryAsync(fallback, tempPath, perFile, ct,
                         attempt => Report(file.Name, doneBytes, DownloadPhase.Retrying, attempt))
                         .ConfigureAwait(false);
@@ -722,6 +727,26 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// How long a download may deliver nothing before it counts as stalled.
+    /// </summary>
+    /// <remarks>
+    /// A STALL IS NOT AN ERROR AND THAT IS WHY IT WAS FATAL. The socket stays
+    /// open, no exception is thrown, and the read below simply never returns — so
+    /// the retry machinery around it never runs and the whole thing waits forever.
+    /// Caught on the P30 fetching an 879 MB model: it stopped dead at 25%, sat
+    /// there for a quarter of an hour, and the screen went on promising "about 10
+    /// minutes left". Only a person tapping Stop and starting again recovered it,
+    /// and it resumed from 25% and finished — so nothing was wrong except that
+    /// nobody noticed.
+    /// <para>
+    /// Forty-five seconds is deliberately generous. A slow link on a cheap phone
+    /// can genuinely go quiet for a while between TCP retransmissions, and the
+    /// cost of being wrong is a resumed connection rather than a lost download.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(45);
+
     private static async Task PumpAsync(
         Stream source, Stream destination, long existing, long totalBytes,
         IProgress<double>? progress, CancellationToken ct)
@@ -732,7 +757,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         long bytesUntilNextReport = ProgressChunkBytes;
         int read;
 
-        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        while ((read = await ReadOrStallAsync(source, buffer, ct).ConfigureAwait(false)) > 0)
         {
             await destination.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
             bytesRead += read;
@@ -745,6 +770,35 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             }
         }
         progress?.Report(1.0);
+    }
+
+    /// <summary>
+    /// Reads, but gives up if the connection goes quiet for <see cref="StallTimeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// Turns a silent hang into an ordinary transient failure, which the retry and
+    /// resume machinery above already knows how to handle: it reconnects with a
+    /// Range header and carries on from the bytes already on disk. Nothing is
+    /// re-downloaded.
+    /// <para>
+    /// The caller's own cancellation is re-thrown untouched — someone pressing
+    /// Stop must not be mistaken for a bad network and quietly retried.
+    /// </para>
+    /// </remarks>
+    private static async ValueTask<int> ReadOrStallAsync(
+        Stream source, Memory<byte> buffer, CancellationToken ct)
+    {
+        using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        stall.CancelAfter(StallTimeout);
+        try
+        {
+            return await source.ReadAsync(buffer, stall.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new IOException(
+                $"The download stopped sending data for {StallTimeout.TotalSeconds:F0} seconds.");
+        }
     }
 
     private static async Task<bool> VerifySha256Async(

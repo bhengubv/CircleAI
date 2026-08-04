@@ -868,6 +868,7 @@
         "Sha256": "b5f0324faf4c719f100487035f2e0285e999247bcc94740312accdab9b6ca018",
         "SizeBytes": 6
       }
-    ]
+    ],
+    "Source": "HuggingFaceBucket"
   }
 }

@@ -160,15 +160,41 @@ public sealed class ItListener : IAsyncDisposable
 
                 if (onnx is not null)
                 {
-                    // KwsWakeWordDetector is the runtime that already existed for
-                    // this — log-mel front end, configurable window/hop, target
-                    // class index, fire cooldown. Do not write another one.
+                    // WakeWordFactory decides which runtime this bundle needs by
+                    // looking at what is IN it: a three-graph transducer gets the
+                    // zipformer spotter, a single graph gets the classifier. That
+                    // used to be decided here, by taking the first .onnx found and
+                    // handing it to the classifier — which for a transducer is an
+                    // arbitrary third of a model that cannot work.
                     //
-                    // It scores ONE phrase, so a multi-phrase access list cannot
-                    // be honoured here. Rather than accept the list and quietly
-                    // match only the first — access control in appearance only —
-                    // fall back to the transcribing detector, which really does
-                    // distinguish phrases, and say why.
+                    // It also stops the multi-phrase downgrade below from being
+                    // needed at all: the classifier scores one phrase, so an access
+                    // list had to fall back to transcribe-and-match, at the cost of
+                    // running an ASR model continuously. The transducer matches any
+                    // number of phrases from text, so several wake words no longer
+                    // cost anything.
+                    var bundleDir = Path.GetDirectoryName(onnx)!;
+                    var engine = WakeWordFactory.EngineFor(bundleDir);
+
+                    if (engine == WakeEngine.ZipformerTransducer)
+                    {
+                        var probe = DeviceProbe.Snapshot();
+                        var calibrationPath = Path.Combine(dir, "..", "wake-calibration.json");
+                        var detector = WakeWordFactory.Create(
+                            capture,
+                            bundleDir,
+                            new WakeHostCapabilities(probe.RamTotalBytes, TranscriberAvailable: true),
+                            WakeCalibration.Load(Path.GetFullPath(calibrationPath)),
+                            _transcriber);
+
+                        var listening = string.Join(", ", detector.WakeWords);
+                        return (detector, $"{plan.Reason} — zipformer transducer, listening for {listening}");
+                    }
+
+                    // Single-graph classifier: one phrase only. Rather than accept
+                    // an access list and quietly match just the first — access
+                    // control in appearance only — fall back to the transcribing
+                    // detector, which really does distinguish phrases, and say why.
                     if (phrases.Length > 1)
                         return (new EnergyWakeWordDetector(capture, _transcriber, phrases),
                                 $"{plan.Reason} — using transcribe-and-match instead of the KWS model: " +

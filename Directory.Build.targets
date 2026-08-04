@@ -41,6 +41,24 @@
   ──────────────────────────────────────────────────────────────────────────
   An Android head that does not use on-device inference can set
   <CircleAIBundleMnn>false</CircleAIBundleMnn> and keep a thinner APK.
+
+  THE SAME TRAP, A SECOND TIME: WHISPER
+  ──────────────────────────────────────────────────────────────────────────
+  Whisper.net.Runtime DOES ship Android natives, in build/android-arm64-v8a/.
+  Its own .targets registers them as AndroidNativeLibrary — but gated on
+  $(AndroidSupportedAbis), and that property is empty everywhere except an
+  Android head. The package is referenced by CircleAI.Voice, a plain net10.0
+  library, so the gate is evaluated there and never opens. Identical shape to
+  the MNN story above: a native library that ships, is never bundled, and says
+  nothing until a device tries to use it.
+
+  Measured on the P30 on 2026-08-04, running the full voice loop for the first
+  time: Talking worked, the ggml-tiny model downloaded and verified, the
+  abilities screen said "Listening ✓ On" — and the loop died with
+  "[voice] failed: libwhisper". The APK contained libaot-Whisper.net.dll.so,
+  the MANAGED wrapper, and no libwhisper.so at all. An ability reporting itself
+  as ON while its runtime is absent is the worst version of this bug, because
+  the UI is confidently wrong.
 -->
 <Project>
 
@@ -69,6 +87,33 @@
   </ItemGroup>
 
   <!--
+    Whisper's natives, from wherever NuGet restored the runtime package. The
+    path is resolved from the package reference rather than hard-coded, so a
+    version bump does not silently stop bundling them.
+  -->
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
+    <CircleAIBundleWhisper Condition="'$(CircleAIBundleWhisper)' == ''">true</CircleAIBundleWhisper>
+    <_WhisperRuntimeRoot Condition="'$(_WhisperRuntimeRoot)' == '' And '$(NuGetPackageRoot)' != ''">$(NuGetPackageRoot)whisper.net.runtime/1.8.1/build/</_WhisperRuntimeRoot>
+    <_WhisperRuntimeRoot Condition="'$(_WhisperRuntimeRoot)' == ''">$(UserProfile)/.nuget/packages/whisper.net.runtime/1.8.1/build/</_WhisperRuntimeRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleWhisper)' == 'true'">
+    <!-- libwhisper.so needs its ggml siblings; bundling only the first is a
+         dlopen failure one link further down the chain. Glob, do not list. -->
+    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-arm64-v8a/*.so">
+      <Abi>arm64-v8a</Abi>
+    </AndroidNativeLibrary>
+
+    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-x86_64/*.so">
+      <Abi>x86_64</Abi>
+    </AndroidNativeLibrary>
+
+    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-x86/*.so">
+      <Abi>x86</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+
+  <!--
     Build-time visibility. The failure this replaces was invisible until first
     inference on a physical device, so say plainly what did or did not ship.
   -->
@@ -84,6 +129,14 @@
     <Message Importance="high"
              Condition="'$(CircleAIBundleMnn)' != 'true'"
              Text="[CircleAI] CircleAIBundleMnn=false — no MNN in the APK. On-device inference requires a runtime fetch." />
+
+    <!-- Whisper gets its OWN check. Counting all native libraries together
+         would let a full set of MNN mask a completely absent whisper, which is
+         exactly how this shipped: 163 libraries in the APK and not one of them
+         the one the ears needed. -->
+    <Warning Code="CIRCLEAI002"
+             Condition="'$(CircleAIBundleWhisper)' == 'true' And !Exists('$(_WhisperRuntimeRoot)android-arm64-v8a/libwhisper.so')"
+             Text="[CircleAI] No libwhisper.so under $(_WhisperRuntimeRoot). Speech recognition will fail on device with 'failed: libwhisper' while the abilities screen still reports Listening as ON." />
   </Target>
 
 </Project>
