@@ -380,7 +380,16 @@ public class WakeWordActivity : Activity
             ? IOPath.Combine(ext, "kws-hey-b")
             : null;
 
-    static string? FindBundle(Context c)
+    /// <summary>
+    /// The wake bundle this phone should use — downloaded, or side-loaded.
+    /// </summary>
+    /// <remarks>
+    /// Public for the same reason <see cref="SideloadedBundle"/> is: the landing
+    /// screen now listens too, and two screens disagreeing about whether the wake
+    /// word is present is precisely the failure the side-load note below describes.
+    /// One lookup, one answer.
+    /// </remarks>
+    public static string? FindBundle(Context c)
     {
         try
         {

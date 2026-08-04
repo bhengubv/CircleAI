@@ -68,7 +68,12 @@ public readonly record struct Readiness(
     /// help available.
     /// </para>
     /// </remarks>
-    public static Readiness From(bool voice, bool ears, bool brain, bool anythingInstalled)
+    /// <param name="wake">
+    /// True when the wake word is present AND listening, so the phrase is a real
+    /// instruction rather than an aspiration.
+    /// </param>
+    public static Readiness From(bool voice, bool ears, bool brain, bool anythingInstalled,
+                                 bool wake = false)
     {
         if (!anythingInstalled)
             return new(ReadyStage.NeedsSetup,
@@ -76,17 +81,25 @@ public readonly record struct Readiness(
                 "It needs a few things first. Tap to start.",
                 CanTalk: false);
 
+        // SAY THE NAME, DON'T TAP. When the phone is genuinely listening, the
+        // headline says so — telling someone to tap while a microphone is already
+        // open teaches them the slower half of the interface and hides the half
+        // that makes it worth building. The tap still works; it is just no longer
+        // the thing being advertised.
+        var lead = wake ? "Say “Hey B”" : "Tap and talk";
+
         // CAN TALK BEFORE IT CAN THINK — the point of the whole file. As soon as
         // it can hear and speak, pressing the circle does something useful, even
         // if the answer takes a few seconds longer while the brain finishes.
         if (voice && ears && !brain)
             return new(ReadyStage.CanListen,
-                "Tap and talk",
+                lead,
                 "Still waking up — the first answer may take a moment.",
                 CanTalk: true);
 
         if (voice && ears && brain)
-            return new(ReadyStage.Ready, "Tap and talk", "", CanTalk: true);
+            return new(ReadyStage.Ready, lead,
+                wake ? "or tap the circle" : "", CanTalk: true);
 
         if (voice && !ears)
             return new(ReadyStage.Waking,

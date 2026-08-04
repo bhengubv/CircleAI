@@ -131,10 +131,40 @@ public class HomeActivity : Activity
                 var ears  = Has(CircleAI.Core.ModelModality.Asr);
                 var brain = Has(CircleAI.Core.ModelModality.Chat);
 
-                return Readiness.From(voice, ears, brain, voice || ears || brain);
+#if IT_VOICE_ANDROID
+                // The wake bundle is found the same way the wake-word screen finds
+                // it, so the two can never disagree about whether it is there.
+                var bundle = WakeWordActivity.FindBundle(this);
+#else
+                // The chat-only APK has no speech stack at all, so there is nothing
+                // to listen with and the screen must not offer to.
+                string? bundle = null;
+#endif
+                return (voice, ears, brain, bundle);
             });
 
-            RunOnUiThread(() => Apply(next));
+            RunOnUiThread(() =>
+            {
+#if IT_VOICE_ANDROID
+                // THE HEADLINE HAS TO BE TRUE. A bundle on disk is not a phone that
+                // is listening: without the microphone permission nothing opens, so
+                // promising "Say Hey B" there would be a lie the person discovers by
+                // talking to something deaf. Permission is knowable only here, which
+                // is why the readiness line is built here and not in the worker.
+                var mic = CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
+                          == Android.Content.PM.Permission.Granted;
+                var canWake = next.bundle is not null && next.voice && next.ears && mic;
+#else
+                const bool canWake = false;
+#endif
+                Apply(Readiness.From(next.voice, next.ears, next.brain,
+                                     next.voice || next.ears || next.brain, canWake));
+
+#if IT_VOICE_ANDROID
+                if (canWake) StartHandsFree(next.bundle!);
+                else _ = StopHandsFreeAsync();
+#endif
+            });
         }
         catch (Exception ex)
         {
@@ -377,6 +407,12 @@ public class HomeActivity : Activity
 
         try
         {
+            // HAND THE MICROPHONE OVER BEFORE ASKING FOR IT. Android gives out
+            // AudioRecord exclusively, so the wake loop has to be fully closed —
+            // awaited, not merely cancelled — or this capture opens onto nothing and
+            // the turn ends in "I did not catch that" while the person is talking.
+            await StopHandsFreeAsync();
+
             Phase(MarkState.Listening, "Listening", "Say what you need.");
 
             var turn = new VoiceTurn();
@@ -456,6 +492,12 @@ public class HomeActivity : Activity
         {
             if (ReferenceEquals(_turn, cts)) _turn = null;
             cts.Dispose();
+
+            // Take the microphone back, however the turn ended. In the finally
+            // deliberately: if this only ran on the happy path, one failed turn
+            // would leave the phone permanently deaf to its own name, and the only
+            // way back would be to leave the screen and return.
+            _handsFree?.Start();
         }
     }
 
@@ -486,6 +528,34 @@ public class HomeActivity : Activity
 
     CircleAI.Samples.It.ItSession? _session;
 
+    // ── hands free ───────────────────────────────────────────────────────────
+
+    HandsFree? _handsFree;
+
+    /// <summary>Starts listening for the wake phrase, if it is not already.</summary>
+    void StartHandsFree(string bundleDir)
+    {
+        if (_handsFree is not null) { _handsFree.Start(); return; }
+
+        var hf = new HandsFree(bundleDir);
+
+        // Arrives off the UI thread, and a wake mid-turn must not start a second
+        // one — TalkOnce treats a re-entrant call as "stop", which would cancel the
+        // very turn the wake just began.
+        hf.Woke += (_, phrase) => RunOnUiThread(() =>
+        {
+            if (_turn is not null) return;
+            Android.Util.Log.Info("CircleAI.It", $"woke on \"{phrase}\"");
+            TalkOnce();
+        });
+
+        _handsFree = hf;
+        hf.Start();
+    }
+
+    /// <summary>Releases the microphone and waits until it is genuinely released.</summary>
+    Task StopHandsFreeAsync() => _handsFree?.StopAsync() ?? Task.CompletedTask;
+
     void Phase(MarkState state, string headline, string caption) => RunOnUiThread(() =>
     {
         _mark.SetState(state);
@@ -495,11 +565,29 @@ public class HomeActivity : Activity
     });
 #endif
 
+#if IT_VOICE_ANDROID
+    /// <summary>
+    /// Closes the microphone when the screen goes away.
+    /// </summary>
+    /// <remarks>
+    /// AN OPEN MICROPHONE IS A PROMISE, and this screen only ever promised to
+    /// listen while it is in front of you. Leaving the wake loop running behind
+    /// another app would also quietly take the mic away from that app, which is
+    /// the kind of thing people never forgive an assistant for.
+    /// </remarks>
+    protected override void OnPause()
+    {
+        base.OnPause();
+        _ = StopHandsFreeAsync();
+    }
+#endif
+
     protected override void OnDestroy()
     {
         _speaking?.Cancel();
 #if IT_VOICE_ANDROID
         _turn?.Cancel();
+        _ = StopHandsFreeAsync();
 #endif
         base.OnDestroy();
     }
