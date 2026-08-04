@@ -29,6 +29,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -38,6 +39,15 @@ using Android.Views.Animations;
 using Android.Widget;
 
 namespace CircleAI.Samples.It.Mobile;
+
+/// <summary>Which part of an exchange the mark is showing.</summary>
+/// <remarks>
+/// Four states and no more. Every one of them is something a person can see the
+/// difference between without being taught: nothing happening, it is hearing me,
+/// it is working, it is talking. A fifth would be a distinction only the person
+/// who wrote it can perceive.
+/// </remarks>
+public enum MarkState { Idle, Listening, Thinking, Speaking }
 
 [Activity(Label = "Circle AI",   // the launcher name, under the icon
           Icon = "@mipmap/ic_launcher",
@@ -178,13 +188,13 @@ public class HomeActivity : Activity
         _mark.Click += (s, e) =>
         {
             if (!_ready.CanTalk) { SpeakNext(); return; }
-
-            // The same screen the text box opens, told to start listening. A
-            // separate talking screen would mean a second copy of the voice loop
-            // wiring, and two places for it to drift.
+#if IT_VOICE_ANDROID
+            TalkOnce();
+#else
             var talk = new Intent(this, typeof(MainActivity));
             talk.PutExtra(MainActivity.StartListeningExtra, true);
             StartActivity(talk);
+#endif
         };
         root.AddView(_mark, markLp);
 
@@ -327,9 +337,170 @@ public class HomeActivity : Activity
         }
     }
 
+#if IT_VOICE_ANDROID
+    CancellationTokenSource? _turn;
+
+    /// <summary>
+    /// One exchange, on this screen: listen, think, answer aloud.
+    /// </summary>
+    /// <remarks>
+    /// THE CIRCLE IS THE INTERFACE FOR THE WHOLE TURN. Handing off to the chat
+    /// screen the moment someone pressed it put a transcript in front of a person
+    /// who had chosen to speak — the text interface reasserting itself at exactly
+    /// the moment they opted out of it. Here they press it, talk, and hear the
+    /// answer; there is nothing to read unless they want to read.
+    /// <para>
+    /// Every phase is on the mark, because a voice interface with no visible state
+    /// is indistinguishable from a broken one. Listening moves with your voice,
+    /// thinking runs a wave, speaking lights up. Nobody has to be told which is
+    /// which.
+    /// </para>
+    /// </remarks>
+    async void TalkOnce()
+    {
+        if (_turn is not null) { _turn.Cancel(); return; }   // a second press stops it
+
+        if (CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
+            != Android.Content.PM.Permission.Granted)
+        {
+            RequestPermissions([Android.Manifest.Permission.RecordAudio], 1003);
+            Apply(_ready with { Headline = "Let it hear you", Caption = "Allow the microphone to talk to it." });
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _turn = cts;
+
+        var store = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            "CircleAI", "Models");
+
+        try
+        {
+            Phase(MarkState.Listening, "Listening", "Say what you need.");
+
+            var turn = new VoiceTurn();
+            turn.Level += (_, lvl) => RunOnUiThread(() => _mark.SetLevel(lvl));
+
+            await using var mic = new AndroidAudioCapture();
+            var audio = await turn.ListenAsync(mic, cts.Token);
+
+            if (audio.Length == 0)
+            {
+                Phase(MarkState.Idle, "Tap and talk", "I did not catch that.");
+                return;
+            }
+
+            Phase(MarkState.Thinking, "Thinking", "");
+
+            var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener
+                .TryCreateAsync(store, _ => { });
+            if (listener is null) { Phase(MarkState.Idle, "Tap and talk", lStatus); return; }
+            await using var ears = listener;
+
+            var heard = (await ears.Transcriber.TranscribeAsync(audio, cts.Token)).Text?.Trim();
+            if (!IsSomethingSaid(heard))
+            {
+                Phase(MarkState.Idle, "Tap and talk", "I did not catch that.");
+                return;
+            }
+
+            // What they said, shown while it thinks. Voice-first does not mean
+            // never showing anything — it means not making them read to be
+            // understood. Seeing their own words is how they know it heard right.
+            Phase(MarkState.Thinking, "Thinking", $"“{heard}”");
+
+            _session ??= await Task.Run(async () =>
+            {
+                var s = new CircleAI.Samples.It.ItSession(
+                    ApplicationInfo?.NativeLibraryDir, batteryPercent: () => 100);
+                await s.StartAsync();
+                return s;
+            });
+
+            // The streaming overload, but nothing is streamed to the screen: this
+            // turn is spoken, and a half-written sentence read aloud is worse than
+            // a whole one a second later. The callbacks are the seams the chat
+            // screen uses; here only the finished text matters.
+            var reply = await _session.RunTurnStreamingAsync(
+                heard, _ => { }, _ => { }, _ => { });
+            if (cts.IsCancellationRequested) return;
+
+            Phase(MarkState.Speaking, "", reply);
+
+            var (speaker, _) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, _ => { });
+            if (speaker is not null)
+            {
+                using var mouth = speaker;
+                var pcm = await mouth.Engine.SynthesiseAsync(reply, cts.Token);
+                if (pcm.AudioData.Length > 0)
+                {
+                    await using var player = new AndroidAudioPlayer();
+                    await player.PlayAsync(pcm.AudioData, pcm.SampleRate,
+                        pcm.Channels, pcm.BitsPerSample, cts.Token);
+                }
+            }
+
+            Phase(MarkState.Idle, "Tap and talk", "");
+        }
+        catch (System.OperationCanceledException)
+        {
+            Phase(MarkState.Idle, "Tap and talk", "");
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error("CircleAI.It", "voice turn failed: " + ex);
+            Phase(MarkState.Idle, "Tap and talk", "That did not work. Try again?");
+        }
+        finally
+        {
+            if (ReferenceEquals(_turn, cts)) _turn = null;
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>Did the transcriber actually hear words, or just describe silence?</summary>
+    /// <remarks>
+    /// WHISPER ANSWERS "NOTHING" IN WORDS, and they are words that will otherwise
+    /// be shown to a person as if they said them. Caught on the P30: the screen
+    /// read Thinking, "[BLANK_AUDIO]" — the model's own marker for silence, quoted
+    /// back at the user as their question, and then sent to the brain to be
+    /// answered. It emits a family of these — [BLANK_AUDIO], [SILENCE], (music),
+    /// *coughs* — whenever there is sound but no speech, which is every noisy room
+    /// this is meant to work in.
+    /// <para>
+    /// Anything entirely inside brackets is the transcriber describing the audio
+    /// rather than transcribing it, so it counts as nothing said.
+    /// </para>
+    /// </remarks>
+    static bool IsSomethingSaid(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        var stripped = System.Text.RegularExpressions.Regex.Replace(
+            text, @"[\[\(\*][^\]\)\*]*[\]\)\*]", " ").Trim();
+
+        // A stray letter or two is transcriber noise, not a question.
+        return stripped.Length >= 2 && stripped.Any(char.IsLetter);
+    }
+
+    CircleAI.Samples.It.ItSession? _session;
+
+    void Phase(MarkState state, string headline, string caption) => RunOnUiThread(() =>
+    {
+        _mark.SetState(state);
+        if (headline.Length > 0) _prompt.Text = headline;
+        _caption.Text = caption;
+        _caption.Visibility = caption.Length == 0 ? ViewStates.Gone : ViewStates.Visible;
+    });
+#endif
+
     protected override void OnDestroy()
     {
         _speaking?.Cancel();
+#if IT_VOICE_ANDROID
+        _turn?.Cancel();
+#endif
         base.OnDestroy();
     }
 
@@ -344,6 +515,11 @@ public class HomeActivity : Activity
         readonly Paint _arc  = new(PaintFlags.AntiAlias) { Color = Ui.Blue };
         readonly Paint _halo = new(PaintFlags.AntiAlias) { Color = Ui.Blue };
         bool _busy;
+
+        MarkState _state = MarkState.Idle;
+        float _level;          // 0..1, the voice arriving right now
+        float _shown;          // smoothed, so the arcs move like breath not static
+        long  _tick;           // frame counter, drives Thinking and Speaking
 
         public MarkView(Context c) : base(c)
         {
@@ -371,6 +547,39 @@ public class HomeActivity : Activity
             Invalidate();
         }
 
+        /// <summary>Which part of the exchange this is.</summary>
+        public void SetState(MarkState s)
+        {
+            if (_state == s) return;
+            _state = s;
+            _tick = 0;
+            if (s != MarkState.Listening) _level = _shown = 0;
+            ClearAnimation();           // the states animate themselves; alpha would fight them
+            Invalidate();
+        }
+
+        /// <summary>
+        /// How loud the microphone is hearing you, 0 to 1.
+        /// </summary>
+        /// <remarks>
+        /// THE ANSWER TO "CAN IT HEAR ME", given without words. It is the question
+        /// everybody asks silently the moment they start talking to a machine, and
+        /// a spinner cannot answer it — a spinner spins whether the microphone is
+        /// working or muted or pointed at a wall. Arcs that move with your own
+        /// voice answer it instantly, in a way a child and a grandparent both read
+        /// without being told.
+        /// <para>
+        /// It is a REAL level off the microphone, not a decorative animation. That
+        /// distinction is the whole value: a fake meter would be lying about the
+        /// one thing the person is trying to find out.
+        /// </para>
+        /// </remarks>
+        public void SetLevel(float level)
+        {
+            _level = Math.Clamp(level, 0f, 1f);
+            if (_state == MarkState.Listening) Invalidate();
+        }
+
         protected override void OnDraw(Canvas canvas)
         {
             base.OnDraw(canvas);
@@ -381,6 +590,17 @@ public class HomeActivity : Activity
             _ring.StrokeWidth = r * 0.11f;
             _arc.StrokeWidth  = r * 0.085f;
 
+            // Chase the level rather than snapping to it. Raw frame-to-frame RMS
+            // jitters hard enough to look like a fault; easing turns the same data
+            // into something that reads as breathing.
+            _shown += (_level - _shown) * (_level > _shown ? 0.45f : 0.12f);
+
+            _halo.Alpha = _state switch
+            {
+                MarkState.Listening => (int)(28 + 46 * _shown),
+                MarkState.Speaking  => 52,
+                _ => 28,
+            };
             canvas.DrawCircle(cx, cy, r * 0.98f, _halo);
 
             // The ring, open on the right where the sound leaves.
@@ -388,15 +608,34 @@ public class HomeActivity : Activity
             var ringBox = new RectF(cx - ringR, cy - ringR, cx + ringR, cy + ringR);
             canvas.DrawArc(ringBox, -50f, 280f, false, _ring);
 
-            // Three widening arcs. The outer two fade when idle and come up to
-            // full strength while speaking, so the mark reads as "it is talking".
             for (var i = 0; i < 3; i++)
             {
-                var ar = ringR + r * (0.16f + 0.16f * i);
+                // LISTENING pushes the arcs outward with your voice, so the mark
+                // grows as you speak. THINKING runs a slow wave through them, which
+                // reads as working rather than stuck. SPEAKING lights all three.
+                var spread = _state switch
+                {
+                    MarkState.Listening => 0.16f + 0.16f * i + 0.07f * _shown * (i + 1),
+                    _ => 0.16f + 0.16f * i,
+                };
+                var ar = ringR + r * spread;
                 var box = new RectF(cx - ar, cy - ar, cx + ar, cy + ar);
-                _arc.Alpha = _busy ? 255 : i switch { 0 => 235, 1 => 150, _ => 80 };
+
+                _arc.Alpha = _state switch
+                {
+                    MarkState.Listening => (int)Math.Clamp(70 + 185 * _shown * (1f - 0.22f * i), 40, 255),
+                    MarkState.Thinking  => (int)(90 + 130 * (0.5 + 0.5 * Math.Sin(_tick * 0.12 - i * 1.1))),
+                    MarkState.Speaking  => 255,
+                    _ => _busy ? 255 : i switch { 0 => 235, 1 => 150, _ => 80 },
+                };
                 canvas.DrawArc(box, -34f, 68f, false, _arc);
             }
+
+            // Thinking is the only state with nothing external driving it, so it
+            // asks for the next frame itself. The others are redrawn by incoming
+            // audio levels or by a state change, and a self-scheduling redraw there
+            // would spin the CPU for no visible gain.
+            if (_state == MarkState.Thinking) { _tick++; PostInvalidateOnAnimation(); }
         }
     }
 }
