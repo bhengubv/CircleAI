@@ -177,10 +177,19 @@ public class MainActivity : Activity
             // modelPath, UInt32 contextSize, Nullable`1 threads...)" and reasonably
             // concluded the thing was broken. Say what happened, say what still
             // works, and keep the detail on disk for whoever can use it.
-            Append("The chat model could not start on this phone.\n\n");
-            Append($"Reason: {Summarise(ex)}\n\n");
-            Append("Languages and What it can do still work — they do not need\n");
-            Append("the chat model. Tap Languages to hear the phone speak.\n");
+            // SAID ON THE CHAT SURFACE, NOT THROUGH Append. Append routes through
+            // PlainStatus, which is a small ALLOWLIST keyed on "failed"/"error" —
+            // and "The chat model could not start" contains neither, so every one
+            // of these lines returned null and the person got a blank page with a
+            // dead text box and no reason. Caught on a phone with no Answering
+            // model installed: the screen simply looked broken.
+            //
+            // A failure the user can fix has to name the fix. This one is nearly
+            // always "the model is not installed yet", and the cure is one tap away
+            // on the same screen.
+            _chat.Note("I can't answer yet — the Answering part isn't installed.");
+            _chat.Note("Tap “What it can do” below and turn on Answering.");
+            _chat.Note($"(Reason: {Summarise(ex)})");
 
             try
             {
@@ -1698,8 +1707,15 @@ public class MainActivity : Activity
         // Failures are the one thing worth interrupting for, said without the
         // machinery: a person can act on "the microphone did not start", not on a
         // SHA-256 mismatch for a bundle file.
+        //
+        // "could not" / "did not" are here because the allowlist matched only the
+        // machine's words for failure and not the ones this codebase actually
+        // writes. "The chat model could not start on this phone" scored zero and
+        // vanished, so the screen went blank instead of explaining itself.
         if (s.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
-            s.Contains("error", StringComparison.OrdinalIgnoreCase))
+            s.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("could not", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("did not", StringComparison.OrdinalIgnoreCase))
             return s.StartsWith("[voice]", StringComparison.OrdinalIgnoreCase)
                 ? "Voice could not start — the details are in the log"
                 : "Something did not work — the details are in the log";
