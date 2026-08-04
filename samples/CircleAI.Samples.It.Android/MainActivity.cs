@@ -289,7 +289,14 @@ public class MainActivity : Activity
         if (intent.GetBooleanExtra("run_tts", false))
         {
             Append("\n───────────────\n");
+#if IT_VOICE_ANDROID
             RunTts();
+#else
+            // RunTts and the whole probe live behind IT_VOICE_ANDROID. Say so
+            // rather than silently ignoring the extra, which reads as the flag
+            // having no effect.
+            Append("[voice] this build has no speech stack — rebuild with -p:ItVoiceOnAndroid=true\n");
+#endif
         }
     }
 

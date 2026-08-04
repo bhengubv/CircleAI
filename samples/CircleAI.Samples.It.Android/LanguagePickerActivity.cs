@@ -278,13 +278,14 @@ public class LanguagePickerActivity : Activity
         var cts = new CancellationTokenSource();
         _running = cts;
 
-        var store = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
-        var wav = System.IO.Path.Combine(FilesDir!.AbsolutePath, $"say-{row.Tag}.wav");
-
         SetSub(row, "preparing…");
         try
         {
+#if IT_VOICE_ANDROID
+            var store = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+            var wav = System.IO.Path.Combine(FilesDir!.AbsolutePath, $"say-{row.Tag}.wav");
+
             var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
                 store, row.Tag, row.Phrase, wav,
                 line => RunOnUiThread(() => SetSub(row, Summarise(line))), cts.Token);
@@ -303,6 +304,14 @@ public class LanguagePickerActivity : Activity
                 // logging it somewhere they will never look.
                 SetSub(row, FirstLine(report));
             }
+#else
+            // The chat-only APK has no synthesiser, so the list still shows what it
+            // would say in each language — the phrase, in the row you tapped. That
+            // is the honest version of this screen without the speech stack, and it
+            // is better than a button that looks live and does nothing.
+            await Task.Yield();
+            SetSub(row, $"“{row.Phrase}”");
+#endif
         }
         catch (System.OperationCanceledException) { RestoreSub(row); }
         catch (Exception ex) { SetSub(row, ex.Message); }

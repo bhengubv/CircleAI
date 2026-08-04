@@ -326,6 +326,7 @@ public class HomeActivity : Activity
 
         try
         {
+#if IT_VOICE_ANDROID
             var store = System.IO.Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
                 "CircleAI", "Models");
@@ -355,6 +356,16 @@ public class HomeActivity : Activity
             {
                 _prompt.Text = "Could not speak that one — try another";
             }
+#else
+            // SHOWN, NOT SPOKEN. The chat-only APK deliberately ships without the
+            // speech stack, so there is nothing here that can talk. The greeting is
+            // still worth making: the whole point of the tap is "this thing knows
+            // your language", and that lands from seeing it written just as well as
+            // from hearing it — without 60 MB of ONNX Runtime in the package.
+            await Task.Yield();
+            _prompt.Text = phrase;
+            _caption.Text = $"{label} — tap again for another";
+#endif
         }
         catch (System.OperationCanceledException) { }
         catch (Exception ex)
