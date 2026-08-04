@@ -63,6 +63,30 @@ public sealed class VoiceLoop : IAsyncDisposable
     private Channel<TranscriptionResult>? _turns;
     private bool _disposed;
 
+    /// <summary>Cancels the reply currently being spoken. Null when nothing is.</summary>
+    private CancellationTokenSource? _speaking;
+
+    /// <summary>Let someone cut the assistant off mid-answer by saying the wake word.</summary>
+    /// <remarks>
+    /// THE DIFFERENCE BETWEEN A CONVERSATION AND A BROADCAST. Without this, asking
+    /// for something and getting a long answer means waiting the answer out — you
+    /// cannot correct it, redirect it, or shut it up. Everyone who has shouted at a
+    /// speaker that would not stop knows the feeling, and it is the moment a person
+    /// decides the thing is not listening to them.
+    /// <para>
+    /// It needs two things that only just became true: the wake detector has to
+    /// stay armed while the speaker is playing, and the microphone has to not hear
+    /// the reply as a new wake. The second is what AcousticEchoCanceler is for, and
+    /// it is now attached on the Android capture path. Without echo cancellation
+    /// leave this OFF, or the assistant will interrupt itself the first time its
+    /// own voice says something the spotter likes.
+    /// </para>
+    /// </remarks>
+    public bool AllowBargeIn { get; init; } = true;
+
+    /// <summary>Raised when a reply was cut short because someone spoke over it.</summary>
+    public event EventHandler? BargedIn;
+
     /// <summary>Raised after each exchange — for transcript UI and logging.</summary>
     public event EventHandler<VoiceExchangeEventArgs>? Exchanged;
 
@@ -101,6 +125,7 @@ public sealed class VoiceLoop : IAsyncDisposable
             new UnboundedChannelOptions { SingleReader = true });
 
         _ears.Transcribed += OnTranscribed;
+        if (AllowBargeIn) _ears.WakeDetector.WakeWordDetected += OnWakeWhileSpeaking;
         _run = ConsumeAsync(_cts.Token);
 
         await _ears.StartAsync(_cts.Token).ConfigureAwait(false);
@@ -108,6 +133,21 @@ public sealed class VoiceLoop : IAsyncDisposable
 
     private void OnTranscribed(object? sender, TranscribedEventArgs e)
         => _turns?.Writer.TryWrite(e.Result);
+
+    /// <summary>A wake during playback means "stop talking and listen to me".</summary>
+    /// <remarks>
+    /// Deliberately does NOT drop the turn that is already queued behind it: the
+    /// wake will be followed by whatever the person actually wants, and the
+    /// pipeline captures it as normal. All this does is stop the speaker.
+    /// </remarks>
+    private void OnWakeWhileSpeaking(object? sender, WakeWordDetectedEventArgs e)
+    {
+        var speaking = _speaking;
+        if (speaking is null || speaking.IsCancellationRequested) return;
+
+        try { speaking.Cancel(); } catch (ObjectDisposedException) { return; }
+        BargedIn?.Invoke(this, EventArgs.Empty);
+    }
 
     private async Task ConsumeAsync(CancellationToken ct)
     {
@@ -126,8 +166,22 @@ public sealed class VoiceLoop : IAsyncDisposable
                     var audio = await _mouth.SynthesiseAsync(reply, ct).ConfigureAwait(false);
                     if (audio.AudioData.Length > 0)
                     {
-                        await _speaker.PlayAsync(audio.AudioData, audio.SampleRate,
-                            audio.Channels, audio.BitsPerSample, ct).ConfigureAwait(false);
+                        // Playback gets its own token so a barge-in cancels ONLY the
+                        // speaking, not the loop. Cancelling the loop's token here
+                        // would make interrupting the assistant also switch it off,
+                        // which is the opposite of what the person wanted.
+                        using var speech = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        _speaking = speech;
+                        try
+                        {
+                            await _speaker.PlayAsync(audio.AudioData, audio.SampleRate,
+                                audio.Channels, audio.BitsPerSample, speech.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                        {
+                            // Barged in. Not an error, and not a reason to stop.
+                        }
+                        finally { _speaking = null; }
                     }
                 }
 
@@ -154,6 +208,7 @@ public sealed class VoiceLoop : IAsyncDisposable
     public async Task StopAsync()
     {
         _ears.Transcribed -= OnTranscribed;
+        if (AllowBargeIn) _ears.WakeDetector.WakeWordDetected -= OnWakeWhileSpeaking;
         _turns?.Writer.TryComplete();
 
         if (_cts is null) return;

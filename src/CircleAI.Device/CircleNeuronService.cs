@@ -45,7 +45,7 @@ namespace CircleAI.Device;
     Name                  = "ai.circle.CircleNeuronService",
     Exported              = false,
     ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeDataSync)]
-public sealed class CircleNeuronService : Service
+public sealed partial class CircleNeuronService : Service
 {
     /// <summary>Notification channel id for the resident-service notification.</summary>
     public const string ChannelId = "circleai-neuron";

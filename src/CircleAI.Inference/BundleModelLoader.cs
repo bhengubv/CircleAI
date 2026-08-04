@@ -276,7 +276,7 @@ public sealed class BundleModelLoader : IModelLoader
             ModelModality.Tts      => Find("*.onnx"),
             ModelModality.Asr      => Find("*.bin", "*.onnx"),
             ModelModality.Vad      => Find("*.onnx"),
-            ModelModality.WakeWord => Find("*.onnx", "*.tflite"),
+            ModelModality.WakeWord => ResolveWakeWord(modelDir) ?? Find("*.onnx", "*.tflite"),
             _                      => Find(ConfigFileName),   // Chat: MNN config.json
         };
 
@@ -286,6 +286,36 @@ public sealed class BundleModelLoader : IModelLoader
                 "model file was found for that modality.");
 
         return path;
+    }
+
+    /// <summary>
+    /// A wake bundle's load path: the DIRECTORY when it holds a three-graph
+    /// transducer, otherwise null so the single-file rule applies.
+    /// </summary>
+    /// <remarks>
+    /// A streaming transducer is encoder + decoder + joiner + tokens, and no one
+    /// of those files is loadable on its own — the runtime needs the folder around
+    /// them. Returning "the shortest .onnx name" for such a bundle hands back an
+    /// arbitrary third of a model, which cannot be made to work and does not look
+    /// broken: it is a real path to a real file. The first consumer worked around
+    /// it by scanning for an encoder and taking its directory, and every later one
+    /// would have had to rediscover the same trick.
+    /// </remarks>
+    private static string? ResolveWakeWord(string modelDir)
+    {
+        var byDirectory = Directory
+            .EnumerateFiles(modelDir, "*.onnx", SearchOption.AllDirectories)
+            .GroupBy(f => Path.GetDirectoryName(f)!);
+
+        foreach (var group in byDirectory)
+        {
+            var names = group.Select(f => Path.GetFileName(f).ToLowerInvariant()).ToList();
+            if (names.Any(n => n.Contains("encoder")) &&
+                names.Any(n => n.Contains("decoder")) &&
+                names.Any(n => n.Contains("joiner")))
+                return group.Key;
+        }
+        return null;
     }
 
     /// <summary>
