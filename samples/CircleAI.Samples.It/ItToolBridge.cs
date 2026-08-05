@@ -69,9 +69,31 @@ public sealed class ItToolBridge : IToolBridge
             },
             RequiredParameters = new[] { "sku" },
         },
+        new ToolDefinition
+        {
+            // THE DESCRIPTION IS THE POLICY. A model decides whether to call a tool
+            // by reading this sentence, so it has to say plainly what the tool is
+            // for AND when not to bother — otherwise every "what is two plus two"
+            // costs a network round trip inside a turn that is already slow.
+            Name        = "web_search",
+            Description =
+                "Searches the internet and returns short result snippets. Use this for anything " +
+                "the model cannot know from training: today's news, weather, prices, sports " +
+                "results, recent events, or any question about what is true right now. Do not " +
+                "use it for arithmetic, definitions, translation, or anything already known.",
+            Parameters  = new Dictionary<string, ToolParameter>
+            {
+                ["query"] = new()
+                {
+                    Type        = "string",
+                    Description = "What to search for, in a few words, as you would type into a search box.",
+                },
+            },
+            RequiredParameters = new[] { "query" },
+        },
     };
 
-    public Task<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken ct = default)
+    public async Task<ToolResult> InvokeAsync(ToolInvocation invocation, CancellationToken ct = default)
     {
         InvocationLog.Add(
             $"{invocation.ToolName}({string.Join(", ", invocation.Arguments.Select(a => $"{a.Key}={a.Value}"))})");
@@ -81,25 +103,43 @@ public sealed class ItToolBridge : IToolBridge
             case "get_battery_level":
             {
                 var pct = _batteryPercent?.Invoke();
-                return Task.FromResult(pct is null
+                return pct is null
                     ? ToolResult.Failure("get_battery_level", "Battery level is unavailable on this host.")
-                    : ToolResult.Ok("get_battery_level", pct.Value));
+                    : ToolResult.Ok("get_battery_level", pct.Value);
             }
 
             case "lookup_price":
             {
                 if (!invocation.Arguments.TryGetValue("sku", out var raw) || raw is null)
-                    return Task.FromResult(ToolResult.Failure("lookup_price", "Missing required argument 'sku'."));
+                    return ToolResult.Failure("lookup_price", "Missing required argument 'sku'.");
 
                 var sku = raw.ToString()!.Trim().Trim('"');
-                return Task.FromResult(Prices.TryGetValue(sku, out var price)
+                return Prices.TryGetValue(sku, out var price)
                     ? ToolResult.Ok("lookup_price", price)
-                    : ToolResult.Failure("lookup_price", $"Unknown SKU '{sku}'."));
+                    : ToolResult.Failure("lookup_price", $"Unknown SKU '{sku}'.");
+            }
+
+            case "web_search":
+            {
+                if (!invocation.Arguments.TryGetValue("query", out var q) || q is null)
+                    return ToolResult.Failure("web_search", "Missing required argument 'query'.");
+
+                // THE ONLY TOOL HERE THAT LEAVES THE PHONE. Everything above is
+                // device state or an in-memory table; this one sends the query
+                // words to a search engine. Nothing else about the turn goes with
+                // them — not the conversation, not memory, not identity.
+                //
+                // Returns Ok even when the search failed, carrying the reason as
+                // text. A Failure would have the model apologise for a broken tool;
+                // the sentence "Could not reach the internet" is something it can
+                // simply relay, which is what the person actually needs to hear.
+                var text = await WebSearch.SearchAsync(q.ToString()!.Trim().Trim('"'), ct)
+                                         .ConfigureAwait(false);
+                return ToolResult.Ok("web_search", text);
             }
 
             default:
-                return Task.FromResult(
-                    ToolResult.Failure(invocation.ToolName, $"No such tool '{invocation.ToolName}'."));
+                return ToolResult.Failure(invocation.ToolName, $"No such tool '{invocation.ToolName}'.");
         }
     }
 }

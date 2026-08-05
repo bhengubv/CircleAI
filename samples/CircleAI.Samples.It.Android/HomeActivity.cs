@@ -253,13 +253,25 @@ public class HomeActivity : Activity
             ViewGroup.LayoutParams.MatchParent, 0, 1f));
 
         // ── three claims, three lines ────────────────────────────────────
+        //
+        // THE THIRD LINE USED TO SAY "nothing sent anywhere" AND IT STOPPED BEING
+        // TRUE. Adding web search means a question about today's weather sends
+        // those search words off the phone. Everything else still stays — the
+        // conversation, the memory, the identity, the rest of the answer — but
+        // "nothing" is now false, and a privacy claim that is subtly false is worse
+        // than one that is honestly narrower.
+        //
+        // So the line says what actually happens: no account, and the only thing
+        // that ever leaves is a search you asked for. That is still a stronger
+        // promise than any mainstream assistant makes, and it has the advantage of
+        // being checkable.
         var claims = new LinearLayout(this) { Orientation = Orientation.Vertical };
         claims.SetPadding(pad, 0, pad, Ui.Dp(this, 16));
         foreach (var line in new[]
                  {
                      "74 languages, spoken out loud",
                      "Runs on the phone — works with no signal",
-                     "Free, no account, nothing sent anywhere",
+                     "Free, no account — only searches leave the phone",
                  })
         {
             var row = Ui.Label(this, "·   " + line, 15f, Ui.InkSoft);
