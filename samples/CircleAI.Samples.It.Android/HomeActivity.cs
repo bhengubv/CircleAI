@@ -434,7 +434,7 @@ public class HomeActivity : Activity
 
             if (audio.Length == 0)
             {
-                Phase(MarkState.Idle, "Tap and talk", "I did not catch that.");
+                Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");
                 return;
             }
 
@@ -442,13 +442,13 @@ public class HomeActivity : Activity
 
             var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener
                 .TryCreateAsync(store, _ => { });
-            if (listener is null) { Phase(MarkState.Idle, "Tap and talk", lStatus); return; }
+            if (listener is null) { Phase(MarkState.Idle, _ready.Headline, lStatus); return; }
             await using var ears = listener;
 
             var heard = (await ears.Transcriber.TranscribeAsync(audio, cts.Token)).Text?.Trim();
             if (!IsSomethingSaid(heard))
             {
-                Phase(MarkState.Idle, "Tap and talk", "I did not catch that.");
+                Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");
                 return;
             }
 
@@ -511,20 +511,20 @@ public class HomeActivity : Activity
             if (!spoken.SpokeAnything)
             {
                 Earcon.CannotSpeak();
-                Phase(MarkState.Idle, "Tap and talk", "I could not say that out loud — it is written above.");
+                Phase(MarkState.Idle, _ready.Headline, "I could not say that out loud — it is written above.");
                 return;
             }
 
-            Phase(MarkState.Idle, "Tap and talk", "");
+            Phase(MarkState.Idle, _ready.Headline, _ready.Caption);
         }
         catch (System.OperationCanceledException)
         {
-            Phase(MarkState.Idle, "Tap and talk", "");
+            Phase(MarkState.Idle, _ready.Headline, _ready.Caption);
         }
         catch (Exception ex)
         {
             Android.Util.Log.Error("CircleAI.It", "voice turn failed: " + ex);
-            Phase(MarkState.Idle, "Tap and talk", "That did not work. Try again?");
+            Phase(MarkState.Idle, _ready.Headline, "That did not work. Try again?");
         }
         finally
         {
