@@ -457,6 +457,12 @@ public class HomeActivity : Activity
             // understood. Seeing their own words is how they know it heard right.
             Phase(MarkState.Thinking, "Thinking", $"“{heard}”");
 
+            // LOAD THE VOICE WHILE IT THINKS. Not after. The synthesiser needs
+            // nothing from the answer, so waiting for one before starting the other
+            // simply added its load time to every turn. Started here, un-awaited, it
+            // is normally ready before the first sentence exists.
+            var voice = CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, _ => { });
+
             _session ??= await Task.Run(async () =>
             {
                 var s = new CircleAI.Samples.It.ItSession(
@@ -465,27 +471,48 @@ public class HomeActivity : Activity
                 return s;
             });
 
-            // The streaming overload, but nothing is streamed to the screen: this
-            // turn is spoken, and a half-written sentence read aloud is worse than
-            // a whole one a second later. The callbacks are the seams the chat
-            // screen uses; here only the finished text matters.
+            // SPEAK AS IT WRITES. The old code waited for the last word before the
+            // first sound, so a 25-75 s answer was 25-75 s of silence. Sentences go
+            // to the mouth the moment they are complete; the rest of the answer is
+            // still being written while the first is being said.
+            await using var spoken = new SpokenReply(
+                voice,
+                lvl => RunOnUiThread(() => _mark.SetLevel(lvl)),
+                cts.Token);
+
+            var firstWords = true;
             var reply = await _session.RunTurnStreamingAsync(
-                heard, _ => { }, _ => { }, _ => { });
+                heard,
+                _ => { },
+                chunk =>
+                {
+                    // The mark flips to Speaking on the FIRST chunk, not when the
+                    // answer is complete — by then the phone is already talking.
+                    if (firstWords)
+                    {
+                        firstWords = false;
+                        Phase(MarkState.Speaking, "", "");
+                    }
+                    spoken.Add(chunk);
+                },
+                _ => { });
+
+            await spoken.FinishAsync();
             if (cts.IsCancellationRequested) return;
 
+            // Show the finished answer once it has been said, for anyone who is
+            // looking as well as listening.
             Phase(MarkState.Speaking, "", reply);
 
-            var (speaker, _) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, _ => { });
-            if (speaker is not null)
+            // SILENCE IS THE ONE ANSWER A DISTANT LISTENER CANNOT READ. If nothing
+            // was spoken the turn produced text on a screen nobody is looking at,
+            // which is indistinguishable from the thing being broken. Say so with a
+            // sound, since words are exactly what is unavailable.
+            if (!spoken.SpokeAnything)
             {
-                using var mouth = speaker;
-                var pcm = await mouth.Engine.SynthesiseAsync(reply, cts.Token);
-                if (pcm.AudioData.Length > 0)
-                {
-                    await using var player = new AndroidAudioPlayer();
-                    await player.PlayAsync(pcm.AudioData, pcm.SampleRate,
-                        pcm.Channels, pcm.BitsPerSample, cts.Token);
-                }
+                Earcon.CannotSpeak();
+                Phase(MarkState.Idle, "Tap and talk", "I could not say that out loud — it is written above.");
+                return;
             }
 
             Phase(MarkState.Idle, "Tap and talk", "");
@@ -553,12 +580,22 @@ public class HomeActivity : Activity
         // Arrives off the UI thread, and a wake mid-turn must not start a second
         // one — TalkOnce treats a re-entrant call as "stop", which would cancel the
         // very turn the wake just began.
-        hf.Woke += (_, phrase) => RunOnUiThread(() =>
+        hf.Woke += (_, phrase) =>
         {
-            if (_turn is not null) return;
-            Android.Util.Log.Info("CircleAI.It", $"woke on \"{phrase}\"");
-            TalkOnce();
-        });
+            // ANSWERED BEFORE THE UI THREAD EVEN GETS IT. Everything else about a
+            // wake — the circle changing, the caption — is on a screen the person
+            // who just called from another room is not looking at, and the first
+            // answer is 30-90 s away. One sound here is the whole difference
+            // between "it heard me" and "did that work?".
+            Earcon.Woke();
+
+            RunOnUiThread(() =>
+            {
+                if (_turn is not null) return;
+                Android.Util.Log.Info("CircleAI.It", $"woke on \"{phrase}\"");
+                TalkOnce();
+            });
+        };
 
         _handsFree = hf;
         hf.Start();
@@ -652,7 +689,10 @@ public class HomeActivity : Activity
             if (_state == s) return;
             _state = s;
             _tick = 0;
-            if (s != MarkState.Listening) _level = _shown = 0;
+            // Listening and Speaking both ride a real audio level — one coming in,
+            // one going out — so only the states with no sound of their own start
+            // from zero.
+            if (s is not (MarkState.Listening or MarkState.Speaking)) _level = _shown = 0;
             ClearAnimation();           // the states animate themselves; alpha would fight them
             Invalidate();
         }
@@ -676,6 +716,8 @@ public class HomeActivity : Activity
         public void SetLevel(float level)
         {
             _level = Math.Clamp(level, 0f, 1f);
+            // Speaking redraws on its own clock already, so nudging it here would
+            // just queue duplicate frames.
             if (_state == MarkState.Listening) Invalidate();
         }
 
@@ -697,7 +739,7 @@ public class HomeActivity : Activity
             _halo.Alpha = _state switch
             {
                 MarkState.Listening => (int)(28 + 46 * _shown),
-                MarkState.Speaking  => 52,
+                MarkState.Speaking  => (int)(40 + 34 * _shown),
                 _ => 28,
             };
             canvas.DrawCircle(cx, cy, r * 0.98f, _halo);
@@ -707,14 +749,31 @@ public class HomeActivity : Activity
             var ringBox = new RectF(cx - ringR, cy - ringR, cx + ringR, cy + ringR);
             canvas.DrawArc(ringBox, -50f, 280f, false, _ring);
 
+            // THREE PHASES, THREE DIFFERENT MOTIONS — not three brightnesses.
+            //
+            // They used to be told apart by alpha alone, and Speaking was not
+            // animated at all: a flat Alpha=255 at the idle spread, which is a lit
+            // circle sitting still. So "I am hearing you", "I am thinking" and "I am
+            // answering" all looked like the same glowing mark, and the one moment a
+            // person most needs feedback — the long wait — was the least legible.
+            //
+            // Motion is what the eye reads first, so each phase gets its own:
+            //
+            //   LISTENING  arcs SCALE with your voice. Reactive, driven by the mic —
+            //              it moves because YOU are moving it.
+            //   THINKING   a bright band TRAVELS outward through the arcs, over and
+            //              over. Directional and repeating: work in progress, no
+            //              claim about how much is left.
+            //   SPEAKING   arcs FIRE in sequence from the inside out, riding the
+            //              output level. Sound leaving the phone, the mirror image
+            //              of Listening pulling it in.
             for (var i = 0; i < 3; i++)
             {
-                // LISTENING pushes the arcs outward with your voice, so the mark
-                // grows as you speak. THINKING runs a slow wave through them, which
-                // reads as working rather than stuck. SPEAKING lights all three.
                 var spread = _state switch
                 {
                     MarkState.Listening => 0.16f + 0.16f * i + 0.07f * _shown * (i + 1),
+                    // Speaking breathes outward on the beat rather than with input.
+                    MarkState.Speaking  => 0.16f + 0.16f * i + 0.05f * SpeakPulse(i),
                     _ => 0.16f + 0.16f * i,
                 };
                 var ar = ringR + r * spread;
@@ -723,18 +782,59 @@ public class HomeActivity : Activity
                 _arc.Alpha = _state switch
                 {
                     MarkState.Listening => (int)Math.Clamp(70 + 185 * _shown * (1f - 0.22f * i), 40, 255),
-                    MarkState.Thinking  => (int)(90 + 130 * (0.5 + 0.5 * Math.Sin(_tick * 0.12 - i * 1.1))),
-                    MarkState.Speaking  => 255,
+                    MarkState.Thinking  => (int)Math.Clamp(60 + 195 * TravelBand(i), 40, 255),
+                    MarkState.Speaking  => (int)Math.Clamp(80 + 175 * SpeakPulse(i), 60, 255),
                     _ => _busy ? 255 : i switch { 0 => 235, 1 => 150, _ => 80 },
                 };
                 canvas.DrawArc(box, -34f, 68f, false, _arc);
             }
 
-            // Thinking is the only state with nothing external driving it, so it
-            // asks for the next frame itself. The others are redrawn by incoming
-            // audio levels or by a state change, and a self-scheduling redraw there
-            // would spin the CPU for no visible gain.
-            if (_state == MarkState.Thinking) { _tick++; PostInvalidateOnAnimation(); }
+            // Thinking and Speaking both animate on their own clock, so they ask for
+            // the next frame. Listening is redrawn by arriving audio levels and Idle
+            // is static — self-scheduling there would spin the CPU for no gain.
+            if (_state is MarkState.Thinking or MarkState.Speaking)
+            {
+                _tick++;
+                PostInvalidateOnAnimation();
+            }
+        }
+
+        /// <summary>
+        /// A bright band sweeping outward through the three arcs, for THINKING.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately a travelling position rather than a per-arc sine. Three arcs
+        /// fading in and out on their own phases read as a shimmer; one band moving
+        /// through them reads as something being carried from here to there, which is
+        /// what "working on it" should look like. Returns 0..1 for how lit arc
+        /// <paramref name="i"/> is right now.
+        /// </remarks>
+        float TravelBand(int i)
+        {
+            // Sweeps 0 -> 3 then wraps, so the band leaves the outer arc and
+            // re-enters at the ring, over and over.
+            var head = (_tick * 0.045f) % 3.2f;
+            var d = Math.Abs(head - i);
+            return Math.Max(0f, 1f - d);           // triangular falloff either side
+        }
+
+        /// <summary>
+        /// Arcs firing outward in sequence, for SPEAKING, scaled by output loudness.
+        /// </summary>
+        /// <remarks>
+        /// The inner arc leads and the outer follows, so the motion pushes AWAY from
+        /// the mark — the opposite direction to Listening, which pulls inward as you
+        /// talk. When the player reports a real output level the pulse rides it, so
+        /// the mark moves with the words rather than to a metronome; with no level it
+        /// still beats steadily, because a silent-looking mark during a spoken answer
+        /// is the bug this replaces.
+        /// </remarks>
+        float SpeakPulse(int i)
+        {
+            var phase = _tick * 0.11f - i * 0.8f;   // inner arc leads, outer trails
+            var beat  = 0.5 + 0.5 * Math.Sin(phase);
+            var gain  = 0.55f + 0.45f * _shown;     // louder speech, wider swing
+            return (float)(beat * gain);
         }
     }
 }
