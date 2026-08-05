@@ -1671,13 +1671,28 @@ public class MainActivity : Activity
     }
 
     /// <summary>Words the person actually said or the assistant actually replied.</summary>
+    /// <remarks>
+    /// A LONE SPACE IS CONTENT WHEN THE ANSWER IS STREAMING. This dropped any
+    /// whitespace-only chunk, which is fine for a whole message and wrong for a
+    /// fragment: the generator emits " " as its own chunk between words, so the
+    /// screen read "Three colours are blue, green, andyellow." — words fused at
+    /// exactly the chunk boundaries. Caught on the P30 the first time a reply ran
+    /// long enough to span several chunks.
+    /// <para>
+    /// So the guard now splits by direction. What the PERSON typed arrives whole
+    /// and is still rejected when blank. What the ASSISTANT streams is only
+    /// rejected when genuinely empty; an all-whitespace reply cannot leave a stray
+    /// bubble behind either, because EndReply removes one that never filled.
+    /// </para>
+    /// </remarks>
     void Say(string who, string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return;
+        var mine = who == "you";
+        if (mine ? string.IsNullOrWhiteSpace(text) : string.IsNullOrEmpty(text)) return;
         RunOnUiThread(() =>
         {
             _chat.Status(null);
-            if (who == "you") _chat.You(text.Trim());
+            if (mine) _chat.You(text.Trim());
             else _chat.Reply(text);
         });
     }
