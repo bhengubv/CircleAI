@@ -47,13 +47,27 @@ public class AbilitiesActivity : Activity
     /// <param name="Modality">Which models serve it.</param>
     sealed record Ability(string Title, string Blurb, ModelModality Modality);
 
+    /// <remarks>
+    /// WAKING IS LISTED ONLY WHEN THE BUILD CAN ACTUALLY WAKE. The chat-only APK
+    /// ships without the speech stack, so HandsFree and the wake screen are
+    /// compiled out — but the wake MODEL can still be sitting on disk from an
+    /// earlier install. This list is driven by modality, and the row's state is
+    /// driven by whether a model is present, so the lean build cheerfully
+    /// advertised "Waking ✓ On" on a phone that cannot wake at all. Seen on the
+    /// P30: Waking read On while the home screen correctly said "Tap and talk".
+    /// <para>
+    /// Files on disk are not an ability. An ability is code that runs.
+    /// </para>
+    /// </remarks>
     static readonly Ability[] Abilities =
     {
         new("Talking",   "Reads things out loud, in 74 languages",        ModelModality.Tts),
         new("Listening", "Understands you when you speak",                ModelModality.Asr),
         new("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         new("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
+#if IT_VOICE_ANDROID
         new("Waking",    "Hears you say \"Hey B\" without being touched", ModelModality.WakeWord),
+#endif
     };
 
     ModelRegistryService? _registry;
