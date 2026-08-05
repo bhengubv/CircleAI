@@ -500,11 +500,23 @@ public class HomeActivity : Activity
                 cts.Token);
 
             var firstWords = true;
+            var seenToolCall = false;
+            var watch = new System.Text.StringBuilder();
+
             var reply = await _session.RunTurnStreamingAsync(
                 heard,
                 _ => { },
                 chunk =>
                 {
+                    // NEVER READ A TOOL CALL ALOUD. The streaming path is the raw
+                    // generator — it does not execute tools — so when the model
+                    // decides to search, the call arrives here as ordinary text and
+                    // was spoken verbatim: a person asked for the weather and the
+                    // phone recited a line of JSON at them.
+                    watch.Append(chunk);
+                    if (!seenToolCall && LooksLikeToolCall(watch)) seenToolCall = true;
+                    if (seenToolCall) return;
+
                     // The mark flips to Speaking on the FIRST chunk, not when the
                     // answer is complete — by then the phone is already talking.
                     if (firstWords)
@@ -515,6 +527,27 @@ public class HomeActivity : Activity
                     spoken.Add(chunk);
                 },
                 _ => { });
+
+            // THE FAST PATH CANNOT USE TOOLS, SO EARN IT BACK ONLY WHEN NEEDED.
+            // Streaming exists to get sound out early and is right for the great
+            // majority of turns, which need no tool at all. When the model asks for
+            // one, that whole answer is void: re-run through the agentic path, which
+            // executes the call, feeds the result back, and answers from it. Two
+            // passes, but only for the turns that genuinely reach the world.
+            if (seenToolCall)
+            {
+                Phase(MarkState.Thinking, "Looking it up", "");
+                var tooled = await _session.RunToolTurnAsync(heard);
+                reply = tooled.Answer;
+                Android.Util.Log.Info("CircleAI.It",
+                    $"tool turn ran: [{string.Join(", ", tooled.ToolsCalled)}]");
+
+                if (!string.IsNullOrWhiteSpace(reply))
+                {
+                    Phase(MarkState.Speaking, "", "");
+                    spoken.Add(reply);
+                }
+            }
 
             await spoken.FinishAsync();
             if (cts.IsCancellationRequested) return;
@@ -567,6 +600,31 @@ public class HomeActivity : Activity
             // way back would be to leave the screen and return.
             _handsFree?.Start();
         }
+    }
+
+    /// <summary>Is the model asking to run a tool rather than answering?</summary>
+    /// <remarks>
+    /// Qwen wraps these in &lt;tool_call&gt;, which is the reliable marker and the
+    /// one the agentic parser keys on. The bare-JSON check is a safety net: the tag
+    /// can be split across streamed chunks or dropped entirely by a quantised model
+    /// that has half-remembered the format, and either way the text is a request to
+    /// act, not a sentence to read out.
+    /// <para>
+    /// Checked against the ACCUMULATED text, never a single chunk — "&lt;tool" and
+    /// "_call&gt;" routinely arrive separately.
+    /// </para>
+    /// </remarks>
+    static bool LooksLikeToolCall(System.Text.StringBuilder acc)
+    {
+        // Only the head matters: a tool call is what the model says INSTEAD of an
+        // answer, so it comes first. Scanning the whole buffer forever would let a
+        // long answer that merely mentions the words trip this.
+        var head = acc.Length <= 400 ? acc.ToString() : acc.ToString(0, 400);
+
+        if (head.Contains("<tool_call", StringComparison.OrdinalIgnoreCase)) return true;
+
+        return head.Contains("\"name\"", StringComparison.Ordinal)
+            && head.Contains("\"arguments\"", StringComparison.Ordinal);
     }
 
     /// <summary>Did the transcriber actually hear words, or just describe silence?</summary>
