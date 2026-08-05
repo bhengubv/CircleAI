@@ -500,10 +500,6 @@ public class HomeActivity : Activity
             await spoken.FinishAsync();
             if (cts.IsCancellationRequested) return;
 
-            // Show the finished answer once it has been said, for anyone who is
-            // looking as well as listening.
-            Phase(MarkState.Speaking, "", reply);
-
             // SILENCE IS THE ONE ANSWER A DISTANT LISTENER CANNOT READ. If nothing
             // was spoken the turn produced text on a screen nobody is looking at,
             // which is indistinguishable from the thing being broken. Say so with a
@@ -511,11 +507,26 @@ public class HomeActivity : Activity
             if (!spoken.SpokeAnything)
             {
                 Earcon.CannotSpeak();
-                Phase(MarkState.Idle, _ready.Headline, "I could not say that out loud — it is written above.");
+
+                // THE APOLOGY MUST NOT EAT THE ANSWER. The first version put the
+                // reply in the caption and then overwrote that same caption with
+                // "it is written above" — pointing at text it had just destroyed,
+                // on a screen where nothing was written above at all. Seen on the
+                // P30 the first time a wake-word turn ran end to end.
+                //
+                // There is ONE caption line. The answer gets it, because the answer
+                // is what the person asked for. The failure — and why — goes in the
+                // headline, which is also where a reason is most use.
+                var why = spoken.FailureReason is { Length: > 0 } reason
+                    ? $"Could not speak it — {reason}"
+                    : "Could not speak it";
+                Phase(MarkState.Idle, why, reply);
                 return;
             }
 
-            Phase(MarkState.Idle, _ready.Headline, _ready.Caption);
+            // Spoken and finished. Show the answer too, for anyone who is looking
+            // as well as listening, and put the invitation back.
+            Phase(MarkState.Idle, _ready.Headline, reply);
         }
         catch (System.OperationCanceledException)
         {

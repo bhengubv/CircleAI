@@ -98,6 +98,16 @@ public sealed class SpokenReply : IAsyncDisposable
     /// </remarks>
     public bool SpokeAnything { get; private set; }
 
+    /// <summary>Why nothing was spoken, in words, when nothing was.</summary>
+    /// <remarks>
+    /// KEPT BECAUSE "it went wrong" IS NOT A BUG REPORT. The first time this path
+    /// fired on the P30 the screen apologised and the reason was a Warn line that
+    /// had already rolled out of the log buffer, so the failure was unexplainable
+    /// after the fact. The reason now travels with the result and can be put on
+    /// the screen, which is the one place it is guaranteed to be seen.
+    /// </remarks>
+    public string? FailureReason { get; private set; }
+
     /// <summary>Feeds one streamed chunk of the answer in.</summary>
     public void Add(string chunk)
     {
@@ -166,10 +176,27 @@ public sealed class SpokenReply : IAsyncDisposable
     {
         // Whatever is left of the voice load happens here, once, off the caller's
         // path — by now it has usually finished during the thinking.
-        var (speaker, status) = await _voice.ConfigureAwait(false);
+        CircleAI.Samples.It.Voice.ItSpeaker? speaker;
+        string status;
+        try
+        {
+            (speaker, status) = await _voice.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The voice is loaded in parallel with the brain now, so it can fail on
+            // its own — most likely for memory, since both want hundreds of MB on a
+            // phone that has 3.7 GB in total. That throw used to escape into the
+            // pump task and vanish.
+            FailureReason = "voice did not load: " + Short(ex);
+            Log.Warn(Tag, FailureReason);
+            return;
+        }
+
         if (speaker is null)
         {
-            Log.Warn(Tag, "no voice, answer will be text only: " + status);
+            FailureReason = string.IsNullOrWhiteSpace(status) ? "no voice available" : status;
+            Log.Warn(Tag, "no voice, answer will be text only: " + FailureReason);
             return;
         }
 
@@ -204,10 +231,24 @@ public sealed class SpokenReply : IAsyncDisposable
             catch (Exception ex)
             {
                 // One sentence failing is not the answer failing. Keep going: a
-                // gap mid-answer beats stopping mid-answer.
+                // gap mid-answer beats stopping mid-answer. The reason is kept only
+                // while nothing at all has been said — once some of the answer is
+                // out loud, a stumble is not worth reporting as a failure.
+                if (!SpokeAnything) FailureReason = "synthesis failed: " + Short(ex);
                 Log.Warn(Tag, "sentence not spoken: " + ex.Message);
             }
         }
+    }
+
+    /// <summary>The useful half of an exception, short enough for a caption.</summary>
+    static string Short(Exception ex)
+    {
+        // The innermost message is the one that names the actual cause; the outer
+        // wrappers just say something inside them failed.
+        var e = ex;
+        while (e.InnerException is { } inner) e = inner;
+        var m = e.Message.Trim();
+        return m.Length <= 90 ? m : m[..90] + "…";
     }
 
     /// <summary>Mean amplitude of a PCM buffer, 0..1, for driving the mark.</summary>
