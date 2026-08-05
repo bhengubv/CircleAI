@@ -87,6 +87,13 @@ public class HomeActivity : Activity
     {
         base.OnCreate(savedInstanceState);
         ActionBar?.Hide();
+#if IT_VOICE_ANDROID
+        // THIS SCREEN IS THE LAUNCHER AND IT SPEAKS, so it has to do the process
+        // wiring itself. It used to rely on MainActivity having run first, which is
+        // only true if you went in through the text box — so a wake-word turn
+        // produced an answer nobody could hear.
+        VoiceWiring.Install(this);
+#endif
         BuildUi();
         _ = CheckReadyAsync();
     }
@@ -602,7 +609,16 @@ public class HomeActivity : Activity
 
             RunOnUiThread(() =>
             {
-                if (_turn is not null) return;
+                // SAY WHEN A WAKE IS THROWN AWAY. This guard is right — a wake in
+                // the middle of a turn must not start a second one — but it used to
+                // drop the phrase in silence, so a stuck turn would make the phone
+                // beep at every "Hey B" and then do nothing, forever, with no trace
+                // of why. If this line starts repeating, the turn never cleared.
+                if (_turn is not null)
+                {
+                    Android.Util.Log.Warn("CircleAI.It", $"woke on \"{phrase}\" but a turn is already running — ignored");
+                    return;
+                }
                 Android.Util.Log.Info("CircleAI.It", $"woke on \"{phrase}\"");
                 TalkOnce();
             });

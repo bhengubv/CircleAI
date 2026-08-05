@@ -108,6 +108,18 @@ public sealed class HandsFree : IAsyncDisposable
             await using var mic = new AndroidAudioCapture();
             var pcm = new float[1600];
 
+            // A HEARTBEAT, BECAUSE SILENCE HAS TWO CAUSES AND THEY LOOK THE SAME.
+            // Nothing is logged unless the phrase fires or the confirmer vetoes it,
+            // so a phone that hears nothing and a phone that is not listening at all
+            // produce identical logs — which is exactly the position I was in when
+            // the wake word stopped responding and every structural check said it
+            // was fine. This says, periodically, how much audio has arrived and how
+            // loud it was, so "deaf" can be told from "quiet" from "stopped".
+            var chunks = 0L;
+            var since  = 0L;
+            var peak   = 0f;
+            var sum    = 0.0;
+
             await foreach (var chunk in mic.CaptureAsync(ct).ConfigureAwait(false))
             {
                 // PCM16 little-endian to float in [-1, 1]. NOT scaled to the int16
@@ -119,7 +131,23 @@ public sealed class HandsFree : IAsyncDisposable
                 for (var i = 0; i < samples; i++)
                     pcm[i] = (short)(span[i * 2] | (span[i * 2 + 1] << 8)) / 32768f;
 
+                for (var i = 0; i < samples; i++)
+                {
+                    var a = Math.Abs(pcm[i]);
+                    if (a > peak) peak = a;
+                    sum += a;
+                }
+                chunks++; since += samples;
+
                 kws.AcceptWaveform(pcm.AsSpan(0, samples));
+
+                // Roughly every 5 s at 16 kHz. Cheap, and it is the only evidence
+                // that the microphone is actually delivering sound.
+                if (since >= 80_000)
+                {
+                    Log.Info(Tag, $"mic alive: {chunks} chunks, peak {peak:F3}, mean {sum / since:F4}");
+                    since = 0; peak = 0f; sum = 0;
+                }
             }
         }
         catch (OperationCanceledException)

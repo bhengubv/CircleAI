@@ -73,9 +73,12 @@ public class MainActivity : Activity
         // On-device TTS phonemes come from the SEPARATE espeak G2P app
         // (com.bhengubv.espeakng) across a process boundary — espeak-ng is GPL and is
         // never linked into CircleAI. If that app is absent, TTS degrades to text
-        // (OutOfProcessEspeakPhonemizer throws a clear reason, caught by RunTts).
-        CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory =
-            voice => new OutOfProcessEspeakPhonemizer(this, voice);
+        // (OutOfProcessEspeakPhonemizer throws a clear reason, surfaced on screen).
+        //
+        // Moved into VoiceWiring because this assignment used to live only here, and
+        // this is NOT the launcher — so waking the phone from the home screen found
+        // the factory unset and could not speak a word of English.
+        VoiceWiring.Install(this);
 
         // Start warming ToucanTTS now. Its three graphs take minutes to load off
         // storage but only ~4 s to synthesise once resident, so the load belongs at
