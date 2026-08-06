@@ -45,6 +45,17 @@ public sealed class ItSpeaker : IDisposable
     public ITtsEngine Engine => _engine;
 
     /// <summary>
+    /// Answers the next utterances in <paramref name="languageCode"/>.
+    /// </summary>
+    /// <remarks>
+    /// Set from the transcriber's detected language, so a question asked in
+    /// isiZulu is answered in isiZulu by the same speaker. Unknown codes leave the
+    /// voice where it was rather than guessing.
+    /// </remarks>
+    public void SpeakLanguage(string? languageCode)
+        => _engine.LanguageId = LanguageIdFor(languageCode);
+
+    /// <summary>
     /// The same voice, but respelling borrowings for <paramref name="hostLanguage"/>
     /// on the way out.
     /// </summary>
@@ -116,11 +127,73 @@ public sealed class ItSpeaker : IDisposable
     /// 8=ven 9=xho 10=zul.
     /// </summary>
     /// <remarks>
-    /// English, because the assistant's own replies are English. The voice is still
-    /// a South African speaker, which is the point — this product should not sound
-    /// American by default, and it certainly should not sound Nepali by accident.
+    /// The DEFAULT only. A turn answers in the language it was asked in — see
+    /// <see cref="LanguageIdFor"/> — because being spoken to in isiZulu and
+    /// answered in English is the rudest thing a multilingual assistant can do.
     /// </remarks>
     public static long PreferredLanguageId { get; set; } = 1;
+
+    /// <summary>
+    /// The eleven languages this voice speaks, by the codes a transcriber reports.
+    /// </summary>
+    /// <remarks>
+    /// Whisper returns ISO 639-1 where it has one ("zu", "af", "xh") and 639-3
+    /// otherwise, so both are accepted for each language. "und" — whisper's own
+    /// marker for "could not tell" — deliberately has no entry and falls back
+    /// rather than guessing at somebody's language.
+    /// </remarks>
+    private static readonly Dictionary<string, long> LanguageIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["af"]  = 0,  ["afr"] = 0,
+        ["en"]  = 1,  ["eng"] = 1,
+        ["nr"]  = 2,  ["nbl"] = 2,
+        ["nso"] = 3,  ["ns"]  = 3,
+        ["st"]  = 4,  ["sot"] = 4,
+        ["ss"]  = 5,  ["ssw"] = 5,
+        ["tn"]  = 6,  ["tsn"] = 6,
+        ["ts"]  = 7,  ["tso"] = 7,
+        ["ve"]  = 8,  ["ven"] = 8,
+        ["xh"]  = 9,  ["xho"] = 9,
+        ["zu"]  = 10, ["zul"] = 10,
+    };
+
+    /// <summary>
+    /// The voice id for a spoken language code, or the default when it is unknown.
+    /// </summary>
+    /// <remarks>
+    /// ANSWER IN THE LANGUAGE YOU WERE ASKED IN. The transcriber already detects
+    /// this — TranscriptionResult carries LanguageCode and whisper runs in "auto" —
+    /// and the value was simply thrown away, so every reply came out in whatever
+    /// langid happened to be pinned.
+    /// </remarks>
+    public static long LanguageIdFor(string? languageCode)
+        => !string.IsNullOrWhiteSpace(languageCode)
+           && LanguageIds.TryGetValue(languageCode.Trim(), out var id)
+            ? id
+            : PreferredLanguageId;
+
+    /// <summary>The language's name, for telling the model which to reply in.</summary>
+    /// <remarks>
+    /// Names rather than codes, because a small model follows "Reply only in
+    /// isiZulu" far more reliably than "Reply only in zu". Returns null when the
+    /// language is unknown or already English, so an English turn is not burdened
+    /// with a pointless instruction.
+    /// </remarks>
+    public static string? NameForLanguage(string? languageCode) =>
+        LanguageIdFor(languageCode) switch
+        {
+            0  => "Afrikaans",
+            2  => "isiNdebele",
+            3  => "Sepedi",
+            4  => "Sesotho",
+            5  => "siSwati",
+            6  => "Setswana",
+            7  => "Xitsonga",
+            8  => "Tshivenda",
+            9  => "isiXhosa",
+            10 => "isiZulu",
+            _  => null,          // English, or not one of the eleven
+        };
 
     /// <summary>
     /// Selects the best TTS voice the device can hold, downloads it (first run),

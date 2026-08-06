@@ -68,6 +68,7 @@ public sealed class SpokenReply : IAsyncDisposable
     readonly StringBuilder _pending = new();
     readonly CancellationToken _ct;
     readonly Action<float>? _onLevel;
+    readonly string? _language;
     readonly Task _pump;
     bool _closed;
 
@@ -79,15 +80,21 @@ public sealed class SpokenReply : IAsyncDisposable
     /// Reports how loud the sentence now playing is, 0..1, so the mark can move
     /// with the words instead of to a metronome.
     /// </param>
+    /// <param name="languageCode">
+    /// The language the person spoke, as the transcriber reported it, so the reply
+    /// is voiced in the same one. Null or unknown leaves the voice at its default.
+    /// </param>
     public SpokenReply(
         Task<(CircleAI.Samples.It.Voice.ItSpeaker?, string)> voice,
         Action<float>? onLevel,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? languageCode = null)
     {
-        _voice   = voice;
-        _onLevel = onLevel;
-        _ct      = ct;
-        _pump    = Task.Run(PumpAsync);
+        _voice    = voice;
+        _onLevel  = onLevel;
+        _ct       = ct;
+        _language = languageCode;
+        _pump     = Task.Run(PumpAsync);
     }
 
     /// <summary>True once at least one sentence has actually been spoken aloud.</summary>
@@ -201,6 +208,9 @@ public sealed class SpokenReply : IAsyncDisposable
         }
 
         using var mouth = speaker;
+
+        // Voice the reply in the language it was asked in.
+        mouth.SpeakLanguage(_language);
         await using var player = new AndroidAudioPlayer();
 
         while (true)
@@ -282,3 +292,4 @@ public sealed class SpokenReply : IAsyncDisposable
     }
 }
 #endif
+

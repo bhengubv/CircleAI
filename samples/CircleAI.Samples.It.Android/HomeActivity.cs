@@ -464,7 +464,14 @@ public class HomeActivity : Activity
             if (listener is null) { Phase(MarkState.Idle, _ready.Headline, lStatus); return; }
             await using var ears = listener;
 
-            var heard = (await ears.Transcriber.TranscribeAsync(audio, cts.Token)).Text?.Trim();
+            // KEEP THE WHOLE RESULT, NOT JUST THE WORDS. The transcriber runs in
+            // "auto" and reports the language it heard; that value was being dropped
+            // on the floor, so a question asked in isiZulu came back in English, in
+            // whatever voice happened to be pinned. It is the only signal we have
+            // about which language the person is actually speaking.
+            var transcript = await ears.Transcriber.TranscribeAsync(audio, cts.Token);
+            var heard      = transcript.Text?.Trim();
+            var spokenLang = transcript.LanguageCode;
             if (!IsSomethingSaid(heard))
             {
                 Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");
@@ -497,14 +504,27 @@ public class HomeActivity : Activity
             await using var spoken = new SpokenReply(
                 voice,
                 lvl => RunOnUiThread(() => _mark.SetLevel(lvl)),
-                cts.Token);
+                cts.Token,
+                spokenLang);
 
             var firstWords = true;
             var seenToolCall = false;
             var watch = new System.Text.StringBuilder();
 
+            // ANSWER IN THE LANGUAGE YOU WERE ASKED IN — both halves of it.
+            //
+            // The VOICE follows the detected language, so isiZulu in means isiZulu
+            // out from the same speaker rather than a South African reading English.
+            // And the MODEL is told, in the turn itself, to reply in that language:
+            // setting the voice alone would produce English words spoken with Zulu
+            // phonetics, which is worse than either.
+            var replyIn = CircleAI.Samples.It.Voice.ItSpeaker.NameForLanguage(spokenLang);
+            var asked   = replyIn is null
+                ? heard
+                : $"{heard}\n\n(Reply only in {replyIn}.)";
+
             var reply = await _session.RunTurnStreamingAsync(
-                heard,
+                asked,
                 _ => { },
                 chunk =>
                 {
