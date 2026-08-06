@@ -168,10 +168,15 @@ public sealed class ItSpeaker : IDisposable
         // out-of-process client into MobilePhonemizerFactory.
         var onMobile = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
         string? espeak = null;
+        // Checked but NOT fatal yet: a grapheme-driven voice needs no phonemizer at
+        // all, and failing here would silence a phone that was perfectly able to
+        // speak. The decision moves to below, once the model's own config has said
+        // which alphabet it wants.
+        string? phonemizerProblem = null;
         if (onMobile)
         {
             if (MobilePhonemizerFactory is null)
-                return (null, "on-device phonemizer not wired — set ItSpeaker.MobilePhonemizerFactory (the out-of-process espeak G2P client)");
+                phonemizerProblem = "on-device phonemizer not wired — set ItSpeaker.MobilePhonemizerFactory (the out-of-process espeak G2P client)";
         }
         else
         {
@@ -216,9 +221,30 @@ public sealed class ItSpeaker : IDisposable
         if (onnx is null)
             return (null, $"no .onnx found under '{dir}'");
 
-        IPhonemizer phonemizer = onMobile
-            ? MobilePhonemizerFactory!("en-us")             // out-of-process espeak service
-            : new EspeakPhonemizer("en-us", espeak);         // shell to the binary
+        // THE FRONT END MUST MATCH THE MODEL, and this one did not.
+        //
+        // The SA voice is GRAPHEME-driven — its sidecar says phoneme_type: "text",
+        // meaning the characters ARE the tokens. Running espeak first turns "hello"
+        // into IPA, and IPA symbols are mostly absent from that model's map, so they
+        // are dropped or mismapped and the output stops sounding like the language
+        // it was asked for. Feeding a text model phonemes is not a worse accent; it
+        // is the wrong alphabet.
+        //
+        // So the config decides. Espeak voices get espeak; text voices get the
+        // passthrough, which is what OnnxTtsEngine already defaults to when the
+        // phonemizer is null.
+        var voiceCfg = PiperVoiceConfig.TryLoadForModel(onnx);
+        var graphemeDriven = string.Equals(voiceCfg?.PhonemeType, "text", StringComparison.OrdinalIgnoreCase);
+
+        // Only an espeak voice can be blocked by a missing phonemizer.
+        if (!graphemeDriven && phonemizerProblem is not null)
+            return (null, phonemizerProblem);
+
+        IPhonemizer? phonemizer = graphemeDriven
+            ? null                                           // characters are the phonemes
+            : onMobile
+                ? MobilePhonemizerFactory!("en-us")          // out-of-process espeak service
+                : new EspeakPhonemizer("en-us", espeak);     // shell to the binary
 
         var engine = new OnnxTtsEngine(onnx, phonemizer);
 
