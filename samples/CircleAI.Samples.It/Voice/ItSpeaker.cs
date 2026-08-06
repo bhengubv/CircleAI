@@ -80,6 +80,48 @@ public sealed class ItSpeaker : IDisposable
     /// </summary>
     public static Func<string, IPhonemizer>? MobilePhonemizerFactory { get; set; }
 
+    // ── WHICH VOICE IT! ACTUALLY SPEAKS IN ──────────────────────────────────
+    //
+    // THIS WAS DECIDED AND THEN LOST. The 11-language South African model carries
+    // 130 speaker embeddings; speaker 129 is the isiZulu voice, and a centroid of
+    // all 130 was later appended as speaker 130 — "a speaker who has never
+    // existed" — to generalise across languages.
+    //
+    // None of that reached this file. TryCreateAsync asked the selector for
+    // whatever TTS FITS THE DEVICE and ran the first .onnx in the bundle, with no
+    // speaker id and no language id. On a 4 GB phone that resolves to an MMS voice
+    // — mms-npi, Nepali, 114 MB — so the assistant answered English in a South
+    // Asian accent while the greeting screen, which goes through ItTtsProbe and
+    // DOES pass ids, sang in eleven languages. Two paths, one of them voiceless.
+    //
+    // The engine has always had the inputs (sid / langid). They were simply never
+    // set here.
+
+    /// <summary>The multi-speaker, multi-lingual South African voice.</summary>
+    private const string PreferredVoice = "Vits-11ZA";
+
+    /// <summary>
+    /// Speaker to answer as. 129 is the isiZulu voice that ships in the bucket.
+    /// </summary>
+    /// <remarks>
+    /// The centroid is speaker 130, but it lives in a LOCALLY MODIFIED model with
+    /// 131 rows that was side-loaded and never published — the bucket copy stops at
+    /// 129, so asking for 130 here would index past the end of the table. Publish
+    /// the 131-row model and this becomes a one-line change.
+    /// </remarks>
+    public static long PreferredSpeakerId { get; set; } = 129;
+
+    /// <summary>
+    /// Language to answer in: 0=afr 1=eng 2=nbl 3=nso 4=sot 5=ssw 6=tsn 7=tso
+    /// 8=ven 9=xho 10=zul.
+    /// </summary>
+    /// <remarks>
+    /// English, because the assistant's own replies are English. The voice is still
+    /// a South African speaker, which is the point — this product should not sound
+    /// American by default, and it certainly should not sound Nepali by accident.
+    /// </remarks>
+    public static long PreferredLanguageId { get; set; } = 1;
+
     /// <summary>
     /// Selects the best TTS voice the device can hold, downloads it (first run),
     /// and wires the synthesis engine. Returns null with a reason when the chain
@@ -97,11 +139,26 @@ public sealed class ItSpeaker : IDisposable
         // Plan, not a nullable pick — see ItListener. TTS likewise has no
         // non-model fallback (the de-Googled rule rules out the platform engine),
         // so unavailable means silent, and the plan says why in one sentence.
-        var plan = selector.PlanFor(probe, ModelModality.Tts);
-        if (!plan.IsAvailable || plan.Model is null)
-            return (null, plan.Reason);
-
-        var pick = plan.Model;
+        // ASK FOR THE VOICE BY NAME FIRST. The selector answers "what TTS fits this
+        // device", which is the right question for a phone with no chosen voice and
+        // the wrong one for a product that HAS chosen. Fit alone put a Nepali voice
+        // in an English assistant's mouth.
+        string modelId;
+        string why;
+        if (registry.GetLatestModel(PreferredVoice) is not null)
+        {
+            modelId = PreferredVoice;
+            why     = "chosen";
+        }
+        else
+        {
+            // Not catalogued on this build — fall back to device fit rather than
+            // going mute, and say so, because the accent will not be the intended one.
+            var plan = selector.PlanFor(probe, ModelModality.Tts);
+            if (!plan.IsAvailable || plan.Model is null) return (null, plan.Reason);
+            modelId = plan.Model.ModelId;
+            why     = $"best fit — '{PreferredVoice}' is not in the registry";
+        }
 
         // PHONEMIZER CHOICE IS PLATFORM-DEPENDENT.
         // Desktop shells out to the espeak-ng *executable* (already out-of-process).
@@ -125,14 +182,14 @@ public sealed class ItSpeaker : IDisposable
                 return (null, "espeak-ng not found (install it or add to PATH) — TTS needs it for arbitrary text");
         }
 
-        var entry = registry.GetLatestModel(pick.ModelId);
+        var entry = registry.GetLatestModel(modelId);
         if (entry is null)
-            return (null, $"registry has no entry for '{pick.ModelId}'");
+            return (null, $"registry has no entry for '{modelId}'");
 
         if (entry.BundleFiles is null || string.IsNullOrWhiteSpace(entry.Repo))
             return (null, $"'{entry.Name}' is not a downloadable bundle");
 
-        log?.Invoke($"voice   : {entry.Name} ({pick.Quality}) from {entry.Source}:{entry.Repo}");
+        log?.Invoke($"voice   : {entry.Name} ({why}) from {entry.Source}:{entry.Repo}");
 
         var specs = new List<BundleFileSpec>(entry.BundleFiles.Count);
         foreach (var f in entry.BundleFiles)
@@ -164,8 +221,15 @@ public sealed class ItSpeaker : IDisposable
             : new EspeakPhonemizer("en-us", espeak);         // shell to the binary
 
         var engine = new OnnxTtsEngine(onnx, phonemizer);
+
+        // THE TWO LINES THAT WERE MISSING. Ignored by single-speaker voices, which
+        // declare no sid/langid input, so this is safe on the fallback path too.
+        engine.SpeakerId  = PreferredSpeakerId;
+        engine.LanguageId = PreferredLanguageId;
+
         log?.Invoke($"engine  : OnnxTtsEngine on {Path.GetFileName(onnx)} " +
-                    $"({(onMobile ? "out-of-process espeak" : espeak ?? "espeak on PATH")})");
+                    $"(sid {PreferredSpeakerId}, langid {PreferredLanguageId}, " +
+                    $"{(onMobile ? "out-of-process espeak" : espeak ?? "espeak on PATH")})");
         return (new ItSpeaker(engine), "ready");
     }
 
@@ -225,3 +289,4 @@ public sealed class ItSpeaker : IDisposable
         w.Write(pcm);
     }
 }
+
