@@ -299,6 +299,37 @@ public class HomeActivity : Activity
         // announced this as a thing you write to. The circle above is the product;
         // this is here for the library, the late-night kitchen, and anyone who
         // would simply rather not talk out loud.
+#if IT_VOICE_ANDROID
+        // ONE TAP, ELEVEN LANGUAGES, NO SETTINGS SCREEN. Detection was answering
+        // isiXhosa speakers in isiZulu often enough to be an insult, so the person
+        // says once and the phone remembers. Sits directly under the circle because
+        // it is part of talking, not configuration.
+        var lang = Ui.Label(this, "", 15f, Ui.Blue, bold: true);
+        lang.Gravity = GravityFlags.Center;
+        lang.SetPadding(0, Ui.Dp(this, 12), 0, Ui.Dp(this, 12));   // 48dp target
+        lang.Clickable = true;
+        void ShowLang() => lang.Text = "Speaking " + SpokenLanguage.NameOf(SpokenLanguage.Current(this));
+        ShowLang();
+        lang.Click += (s, e) =>
+        {
+            var names = new string[SpokenLanguage.All.Length];
+            for (var i = 0; i < names.Length; i++) names[i] = SpokenLanguage.All[i].Name;
+
+            new Android.App.AlertDialog.Builder(this)
+                .SetTitle("Which language?")!
+                .SetItems(names, (_, ev) =>
+                {
+                    SpokenLanguage.Set(this, SpokenLanguage.All[ev.Which].Code);
+                    ShowLang();
+                })!
+                .Show();
+        };
+        var llp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        llp.LeftMargin = llp.RightMargin = pad;
+        root.AddView(lang, llp);
+#endif
+
         var typeInstead = Ui.Label(this, "Or type instead", 15f, Ui.Blue, bold: true);
         typeInstead.Gravity = GravityFlags.Center;
         typeInstead.SetPadding(0, Ui.Dp(this, 14), 0, Ui.Dp(this, 14));   // 48dp target
@@ -464,14 +495,15 @@ public class HomeActivity : Activity
             if (listener is null) { Phase(MarkState.Idle, _ready.Headline, lStatus); return; }
             await using var ears = listener;
 
-            // KEEP THE WHOLE RESULT, NOT JUST THE WORDS. The transcriber runs in
-            // "auto" and reports the language it heard; that value was being dropped
-            // on the floor, so a question asked in isiZulu came back in English, in
-            // whatever voice happened to be pinned. It is the only signal we have
-            // about which language the person is actually speaking.
+            // THE PERSON'S CHOICE BEATS THE DETECTOR. Whisper reports a language and
+            // for a while the turn followed it, but tiny cannot reliably tell the
+            // Nguni languages apart — isiXhosa and siSwati both come back as "zu",
+            // and a lot of everything comes back as "und". Being answered in the
+            // wrong language is precisely the insult this product exists to avoid,
+            // so the setting under the circle wins and detection is not consulted.
             var transcript = await ears.Transcriber.TranscribeAsync(audio, cts.Token);
             var heard      = transcript.Text?.Trim();
-            var spokenLang = transcript.LanguageCode;
+            var spokenLang = SpokenLanguage.Current(this);
             if (!IsSomethingSaid(heard))
             {
                 Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");
