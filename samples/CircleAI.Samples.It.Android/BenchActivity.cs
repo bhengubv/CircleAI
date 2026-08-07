@@ -102,6 +102,17 @@ public class BenchActivity : Activity
         // Delete the bundle afterwards, so a ladder can walk past what the
         // phone can store. 33 GB free does not hold 14B and 30B and 35B.
         var purge  = Intent?.GetBooleanExtra("purge", false) ?? false;
+
+        // Clear the store and stop. The ladder needs this between phases: the
+        // rungs already measured are still holding ~13 GB, and the 35B needs
+        // 22.8 GB of the 29 the phone has. Without it the big models are
+        // "skipped, not enough disk" — which looks like a verdict and is not.
+        if (Intent?.GetBooleanExtra("purgeall", false) ?? false)
+        {
+            PurgeAll();
+            return;
+        }
+
         _ = RunAsync(model, lean, maxTok, purge);
     }
 
@@ -221,6 +232,29 @@ public class BenchActivity : Activity
 
         await session.DisposeAsync();
         if (purge) Purge(model);
+    }
+
+    /// <summary>Empties the model store, then says what that bought.</summary>
+    void PurgeAll()
+    {
+        try
+        {
+            var root = ModelDir();
+            if (!System.IO.Directory.Exists(root)) { Say($"purgeall: no store at {root}"); return; }
+
+            Say($"purgeall: {FreeGb():F1} GB free before");
+            foreach (var dir in System.IO.Directory.GetDirectories(root))
+            {
+                try
+                {
+                    System.IO.Directory.Delete(dir, recursive: true);
+                    Say("  removed " + System.IO.Path.GetFileName(dir));
+                }
+                catch (Exception ex) { Say($"  kept {System.IO.Path.GetFileName(dir)}: {Innermost(ex)}"); }
+            }
+            Say($"purgeall: {FreeGb():F1} GB free after");
+        }
+        catch (Exception ex) { Say("purgeall failed: " + Innermost(ex)); }
     }
 
     /// <summary>Free space on the volume holding the model store.</summary>
