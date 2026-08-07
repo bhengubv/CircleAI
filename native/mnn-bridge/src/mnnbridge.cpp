@@ -475,6 +475,10 @@ MNNBRIDGE_API int mnn_llm_generate_stream_text(
         // prompt = how many tokens it had to read before it could say anything.
         // tokenise / prefill / decode, split — so a slow answer names its own
         // cause instead of being one opaque number.
+        // Sizes and timings only — never the text. Dumping the prompt head found
+        // both remaining bugs (a skill list that moved between turns, and a
+        // leading space that broke every prefix match) and was then removed:
+        // this runs on a person's phone, and their questions are not diagnostics.
         BRIDGE_LOG("gen: prompt=%d tok | tokenise=%ld ms | prefill=%ld ms | "
                    "decode=%ld ms | total=%ld ms | %d chunks",
                    (int)input_ids.size(),

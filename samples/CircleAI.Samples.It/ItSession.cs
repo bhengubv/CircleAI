@@ -27,7 +27,24 @@ namespace CircleAI.Samples.It;
 /// </summary>
 public sealed class ItSession : IAsyncDisposable
 {
-    private const string Prompt = "You are IT! - a dry, competent, on-device assistant.";
+    /// <remarks>
+    /// THE BREVITY LINE IS NOT STYLE, IT IS LATENCY. This is answered out loud
+    /// on a phone that decodes about seven tokens a second, so every sentence
+    /// the model adds is several more seconds of talking — and the whole answer
+    /// then sits in the history and gets prefilled again on the next question.
+    /// Measured on a P30 Lite: one unprompted answer ran to 1 915 characters,
+    /// 64 seconds of decode, and pushed the following turn's prompt to 586
+    /// tokens and its first token out to 41 seconds. One long answer cost two
+    /// turns.
+    ///
+    /// Asked for rather than truncated. A cap alone cuts the model off
+    /// mid-sentence, which sounds broken; told to be brief it finishes properly
+    /// inside the budget, and the cap stays as a backstop.
+    /// </remarks>
+    private const string Prompt =
+        "You are IT! - a dry, competent, on-device assistant. " +
+        "Answer in one or two short sentences. Do not list options or explain " +
+        "your reasoning unless you are asked to.";
 
     private readonly AIService _brain;
     private readonly NeuronNode _it;
@@ -170,6 +187,13 @@ public sealed class ItSession : IAsyncDisposable
                 DefaultGenerationOptions = new GenerationOptions
                 {
                     ContinueConversation = true,
+                    // A BACKSTOP, not the plan — the brevity instruction in the
+                    // system prompt is what should keep answers short. 512 (the
+                    // default) is 73 seconds of speech at this phone's decode
+                    // rate; 160 is about four sentences, which is longer than
+                    // any answer here should need and short enough that a model
+                    // that ignores the instruction cannot hold the floor.
+                    MaxTokens = 160,
                 },
             };
 

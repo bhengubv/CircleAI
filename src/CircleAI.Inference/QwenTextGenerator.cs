@@ -70,6 +70,66 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// </remarks>
     private string? _kvText;
 
+    /// <summary>How much of <see cref="_kvText"/> was prompt; the rest is answer.</summary>
+    private int _kvPromptLength;
+
+    /// <summary>
+    /// Where the new prompt can be picked up from, given what the cache holds,
+    /// or 0 when it cannot be reused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// EXACT ON THE PROMPT, WHITESPACE-TOLERANT ON THE ANSWER — and the split
+    /// matters, because the two halves come from different places and only one
+    /// of them is under anyone's control.
+    /// </para>
+    /// <para>
+    /// The prompt is rendered by the template on both calls and must match byte
+    /// for byte; any difference there is a real change of instructions.
+    /// </para>
+    /// <para>
+    /// The answer is not. The cache holds what the MODEL emitted; the new prompt
+    /// holds what the CALLER stored and the template then re-rendered. Measured
+    /// on a P30 Lite, those differed by one character — the model began " The
+    /// capital of France is Paris." with a leading space, and the history kept it
+    /// without. Divergence at index 407 of 439, on the first character of the
+    /// reply, on every single turn. An exact comparison can therefore never
+    /// succeed for any model that opens with whitespace, which is most of them.
+    /// </para>
+    /// <para>
+    /// Tolerating whitespace here is safe in a way that tolerating anything else
+    /// would not be: the differing tokens are the assistant's own spacing in its
+    /// own prior turn, and the words either side are identical. If a single word
+    /// differs, this returns 0 and the whole conversation is prefilled again.
+    /// </para>
+    /// </remarks>
+    private static int ResumePoint(string kvText, int kvPromptLength, string fullPrompt)
+    {
+        if (kvPromptLength <= 0 || kvPromptLength > kvText.Length) return 0;
+        if (fullPrompt.Length <= kvPromptLength) return 0;
+
+        // The instructions and every settled turn: exact.
+        if (string.CompareOrdinal(kvText, 0, fullPrompt, 0, kvPromptLength) != 0) return 0;
+
+        var cachedAnswer = kvText.AsSpan(kvPromptLength);
+
+        // Walk the new prompt from the same point, matching the cached answer's
+        // non-whitespace characters in order. Whitespace on either side is
+        // skipped rather than required to line up.
+        int i = kvPromptLength, a = 0;
+        while (a < cachedAnswer.Length)
+        {
+            if (char.IsWhiteSpace(cachedAnswer[a])) { a++; continue; }
+            while (i < fullPrompt.Length && char.IsWhiteSpace(fullPrompt[i])) i++;
+            if (i >= fullPrompt.Length || fullPrompt[i] != cachedAnswer[a]) return 0;
+            i++; a++;
+        }
+
+        // Everything the cache holds is accounted for, and there is genuinely new
+        // text after it. Anything less means nothing to gain.
+        return i < fullPrompt.Length ? i : 0;
+    }
+
     private bool _disposed;
 
     /// <summary>
@@ -269,14 +329,20 @@ public sealed class QwenTextGenerator : IChatGenerator
         // simply stops matching and falls through to the full prefill below.
         var prompt      = fullPrompt;
         var continuing  = false;
-        if (options.ContinueConversation &&
-            _kvText is { Length: > 0 } &&
-            fullPrompt.Length > _kvText.Length &&
-            fullPrompt.StartsWith(_kvText, StringComparison.Ordinal))
+        if (options.ContinueConversation && _kvText is { Length: > 0 })
         {
-            prompt     = fullPrompt[_kvText.Length..];
-            continuing = true;
+            var resume = ResumePoint(_kvText, _kvPromptLength, fullPrompt);
+            if (resume > 0)
+            {
+                prompt     = fullPrompt[resume..];
+                continuing = true;
+            }
         }
+
+        // Whether reuse fired is visible without logging anything a person said:
+        // the bridge already reports the token count it was handed, and a turn
+        // that reused the cache feeds only its own question — tens of tokens
+        // instead of the whole transcript.
         var stopSequences = (options.StopSequences is { Length: > 0 }
             ? options.StopSequences
             : DefaultStopSequences);
@@ -300,6 +366,7 @@ public sealed class QwenTextGenerator : IChatGenerator
                 // asked to continue — otherwise the next call must not think it
                 // can skip a prefill that the reset is about to discard.
                 _kvText = options.ContinueConversation ? fullPrompt + answer : null;
+                _kvPromptLength = options.ContinueConversation ? fullPrompt.Length : 0;
 
                 channel.Writer.TryComplete();
             }

@@ -1142,69 +1142,54 @@ public sealed class AIService : IAIService
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
 
-        // STABLE THINGS FIRST, VOLATILE THINGS LAST — the whole reason a KV cache
-        // can be reused between turns.
+        // GROUNDING BELONGS IN THE SYSTEM MESSAGE — where it started, and where
+        // it has to be for a KV cache to survive between turns.
         //
-        // Everything grounding used to be concatenated into the SYSTEM message,
-        // which reads naturally and quietly made the cache useless. The device
-        // context alone contains
+        // It was moved onto the newest user turn on the theory that grounding is
+        // volatile and volatile things belong last. That was wrong twice over.
+        // The grounding here is a fixed list of skill names, identical on every
+        // turn; and attaching it to whichever turn is newest makes it MOVE, so
+        // rendering turn two silently rewrote turn one and broke the very prefix
+        // the change was meant to preserve. Verified by logging the prompt the
+        // model actually received rather than reasoning about it.
         //
-        //     Local time: 2026-08-08 02:41
+        // In the system message it sits in front of the whole conversation and
+        // never shifts, so the prefix stays byte-identical and only genuinely
+        // new text needs prefilling.
         //
-        // so the system message changed every sixty seconds; RAG recall changed
-        // whenever a memory was written. A prefix that changes cannot be reused,
-        // so every turn re-prefilled the entire conversation from the top. That
-        // is the 13.5-second climb measured across five questions on a P30 Lite:
-        // not the model slowing down, the transcript being re-read.
-        //
-        // Now the system message holds ONLY what does not change, and everything
-        // that does rides on the newest user turn — which is new text anyway and
-        // has to be prefilled regardless. Nothing is lost, and the prefix in
-        // front of it stays byte-identical from one turn to the next.
-        //
-        // Grounding goes BEFORE the question inside that turn, so the person's
-        // actual words remain the last thing the model reads.
-        var volatilePart = (hasSystem && _options.SystemPromptEnrichment != SystemPromptEnrichment.Always)
+        // What must stay stable to keep that true: see the note on rounding the
+        // clock in BuildEnrichmentAsync. Anything that changes here costs one
+        // full re-prefill of the conversation, so change it rarely and on
+        // purpose.
+        var extra = (hasSystem && _options.SystemPromptEnrichment != SystemPromptEnrichment.Always)
             ? toolBlock
             : Combine(enrichment, toolBlock);
 
         var prepared = new List<ChatMessage>(messages.Count + 1);
 
-        if (!hasSystem && !string.IsNullOrWhiteSpace(_options.SystemPrompt))
-            prepared.Add(new ChatMessage("system", _options.SystemPrompt));
-
-        // Attach to the LAST user turn — the one being answered. Attaching to an
-        // earlier one would put stale context in a position the cache treats as
-        // settled, and re-break the prefix on the following turn.
-        var lastUser = -1;
-        for (var i = messages.Count - 1; i >= 0; i--)
+        if (hasSystem)
         {
-            if (string.Equals(messages[i].Role, "user", StringComparison.OrdinalIgnoreCase))
+            var pending = extra;
+            foreach (var m in messages)
             {
-                lastUser = i;
-                break;
+                if (pending.Length > 0 &&
+                    string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
+                {
+                    prepared.Add(new ChatMessage("system", Combine(m.Content, pending)));
+                    pending = string.Empty;
+                }
+                else
+                {
+                    prepared.Add(m);
+                }
             }
         }
-
-        for (var i = 0; i < messages.Count; i++)
+        else
         {
-            var m = messages[i];
-            if (i == lastUser && volatilePart.Length > 0)
-                prepared.Add(new ChatMessage(m.Role, Combine(volatilePart, m.Content)));
-            else
-                prepared.Add(m);
-        }
-
-        // No user turn to hang it on (a system-only or assistant-only call).
-        // Fall back to the old shape rather than dropping the grounding.
-        if (lastUser < 0 && volatilePart.Length > 0)
-        {
-            var idx = prepared.FindIndex(m =>
-                string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
-            if (idx >= 0)
-                prepared[idx] = new ChatMessage("system", Combine(prepared[idx].Content, volatilePart));
-            else
-                prepared.Insert(0, new ChatMessage("system", volatilePart));
+            var combined = Combine(_options.SystemPrompt, extra);
+            if (!string.IsNullOrWhiteSpace(combined))
+                prepared.Add(new ChatMessage("system", combined));
+            prepared.AddRange(messages);
         }
 
         return prepared;
@@ -1344,8 +1329,22 @@ public sealed class AIService : IAIService
         if (ctx is not null && ctx is not NullDeviceContext)
         {
             var ctxLines = new List<string>();
+            // ROUNDED TO THE HOUR, deliberately. At minute precision this line
+            // changed every sixty seconds, and because it sits in the system
+            // message that made the whole conversation's KV cache unreusable —
+            // every turn re-prefilled the transcript from the top to keep a
+            // timestamp fresh that nothing was reading.
+            //
+            // An hour is enough for "is it morning", which is all this is for. A
+            // turn that genuinely needs the time says so ("what time is it"),
+            // and that hits the tool cue and gets the real clock from a tool.
             if (ctx.LocalTime.HasValue)
-                ctxLines.Add($"Local time: {ctx.LocalTime.Value:yyyy-MM-dd HH:mm} ({ctx.TimeZoneId ?? "UTC"})");
+            {
+                var hour = new DateTimeOffset(
+                    ctx.LocalTime.Value.Year, ctx.LocalTime.Value.Month, ctx.LocalTime.Value.Day,
+                    ctx.LocalTime.Value.Hour, 0, 0, ctx.LocalTime.Value.Offset);
+                ctxLines.Add($"Local time: around {hour:yyyy-MM-dd HH:00} ({ctx.TimeZoneId ?? "UTC"})");
+            }
             if (!string.IsNullOrWhiteSpace(ctx.LocationHint))
                 ctxLines.Add($"Location: {ctx.LocationHint}");
             if (ctx.BatteryLevel.HasValue)
