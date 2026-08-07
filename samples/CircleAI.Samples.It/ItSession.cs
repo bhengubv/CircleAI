@@ -109,7 +109,8 @@ public sealed class ItSession : IAsyncDisposable
         bool useStubBrain = false,
         Func<int?>? batteryPercent = null,
         string? pinModelId = null,
-        bool lean = false)
+        bool lean = false,
+        int maxTokens = 160)
     {
         UsingRealModel = !useStubBrain;
         Tools = new ItToolBridge(batteryPercent);
@@ -193,7 +194,9 @@ public sealed class ItSession : IAsyncDisposable
                     // rate; 160 is about four sentences, which is longer than
                     // any answer here should need and short enough that a model
                     // that ignores the instruction cannot hold the floor.
-                    MaxTokens = 160,
+                    // Raise it when measuring a reasoning model, which spends
+                    // its budget on a silent trace before it answers at all.
+                    MaxTokens = maxTokens,
                 },
             };
 

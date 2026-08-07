@@ -91,9 +91,18 @@ public class BenchActivity : Activity
         // Huawei's power manager.
         Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
 
-        var model = Intent?.GetStringExtra("model");
-        var lean  = Intent?.GetBooleanExtra("lean", false) ?? false;
-        _ = RunAsync(model, lean);
+        var model  = Intent?.GetStringExtra("model");
+        var lean   = Intent?.GetBooleanExtra("lean", false) ?? false;
+        // Room to finish thinking. The product ships a 160-token cap because a
+        // spoken answer should be two sentences, but a reasoning model spends
+        // its budget on a silent trace and gets cut off before it ever answers —
+        // measured, three of five turns came back as 7 characters. Judging it on
+        // that is judging it with a gag on.
+        var maxTok = Intent?.GetIntExtra("maxtok", 512) ?? 512;
+        // Delete the bundle afterwards, so a ladder can walk past what the
+        // phone can store. 33 GB free does not hold 14B and 30B and 35B.
+        var purge  = Intent?.GetBooleanExtra("purge", false) ?? false;
+        _ = RunAsync(model, lean, maxTok, purge);
     }
 
     void Say(string line)
@@ -102,7 +111,7 @@ public class BenchActivity : Activity
         RunOnUiThread(() => { _log.AppendLine(line); _out.Text = _log.ToString(); });
     }
 
-    async Task RunAsync(string? model, bool lean)
+    async Task RunAsync(string? model, bool lean, int maxTok, bool purge)
     {
         if (string.IsNullOrWhiteSpace(model))
         {
@@ -110,7 +119,8 @@ public class BenchActivity : Activity
             return;
         }
 
-        Say($"=== {model}{(lean ? "  [lean]" : "")} ===");
+        Say($"=== {model}{(lean ? "  [lean]" : "")} maxtok={maxTok} ===");
+        Say($"disk:   {FreeGb():F1} GB free");
         Say($"before: {MemLine()}");
 
         ItSession session;
@@ -123,7 +133,8 @@ public class BenchActivity : Activity
                     ApplicationInfo?.NativeLibraryDir,
                     batteryPercent: () => 100,
                     pinModelId: model,
-                    lean: lean);
+                    lean: lean,
+                    maxTokens: maxTok);
                 await s.StartAsync();
                 return s;
             });
@@ -209,6 +220,61 @@ public class BenchActivity : Activity
             $"ttft={meanTtft:F0} tokps={meanRate:F1} pss={SelfPssMb()}");
 
         await session.DisposeAsync();
+        if (purge) Purge(model);
+    }
+
+    /// <summary>Free space on the volume holding the model store.</summary>
+    double FreeGb()
+    {
+        try
+        {
+            var s = new Android.OS.StatFs(ModelDir());
+            return s.AvailableBytes / 1024.0 / 1024.0 / 1024.0;
+        }
+        catch { return -1; }
+    }
+
+    // System.Environment, spelled out: Android.OS.Environment is also in scope
+    // here and the two are not interchangeable.
+    static string ModelDir() => System.IO.Path.Combine(
+        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+        "CircleAI", "Models");
+
+    /// <summary>
+    /// Deletes a model bundle once it has been measured.
+    /// </summary>
+    /// <remarks>
+    /// A LADDER OUTLIVES THE DISK. Walking from 0.5B to 35B means fetching well
+    /// over 60 GB, and the phone has 33 GB free — without this the run does not
+    /// find the model that is too big to RUN, it finds the one that is too big
+    /// to STORE, and reports a download failure as if it were a verdict.
+    ///
+    /// Only under an explicit flag. A person's downloaded models are theirs, and
+    /// re-fetching one over a metered connection because a tool tidied up is a
+    /// real cost. This is for a bench walking a ladder, nothing else.
+    /// </remarks>
+    void Purge(string model)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(ModelDir(), model);
+            if (System.IO.Directory.Exists(dir))
+            {
+                var bytes = new System.IO.DirectoryInfo(dir)
+                    .EnumerateFiles("*", System.IO.SearchOption.AllDirectories)
+                    .Sum(f => f.Length);
+                System.IO.Directory.Delete(dir, recursive: true);
+                Say($"purged {model} ({bytes / 1e9:F2} GB) - {FreeGb():F1} GB free");
+            }
+            else
+            {
+                Say($"purge: nothing at {dir}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Say($"purge failed: {Innermost(ex)}");
+        }
     }
 
     /// <summary>Free memory as the OS sees it — the "is the phone still usable" number.</summary>
