@@ -74,6 +74,17 @@ public sealed class QwenTextGenerator : IChatGenerator
     private int _kvPromptLength;
 
     /// <summary>
+    /// Whether this platform's native bridge can stream text, or has to be
+    /// driven the old way.
+    /// </summary>
+    /// <remarks>
+    /// Static, because the answer is a property of the loaded binary and not of
+    /// any one model — probing again for a second model on the same host would
+    /// just throw a second time and reach the same conclusion.
+    /// </remarks>
+    private static volatile bool _streamsText = true;
+
+    /// <summary>
     /// Where the new prompt can be picked up from, given what the cache holds,
     /// or 0 when it cannot be reused.
     /// </summary>
@@ -505,8 +516,44 @@ public sealed class QwenTextGenerator : IChatGenerator
             // finished, so a person waits in silence for the entire generation
             // and then receives it at once. This one delivers text as MNN decodes
             // it, which is what every layer above has been built to consume.
-            int rc = MnnInterop.mnn_llm_generate_stream_text(
-                _model, prompt, maxTokens, &MnnTokenRouter.OnTextNative, GCHandle.ToIntPtr(sinkHandle));
+            //
+            // FALL BACK RATHER THAN CRASH ON AN OLDER BRIDGE. This library ships
+            // a native binary per platform — Android arm64 and armv7, Windows,
+            // Linux x64 and arm64, macOS Intel and Apple silicon, iOS — and they
+            // are built on different machines at different times. A managed
+            // release that adds an export will always reach some host whose .so
+            // predates it, and a missing entry point is a hard crash on the
+            // person's FIRST question.
+            //
+            // Slow is a bad day. Crashing is a broken product. The old export is
+            // still there and still correct; it just cannot stream, so an
+            // unrefreshed platform waits for the whole answer instead of failing.
+            int rc;
+            if (_streamsText)
+            {
+                try
+                {
+                    rc = MnnInterop.mnn_llm_generate_stream_text(
+                        _model, prompt, maxTokens, &MnnTokenRouter.OnTextNative,
+                        GCHandle.ToIntPtr(sinkHandle));
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    // Decided once per process, not once per turn: the probe
+                    // costs a thrown exception and the answer never changes for
+                    // a given binary.
+                    _streamsText = false;
+                    rc = MnnInterop.mnn_llm_generate_stream_ex(
+                        _model, prompt, maxTokens, &MnnTokenRouter.OnTokenNative,
+                        GCHandle.ToIntPtr(sinkHandle));
+                }
+            }
+            else
+            {
+                rc = MnnInterop.mnn_llm_generate_stream_ex(
+                    _model, prompt, maxTokens, &MnnTokenRouter.OnTokenNative,
+                    GCHandle.ToIntPtr(sinkHandle));
+            }
 
             if (rc < 0)
                 throw new InvalidOperationException($"MNN generation failed with code {rc}.");
