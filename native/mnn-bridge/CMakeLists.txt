@@ -169,7 +169,17 @@ elseif(APPLE)
             "-F${MNN_ROOT}/Dynamic")
     endif()
 elseif(ANDROID)
+    # MNN::Transformer::Llm lives in libllm.so, NOT libMNN.so — linking only
+    # the latter fails at ld time on every Llm method (generate, reset,
+    # response, setPrefixCacheFile, destroy). libMNN_Express.so carries the
+    # Express VARP/Module symbols the LLM headers pull in. Both appear in the
+    # DT_NEEDED list of the .so already shipping in
+    # src/CircleAI.Inference/runtimes/android-arm64/native/, which is how the
+    # working build did it before this line was ever written down.
+    get_filename_component(MNN_ANDROID_LIBDIR "${MNN_LIB_FILE}" DIRECTORY)
     target_link_libraries(mnnbridge PRIVATE
+        "${MNN_ANDROID_LIBDIR}/libllm.so"
+        "${MNN_ANDROID_LIBDIR}/libMNN_Express.so"
         "${MNN_LIB_FILE}"
         log
         android)

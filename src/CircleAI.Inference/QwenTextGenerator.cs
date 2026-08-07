@@ -58,6 +58,18 @@ public sealed class QwenTextGenerator : IChatGenerator
     // bridge factory if higher concurrency is needed.
     private readonly SemaphoreSlim _generationLock = new(initialCount: 1, maxCount: 1);
 
+    /// <summary>
+    /// The exact text the KV cache currently holds, or null when it holds
+    /// nothing trustworthy.
+    /// </summary>
+    /// <remarks>
+    /// Written and read only under <see cref="_generationLock"/>, which already
+    /// serialises every call on this handle, so it needs no synchronisation of
+    /// its own. Null is the safe value: it forces a full prefill, which is
+    /// always correct and merely slower.
+    /// </remarks>
+    private string? _kvText;
+
     private bool _disposed;
 
     /// <summary>
@@ -227,9 +239,31 @@ public sealed class QwenTextGenerator : IChatGenerator
         // Catalog-driven: render through the model's own chat_template
         // when the engine + bundle directory are available. Falls back
         // to the hardcoded Qwen ChatML builder otherwise.
-        var prompt = (_templateEngine is not null && !string.IsNullOrEmpty(_modelDirectory))
+        var fullPrompt = (_templateEngine is not null && !string.IsNullOrEmpty(_modelDirectory))
             ? _templateEngine.Render(_modelDirectory!, messages, addGenerationPrompt: true)
             : BuildQwenChatPrompt(messages);
+
+        // CONTINUE INSTEAD OF RE-READING, when this is provably the same
+        // conversation carrying on. _kvText is the exact text the KV cache
+        // currently represents — the last prompt plus the answer that was
+        // generated from it. If the new prompt starts with that verbatim, then
+        // everything before the new turn is already prefilled and only the tail
+        // needs feeding.
+        //
+        // A STRING COMPARISON, DELIBERATELY, rather than tracking message counts
+        // or hashing the list. It is exact, it is template-agnostic, and it fails
+        // closed: an edited earlier turn, a changed system prompt or a fresh chat
+        // simply stops matching and falls through to the full prefill below.
+        var prompt      = fullPrompt;
+        var continuing  = false;
+        if (options.ContinueConversation &&
+            _kvText is { Length: > 0 } &&
+            fullPrompt.Length > _kvText.Length &&
+            fullPrompt.StartsWith(_kvText, StringComparison.Ordinal))
+        {
+            prompt     = fullPrompt[_kvText.Length..];
+            continuing = true;
+        }
         var stopSequences = (options.StopSequences is { Length: > 0 }
             ? options.StopSequences
             : DefaultStopSequences);
@@ -244,16 +278,30 @@ public sealed class QwenTextGenerator : IChatGenerator
             await _generationLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                RunGeneration(prompt, resolvedBudget.MaxTokens, stopSequences, includeReasoning,
-                              prefixCacheKey, channel.Writer, ct);
+                var answer = RunGeneration(prompt, resolvedBudget.MaxTokens, stopSequences,
+                                           includeReasoning, prefixCacheKey, channel.Writer,
+                                           continuing, ct);
+
+                // What the KV cache now represents: everything that was fed to
+                // it, plus everything it produced. Recorded only when the caller
+                // asked to continue — otherwise the next call must not think it
+                // can skip a prefill that the reset is about to discard.
+                _kvText = options.ContinueConversation ? fullPrompt + answer : null;
+
                 channel.Writer.TryComplete();
             }
             catch (OperationCanceledException oce)
             {
+                // A cancelled or failed generation leaves the KV cache in a state
+                // no string describes — it holds a partial answer that no caller
+                // ever saw. Forget it, so the next call prefills in full rather
+                // than continuing from something that is not there.
+                _kvText = null;
                 channel.Writer.TryComplete(oce);
             }
             catch (Exception ex)
             {
+                _kvText = null;
                 channel.Writer.TryComplete(ex);
             }
             finally
@@ -312,31 +360,43 @@ public sealed class QwenTextGenerator : IChatGenerator
     // Internals
     // ──────────────────────────────────────────────────────────────────────────
 
-    private unsafe void RunGeneration(
+    /// <returns>The answer text, so the caller can record what the KV now holds.</returns>
+    private unsafe string RunGeneration(
         string prompt,
         int maxTokens,
         string[] stopSequences,
         bool includeReasoning,
         string? prefixCacheKey,
         ChannelWriter<ChatFragment> writer,
+        bool continuing,
         CancellationToken ct)
     {
         // RT-06: prefix-cache check BEFORE reset. If we have a cached session
         // for this (modelId, systemPrompt) pair, load it — the system prefill
         // is already baked in. Otherwise fall through to the legacy reset path.
+        //
+        // Skipped entirely when continuing: the live KV cache already holds this
+        // conversation, which is strictly more than any snapshot of the system
+        // prompt alone, and loading one would throw the conversation away.
         bool loadedFromCache = false;
-        if (prefixCacheKey is not null && File.Exists(_prefixCache.PathFor(prefixCacheKey)))
+        if (!continuing && prefixCacheKey is not null && File.Exists(_prefixCache.PathFor(prefixCacheKey)))
         {
             loadedFromCache = MnnInterop.LoadSession(_model, _prefixCache.PathFor(prefixCacheKey));
             if (loadedFromCache) _prefixCache.Touch(prefixCacheKey);
         }
 
-        if (!loadedFromCache)
+        if (!loadedFromCache && !continuing)
         {
             // Stateless generation: clear KV cache + sliding-window history before every call.
             // The OpenAI-compatible /v1/chat/completions contract is multi-turn-via-replay
             // (clients send the full message history), so server-side memory between calls
             // would replay the prior request's tokens — which we observed on the shared handle.
+            //
+            // NOT WHEN CONTINUING. The retained state that is wrong for a server
+            // sharing one handle between clients is exactly what a phone holding
+            // one conversation wants: the caller has proven this prompt continues
+            // the last one, so the earlier turns are already in the cache and the
+            // only new text is the tail being fed now.
             MnnInterop.mnn_llm_reset_session(_model);
         }
 
@@ -358,10 +418,15 @@ public sealed class QwenTextGenerator : IChatGenerator
 
             ct.ThrowIfCancellationRequested();
 
-            // mnnbridge.h: (handle, prompt, max_new_tokens, cb, user_data). MNN samples
+            // THE STREAMING ENTRY POINT, not the one named for it. MNN samples
             // using the model's config.json defaults — no per-call sampling knobs.
-            int rc = MnnInterop.mnn_llm_generate_stream_ex(
-                _model, prompt, maxTokens, &MnnTokenRouter.OnTokenNative, GCHandle.ToIntPtr(sinkHandle));
+            //
+            // mnn_llm_generate_stream_ex hands over the whole answer once it is
+            // finished, so a person waits in silence for the entire generation
+            // and then receives it at once. This one delivers text as MNN decodes
+            // it, which is what every layer above has been built to consume.
+            int rc = MnnInterop.mnn_llm_generate_stream_text(
+                _model, prompt, maxTokens, &MnnTokenRouter.OnTextNative, GCHandle.ToIntPtr(sinkHandle));
 
             if (rc < 0)
                 throw new InvalidOperationException($"MNN generation failed with code {rc}.");
@@ -381,6 +446,12 @@ public sealed class QwenTextGenerator : IChatGenerator
                 }
                 catch { /* best-effort cache write */ }
             }
+
+            // What the model actually said, so the caller can record what the KV
+            // cache now contains. Taken from the sink rather than re-derived,
+            // because the sink is what the stop-sequence trimming ran against —
+            // anything else would describe text the cache does not hold.
+            return sink.Emitted.ToString();
         }
         finally
         {

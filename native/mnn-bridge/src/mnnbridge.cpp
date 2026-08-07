@@ -320,6 +320,89 @@ MNNBRIDGE_API int mnn_llm_generate_stream_ex(
     }
 }
 
+namespace {
+
+// A streambuf that hands every write straight to a C callback.
+//
+// MNN's response() takes a std::ostream* and writes decoded text into it as
+// generation proceeds. That is the only streaming seam it offers — everything
+// else returns a finished result. So rather than give it a stringstream and
+// read the answer afterwards (which is what "streaming" meant here before),
+// give it a buffer with no storage at all, whose only behaviour is to forward.
+//
+// UNBUFFERED ON PURPOSE. No put area is set up, so every write lands in
+// xsputn/overflow immediately instead of accumulating until a flush. A buffer
+// here would re-introduce exactly the lag being removed.
+class CallbackStreambuf : public std::streambuf {
+public:
+    CallbackStreambuf(mnn_text_callback cb, void* user_data)
+        : cb_(cb), user_data_(user_data) {}
+
+    // Set once the callback asks to stop. MNN has no cancellation hook on
+    // response(), so the best available behaviour is to swallow the rest
+    // rather than keep calling a caller that has said it is done.
+    bool stopped() const { return stopped_; }
+    int  calls()   const { return calls_; }
+
+protected:
+    std::streamsize xsputn(const char* s, std::streamsize n) override {
+        if (n > 0) emit(s, static_cast<int>(n));
+        return n;   // always claim success; a short count would make MNN retry
+    }
+
+    int_type overflow(int_type ch) override {
+        if (ch != traits_type::eof()) {
+            char c = static_cast<char>(ch);
+            emit(&c, 1);
+        }
+        return ch;
+    }
+
+private:
+    void emit(const char* s, int n) {
+        if (stopped_ || !cb_) return;
+        ++calls_;
+        // A managed callback must never throw into native code, but guard
+        // anyway — an exception escaping here would unwind through MNN.
+        int stop = 0;
+        try { stop = cb_(s, n, user_data_); } catch (...) { stop = 1; }
+        if (stop) stopped_ = true;
+    }
+
+    mnn_text_callback cb_;
+    void* user_data_;
+    bool  stopped_ = false;
+    int   calls_   = 0;
+};
+
+}  // namespace
+
+MNNBRIDGE_API int mnn_llm_generate_stream_text(
+    mnn_llm_handle handle, const char* prompt_utf8,
+    int max_new_tokens, mnn_text_callback cb, void* user_data) {
+    auto w = as_wrapper(handle);
+    if (!w || !w->llm) return MNNBRIDGE_ERR_INVALID_HANDLE;
+    if (!prompt_utf8 || !cb) return MNNBRIDGE_ERR_INVALID_ARG;
+    try {
+        std::string formatted = w->llm->apply_chat_template(std::string(prompt_utf8));
+        auto input_ids = w->llm->tokenizer_encode(formatted);
+
+        CallbackStreambuf buf(cb, user_data);
+        std::ostream os(&buf);
+
+        // end_with = "" rather than nullptr: MNN appends end_with to the stream
+        // when generation finishes, and the default trailing newline would be
+        // delivered to the caller as a final content fragment it never asked for.
+        w->llm->response(input_ids, &os, "",
+                         max_new_tokens > 0 ? max_new_tokens : 256);
+        os.flush();
+
+        return buf.calls();
+    } catch (...) {
+        return MNNBRIDGE_ERR_GEN_FAILED;
+    }
+}
+
 // ── Session persistence ──────────────────────────────────────────────────
 
 MNNBRIDGE_API int mnn_llm_save_session(mnn_llm_handle handle, const char* path_utf8) {

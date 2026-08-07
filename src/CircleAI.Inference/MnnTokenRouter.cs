@@ -105,6 +105,59 @@ internal static class MnnTokenRouter
     }
 
     /// <summary>
+    /// Native text callback — the streaming one. Signature must match
+    /// <c>int (*)(const char* text, int len, void* user_data)</c> from
+    /// mnnbridge.h. Returns 0 to keep generating, non-zero to stop.
+    /// </summary>
+    /// <remarks>
+    /// SAME MACHINERY, DIFFERENT DOOR. This is <see cref="OnTokenNative"/> with
+    /// the one step that needed a token id removed: instead of asking MNN to
+    /// turn an id back into bytes, the bytes arrive already decoded. Everything
+    /// after that — the UTF-8 reassembly, the stop-sequence check, the
+    /// &lt;think&gt; routing and the holdback — is shared, so the two paths
+    /// cannot drift in how they treat an answer.
+    ///
+    /// The bytes still go through <c>Pending</c> rather than being decoded
+    /// directly: MNN writes whenever it has something, and there is no promise
+    /// that a write ends on a codepoint boundary. A split multi-byte character
+    /// would otherwise surface as a replacement glyph mid-word — which in these
+    /// languages means mid-diacritic.
+    /// </remarks>
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static unsafe int OnTextNative(byte* text, int len, IntPtr userData)
+    {
+        try
+        {
+            if (userData == IntPtr.Zero || text is null || len <= 0) return 0;
+            if (GCHandle.FromIntPtr(userData).Target is not MnnTokenSink sink) return 1;
+            if (sink.Stopped) return 1;
+            if (sink.Ct.IsCancellationRequested) return 1;
+
+            for (int i = 0; i < len; i++) sink.Pending.Add(text[i]);
+
+            if (!TryDrainUtf8(sink.Pending, out var fragment) || fragment.Length == 0)
+                return 0;
+
+            sink.Emitted.Append(fragment);
+
+            if (TryFindStopSequence(sink.Emitted, sink.StopSequences, out int stopAt))
+            {
+                RouteUntil(sink, stopAt);
+                sink.Stopped = true;
+                return 1;
+            }
+
+            var safeUpTo = Math.Max(sink.FlushedChars, sink.Emitted.Length - ThinkHoldback);
+            RouteUntil(sink, safeUpTo);
+            return 0;
+        }
+        catch
+        {
+            return 1; // never unwind into native
+        }
+    }
+
+    /// <summary>
     /// After the native loop returns, flush any holdback remainder. Idempotent
     /// when called twice.
     /// <para>

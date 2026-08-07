@@ -75,10 +75,24 @@ public sealed class ItSession : IAsyncDisposable
     /// Host-supplied battery reading for the <c>get_battery_level</c> tool.
     /// Android passes a real one; leave null on hosts that cannot read it.
     /// </param>
+    /// <param name="pinModelId">
+    /// Forces one specific model instead of letting the device decide.
+    /// </param>
+    /// <remarks>
+    /// FOR MEASURING, NOT FOR SHIPPING. Normally leaving this null is the entire
+    /// point — StartAsync probes the phone and BestFit picks. But you cannot ask
+    /// "how far up the ladder can this phone go" while the phone is the one
+    /// choosing the rung: the selector reads battery, and the same handset picked
+    /// a 0.6B model at 73% charge and a 1.5B at 100%, which makes every timing
+    /// incomparable with every other. Pinning removes that variable so the numbers
+    /// mean something.
+    /// </remarks>
     public ItSession(
         string? nativeLibDir = null,
         bool useStubBrain = false,
-        Func<int?>? batteryPercent = null)
+        Func<int?>? batteryPercent = null,
+        string? pinModelId = null,
+        bool lean = false)
     {
         UsingRealModel = !useStubBrain;
         Tools = new ItToolBridge(batteryPercent);
@@ -125,13 +139,30 @@ public sealed class ItSession : IAsyncDisposable
                 // own model — and, importantly, no idea what it CANNOT do.
                 // Opt-in rather than default: skill context spends tokens from a
                 // 4096-window on a 0.6B model, so a host should choose it.
-                SkillStore            = CapabilityManifestSkillStore.Default,
+                // LEAN DROPS THE SELF-KNOWLEDGE, to price it. capabilities.json is
+                // 23 KB and the skill context is rebuilt into the system prompt on
+                // every turn — which on a phone is paid for in prefill, before the
+                // person hears a single word. Worth knowing what it costs before
+                // deciding it is worth it.
+                SkillStore            = lean ? null : CapabilityManifestSkillStore.Default,
                 // Router set => AIService becomes the two-slot Neuron: warm
                 // generalist plus one admission-gated specialist. Left null it
                 // is byte-identical to single-slot, which is why the two-slot
                 // path was untestable here until now.
                 Router                = _concierge,
-                // ModelId / ModelPath intentionally unset — the SDK selects.
+                // Normally unset — the SDK selects. Set only when a caller is
+                // measuring one specific rung of the ladder.
+                ModelId               = pinModelId,
+                // ONE PERSON, ONE CONVERSATION — so keep the KV cache between
+                // turns. The default resets it before every call, which is right
+                // for a server whose clients replay their history and ruinous
+                // here: measured on the P30, first token took 32.8 s on question
+                // one and 47.1 s by question five, because the whole transcript
+                // was re-read from the top each time.
+                DefaultGenerationOptions = new GenerationOptions
+                {
+                    ContinueConversation = true,
+                },
             };
 
             _brain = new AIService(

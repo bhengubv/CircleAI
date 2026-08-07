@@ -68,6 +68,19 @@ typedef void* mnn_image_handle;
 
 typedef int (*mnn_token_callback)(int token_id, void* user_data);
 
+// ── Text streaming callback ──────────────────────────────────────────────
+//
+// Called with each piece of decoded UTF-8 text AS THE MODEL PRODUCES IT.
+// `text` is NOT null-terminated; use `len`. The bytes are only valid for the
+// duration of the call — copy what you need. Return value as above.
+//
+// WHY A SECOND CALLBACK SHAPE EXISTS. mnn_llm_generate_stream_ex reports token
+// IDs, and the only way to get token IDs out of MNN is its blocking
+// generate(), which returns the finished vector. Reporting IDs and streaming
+// are mutually exclusive against this API — so the streaming entry point
+// reports text, which is what every caller was converting the IDs into anyway.
+typedef int (*mnn_text_callback)(const char* text, int len, void* user_data);
+
 // ── Lifecycle ────────────────────────────────────────────────────────────
 
 // Creates a fresh Llm wrapper. config_path_utf8 must point at a MNN-LLM
@@ -126,14 +139,37 @@ MNNBRIDGE_API int mnn_llm_generate_ex(
     char* out_buf_utf8,
     int buf_size);
 
-// Streaming: invokes cb once per generated token. Returns total tokens
-// emitted (>=0), or negative on error. Callback returning non-zero stops
-// generation early (treated as success, returns tokens emitted so far).
+// NOT ACTUALLY STREAMING — see mnn_llm_generate_stream_text below.
+//
+// Invokes cb once per generated token, but only AFTER the whole answer has
+// been generated: MNN's generate() blocks to completion and returns the token
+// vector, which this then replays through the callback. Measured on a P30 Lite
+// with Qwen2.5-1.5B, a 34-character answer arrived as 8 callbacks spanning
+// 4 milliseconds, 33.5 seconds after the question — the caller heard nothing
+// for 33 seconds and then everything at once.
+//
+// Kept for callers that genuinely need token IDs, which this is the only way
+// to get. If you want the answer as it is produced, use the text variant.
 MNNBRIDGE_API int mnn_llm_generate_stream_ex(
     mnn_llm_handle handle,
     const char* prompt_utf8,
     int max_new_tokens,
     mnn_token_callback cb,
+    void* user_data);
+
+// Streaming, properly: invokes cb with decoded UTF-8 text as each piece is
+// produced. Returns the number of callbacks made (>=0), negative on error.
+// A callback returning non-zero stops generation early and is treated as
+// success.
+//
+// Built on MNN's own response(input_ids, ostream*, ...) overload, which writes
+// through as it decodes. The blocking generate() cannot do this — by the time
+// it returns there is nothing left to stream.
+MNNBRIDGE_API int mnn_llm_generate_stream_text(
+    mnn_llm_handle handle,
+    const char* prompt_utf8,
+    int max_new_tokens,
+    mnn_text_callback cb,
     void* user_data);
 
 // ── Session persistence ──────────────────────────────────────────────────

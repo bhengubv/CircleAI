@@ -287,5 +287,36 @@ namespace CircleAI.Inference
         /// </para>
         /// </summary>
         public bool UsePrefixCache { get; init; } = false;
+
+        /// <summary>
+        /// Keep the KV cache between calls and prefill only the NEW text, when
+        /// this call continues the same conversation the last one ended.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// WHY IT DEFAULTS OFF. The runtime resets the handle before every
+        /// generation because the OpenAI-compatible contract is multi-turn-by-
+        /// replay: the client sends the whole history each time, so retained
+        /// state would prefill the earlier turns twice. That is right for a
+        /// server with many clients on one handle, and wrong for a phone with
+        /// one person and one conversation — which paid for it by re-reading the
+        /// entire transcript on every question.
+        /// </para>
+        /// <para>
+        /// MEASURED ON A P30 LITE, Qwen2.5-1.5B: first token at 32.8 s on
+        /// question one, rising to 47.1 s by question five. The climb is the
+        /// tell — the model was not getting slower, the transcript was getting
+        /// longer and being re-read from the top every time. Nothing about that
+        /// wait is the model's size.
+        /// </para>
+        /// <para>
+        /// Safe because it is checked, not assumed: the runtime keeps the exact
+        /// text its KV cache represents and reuses it only when the new prompt
+        /// begins with that text verbatim. Edit an earlier turn, switch system
+        /// prompts, or start a new chat and the prefix stops matching, so it
+        /// resets and prefills in full. There is no state to get stale.
+        /// </para>
+        /// </remarks>
+        public bool ContinueConversation { get; init; } = false;
     }
 }

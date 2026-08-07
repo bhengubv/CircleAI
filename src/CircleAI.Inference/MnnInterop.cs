@@ -220,6 +220,41 @@ internal static partial class MnnInterop
         delegate* unmanaged[Cdecl]<int, IntPtr, int> callback,
         IntPtr userData);
 
+    /// <summary>
+    /// Streaming generation that actually streams — the callback receives
+    /// decoded UTF-8 text as the model produces it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WHY THIS EXISTS ALONGSIDE THE ABOVE. mnn_llm_generate_stream_ex is named
+    /// for streaming but does not: MNN's generate() blocks until the whole
+    /// answer exists and returns the token vector, which the bridge then replays
+    /// through the callback. Measured on a P30 Lite with Qwen2.5-1.5B, a
+    /// 34-character answer arrived as 8 callbacks spanning 4 MILLISECONDS,
+    /// 33.5 seconds after the question. Everything above it — the unbounded
+    /// channel, the fragment router, sentence-at-a-time speech — was correct and
+    /// waiting on a function that hands over a finished array.
+    /// </para>
+    /// <para>
+    /// Text rather than token ids, necessarily. Token ids are only obtainable
+    /// from the blocking generate(); the streaming seam MNN offers is an
+    /// ostream, which carries decoded text. Callers were converting ids to text
+    /// with mnn_llm_token_to_text anyway, so nothing is lost.
+    /// </para>
+    /// <para>
+    /// The <c>text</c> pointer is NOT null-terminated and is only valid for the
+    /// duration of the call — copy before returning.
+    /// </para>
+    /// </remarks>
+    /// <returns>Number of callbacks made, or negative on error.</returns>
+    [LibraryImport(LibraryName, EntryPoint = "mnn_llm_generate_stream_text", StringMarshalling = StringMarshalling.Utf8)]
+    public static unsafe partial int mnn_llm_generate_stream_text(
+        MnnModelHandle handle,
+        string prompt,
+        int maxNewTokens,
+        delegate* unmanaged[Cdecl]<byte*, int, IntPtr, int> callback,
+        IntPtr userData);
+
     // ── KV-cache / session state ──────────────────────────────────────────────
 
     /// <summary>
