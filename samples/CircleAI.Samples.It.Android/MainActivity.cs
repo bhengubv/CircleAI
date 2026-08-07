@@ -724,6 +724,21 @@ public class MainActivity : Activity
         _send.Enabled = false;
         Say("you", text);
 
+        // ANSWER IN THE LANGUAGE YOU WERE ASKED IN — TYPING COUNTS.
+        //
+        // This rule started on the spoken path and stopped there, which made it a
+        // property of the microphone rather than of the conversation. Typing is
+        // where it is most reliable: a typed sentence carries none of the
+        // transcription noise a spoken one does, so the evidence is clean.
+        //
+        // Per turn, never remembered. A person types a question in English and the
+        // next one in isiZulu because that is how the sentence came to them; the
+        // reply follows each one rather than the first.
+        var lang    = CircleAI.Samples.It.LanguageGuess.Detect(text);
+        var replyIn = CircleAI.Samples.It.LanguageGuess.InstructionNameFor(lang);
+        var asked   = replyIn is null ? text : $"{text}\n\n(Reply only in {replyIn}.)";
+        Android.Util.Log.Info("CircleAI.It", $"typed language: {lang ?? "unsure"}");
+
         try
         {
             // THREE DESTINATIONS, AND THEY ARE NOT THE SAME PLACE. The routing
@@ -737,7 +752,7 @@ public class MainActivity : Activity
             // thread — Say() marshals each chunk back for rendering.
             RunOnUiThread(() => _chat.BeginReply());
             await Task.Run(() => _session.RunTurnStreamingAsync(
-                text,
+                asked,
                 line => Append(line + "\n"),
                 chunk => Say("it", chunk),
                 think => { /* reasoning is a scratchpad, not an answer — logcat only */ }));

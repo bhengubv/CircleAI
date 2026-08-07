@@ -78,6 +78,10 @@ public class HomeActivity : Activity
     MarkView _mark = null!;
     TextView _prompt = null!;
     TextView _caption = null!;
+#if IT_VOICE_ANDROID
+    /// <summary>Reports the language the last turn was answered in. Not a control.</summary>
+    TextView? _lang;
+#endif
     int _next;
     CancellationTokenSource? _speaking;
 
@@ -300,34 +304,29 @@ public class HomeActivity : Activity
         // this is here for the library, the late-night kitchen, and anyone who
         // would simply rather not talk out loud.
 #if IT_VOICE_ANDROID
-        // ONE TAP, ELEVEN LANGUAGES, NO SETTINGS SCREEN. Detection was answering
-        // isiXhosa speakers in isiZulu often enough to be an insult, so the person
-        // says once and the phone remembers. Sits directly under the circle because
-        // it is part of talking, not configuration.
-        var lang = Ui.Label(this, "", 15f, Ui.Blue, bold: true);
+        // NOT A SETTING. A READ-OUT.
+        //
+        // This was a picker: one tap, eleven languages, remembered. Wrong shape.
+        // A picker is a persistent control for a property that is not persistent
+        // — South African households do not hold one language for a whole
+        // conversation. A clan moves through two or three of them inside a single
+        // exchange, so a language chosen on the first turn is wrong by the third,
+        // and being answered in the one you have just stopped speaking is the
+        // exact insult this is meant to avoid.
+        //
+        // So every turn decides for itself, and this line only reports what the
+        // words said. It stays empty until a turn has actually been heard —
+        // announcing "Speaking English" before anyone has spoken is a claim the
+        // phone has not earned.
+        var lang = Ui.Label(this, "", 14f, Ui.InkSoft);
         lang.Gravity = GravityFlags.Center;
-        lang.SetPadding(0, Ui.Dp(this, 12), 0, Ui.Dp(this, 12));   // 48dp target
-        lang.Clickable = true;
-        void ShowLang() => lang.Text = "Speaking " + SpokenLanguage.NameOf(SpokenLanguage.Current(this));
-        ShowLang();
-        lang.Click += (s, e) =>
-        {
-            var names = new string[SpokenLanguage.All.Length];
-            for (var i = 0; i < names.Length; i++) names[i] = SpokenLanguage.All[i].Name;
-
-            new Android.App.AlertDialog.Builder(this)
-                .SetTitle("Which language?")!
-                .SetItems(names, (_, ev) =>
-                {
-                    SpokenLanguage.Set(this, SpokenLanguage.All[ev.Which].Code);
-                    ShowLang();
-                })!
-                .Show();
-        };
+        lang.SetPadding(0, Ui.Dp(this, 6), 0, Ui.Dp(this, 6));
+        lang.Visibility = ViewStates.Gone;
         var llp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
         llp.LeftMargin = llp.RightMargin = pad;
         root.AddView(lang, llp);
+        _lang = lang;
 #endif
 
         var typeInstead = Ui.Label(this, "Or type instead", 15f, Ui.Blue, bold: true);
@@ -495,15 +494,40 @@ public class HomeActivity : Activity
             if (listener is null) { Phase(MarkState.Idle, _ready.Headline, lStatus); return; }
             await using var ears = listener;
 
-            // THE PERSON'S CHOICE BEATS THE DETECTOR. Whisper reports a language and
-            // for a while the turn followed it, but tiny cannot reliably tell the
-            // Nguni languages apart — isiXhosa and siSwati both come back as "zu",
-            // and a lot of everything comes back as "und". Being answered in the
-            // wrong language is precisely the insult this product exists to avoid,
-            // so the setting under the circle wins and detection is not consulted.
+            // EVERY TURN DECIDES ITS OWN LANGUAGE.
+            //
+            // A setting was the wrong shape for this. South African households do
+            // not speak one language — a clan moves through two or three inside a
+            // single conversation — so a language chosen once is wrong by the third
+            // sentence, and answering in the language somebody was NOT just speaking
+            // is the exact insult this is meant to avoid.
+            //
+            // Whisper's own detection is not the answer either: that is audio LID on
+            // a tiny model, and it cannot separate the Nguni languages. The
+            // transcript, though, is easy to read — "ngi-" and "ndi-" tell isiZulu
+            // from isiXhosa in almost any sentence about oneself.
+            //
+            // So: guess from the words, per turn. When the guess is unsure it
+            // returns null and the stored language stands, which keeps a two-word
+            // "yes" from throwing the conversation into another language.
             var transcript = await ears.Transcriber.TranscribeAsync(audio, cts.Token);
             var heard      = transcript.Text?.Trim();
-            var spokenLang = SpokenLanguage.Current(this);
+
+            var guess      = CircleAI.Samples.It.LanguageGuess.Detect(heard);
+            var spokenLang = guess ?? SpokenLanguage.Current(this);
+            if (guess is not null) SpokenLanguage.Set(this, guess);
+            Android.Util.Log.Info("CircleAI.It",
+                $"language: guess={guess ?? "unsure"} using={spokenLang} (whisper said {transcript.LanguageCode})");
+
+            // Say which one it settled on. Silent language switching is unnerving —
+            // when the answer comes back in a language you did not expect there is
+            // no way to tell a detection slip from the model wandering off.
+            RunOnUiThread(() =>
+            {
+                if (_lang is null) return;
+                _lang.Text = "Answering in " + SpokenLanguage.NameOf(spokenLang);
+                _lang.Visibility = ViewStates.Visible;
+            });
             if (!IsSomethingSaid(heard))
             {
                 Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");

@@ -179,21 +179,8 @@ public sealed class ItSpeaker : IDisposable
     /// language is unknown or already English, so an English turn is not burdened
     /// with a pointless instruction.
     /// </remarks>
-    public static string? NameForLanguage(string? languageCode) =>
-        LanguageIdFor(languageCode) switch
-        {
-            0  => "Afrikaans",
-            2  => "isiNdebele",
-            3  => "Sepedi",
-            4  => "Sesotho",
-            5  => "siSwati",
-            6  => "Setswana",
-            7  => "Xitsonga",
-            8  => "Tshivenda",
-            9  => "isiXhosa",
-            10 => "isiZulu",
-            _  => null,          // English, or not one of the eleven
-        };
+    public static string? NameForLanguage(string? languageCode)
+        => LanguageGuess.InstructionNameFor(languageCode);
 
     /// <summary>
     /// Selects the best TTS voice the device can hold, downloads it (first run),
