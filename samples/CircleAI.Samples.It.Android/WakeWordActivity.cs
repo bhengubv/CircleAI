@@ -79,10 +79,7 @@ public class WakeWordActivity : Activity
         root.SetGravity(GravityFlags.CenterHorizontal);
         var pad = Ui.Dp(this, 24);
 
-        var name = Ui.Label(this, "Circle AI", 18f, Ui.InkSoft, bold: true);
-        name.SetPadding(pad, Ui.Dp(this, 28), pad, 0);
-        name.Gravity = GravityFlags.Center;
-        root.AddView(name, Ui.Fill());
+        root.AddView(Ui.HomeBar(this, "Hey B"), Ui.Fill());
 
         _ear = new EarView(this);
         var size = Ui.Dp(this, 200);

@@ -317,17 +317,16 @@ public class MainActivity : Activity
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(Ui.Bg);
 
-        // Header. There used to be two of these stacked — the ActionBar said "IT!"
-        // and so did the view right under it. One title is enough.
+        // THE HEADER IS THE WAY HOME. It used to be a 24pt wordmark and a tagline —
+        // a title card, announcing the app to someone already inside it, on the one
+        // screen that most needed an exit and did not have one.
+        //
+        // Typing is the BACKUP. The circle is the product. A person reaches this
+        // screen from "Or type instead" and used to be stuck here: the ActionBar is
+        // hidden, so ParentActivity drew no Up arrow, and nothing else on the screen
+        // led back. The only way out was a system gesture the app never mentions.
         ActionBar?.Hide();
-        var header = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        header.SetBackgroundColor(Ui.Surface);
-        header.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 22), Ui.Dp(this, 20), Ui.Dp(this, 16));
-        header.AddView(Ui.Label(this, "Circle AI", 24f, Ui.Ink, bold: true));
-        var tagline = Ui.Label(this, "Free AI that runs on your phone", 14f, Ui.InkSoft);
-        tagline.SetPadding(0, Ui.Dp(this, 4), 0, 0);
-        header.AddView(tagline);
-        root.AddView(header, Ui.Fill());
+        root.AddView(Ui.HomeBar(this, "Typing"), Ui.Fill());
 
         // The conversation. Bubbles, not a text dump — see ChatView for why the
         // shape matters more than the styling.

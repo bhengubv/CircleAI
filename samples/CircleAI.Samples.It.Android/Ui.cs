@@ -9,6 +9,7 @@
 // slate, derived here rather than typed as a fresh hex string at each call site —
 // that is how a codebase ends up with nine nearly-identical greys.
 
+using Android.App;
 using Android.Content;
 using Android.Graphics;
 using Android.Graphics.Drawables;
@@ -97,4 +98,70 @@ internal static class Ui
     public static LinearLayout.LayoutParams Fill(float weight = 0f) =>
         new(ViewGroup.LayoutParams.MatchParent,
             weight > 0 ? 0 : ViewGroup.LayoutParams.WrapContent, weight);
+
+    /// <summary>
+    /// The header every screen that is not the circle must wear: a small circle and
+    /// the name, and tapping it goes back to the circle.
+    /// </summary>
+    /// <remarks>
+    /// THE CIRCLE IS THE PRODUCT, AND EVERY OTHER SCREEN IS A DETOUR. That was true
+    /// in the design and false in the app: "Or type instead" led to the typing
+    /// screen and nothing led back. Every secondary screen called
+    /// <c>ActionBar?.Hide()</c>, which switched off the Up arrow that
+    /// <c>ParentActivity</c> would have drawn, so the only way home was the system
+    /// Back gesture. An app that never offers to take you home does not think of
+    /// home as home — and a person who types once stays in the text app forever.
+    ///
+    /// A CIRCLE, NOT A BACK ARROW. "Back" means the previous screen, which is a fact
+    /// about history; this is a fact about the product. Tapping the mark takes you
+    /// to the thing itself, from three screens deep, in one press.
+    /// </remarks>
+    /// <param name="title">
+    /// What this screen is. Shown small beside the name, because a person who has
+    /// navigated somewhere should be told where they are.
+    /// </param>
+    public static LinearLayout HomeBar(Activity a, string? title = null)
+    {
+        var bar = new LinearLayout(a) { Orientation = Orientation.Horizontal };
+        bar.SetBackgroundColor(Surface);
+        bar.SetPadding(Dp(a, 16), Dp(a, 12), Dp(a, 16), Dp(a, 12));
+        bar.SetGravity(GravityFlags.CenterVertical);
+        bar.SetMinimumHeight(Dp(a, 56));
+        bar.Clickable = true;
+
+        // The mark, small. Solid blue so it reads as the same object as the hero
+        // rather than a decorative dot.
+        var dot = new View(a) { Background = Rounded(a, Blue, 11f) };
+        var dotLp = new LinearLayout.LayoutParams(Dp(a, 22), Dp(a, 22));
+        dotLp.RightMargin = Dp(a, 12);
+        bar.AddView(dot, dotLp);
+
+        var name = Label(a, "Circle AI", 17f, Ink, bold: true);
+        bar.AddView(name);
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            var where = Label(a, "  ·  " + title, 15f, InkSoft);
+            bar.AddView(where);
+        }
+
+        // THE WHOLE BAR IS THE TARGET, not the 22dp dot. A control the size of a
+        // full-stop is a control most people miss.
+        bar.Click += (_, _) => GoHome(a);
+        return bar;
+    }
+
+    /// <summary>Returns to the circle without stacking a second copy of it.</summary>
+    /// <remarks>
+    /// ClearTop + SingleTop reuses the home screen already underneath rather than
+    /// building another on top, so pressing home three screens deep leaves ONE
+    /// screen in the stack and the next Back press exits — instead of walking a
+    /// person back through a pile of identical circles.
+    /// </remarks>
+    public static void GoHome(Activity a)
+    {
+        var home = new Intent(a, typeof(HomeActivity));
+        home.SetFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop);
+        a.StartActivity(home);
+    }
 }

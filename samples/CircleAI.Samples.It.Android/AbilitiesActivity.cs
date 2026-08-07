@@ -113,10 +113,13 @@ public class AbilitiesActivity : Activity
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(Ui.Bg);
 
+        // The wordmark was here already but did nothing — a title where the way home
+        // belonged. It is now the way home.
+        root.AddView(Ui.HomeBar(this, "What it can do"), Ui.Fill());
+
         var header = new LinearLayout(this) { Orientation = Orientation.Vertical };
         header.SetBackgroundColor(Ui.Surface);
-        header.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 16), Ui.Dp(this, 20), 0);
-        header.AddView(Ui.Label(this, "Circle AI", 24f, Ui.Blue, bold: true));
+        header.SetPadding(Ui.Dp(this, 20), 0, Ui.Dp(this, 20), 0);
 
         // The tabs live in the header, under the title, where every phone puts
         // them. A segmented row rather than Android's TabHost: two items do not

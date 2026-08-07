@@ -138,16 +138,15 @@ public class LanguagePickerActivity : Activity
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(Ui.Bg);
 
-        // Header
+        // HOME, NOT BACK. This screen had a "‹ Back" link calling Finish(), which
+        // is a statement about history rather than about the product — reached from
+        // the typing screen it returned you to typing, not to the circle. The bar
+        // goes to the circle from wherever you are.
+        root.AddView(Ui.HomeBar(this, "Languages"), Ui.Fill());
+
         var head = new LinearLayout(this) { Orientation = Orientation.Vertical };
         head.SetBackgroundColor(Ui.Surface);
-        head.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 20), Ui.Dp(this, 20), Ui.Dp(this, 16));
-
-        var back = Ui.Label(this, "‹  Back", 15f, Ui.Blue);
-        back.SetPadding(0, 0, 0, Ui.Dp(this, 12));
-        back.Clickable = true;
-        back.Click += (s, e) => Finish();
-        head.AddView(back);
+        head.SetPadding(Ui.Dp(this, 20), Ui.Dp(this, 16), Ui.Dp(this, 20), Ui.Dp(this, 16));
 
         head.AddView(Ui.Label(this, "Pick a language", 26f, Ui.Ink, bold: true));
 
