@@ -36,7 +36,16 @@ public sealed class SelectionQualityTests
         var pick = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default);
 
         Assert.Equal(SelectionQuality.Good, pick.Quality);
-        Assert.Equal("Qwen3-0.6B-MNN", pick.ModelId);
+
+        // The VERDICT is what this test is for; which model earns it is the
+        // catalogue's business and changes whenever a better one is added. It
+        // pinned "Qwen3-0.6B-MNN" and failed the day Qwen3.5-0.8B was
+        // catalogued — a newer model that also fits, which is an improvement
+        // reported as a regression. What must hold is that a Good verdict comes
+        // with something the phone can actually hold.
+        Assert.True(pick.EstimatedBytes < 1_100_000_000L,
+            $"Quality.Good on a 1.1 GB phone, but picked {pick.ModelId} " +
+            $"at {pick.EstimatedBytes} bytes.");
     }
 
     [Fact]
@@ -64,7 +73,16 @@ public sealed class SelectionQualityTests
             .BestFit(Device(1.1), ChatCapability.Default, minQualityRank: 10);
 
         Assert.Equal(SelectionQuality.BelowFloor, pick.Quality);
-        Assert.Equal("Qwen3-0.6B-MNN", pick.ModelId);
+
+        // BelowFloor means exactly one thing: the best that fits is still worse
+        // than the caller said they needed. Assert THAT, not which model it
+        // happens to be — the answer improved to Qwen3.5-0.8B (rank 7) and the
+        // verdict is unchanged, because 7 is still under the requested 10.
+        var chosen = new CircleAI.Core.Models.ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, System.StringComparison.Ordinal));
+        Assert.True(chosen.QualityRank < 10,
+            $"{pick.ModelId} is rank {chosen.QualityRank}, which meets the floor of 10 — " +
+            "so the verdict should not have been BelowFloor.");
     }
 
     [Fact]

@@ -930,5 +930,290 @@
         "SizeBytes": 3193569
       }
     ]
+  },
+  "Qwen3.5-0.8B-MNN": {
+    "Repo": "MNN/Qwen3.5-0.8B-MNN",
+    "Modality": "Text",
+    "Architecture": "qwen3.5",
+    "QuantizationType": "MNN-Q4",
+    "Version": "3.5",
+    "TotalBytes": 547649117,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "1de0b654d490ba99206cef7788d49910b2b957b1f8da60973ada8dd548c6a118",
+        "SizeBytes": 2324
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+        "SizeBytes": 652
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "export_args.json",
+        "Sha256": "5c82a104779d8840d84349e17ca1c1b97dd0754afd5dcfc73e95c47ac96b754a",
+        "SizeBytes": 1044
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "94e0459e10584487a3bda77dc3c3322c0c01cfc9d223a7284e8d07345bf877d5",
+        "SizeBytes": 2148136
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "fe58a15987b391b443ade62a92221956349e11628fa36b1bfb9503af32923a1a",
+        "SizeBytes": 5343877
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "4e25ef4cbfb49a33013d17300c2f68cd9c9ce8f2e3f7b947fd2c574ec297ca5e",
+        "SizeBytes": 470382614
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "33f2c15bda1911ed666418437f45900e78185b57b883545e5d02c14f92a0907b",
+        "SizeBytes": 8691
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "f5347f212f3eb2c61d580adb02ef52659470deccc8f87c2a0546e4c5e6c3a0d2",
+        "SizeBytes": 1266
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+        "SizeBytes": 6465727
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "05e92b95a1295ee747b0436061b7ae7b1d1d3c7903306fe99e4af13e5aca3de3",
+        "SizeBytes": 251528
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "4c03fcac0d164d014e5cd1a1d7ab4fc95babbec724a268f3ba486c5db3511161",
+        "SizeBytes": 63043212
+      }
+    ]
+  },
+  "Qwen3.5-2B-MNN": {
+    "Repo": "MNN/Qwen3.5-2B-MNN",
+    "Modality": "Text",
+    "Architecture": "qwen3.5",
+    "QuantizationType": "MNN-Q4",
+    "Version": "3.5",
+    "TotalBytes": 1386694949,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "f3f89c356c2ac2e67fcf56245d0f5d1b1dc581ba79e4a01cd2c928bada25fc2b",
+        "SizeBytes": 2324
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+        "SizeBytes": 652
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "export_args.json",
+        "Sha256": "a5b3a7d2c45e53c887e539259696d5fcec793637c9a3e9fbc7cd0dd008af6a87",
+        "SizeBytes": 1040
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "23df98f8b341b277365e0bbca025c1d192939e3d32d7f79776352c6f32e77960",
+        "SizeBytes": 2148136
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "7131ff4f1a441add1039d371815ad94652ae6801f579591cb2f9ad90b5954025",
+        "SizeBytes": 5344018
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "c93f71a2dbecf9328782bd38861656d8faa82e95e7f99607350074768a482054",
+        "SizeBytes": 1176647702
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "a88234b36c2af0eff8e5c89667011badf71c15e30459eb0e21030a8f3f9ed240",
+        "SizeBytes": 8692
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "2f74f9fb06d39380a68adc6f6a21799131b6301b24c8abfc9c7586bf2fea0483",
+        "SizeBytes": 1252
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+        "SizeBytes": 6465727
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "88fc40a7b676e90eb2cb86d854db15cb90b9eb1f34087ab0f48c5e43572c8dac",
+        "SizeBytes": 488096
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "8f90e106f5b9ae9a939faed240305cfdd5c6740ae91d3fc418a990bee0cce36b",
+        "SizeBytes": 195587264
+      }
+    ]
+  },
+  "Qwen3.5-4B-MNN": {
+    "Repo": "MNN/Qwen3.5-4B-MNN",
+    "Modality": "Text",
+    "Architecture": "qwen3.5",
+    "QuantizationType": "MNN-Q4",
+    "Version": "3.5",
+    "TotalBytes": 2845947034,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
+        "SizeBytes": 1642
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+        "SizeBytes": 652
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "export_args.json",
+        "Sha256": "fb827952ef5e5b8133d931d19123171f3681132932d3d7682c0169da7d562b92",
+        "SizeBytes": 1040
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "45eebc9dc433a55f0388453250a05a728a206650294be92f48e4fdd1b0348e0f",
+        "SizeBytes": 3651096
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "d2e7f54aea01444ec1bd89edc0a3b9b5203cc00fdf909474c877a79a45147b1b",
+        "SizeBytes": 9172204
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "a31d50e5668ce6b22655ff4750cfd48b972790ae883f2c154ba34b9173b38de1",
+        "SizeBytes": 2629387626
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "8da9ee370f627577f95875a6bf915e2358d6a6d7a1eb3d16272987379dd9ceca",
+        "SizeBytes": 8693
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "4f03ac823ad79c7b68362b93839cb1eb94152f01a333cd879f53c5a613dda369",
+        "SizeBytes": 1252
+      },
+      {
+        "Name": "tokenizer.txt",
+        "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+        "SizeBytes": 6465727
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "b9a865dee1ceffc83eeca8ee0a8e7d5b911960b18ac93003d1135ea903a2bc31",
+        "SizeBytes": 488096
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "cc51f3aa1e026c853bdd22e9188c51b121b7bdcfcef6030f4254ef297b615ab5",
+        "SizeBytes": 196768960
+      }
+    ]
+  },
+  "Qwen3.6-35B-A3B-MNN": {
+    "Repo": "MNN/Qwen3.6-35B-A3B-MNN",
+    "Modality": "Text",
+    "Architecture": "qwen3-moe",
+    "QuantizationType": "MNN-Q4",
+    "Version": "3.6",
+    "TotalBytes": 22798000533,
+    "BundleFiles": [
+      {
+        "Name": ".gitattributes",
+        "Sha256": "d1731d2eea8d03afe8379c694c8efb950d48aad1e0904cd81cbc5a15d41daec3",
+        "SizeBytes": 2299
+      },
+      {
+        "Name": "config.json",
+        "Sha256": "449c57466a1ff38be242a9eaab47d7cc9ec1d2d1bc5d0040edc5fa22214a8cdd",
+        "SizeBytes": 634
+      },
+      {
+        "Name": "configuration.json",
+        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
+        "SizeBytes": 46
+      },
+      {
+        "Name": "embeddings_bf16.bin",
+        "Sha256": "fa0611f12cdb3827ce18c6e008645584fcd16156579011f6c63be499d2443b0f",
+        "SizeBytes": 1017118720
+      },
+      {
+        "Name": "export_args.json",
+        "Sha256": "f4cedc76d6d2026b64a650ea012ef8fef97262c783fb49d22555f738ce245e16",
+        "SizeBytes": 1051
+      },
+      {
+        "Name": "llm.mnn",
+        "Sha256": "72062a0b8cea7bc424b06b8ce4a41a028ed014bfeb24904784cdcdfa7a016af8",
+        "SizeBytes": 54337944
+      },
+      {
+        "Name": "llm.mnn.json",
+        "Sha256": "ecae51945a5920693e34602d96d56b71fb37fe175329b04a99b5a4a466525f3a",
+        "SizeBytes": 118970661
+      },
+      {
+        "Name": "llm.mnn.weight",
+        "Sha256": "5781e00b06d3d76d15ca22a065c0e8db8e9570c90eba80e5ae69d0ba924f10f9",
+        "SizeBytes": 21346165150
+      },
+      {
+        "Name": "llm_config.json",
+        "Sha256": "6bb3e38e04e2ac21221baf4deb1d7567392d9875dc1e3f5d6f430e11335fb09c",
+        "SizeBytes": 8641
+      },
+      {
+        "Name": "README.md",
+        "Sha256": "f4919459a7b6ea71c54da31e285257baf932bda58f080877d6f09ab47d5d82bd",
+        "SizeBytes": 1286
+      },
+      {
+        "Name": "tokenizer.mtok",
+        "Sha256": "f93ba7a3d636a251dfd841a12d86684c71f8b2a3ed4750d9cbbca4c2a8948c08",
+        "SizeBytes": 7331641
+      },
+      {
+        "Name": "visual.mnn",
+        "Sha256": "0a1cf274946ebbf6c939b29dc4e84fe6346d60c2e325342b5ab40e157fa9338b",
+        "SizeBytes": 547824
+      },
+      {
+        "Name": "visual.mnn.weight",
+        "Sha256": "99e8601398bef904623c39e0361ec5a2c20eb3182bd392637767ba7174b35d72",
+        "SizeBytes": 253514636
+      }
+    ]
   }
 }

@@ -14,6 +14,8 @@
 
 using System;
 using CircleAI.Core;
+using CircleAI.Core.Models;
+using System.Linq;
 using CircleAI.Inference;
 using Xunit;
 
@@ -50,9 +52,19 @@ public sealed class DeviceAwareModelSelectorRegistryTests
     [Fact]
     public void Reasoning_NeverSelectsAModelWithoutThinkingMode()
     {
-        // Only the Qwen3 ladder declares Reasoning; Qwen2.5-Instruct must never win.
+        // Only the Qwen3 line declares Reasoning; Qwen2.5-Instruct must never win.
+        //
+        // ASSERTS THE CAPABILITY, NOT THE NAME. This used to check the id started
+        // with "Qwen3-", which was a proxy for "declares Reasoning" and held right
+        // up until Qwen3.5 arrived — a thinking model whose name does not match
+        // that prefix. The proxy failed while the invariant was still perfectly
+        // true, which is a test reporting on its own spelling rather than on the
+        // behaviour it guards.
         var pick = new DeviceAwareModelSelector().BestFit(Device(3.4), ChatCapability.Reasoning);
-        Assert.StartsWith("Qwen3-", pick.ModelId, StringComparison.Ordinal);
+        var entry = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+
+        Assert.Contains("Reasoning", entry.Capabilities, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -72,8 +84,41 @@ public sealed class DeviceAwareModelSelectorRegistryTests
     public void CheapPhone_GetsTheSmallQwen3()
     {
         // ~1.1 GB free is the measured Huawei P30 Lite / Redmi Note 9 case.
-        var pick = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default);
-        Assert.Equal("Qwen3-0.6B-MNN", pick.ModelId);
+        //
+        // ASSERTS THE FIT, NOT THE NAME. This pinned "Qwen3-0.6B-MNN" and broke
+        // the day a better model at the same size was catalogued — it now picks
+        // Qwen3.5-0.8B, which is the selector doing exactly its job. A test that
+        // fails when the answer IMPROVES is guarding the catalogue's contents
+        // rather than the selector's behaviour.
+        //
+        // What must stay true: whatever it picks has to fit in what the phone
+        // actually has free, and has to be the best-ranked thing that does.
+        var selector = new DeviceAwareModelSelector();
+        var pick     = selector.BestFit(Device(1.1), ChatCapability.Default);
+
+        var chosen = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+
+        Assert.True(chosen.MinRamGb <= 1.1,
+            $"{chosen.Name} wants {chosen.MinRamGb} GB on a 1.1 GB handset");
+
+        // Compared against the SELECTOR'S OWN candidate list, not the whole
+        // registry. Re-deriving "what counts as a chat model" in the test means
+        // maintaining a second copy of the selector's rules, and mine was
+        // already wrong twice — it accused the selector of passing over a
+        // text-to-speech voice, and then a wake-word bundle, both of which
+        // declare Default and fit in 1.1 GB and are not conversations.
+        var betterAndRunnable = selector.AllCandidates(Device(1.1))
+            .Where(c => c.Quality == SelectionQuality.Good && c.ModelId != pick.ModelId)
+            .Select(c => c.ModelId)
+            .Where(id => new ModelRegistryService().AllModels
+                .Single(m => string.Equals(m.Name, id, StringComparison.Ordinal))
+                .QualityRank > chosen.QualityRank)
+            .ToList();
+
+        Assert.True(betterAndRunnable.Count == 0,
+            "a better model also runs here and was passed over: "
+            + string.Join(", ", betterAndRunnable));
     }
 
     [Fact]
@@ -122,3 +167,4 @@ public sealed class DeviceAwareModelSelectorRegistryTests
             chain);
     }
 }
+
