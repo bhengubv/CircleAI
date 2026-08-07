@@ -2647,8 +2647,8 @@
       "Architecture": "qwen3-moe",
       "TotalBytes": 17748783393,
       "QualityRank": 15,
-      "MemoryHintBytes": 6000000000,
-      "MinRamGb": 6.0,
+      "MemoryHintBytes": 2500000000,
+      "MinRamGb": 2.5,
       "MinStorageGb": 18.0,
       "Capabilities": [
         "Default",
@@ -2957,8 +2957,8 @@
       "Architecture": "qwen3-moe",
       "TotalBytes": 22798000533,
       "QualityRank": 16,
-      "MemoryHintBytes": 6500000000,
-      "MinRamGb": 6.5,
+      "MemoryHintBytes": 2500000000,
+      "MinRamGb": 2.5,
       "MinStorageGb": 23.0,
       "Capabilities": [
         "Default",
