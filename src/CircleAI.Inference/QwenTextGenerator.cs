@@ -152,6 +152,19 @@ public sealed class QwenTextGenerator : IChatGenerator
                 "libmnnbridge is on the native library search path.");
         }
 
+        // MEMORY-MAP THE WEIGHTS instead of reading them into the heap.
+        //
+        // RT-03 built this and nothing ever called it, so every model was loaded
+        // eagerly and held in full — 975 MB resident for a 1.5B on a phone with
+        // 3.7 GB, most of which is weights the kernel could have paged from the
+        // file on demand and dropped again under pressure.
+        //
+        // Before load, because MNN reads the flag while loading. Best-effort: an
+        // older bridge without the export, or a filesystem that cannot map, must
+        // degrade to the eager path rather than fail the model.
+        try { new MmapWeightLoader(handle.DangerousGetHandle()).Enable(); }
+        catch { /* older bridge or unmappable store — eager load is still correct */ }
+
         int rc = MnnInterop.mnn_llm_load(handle);
         if (rc != 0)
         {

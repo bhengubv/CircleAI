@@ -172,6 +172,16 @@ MNNBRIDGE_API int mnn_llm_generate_stream_text(
     mnn_text_callback cb,
     void* user_data);
 
+// Applies MNN runtime settings as a JSON object, e.g.
+//   {"memory":"normal","power":"high","thread_num":4}
+// Must be called BEFORE mnn_llm_load — these are read during load and ignored
+// afterwards. Returns 0 on success.
+//
+// Calling this also suppresses the bridge's own mobile defaults (memory:normal,
+// power:high), on the principle that a caller which has measured its handset
+// outranks a default measured on a different one.
+MNNBRIDGE_API int mnn_llm_set_config(mnn_llm_handle handle, const char* json_utf8);
+
 // ── Session persistence ──────────────────────────────────────────────────
 //
 // "Session" here means the prompt cache + KV cache state attached to a

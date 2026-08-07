@@ -676,7 +676,9 @@ public sealed class AIService : IAIService
         string lastResponse = string.Empty;
         for (int iteration = 0; iteration < maxIter; iteration++)
         {
-            var prepared = await PrepareMessagesAsync(history, prompt, linked.Token)
+            // forceTools: this IS the tool loop. Whatever the question looks
+            // like, a caller who invoked the agentic path has already decided.
+            var prepared = await PrepareMessagesAsync(history, prompt, linked.Token, forceTools: true)
                 .ConfigureAwait(false);
 
             var sw = Stopwatch.StartNew();
@@ -1098,10 +1100,20 @@ public sealed class AIService : IAIService
     // (same reason ParseToolCall is internal). Prompt composition decides what
     // the model can actually know, so it is worth asserting directly rather
     // than inferring from a generated reply.
+    /// <param name="forceTools">
+    /// Always include the tool block, whatever the question looks like.
+    /// </param>
+    /// <remarks>
+    /// Set by the agentic path, which exists FOR tool use — a caller that has
+    /// explicitly asked to run the tool loop has already answered the question
+    /// the cue test is guessing at, and letting the guess overrule them would
+    /// disarm the loop on any turn whose wording happened not to match.
+    /// </remarks>
     internal async Task<List<ChatMessage>> PrepareMessagesAsync(
         IReadOnlyList<ChatMessage> messages,
         string userQuery,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool forceTools = false)
     {
         // Enrichment is computed ONCE and used differently depending on whether
         // the caller owns the system turn.
@@ -1111,50 +1123,88 @@ public sealed class AIService : IAIService
         // registered and the model is never told the tools exist, tool calling
         // silently no-ops and looks like a model failure — so this is appended
         // regardless of who owns the system turn.
-        var toolBlock = await BuildToolBlockAsync(ct).ConfigureAwait(false);
+        //
+        // BUT NOT ON EVERY TURN, because the contract is not free. Measured on a
+        // P30 Lite with Qwen2.5-1.5B: the block took the prompt from 33 tokens to
+        // 449, and prefill on that phone costs ~70 ms per prompt token — so
+        // first-token time went from 4.5 s to 27.5 s. Twenty-three seconds of
+        // JSON schemas, prefilled again on every question, to answer "I am
+        // feeling lonely today."
+        //
+        // Sent only when the turn might actually reach for a tool. Getting this
+        // wrong in one direction costs a tool call the model could have made;
+        // getting it wrong in the other costs every user twenty-three seconds of
+        // silence on every question. The asymmetry is not close.
+        var toolBlock = (forceTools || NeedsTools(userQuery))
+            ? await BuildToolBlockAsync(ct).ConfigureAwait(false)
+            : string.Empty;
 
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
 
+        // STABLE THINGS FIRST, VOLATILE THINGS LAST — the whole reason a KV cache
+        // can be reused between turns.
+        //
+        // Everything grounding used to be concatenated into the SYSTEM message,
+        // which reads naturally and quietly made the cache useless. The device
+        // context alone contains
+        //
+        //     Local time: 2026-08-08 02:41
+        //
+        // so the system message changed every sixty seconds; RAG recall changed
+        // whenever a memory was written. A prefix that changes cannot be reused,
+        // so every turn re-prefilled the entire conversation from the top. That
+        // is the 13.5-second climb measured across five questions on a P30 Lite:
+        // not the model slowing down, the transcript being re-read.
+        //
+        // Now the system message holds ONLY what does not change, and everything
+        // that does rides on the newest user turn — which is new text anyway and
+        // has to be prefilled regardless. Nothing is lost, and the prefix in
+        // front of it stays byte-identical from one turn to the next.
+        //
+        // Grounding goes BEFORE the question inside that turn, so the person's
+        // actual words remain the last thing the model reads.
+        var volatilePart = (hasSystem && _options.SystemPromptEnrichment != SystemPromptEnrichment.Always)
+            ? toolBlock
+            : Combine(enrichment, toolBlock);
+
         var prepared = new List<ChatMessage>(messages.Count + 1);
 
-        if (hasSystem)
-        {
-            // The caller's own instructions come FIRST and are never rewritten —
-            // what gets appended after them is grounding, not personality
-            // override.
-            //
-            // This used to append ONLY the tool block, silently discarding
-            // persona, device context, RAG recall and skill context. A host that
-            // set its own system prompt therefore lost memory grounding without
-            // any signal — the assistant simply stopped remembering, and looked
-            // like a bad model rather than a dropped feature.
-            var extra = _options.SystemPromptEnrichment == SystemPromptEnrichment.Always
-                ? Combine(enrichment, toolBlock)
-                : toolBlock;
+        if (!hasSystem && !string.IsNullOrWhiteSpace(_options.SystemPrompt))
+            prepared.Add(new ChatMessage("system", _options.SystemPrompt));
 
-            var pending = extra;
-            foreach (var m in messages)
+        // Attach to the LAST user turn — the one being answered. Attaching to an
+        // earlier one would put stale context in a position the cache treats as
+        // settled, and re-break the prefix on the following turn.
+        var lastUser = -1;
+        for (var i = messages.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(messages[i].Role, "user", StringComparison.OrdinalIgnoreCase))
             {
-                if (pending.Length > 0 &&
-                    string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
-                {
-                    prepared.Add(new ChatMessage("system", Combine(m.Content, pending)));
-                    pending = string.Empty;
-                }
-                else
-                {
-                    prepared.Add(m);
-                }
+                lastUser = i;
+                break;
             }
         }
-        else
+
+        for (var i = 0; i < messages.Count; i++)
         {
-            // Inject enriched system prompt only when it is non-empty.
-            var combined = Combine(Combine(_options.SystemPrompt, enrichment), toolBlock);
-            if (!string.IsNullOrWhiteSpace(combined))
-                prepared.Add(new ChatMessage("system", combined));
-            prepared.AddRange(messages);
+            var m = messages[i];
+            if (i == lastUser && volatilePart.Length > 0)
+                prepared.Add(new ChatMessage(m.Role, Combine(volatilePart, m.Content)));
+            else
+                prepared.Add(m);
+        }
+
+        // No user turn to hang it on (a system-only or assistant-only call).
+        // Fall back to the old shape rather than dropping the grounding.
+        if (lastUser < 0 && volatilePart.Length > 0)
+        {
+            var idx = prepared.FindIndex(m =>
+                string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0)
+                prepared[idx] = new ChatMessage("system", Combine(prepared[idx].Content, volatilePart));
+            else
+                prepared.Insert(0, new ChatMessage("system", volatilePart));
         }
 
         return prepared;
@@ -1180,6 +1230,62 @@ public sealed class AIService : IAIService
             return string.Empty;
         }
     }
+
+    /// <summary>
+    /// Whether this turn is worth spending the tool block on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A DELIBERATELY BLUNT TEST, and blunt in the generous direction. It asks
+    /// only whether the question reaches outward — at the world, at the device,
+    /// at something the model cannot know from its weights. Anything that does
+    /// gets the tools; conversation, feelings, general knowledge and small talk
+    /// do not.
+    /// </para>
+    /// <para>
+    /// The costs are wildly asymmetric. A false negative loses one tool call on
+    /// one turn. A false positive costs EVERY user twenty-three seconds of
+    /// silence on EVERY question, because the block is re-prefilled each time —
+    /// measured at 33 tokens without it against 449 with, on a phone where
+    /// prefill runs ~70 ms per token. So the bar for including it is real
+    /// evidence in the question, not the mere possibility of usefulness.
+    /// </para>
+    /// <para>
+    /// Cheap and deterministic on purpose, matching the concierge router: asking
+    /// a model whether the turn needs tools would cost a generation to save a
+    /// prefill.
+    /// </para>
+    /// </remarks>
+    private static bool NeedsTools(string? userQuery)
+    {
+        if (string.IsNullOrWhiteSpace(userQuery)) return false;
+
+        var q = userQuery.ToLowerInvariant();
+        foreach (var cue in ToolCues)
+            if (q.Contains(cue, StringComparison.Ordinal)) return true;
+
+        return false;
+    }
+
+    /// <summary>Words that mean the answer is not in the model's weights.</summary>
+    /// <remarks>
+    /// Reaching OUTWARD is the common thread — at live facts, at the device's
+    /// own state, at arithmetic the model should not be trusted to do in its
+    /// head. Not a list of tool names: a person asks "what's the weather", never
+    /// "call get_weather".
+    /// </remarks>
+    private static readonly string[] ToolCues =
+    {
+        // Live facts the weights cannot hold.
+        "weather", "temperature", "forecast", "news", "today's", "right now",
+        "current", "latest", "search", "look up", "google", "price", "exchange rate",
+        // The device itself.
+        "battery", "signal", "storage", "wifi", "wi-fi", "bluetooth", "volume",
+        // Arithmetic, which a small model should hand off rather than guess.
+        "calculate", "convert", "how much is", "how many",
+        // Explicit instruction to go and do something.
+        "check ", "find out", "tell me the time", "what time",
+    };
 
     /// <summary>Joins two prompt fragments, tolerating either being empty.</summary>
     private static string Combine(string? first, string? second)

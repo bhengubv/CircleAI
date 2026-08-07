@@ -132,7 +132,15 @@ public sealed class ItSession : IAsyncDisposable
                 NativeLibDir          = nativeLibDir,
                 ModelStorageDirectory = modelDir,
                 WarmOnStart           = true,   // pay the cold start once, up front
-                ToolBridge            = Tools,
+                // LEAN ALSO DROPS THE TOOLS, to price them. The base system
+                // prompt is one line — thirteen tokens — yet the prompt reaching
+                // the model measured 449. Almost all of it is injected, and the
+                // tool-definitions block is the largest injector: every schema,
+                // on every turn, including "I am feeling lonely today."
+                //
+                // On this phone prefill costs ~70 ms per prompt token, so every
+                // 14 tokens of preamble is a second the person waits.
+                ToolBridge            = lean ? null : Tools,
                 // Self-knowledge from capabilities.json. Without this IT! can
                 // describe its TOOLS (a side effect of the tools block) but has
                 // no idea it runs offline, remembers across turns, or picks its

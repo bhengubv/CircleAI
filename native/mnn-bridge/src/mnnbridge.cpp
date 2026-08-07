@@ -24,6 +24,27 @@
 // Linux MNN library binaries (which DO export the LLM symbols).
 #include <llm/llm.hpp>
 
+// WHERE THE TIME GOES, reported from inside the bridge.
+//
+// Every layer above this one can time a whole call and nothing else, so a slow
+// answer was indistinguishable from a slow model. On a P30 Lite the first token
+// took 31 seconds and no measurement anywhere could say whether that was
+// tokenising, prefill, or decode — the three are one opaque call from C#.
+//
+// Android only, via liblog, which this target already links.
+#if defined(__ANDROID__)
+  #include <android/log.h>
+  #include <chrono>
+  #define BRIDGE_LOG(...) __android_log_print(ANDROID_LOG_INFO, "mnnbridge", __VA_ARGS__)
+  #define BRIDGE_NOW()    std::chrono::steady_clock::now()
+  #define BRIDGE_MS(a, b) \
+      ((long)std::chrono::duration_cast<std::chrono::milliseconds>((b) - (a)).count())
+#else
+  #define BRIDGE_LOG(...) ((void)0)
+  #define BRIDGE_NOW()    0
+  #define BRIDGE_MS(a, b) 0L
+#endif
+
 #include <cstring>
 #include <fstream>
 #include <memory>
@@ -53,6 +74,10 @@ struct LlmWrapper {
     int mmap_mode = 0;
     // RT-10 LoRA — path of the currently-applied adapter, or empty string.
     std::string lora_adapter_path;
+    // Set when the caller supplied its own runtime config before load, which
+    // suppresses the bridge's mobile defaults. A caller that has measured its
+    // own handset knows better than a default chosen on one phone.
+    bool config_overridden = false;
 };
 
 inline LlmWrapper* as_wrapper(mnn_llm_handle h) {
@@ -148,9 +173,39 @@ MNNBRIDGE_API int mnn_llm_load(mnn_llm_handle handle) {
             w->llm->set_config(cfg);
         }
 
+        // DO NOT SET memory:normal HERE. It was tried, on the theory that
+        // memory:low costs a re-dequantisation of the weights on every pass and
+        // that this was why prefill ran at 70 ms/token against decode's 116.
+        //
+        // Measured on a P30 Lite, Qwen2.5-1.5B, {"memory":"normal","power":"high"}:
+        //
+        //     prefill  31 551 ms  ->  83 309 ms   (2.7x WORSE)
+        //     resident    975 MB  ->   1 772 MB
+        //
+        // Holding the dequantised weights costs 800 MB, and on a 3.7 GB phone
+        // with ~1.6 GB actually free that lands in swap on eMMC. Paying to
+        // dequantise again is far cheaper than paying to page. The bundles ship
+        // memory:low and they are right; a caller on a larger handset can still
+        // override via mnn_llm_set_config before load.
+        //
+        // The real cost was never the memory mode — see the note on prefill in
+        // mnn_llm_generate_stream_text.
+
         bool ok = w->llm->load();
         if (!ok) return MNNBRIDGE_ERR_LOAD_FAILED;
         w->loaded = true;
+
+        // WHAT MNN ACTUALLY RESOLVED, not what we hoped it would. Every knob
+        // that decides whether this is fast — thread_num, precision, backend,
+        // and whatever governs prefill batching — lives in the model's own
+        // config.json, which is downloaded from ModelScope and never inspected
+        // on this side. Measured on a P30 Lite, prefill ran at 60 ms/token
+        // against decode's 111 ms/token; a batched prefill should be many times
+        // cheaper per token than decode, so those two numbers being that close
+        // says the prompt is going through one token at a time. This prints the
+        // settings so that stops being a guess.
+        try { BRIDGE_LOG("config: %s", w->llm->dump_config().c_str()); } catch (...) {}
+
         return MNNBRIDGE_OK;
     } catch (...) {
         return MNNBRIDGE_ERR_LOAD_FAILED;
@@ -344,6 +399,14 @@ public:
     bool stopped() const { return stopped_; }
     int  calls()   const { return calls_; }
 
+    // When the FIRST write landed. That instant separates prefill from decode:
+    // everything before it is the model reading the prompt, everything after is
+    // it writing the answer. It is also, exactly, the moment a person stops
+    // waiting in silence.
+    bool  gotFirst() const { return got_first_; }
+    long  firstAt()  const { return first_at_; }
+    void  startClock() { t0_ = BRIDGE_NOW(); }
+
 protected:
     std::streamsize xsputn(const char* s, std::streamsize n) override {
         if (n > 0) emit(s, static_cast<int>(n));
@@ -361,6 +424,7 @@ protected:
 private:
     void emit(const char* s, int n) {
         if (stopped_ || !cb_) return;
+        if (!got_first_) { got_first_ = true; first_at_ = BRIDGE_MS(t0_, BRIDGE_NOW()); }
         ++calls_;
         // A managed callback must never throw into native code, but guard
         // anyway — an exception escaping here would unwind through MNN.
@@ -371,8 +435,15 @@ private:
 
     mnn_text_callback cb_;
     void* user_data_;
-    bool  stopped_ = false;
-    int   calls_   = 0;
+    bool  stopped_    = false;
+    int   calls_      = 0;
+    bool  got_first_  = false;
+    long  first_at_   = -1;
+#if defined(__ANDROID__)
+    std::chrono::steady_clock::time_point t0_ = std::chrono::steady_clock::now();
+#else
+    int t0_ = 0;
+#endif
 };
 
 }  // namespace
@@ -384,10 +455,13 @@ MNNBRIDGE_API int mnn_llm_generate_stream_text(
     if (!w || !w->llm) return MNNBRIDGE_ERR_INVALID_HANDLE;
     if (!prompt_utf8 || !cb) return MNNBRIDGE_ERR_INVALID_ARG;
     try {
+        auto t_start = BRIDGE_NOW();
         std::string formatted = w->llm->apply_chat_template(std::string(prompt_utf8));
         auto input_ids = w->llm->tokenizer_encode(formatted);
+        auto t_tok = BRIDGE_NOW();
 
         CallbackStreambuf buf(cb, user_data);
+        buf.startClock();
         std::ostream os(&buf);
 
         // end_with = "" rather than nullptr: MNN appends end_with to the stream
@@ -396,6 +470,19 @@ MNNBRIDGE_API int mnn_llm_generate_stream_text(
         w->llm->response(input_ids, &os, "",
                          max_new_tokens > 0 ? max_new_tokens : 256);
         os.flush();
+        auto t_end = BRIDGE_NOW();
+
+        // prompt = how many tokens it had to read before it could say anything.
+        // tokenise / prefill / decode, split — so a slow answer names its own
+        // cause instead of being one opaque number.
+        BRIDGE_LOG("gen: prompt=%d tok | tokenise=%ld ms | prefill=%ld ms | "
+                   "decode=%ld ms | total=%ld ms | %d chunks",
+                   (int)input_ids.size(),
+                   BRIDGE_MS(t_start, t_tok),
+                   buf.firstAt(),
+                   buf.gotFirst() ? BRIDGE_MS(t_tok, t_end) - buf.firstAt() : -1L,
+                   BRIDGE_MS(t_start, t_end),
+                   buf.calls());
 
         return buf.calls();
     } catch (...) {
@@ -429,6 +516,21 @@ MNNBRIDGE_API int mnn_llm_load_session(mnn_llm_handle handle, const char* path_u
         return ok ? MNNBRIDGE_OK : MNNBRIDGE_ERR_IO;
     } catch (...) {
         return MNNBRIDGE_ERR_IO;
+    }
+}
+
+MNNBRIDGE_API int mnn_llm_set_config(mnn_llm_handle handle, const char* json_utf8) {
+    auto w = as_wrapper(handle);
+    if (!w || !w->llm) return MNNBRIDGE_ERR_INVALID_HANDLE;
+    if (!json_utf8) return MNNBRIDGE_ERR_INVALID_ARG;
+    try {
+        bool ok = w->llm->set_config(std::string(json_utf8));
+        // Suppress the bridge's own defaults from here on: a caller that has
+        // measured this handset outranks a default measured on another.
+        w->config_overridden = true;
+        return ok ? MNNBRIDGE_OK : MNNBRIDGE_ERR_INVALID_ARG;
+    } catch (...) {
+        return MNNBRIDGE_ERR_INVALID_ARG;
     }
 }
 
