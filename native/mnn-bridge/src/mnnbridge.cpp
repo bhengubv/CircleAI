@@ -78,6 +78,10 @@ struct LlmWrapper {
     // suppresses the bridge's mobile defaults. A caller that has measured its
     // own handset knows better than a default chosen on one phone.
     bool config_overridden = false;
+    // Scratch directory for mmap. MNN writes its mapping file here, so it has
+    // to be somewhere the process can actually write — on Android that is the
+    // app's own storage, never a system path.
+    std::string tmp_path = "tmp";
 };
 
 inline LlmWrapper* as_wrapper(mnn_llm_handle h) {
@@ -523,6 +527,14 @@ MNNBRIDGE_API int mnn_llm_load_session(mnn_llm_handle handle, const char* path_u
     }
 }
 
+MNNBRIDGE_API int mnn_llm_set_mmap_tmp_path(mnn_llm_handle handle, const char* path_utf8) {
+    auto w = as_wrapper(handle);
+    if (!w) return MNNBRIDGE_ERR_INVALID_HANDLE;
+    if (!path_utf8) return MNNBRIDGE_ERR_INVALID_ARG;
+    w->tmp_path = path_utf8;
+    return MNNBRIDGE_OK;
+}
+
 MNNBRIDGE_API int mnn_llm_set_config(mnn_llm_handle handle, const char* json_utf8) {
     auto w = as_wrapper(handle);
     if (!w || !w->llm) return MNNBRIDGE_ERR_INVALID_HANDLE;
@@ -708,7 +720,39 @@ MNNBRIDGE_API int mnn_llm_set_mmap_mode(mnn_llm_handle handle, int on) {
     if (!w) return MNNBRIDGE_ERR_INVALID_HANDLE;
     w->mmap_mode = on ? 1 : 0;
     if (w->loaded && w->llm) {
-        std::string cfg = std::string("{\"mmap_load_kv\": ") + (on ? "true" : "false") + "}";
+        // use_mmap + tmp_path + use_cached_mmap. NOT mmap_load_kv, which is the
+        // KV CACHE and was the only thing set here — why enabling mmap moved
+        // resident memory by zero bytes while the weights, the entire point,
+        // stayed on the heap.
+        //
+        // WHAT MNN'S MMAP ACTUALLY IS, because the name misleads. It does NOT
+        // map llm.mnn.weight. CPUBackend.cpp:302 calls
+        //
+        //     BufferAllocator::Allocator::createMmap(weightMemoryPath, prefix,
+        //                                            "static", autoRemove, syncValid)
+        //
+        // which creates a file-backed allocator in tmp_path and COPIES the
+        // static weights into it. The weights end up as clean, file-backed
+        // pages the kernel can evict under pressure instead of anonymous heap
+        // it must kill the process to reclaim — which is the difference that
+        // matters — but building it costs a second copy on disk.
+        //
+        //     model on disk      22.8 GB
+        //     mmap scratch      ~21.3 GB
+        //     total             ~44 GB   against 35 GB free on a P30 Lite
+        //
+        // So on this handset the 35B cannot use it and falls back to the heap,
+        // and the heap is what Android SIGKILLs. That is arithmetic, not a
+        // model limit, and it is why the number to watch is FREE DISK, not RAM.
+        //
+        // use_cached_mmap sets autoRemove=false, so the scratch survives the
+        // process. The first run pays to build it; every run after maps what is
+        // already there and skips the copy entirely. For an assistant that is
+        // opened every day, run one is the only expensive one.
+        std::string cfg = on
+            ? std::string("{\"use_mmap\": true, \"use_cached_mmap\": true, \"tmp_path\": \"")
+                  + w->tmp_path + "\"}"
+            : std::string("{\"use_mmap\": false, \"use_cached_mmap\": false}");
         w->llm->set_config(cfg);
     }
     return MNNBRIDGE_OK;
