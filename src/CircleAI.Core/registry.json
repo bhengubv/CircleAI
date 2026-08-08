@@ -6,22 +6,12 @@
     "Architecture": "qwen2.5-vl",
     "QuantizationType": "MNN-Q4",
     "Version": "2.5",
-    "TotalBytes": 2736203848,
+    "TotalBytes": 2736200899,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815",
         "SizeBytes": 344
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -49,11 +39,6 @@
         "SizeBytes": 725
       },
       {
-        "Name": "README.md",
-        "Sha256": "8ed4004451e18f85a282cada7fcefd0ac589246e240777660c91e4f5bde02dcc",
-        "SizeBytes": 1261
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
         "SizeBytes": 3193477
@@ -77,22 +62,12 @@
     "Architecture": "smolvlm",
     "QuantizationType": "MNN-Q4",
     "Version": "1.0",
-    "TotalBytes": 311431857,
+    "TotalBytes": 311428914,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4",
         "SizeBytes": 291
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -118,11 +93,6 @@
         "Name": "llm_config.json",
         "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40",
         "SizeBytes": 778
-      },
-      {
-        "Name": "README.md",
-        "Sha256": "2c2805e51736f3fa0532a151fab466b4095e7f08c1fabad66e4d007362940225",
-        "SizeBytes": 1255
       },
       {
         "Name": "tokenizer.txt",
@@ -205,22 +175,12 @@
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 454473637,
+    "TotalBytes": 454470710,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
         "SizeBytes": 403
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "llm.mnn",
@@ -238,11 +198,6 @@
         "SizeBytes": 4880
       },
       {
-        "Name": "README.md",
-        "Sha256": "c3721ab4b2e58630032771224c48e1ea646e49ff2b4ea8dd7918815d7ca1f89b",
-        "SizeBytes": 1239
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -255,22 +210,12 @@
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 1235523444,
+    "TotalBytes": 1235520567,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
         "SizeBytes": 403
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "llm.mnn",
@@ -288,11 +233,6 @@
         "SizeBytes": 4881
       },
       {
-        "Name": "README.md",
-        "Sha256": "042eda967842b49a986c07d4420805a2ac945e377432f7b4c1840d8131e59789",
-        "SizeBytes": 1189
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -305,22 +245,12 @@
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 2713766729,
+    "TotalBytes": 2713763864,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
         "SizeBytes": 403
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "llm.mnn",
@@ -338,11 +268,6 @@
         "SizeBytes": 4882
       },
       {
-        "Name": "README.md",
-        "Sha256": "94ed5322bad92ac68161555bfe1d5251783c2efeeb12a7ce2992d4eb033643ef",
-        "SizeBytes": 1177
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -355,22 +280,12 @@
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 5510450524,
+    "TotalBytes": 5510447174,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "b2d27840d1106a65d3567e118ada5869ccf374b4b7cf78dcce20b22710ea34a1",
-        "SizeBytes": 2127
-      },
       {
         "Name": "config.json",
         "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
         "SizeBytes": 417
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -398,11 +313,6 @@
         "SizeBytes": 413
       },
       {
-        "Name": "README.md",
-        "Sha256": "785fc29ebedd6db64b5041d4fa777b09b72d4eee4d21bb350861b2dfbdb26058",
-        "SizeBytes": 1177
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -415,22 +325,12 @@
     "Architecture": "qwen3",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 9435191463,
+    "TotalBytes": 9435188107,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "b2d27840d1106a65d3567e118ada5869ccf374b4b7cf78dcce20b22710ea34a1",
-        "SizeBytes": 2127
-      },
       {
         "Name": "config.json",
         "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
         "SizeBytes": 417
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -458,11 +358,6 @@
         "SizeBytes": 413
       },
       {
-        "Name": "README.md",
-        "Sha256": "f0bfe2cb4a6eff1cb9dc7620c824d109d0bcd76942a9a4d5bea6b13ceaa5ad16",
-        "SizeBytes": 1183
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -475,22 +370,12 @@
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
     "Version": "2.5",
-    "TotalBytes": 556809048,
+    "TotalBytes": 556805914,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
-        "SizeBytes": 1770
-      },
       {
         "Name": "config.json",
         "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
         "SizeBytes": 159
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -518,11 +403,6 @@
         "SizeBytes": 272
       },
       {
-        "Name": "README.md",
-        "Sha256": "f341dfd027e35ea08abf44296788ff8721caa9d35f598739f70237195893f084",
-        "SizeBytes": 1318
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
         "SizeBytes": 3193477
@@ -535,22 +415,12 @@
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
     "Version": "2.5",
-    "TotalBytes": 879484572,
+    "TotalBytes": 879481306,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "c398784a7cd21682979f57994dc695182d2b814b69b78311139b82da45a50d98",
-        "SizeBytes": 1902
-      },
       {
         "Name": "config.json",
         "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
         "SizeBytes": 159
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "llm.mnn",
@@ -573,11 +443,6 @@
         "SizeBytes": 384
       },
       {
-        "Name": "README.md",
-        "Sha256": "75d5a04647a664099d26b514190487f5e8c1f739dcadee7f9711d57db9ab2128",
-        "SizeBytes": 1318
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
         "SizeBytes": 3193477
@@ -590,22 +455,12 @@
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
     "Version": "2.5",
-    "TotalBytes": 2369484507,
+    "TotalBytes": 2369481387,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
-        "SizeBytes": 1770
-      },
       {
         "Name": "config.json",
         "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
         "SizeBytes": 159
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -633,11 +488,6 @@
         "SizeBytes": 274
       },
       {
-        "Name": "README.md",
-        "Sha256": "7b4cd45e42adf48a2ff9ba565d137cc22d735cf9e1c5b64aead8d4b451ebdeef",
-        "SizeBytes": 1304
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
         "SizeBytes": 3193477
@@ -650,22 +500,12 @@
     "Architecture": "qwen2.5",
     "QuantizationType": "MNN-Q4",
     "Version": "2.5",
-    "TotalBytes": 5079845792,
+    "TotalBytes": 5079842672,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "297af7ad16cde57656ea8028de24d938e560f8636977329cf1bf11a44a9aa7be",
-        "SizeBytes": 1770
-      },
       {
         "Name": "config.json",
         "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
         "SizeBytes": 159
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -691,11 +531,6 @@
         "Name": "llm_config.json",
         "Sha256": "f7325a888aa0175749e8a4d9a5d7600109fd7b9dcb8da2d79d6ff63c1ac131d1",
         "SizeBytes": 274
-      },
-      {
-        "Name": "README.md",
-        "Sha256": "6ebc707899f0654dd958a29387efb0f267d3ff4894dd4bbffb6817ff78eab92e",
-        "SizeBytes": 1304
       },
       {
         "Name": "tokenizer.txt",
@@ -888,22 +723,12 @@
     "Architecture": "qwen3-moe",
     "QuantizationType": "MNN-Q4",
     "Version": "3",
-    "TotalBytes": 17748783393,
+    "TotalBytes": 17748780498,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "791378c03830ae36dfee576ce114e16b9122b6bf7f1a3e5b27c70daba369d828",
         "SizeBytes": 287
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -931,11 +756,6 @@
         "SizeBytes": 413
       },
       {
-        "Name": "README.md",
-        "Sha256": "d339473e788e7b4929a4ea9ad9b385624cb9f90cc63a5ab4ee72fc474ef4d3be",
-        "SizeBytes": 1207
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
         "SizeBytes": 3193569
@@ -949,22 +769,12 @@
     "Architecture": "qwen3.5",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 547649117,
+    "TotalBytes": 547645481,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "1de0b654d490ba99206cef7788d49910b2b957b1f8da60973ada8dd548c6a118",
-        "SizeBytes": 2324
-      },
       {
         "Name": "config.json",
         "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
         "SizeBytes": 652
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "export_args.json",
@@ -992,11 +802,6 @@
         "SizeBytes": 8691
       },
       {
-        "Name": "README.md",
-        "Sha256": "f5347f212f3eb2c61d580adb02ef52659470deccc8f87c2a0546e4c5e6c3a0d2",
-        "SizeBytes": 1266
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
         "SizeBytes": 6465727
@@ -1020,22 +825,12 @@
     "Architecture": "qwen3.5",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 1386694949,
+    "TotalBytes": 1386691327,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "f3f89c356c2ac2e67fcf56245d0f5d1b1dc581ba79e4a01cd2c928bada25fc2b",
-        "SizeBytes": 2324
-      },
       {
         "Name": "config.json",
         "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
         "SizeBytes": 652
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "export_args.json",
@@ -1063,11 +858,6 @@
         "SizeBytes": 8692
       },
       {
-        "Name": "README.md",
-        "Sha256": "2f74f9fb06d39380a68adc6f6a21799131b6301b24c8abfc9c7586bf2fea0483",
-        "SizeBytes": 1252
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
         "SizeBytes": 6465727
@@ -1091,22 +881,12 @@
     "Architecture": "qwen3.5",
     "QuantizationType": "MNN-Q4",
     "Version": "3.5",
-    "TotalBytes": 2845947034,
+    "TotalBytes": 2845944094,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "200966173edc40adcf63cfc6b016dad6bd8a8447893ec636a914363d188d8f82",
-        "SizeBytes": 1642
-      },
       {
         "Name": "config.json",
         "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
         "SizeBytes": 652
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "export_args.json",
@@ -1134,11 +914,6 @@
         "SizeBytes": 8693
       },
       {
-        "Name": "README.md",
-        "Sha256": "4f03ac823ad79c7b68362b93839cb1eb94152f01a333cd879f53c5a613dda369",
-        "SizeBytes": 1252
-      },
-      {
         "Name": "tokenizer.txt",
         "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
         "SizeBytes": 6465727
@@ -1162,22 +937,12 @@
     "Architecture": "qwen3-moe",
     "QuantizationType": "MNN-Q4",
     "Version": "3.6",
-    "TotalBytes": 22798000533,
+    "TotalBytes": 22797996902,
     "BundleFiles": [
-      {
-        "Name": ".gitattributes",
-        "Sha256": "d1731d2eea8d03afe8379c694c8efb950d48aad1e0904cd81cbc5a15d41daec3",
-        "SizeBytes": 2299
-      },
       {
         "Name": "config.json",
         "Sha256": "449c57466a1ff38be242a9eaab47d7cc9ec1d2d1bc5d0040edc5fa22214a8cdd",
         "SizeBytes": 634
-      },
-      {
-        "Name": "configuration.json",
-        "Sha256": "56c362f108bb9f17fc0e7b490b7e8927c03dc4478631b4f771c37728019beaa2",
-        "SizeBytes": 46
       },
       {
         "Name": "embeddings_bf16.bin",
@@ -1208,11 +973,6 @@
         "Name": "llm_config.json",
         "Sha256": "6bb3e38e04e2ac21221baf4deb1d7567392d9875dc1e3f5d6f430e11335fb09c",
         "SizeBytes": 8641
-      },
-      {
-        "Name": "README.md",
-        "Sha256": "f4919459a7b6ea71c54da31e285257baf932bda58f080877d6f09ab47d5d82bd",
-        "SizeBytes": 1286
       },
       {
         "Name": "tokenizer.mtok",
