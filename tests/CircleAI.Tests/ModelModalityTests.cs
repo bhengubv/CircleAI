@@ -135,14 +135,30 @@ public sealed class ModelModalityTests
         Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-high"].Modality);
         Assert.Equal(ModelModality.Asr,    byName["Whisper-tiny-ggml"].Modality);
 
-        // Source: every voice now comes from our own Hugging Face bucket rather
-        // than from whichever stranger's repository first published it — see
-        // docs/VOICE_PROVENANCE.md. Chat AND the MNN vision bundle stay on
-        // ModelScope (the MNN namespace), so every Qwen* — VL included — is
-        // ModelScope-sourced.
+        // Source: every voice comes from our own Hugging Face bucket rather than
+        // from whichever stranger's repository first published it — see
+        // docs/VOICE_PROVENANCE.md.
         Assert.All(registry.AllModels.Where(e => e.Modality == ModelModality.Tts),
             e => Assert.Equal(ModelSource.HuggingFaceBucket, e.Source));
-        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen")),
-            e => Assert.Equal(ModelSource.ModelScope, e.Source));
+
+        // EVERY MODEL COMES OFF A CDN. This asserted ModelScope until it was
+        // measured: from Osaka, on the same file in the same minute, Hugging
+        // Face served 4.22 MB/s against ModelScope's 1.01. The header said
+        // X-Amz-Cf-Pop: KIX56-P4 — CloudFront's Osaka edge, chosen by anycast
+        // with nothing configured. ModelScope has no edge network; it serves
+        // Shanghai to the whole planet through egress filtering that throttles
+        // cross-border TCP however close you are standing.
+        //
+        // That is not a preference, it is the difference between a model
+        // arriving and a person giving up. taobao-mnn mirrors all 217 MNN
+        // conversions and the SHA-256s verify byte-identical against both, so
+        // nothing downstream changes.
+        //
+        // ModelScope remains implemented as a fallback — it was made primary
+        // for sanctions resilience, which is a real concern this does not
+        // answer. What must not happen again is a model DEFAULTING to the
+        // non-CDN source because nobody set the field.
+        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen") || e.Name.StartsWith("SmolVLM")),
+            e => Assert.Equal(ModelSource.HuggingFace, e.Source));
     }
 }

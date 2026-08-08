@@ -6,7 +6,7 @@
       "Name": "Qwen3-0.6B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-0.6B-MNN",
+      "Repo": "taobao-mnn/Qwen3-0.6B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 454473637,
       "QualityRank": 6,
@@ -60,13 +60,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3-1.7B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-1.7B-MNN",
+      "Repo": "taobao-mnn/Qwen3-1.7B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 1235523444,
       "QualityRank": 8,
@@ -121,13 +122,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3-4B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-4B-MNN",
+      "Repo": "taobao-mnn/Qwen3-4B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 2713766729,
       "QualityRank": 10,
@@ -182,13 +184,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3-8B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-8B-MNN",
+      "Repo": "taobao-mnn/Qwen3-8B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 5510450524,
       "QualityRank": 12,
@@ -253,13 +256,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3-14B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-14B-MNN",
+      "Repo": "taobao-mnn/Qwen3-14B-MNN",
       "Architecture": "qwen3",
       "TotalBytes": 9435191463,
       "QualityRank": 14,
@@ -324,13 +328,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen2.5-0.5B-Instruct-MNN",
       "Version": "2.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen2.5-0.5B-Instruct-MNN",
+      "Repo": "taobao-mnn/Qwen2.5-0.5B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 556809048,
       "QualityRank": 5,
@@ -393,13 +398,14 @@
           "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
           "SizeBytes": 3193477
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen2.5-1.5B-Instruct-MNN",
       "Version": "2.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen2.5-1.5B-Instruct-MNN",
+      "Repo": "taobao-mnn/Qwen2.5-1.5B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 879484572,
       "QualityRank": 7,
@@ -458,13 +464,14 @@
           "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
           "SizeBytes": 3193477
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen2.5-3B-Instruct-MNN",
       "Version": "2.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen2.5-3B-Instruct-MNN",
+      "Repo": "taobao-mnn/Qwen2.5-3B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 2369484507,
       "QualityRank": 9,
@@ -528,13 +535,14 @@
           "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
           "SizeBytes": 3193477
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen2.5-7B-Instruct-MNN",
       "Version": "2.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen2.5-7B-Instruct-MNN",
+      "Repo": "taobao-mnn/Qwen2.5-7B-Instruct-MNN",
       "Architecture": "qwen2.5",
       "TotalBytes": 5079845792,
       "QualityRank": 11,
@@ -598,7 +606,8 @@
           "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
           "SizeBytes": 3193477
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Piper-en_US-lessac-medium",
@@ -653,7 +662,7 @@
       "Name": "Qwen2.5-VL-3B-Instruct-MNN",
       "Version": "2.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen2.5-VL-3B-Instruct-MNN",
+      "Repo": "taobao-mnn/Qwen2.5-VL-3B-Instruct-MNN",
       "Modality": "Vision",
       "Architecture": "qwen2.5-vl",
       "TotalBytes": 2736203848,
@@ -726,13 +735,14 @@
           "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81",
           "SizeBytes": 369748896
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "SmolVLM-256M-Instruct-MNN",
       "Version": "1.0",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/SmolVLM-256M-Instruct-MNN",
+      "Repo": "taobao-mnn/SmolVLM-256M-Instruct-MNN",
       "Modality": "Vision",
       "Architecture": "smolvlm",
       "TotalBytes": 311431857,
@@ -805,7 +815,8 @@
           "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06",
           "SizeBytes": 102015164
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Piper-en_US-lessac-high",
@@ -2643,7 +2654,7 @@
       "Name": "Qwen3-30B-A3B-MNN",
       "Version": "3",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3-30B-A3B-MNN",
+      "Repo": "taobao-mnn/Qwen3-30B-A3B-MNN",
       "Architecture": "qwen3-moe",
       "TotalBytes": 17748783393,
       "QualityRank": 15,
@@ -2707,13 +2718,14 @@
           "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
           "SizeBytes": 3193569
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3.5-0.8B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3.5-0.8B-MNN",
+      "Repo": "taobao-mnn/Qwen3.5-0.8B-MNN",
       "Architecture": "qwen3.5",
       "TotalBytes": 547649117,
       "QualityRank": 7,
@@ -2787,13 +2799,14 @@
           "Sha256": "4c03fcac0d164d014e5cd1a1d7ab4fc95babbec724a268f3ba486c5db3511161",
           "SizeBytes": 63043212
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3.5-2B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3.5-2B-MNN",
+      "Repo": "taobao-mnn/Qwen3.5-2B-MNN",
       "Architecture": "qwen3.5",
       "TotalBytes": 1386694949,
       "QualityRank": 9,
@@ -2867,13 +2880,14 @@
           "Sha256": "8f90e106f5b9ae9a939faed240305cfdd5c6740ae91d3fc418a990bee0cce36b",
           "SizeBytes": 195587264
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3.5-4B-MNN",
       "Version": "3.5",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3.5-4B-MNN",
+      "Repo": "taobao-mnn/Qwen3.5-4B-MNN",
       "Architecture": "qwen3.5",
       "TotalBytes": 2845947034,
       "QualityRank": 11,
@@ -2947,13 +2961,14 @@
           "Sha256": "cc51f3aa1e026c853bdd22e9188c51b121b7bdcfcef6030f4254ef297b615ab5",
           "SizeBytes": 196768960
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen3.6-35B-A3B-MNN",
       "Version": "3.6",
       "Quantization": "MNN-Q4",
-      "Repo": "MNN/Qwen3.6-35B-A3B-MNN",
+      "Repo": "taobao-mnn/Qwen3.6-35B-A3B-MNN",
       "Architecture": "qwen3-moe",
       "TotalBytes": 22798000533,
       "QualityRank": 16,
@@ -3032,7 +3047,8 @@
           "Sha256": "99e8601398bef904623c39e0361ec5a2c20eb3182bd392637767ba7174b35d72",
           "SizeBytes": 253514636
         }
-      ]
+      ],
+      "Source": "HuggingFace"
     }
   ]
 }
