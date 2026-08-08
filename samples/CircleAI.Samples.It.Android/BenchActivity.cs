@@ -62,13 +62,59 @@ public class BenchActivity : Activity
     /// The last one is isiZulu on purpose. A model that answers the first four and
     /// then echoes the fifth back is not usable here, whatever it scores.
     /// </remarks>
-    static readonly string[] Questions =
+    /// <summary>One probe: what to ask, and how to tell whether the answer is right.</summary>
+    /// <param name="Q">The question, as a person would put it.</param>
+    /// <param name="Expect">
+    /// Any one of these appearing in the answer means correct. Empty means the
+    /// question is graded some other way.
+    /// </param>
+    /// <param name="Lang">
+    /// When set, the answer must come back in this language — graded by the same
+    /// LanguageGuess the product uses to decide what to reply in.
+    /// </param>
+    private readonly record struct Probe(string Q, string[] Expect, string? Lang = null);
+
+    /// <summary>
+    /// Questions with answers that can be CHECKED, not just timed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Speed was the only thing measured until now, which meant a model could
+    /// win the table by being confidently wrong very quickly. The whole point of
+    /// this product is that a person gets help — being fast at refusing to name
+    /// the capital of France is not help, and Qwen2.5-1.5B did exactly that.
+    /// </para>
+    /// <para>
+    /// EVERY ANSWER IS CHECKABLE WITHOUT A HUMAN AND WITHOUT A JUDGE MODEL. A
+    /// grader model would cost more than the thing being graded and would need
+    /// to be trusted itself. Substring matching is crude, and crude is fine when
+    /// the fact is unambiguous: an answer containing "Paris" knows the capital
+    /// of France, whatever else it says around it.
+    /// </para>
+    /// <para>
+    /// The isiZulu probe is graded by LanguageGuess — the same detector the
+    /// product uses to choose a reply language, now used to check that the reply
+    /// actually came back in it. A model that answers a Zulu question in English
+    /// has failed at the thing this product exists for, however fast it was.
+    /// </para>
+    /// </remarks>
+    static readonly Probe[] Probes =
     {
-        "What is the capital of France?",
-        "What is 17 times 4?",
-        "How do I find the nearest hospital?",
-        "I am feeling lonely today.",
-        "Ngicela ungisize ngingedwa namuhla.",
+        // Plain facts a small model should hold.
+        new("What is the capital of France?",                    new[] { "paris" }),
+        new("What is the largest ocean on Earth?",               new[] { "pacific" }),
+        new("In what year did the Second World War end?",        new[] { "1945" }),
+        // Arithmetic, where a wrong answer is unmistakable.
+        new("What is 17 times 4?",                               new[] { "68" }),
+        new("How many days are in a leap year?",                 new[] { "366" }),
+        // Instruction following. A model that cannot obey one short instruction
+        // will not obey "answer in isiZulu" or "keep it to two sentences".
+        new("Reply with only the word: yes",                     new[] { "yes" }),
+        // South Africa. Local knowledge, not just translated Wikipedia.
+        new("What is the capital city of South Africa?",         new[] { "pretoria", "cape town", "bloemfontein" }),
+        // The one that matters most here: asked in isiZulu, graded on whether
+        // the answer came back in isiZulu.
+        new("Ngicela ungitshele ngeTheku.",                      Array.Empty<string>(), Lang: "zu"),
     };
 
     TextView _out = null!;
@@ -169,13 +215,18 @@ public class BenchActivity : Activity
 
         double ttftTotal = 0, charsTotal = 0, wallTotal = 0;
         var answered = 0;
+        var correct  = 0;
 
-        foreach (var q in Questions)
+        foreach (var probe in Probes)
         {
+            var q  = probe.Q;
             var sw = Stopwatch.StartNew();
             long ttft = -1, tlast = -1;
             var chars = 0;
             var chunks = 0;
+            // The answer itself, kept so it can be GRADED. Timing it was never
+            // the hard part; knowing whether it was right is.
+            var answer = new System.Text.StringBuilder();
 
             try
             {
@@ -196,6 +247,7 @@ public class BenchActivity : Activity
                         tlast = sw.ElapsedMilliseconds;
                         chunks++;
                         chars += chunk?.Length ?? 0;
+                        answer.Append(chunk);
                     },
                     _ => { });
             }
@@ -213,9 +265,17 @@ public class BenchActivity : Activity
             var secs   = sw.ElapsedMilliseconds / 1000.0;
             var rate   = secs > 0 ? tokens / secs : 0;
 
+            var said = answer.ToString();
+            var (ok, why) = Grade(probe, said);
+            if (ok) correct++;
+
             Say($"Q  {q}");
             Say($"   ttft {ttft} ms | last {tlast} ms | total {secs:F1} s | " +
                 $"~{rate:F1} tok/s | {chars} chars in {chunks} chunks");
+            Say($"   {(ok ? "RIGHT" : "WRONG")}  {why}");
+            // The answer itself, trimmed. A score with no evidence is a number
+            // to be argued with; the words are what settle it.
+            Say($"   > {Squash(said, 160)}");
 
             if (ttft >= 0) { ttftTotal += ttft; answered++; }
             charsTotal += chars;
@@ -228,10 +288,92 @@ public class BenchActivity : Activity
         Say($"after all: {MemLine()}");
         Say($"self:      {SelfPssMb()} MB");
         Say($"RESULT {model} load=OK loadms={load.ElapsedMilliseconds} " +
-            $"ttft={meanTtft:F0} tokps={meanRate:F1} pss={SelfPssMb()}");
+            $"ttft={meanTtft:F0} tokps={meanRate:F1} pss={SelfPssMb()} " +
+            $"score={correct}/{Probes.Length}");
 
         await session.DisposeAsync();
         if (purge) Purge(model);
+    }
+
+    /// <summary>Was the answer right, and by what test.</summary>
+    /// <remarks>
+    /// SUBSTRINGS, NOT SEMANTICS. Deliberately crude: an answer containing
+    /// "Paris" knows the capital of France whatever it wraps around it, and one
+    /// that does not, does not. Nothing here tries to judge tone, completeness
+    /// or reasoning — those need a grader model, which would cost more than the
+    /// model being graded and would itself have to be trusted.
+    ///
+    /// Case and punctuation are stripped so "Paris." and "paris" both count. The
+    /// failure this avoids is scoring a correct answer wrong for its full stop,
+    /// which would quietly favour whichever model happens to be terser.
+    /// </remarks>
+    static (bool Ok, string Why) Grade(Probe p, string answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer)) return (false, "said nothing");
+
+        // DEGENERATE REPETITION IS NOT AN ANSWER, and it fooled this grader the
+        // first time it ran. Qwen2.5-1.5B replied to the isiZulu probe with
+        // "Ngikusekile ngiThembu" repeated for 512 tokens; LanguageGuess saw
+        // isiZulu and scored it RIGHT. A model stuck in a loop would have
+        // ranked above a model that answered briefly and correctly.
+        //
+        // Checked before anything else, because a loop can satisfy a substring
+        // test too — repeat "Paris, Paris, Paris" and the fact test passes.
+        if (IsLooping(answer, out var loopWhy)) return (false, loopWhy);
+
+        var a = answer.ToLowerInvariant();
+
+        if (p.Lang is not null)
+        {
+            // Graded by the same detector the product uses to pick a reply
+            // language. A model that answers an isiZulu question in English has
+            // failed at the thing this exists for, however fast it was.
+            var got = CircleAI.Samples.It.LanguageGuess.Detect(answer);
+            return got == p.Lang
+                ? (true,  $"answered in {p.Lang}")
+                : (false, $"wanted {p.Lang}, answered in {got ?? "something unrecognised"}");
+        }
+
+        foreach (var want in p.Expect)
+            if (a.Contains(want, StringComparison.Ordinal)) return (true, $"contains '{want}'");
+
+        return (false, $"missing any of: {string.Join(", ", p.Expect)}");
+    }
+
+    /// <summary>Whether the answer is a loop rather than a reply.</summary>
+    /// <remarks>
+    /// VOCABULARY, NOT PATTERNS. A model that has locked into a cycle keeps
+    /// saying the same few words however long it runs, so the share of DISTINCT
+    /// words collapses — that holds whatever the cycle length is, which
+    /// searching for a repeated phrase would not.
+    ///
+    /// Only applied past twenty words. Below that a low ratio is just a short
+    /// answer: "Yes" and "366" have every right to a small vocabulary, and
+    /// failing them would penalise exactly the brevity the product asks for.
+    /// </remarks>
+    static bool IsLooping(string answer, out string why)
+    {
+        why = string.Empty;
+        var words = System.Text.RegularExpressions.Regex
+            .Split(answer.ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(w => w.Length > 0)
+            .ToArray();
+
+        if (words.Length < 20) return false;
+
+        var ratio = words.Distinct().Count() / (double)words.Length;
+        if (ratio >= 0.25) return false;
+
+        why = $"looping — {words.Distinct().Count()} distinct words in {words.Length} " +
+              $"({ratio:P0} unique)";
+        return true;
+    }
+
+    /// <summary>One line of an answer, short enough to read in a log.</summary>
+    static string Squash(string s, int max)
+    {
+        var t = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
+        return t.Length <= max ? t : t[..max] + "...";
     }
 
     /// <summary>Empties the model store, then says what that bought.</summary>
