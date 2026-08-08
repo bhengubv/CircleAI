@@ -91,6 +91,39 @@ public sealed class ItSession : IAsyncDisposable
     private readonly HeuristicNeuronRouter _concierge = new();
     private readonly List<ChatTurn> _history;
 
+    // ── how much conversation the model is asked to re-read ──────────────────
+    //
+    // THE HISTORY WAS UNBOUNDED AND THAT IS A LATENCY BUG, not a memory-policy
+    // preference. Every turn was appended to _history forever and the whole list
+    // went to the model each time. While the KV cache holds the matching prefix
+    // this costs nothing — only the new tail is prefilled. The moment that reuse
+    // drops, for any reason, the ENTIRE conversation is prefilled again.
+    //
+    // Caught on the P30 with the bench, and the bridge's own numbers name it:
+    //
+    //     prompt=30 tok   -> prefill  1 012 ms      ("What is 17 times 4?")
+    //     prompt=884 tok  -> prefill 29 670 ms      the very next question
+    //
+    // Thirty seconds before the first word of a forty-character answer. Prefill
+    // per token is constant at about 34 ms; nothing was slow, the prompt was
+    // twenty-nine times bigger. And it grows without limit — the same event at
+    // 2 000 tokens is a minute and eight seconds.
+    //
+    // TRIMMED IN CHUNKS, NOT EVERY TURN, and that part is the whole design.
+    // Dropping the oldest turn changes the prefix, which invalidates the KV cache
+    // by itself — trimming a little on every turn would break reuse on every
+    // turn and cause the thing it is meant to prevent. So it runs on hysteresis:
+    // nothing happens until the history passes the high mark, and then it is cut
+    // back to the low mark in one go. Reuse breaks rarely, and when it does the
+    // re-prefill is bounded by the low mark instead of by how long the person has
+    // been talking.
+    //
+    // Losing the older turns costs nothing that matters: the durable memory is
+    // the episodic store and RAG, which is the entire point of the Neuron. This
+    // list is only what the model re-reads.
+    private const int HistoryHighChars = 1400;   // ~660 tokens, ~22 s worst case
+    private const int HistoryLowChars  =  600;   // ~285 tokens, ~10 s worst case
+
     private readonly ModelRegistryService? _registry;
     private readonly BundleModelLoader? _loader;
 
@@ -325,6 +358,44 @@ public sealed class ItSession : IAsyncDisposable
     };
 
     /// <summary>
+    /// Keeps the conversation the model re-reads from growing without limit.
+    /// </summary>
+    /// <remarks>
+    /// See the note on <see cref="HistoryHighChars"/> — this exists to bound the
+    /// cost of a KV-cache miss, and it runs on hysteresis so that it is not
+    /// itself the cause of one. The system turn at index 0 is never dropped: it
+    /// carries the instructions, and it is also the prefix every cached session
+    /// is keyed on.
+    /// </remarks>
+    private void TrimHistory()
+    {
+        var total = 0;
+        for (var i = 0; i < _history.Count; i++) total += _history[i].Content.Length;
+        if (total <= HistoryHighChars) return;
+
+        // Walk back from the newest, keeping turns until the low mark, then drop
+        // everything older. Counted from the end because the recent turns are the
+        // ones the next question is likely to refer to.
+        var keep = 0;
+        var kept = 0;
+        for (var i = _history.Count - 1; i >= 1; i--)
+        {
+            kept += _history[i].Content.Length;
+            if (kept > HistoryLowChars) break;
+            keep++;
+        }
+
+        // A single answer longer than the low mark would leave nothing at all;
+        // one turn of context is the floor, so the model still sees what it just
+        // said rather than being handed a bare question with no thread.
+        if (keep < 1) keep = 1;
+
+        var first = _history.Count - keep;
+        if (first <= 1) return;                     // nothing older than the system turn
+        _history.RemoveRange(1, first - 1);
+    }
+
+    /// <summary>
     /// Route one turn through the concierge, stream IT!'s reply, and emit the
     /// result as plain lines.
     /// </summary>
@@ -335,6 +406,7 @@ public sealed class ItSession : IAsyncDisposable
         emit($"   -> concierge routes to: {organ}   [{d.Reason}]");
 
         _history.Add(new ChatTurn("user", input));
+        TrimHistory();
 
         var sb = new StringBuilder();
         await foreach (var chunk in _it.StreamAsync(_history))
@@ -370,6 +442,7 @@ public sealed class ItSession : IAsyncDisposable
         emitLine($"   -> concierge routes to: {organ}   [{d.Reason}]");
 
         _history.Add(new ChatTurn("user", input));
+        TrimHistory();
 
         var sb = new StringBuilder();
 
@@ -487,6 +560,7 @@ public sealed class ItSession : IAsyncDisposable
         emitLine($"   -> concierge routes to: {organ}   [{d.Reason}]");
         emitLine($"   -> vision: {plan.Reason}");
 
+        TrimHistory();
         var msgs = _history.Select(t => new ChatMessage(t.Role, t.Content)).ToList();
         msgs.Add(new ChatMessage("user", question) { ImageBytes = imageBytes });
 

@@ -89,6 +89,17 @@ public sealed class AIService : IAIService
     private bool _started;
     private bool _disposed;
 
+    /// <summary>
+    /// Whether any turn has asked for tools yet. Once true it stays true.
+    /// </summary>
+    /// <remarks>
+    /// See the note where this is set, in PrepareMessagesAsync. It exists so the
+    /// system message stops changing between turns: the tool block is decided per
+    /// question but LIVES in the per-conversation prefix, and every flip cost a
+    /// full re-prefill of the whole conversation — 36 seconds, measured.
+    /// </remarks>
+    private bool _toolsLatched;
+
     // Neuron — two-slot residency (opt-in via AIOptions.Router). _generator above
     // is the always-warm generalist floor; _slots owns one evictable specialist.
     private Neuron.ResidentSlotManager? _slots;
@@ -1135,7 +1146,37 @@ public sealed class AIService : IAIService
         // wrong in one direction costs a tool call the model could have made;
         // getting it wrong in the other costs every user twenty-three seconds of
         // silence on every question. The asymmetry is not close.
-        var toolBlock = (forceTools || NeedsTools(userQuery))
+        // ONCE ON, IT STAYS ON — and that is a latency fix, not a capability one.
+        //
+        // The gate above is per-QUESTION and the block it controls sits in the
+        // per-CONVERSATION system message. So the system message flipped between
+        // turns, and because it is the first thing in the prompt, every flip
+        // invalidated the KV prefix for the WHOLE conversation.
+        //
+        // Caught on the P30 by the bench, four questions in:
+        //
+        //     "What is 17 times 4?"                -> prompt=30 tok,   prefill  1 028 ms
+        //     "How many days are in a leap year?"  -> prompt=1081 tok, prefill 36 161 ms
+        //
+        // Nothing was slow. "how many" is a tool cue and "17 times 4" is not, so
+        // the block arrived, the system message changed, and the entire
+        // conversation was prefilled again from the top. Thirty-six seconds
+        // before the first word.
+        //
+        // The note below rightly says stable things belong in the system message.
+        // The tool block was the one thing in there that was not stable.
+        //
+        // Latching makes it stable again. The 449-token cost measured earlier is
+        // only paid REPEATEDLY when the cache misses; held constant, it is
+        // prefilled once for the conversation and every later turn reuses it. So
+        // the first tool-ish question pays for the block once, and after that it
+        // is free — instead of every question after it paying a full re-prefill.
+        //
+        // Still off until something actually asks for it, so the FIRST turn of a
+        // conversation stays cheap. That first impression is the one that matters.
+        if (forceTools || NeedsTools(userQuery)) _toolsLatched = true;
+
+        var toolBlock = _toolsLatched
             ? await BuildToolBlockAsync(ct).ConfigureAwait(false)
             : string.Empty;
 
