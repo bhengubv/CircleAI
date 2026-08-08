@@ -408,6 +408,9 @@ public class AbilitiesActivity : Activity
 
     async void Turn(ModelEntry model, Button button, ProgressBar bar, TextView pct)
     {
+        // Asking for it again is the clearest possible withdrawal of a refusal.
+        SetupPrefs.Allow(this, model.Name);
+
         var cts = new CancellationTokenSource();
         button.Text = "Stop";
         bar.Visibility = ViewStates.Visible;
@@ -472,6 +475,11 @@ public class AbilitiesActivity : Activity
                 {
                     var dir = System.IO.Path.Combine(_modelDir, model.Name);
                     if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
+
+                    // Off has to STAY off. The home screen finishes an unfinished
+                    // setup by itself on resume, so without this the model they
+                    // just removed comes straight back and the switch reads broken.
+                    SetupPrefs.Decline(this, model.Name);
                 }
                 catch (Exception ex)
                 {

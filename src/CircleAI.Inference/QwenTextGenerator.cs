@@ -233,8 +233,29 @@ public sealed class QwenTextGenerator : IChatGenerator
         // Before load, because MNN reads the flag while loading. Best-effort: an
         // older bridge without the export, or a filesystem that cannot map, must
         // degrade to the eager path rather than fail the model.
-        try { new MmapWeightLoader(handle.DangerousGetHandle()).Enable(); }
+        try
+        {
+            var mmap = new MmapWeightLoader(handle.DangerousGetHandle());
+            // Scratch beside the model. It has to be writable by this process,
+            // and the model directory already is — the bundle was downloaded
+            // into it. MNN reads tmp_path before it honours use_mmap, so the
+            // order here is not cosmetic.
+            var scratch = Path.Combine(Path.GetDirectoryName(modelPath) ?? ".", "mmap");
+            Directory.CreateDirectory(scratch);
+            mmap.UseScratch(scratch);
+            mmap.Enable();
+        }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
+
+        // NO THINKING OUT LOUD. The bundles ship enable_thinking:true in their own
+        // jinja context, so a reasoning model deliberates in front of the person
+        // and — because MNN emits that as prose, not <think> tags — the reasoning
+        // router never sees it. On a phone that decodes about seven tokens a
+        // second this is not a quality setting: measured on the P30, one factual
+        // question spent its entire 160-token budget arguing with the system
+        // prompt and never answered. Before load, like every other config read.
+        try { new MnnRuntimeConfig(handle.DangerousGetHandle()).TryDisableThinking(); }
+        catch { /* bundle without a jinja context — a thinking model still works */ }
 
         int rc = MnnInterop.mnn_llm_load(handle);
         if (rc != 0)

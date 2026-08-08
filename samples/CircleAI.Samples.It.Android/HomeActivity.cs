@@ -85,19 +85,34 @@ public class HomeActivity : Activity
     int _next;
     CancellationTokenSource? _speaking;
 
+    /// <summary>Non-null while first-run setup is downloading. Also the paint lock.</summary>
+    CancellationTokenSource? _setup;
+
+    /// <summary>
+    /// A one-off message that outlives the next readiness repaint, or null.
+    /// </summary>
+    /// <remarks>
+    /// Readiness re-runs the moment setup ends, so a failure written straight to
+    /// the labels survived about a tenth of a second before being overwritten by
+    /// "Let's set it up" — leaving the person who just watched a download die with
+    /// the same screen they started on and no idea why.
+    /// </remarks>
+    (string Headline, string Caption)? _note;
+
+    /// <summary>Permission request codes. 1003 is the talk button's, already taken.</summary>
+    const int SetupMicRequest = 1004;
+
     Readiness _ready = new(ReadyStage.Waking, "Getting ready", "", false);
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
         ActionBar?.Hide();
-#if IT_VOICE_ANDROID
-        // THIS SCREEN IS THE LAUNCHER AND IT SPEAKS, so it has to do the process
-        // wiring itself. It used to rely on MainActivity having run first, which is
-        // only true if you went in through the text box — so a wake-word turn
-        // produced an answer nobody could hear.
-        VoiceWiring.Install(this);
-#endif
+        // The process wiring — the phonemizer factory AND the platform memory probe
+        // — now happens in ItApplication.OnCreate, which runs before any activity on
+        // every entry path. This screen used to install the voice half itself and
+        // never knew about the memory half, so the launcher was measuring the GC
+        // heap and concluding the phone could not run anything.
         BuildUi();
         _ = CheckReadyAsync();
     }
@@ -125,6 +140,10 @@ public class HomeActivity : Activity
     {
         try
         {
+            // Read on the UI thread and captured, so the worker never touches an
+            // Activity context.
+            var declined = SetupPrefs.Declined(this);
+
             var next = await Task.Run(() =>
             {
                 var store = System.IO.Path.Combine(
@@ -146,12 +165,23 @@ public class HomeActivity : Activity
                 // The wake bundle is found the same way the wake-word screen finds
                 // it, so the two can never disagree about whether it is there.
                 var bundle = WakeWordActivity.FindBundle(this);
+                const bool speech = true;
 #else
                 // The chat-only APK has no speech stack at all, so there is nothing
                 // to listen with and the screen must not offer to.
                 string? bundle = null;
+                const bool speech = false;
 #endif
-                return (voice, ears, brain, bundle);
+                // WHAT IS STILL MISSING, counted in the pass that is already
+                // walking the disk. Computing it here rather than in SetupAsync is
+                // what stops the auto-finish below from looping: setup ends by
+                // re-running this check, and a version that asked "is there a plan?"
+                // by calling setup would call setup forever once the plan was empty.
+                var pending = CircleAI.Samples.It.FirstRun.Plan(
+                    registry, loader, CircleAI.Core.DeviceProbe.Snapshot(),
+                    speech, declined.Contains).Count;
+
+                return (voice, ears, brain, bundle, pending);
             });
 
             RunOnUiThread(() =>
@@ -168,8 +198,23 @@ public class HomeActivity : Activity
 #else
                 const bool canWake = false;
 #endif
-                Apply(Readiness.From(next.voice, next.ears, next.brain,
-                                     next.voice || next.ears || next.brain, canWake));
+                var anything = next.voice || next.ears || next.brain;
+                Apply(Readiness.From(next.voice, next.ears, next.brain, anything, canWake));
+
+                // FINISH WHAT WAS STARTED. Setup only ran when NOTHING was
+                // installed, so a phone that got most of the way — an interrupted
+                // download, or an upgrade from the chat-only build, which never
+                // fetched a wake bundle — stayed permanently half-provisioned with
+                // no route out. Nothing on this screen was wrong; it simply said
+                // "Tap and talk" forever and never mentioned that hands-free
+                // existed and was missing.
+                //
+                // Only once something is installed, because that means somebody
+                // already agreed to download models on this phone. A virgin
+                // install still waits to be asked. Declines are remembered, so
+                // "Turn off" is not quietly undone (see SetupPrefs).
+                if (anything && next.pending > 0 && _setup is null && _note is null)
+                    _ = SetupAsync();
 
 #if IT_VOICE_ANDROID
                 if (canWake) StartHandsFree(next.bundle!);
@@ -186,13 +231,154 @@ public class HomeActivity : Activity
     void Apply(Readiness r)
     {
         _ready = r;
-        _prompt.Text = r.Headline;
-        _caption.Text = r.Caption;
-        _caption.Visibility = string.IsNullOrEmpty(r.Caption) ? ViewStates.Gone : ViewStates.Visible;
+
+        // STATE ALWAYS, PAINT ONLY WHEN NOTHING ELSE OWNS THE WORDS. Readiness is
+        // re-checked whenever a download finishes a part, and it would otherwise
+        // overwrite "the brain — 41%" with its own headline a few times a minute.
+        // The state still updates underneath, so the tap does the right thing the
+        // instant setup ends.
+        if (_setup is not null) { _mark.SetBusy(true); return; }
+
+        var (headline, caption) = _note ?? (r.Headline, r.Caption);
+        _prompt.Text = headline;
+        _caption.Text = caption;
+        _caption.Visibility = string.IsNullOrEmpty(caption) ? ViewStates.Gone : ViewStates.Visible;
 
         // The circle keeps breathing until it can actually be used, so "alive"
         // and "usable" are the same signal rather than two things to reconcile.
         _mark.SetBusy(!r.CanTalk);
+    }
+
+    // ── first run ────────────────────────────────────────────────────────────
+
+    /// <summary>Asks for the microphone, then fetches what this phone needs.</summary>
+    /// <remarks>
+    /// THE MICROPHONE IS ASKED FOR FIRST AND THE ANSWER DOES NOT GATE THE
+    /// DOWNLOAD. Asking first means the one dialog a new person sees arrives while
+    /// they are still deciding to try this, rather than four minutes later when
+    /// they finally press the circle and get a permission sheet instead of an
+    /// answer. Refusing is a legitimate choice — the typed path works without a
+    /// microphone — so a no still downloads everything and simply leaves the wake
+    /// word unable to start.
+    /// </remarks>
+    void StartSetup()
+    {
+#if IT_VOICE_ANDROID
+        if (CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
+            != Android.Content.PM.Permission.Granted)
+        {
+            RequestPermissions([Android.Manifest.Permission.RecordAudio], SetupMicRequest);
+            return;   // resumed in OnRequestPermissionsResult, granted or not
+        }
+#endif
+        _ = SetupAsync();
+    }
+
+    /// <inheritdoc/>
+    public override void OnRequestPermissionsResult(
+        int requestCode, string[] permissions, Android.Content.PM.Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // The download runs either way — see StartSetup.
+        if (requestCode == SetupMicRequest) { _ = SetupAsync(); return; }
+
+        // 1003 is the talk button asking for the microphone. Granting it makes the
+        // phone able to WAKE, and readiness is what starts the wake loop — without
+        // this the person granted permission and then had to work out for themselves
+        // that the screen would only change if they left it and came back.
+        if (requestCode == 1003) _ = CheckReadyAsync();
+    }
+
+    /// <summary>Downloads the plan, narrating it where the readiness line goes.</summary>
+    async Task SetupAsync()
+    {
+        if (_setup is not null) return;
+
+        var cts = new CancellationTokenSource();
+        _setup = cts;
+        _note  = null;   // trying again clears whatever went wrong last time
+        _prompt.Text = "Setting it up";
+        _caption.Text = "Working out what this phone needs…";
+        _caption.Visibility = ViewStates.Visible;
+        _mark.SetBusy(true);
+
+        try
+        {
+            var store = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "CircleAI", "Models");
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
+
+            // WHAT THIS BUILD CAN ACTUALLY DO, not what the catalogue offers. The
+            // chat-only APK has no speech stack compiled in, so fetching a voice,
+            // ears and a wake bundle there spends 140 MB of somebody's data on
+            // files nothing in the binary can open.
+#if IT_VOICE_ANDROID
+            const bool speech = true;
+#else
+            const bool speech = false;
+#endif
+            var probe = CircleAI.Core.DeviceProbe.Snapshot();
+            var declined = SetupPrefs.Declined(this);
+            var steps = await Task.Run(
+                () => CircleAI.Samples.It.FirstRun.Plan(
+                    registry, loader, probe, speech, declined.Contains), cts.Token);
+
+            if (steps.Count == 0)
+            {
+                // Nothing to fetch and yet nothing installed: every model in the
+                // catalogue was refused by the fit check. That is a real answer and
+                // it belongs on screen, not in a log.
+                _note = ("This phone is too small",
+                         $"Nothing in the catalogue fits {probe.UsableRamGb:0.#} GB of memory.");
+                return;
+            }
+
+            var lastStep = -1;
+            var progress = new Progress<CircleAI.Samples.It.SetupProgress>(p => RunOnUiThread(() =>
+            {
+                _caption.Text = $"{p.Title} — {p.Fraction * 100:0}%";
+
+                // Each finished part makes the phone able to do something new, and
+                // the wake loop only starts when readiness notices the bundle
+                // arrive. Re-checking on the step boundary is what makes it possible
+                // to start talking to it while the brain is still downloading.
+                if (p.Index != lastStep) { lastStep = p.Index; _ = CheckReadyAsync(); }
+            }));
+
+            await CircleAI.Samples.It.FirstRun.RunAsync(loader, steps, progress, cts.Token);
+        }
+        catch (System.OperationCanceledException)
+        {
+            // Stopped on purpose. Whatever landed stays; the plan resumes from there.
+            // Qualified: Android.OS has an OperationCanceledException of its own and
+            // the unqualified name is ambiguous in an activity.
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error("CircleAI.It", "setup failed: " + ex);
+            _note = ("That did not finish",
+                     ex is System.Net.Http.HttpRequestException or System.Net.Sockets.SocketException
+                         ? "Check the connection and tap to try again."
+                         : "Tap to try again.");
+        }
+        finally
+        {
+            _setup = null;
+            _mark.SetBusy(false);
+            await CheckReadyAsync();
+
+            // IF ENOUGH LANDED THAT IT CAN TALK, THAT IS THE MORE USEFUL TRUTH than
+            // the failure. Setup fetches the brain last, so the common partial
+            // failure is a phone that can hear and speak but not think yet — and
+            // telling that person "That did not finish" while hiding "Tap and talk"
+            // buries the thing they can actually do. The missing part is finishable
+            // from the abilities screen, and readiness keeps saying it is missing.
+            if (_note is not null && _ready.CanTalk) { _note = null; Apply(_ready); }
+        }
     }
 
     void BuildUi()
@@ -228,6 +414,19 @@ public class HomeActivity : Activity
         _mark.Clickable = true;
         _mark.Click += (s, e) =>
         {
+            // A DOWNLOAD IS ALREADY RUNNING. Not a greeting and not a turn: the
+            // caption is saying what it is fetching, and a stray tap must not throw
+            // away four minutes of somebody's data.
+            if (_setup is not null) return;
+
+            // "TAP TO START" HAS TO START SOMETHING. CanTalk is false for two very
+            // different reasons and this line used to treat them as one: parts still
+            // ARRIVING (a greeting is right — it says "alive, nearly there"), and
+            // NOTHING INSTALLED AT ALL, where nothing is coming and the greeting is
+            // the whole of what happens. A fresh install had no path to a working
+            // assistant anywhere on this screen while the screen offered one.
+            if (_ready.Stage == ReadyStage.NeedsSetup) { StartSetup(); return; }
+
             if (!_ready.CanTalk) { SpeakNext(); return; }
 #if IT_VOICE_ANDROID
             TalkOnce();

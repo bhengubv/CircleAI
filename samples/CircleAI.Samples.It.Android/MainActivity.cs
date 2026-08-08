@@ -63,23 +63,14 @@ public class MainActivity : Activity
     {
         base.OnCreate(savedInstanceState);
 
-        // Teach the platform-neutral device probe how to read THIS phone. Was
-        // thirty lines of ActivityManager here, which is exactly the shape every
-        // head was expected to copy and none of them did. One call now, and the
-        // device service makes it for anything hosted in it.
-        CircleAI.Device.AndroidDeviceMemory.Install(this);
+        // The device memory probe and the espeak phonemizer factory are both
+        // installed in ItApplication.OnCreate now. They used to be installed HERE,
+        // and this is not the launcher: opening the app normally meant the probe
+        // measured the GC heap instead of the phone, and the home screen could not
+        // speak a word of English. Process-wide statics belong at the process
+        // entry point, not in whichever screen happened to be tested.
 
 #if IT_VOICE_ANDROID
-        // On-device TTS phonemes come from the SEPARATE espeak G2P app
-        // (com.bhengubv.espeakng) across a process boundary — espeak-ng is GPL and is
-        // never linked into CircleAI. If that app is absent, TTS degrades to text
-        // (OutOfProcessEspeakPhonemizer throws a clear reason, surfaced on screen).
-        //
-        // Moved into VoiceWiring because this assignment used to live only here, and
-        // this is NOT the launcher — so waking the phone from the home screen found
-        // the factory unset and could not speak a word of English.
-        VoiceWiring.Install(this);
-
         // Start warming ToucanTTS now. Its three graphs take minutes to load off
         // storage but only ~4 s to synthesise once resident, so the load belongs at
         // app start, in the background — not in front of the user's first sentence.
@@ -140,6 +131,13 @@ public class MainActivity : Activity
             });
 
             Append($"status: {_session.StatusLine}\n\n");
+
+            // WHICH BRAIN ANSWERED. The native bridge logs prompt size, prefill
+            // and decode for every turn, and none of it says which model produced
+            // them — so a bad answer on the phone could not be attributed without
+            // walking the UI to a settings panel. Timings without the model's name
+            // are unattributable.
+            Android.Util.Log.Info("CircleAI.It", $"brain: {_session.StatusLine}");
 
             // Arrived by pressing the circle rather than "Or type instead", so
             // start listening without a second tap. Making someone press twice to

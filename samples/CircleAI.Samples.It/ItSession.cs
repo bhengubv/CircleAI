@@ -40,11 +40,51 @@ public sealed class ItSession : IAsyncDisposable
     /// Asked for rather than truncated. A cap alone cuts the model off
     /// mid-sentence, which sounds broken; told to be brief it finishes properly
     /// inside the budget, and the cap stays as a backstop.
+    ///
+    /// <para>
+    /// TWO THINGS HERE ARE SCARS. Both came from one answer on the P30, asked
+    /// "What is the capital of South Africa?", which spent 160 tokens and 17
+    /// seconds like this:
+    /// </para>
+    /// <code>
+    /// Thinking Process:
+    /// 1. **Analyze the Request:** The user asks for "The capital of South
+    ///    Africa?" ... I need to check if the response should adhere to any
+    ///    format constraints like "Do not list options or explain your
+    ///    reasoning unless you are asked to." However, this specific
+    ///    instruction refers to when the user says they want that.
+    /// 2. **Context Analysis:** Wait, there's no instruction saying
+    /// </code>
+    /// <para>
+    /// It never answered. It read our instruction aloud, argued with it, and hit
+    /// the cap mid-sentence — and the one fact it did produce, "Johannesburg",
+    /// is not a capital of South Africa.
+    /// </para>
+    /// <para>
+    /// SO: no negative rules. "Do not explain your reasoning" is a sentence about
+    /// reasoning, and a small model handed one tends to reason about whether it
+    /// applies — quoting it back verbatim, as above. Positive instructions have
+    /// nothing to argue with.
+    /// </para>
+    /// <para>
+    /// AND NO <c>/no_think</c> HERE. Qwen3's soft switch was tried in this string
+    /// first and lost outright to the bundle's own
+    /// <c>jinja.context.enable_thinking = true</c> — same 160 tokens of monologue.
+    /// Disabling it properly, in the MNN config before load (see
+    /// MnnRuntimeConfig.TryDisableThinking), took the same question from 160
+    /// tokens and 17.3 s to 11 tokens and 4.8 s. The marker then became not just
+    /// redundant but harmful: left in, the model opened its answer with a bare
+    /// "No:", reading the switch as something to respond to.
+    /// </para>
+    /// <para>
+    /// A prompt is a bad place to hold a runtime setting. It is advice the model
+    /// may take; the config is the setting.
+    /// </para>
     /// </remarks>
     private const string Prompt =
         "You are IT! - a dry, competent, on-device assistant. " +
-        "Answer in one or two short sentences. Do not list options or explain " +
-        "your reasoning unless you are asked to.";
+        "Answer the question directly, in one or two short sentences. " +
+        "If you are not sure of a fact, say so in one sentence.";
 
     private readonly AIService _brain;
     private readonly NeuronNode _it;

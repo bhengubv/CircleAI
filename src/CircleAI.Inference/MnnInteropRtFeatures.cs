@@ -54,6 +54,75 @@ internal static partial class MnnInteropRt
 
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
     internal static partial int mnn_llm_save_lora(IntPtr handle, string adapterPath);
+
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int mnn_llm_set_mmap_tmp_path(IntPtr handle, string path);
+
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    internal static partial int mnn_llm_set_config(IntPtr handle, string json);
+}
+
+/// <summary>
+/// Runtime settings pushed into MNN before the model loads.
+/// </summary>
+/// <remarks>
+/// The knobs that decide how a model behaves live in the BUNDLE's own
+/// config.json, downloaded from a third party and never ours. This is the one
+/// place a caller can disagree with it.
+/// </remarks>
+public sealed class MnnRuntimeConfig
+{
+    private readonly IntPtr _handle;
+
+    /// <summary>Wraps a raw, still-unloaded MNN handle.</summary>
+    public MnnRuntimeConfig(IntPtr mnnHandle) => _handle = mnnHandle;
+
+    /// <summary>
+    /// Turns a reasoning model's visible deliberation off.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// THE MODEL WAS TALKING TO ITSELF IN FRONT OF THE USER. Asked "What is the
+    /// capital of South Africa?" on a P30 Lite, Qwen3.5-0.8B spent 160 tokens and
+    /// 14 seconds of decode on "Thinking Process: 1. **Analyze the Request:** ...",
+    /// argued with the system prompt, quoted it back, and hit the token cap
+    /// without ever answering.
+    /// </para>
+    /// <para>
+    /// The cause is in the bundle: <c>dump_config()</c> on the loaded model shows
+    /// <c>"jinja":{"context":{"enable_thinking":true}}</c>, which the taobao-mnn
+    /// bundles ship. The chat_template reads that flag, so thinking is on before
+    /// any of our code gets a say — and Qwen3's <c>/no_think</c> soft switch in
+    /// the system prompt loses to it.
+    /// </para>
+    /// <para>
+    /// It also never reached the generator's reasoning router, because MNN's
+    /// export emits the deliberation as ORDINARY PROSE rather than inside
+    /// &lt;think&gt; tags. There was no tag to route on.
+    /// </para>
+    /// <para>
+    /// Only the one leaf is sent, and MNN merges it into the existing config —
+    /// the chat_template itself lives under the same <c>jinja</c> key and must
+    /// survive. Verify with the config line the bridge logs after load; if the
+    /// template were being replaced rather than merged, the model would fail to
+    /// render a prompt at all, loudly and immediately.
+    /// </para>
+    /// <para>
+    /// Best-effort by design: a bundle with no jinja context, or an older bridge
+    /// without the export, must fall through to a thinking model rather than fail
+    /// to load one.
+    /// </para>
+    /// </remarks>
+    public bool TryDisableThinking()
+    {
+        try
+        {
+            return MnnInteropRt.mnn_llm_set_config(
+                _handle, "{\"jinja\":{\"context\":{\"enable_thinking\":false}}}") == 0;
+        }
+        catch (EntryPointNotFoundException) { return false; }
+        catch (DllNotFoundException)        { return false; }
+    }
 }
 
 /// <summary>(3.3.0) RT-03 mmap weight loading control.</summary>
@@ -61,6 +130,19 @@ public sealed class MmapWeightLoader
 {
     private readonly IntPtr _handle;
     public MmapWeightLoader(IntPtr mnnHandle) => _handle = mnnHandle;
+
+    /// <summary>Where MNN may write its mmap scratch file.</summary>
+    /// <remarks>
+    /// Set before <see cref="Enable"/>. MNN reads tmp_path first and only then
+    /// honours use_mmap (llm.cpp:177-183), so enabling without a writable
+    /// scratch directory silently does nothing at all — which is exactly what
+    /// happened here for as long as mmap has existed in this bridge.
+    /// </remarks>
+    public void UseScratch(string dir)
+    {
+        var r = MnnInteropRt.mnn_llm_set_mmap_tmp_path(_handle, dir);
+        if (r != 0) throw new InvalidOperationException($"mnn_llm_set_mmap_tmp_path failed: {r}");
+    }
 
     public void Enable() { var r = MnnInteropRt.mnn_llm_set_mmap_mode(_handle, 1); if (r != 0) throw new InvalidOperationException($"mnn_llm_set_mmap_mode failed: {r}"); }
     public void Disable() { var r = MnnInteropRt.mnn_llm_set_mmap_mode(_handle, 0); if (r != 0) throw new InvalidOperationException($"mnn_llm_set_mmap_mode failed: {r}"); }
