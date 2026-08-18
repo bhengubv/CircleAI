@@ -506,7 +506,7 @@
       "Version": "1.0",
       "Quantization": "ONNX",
       "Repo": "rhasspy/piper-voices",
-      "Source": "HuggingFace",
+      "Source": "HuggingFaceBucket",
       "Modality": "Tts",
       "Language": "ko",
       "Architecture": "vits",
@@ -1929,38 +1929,6 @@
       ]
     },
     {
-      "Name": "VITS-jp",
-      "Version": "1.0",
-      "Quantization": "ONNX",
-      "Repo": "thegeekco/circleai-voices",
-      "Source": "HuggingFaceBucket",
-      "Modality": "Tts",
-      "Language": "ja",
-      "Architecture": "vits",
-      "TotalBytes": 122682113,
-      "MinRamGb": 0.3,
-      "MinStorageGb": 0.149,
-      "QualityRank": 6,
-      "Capabilities": [],
-      "BundleFiles": [
-        {
-          "Name": "vits-jp/vits-hf-zh-jp-zomehwh.onnx",
-          "Sha256": "227f68cec4ee79e80845b2f7bbb9f9f654b95cab1d69be54e78af46c33e07935",
-          "SizeBytes": 121899993
-        },
-        {
-          "Name": "vits-jp/lexicon.txt",
-          "Sha256": "aa22a421a2caaf32809bba165fb38814199b96ab48ad55f6696db6dc22a1fecf",
-          "SizeBytes": 781852
-        },
-        {
-          "Name": "vits-jp/tokens.txt",
-          "Sha256": "ca85bcef54e1cb549875df82f2e9f23259abf1c52a34e79c2bccba2511ef47d1",
-          "SizeBytes": 268
-        }
-      ]
-    },
-    {
       "Name": "VITS-yue",
       "Version": "1.0",
       "Quantization": "ONNX",
@@ -2881,7 +2849,7 @@
       "TotalBytes": 144280383,
       "MinRamGb": 0.35,
       "MinStorageGb": 0.135,
-      "QualityRank": 9,
+      "QualityRank": 6,
       "Capabilities": [],
       "BundleFiles": [
         {
