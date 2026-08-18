@@ -107,9 +107,56 @@ public static class LanguageGuess
     /// far more jarring than no switch, and short utterances ("yes", "thanks") carry
     /// almost no evidence either way.
     /// </remarks>
+    /// <summary>
+    /// The language a writing system settles on its own, or null for Latin.
+    /// </summary>
+    /// <remarks>
+    /// KANA BEFORE HAN, deliberately. Japanese writes with both — 首都 is Han
+    /// inside an otherwise Kana sentence — so a text containing any Kana is
+    /// Japanese even when most of its characters are Han. Testing Han first
+    /// would call every Japanese sentence Chinese.
+    /// <para>
+    /// Counted rather than first-hit: a single stray character in a quotation
+    /// should not decide the language of a paragraph.
+    /// </para>
+    /// </remarks>
+    internal static string? ScriptOf(string text)
+    {
+        int hangul = 0, kana = 0, han = 0, letters = 0;
+        foreach (var ch in text)
+        {
+            if (!char.IsLetter(ch)) continue;
+            letters++;
+            var c = (int)ch;
+            if (c is >= 0xAC00 and <= 0xD7A3 or >= 0x1100 and <= 0x11FF) hangul++;
+            else if (c is >= 0x3040 and <= 0x309F or >= 0x30A0 and <= 0x30FF) kana++;
+            else if (c is >= 0x4E00 and <= 0x9FFF or >= 0x3400 and <= 0x4DBF) han++;
+        }
+        if (letters == 0) return null;
+
+        // A tenth of the letters is enough: CJK words are short, and a two-word
+        // Japanese reply is still unmistakably Japanese.
+        var floor = Math.Max(1, letters / 10);
+        if (hangul >= floor) return "ko";
+        if (kana >= floor) return "ja";
+        if (han >= floor) return "zh";
+        return null;
+    }
+
     public static string? Detect(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
+
+        // SCRIPT FIRST, BECAUSE IT IS CERTAIN. The marker table below separates
+        // languages that share the Latin alphabet, which is a matter of evidence
+        // and can be unsure. A writing system is not: Hangul is Korean, Kana is
+        // Japanese, Han without Kana is Chinese. Nothing else uses them.
+        //
+        // Without this, CJK fell through to "unsure" and the previous language
+        // stood — so a Japanese question was answered in whatever was spoken
+        // last. whisper-tiny is no help either: on this audio it called Korean
+        // "Thai" and returned nothing at all for Japanese.
+        if (ScriptOf(text) is { } script) return script;
 
         var words = Regex.Split(text.ToLowerInvariant(), @"[^\p{L}]+");
         if (words.Length == 0) return null;

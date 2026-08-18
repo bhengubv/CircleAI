@@ -123,12 +123,13 @@ public class MainActivity : Activity
 
             // The download and the native model load are heavy (and the load is
             // a blocking native call) — keep them off the UI thread or Android ANRs.
-            _session = await Task.Run(async () =>
-            {
-                var s = new ItSession(nativeLibDir, batteryPercent: ReadBatteryPercent);
-                await s.StartAsync();
-                return s;
-            });
+            // ONE BRAIN PER PROCESS. This built its own ItSession, so opening
+            // the chat screen while the home screen was already warm loaded a
+            // SECOND copy of the model — measured on the P30 as a second
+            // config dump and a second warm-up, two ~550 MB models on a phone
+            // with about 1.6 GB free. Shared now; whichever screen asks first
+            // pays the load and the rest wait on it.
+            _session = await ItSessionHost.GetAsync(this);
 
             Append($"status: {_session.StatusLine}\n\n");
 

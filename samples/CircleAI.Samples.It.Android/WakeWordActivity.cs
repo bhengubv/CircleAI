@@ -21,7 +21,7 @@
 // to the app's external files directory. It runs the same spotter over recorded
 // audio and prints the phrase, the frame and the probability — which is what
 // makes an on-device claim checkable instead of a screenshot of a nice circle.
-// See docs: adb push <wavs> /sdcard/Android/data/com.bhengubv.itsample/files/kws-selfcheck/
+// See docs: adb push <wavs> /sdcard/Android/data/com.bhengubv.circleai/files/kws-selfcheck/
 
 using System;
 using System.Collections.Generic;

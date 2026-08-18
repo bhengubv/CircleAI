@@ -88,6 +88,21 @@ public class HomeActivity : Activity
     /// <summary>Non-null while first-run setup is downloading. Also the paint lock.</summary>
     CancellationTokenSource? _setup;
 
+    /// <summary>The download bar. Hidden unless something is actually arriving.</summary>
+    ProgressBar? _bar;
+
+    /// <summary>Whether the spoken welcome has already been given this run.</summary>
+    bool _welcomed;
+
+    // The tour that fills a long download. See SetupTour.
+    LinearLayout? _tour;
+    TextView? _tourTitle;
+    TextView? _tourBody;
+    Button?   _tourAction;
+    TextView? _tourNext;
+    IReadOnlyList<TourStep> _tourSteps = Array.Empty<TourStep>();
+    int _tourAt = -1;
+
     /// <summary>
     /// A one-off message that outlives the next readiness repaint, or null.
     /// </summary>
@@ -217,6 +232,18 @@ public class HomeActivity : Activity
                     _ = SetupAsync();
 
 #if IT_VOICE_ANDROID
+                // Warm the transcriber the moment it exists on disk, not on the
+                // first sentence somebody speaks — see WarmEars.
+                if (next.ears) WarmEars();
+
+                // And the brain, for the same reason: its load is the largest
+                // single wait in a turn, and it has no business being inside one.
+                // Started only once the model is actually on disk, so a phone
+                // still downloading is not asked to load a file that is half
+                // there.
+                if (next.brain && _session is null && _brainLoading is null)
+                    _ = WarmBrainAsync();
+
                 if (canWake) StartHandsFree(next.bundle!);
                 else _ = StopHandsFreeAsync();
 #endif
@@ -290,6 +317,329 @@ public class HomeActivity : Activity
         if (requestCode == 1003) _ = CheckReadyAsync();
     }
 
+    /// <summary>
+    /// Says hello out loud, as soon as it can, while the rest is still arriving.
+    /// </summary>
+    /// <remarks>
+    /// THE WAIT IS THE ONE MOMENT IT HAS SOMEBODY'S ATTENTION, and on a slow link
+    /// that moment is three quarters of an hour long. Setup fetches the voice
+    /// first on purpose — it is about 110 MB against the brain's many gigabytes —
+    /// so the phone can speak within a minute or two on almost any connection,
+    /// and everything after that is a wait it can fill itself.
+    /// <para>
+    /// NOT FILLER. It says the two things a new person actually needs — that they
+    /// can talk to it, and that it is still getting ready — in a real voice, in
+    /// one of the languages it exists to speak. A tutorial delivered by the
+    /// product demonstrating itself is worth more than a progress screen, and it
+    /// costs nothing extra: those bytes were already on the phone.
+    /// </para>
+    /// <para>
+    /// Once per run, and never in place of the bar. Somebody who has seen this
+    /// before should not be talked at again every time they open the app.
+    /// </para>
+    /// </remarks>
+    async Task OfferWelcomeAsync()
+    {
+#if IT_VOICE_ANDROID
+        if (_welcomed) return;
+
+        try
+        {
+            var store = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "CircleAI", "Models");
+
+            // Only once the voice is genuinely on disk. Asking it to speak
+            // before then produces silence, which reads as broken at exactly
+            // the moment the product is trying to prove it is not.
+            var ready = await Task.Run(() =>
+            {
+                using var registry = new CircleAI.Core.Models.ModelRegistryService();
+                using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
+                return registry.AllModels
+                    .Where(e => e.Modality == CircleAI.Core.ModelModality.Tts)
+                    .Any(e => loader.ModelExists(e.Name));
+            });
+            if (!ready) return;
+
+            _welcomed = true;
+
+            // The device's own language when it is one we speak, else English.
+            // Somebody in Soweto should not be welcomed in a language they did
+            // not choose because the catalogue happened to be alphabetical.
+            var tag  = WelcomeTag();
+            var line = WelcomeLine(tag);
+            var wav  = System.IO.Path.Combine(FilesDir!.AbsolutePath, "welcome.wav");
+
+            // The same path the greeting carousel uses, so there is one way to
+            // make this phone speak and not two that drift apart.
+            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                store, tag, line, wav, _ => { }, _setup?.Token ?? CancellationToken.None);
+
+            if (System.IO.File.Exists(wav) &&
+                report.Contains("SYNTHESIS OK", StringComparison.Ordinal))
+            {
+                await MainActivity.PlayWavStaticAsync(wav);
+            }
+        }
+        catch (Exception ex)
+        {
+            // A welcome that cannot be spoken is not a failure of setup.
+            Android.Util.Log.Info("CircleAI.It", "welcome skipped: " + ex.Message);
+        }
+#else
+        await Task.CompletedTask;
+#endif
+    }
+
+    /// <summary>
+    /// Decides what the person can usefully do while the rest downloads.
+    /// </summary>
+    /// <remarks>
+    /// Driven off the LIVE ETA rather than a guess, so the same build shows a
+    /// full setup flow on a P30 over 48 Mbps and nothing at all on a phone where
+    /// the brain lands before anybody finished reading. Re-evaluated only while
+    /// no step is on screen — a tour that reshuffles under somebody mid-read is
+    /// worse than one that is slightly out of date.
+    /// </remarks>
+    void OfferTour(TimeSpan remaining, bool voice, bool wake)
+    {
+        if (_tour is null) return;
+
+        // THE TOUR GROWS AS THE PHONE DOES, and getting this wrong hid the best
+        // card entirely. Steps are gated on what has landed; when the tour is
+        // first offered only the voice-free ones qualify, because the voice is
+        // still two minutes away. Computing it once meant "Build your CV" — which
+        // needs the voice to ask questions out loud, and is the whole reason the
+        // tour exists — could never appear, no matter how long the download ran.
+        //
+        // So it is recomputed as each part arrives, and only ADDED to: the step
+        // somebody is reading is never replaced underneath them, and steps they
+        // have already passed do not come back.
+        var fresh = SetupTour.For(remaining, voice, wake);
+        if (fresh.Count == 0) return;
+
+        var seen  = _tourSteps.Take(Math.Max(0, _tourAt + 1)).Select(s => s.Title).ToHashSet();
+        var added = fresh.Where(s => !seen.Contains(s.Title)).ToList();
+        if (added.Count == 0) return;
+
+        // Everything already read, then everything newly possible.
+        _tourSteps = _tourSteps.Take(Math.Max(0, _tourAt + 1)).Concat(added).ToList();
+
+        // Nothing on screen — either the tour has not started or the person
+        // finished it before the interesting steps became available.
+        if (_tourAt < 0 || _tourAt >= _tourSteps.Count - added.Count)
+            ShowTourStep(_tourSteps.Count - added.Count);
+    }
+
+    /// <summary>
+    /// Asks the phone to stop killing the assistant in the background.
+    /// </summary>
+    /// <remarks>
+    /// NO CODE FIXES THIS — only the owner can. Huawei, Xiaomi, Oppo and Vivo
+    /// each stop foreground services on their own schedule regardless of what
+    /// Android permits, and the phone does not tell anybody it has done it. The
+    /// assistant simply stops answering an hour after it is put down, which
+    /// reads as our bug and is not one.
+    /// <para>
+    /// Two requests, because they are two different switches: the AOSP battery
+    /// optimisation exemption, which is a real dialog, and the vendor's own
+    /// protected-apps list, which is a settings screen the app can only open —
+    /// it cannot be granted programmatically, by design.
+    /// </para>
+    /// <para>
+    /// Every intent here is tried and allowed to fail. These activities differ
+    /// per vendor and per firmware, and an assistant that crashes trying to ask
+    /// for permission to keep running is worse than one that quietly cannot.
+    /// </para>
+    /// </remarks>
+    void AskToKeepRunning()
+    {
+        // The standard one first. On phones that honour it, this is the whole fix.
+        try
+        {
+            var pm = (Android.OS.PowerManager?)GetSystemService(PowerService);
+            if (pm is not null && !pm.IsIgnoringBatteryOptimizations(PackageName))
+            {
+                var intent = new Intent(
+                    Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations,
+                    Android.Net.Uri.Parse("package:" + PackageName));
+                StartActivity(intent);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Info("CircleAI.It", "battery exemption unavailable: " + ex.Message);
+        }
+
+        // Then the vendor's own list. Huawei first — it is the phone this was
+        // built and measured on, and the one most likely to kill the service.
+        foreach (var (pkg, cls) in new[]
+        {
+            ("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+            ("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+            ("com.miui.securitycenter",  "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+            ("com.coloros.safecenter",   "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+            ("com.vivo.permissionmanager","com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+        })
+        {
+            try
+            {
+                var intent = new Intent();
+                intent.SetComponent(new ComponentName(pkg, cls));
+                intent.SetFlags(ActivityFlags.NewTask);
+                StartActivity(intent);
+                return;
+            }
+            catch { /* not this vendor, or not this firmware */ }
+        }
+
+        // Nothing to open. Say so rather than leaving a button that does nothing.
+        _note = ("Keep it running",
+                 "Find Circle AI in your battery settings and allow it to run in the background.");
+        Apply(_ready);
+    }
+
+    /// <summary>Which speech parts are on disk right now.</summary>
+    /// <remarks>
+    /// Asked of the filesystem, not of readiness: readiness also weighs the
+    /// microphone permission, and a tour step that teaches somebody to grant
+    /// that permission must not be hidden because they have not granted it yet.
+    /// </remarks>
+    (bool Voice, bool Wake) SpeechOnDisk()
+    {
+        try
+        {
+            var store = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+                "CircleAI", "Models");
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
+
+            var voice = registry.AllModels
+                .Where(e => e.Modality == CircleAI.Core.ModelModality.Tts)
+                .Any(e => loader.ModelExists(e.Name));
+
+#if IT_VOICE_ANDROID
+            var wake = WakeWordActivity.FindBundle(this) is not null;
+#else
+            const bool wake = false;
+#endif
+            return (voice, wake);
+        }
+        catch { return (false, false); }
+    }
+
+    /// <summary>Puts one step on screen, or ends the tour.</summary>
+    void ShowTourStep(int index)
+    {
+        if (_tour is null) return;
+
+        if (index < 0 || index >= _tourSteps.Count)
+        {
+            // Out of steps, or skipped past the end. The bar is still there and
+            // still honest; there is simply nothing left worth doing.
+            _tourAt = int.MaxValue;
+            _tour.Visibility = ViewStates.Gone;
+            return;
+        }
+
+        _tourAt = index;
+        var step = _tourSteps[index];
+
+        _tourTitle!.Text = step.Title;
+        _tourBody!.Text  = step.Body;
+        _tourNext!.Text  = index == _tourSteps.Count - 1 ? "Done" : "Skip";
+
+        if (string.IsNullOrEmpty(step.Action))
+        {
+            // A step with nothing to press is something to read. Hiding the
+            // button rather than showing a dead one.
+            _tourAction!.Visibility = ViewStates.Gone;
+        }
+        else
+        {
+            _tourAction!.Visibility = ViewStates.Visible;
+            _tourAction.Text = step.Action;
+        }
+
+        _tour.Visibility = ViewStates.Visible;
+    }
+
+    /// <summary>Runs the current step's action, then moves on.</summary>
+    /// <remarks>
+    /// Each action is an EXISTING screen, not a copy of one built for the tour.
+    /// The language picker and the wake-word screen are the same ones reachable
+    /// from the finished app, so nobody is taught a flow that disappears once
+    /// setup ends.
+    /// </remarks>
+    void RunTourAction()
+    {
+        if (_tourAt < 0 || _tourAt >= _tourSteps.Count) return;
+        var step = _tourSteps[_tourAt];
+
+        switch (step.Title)
+        {
+            case "Your language":
+                StartActivity(new Intent(this, typeof(LanguagePickerActivity)));
+                break;
+
+            case "Let it hear you":
+                if (CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
+                    != Android.Content.PM.Permission.Granted)
+                    RequestPermissions([Android.Manifest.Permission.RecordAudio], SetupMicRequest);
+                break;
+
+            case "Keep it awake":
+                AskToKeepRunning();
+                break;
+
+            case "Build your CV while you wait":
+                StartActivity(new Intent(this, typeof(CareerActivity)));
+                break;
+
+#if IT_VOICE_ANDROID
+            case "Say “Hey B”":
+                StartActivity(new Intent(this, typeof(WakeWordActivity)));
+                break;
+#endif
+        }
+
+        // Advanced immediately rather than on return: the person has been sent
+        // somewhere, and coming back to the card they just acted on reads as
+        // though the action did not take.
+        ShowTourStep(_tourAt + 1);
+    }
+
+    /// <summary>The phone's own language, when it is one we can speak.</summary>
+    /// <remarks>
+    /// Falls back to English rather than to the first entry in a list — being
+    /// greeted in a language nobody in the room speaks is worse than English,
+    /// which at least reads as a default rather than as a mistake.
+    /// </remarks>
+    static string WelcomeTag()
+    {
+        try
+        {
+            var tag = Java.Util.Locale.Default?.Language?.ToLowerInvariant() ?? "en";
+            return tag is "zu" or "xh" or "af" or "st" or "sw" ? tag : "en";
+        }
+        catch { return "en"; }
+    }
+
+    /// <summary>What it says while the rest downloads, in the phone's language.</summary>
+    static string WelcomeLine(string tag) => tag switch
+    {
+        "zu" => "Sawubona. Ngiyalanda okusele. Ungakhuluma nami manje.",
+        "xh" => "Molo. Ndisalanda okuseleyo. Ungathetha nam ngoku.",
+        "af" => "Hallo. Ek laai nog die res af. Jy kan nou al met my praat.",
+        "st" => "Dumela. Ke sa jarolla tse ling. O ka bua le nna hona joale.",
+        "sw" => "Habari. Bado ninapakua sehemu iliyobaki. Unaweza kuzungumza nami sasa.",
+        _    => "Hello. I am still downloading the rest, but you can talk to me now.",
+    };
+
     /// <summary>Downloads the plan, narrating it where the readiness line goes.</summary>
     async Task SetupAsync()
     {
@@ -337,16 +687,52 @@ public class HomeActivity : Activity
                 return;
             }
 
+            // HOW BIG THIS IS, BEFORE A BYTE MOVES. On a metered link 22.8 GB is
+            // a spending decision, not a wait, and it is not ours to make quietly.
+            var totalBytes = steps.Sum(s => s.Model.TotalBytes);
+            _prompt.Text = "Setting it up";
+            _caption.Text = $"{totalBytes / 1e9:0.0} GB to download";
+
+            _bar!.Visibility = ViewStates.Visible;
+            _bar.Progress = 0;
+
             var lastStep = -1;
+            var lastOffered = -1;
             var progress = new Progress<CircleAI.Samples.It.SetupProgress>(p => RunOnUiThread(() =>
             {
-                _caption.Text = $"{p.Title} — {p.Fraction * 100:0}%";
+                // The whole line: what is arriving, how fast, and when it ends.
+                // See SetupProgress.Describe — the wait is minutes on one phone
+                // and most of an hour on another, and a bare percentage is only
+                // honest on the fast one.
+                _caption.Text = p.Describe();
+                _bar.Progress = (int)(Math.Clamp(p.Fraction, 0f, 1f) * 1000);
 
                 // Each finished part makes the phone able to do something new, and
                 // the wake loop only starts when readiness notices the bundle
                 // arrive. Re-checking on the step boundary is what makes it possible
                 // to start talking to it while the brain is still downloading.
-                if (p.Index != lastStep) { lastStep = p.Index; _ = CheckReadyAsync(); }
+                if (p.Index != lastStep)
+                {
+                    lastStep = p.Index;
+                    _ = CheckReadyAsync();
+                    _ = OfferWelcomeAsync();
+                }
+
+                // WHAT THERE IS TIME FOR, from the rate actually being achieved.
+                // Offered on the step boundary rather than every report, so the
+                // card cannot appear and vanish as the estimate wobbles — and
+                // only once each part lands, which is what makes its own step
+                // safe to demonstrate.
+                if (p.Index != lastOffered && p.Remaining > TimeSpan.Zero)
+                {
+                    lastOffered = p.Index;
+                    var done = _tourSteps;   // keep a stable view for the check below
+                    _ = Task.Run(() =>
+                    {
+                        var (voice, wake) = SpeechOnDisk();
+                        RunOnUiThread(() => OfferTour(p.Remaining, voice, wake));
+                    });
+                }
             }));
 
             await CircleAI.Samples.It.FirstRun.RunAsync(loader, steps, progress, cts.Token);
@@ -369,6 +755,8 @@ public class HomeActivity : Activity
         {
             _setup = null;
             _mark.SetBusy(false);
+            if (_bar is not null) _bar.Visibility = ViewStates.Gone;
+            if (_tour is not null) _tour.Visibility = ViewStates.Gone;
             await CheckReadyAsync();
 
             // IF ENOUGH LANDED THAT IT CAN TALK, THAT IS THE MORE USEFUL TRUTH than
@@ -417,7 +805,19 @@ public class HomeActivity : Activity
             // A DOWNLOAD IS ALREADY RUNNING. Not a greeting and not a turn: the
             // caption is saying what it is fetching, and a stray tap must not throw
             // away four minutes of somebody's data.
-            if (_setup is not null) return;
+            // EVERY EXIT SAYS WHICH ONE IT TOOK. A tap that does nothing visible has
+            // four possible explanations here and the log distinguished none of
+            // them, so "it stalls" could not be turned into a cause — three
+            // hypotheses were reasoned out and all three were wrong. A press is a
+            // deliberate act by a person; it should never be silent to us.
+            Android.Util.Log.Info("CircleAI.It",
+                $"tap: setup={(_setup is not null)} stage={_ready.Stage} canTalk={_ready.CanTalk}");
+
+            if (_setup is not null)
+            {
+                Android.Util.Log.Info("CircleAI.It", "tap -> ignored (setup running)");
+                return;
+            }
 
             // "TAP TO START" HAS TO START SOMETHING. CanTalk is false for two very
             // different reasons and this line used to treat them as one: parts still
@@ -425,10 +825,21 @@ public class HomeActivity : Activity
             // NOTHING INSTALLED AT ALL, where nothing is coming and the greeting is
             // the whole of what happens. A fresh install had no path to a working
             // assistant anywhere on this screen while the screen offered one.
-            if (_ready.Stage == ReadyStage.NeedsSetup) { StartSetup(); return; }
+            if (_ready.Stage == ReadyStage.NeedsSetup)
+            {
+                Android.Util.Log.Info("CircleAI.It", "tap -> StartSetup");
+                StartSetup();
+                return;
+            }
 
-            if (!_ready.CanTalk) { SpeakNext(); return; }
+            if (!_ready.CanTalk)
+            {
+                Android.Util.Log.Info("CircleAI.It", "tap -> SpeakNext (cannot talk yet)");
+                SpeakNext();
+                return;
+            }
 #if IT_VOICE_ANDROID
+            Android.Util.Log.Info("CircleAI.It", "tap -> TalkOnce");
             TalkOnce();
 #else
             var talk = new Intent(this, typeof(MainActivity));
@@ -449,6 +860,53 @@ public class HomeActivity : Activity
         _caption.Gravity = GravityFlags.Center;
         _caption.SetPadding(pad, Ui.Dp(this, 8), pad, 0);
         root.AddView(_caption, Ui.Fill());
+
+        // A BAR, BECAUSE THE WAIT IS NOT ONE LENGTH. Hidden until something is
+        // actually downloading, so the finished state stays as quiet as it was.
+        // On a fast phone it barely appears; on a P30 over 48 Mbps it is the
+        // difference between a screen that is working and a screen that is stuck.
+        _bar = new ProgressBar(this, null, Android.Resource.Attribute.ProgressBarStyleHorizontal)
+        {
+            Max = 1000,
+            Indeterminate = false,
+            Visibility = ViewStates.Gone,
+        };
+        var barLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, Ui.Dp(this, 6));
+        barLp.SetMargins(pad * 2, Ui.Dp(this, 16), pad * 2, 0);
+        root.AddView(_bar, barLp);
+
+        // THE WAIT, SPENT. See SetupTour: on a slow link this is forty-five
+        // minutes of setup somebody has to do anyway, and on a fast one it never
+        // appears at all. Built here and hidden, so the finished screen is the
+        // same screen it always was.
+        _tour = new LinearLayout(this) { Orientation = Orientation.Vertical, Visibility = ViewStates.Gone };
+        _tour.Background = Ui.Rounded(this, Ui.Surface, 14f);
+        _tour.SetPadding(Ui.Dp(this, 18), Ui.Dp(this, 16), Ui.Dp(this, 18), Ui.Dp(this, 16));
+        var tourLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        tourLp.SetMargins(pad, Ui.Dp(this, 20), pad, 0);
+
+        _tourTitle = Ui.Label(this, "", 17f, Ui.Blue, bold: true);
+        _tourBody  = Ui.Label(this, "", 14.5f, Ui.InkSoft);
+        _tourBody.SetPadding(0, Ui.Dp(this, 6), 0, 0);
+        _tourAction = Ui.Action(this, "", primary: false);
+        var actionLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+        actionLp.TopMargin = Ui.Dp(this, 12);
+
+        _tourNext = Ui.Label(this, "Skip", 13.5f, Ui.Blue);
+        _tourNext.Gravity = GravityFlags.Center;
+        _tourNext.SetPadding(0, Ui.Dp(this, 12), 0, 0);
+        _tourNext.Clickable = true;
+        _tourNext.Click += (_, _) => ShowTourStep(_tourAt + 1);
+        _tourAction.Click += (_, _) => RunTourAction();
+
+        _tour.AddView(_tourTitle, Ui.Fill());
+        _tour.AddView(_tourBody, Ui.Fill());
+        _tour.AddView(_tourAction, actionLp);
+        _tour.AddView(_tourNext, Ui.Fill());
+        root.AddView(_tour, tourLp);
 
         // Spacer, so the claims sit low and the circle owns the upper half.
         var spacer = new View(this);
@@ -677,8 +1135,25 @@ public class HomeActivity : Activity
             var turn = new VoiceTurn();
             turn.Level += (_, lvl) => RunOnUiThread(() => _mark.SetLevel(lvl));
 
+            // EVERY STAGE OF THE WAIT, TIMED. The complaint was that it listens
+            // long after the request, then thinks, then finally replies — and
+            // nothing measured which of those was which, so "it is slow" could
+            // not be turned into a fix. Now each leg prints.
+            var leg = System.Diagnostics.Stopwatch.StartNew();
+            long micOpenMs = 0, speechEndMs = 0;
+
             await using var mic = new AndroidAudioCapture();
+            micOpenMs = leg.ElapsedMilliseconds;
+
+            turn.SpeechStarted += (_, _) =>
+                Android.Util.Log.Info("CircleAI.It", $"turn: speech began at {leg.ElapsedMilliseconds} ms");
+
             var audio = await turn.ListenAsync(mic, cts.Token);
+            speechEndMs = leg.ElapsedMilliseconds;
+
+            Android.Util.Log.Info("CircleAI.It",
+                $"turn: mic={micOpenMs} ms | listened={speechEndMs - micOpenMs} ms " +
+                $"| {audio.Length / 32000.0:F1} s of audio");
 
             if (audio.Length == 0)
             {
@@ -688,10 +1163,21 @@ public class HomeActivity : Activity
 
             Phase(MarkState.Thinking, "Thinking", "");
 
-            var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener
-                .TryCreateAsync(store, _ => { });
-            if (listener is null) { Phase(MarkState.Idle, _ready.Headline, lStatus); return; }
-            await using var ears = listener;
+            // HEARD YOU. Said the instant speech ends, before any model runs.
+            //
+            // The complaint this answers: "it takes too long from hearing the
+            // input to thinking — it is so unnatural I forget I am waiting."
+            // Between the last word and the first token there are several
+            // seconds of transcription and prefill, and a screen the person is
+            // not looking at cannot carry that. A person would say "mm" in that
+            // gap; silence reads as not having been heard at all.
+            Earcon.Heard();
+
+            var stage = System.Diagnostics.Stopwatch.StartNew();
+
+            var ears = await EnsureEarsAsync(store);
+            if (ears is null) { Phase(MarkState.Idle, _ready.Headline, _earsStatus); return; }
+            var loadMs = stage.ElapsedMilliseconds;
 
             // EVERY TURN DECIDES ITS OWN LANGUAGE.
             //
@@ -712,6 +1198,20 @@ public class HomeActivity : Activity
             var transcript = await ears.Transcriber.TranscribeAsync(audio, cts.Token);
             var heard      = transcript.Text?.Trim();
 
+            // WHERE THE SILENCE GOES. Three numbers, because "it feels slow" and
+            // "the ears took four seconds" are different problems with different
+            // fixes, and until now nothing measured the gap between somebody
+            // finishing a sentence and the model starting to answer.
+            // AND WHAT IT ACTUALLY HEARD. This logged a character COUNT, which is
+            // the one detail that cannot be reasoned from: a turn that ends with
+            // "I did not catch that" and a turn that ends in a real answer both
+            // print "30 chars". A whole evening went into guessing at the content
+            // of a string the device already had. Print the string.
+            var transcribeMs = stage.ElapsedMilliseconds - loadMs;
+            Android.Util.Log.Info("CircleAI.It",
+                $"heard: ears={loadMs} ms | transcribe={transcribeMs} ms " +
+                $"| {audio.Length / 32000.0:F1} s of audio | “{heard}”");
+
             var guess      = CircleAI.Samples.It.LanguageGuess.Detect(heard);
             var spokenLang = guess ?? SpokenLanguage.Current(this);
             if (guess is not null) SpokenLanguage.Set(this, guess);
@@ -729,6 +1229,14 @@ public class HomeActivity : Activity
             });
             if (!IsSomethingSaid(heard))
             {
+                // SAY SO IN THE LOG, NOT ONLY ON THE SCREEN. This return is the
+                // quietest way a turn can end — no voice load, no generation, no
+                // error — and read from a log it is indistinguishable from a hang.
+                // Whisper emits bracketed annotations like [音楽] for non-speech,
+                // which strip to nothing here, so a turn full of noise lands
+                // exactly on this line.
+                Android.Util.Log.Info("CircleAI.It",
+                    $"turn: ended early — nothing said in “{heard}”");
                 Phase(MarkState.Idle, _ready.Headline, "I did not catch that.");
                 return;
             }
@@ -738,24 +1246,72 @@ public class HomeActivity : Activity
             // understood. Seeing their own words is how they know it heard right.
             Phase(MarkState.Thinking, "Thinking", $"“{heard}”");
 
-            // LOAD THE VOICE WHILE IT THINKS. Not after. The synthesiser needs
-            // nothing from the answer, so waiting for one before starting the other
-            // simply added its load time to every turn. Started here, un-awaited, it
-            // is normally ready before the first sentence exists.
-            var voice = CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, _ => { });
-
-            _session ??= await Task.Run(async () =>
+            // THE VOICE, LOADED ONCE AND KEPT. Starting it un-awaited here was
+            // already right — it overlaps with thinking — but it was STARTED
+            // AFRESH EVERY TURN, so every answer paid a synthesiser load that
+            // the previous answer had already paid. Held for the life of the
+            // screen, the second turn onward has a mouth ready before there is
+            // anything to say with it.
+            // THE VOICE FOLLOWS THE LANGUAGE, AND ONLY ONE FITS AT A TIME.
+            //
+            // English needs a voice with a real pronunciation model — Vits-11ZA is
+            // grapheme-driven and measured 0.17 word error rate on English against
+            // Piper lessac's 0.00 — but loading both alongside the language model
+            // put this phone into its low-memory killer and cost a whole answer.
+            // So the language decides which one is resident, and a switch drops
+            // the other. A held voice from the previous turn is reused only when
+            // it is still the right family.
+            // BRACKETING A SILENT GAP. A Japanese turn stops dead between the
+            // language line and ItSpeaker's first log line — process alive, no CPU,
+            // no exception, nothing for minutes. Two guesses have already been
+            // wrong about it (graph optimisation, then a download), so this stops
+            // guessing and marks each step instead.
+            Android.Util.Log.Info("CircleAI.It", "voice: choosing family");
+            var wantFamily = CircleAI.Samples.It.Voice.ItSpeaker.FamilyFor(spokenLang);
+            Android.Util.Log.Info("CircleAI.It",
+                $"voice: want={wantFamily} held={(_voice is null ? "none" : _voice.Status.ToString())}");
+            if (_voice is { IsCompletedSuccessfully: true } held &&
+                held.Result.Item1 is { } spk && spk.Family != wantFamily)
             {
-                var s = new CircleAI.Samples.It.ItSession(
-                    ApplicationInfo?.NativeLibraryDir, batteryPercent: () => 100);
-                await s.StartAsync();
-                return s;
-            });
+                Android.Util.Log.Info("CircleAI.It",
+                    $"voice: switching {spk.Family} -> {wantFamily}, releasing the old model");
+                spk.Dispose();
+                _voice = null;
+            }
+
+            Android.Util.Log.Info("CircleAI.It", "voice: calling TryCreateAsync");
+            _voice ??= CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(
+                store, _ => { }, default, spokenLang);
+            var voice = _voice;
+            Android.Util.Log.Info("CircleAI.It", "voice: TryCreateAsync started (not awaited here)");
+
+            // THE BRAIN, ALREADY LOADING BEFORE THEY SPOKE. This used to be
+            // `_session ??= await Task.Run(... StartAsync() ...)` — the model
+            // load, measured on this phone at 10.5 to 22.9 seconds, sitting in
+            // the middle of the turn with the person waiting. It is the second
+            // half of the same mistake the transcriber made: a multi-second
+            // load placed exactly where somebody is listening for an answer.
+            var brainWait = System.Diagnostics.Stopwatch.StartNew();
+            _session = await WarmBrainAsync();
+            if (_session is null)
+            {
+                Phase(MarkState.Idle, _ready.Headline, "The brain is not ready yet.");
+                return;
+            }
+            // CAPTURED, NOT RE-READ LATER. The first version of the summary line
+            // below asked this stopwatch for the wait after the answer had been
+            // generated — it was never stopped, so it reported the whole rest of
+            // the turn and printed "brain 13909 | answer 13909", two different
+            // things with one number. A running stopwatch is a clock, not a
+            // measurement.
+            var brainWaitMs = brainWait.ElapsedMilliseconds;
+            Android.Util.Log.Info("CircleAI.It", $"turn: brain waited {brainWaitMs} ms");
 
             // SPEAK AS IT WRITES. The old code waited for the last word before the
             // first sound, so a 25-75 s answer was 25-75 s of silence. Sentences go
             // to the mouth the moment they are complete; the rest of the answer is
             // still being written while the first is being said.
+            var spokenStartMs = leg.ElapsedMilliseconds;
             await using var spoken = new SpokenReply(
                 voice,
                 lvl => RunOnUiThread(() => _mark.SetLevel(lvl)),
@@ -825,6 +1381,30 @@ public class HomeActivity : Activity
             }
 
             await spoken.FinishAsync();
+
+            // THE WHOLE TURN, ON ONE LINE, IN ORDER.
+            //
+            // Every stage already printed its own number and that was not the
+            // same thing. Reconstructing a turn meant reading five lines spread
+            // through a log that other components write to as well, subtracting
+            // timestamps by hand, and hoping none of it had scrolled away — which
+            // is how a chain that was mostly two model loads went unnoticed for
+            // as long as it did. The question a person asks is "how long from me
+            // finishing to it answering", and until now nothing answered it.
+            //
+            // SPEECH-END RELATIVE, not mic-open relative: the seconds spent
+            // waiting for somebody to finish talking are not a cost, and mixing
+            // them in flatters every other number here.
+            var firstSound = spoken.FirstSoundMs >= 0
+                ? (spokenStartMs + spoken.FirstSoundMs - speechEndMs).ToString() + " ms"
+                : "never";
+            Android.Util.Log.Info("CircleAI.It",
+                $"TURN: heard {audio.Length / 32000.0:F1} s | " +
+                $"transcribe {transcribeMs} | brain {brainWaitMs} | " +
+                $"answer {leg.ElapsedMilliseconds - spokenStartMs} | " +
+                $"first sound {firstSound} | total {leg.ElapsedMilliseconds - speechEndMs} ms " +
+                $"after they stopped talking");
+
             if (cts.IsCancellationRequested) return;
 
             // SILENCE IS THE ONE ANSWER A DISTANT LISTENER CANNOT READ. If nothing
@@ -934,7 +1514,198 @@ public class HomeActivity : Activity
     HandsFree? _handsFree;
 
     /// <summary>Starts listening for the wake phrase, if it is not already.</summary>
+    /// <remarks>
+    /// RESIDENT FIRST, ACTIVITY AS THE FALLBACK. The microphone belongs to the
+    /// foreground service, not to this screen: opened here it closes the moment
+    /// the phone goes in a pocket, which made "always listening" mean "listening
+    /// while you are looking at it".
+    /// <para>
+    /// The in-activity HandsFree loop stays as the fallback for the case the
+    /// service cannot take the microphone — no permission yet, or a vendor that
+    /// has killed the service — because a wake word that works only while the
+    /// app is open is still better than one that does not work at all.
+    /// </para>
+    /// </remarks>
     void StartHandsFree(string bundleDir)
+    {
+        _ = StartResidentAsync(bundleDir);
+    }
+
+    /// <summary>Hands the microphone to the service, falling back to this screen.</summary>
+    async Task StartResidentAsync(string bundleDir)
+    {
+        if (CircleAI.Device.CircleNeuronService.IsListening) return;
+
+        // Closed first: AudioRecord is exclusive, so an activity-scoped loop
+        // still holding it would make the service's open fail and look like the
+        // resident path is broken.
+        await StopHandsFreeAsync();
+
+        var ok = await ResidentAssistant.StartAsync(this, bundleDir, OnResidentWoke);
+        if (ok)
+        {
+            // Recorded so BootReceiver knows this was the owner's choice and not
+            // something the app helped itself to.
+            ResidentPrefs.SetRunning(this, true);
+            return;
+        }
+
+        Android.Util.Log.Warn("CircleAI.It", "resident listening unavailable — falling back to this screen");
+        StartHandsFreeInActivity(bundleDir);
+    }
+
+    /// <summary>The service heard the phrase. Same handling as an in-app wake.</summary>
+    void OnResidentWoke(object? sender, string phrase)
+    {
+        Earcon.Woke();
+        RunOnUiThread(() =>
+        {
+            if (_turn is not null)
+            {
+                Android.Util.Log.Warn("CircleAI.It", $"woke on \"{phrase}\" but a turn is already running — ignored");
+                return;
+            }
+            Android.Util.Log.Info("CircleAI.It", $"woke on \"{phrase}\" (resident)");
+            TalkOnce();
+        });
+    }
+
+    // ── the ears, held open ──────────────────────────────────────────────────
+
+    CircleAI.Samples.It.Voice.ItListener? _ears;
+    string _earsStatus = "";
+    Task<CircleAI.Samples.It.Voice.ItListener?>? _earsLoading;
+
+    /// <summary>
+    /// The transcriber, loaded once and kept.
+    /// </summary>
+    /// <remarks>
+    /// IT WAS BEING LOADED AND THROWN AWAY ON EVERY SINGLE TURN. TalkOnce called
+    /// TryCreateAsync inside the turn and held it with `await using`, so whisper
+    /// — 78 MB, read off eMMC and initialised — was built after the person
+    /// stopped speaking and destroyed before they could speak again. That load
+    /// sits exactly in the gap somebody described as "so unnatural I forget I am
+    /// waiting for a reply", and it was paid in full every time.
+    /// <para>
+    /// One instance, for the life of the screen. The memory is the point of
+    /// keeping it: a resident transcriber costs RAM continuously, which is a real
+    /// price on a 3.7 GB phone — but the alternative is paying its load in the
+    /// one place a person is actually waiting.
+    /// </para>
+    /// <para>
+    /// Concurrent callers share one load. Two turns starting close together used
+    /// to build two copies of whisper on a phone that cannot hold two.
+    /// </para>
+    /// </remarks>
+    Task<CircleAI.Samples.It.Voice.ItListener?> EnsureEarsAsync(string store)
+    {
+        if (_ears is not null) return Task.FromResult<CircleAI.Samples.It.Voice.ItListener?>(_ears);
+        if (_earsLoading is not null) return _earsLoading;
+
+        _earsLoading = Load();
+        return _earsLoading;
+
+        async Task<CircleAI.Samples.It.Voice.ItListener?> Load()
+        {
+            try
+            {
+                var (listener, status) = await CircleAI.Samples.It.Voice.ItListener
+                    .TryCreateAsync(store, _ => { });
+                _earsStatus = status;
+                _ears = listener;
+                return listener;
+            }
+            finally { _earsLoading = null; }
+        }
+    }
+
+    Task<CircleAI.Samples.It.ItSession?>? _brainLoading;
+
+    /// <summary>The synthesiser, started once and reused across turns.</summary>
+    Task<(CircleAI.Samples.It.Voice.ItSpeaker?, string)>? _voice;
+
+    /// <summary>
+    /// The brain, loaded once and kept — started before anybody speaks.
+    /// </summary>
+    /// <remarks>
+    /// SAME MISTAKE AS THE EARS, ONE LAYER OVER. The session was built lazily
+    /// inside the turn, so the very first thing somebody said paid for the model
+    /// load — 10.5 s on a good run, 22.9 s on a cold one, measured on this
+    /// phone. From the outside that is the assistant "thinking" for half a
+    /// minute before it has begun to think at all.
+    /// <para>
+    /// Concurrent callers share one load: two turns starting together used to
+    /// build two sessions, and two copies of a 550 MB model is not something a
+    /// 3.7 GB phone survives.
+    /// </para>
+    /// </remarks>
+    Task<CircleAI.Samples.It.ItSession?> WarmBrainAsync()
+    {
+        if (_session is not null) return Task.FromResult<CircleAI.Samples.It.ItSession?>(_session);
+        if (_brainLoading is not null) return _brainLoading;
+
+        _brainLoading = Load();
+        return _brainLoading;
+
+        async Task<CircleAI.Samples.It.ItSession?> Load()
+        {
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                // One brain per process, not per screen — see ItSessionHost.
+                var alreadyWarm = ItSessionHost.IsWarm;
+                var s = await ItSessionHost.GetAsync(this);
+                _session = s;
+
+                // SAYS WHAT IT MEASURES, which is not what ItSessionHost measures.
+                // Both printed "brain warm in N ms" and they are different
+                // quantities — that one is how long the model took to load, this
+                // one is how long THIS caller waited for it. Two identical
+                // sentences reporting two different things is worse than either
+                // being missing, because the log looks like it loaded twice.
+                Android.Util.Log.Info("CircleAI.It",
+                    alreadyWarm
+                        ? $"brain: already warm ({sw.ElapsedMilliseconds} ms to hand over)"
+                        : $"brain: waited {sw.ElapsedMilliseconds} ms for the shared load");
+                return s;
+            }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Error("CircleAI.It", "brain load failed: " + ex);
+                return null;
+            }
+            finally { _brainLoading = null; }
+        }
+    }
+
+    /// <summary>
+    /// Loads the transcriber before anybody speaks.
+    /// </summary>
+    /// <remarks>
+    /// Warmed as soon as readiness says the model is on disk, so the FIRST turn
+    /// is as quick as the rest. Without this the fix above only helps from the
+    /// second sentence onward — and the first one is the one that decides whether
+    /// somebody thinks this thing works.
+    /// </remarks>
+    void WarmEars()
+    {
+        if (_ears is not null || _earsLoading is not null) return;
+
+        var store = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            "CircleAI", "Models");
+
+        _ = Task.Run(async () =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var ok = await EnsureEarsAsync(store) is not null;
+            Android.Util.Log.Info("CircleAI.It",
+                ok ? $"ears warm in {sw.ElapsedMilliseconds} ms" : "ears not available: " + _earsStatus);
+        });
+    }
+
+    /// <summary>The old activity-scoped loop, kept as the fallback.</summary>
+    void StartHandsFreeInActivity(string bundleDir)
     {
         if (_handsFree is not null) { _handsFree.Start(); return; }
 
@@ -974,7 +1745,18 @@ public class HomeActivity : Activity
     }
 
     /// <summary>Releases the microphone and waits until it is genuinely released.</summary>
-    Task StopHandsFreeAsync() => _handsFree?.StopAsync() ?? Task.CompletedTask;
+    /// <remarks>
+    /// BOTH HOLDERS, because there are now two. AudioRecord is exclusive: a turn
+    /// that closes the activity loop while the SERVICE still has the microphone
+    /// records silence and ends in "I did not catch that" while somebody is
+    /// talking to it — the same failure the original comment describes, one
+    /// layer further out.
+    /// </remarks>
+    async Task StopHandsFreeAsync()
+    {
+        if (_handsFree is not null) await _handsFree.StopAsync();
+        await ResidentAssistant.StopListeningAsync();
+    }
 
     void Phase(MarkState state, string headline, string caption) => RunOnUiThread(() =>
     {
@@ -987,18 +1769,27 @@ public class HomeActivity : Activity
 
 #if IT_VOICE_ANDROID
     /// <summary>
-    /// Closes the microphone when the screen goes away.
+    /// Closes the ACTIVITY'S microphone when the screen goes away.
     /// </summary>
     /// <remarks>
     /// AN OPEN MICROPHONE IS A PROMISE, and this screen only ever promised to
-    /// listen while it is in front of you. Leaving the wake loop running behind
-    /// another app would also quietly take the mic away from that app, which is
-    /// the kind of thing people never forgive an assistant for.
+    /// listen while it is in front of you. Leaving the activity's wake loop
+    /// running behind another app would also quietly take the mic away from that
+    /// app, which is the kind of thing people never forgive an assistant for.
+    /// <para>
+    /// THE SERVICE IS A DIFFERENT PROMISE and is deliberately left alone. It
+    /// holds the microphone with a persistent notification saying so, which the
+    /// owner turned on and can turn off from that notification — the same
+    /// arrangement Auto Shazam uses. Stopping it here would undo the entire
+    /// point: an assistant you can call from the next room, rather than one that
+    /// listens only while you are looking at it.
+    /// </para>
     /// </remarks>
     protected override void OnPause()
     {
         base.OnPause();
-        _ = StopHandsFreeAsync();
+        if (!CircleAI.Device.CircleNeuronService.IsListening)
+            _ = (_handsFree?.StopAsync() ?? Task.CompletedTask);
     }
 #endif
 
@@ -1007,7 +1798,16 @@ public class HomeActivity : Activity
         _speaking?.Cancel();
 #if IT_VOICE_ANDROID
         _turn?.Cancel();
-        _ = StopHandsFreeAsync();
+        // Same reasoning as OnPause: the activity's loop goes, the service stays.
+        if (!CircleAI.Device.CircleNeuronService.IsListening)
+            _ = (_handsFree?.StopAsync() ?? Task.CompletedTask);
+
+        // The resident transcriber goes with the screen that owns it. Kept for
+        // the life of that screen so no turn pays its load, released here so it
+        // is not holding tens of megabytes on a phone that has closed the app.
+        var ears = _ears;
+        _ears = null;
+        if (ears is not null) _ = ears.DisposeAsync();
 #endif
         base.OnDestroy();
     }

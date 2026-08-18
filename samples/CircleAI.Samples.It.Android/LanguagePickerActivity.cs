@@ -19,6 +19,7 @@ using Android.OS;
 using Android.Text;
 using Android.Views;
 using Android.Widget;
+using CircleAI.Inference;
 using CircleAI.Core.Models;
 
 namespace CircleAI.Samples.It.Mobile;
@@ -39,13 +40,13 @@ public class LanguagePickerActivity : Activity
     static readonly Dictionary<string, (string Name, string Native, string? Greeting)> Languages = new()
     {
         ["af"]   = ("Afrikaans",       "Afrikaans",   "Hallo wêreld. Hoe gaan dit met jou?"),
-        ["ak"]   = ("Akan",            "Twi",          null),
+        ["ak"]   = ("Akan",            "Twi",          "Akwaaba. Wo ho te sɛn?"),
         ["am"]   = ("Amharic",         "አማርኛ",         "ሰላም ለዓለም። እንዴት ናችሁ?"),
         ["ar"]   = ("Arabic",          "العربية",       "مرحبا بالعالم. كيف حالك؟"),
-        ["bem"]  = ("Bemba",           "Ichibemba",    null),
-        ["bm"]   = ("Bambara",         "Bamanankan",   null),
+        ["bem"]  = ("Bemba",           "Ichibemba",    "Muli shani? Ndi bwino."),
+        ["bm"]   = ("Bambara",         "Bamanankan",   "I ni ce. I ka kɛnɛ wa?"),
         ["bn"]   = ("Bengali",         "বাংলা",         "হ্যালো বিশ্ব। আপনি কেমন আছেন?"),
-        ["ee"]   = ("Ewe",             "Eʋegbe",       null),
+        ["ee"]   = ("Ewe",             "Eʋegbe",       "Ŋdi na wò. Èfɔa nyuie a?"),
         ["en"]   = ("English",         "English",      "Hello world. How are you today?"),
         // es-ES and es-MX are separate rows because they are separate to the
         // people who speak them. Collapsing them under "Spanish" served one and
@@ -53,10 +54,10 @@ public class LanguagePickerActivity : Activity
         ["es-ES"] = ("Spanish (Spain)",  "Español (España)", "Hola mundo. ¿Cómo estás hoy?"),
         ["es-MX"] = ("Spanish (Mexico)", "Español (México)", "Hola mundo. ¿Cómo estás hoy?"),
         ["fa"]   = ("Persian",         "فارسی",         "سلام دنیا. حال شما چطور است؟"),
-        ["ff"]   = ("Fula",            "Fulfulde",     null),
-        ["fon"]  = ("Fon",             "Fɔngbè",       null),
+        ["ff"]   = ("Fula",            "Fulfulde",     "Jam waali. No mbaɗɗaa?"),
+        ["fon"]  = ("Fon",             "Fɔngbè",       "Kúdó. A fɔ́n gánjí à?"),
         ["fr"]   = ("French",          "Français",     "Bonjour le monde. Comment allez-vous ?"),
-        ["gn"]   = ("Guarani",         "Avañe'ẽ",      null),
+        ["gn"]   = ("Guarani",         "Avañe'ẽ",      "Mba'éichapa. Iporãnte."),
         ["gu"]   = ("Gujarati",        "ગુજરાતી",       "નમસ્તે વિશ્વ. તમે કેમ છો?"),
         ["ha"]   = ("Hausa",           "Harshen Hausa", "Sannu duniya. Yaya kake?"),
         ["hi"]   = ("Hindi",           "हिन्दी",         "नमस्ते दुनिया। आप कैसे हैं?"),
@@ -64,16 +65,16 @@ public class LanguagePickerActivity : Activity
         ["id"]   = ("Indonesian",      "Bahasa Indonesia", "Halo dunia. Apa kabar?"),
         ["ig"]   = ("Igbo",            "Asụsụ Igbo",   "Ndewo ụwa. Kedu ka ị mere?"),
         ["ja"]   = ("Japanese",        "日本語",        "こんにちは世界。お元気ですか。"),
-        ["jv"]   = ("Javanese",        "Basa Jawa",    null),
-        ["ki"]   = ("Kikuyu",          "Gĩkũyũ",       null),
+        ["jv"]   = ("Javanese",        "Basa Jawa",    "Sugeng enjing. Piye kabare?"),
+        ["ki"]   = ("Kikuyu",          "Gĩkũyũ",       "Ũhoro waku? Nĩ mwega."),
         ["kn"]   = ("Kannada",         "ಕನ್ನಡ",         "ನಮಸ್ಕಾರ ಜಗತ್ತು. ಹೇಗಿದ್ದೀರಿ?"),
-        ["kr"]   = ("Kanuri",          "Kanuri",       null),
-        ["lg"]   = ("Luganda",         "Luganda",      null),
-        ["lgg"]  = ("Lugbara",         "Lugbarati",    null),
+        ["kr"]   = ("Kanuri",          "Kanuri",       "Ndaram. Awo cira?"),
+        ["lg"]   = ("Luganda",         "Luganda",      "Oli otya? Ndi bulungi."),
+        ["lgg"]  = ("Lugbara",         "Lugbarati",    "Mi ngoni? Ma muke."),
         ["ln"]   = ("Lingala",         "Lingála",      "Mbote na yo. Ozali malamu?"),
-        ["mg"]   = ("Malagasy",        "Malagasy",     null),
+        ["mg"]   = ("Malagasy",        "Malagasy",     "Manao ahoana. Salama tsara."),
         ["ml"]   = ("Malayalam",       "മലയാളം",       "നമസ്കാരം ലോകം. സുഖമാണോ?"),
-        ["mos"]  = ("Mossi",           "Mooré",        null),
+        ["mos"]  = ("Mossi",           "Mooré",        "Ne y windga. Y kibare?"),
         ["mr"]   = ("Marathi",         "मराठी",         "नमस्कार जग. तुम्ही कसे आहात?"),
         ["my"]   = ("Burmese",         "မြန်မာ",        "မင်္ဂလာပါ ကမ္ဘာ။ နေကောင်းလား။"),
         ["ne"]   = ("Nepali",          "नेपाली",         "नमस्ते संसार। तपाईं कस्तो हुनुहुन्छ?"),
@@ -81,23 +82,23 @@ public class LanguagePickerActivity : Activity
         ["nl-BE"] = ("Flemish",         "Vlaams",             "Hallo wereld. Hoe gaat het met je?"),
         ["nr"]   = ("isiNdebele",      "isiNdebele",   "Lotjhani phasi. Unjani namhlanje?"),
         ["nso"]  = ("Sepedi",          "Sepedi",       "Dumela lefase. O kae lehono?"),
-        ["ny"]   = ("Chichewa",        "Chichewa",     null),
-        ["nyn"]  = ("Nyankole",        "Runyankole",   null),
-        ["om"]   = ("Oromo",           "Afaan Oromoo", null),
+        ["ny"]   = ("Chichewa",        "Chichewa",     "Moni. Muli bwanji?"),
+        ["nyn"]  = ("Nyankole",        "Runyankole",   "Agandi? Nimarungi."),
+        ["om"]   = ("Oromo",           "Afaan Oromoo", "Akkam jirta? Nagaa dha."),
         ["pa"]   = ("Punjabi",         "ਪੰਜਾਬੀ",         "ਸਤ ਸ੍ਰੀ ਅਕਾਲ ਦੁਨੀਆ। ਤੁਸੀਂ ਕਿਵੇਂ ਹੋ?"),
         ["pt-BR"] = ("Portuguese (Brazil)",   "Português (Brasil)",   "Olá mundo. Como você está hoje?"),
         ["pt-PT"] = ("Portuguese (Portugal)", "Português (Portugal)", "Olá mundo. Como está hoje?"),
-        ["qu"]   = ("Quechua",         "Runa Simi",    null),
-        ["rn"]   = ("Kirundi",         "Ikirundi",     null),
+        ["qu"]   = ("Quechua",         "Runa Simi",    "Allillanchu? Allinmi kani."),
+        ["rn"]   = ("Kirundi",         "Ikirundi",     "Amakuru? Ni meza."),
         ["ru"]   = ("Russian",         "Русский",      "Привет мир. Как дела сегодня?"),
-        ["rw"]   = ("Kinyarwanda",     "Ikinyarwanda", null),
-        ["sg"]   = ("Sango",           "Sängö",        null),
+        ["rw"]   = ("Kinyarwanda",     "Ikinyarwanda", "Amakuru? Ni meza."),
+        ["sg"]   = ("Sango",           "Sängö",        "Bara ala. Tongana nyen?"),
         ["si"]   = ("Sinhala",         "සිංහල",        "ආයුබෝවන් ලෝකය. කොහොමද?"),
         ["sn"]   = ("Shona",           "chiShona",     "Mhoro nyika. Wakadii nhasi?"),
         ["so"]   = ("Somali",          "Soomaali",     "Salaan aduunka. Sidee tahay?"),
         ["ss"]   = ("siSwati",         "siSwati",      "Sawubona live. Unjani lamuhla?"),
         ["st"]   = ("Sesotho",         "Sesotho",      "Dumela lefatshe. O phela joang?"),
-        ["su"]   = ("Sundanese",       "Basa Sunda",   null),
+        ["su"]   = ("Sundanese",       "Basa Sunda",   "Wilujeng énjing. Kumaha damang?"),
         ["sw"]   = ("Swahili",         "Kiswahili",    "Habari dunia. Hujambo leo?"),
         ["ta"]   = ("Tamil",           "தமிழ்",         "வணக்கம் உலகம். எப்படி இருக்கிறீர்கள்?"),
         ["te"]   = ("Telugu",          "తెలుగు",        "నమస్కారం ప్రపంచం. ఎలా ఉన్నారు?"),
@@ -189,18 +190,54 @@ public class LanguagePickerActivity : Activity
             .ToList();
 
         // One row per LANGUAGE, not per voice: a person looking for Portuguese does
-        // not care that two regional voices serve it. Smallest wins — on the phones
-        // this is built for, megabytes are money.
-        var best = new Dictionary<string, (string Id, long Bytes)>();
+        // not care that two regional voices serve it.
+        //
+        // WHICH voice, though, is not this screen's decision to make. It used to
+        // pick the smallest — reasonable on its own terms, megabytes being money
+        // — while the thing that actually speaks asks SpeechModelSelector. Two
+        // rules, so the row could describe a voice you would never hear: Japanese
+        // read "122 MB" for the old table-driven voice while "Hear it" played the
+        // 137.6 MB Open JTalk one. A size that belongs to a different voice is
+        // worse than no size, because it looks checked.
+        //
+        // So the label asks the same selector the probe does, and the row now
+        // describes the voice that will play.
+        ISpeechModelSelector selector = new SpeechModelSelector(registry);
+        var device = CircleAI.Core.DeviceProbe.Snapshot();
+
+        var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var v in voices)
-        {
             foreach (var raw in (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
             {
-                var tag = raw.Trim();
-                if (tag.Length == 0) continue;
-                if (!best.TryGetValue(tag, out var cur) || v.TotalBytes < cur.Bytes)
-                    best[tag] = (v.Name, v.TotalBytes);
+                var t = raw.Trim();
+                if (t.Length > 0) tags.Add(t);
             }
+
+        var best = new Dictionary<string, (string Id, long Bytes)>();
+        foreach (var tag in tags)
+        {
+            try
+            {
+                var plan = selector.PlanFor(device, CircleAI.Core.ModelModality.Tts, tag);
+                if (plan.IsAvailable && plan.Model is not null)
+                {
+                    var entry = registry.GetLatestModel(plan.Model.ModelId);
+                    if (entry is not null) { best[tag] = (entry.Name, entry.TotalBytes); continue; }
+                }
+            }
+            catch
+            {
+                // A selector that cannot answer for one language must not empty
+                // the whole list; fall through to the smallest-voice estimate.
+            }
+
+            // Fallback only: the selector declined or threw. Better a rough size
+            // than a row that vanishes.
+            foreach (var v in voices)
+                foreach (var raw in (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    if (string.Equals(raw.Trim(), tag, StringComparison.OrdinalIgnoreCase)
+                        && (!best.TryGetValue(tag, out var cur) || v.TotalBytes < cur.Bytes))
+                        best[tag] = (v.Name, v.TotalBytes);
         }
 
         foreach (var tag in best.Keys.OrderBy(t => Display(t).Name, StringComparer.OrdinalIgnoreCase))
@@ -218,13 +255,28 @@ public class LanguagePickerActivity : Activity
 
     void AddRow(string tag, string name, string native, string phrase, long bytes)
     {
-        var card = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        // A SCREEN CALLED "PICK A LANGUAGE" HAS TO PICK ONE. The row's only click
+        // handler used to be Speak(row) — tapping played a sample and did nothing
+        // else, so a person selected their language, heard it, and was left on the
+        // same screen with no way forward and nothing applied. Reported as a stall,
+        // and it was one: the tap spoke, and that was the whole behaviour.
+        //
+        // Tapping the row now SELECTS. Hearing it first is still worth having, so
+        // it keeps its own control rather than stealing the tap that everybody will
+        // read as "choose this one".
+        var card = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         card.Background = Ui.Rounded(this, Ui.Surface);
         card.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 14), Ui.Dp(this, 16), Ui.Dp(this, 14));
         card.Clickable = true;
+        card.SetGravity(GravityFlags.CenterVertical);
+
+        // The words take the space; the listen button takes what it needs.
+        var text = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        card.AddView(text, new LinearLayout.LayoutParams(0,
+            ViewGroup.LayoutParams.WrapContent, 1f));
 
         var title = Ui.Label(this, name, 18f, Ui.Ink, bold: true);
-        card.AddView(title);
+        text.AddView(title);
 
         // Native name and size on one quiet line. The size matters: this is the
         // number that decides whether somebody on a metered connection taps.
@@ -239,7 +291,14 @@ public class LanguagePickerActivity : Activity
         sub.TextDirection = Android.Views.TextDirection.Ltr;
         sub.TextAlignment = Android.Views.TextAlignment.ViewStart;
         sub.SetPadding(0, Ui.Dp(this, 4), 0, 0);
-        card.AddView(sub);
+        text.AddView(sub);
+
+        // WORDS, NOT A GLYPH. A bare speaker icon is a guess for anyone who has not
+        // met one, and this screen is read by people meeting the product for the
+        // first time. "Hear it" says what happens.
+        var hear = Ui.Label(this, "Hear it", 15f, Ui.Blue, bold: true);
+        hear.Clickable = true;
+        hear.SetPadding(Ui.Dp(this, 14), Ui.Dp(this, 8), Ui.Dp(this, 4), Ui.Dp(this, 8));
 
         var lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
@@ -248,7 +307,105 @@ public class LanguagePickerActivity : Activity
 
         var row = new Row(tag, name, native, phrase, bytes, card, sub);
         _rows.Add(row);
-        card.Click += (s, e) => Speak(row);
+
+        card.AddView(hear, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+
+        card.Click += (s, e) => Choose(row);
+        hear.Click += (s, e) => Speak(row);
+    }
+
+    /// <summary>Answers in this language from now on, and goes back to the circle.</summary>
+    /// <remarks>
+    /// PERSISTED, THEN LEFT. Storing it without leaving would be the same defect in
+    /// a quieter form — the person would still be looking at a list, with no signal
+    /// that their choice took. Saying it aloud in the language they just chose is
+    /// the confirmation that needs no reading, and returning to the circle is where
+    /// they were trying to get to.
+    /// </remarks>
+    void Choose(Row row)
+    {
+        _running?.Cancel();
+
+        // Choose, not Set: this is a person deciding, and the next turn's
+        // detection must not quietly undo it.
+        SpokenLanguage.Choose(this, row.Tag);
+        Android.Util.Log.Info("CircleAI.It",
+            $"language chosen: {row.Tag} ({row.Name}) — returning to the circle");
+
+        Android.Widget.Toast
+            .MakeText(this, $"Answering in {row.Name}", Android.Widget.ToastLength.Short)
+            ?.Show();
+
+        // AND MAKE IT LISTEN FOR THE NEW NAME. The wake phrase is fixed when the
+        // resident listener is built, and returning to the circle does not
+        // rebuild it — the wake loop is already running, so nothing re-enters
+        // ResidentAssistant.StartAsync and the staleness check there never runs.
+        // Verified on the phone: the language changed to Japanese and the
+        // microphone went on waiting for "Hey B", with nothing on screen to say
+        // so. The person deciding is the event that should trigger this, not a
+        // service restart that may never happen.
+        //
+        // Fire-and-forget deliberately: rebuilding stops the old detector and
+        // loads a model, which is too slow to hold a tap on, and the screen is
+        // closing anyway. Failure leaves the previous wake word running, which is
+        // the safe direction — see ResidentWakeWord.KeywordsFor.
+        _ = RebuildWakeWordAsync(row.Tag);
+
+        Finish();
+    }
+
+    /// <summary>Rebuilds the resident wake word for a newly chosen language.</summary>
+    /// <remarks>
+    /// Uses the application context, not this activity: Finish() runs immediately
+    /// after this is started, and a rebuild that outlived the screen would
+    /// otherwise be holding a destroyed Activity.
+    /// </remarks>
+    async Task RebuildWakeWordAsync(string tag)
+    {
+        try
+        {
+#if IT_VOICE_ANDROID
+            var app = ApplicationContext;
+            if (app is null) return;
+
+            var bundle = WakeWordActivity.FindBundle(app);
+            if (bundle is null)
+            {
+                Android.Util.Log.Info("CircleAI.Kws", "no wake bundle installed — nothing to rebuild");
+                return;
+            }
+
+            var old = CircleAI.Device.CircleNeuronService.Listener;
+            if (old is not null &&
+                string.Equals(ResidentWakeWord.InstalledLanguage, tag,
+                              StringComparison.OrdinalIgnoreCase))
+                return;   // already listening in this language
+
+            Android.Util.Log.Info("CircleAI.Kws",
+                $"language changed to '{tag}' — rebuilding the wake word " +
+                $"(was '{ResidentWakeWord.InstalledLanguage ?? "none"}')");
+
+            CircleAI.Device.CircleNeuronService.Listener = null;
+            if (old is not null)
+            {
+                // Stopped before the replacement is built: Android gives out
+                // AudioRecord to one owner, so a detector that is merely dropped
+                // keeps the microphone and the new one comes up deaf.
+                try { await old.StopAsync().ConfigureAwait(false); } catch { }
+                try { await old.DisposeAsync().ConfigureAwait(false); } catch { }
+            }
+
+            if (ResidentWakeWord.Install(app, bundle, languageCode: tag))
+                await CircleAI.Device.CircleNeuronService.StartListeningAsync().ConfigureAwait(false);
+#else
+            await Task.CompletedTask;
+#endif
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Kws", "wake word rebuild failed: " + ex.Message);
+        }
     }
 
     void Filter(string q)

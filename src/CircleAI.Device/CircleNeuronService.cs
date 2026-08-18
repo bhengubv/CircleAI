@@ -41,10 +41,21 @@ namespace CircleAI.Device;
 /// <see cref="CircleNeuronConnection"/>. Sticky: Android restarts it after an
 /// out-of-memory kill, which on the phones this targets is a matter of when.
 /// </remarks>
+// BOTH TYPES DECLARED, ONE OR TWO USED. A service may start with any SUBSET of
+// the types it declares, and the two jobs here are genuinely different: holding
+// models resident is dataSync, holding the microphone open for a wake word is
+// microphone. Declaring only dataSync and then opening a microphone is the kind
+// of thing Android 14 refuses outright.
+//
+// Which types are actually claimed is decided at StartForeground, from whether a
+// listener has been supplied — so the chat-only build, which has no speech stack
+// and no RECORD_AUDIO, never claims the microphone type and never has to hold
+// the permission that comes with it.
 [Service(
     Name                  = "ai.circle.CircleNeuronService",
     Exported              = false,
-    ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeDataSync)]
+    ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeDataSync
+                          | global::Android.Content.PM.ForegroundService.TypeMicrophone)]
 public sealed partial class CircleNeuronService : Service
 {
     /// <summary>Notification channel id for the resident-service notification.</summary>
@@ -128,6 +139,31 @@ public sealed partial class CircleNeuronService : Service
         else                                            app.StartService(intent);
     }
 
+    /// <summary>
+    /// Which foreground-service types this start is actually claiming.
+    /// </summary>
+    /// <remarks>
+    /// The microphone is claimed only when a listener has been supplied AND the
+    /// permission is held. Claiming it otherwise is worse than useless: from
+    /// Android 14 a microphone-typed service without RECORD_AUDIO is refused, so
+    /// a chat-only build would fail to go foreground at all — and the failure
+    /// would look like the model host being broken rather than a type it never
+    /// needed.
+    /// </remarks>
+    private global::Android.Content.PM.ForegroundService ClaimedTypes()
+    {
+        var types = global::Android.Content.PM.ForegroundService.TypeDataSync;
+
+        if (Listener is not null &&
+            CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio)
+                == global::Android.Content.PM.Permission.Granted)
+        {
+            types |= global::Android.Content.PM.ForegroundService.TypeMicrophone;
+        }
+
+        return types;
+    }
+
     /// <summary>Stops the resident service and releases the models it holds.</summary>
     public static void Stop(Context context)
     {
@@ -148,8 +184,7 @@ public sealed partial class CircleNeuronService : Service
             EnsureChannel();
             var notification = BuildNotification("starting…");
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                StartForeground(NotificationId, notification,
-                    global::Android.Content.PM.ForegroundService.TypeDataSync);
+                StartForeground(NotificationId, notification, ClaimedTypes());
             else
                 StartForeground(NotificationId, notification);
         }

@@ -38,6 +38,7 @@ public static class SpokenLanguage
 {
     const string Prefs = "circleai.voice";
     const string Key   = "spoken.language";
+    const string ChosenKey = "spoken.language.chosen";
 
     /// <summary>
     /// What to fall back to before anyone has chosen.
@@ -59,13 +60,56 @@ public static class SpokenLanguage
         catch { return Default; }
     }
 
-    /// <summary>Remembers the language of the last turn across launches.</summary>
+    /// <summary>
+    /// Remembers the language of the last turn — unless a person chose one.
+    /// </summary>
+    /// <remarks>
+    /// A DETECTION MUST NOT UNDO A CHOICE. Every turn called this with whatever
+    /// it heard, so picking Japanese on the languages screen survived exactly
+    /// until the next English sentence, which silently wrote "en" back. Observed
+    /// on the phone: Japanese chosen, one English question asked, and the next
+    /// Japanese turn resolved to English because the stored value had been
+    /// overwritten — while the screen still said Japanese.
+    /// <para>
+    /// Detection keeps its purpose, which is a household that moves between
+    /// languages mid-conversation. It just no longer overrules the person who
+    /// went to a screen and said which language this is.
+    /// </para>
+    /// </remarks>
     public static void Set(Context c, string code)
+    {
+        if (Chosen(c) is not null) return;
+        Write(c, Key, code);
+    }
+
+    /// <summary>The language a person picked, or null if they never did.</summary>
+    public static string? Chosen(Context c)
+    {
+        try
+        {
+            var p = c.GetSharedPreferences(Prefs, FileCreationMode.Private);
+            var v = p?.GetString(ChosenKey, null);
+            return string.IsNullOrWhiteSpace(v) ? null : v;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Records an explicit choice, which detection will not overwrite.</summary>
+    public static void Choose(Context c, string code)
+    {
+        Write(c, ChosenKey, code);
+        Write(c, Key, code);
+    }
+
+    /// <summary>Forgets the explicit choice, handing control back to detection.</summary>
+    public static void ClearChoice(Context c) => Write(c, ChosenKey, null);
+
+    static void Write(Context c, string key, string? value)
     {
         try
         {
             using var e = c.GetSharedPreferences(Prefs, FileCreationMode.Private)?.Edit();
-            e?.PutString(Key, code);
+            if (value is null) e?.Remove(key); else e?.PutString(key, value);
             e?.Apply();
         }
         catch { /* a preference that will not save is not worth a crash */ }

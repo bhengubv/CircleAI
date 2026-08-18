@@ -44,7 +44,7 @@ namespace CircleAI.Samples.It.Mobile;
 /// <remarks>
 /// THE LABEL IS NOT DECORATION. Android takes the APPLICATION label — not the
 /// activity's — for the permission sheet, so the first sentence a new person ever
-/// read from this product was "Allow com.bhengubv.itsample to record audio?".
+/// read from this product was "Allow com.bhengubv.circleai to record audio?".
 /// Being asked for your microphone by a package name is how an app looks like
 /// something that got onto your phone rather than something you chose.
 /// </remarks>
@@ -68,6 +68,39 @@ public class ItApplication : Application
 #if IT_VOICE_ANDROID
         VoiceWiring.Install(this);
 #endif
+
+        // THE VOICE LAYER CAN SAY WHERE ITS TIME GOES, ONCE SOMETHING IS
+        // LISTENING. It is a plain assembly with no Android reference and no
+        // logger, so by default it reports into a null sink and every timing it
+        // knows is thrown away — which is how transcription came to be a single
+        // unattributed number measured from outside. Pointed at logcat under the
+        // same tag as the turn itself, so one filter shows the whole chain in
+        // order rather than half of it here and half somewhere else.
+        CircleAI.Voice.VoiceTrace.Sink = line => Log.Info(Tag, line);
+
+        // WHERE A VOICE COPIED ONTO THIS PHONE WOULD BE. The app's own external
+        // files directory: readable with no storage permission, and writable over
+        // a cable, which is what makes an int8 voice testable before it is
+        // published. The importer still checks every byte against the hash the
+        // catalogue publishes, so this is a delivery route, not a trust hole.
+        CircleAI.Samples.It.Voice.ItSpeaker.SideloadFolder =
+            GetExternalFilesDir(null)?.AbsolutePath;
+
+        // WHERE OPEN JTALK'S DICTIONARY LIVES. Same directory, because it
+        // arrives the same way — but it is NOT a voice: 104 MB of compiled
+        // morphology (sys.dic alone is 100 MB) shared by every Japanese voice,
+        // so it is registered once here rather than bundled into any one of
+        // them. Without it the Japanese voice refuses to speak rather than
+        // falling back to characters, which would be confident noise.
+        CircleAI.Voice.OpenJTalkPhonemizer.DictionaryFolder =
+            GetExternalFilesDir(null)?.AbsolutePath;
+
+        // And where a DOWNLOADED one lands, which is a different place: the
+        // catalogue entry (OpenJTalk-Dic-ja) unpacks into the model store, not
+        // into the sideload folder.
+        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            "CircleAI", "Models");
 
         Log.Info(Tag, "process wiring installed");
     }

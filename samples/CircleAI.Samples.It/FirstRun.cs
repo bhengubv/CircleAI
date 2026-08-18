@@ -62,7 +62,38 @@ public readonly record struct SetupStep(string Title, ModelModality Modality, Mo
 /// <param name="Count">How many steps in total.</param>
 /// <param name="Title">The current step's words.</param>
 /// <param name="Fraction">0..1 across the whole of setup, weighted by bytes.</param>
-public readonly record struct SetupProgress(int Index, int Count, string Title, float Fraction);
+/// <param name="BytesPerSecond">Live rate, or 0 before one is known.</param>
+/// <param name="Remaining">What is left of the WHOLE setup, not just this part.</param>
+/// <remarks>
+/// THE NUMBERS ARE THE POINT, because the wait is not one length. The same
+/// bundle is minutes on a premium handset and most of an hour on a P30 Lite over
+/// 48 Mbps — measured on the device, and unchanged by opening eight sockets
+/// instead of one, so it is the link and it varies per person. A bare percentage
+/// is honest on the fast phone and reads as a hang on the slow one.
+/// </remarks>
+public readonly record struct SetupProgress(
+    int Index, int Count, string Title, float Fraction,
+    double BytesPerSecond = 0, TimeSpan Remaining = default)
+{
+    /// <summary>A line fit to put on screen: what, how fast, how long left.</summary>
+    public string Describe()
+    {
+        var pct = $"{Fraction * 100:0}%";
+        if (BytesPerSecond <= 0) return $"{Title} — {pct}";
+
+        var mbps = $"{BytesPerSecond / (1024 * 1024):0.0} MB/s";
+        if (Remaining <= TimeSpan.Zero || Remaining > TimeSpan.FromHours(12))
+            return $"{Title} — {pct} · {mbps}";
+
+        // Minutes, not hh:mm:ss. Nobody waiting on a download is counting
+        // seconds, and "43 minutes left" is a decision they can act on —
+        // put the phone down, or stop and come back on wifi.
+        var left = Remaining.TotalMinutes >= 1
+            ? $"{Remaining.TotalMinutes:0} min left"
+            : "less than a minute left";
+        return $"{Title} — {pct} · {mbps} · {left}";
+    }
+}
 
 /// <summary>Getting a fresh install to a working assistant, in one tap.</summary>
 public static class FirstRun
@@ -96,33 +127,68 @@ public static class FirstRun
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
 
-        var wanted = new List<(string Title, ModelModality Modality)>();
+        // TWO VOICES, BOTH BY NAME, AND NEITHER LEFT TO THE SELECTOR.
+        //
+        // Asking for "a TTS model that fits" fetched exactly one, and which one
+        // depended on quality ranks — the same fit-based guessing that once put a
+        // Nepali voice in an English assistant's mouth. Speech needs both, for
+        // different reasons: Vits-11ZA is grapheme-driven and right for the ten
+        // South African languages, and structurally wrong for English, where it
+        // measured 0.17 word error rate against Piper lessac's 0.00 because
+        // English spelling cannot be sounded out letter by letter.
+        //
+        // Named from ItSpeaker's own constants so setup cannot fetch one voice
+        // while the speaker asks for another. Together they are about 185 MB, or
+        // 95 MB once the quantised SA voice is published — next to a 22 GB brain,
+        // the English voice is rounding error and it is the difference between an
+        // assistant you can act on and one you cannot.
+        var wanted = new List<(string Title, ModelModality Modality, string? Named)>();
         if (speech)
         {
-            wanted.Add(("the voice",     ModelModality.Tts));
-            wanted.Add(("the ears",      ModelModality.Asr));
-            wanted.Add(("the wake word", ModelModality.WakeWord));
+            wanted.Add(("the English voice", ModelModality.Tts,
+                        CircleAI.Samples.It.Voice.ItSpeaker.EnglishVoice));
+            wanted.Add(("the local voice",   ModelModality.Tts,
+                        CircleAI.Samples.It.Voice.ItSpeaker.PreferredVoice));
+            wanted.Add(("the ears",          ModelModality.Asr,      null));
+            wanted.Add(("the wake word",     ModelModality.WakeWord, null));
         }
-        wanted.Add(("the brain", ModelModality.Chat));
+        wanted.Add(("the brain", ModelModality.Chat, null));
 
         var steps = new List<SetupStep>();
-        foreach (var (title, modality) in wanted)
+        foreach (var (title, modality, named) in wanted)
         {
-            // Already there is already done. Note this asks the loader, not the
-            // registry: what matters is bytes on disk, not what we know about.
-            if (registry.AllModels.Any(m => m.Modality == modality && loader.ModelExists(m.Name)))
-                continue;
+            ModelEntry? pick;
+            if (named is not null)
+            {
+                // A NAMED ENTRY IS CHECKED BY NAME, not by modality. The old test
+                // asked "is there any model of this modality on disk", which for
+                // two voices would have seen the first one land and skipped the
+                // second — fetching one voice and reporting both as done.
+                if (loader.ModelExists(named)) continue;
+                if (declined is not null && declined(named)) continue;
 
-            // The same choice the abilities screen makes, deliberately: best that
-            // fits, smallest among equals. Two places asking "which model" and
-            // disagreeing would mean setup installs one thing and the screen
-            // reports another.
-            var pick = registry.AllModels
-                .Where(m => m.Modality == modality && Fits(m, probe))
-                .Where(m => declined is null || !declined(m.Name))
-                .OrderByDescending(m => m.QualityRank)
-                .ThenBy(m => m.MinRamGb)
-                .FirstOrDefault();
+                pick = registry.AllModels.FirstOrDefault(
+                    m => string.Equals(m.Name, named, StringComparison.OrdinalIgnoreCase)
+                         && Fits(m, probe));
+            }
+            else
+            {
+                // Already there is already done. Note this asks the loader, not the
+                // registry: what matters is bytes on disk, not what we know about.
+                if (registry.AllModels.Any(m => m.Modality == modality && loader.ModelExists(m.Name)))
+                    continue;
+
+                // The same choice the abilities screen makes, deliberately: best that
+                // fits, smallest among equals. Two places asking "which model" and
+                // disagreeing would mean setup installs one thing and the screen
+                // reports another.
+                pick = registry.AllModels
+                    .Where(m => m.Modality == modality && Fits(m, probe))
+                    .Where(m => declined is null || !declined(m.Name))
+                    .OrderByDescending(m => m.QualityRank)
+                    .ThenBy(m => m.MinRamGb)
+                    .FirstOrDefault();
+            }
 
             // NO ENTRY IS NOT AN ERROR HERE. A phone too small for any chat model
             // still gets a voice and ears, and should be set up that far rather
@@ -159,15 +225,25 @@ public static class FirstRun
             var start = done;
             var index = i;
 
-            var inner = new Progress<float>(f =>
-                progress?.Report(new SetupProgress(
-                    index, steps.Count, step.Title,
-                    (start + step.Model.TotalBytes * Math.Clamp(f, 0f, 1f)) / (float)total)));
+            var inner = new Progress<CircleAI.Core.DownloadProgress>(p =>
+            {
+                var doneNow  = start + step.Model.TotalBytes * Math.Clamp(p.Ratio, 0, 1);
+                var fraction = (float)(doneNow / total);
 
-            // DownloadModelAsync takes no token, so cancellation lands between
-            // steps rather than mid-file. Task.Run keeps the wait off the UI
-            // thread and lets the token cut the await loose immediately.
-            await Task.Run(() => loader.DownloadModelAsync(step.Model.Name, inner), ct)
+                // ETA ACROSS THE WHOLE OF SETUP, not just this file. The download
+                // service knows how long the current file has left; a person
+                // wants to know when they can use the phone, which is when the
+                // LAST byte lands. Extrapolated from the live rate over
+                // everything still outstanding.
+                var left = p.BytesPerSecond > 0
+                    ? TimeSpan.FromSeconds((total - doneNow) / p.BytesPerSecond)
+                    : TimeSpan.Zero;
+
+                progress?.Report(new SetupProgress(
+                    index, steps.Count, step.Title, fraction, p.BytesPerSecond, left));
+            });
+
+            await Task.Run(() => loader.DownloadModelAsync(step.Model.Name, inner, ct), ct)
                       .ConfigureAwait(false);
 
             done += step.Model.TotalBytes;

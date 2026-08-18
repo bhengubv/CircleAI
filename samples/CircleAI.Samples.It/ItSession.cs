@@ -261,6 +261,23 @@ public sealed class ItSession : IAsyncDisposable
                 DefaultGenerationOptions = new GenerationOptions
                 {
                     ContinueConversation = true,
+                    // AND THE FIRST TURN, which ContinueConversation cannot help
+                    // with — there is nothing yet to continue from. Measured on
+                    // the P30: question one prefilled 104 tokens in 6 418 ms
+                    // while question two managed the same work in 700-800 ms,
+                    // and roughly two thirds of that first prompt is a system
+                    // block identical on every turn of every conversation.
+                    //
+                    // This keeps the model's prefill of that block on disk,
+                    // keyed by the system prompt itself, so a later first turn
+                    // restores it instead of recomputing it. It survives the
+                    // process dying, which matters more here than anywhere: an
+                    // assistant is opened, asked one thing, and closed, so the
+                    // FIRST turn is most of what anybody ever experiences.
+                    //
+                    // Skipped automatically once a conversation is under way —
+                    // the live cache holds strictly more than the snapshot.
+                    UsePrefixCache = true,
                     // A BACKSTOP, not the plan — the brevity instruction in the
                     // system prompt is what should keep answers short. 512 (the
                     // default) is 73 seconds of speech at this phone's decode

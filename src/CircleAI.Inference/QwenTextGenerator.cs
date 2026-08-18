@@ -491,6 +491,7 @@ public sealed class QwenTextGenerator : IChatGenerator
         // conversation, which is strictly more than any snapshot of the system
         // prompt alone, and loading one would throw the conversation away.
         bool loadedFromCache = false;
+        bool writingCache = false;
         if (!continuing && prefixCacheKey is not null && File.Exists(_prefixCache.PathFor(prefixCacheKey)))
         {
             loadedFromCache = MnnInterop.LoadSession(_model, _prefixCache.PathFor(prefixCacheKey));
@@ -511,6 +512,34 @@ public sealed class QwenTextGenerator : IChatGenerator
             // only new text is the tail being fed now.
             MnnInterop.mnn_llm_reset_session(_model);
         }
+
+        // REGISTERED BEFORE THE GENERATION IT IS MEANT TO CAPTURE, not after.
+        //
+        // The native call behind SaveSession is MNN's setPrefixCacheFile(path,
+        // write) — it nominates the file the prefix is written to, it does not
+        // write one. Called after generating, as it was, it nominated a file for
+        // a prefill that had already happened and been discarded, so the first
+        // conversation to use a system prompt never left anything behind and the
+        // next one missed again. The cache could not fill, so it could not hit.
+        //
+        // After the reset above, deliberately: the reset clears the KV, and
+        // nominating the file first would offer up an empty one.
+        if (!continuing && !loadedFromCache && prefixCacheKey is not null)
+        {
+            try { writingCache = MnnInterop.SaveSession(_model, _prefixCache.PathFor(prefixCacheKey)); }
+            catch { /* best-effort cache write */ }
+        }
+
+        // WHICH OF THE THREE PATHS THIS TURN TOOK. Prefill was measured at
+        // 6 418 ms on a first question and 700-800 ms on later ones in the same
+        // conversation, and from outside there was no way to tell a cache that
+        // missed from a cache that was never consulted. It was the second: the
+        // option gating all of this defaults to false and nothing in the tree
+        // ever set it, so every first turn paid a full prefill by default.
+        Console.WriteLine(
+            $"CIRCLEAI-KV {(continuing ? "continuing" : loadedFromCache ? "prefix-hit" : "prefix-miss")}" +
+            $" cache={(prefixCacheKey is null ? "off" : writingCache ? "writing" : "on")}" +
+            $" feeding={prompt.Length} chars");
 
         var sink = new MnnTokenSink
         {
@@ -581,18 +610,14 @@ public sealed class QwenTextGenerator : IChatGenerator
 
             MnnTokenRouter.DrainRemainder(sink);
 
-            // RT-06: populate the prefix cache after a successful generation.
-            // The snapshot includes the system prompt's prefill + this turn's
-            // prefill — slightly more than just-system, but close enough to
-            // skip the bulk of the cost on the next chat with the same system.
-            if (prefixCacheKey is not null && !loadedFromCache)
+            // RT-06: the snapshot itself was written by the native side during
+            // the generation above, because the file was nominated before it
+            // rather than after. What is left here is housekeeping — keeping the
+            // cache directory inside its size budget now that it has grown.
+            if (writingCache)
             {
-                try
-                {
-                    MnnInterop.SaveSession(_model, _prefixCache.PathFor(prefixCacheKey));
-                    _ = _prefixCache.EvictIfNeededAsync(ct);
-                }
-                catch { /* best-effort cache write */ }
+                try { _ = _prefixCache.EvictIfNeededAsync(ct); }
+                catch { /* best-effort cache maintenance */ }
             }
 
             // What the model actually said, so the caller can record what the KV

@@ -267,6 +267,34 @@ public static class ItTtsProbe
         foreach (var f in entry.BundleFiles)
             specs.Add(new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes));
 
+        // A BUNDLE ALREADY ON THE DEVICE BEATS A DOWNLOAD, and this path had no
+        // way to use one. ItSpeaker imports sideloaded voices before it loads
+        // them; this preview did not, so tapping "Hear it" on a voice that was
+        // sitting in the sideload folder reached for the catalogue instead and
+        // reported DOWNLOAD FAILED — for a voice that was present, verified, and
+        // 20 cm away. The importer still checks every byte against the hash the
+        // catalogue publishes, so this is a delivery route, not a trust hole.
+        var sideload = ItSpeaker.SideloadFolder;
+        if (!string.IsNullOrWhiteSpace(sideload))
+        {
+            var staged = Path.Combine(sideload!, entry.Name);
+            if (Directory.Exists(staged))
+            {
+                try
+                {
+                    var importer = new CircleAI.Inference.SideloadedBundleImporter(registry, storageDir);
+                    var imported = await importer.ImportAsync(entry.Name, staged, ct).ConfigureAwait(false);
+                    log?.Invoke($"sideload: {entry.Name} — {imported.Detail} ({imported.Files} files verified)");
+                }
+                catch (Exception ex)
+                {
+                    // Non-fatal: a bad sideload should fall through to the
+                    // download, not block the voice entirely.
+                    log?.Invoke($"sideload: {entry.Name} skipped — {ex.Message}");
+                }
+            }
+        }
+
         string dir;
         try
         {

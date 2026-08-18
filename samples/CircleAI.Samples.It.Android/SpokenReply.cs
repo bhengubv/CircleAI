@@ -62,6 +62,28 @@ public sealed class SpokenReply : IAsyncDisposable
     /// </remarks>
     const int MinSpeakable = 12;
 
+    /// <summary>
+    /// Shortest FIRST utterance worth breaking a sentence apart for.
+    /// </summary>
+    /// <remarks>
+    /// THE FIRST CHUNK GATES EVERYTHING AND NOTHING ELSE DOES. Synthesis was
+    /// measured on the P30 at roughly 75 ms per character, so waiting for a full
+    /// stop cost 9 493 ms of silence for a 97-character opening sentence — while
+    /// every LATER sentence is synthesised during playback of the one before it
+    /// and costs nothing anybody notices.
+    /// <para>
+    /// So the first utterance may end at a comma, semicolon or colon once it is
+    /// this long, and only the first. "The capital of France is Paris," starts
+    /// playing while the rest is still being made. The cost is a slightly
+    /// flatter cadence on one clause; the alternative is nine seconds of nothing
+    /// at all, which is what a person reads as broken.
+    /// </para>
+    /// </remarks>
+    const int FirstClauseMin = 28;
+
+    /// <summary>Whether anything has been handed to the mouth yet.</summary>
+    bool _firstTaken;
+
     readonly Task<(CircleAI.Samples.It.Voice.ItSpeaker? Speaker, string Status)> _voice;
     readonly Queue<string> _queue = new();
     readonly SemaphoreSlim _ready = new(0);
@@ -70,6 +92,20 @@ public sealed class SpokenReply : IAsyncDisposable
     readonly Action<float>? _onLevel;
     readonly string? _language;
     readonly Task _pump;
+
+    /// <summary>
+    /// Runs from construction, which is the moment thinking starts.
+    /// </summary>
+    /// <remarks>
+    /// TIME TO FIRST SOUND WAS THE ONE NUMBER NOBODY HAD. This class logs when
+    /// it fails and says nothing when it works, so a turn that went perfectly
+    /// left no trace of WHEN it started talking — and that instant is the whole
+    /// measure of whether the wait feels bearable. The chain around it was
+    /// timed to the millisecond and then stopped one step short of the only
+    /// event the person actually perceives.
+    /// </remarks>
+    readonly System.Diagnostics.Stopwatch _since = System.Diagnostics.Stopwatch.StartNew();
+
     bool _closed;
 
     /// <param name="voice">
@@ -104,6 +140,19 @@ public sealed class SpokenReply : IAsyncDisposable
     /// deserves a sound of its own rather than silent text.
     /// </remarks>
     public bool SpokeAnything { get; private set; }
+
+    /// <summary>
+    /// Milliseconds from construction to the first audible word, or -1 if
+    /// nothing was ever spoken.
+    /// </summary>
+    /// <remarks>
+    /// Reported so the turn can log one honest end-to-end figure instead of a
+    /// sum of stages that stops before the sound.
+    /// </remarks>
+    public long FirstSoundMs { get; private set; } = -1;
+
+    /// <summary>How long the voice took to load, once it had finished.</summary>
+    public long VoiceReadyMs { get; private set; } = -1;
 
     /// <summary>Why nothing was spoken, in words, when nothing was.</summary>
     /// <remarks>
@@ -161,20 +210,33 @@ public sealed class SpokenReply : IAsyncDisposable
     string? TakeSentence()
     {
         var text = _pending.ToString();
+
+        // Only the opening utterance may be cut at a clause; once sound is
+        // flowing, the rest is built behind it and full sentences are free.
+        var opening = !_firstTaken;
+
         for (var i = 0; i < text.Length; i++)
         {
             var c = text[i];
-            if (c is not ('.' or '!' or '?' or '\n')) continue;
+            var endsSentence = c is '.' or '!' or '?' or '\n';
+            var endsClause   = opening && c is ',' or ';' or ':';
+            if (!endsSentence && !endsClause) continue;
 
             // "3." in a numbered list is not the end of a thought. Treat a stop
             // that follows a digit and precedes a space as part of the list.
             if (c == '.' && i > 0 && char.IsDigit(text[i - 1])) continue;
 
             var take = text[..(i + 1)].Trim();
-            if (take.Length < MinSpeakable && i + 1 < text.Length) continue;
+
+            // A clause has to earn being spoken alone; a sentence does not.
+            var floor = endsSentence ? MinSpeakable : FirstClauseMin;
+            if (take.Length < floor && i + 1 < text.Length) continue;
 
             _pending.Remove(0, i + 1);
-            return take.Length > 0 ? take : null;
+            if (take.Length == 0) return null;
+
+            _firstTaken = true;
+            return take;
         }
         return null;
     }
@@ -188,6 +250,7 @@ public sealed class SpokenReply : IAsyncDisposable
         try
         {
             (speaker, status) = await _voice.ConfigureAwait(false);
+            VoiceReadyMs = _since.ElapsedMilliseconds;
         }
         catch (Exception ex)
         {
@@ -228,10 +291,27 @@ public sealed class SpokenReply : IAsyncDisposable
 
             try
             {
+                var synth = System.Diagnostics.Stopwatch.StartNew();
                 var pcm = await mouth.Engine.SynthesiseAsync(next, _ct).ConfigureAwait(false);
                 if (pcm.AudioData.Length == 0) continue;
 
                 _onLevel?.Invoke(Loudness(pcm.AudioData.Span, pcm.BitsPerSample));
+
+                // THE MOMENT THE PERSON HEARS SOMETHING. Everything upstream is
+                // measured and logged; this is where the measuring stopped, so
+                // the only number that describes their actual wait was the one
+                // nobody had. Logged before the audio starts rather than after,
+                // because the wait ends when the sound begins, not when the
+                // sentence finishes playing.
+                if (!SpokeAnything)
+                {
+                    FirstSoundMs = _since.ElapsedMilliseconds;
+                    Log.Info(Tag,
+                        $"spoke: first sound at {FirstSoundMs} ms " +
+                        $"(voice ready {VoiceReadyMs} ms, synth {synth.ElapsedMilliseconds} ms, " +
+                        $"{next.Length} chars)");
+                }
+
                 SpokeAnything = true;
                 await player.PlayAsync(pcm.AudioData, pcm.SampleRate,
                                        pcm.Channels, pcm.BitsPerSample, _ct)

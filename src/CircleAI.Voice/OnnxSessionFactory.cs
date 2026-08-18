@@ -77,7 +77,10 @@ public static class OnnxSessionFactory
         if (modelPath.EndsWith(".ort", StringComparison.OrdinalIgnoreCase))
             return new InferenceSession(modelPath, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
 
-        var optimised = Path.ChangeExtension(modelPath, null) + ".ort.onnx";
+        // The fingerprint is IN THE NAME, so identity is decided by the filename
+        // rather than by a timestamp comparison that side-loading always loses.
+        var optimised = Path.ChangeExtension(modelPath, null)
+                        + "." + Fingerprint(modelPath) + ".ort.onnx";
 
         // Only reuse the optimised copy if it was built from THIS model. Voices are
         // commonly sideloaded by overwriting one well-known filename, so a cache
@@ -108,12 +111,68 @@ public static class OnnxSessionFactory
         var cache = new FileInfo(optimised);
         if (cache.Length <= 1024) return false;
 
-        var source = new FileInfo(modelPath);
-        if (!source.Exists) return false;
+        return File.Exists(modelPath);
+    }
 
-        // Overwriting the model updates its timestamp; anything not newer than the
-        // model was built from something else.
-        return cache.LastWriteTimeUtc >= source.LastWriteTimeUtc;
+    /// <summary>
+    /// A cheap content fingerprint, so the cache name identifies the model.
+    /// </summary>
+    /// <remarks>
+    /// TIMESTAMPS WERE THE WRONG KEY AND IT COST MINUTES A TURN. The check used to
+    /// be "cache must be no older than the model", which is correct reasoning and
+    /// wrong here: the side-load importer COPIES the model into place, so its
+    /// mtime becomes now and every existing cache looks stale. The graph was then
+    /// re-optimised on every single open — measured on a P30 as the app sitting at
+    /// 64% CPU for three and a half minutes on a 122 MB Japanese voice, with a
+    /// person waiting and nothing in the log to say why.
+    /// <para>
+    /// Path alone is not safe either, and the old comment was right about why:
+    /// voices are commonly side-loaded by overwriting one well-known filename, so
+    /// a path-keyed cache would serve the previous language's graph. Two different
+    /// voices can also share a byte count — lessac-medium and zh_CN-huayan-medium
+    /// are both exactly 63 201 294 bytes — so size is not a discriminator on its
+    /// own.
+    /// </para>
+    /// <para>
+    /// So the name carries a fingerprint of the CONTENT: length plus the head and
+    /// tail of the file. Copying the same bytes yields the same name and the cache
+    /// is reused; a different model at the same path yields a different name and
+    /// gets its own. Reading 128 KB of a 122 MB file costs nothing next to the
+    /// optimisation it avoids.
+    /// </para>
+    /// </remarks>
+    private static string Fingerprint(string modelPath)
+    {
+        const int Edge = 64 * 1024;
+        try
+        {
+            using var fs = File.OpenRead(modelPath);
+            var len = fs.Length;
+            var buf = new byte[Edge];
+
+            using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(
+                System.Security.Cryptography.HashAlgorithmName.SHA256);
+            sha.AppendData(BitConverter.GetBytes(len));
+
+            var head = fs.Read(buf, 0, (int)Math.Min(Edge, len));
+            sha.AppendData(buf, 0, head);
+
+            if (len > Edge * 2)
+            {
+                fs.Seek(-Edge, SeekOrigin.End);
+                var tail = fs.Read(buf, 0, Edge);
+                sha.AppendData(buf, 0, tail);
+            }
+
+            return Convert.ToHexString(sha.GetHashAndReset(), 0, 4).ToLowerInvariant();
+        }
+        catch
+        {
+            // Unreadable head or tail: fall back to a name that simply will not
+            // collide with a real fingerprint, so the cache is rebuilt rather than
+            // a wrong graph being served.
+            return "nofp";
+        }
     }
 
     /// <summary>
@@ -135,6 +194,40 @@ public static class OnnxSessionFactory
     {
         GraphOptimizationLevel = level,
         InterOpNumThreads = 1,
-        IntraOpNumThreads = Math.Max(1, Environment.ProcessorCount)
+        IntraOpNumThreads = IntraOpThreads(),
     };
+
+    /// <summary>
+    /// Threads for a single operator: half the cores, leaving room for the
+    /// model generating the words being spoken.
+    /// </summary>
+    /// <remarks>
+    /// NOT A THREAD-EFFICIENCY SETTING — A CONTENTION ONE. Taking every core
+    /// looks free, and is not, because on this product speech synthesis does not
+    /// run alone: sentences are spoken while the language model is still writing
+    /// the rest of the answer, so ONNX Runtime and MNN are both resident and
+    /// both busy. Asking for all eight cores while MNN holds four oversubscribes
+    /// an eight-core phone, and the two engines take turns being descheduled.
+    /// <para>
+    /// Measured on a P30 Lite, same question, same 37-character opening clause:
+    /// </para>
+    /// <code>
+    ///   ORT threads   first clause synthesised   LLM decode per chunk
+    ///   4 (half)                  4 603 ms                   157 ms
+    ///   8 (all)                   5 937 ms                   214 ms
+    /// </code>
+    /// <para>
+    /// BOTH got worse with more threads, which is the signature of
+    /// oversubscription rather than of slow cores. An earlier version of this
+    /// comment blamed the four little A53s and cited a per-character figure to
+    /// match; that reasoning was wrong, and the numbers behind it had been taken
+    /// while a model load was still hidden inside the first synthesis.
+    /// </para>
+    /// <para>
+    /// Half also lands sensibly where nothing else is competing: on a
+    /// hyperthreaded desktop it is roughly the physical core count, which is
+    /// what a saturated matmul wants anyway.
+    /// </para>
+    /// </remarks>
+    private static int IntraOpThreads() => Math.Max(1, Environment.ProcessorCount / 2);
 }

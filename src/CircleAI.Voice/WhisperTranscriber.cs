@@ -17,7 +17,29 @@ namespace CircleAI.Voice;
 /// Audio input must be PCM 16-bit, 16 kHz, mono (little-endian signed
 /// short samples) as specified by <see cref="AudioFormat.Pcm16Mono16k"/>.
 /// </para>
+/// <para>
+/// DO NOT WIRE THIS UP. It is not merely unused, it is unsafe to use, and the
+/// two are easy to confuse for one another. <see cref="WhisperInterop"/>
+/// declares <c>whisper_full_params</c> by hand and that declaration has drifted
+/// from the struct whisper.cpp actually compiles: it still carries
+/// <c>speed_up</c>, deleted upstream in v1.6; it declares
+/// <c>suppress_regex</c> as a single byte where native has an eight-byte
+/// pointer; and it adds a <c>temperature_inc_count</c> field that does not
+/// exist at all. Every field past that point is written at the wrong offset —
+/// setting <c>detect_language</c> lands inside the <c>language</c> POINTER.
+/// That is a native memory corruption with no exception and no log line, of
+/// exactly the kind that surfaces as a crash somewhere unrelated.
+/// </para>
+/// <para>
+/// <see cref="WhisperNetTranscriber"/> is the one that runs. It rides
+/// Whisper.net, which owns the marshalling and moves with the native library it
+/// ships, so there is no layout to keep in step by hand.
+/// </para>
 /// </remarks>
+[Obsolete(
+    "Unsafe: WhisperInterop's hand-written whisper_full_params no longer matches " +
+    "whisper.cpp's layout, so setting fields corrupts native memory silently. " +
+    "Use WhisperNetTranscriber, which is what actually runs.")]
 public sealed class WhisperTranscriber : IVoiceTranscriber
 {
     private readonly string _modelPath;

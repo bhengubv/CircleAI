@@ -502,6 +502,33 @@
       ]
     },
     {
+      "Name": "Piper-ko_KR-kss-medium",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ko",
+      "Architecture": "vits",
+      "TotalBytes": 63227216,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0632,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx",
+          "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
+          "SizeBytes": 63221984
+        },
+        {
+          "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx.json",
+          "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
+          "SizeBytes": 5232
+        }
+      ]
+    },
+    {
       "Name": "Whisper-tiny-ggml",
       "Version": "1.0",
       "Quantization": "ggml",
@@ -2295,6 +2322,38 @@
       ]
     },
     {
+      "Name": "Vits-11ZA-int8",
+      "Version": "1.0",
+      "Quantization": "Int8",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+      "Architecture": "vits",
+      "TotalBytes": 32432726,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0324,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-11za-int8/model.onnx",
+          "Sha256": "2bcc377d2fc080d869c5a5472a0d263dbc04b56a0475a46612a3cc546060e871",
+          "SizeBytes": 32430658
+        },
+        {
+          "Name": "vits-11za-int8/model.onnx.json",
+          "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+          "SizeBytes": 1911
+        },
+        {
+          "Name": "vits-11za-int8/language_ids.json",
+          "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+          "SizeBytes": 157
+        }
+      ]
+    },
+    {
       "Name": "MMS-ibo",
       "Version": "1.0",
       "Quantization": "ONNX",
@@ -2809,6 +2868,90 @@
         }
       ],
       "Source": "HuggingFace"
+    },
+    {
+      "Name": "JSUT-VITS",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ja",
+      "Architecture": "vits-espnet",
+      "TotalBytes": 144280383,
+      "MinRamGb": 0.35,
+      "MinStorageGb": 0.135,
+      "QualityRank": 9,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "jsut-vits/model.onnx",
+          "Sha256": "78672bceed1f62389a8b0604cba978d7f4af934ddf43f71190b4870b14ef2f57",
+          "SizeBytes": 144280383
+        }
+      ]
+    },
+    {
+      "Name": "OpenJTalk-Dic-ja",
+      "Version": "1.11",
+      "Quantization": "None",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Phonemizer",
+      "Language": "ja",
+      "Architecture": "open-jtalk-naist-jdic",
+      "TotalBytes": 107304813,
+      "MinRamGb": 0.05,
+      "MinStorageGb": 0.11,
+      "QualityRank": 0,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "open-jtalk-dic/sys.dic",
+          "Sha256": "ca57d9029691a70a5dfb99afc2844180256161d7130da65b1a867510e129b9a6",
+          "SizeBytes": 103073776
+        },
+        {
+          "Name": "open-jtalk-dic/matrix.bin",
+          "Sha256": "62fd16b4f64c851d5dc352ef0d5740c5fc83ddc7c203b2b0b1fc5271969a14ce",
+          "SizeBytes": 3792262
+        },
+        {
+          "Name": "open-jtalk-dic/char.bin",
+          "Sha256": "888ee94c5a8a7a26d24ab3f1b7155441351954fd51ea06b4a2f78bd742492b2f",
+          "SizeBytes": 262496
+        },
+        {
+          "Name": "open-jtalk-dic/unk.dic",
+          "Sha256": "ce97851ecda075914fa3ffe7294a1ab34ee4f6d56ba6bf9197d74143b5dffbfe",
+          "SizeBytes": 5690
+        },
+        {
+          "Name": "open-jtalk-dic/left-id.def",
+          "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
+          "SizeBytes": 77672
+        },
+        {
+          "Name": "open-jtalk-dic/right-id.def",
+          "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
+          "SizeBytes": 77672
+        },
+        {
+          "Name": "open-jtalk-dic/pos-id.def",
+          "Sha256": "3460aa742053085af47cdfc889a1e0e6f557e89b406e501ba81c9ccc286de0c7",
+          "SizeBytes": 1923
+        },
+        {
+          "Name": "open-jtalk-dic/rewrite.def",
+          "Sha256": "7f7c8dfbfe24092e8a149a9b6e0a3a7f1c2cf37d6c3dc29d1cccc6c004da9c1c",
+          "SizeBytes": 7457
+        },
+        {
+          "Name": "open-jtalk-dic/COPYING",
+          "Sha256": "f4eca42ebd930e2c6e57fca58319d989bebcd1510cb7714b149c50f5425135ea",
+          "SizeBytes": 5865
+        }
+      ]
     }
   ]
 }

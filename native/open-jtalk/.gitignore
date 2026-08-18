@@ -1,0 +1,22 @@
+# Compiled dictionary — 104 MB unpacked, ships via the model registry instead.
+# Fetch from the GitHub release, NOT SourceForge (which returns 136 KB of HTML
+# with a 200 status): 
+#   https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz
+dic/
+
+# CMake output, and the header upstream generates into its own source tree.
+build/
+upstream/src/mecab/src/config.h
+
+# Model weights and exports — 493 MB, and the .pth is 355 MB of that. These are
+# catalogue assets delivered through the model registry, not source. The export
+# is reproducible from export_jsut.py; the SHA-256 in embedded_registry.json is
+# what makes a delivered copy trustworthy.
+jsut-vits/*.onnx
+jsut-vits/*.pth
+
+# Dictionary SOURCE csv (109 MB of the vendored tree). Not referenced by
+# upstream/src/CMakeLists.txt — it builds only the analysis chain — and we ship
+# the PRECOMPILED binary dictionary, so nothing here is needed to build or run.
+# Re-fetch from the upstream zip if you ever need to compile a dictionary.
+upstream/src/mecab-naist-jdic/

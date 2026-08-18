@@ -100,6 +100,16 @@ public sealed class AIService : IAIService
     /// </remarks>
     private bool _toolsLatched;
 
+    /// <summary>
+    /// Which tools have entered this conversation's prefix. Grows, never shrinks.
+    /// </summary>
+    /// <remarks>
+    /// Names rather than definitions, because the bridge owns the definitions
+    /// and may hand back fresh instances; the name is what identifies a
+    /// capability across turns.
+    /// </remarks>
+    private readonly HashSet<string> _latchedTools = new(StringComparer.Ordinal);
+
     // Neuron — two-slot residency (opt-in via AIOptions.Router). _generator above
     // is the always-warm generalist floor; _slots owns one evictable specialist.
     private Neuron.ResidentSlotManager? _slots;
@@ -1082,17 +1092,72 @@ public sealed class AIService : IAIService
         catch { return generalist; }
     }
 
+    /// <summary>
+    /// Exercises the native path once so the first real call does not.
+    /// </summary>
+    /// <remarks>
+    /// WARMS THE PROMPT A REAL TURN WILL SEND, not the bare one. The point is
+    /// to leave a prefix-cache snapshot under the key the first question will
+    /// look up; warming a system prompt nothing ever sends writes a snapshot
+    /// nothing ever finds.
+    /// <para>
+    /// THIS WAS TRIED BEFORE AND RECORDED AS WORSE, so here is why that verdict
+    /// no longer holds. The measurement was:
+    /// </para>
+    /// <code>
+    ///                    warm-up                    first question
+    ///   bare      prompt= 66 tok, prefill  2 455 ms   prompt=102 tok, 3 329 ms
+    ///   enriched  prompt=495 tok, prefill 13 239 ms   prompt=102 tok, 3 658 ms
+    ///   model load 16.4 s -> 22.9 s
+    /// </code>
+    /// <para>
+    /// Two things have changed since. The 495 tokens were mostly the TOOL BLOCK,
+    /// which at the time was assembled for any turn; it is now latched off until
+    /// something asks for a tool, and the phone's own log confirms a real voice
+    /// turn carries none of it — <c>enrichment=131 tools=0</c>, about 35 tokens
+    /// rather than 400. And the first turn was "unchanged" because the mechanism
+    /// that would have carried the warm-up forward was switched off:
+    /// <c>UsePrefixCache</c> defaults to false and nothing in the tree set it,
+    /// so there was no cache to hit and nothing to be gained by matching a key.
+    /// </para>
+    /// <para>
+    /// Both are now true, so the old note's own closing sentence applies —
+    /// making the first turn fast needs the prefix cache to survive across
+    /// process starts. That is this, plus <c>UsePrefixCache</c> at the caller.
+    /// </para>
+    /// <para>
+    /// AN EMPTY QUERY, DELIBERATELY. Enrichment adds retrieved memories and
+    /// skill descriptions only when there is a question to retrieve against, so
+    /// an empty one yields exactly the stable part — persona and device context
+    /// — which is the part every turn shares and the only part worth caching.
+    /// </para>
+    /// </remarks>
     private async Task WarmUpAsync(CancellationToken ct)
     {
         var generator = _generator;
         if (generator is null) return;
 
-        var warmMessages = new[]
+        var seed = new[]
         {
             new ChatMessage("system", _options.SystemPrompt),
             new ChatMessage("user", "."),
         };
-        var warmOptions = new GenerationOptions { MaxTokens = 1, Temperature = 0f };
+
+        // Built the same way a real turn's messages are, so the system message —
+        // and therefore the prefix-cache key derived from it — is the same one
+        // the first question will ask for.
+        var warmMessages = await PrepareMessagesAsync(seed, string.Empty, ct).ConfigureAwait(false);
+
+        var warmOptions = new GenerationOptions
+        {
+            MaxTokens = 1,
+            Temperature = 0f,
+            // The whole reason this runs before anybody asks anything: the
+            // prefill of the shared system block is written to disk here, where
+            // no one is waiting for it, instead of in front of the first
+            // question, where they are.
+            UsePrefixCache = true,
+        };
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
         _ = await generator.GenerateAsync(warmMessages, warmOptions, linked.Token).ConfigureAwait(false);
@@ -1174,11 +1239,36 @@ public sealed class AIService : IAIService
         //
         // Still off until something actually asks for it, so the FIRST turn of a
         // conversation stays cheap. That first impression is the one that matters.
-        if (forceTools || NeedsTools(userQuery)) _toolsLatched = true;
+        // ONLY THE TOOLS THE QUESTION CAN USE, AND THE SET ONLY GROWS.
+        //
+        // Sending the whole catalogue on any cue was measured at 1 235
+        // characters — about 300 tokens, ten seconds of prefill — including
+        // tools with no bearing on the question. "How many days in a leap year"
+        // was carrying a battery reader and a product price lookup.
+        //
+        // The set ACCUMULATES rather than being recomputed per turn, for the
+        // same reason the block latches at all: it lives in the system message,
+        // which is the conversation's prefix, and a prefix that changes costs a
+        // full re-prefill. A set that shrank when the subject changed would
+        // invalidate the cache on every topic switch — the exact bug latching
+        // was introduced to fix. Growing only when a genuinely new capability is
+        // needed costs one re-prefill per new capability, and nothing after.
+        var all = _toolsLatched || forceTools || NeedsTools(userQuery)
+            ? await AvailableToolsAsync(ct).ConfigureAwait(false)
+            : System.Array.Empty<ToolDefinition>();
 
-        var toolBlock = _toolsLatched
-            ? await BuildToolBlockAsync(ct).ConfigureAwait(false)
-            : string.Empty;
+        if (all.Count > 0)
+        {
+            var wanted = forceTools ? all : RelevantTools(all, userQuery);
+            foreach (var t in wanted) _latchedTools.Add(t.Name);
+        }
+
+        if (_latchedTools.Count > 0) _toolsLatched = true;
+
+        var toolBlock = _latchedTools.Count == 0
+            ? string.Empty
+            : ToolPromptRenderer.Render(
+                all.Where(t => t is not null && _latchedTools.Contains(t.Name)).ToList());
 
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
@@ -1205,6 +1295,19 @@ public sealed class AIService : IAIService
         var extra = (hasSystem && _options.SystemPromptEnrichment != SystemPromptEnrichment.Always)
             ? toolBlock
             : Combine(enrichment, toolBlock);
+
+        // WHAT THE PROMPT IS ACTUALLY MADE OF. Added after a warm-up experiment
+        // measured 495 prompt tokens where a real turn sends 102, with no
+        // explanation that survived reading the code — enrichment defaults to
+        // Always for both paths, and neither was asking for tools. Guessing at
+        // prompt size from source has now been wrong twice; this prints it.
+        // Console, not the logger: hosts wire a logger provider or they do not,
+        // and this sample does not — the LogInformation version of this line
+        // printed nowhere and cost a build to discover.
+        Console.WriteLine(
+            $"CIRCLEAI-PROMPT caller={_options.SystemPrompt?.Length ?? 0} " +
+            $"enrichment={enrichment?.Length ?? 0} tools={toolBlock.Length} " +
+            $"query={userQuery?.Length ?? 0} hasSystem={hasSystem}");
 
         var prepared = new List<ChatMessage>(messages.Count + 1);
 
@@ -1233,7 +1336,37 @@ public sealed class AIService : IAIService
             prepared.AddRange(messages);
         }
 
+        // THE KEY THE PREFIX CACHE WILL ACTUALLY USE. Two turns that agree on
+        // this share a cached prefill; two that differ by one character do not,
+        // and pay the difference in seconds. Printed so a miss can be explained
+        // instead of guessed at — a warm-up and a first question that disagree
+        // here is precisely the bug that made warming the model pointless.
+        Console.WriteLine(
+            "CIRCLEAI-SYSTEM " + Fingerprint(
+                prepared.FirstOrDefault(m =>
+                    string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content));
+
         return prepared;
+    }
+
+    /// <summary>
+    /// What the host's bridge offers. Empty when there is no bridge, so callers
+    /// can ask unconditionally.
+    /// </summary>
+    private async Task<IReadOnlyList<ToolDefinition>> AvailableToolsAsync(CancellationToken ct)
+    {
+        if (_options.ToolBridge is null) return System.Array.Empty<ToolDefinition>();
+
+        try
+        {
+            return await _options.ToolBridge.GetAvailableToolsAsync(ct).ConfigureAwait(false)
+                   ?? System.Array.Empty<ToolDefinition>();
+        }
+        catch
+        {
+            // A failing bridge must degrade to plain chat, never break the turn.
+            return System.Array.Empty<ToolDefinition>();
+        }
     }
 
     /// <summary>
@@ -1242,19 +1375,8 @@ public sealed class AIService : IAIService
     /// </summary>
     private async Task<string> BuildToolBlockAsync(CancellationToken ct)
     {
-        if (_options.ToolBridge is null) return string.Empty;
-
-        try
-        {
-            var tools = await _options.ToolBridge.GetAvailableToolsAsync(ct)
-                .ConfigureAwait(false);
-            return ToolPromptRenderer.Render(tools);
-        }
-        catch
-        {
-            // A failing bridge must degrade to plain chat, never break the turn.
-            return string.Empty;
-        }
+        var tools = await AvailableToolsAsync(ct).ConfigureAwait(false);
+        return ToolPromptRenderer.Render(tools);
     }
 
     /// <summary>
@@ -1288,10 +1410,72 @@ public sealed class AIService : IAIService
 
         var q = userQuery.ToLowerInvariant();
         foreach (var cue in ToolCues)
-            if (q.Contains(cue, StringComparison.Ordinal)) return true;
+            if (q.Contains(cue.Phrase, StringComparison.Ordinal)) return true;
 
         return false;
     }
+
+    /// <summary>
+    /// The tools this question could actually use.
+    /// </summary>
+    /// <remarks>
+    /// Empty means send no tool block at all, and that is the point: a cue can
+    /// fire for a capability nothing registered provides. "How many days in a
+    /// leap year" matches an arithmetic cue, and with no calculator registered
+    /// the honest answer is that no tool helps — so the model gets none, and
+    /// the turn keeps its 30-token prompt instead of paying for 300.
+    /// <para>
+    /// A cue with no narrowing words (see <c>Any</c>) matches everything,
+    /// because "check the thing for me" genuinely does not say which tool.
+    /// </para>
+    /// </remarks>
+    private static List<ToolDefinition> RelevantTools(
+        IReadOnlyList<ToolDefinition> tools, string? userQuery)
+    {
+        var picked = new List<ToolDefinition>();
+        if (tools.Count == 0 || string.IsNullOrWhiteSpace(userQuery)) return picked;
+
+        var q = userQuery.ToLowerInvariant();
+
+        foreach (var cue in ToolCues)
+        {
+            if (!q.Contains(cue.Phrase, StringComparison.Ordinal)) continue;
+
+            foreach (var tool in tools)
+            {
+                if (tool is null || picked.Contains(tool)) continue;
+
+                // A cue that names no serving words wants everything.
+                if (cue.Serves.Length == 0) { picked.Add(tool); continue; }
+
+                var describes = (tool.Name + " " + tool.Description).ToLowerInvariant();
+                if (cue.Serves.Any(w => describes.Contains(w, StringComparison.Ordinal)))
+                    picked.Add(tool);
+            }
+        }
+
+        return picked;
+    }
+
+    /// <summary>A phrase that means a tool is wanted, and what could serve it.</summary>
+    /// <param name="Phrase">What a person says.</param>
+    /// <param name="Serves">
+    /// Words that identify a tool able to answer it, matched against the tool's
+    /// own name and description.
+    /// </param>
+    /// <remarks>
+    /// THE CUE KNOWS THE INTENT; THIS TELLS IT WHICH TOOL. Without the second
+    /// half every cue sent the WHOLE catalogue — measured at 1 235 characters,
+    /// ~300 tokens, ~10 seconds of prefill on a P30 — including tools that
+    /// could not possibly help. "How many days in a leap year" was shipping the
+    /// battery reader and a product price lookup.
+    /// <para>
+    /// Matching on the tool's own words rather than on hard-coded tool names,
+    /// because the tools come from whatever bridge a host registered and this
+    /// file must not know their names.
+    /// </para>
+    /// </remarks>
+    private readonly record struct ToolCue(string Phrase, string[] Serves);
 
     /// <summary>Words that mean the answer is not in the model's weights.</summary>
     /// <remarks>
@@ -1300,18 +1484,45 @@ public sealed class AIService : IAIService
     /// head. Not a list of tool names: a person asks "what's the weather", never
     /// "call get_weather".
     /// </remarks>
-    private static readonly string[] ToolCues =
+    private static readonly ToolCue[] ToolCues =
     {
-        // Live facts the weights cannot hold.
-        "weather", "temperature", "forecast", "news", "today's", "right now",
-        "current", "latest", "search", "look up", "google", "price", "exchange rate",
+        // Live facts the weights cannot hold. Served by anything that can reach
+        // the network or look something up.
+        new("weather",       Web), new("temperature", Web), new("forecast", Web),
+        new("news",          Web), new("today's",     Web), new("right now", Web),
+        new("current",       Web), new("latest",      Web), new("search",    Web),
+        new("look up",       Web), new("google",      Web), new("exchange rate", Web),
+        new("price",         Lookup),
+
         // The device itself.
-        "battery", "signal", "storage", "wifi", "wi-fi", "bluetooth", "volume",
-        // Arithmetic, which a small model should hand off rather than guess.
-        "calculate", "convert", "how much is", "how many",
-        // Explicit instruction to go and do something.
-        "check ", "find out", "tell me the time", "what time",
+        new("battery",  Device), new("signal",    Device), new("storage", Device),
+        new("wifi",     Device), new("wi-fi",     Device), new("bluetooth", Device),
+        new("volume",   Device),
+
+        // ARITHMETIC, WHICH NOTHING REGISTERED CAN ACTUALLY DO. These cues fire
+        // on "how many" and "calculate" and there is no calculator tool — so
+        // before this they bought a full catalogue of tools that cannot add up,
+        // at ten seconds a turn. Now they match nothing, and matching nothing
+        // sends nothing. If a calculator is ever registered, its description
+        // will contain these words and it will start being offered with no
+        // change here.
+        new("calculate",   Maths), new("convert",  Maths),
+        new("how much is", Maths), new("how many", Maths),
+
+        // Explicit instruction to go and do something. Deliberately broad: the
+        // person has asked for an action without saying which, so this is the
+        // one case where offering everything is right.
+        new("check ",  Any), new("find out", Any),
+        new("tell me the time", Any), new("what time", Any),
     };
+
+    private static readonly string[] Web    = { "search", "web", "internet", "news", "weather", "online" };
+    private static readonly string[] Lookup = { "price", "lookup", "look up", "product", "sku", "catalog" };
+    private static readonly string[] Device = { "device", "battery", "charge", "signal", "storage", "wifi", "volume", "phone" };
+    private static readonly string[] Maths  = { "calculat", "math", "arithmetic", "convert", "sum", "multipl" };
+
+    /// <summary>Matches every tool — used when the intent does not narrow it.</summary>
+    private static readonly string[] Any = System.Array.Empty<string>();
 
     /// <summary>Joins two prompt fragments, tolerating either being empty.</summary>
     private static string Combine(string? first, string? second)
@@ -1331,6 +1542,36 @@ public sealed class AIService : IAIService
     /// its own system prompt silently lost RAG recall along with it.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Reports an enrichment section that failed, without failing the turn.
+    /// </summary>
+    /// <remarks>
+    /// Console rather than a logger, for the reason given at the CIRCLEAI-PROMPT
+    /// line: hosts wire a logger provider or they do not, and this sample does
+    /// not — on Android this reaches logcat under the DOTNET tag, which is
+    /// verified, and a LogInformation call reaches nowhere at all.
+    /// </remarks>
+    private static void EnrichmentFailed(string section, Exception ex)
+        => Console.WriteLine($"CIRCLEAI-ENRICH {section} failed: {ex.GetType().Name}: {ex.Message}");
+
+    /// <summary>
+    /// A short, stable fingerprint of a system message.
+    /// </summary>
+    /// <remarks>
+    /// THE PREFIX CACHE IS KEYED ON THIS TEXT, so "did the system message
+    /// change" is the question that decides whether a turn costs 700 ms or six
+    /// seconds — and character counts cannot answer it, because two different
+    /// prompts of the same length look identical in a log. A hash can, and
+    /// unlike the prompt itself it discloses nothing about the person using it.
+    /// </remarks>
+    private static string Fingerprint(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "empty";
+        var bytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(bytes, 0, 4).ToLowerInvariant();
+    }
+
     private async Task<string> BuildEnrichmentAsync(
         string userQuery, CancellationToken ct)
     {
@@ -1347,7 +1588,16 @@ public sealed class AIService : IAIService
                 sb.Append(hint);
             }
         }
-        catch { /* persona load failure is non-fatal */ }
+        // NON-FATAL IS NOT THE SAME AS NOT WORTH KNOWING. Every section of the
+        // enrichment swallowed its own failure, and because the enrichment goes
+        // into the system message, a section that quietly failed changed the
+        // prompt — and with it the prefix-cache key and the conversation's whole
+        // KV prefix. Observed on the P30: the warm-up assembled
+        // `enrichment=0` where the very next real turn assembled
+        // `enrichment=131`, so the snapshot was written under a key nothing
+        // would ever look up. Nothing threw, nothing logged, and the prompt was
+        // simply different in a way that cost a full re-prefill.
+        catch (Exception ex) { EnrichmentFailed("persona", ex); }
 
         // 1b. Affect state.
         if (_options.AffectStore is not null)
@@ -1362,7 +1612,7 @@ public sealed class AIService : IAIService
                     sb.Append(hint);
                 }
             }
-            catch { /* affect load failure is non-fatal */ }
+            catch (Exception ex) { EnrichmentFailed("affect", ex); }
         }
 
         // 2. Device context.
@@ -1388,11 +1638,30 @@ public sealed class AIService : IAIService
             }
             if (!string.IsNullOrWhiteSpace(ctx.LocationHint))
                 ctxLines.Add($"Location: {ctx.LocationHint}");
+            // BANDED, FOR THE SAME REASON THE CLOCK IS ROUNDED — and it is the
+            // same bug, three lines further down, left behind when the clock was
+            // fixed. At whole-percent precision this line changed every few
+            // minutes of use, and sitting in the system message that made the
+            // whole conversation's prefix unreusable: a turn could pay a full
+            // re-prefill because the battery had dropped from 68% to 67%.
+            //
+            // Nothing reads the exact figure. It exists so the model can decline
+            // to start something expensive on a dying phone, and a band answers
+            // that. A question about the actual level is a tool call, the same
+            // as a question about the actual time.
             if (ctx.BatteryLevel.HasValue)
             {
                 var pct = (int)(ctx.BatteryLevel.Value * 100);
+                var band = pct switch
+                {
+                    <= 10 => "critical",
+                    <= 25 => "low",
+                    <= 60 => "moderate",
+                    <= 90 => "good",
+                    _     => "full",
+                };
                 var charging = ctx.IsCharging == true ? " (charging)" : string.Empty;
-                ctxLines.Add($"Battery: {pct}%{charging}");
+                ctxLines.Add($"Battery: {band}{charging}");
             }
             if (!string.IsNullOrWhiteSpace(ctx.NetworkType))
                 ctxLines.Add($"Network: {ctx.NetworkType}");
@@ -1423,7 +1692,7 @@ public sealed class AIService : IAIService
                     sb.Append(ragBlock);
                 }
             }
-            catch { /* RAG failure is non-fatal */ }
+            catch (Exception ex) { EnrichmentFailed("rag", ex); }
         }
 
         // 4. Skill context (relevant capability definitions).
@@ -1440,7 +1709,7 @@ public sealed class AIService : IAIService
                     sb.Append(skillBlock);
                 }
             }
-            catch { /* skill context failure is non-fatal */ }
+            catch (Exception ex) { EnrichmentFailed("skills", ex); }
         }
 
         // Each section prefixes a newline, so an empty builder would otherwise

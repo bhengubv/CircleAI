@@ -33,6 +33,14 @@
 [assembly: Android.App.UsesPermission("android.permission.FOREGROUND_SERVICE_DATA_SYNC")]
 [assembly: Android.App.UsesPermission("android.permission.POST_NOTIFICATIONS")]
 
+// COMING BACK AFTER A REBOOT. Without this the assistant is deaf from the moment
+// the phone restarts until somebody opens the app — see BootReceiver, which also
+// explains why the microphone deliberately does NOT resume by itself.
+//
+// Unguarded, like the service permissions above: a chat-only build still wants
+// its model host back after a restart.
+[assembly: Android.App.UsesPermission("android.permission.RECEIVE_BOOT_COMPLETED")]
+
 #if IT_VOICE_ANDROID
 
 // Permissions.cs
@@ -51,5 +59,15 @@
 // .NET Android build item, so the permission never actually reached the manifest.
 
 [assembly: Android.App.UsesPermission("android.permission.RECORD_AUDIO")]
+
+// HOLDING THE MICROPHONE FROM A SERVICE, which is what makes the wake word work
+// while the phone is in a pocket rather than only while somebody is looking at
+// the app. Required from Android 14 (API 34) to start a foreground service that
+// declares the `microphone` type — and CircleNeuronService claims that type only
+// when a listener is actually installed, so the chat-only build never needs this.
+//
+// Guarded with RECORD_AUDIO for the same reason it is: a build that cannot
+// listen must not ask to.
+[assembly: Android.App.UsesPermission("android.permission.FOREGROUND_SERVICE_MICROPHONE")]
 
 #endif

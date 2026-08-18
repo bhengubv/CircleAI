@@ -182,6 +182,11 @@ MNNBRIDGE_API int mnn_llm_generate_stream_text(
 // outranks a default measured on a different one.
 MNNBRIDGE_API int mnn_llm_set_config(mnn_llm_handle handle, const char* json_utf8);
 
+// Where MNN may write its mmap scratch file. Must be a writable directory —
+// on Android, the app's own storage. Call BEFORE mnn_llm_set_mmap_mode(1),
+// because MNN reads tmp_path before it honours use_mmap.
+MNNBRIDGE_API int mnn_llm_set_mmap_tmp_path(mnn_llm_handle handle, const char* path_utf8);
+
 // ── Session persistence ──────────────────────────────────────────────────
 //
 // "Session" here means the prompt cache + KV cache state attached to a

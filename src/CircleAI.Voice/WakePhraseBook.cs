@@ -88,6 +88,72 @@ public sealed class WakePhraseBook
         "phone", "call", "text", "time", "now", "today", "one", "two", "three",
     };
 
+    /// <summary>What the phone should be called, per language.</summary>
+    /// <remarks>
+    /// "HEY B" IS AN ENGLISH SENTENCE, and the wake word was fixed to it whatever
+    /// language the person had chosen — so setting the phone to Japanese left it
+    /// listening for a phrase no Japanese speaker would say. The name stays "B";
+    /// what changes is the honorific around it, because that is how the name is
+    /// actually said in each language.
+    /// <para>
+    /// LONGER ON PURPOSE. Three-token "Hey B" was heard 1 time in 10 through air
+    /// against 12/12 for a four-token phrase — see MinReliableTokens. The
+    /// honorific forms are naturally longer, which helps rather than costs.
+    /// </para>
+    /// <para>
+    /// A CANDIDATE, NOT A GUARANTEE. Every phrase here still goes through
+    /// <see cref="Evaluate"/> against the bundle's own tokenizer: a wake model
+    /// trained on Latin sub-words may not represent kana or Hangul at all, and
+    /// the honest outcome then is Unusable rather than a phone that silently
+    /// never wakes. Check the verdict before installing one.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyDictionary<string, string[]> CandidatesByLanguage { get; } =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["en"] = ["Hey B"],
+            ["ja"] = ["ビーさん", "ビーさま", "Bee san"],
+            ["ko"] = ["비 님", "Bee nim"],
+            ["zh"] = ["小B", "Xiao B"],
+            ["yue"] = ["小B", "Siu B"],
+        };
+
+    /// <summary>The wake phrases worth trying for a language, best first.</summary>
+    /// <remarks>
+    /// Falls back to English rather than returning nothing: a phone that still
+    /// answers to "Hey B" is wrong in the way a person can work around, and one
+    /// that answers to nothing is not.
+    /// </remarks>
+    public static IReadOnlyList<string> CandidatesFor(string? languageCode)
+    {
+        var code = languageCode?.Trim() ?? string.Empty;
+        var cut = code.IndexOf('-');
+        if (cut > 0) code = code[..cut];
+        return CandidatesByLanguage.TryGetValue(code, out var list)
+            ? list
+            : CandidatesByLanguage["en"];
+    }
+
+    /// <summary>
+    /// The best phrase this bundle can actually hear for a language, or null.
+    /// </summary>
+    /// <remarks>
+    /// Asks the tokenizer, in order, and takes the first that is not Unusable.
+    /// Null means this wake model cannot represent the language's phrases — which
+    /// the caller should say out loud rather than quietly listening in English.
+    /// </remarks>
+    public WakePhrase? BestFor(string? languageCode)
+    {
+        WakePhrase? best = null;
+        foreach (var candidate in CandidatesFor(languageCode))
+        {
+            var judged = Evaluate(candidate);
+            if (judged.Verdict == WakePhraseVerdict.Unusable) continue;
+            if (best is null || judged.Tokens.Count > best.Tokens.Count) best = judged;
+        }
+        return best;
+    }
+
     private readonly SentencePieceTokenizer _tokenizer;
     private readonly List<WakePhrase> _phrases = new();
 

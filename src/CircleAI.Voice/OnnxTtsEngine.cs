@@ -38,6 +38,38 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
     private bool _disposed;
 
     /// <summary>
+    /// Tone correction applied to every utterance, or null to leave the model's
+    /// output exactly as it came.
+    /// </summary>
+    /// <remarks>
+    /// Null by default: a generic engine should hand back what the model
+    /// produced, and a host that has measured its own voice decides the tone.
+    /// See <see cref="ToneShaper"/> for why the shipped voice needs one.
+    /// </remarks>
+    public ToneShaper? Tone { get; set; }
+
+    /// <summary>The voice's own lexicon, loaded once if it ships one.</summary>
+    private LexiconTokeniser? _lexicon;
+
+    /// <summary>
+    /// How much of an utterance may be missing from the vocabulary before the
+    /// voice refuses to speak it at all. 0.25 = a quarter.
+    /// </summary>
+    /// <remarks>
+    /// NOT ZERO, DELIBERATELY. Real text carries the odd symbol a voice has never
+    /// seen — Nepali's danda, a stray emoji, a curly quote — and refusing a whole
+    /// sentence over one of those would be its own defect. Nepali measured 95.3%
+    /// mappable against this voice family and should speak; Amharic measured 20%
+    /// and must not.
+    /// <para>
+    /// The gap between those two is wide, so the threshold does not need to be
+    /// precise — it needs to exist. A host with a voice it has measured can move
+    /// it; 1.0 disables the check entirely.
+    /// </para>
+    /// </remarks>
+    public double MaxUnspeakableFraction { get; init; } = 0.25;
+
+    /// <summary>
     /// The name of the ONNX model input that receives token IDs.
     /// Standard for VITS-style models.
     /// </summary>
@@ -104,8 +136,33 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
     /// <summary>Language-id input on multi-lingual Coqui VITS exports.</summary>
     private const string LanguageIdName = "langid";
 
+    /// <summary>Token input on ESPnet VITS exports (JSUT and friends).</summary>
+    private const string EspnetInputName = "text";
+
+    /// <summary>Token-length input on ESPnet VITS exports.</summary>
+    private const string EspnetInputLengthsName = "text_lengths";
+
+    /// <summary>
+    /// Duration-noise scalar. Unique to ESPnet VITS together with <c>alpha</c>,
+    /// which is what makes this layout detectable from the graph rather than
+    /// from a filename.
+    /// </summary>
+    private const string EspnetNoiseScaleDurName = "noise_scale_dur";
+
+    /// <summary>Speaking-rate scalar on ESPnet VITS exports (1.0 = as trained).</summary>
+    private const string EspnetAlphaName = "alpha";
+
     private bool _hasSpeakerId;
     private bool _hasLanguageId;
+
+    /// <summary>
+    /// True when the graph is an ESPnet VITS export, which takes Open JTalk
+    /// prosody tokens rather than characters or a lexicon.
+    /// </summary>
+    private bool _useEspnetLayout;
+
+    private OpenJTalkPhonemizer? _openJTalk;
+    private OpenJTalkProsodyTokeniser? _prosody;
 
     /// <summary>
     /// Speaker to synthesise as, for multi-speaker voices. Ignored by models that
@@ -269,7 +326,54 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
                 ReadOnlyMemory<byte>.Empty, _sampleRate, 1, 16));
         }
 
-        return Task.Run(() => SynthesiseCore(text, cancellationToken), cancellationToken);
+        return Task.Run(() =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var loaded = _session is not null;
+            var result = SynthesiseCore(text, cancellationToken);
+
+            // ONE SENTENCE, AND WHERE ITS SECONDS WENT. Synthesis was timed only
+            // from the caller, which could not distinguish opening the model from
+            // running it — and the model was being opened inside the first
+            // sentence somebody was waiting to hear. Two measurements of the same
+            // sentence, 42 chars in 5 391 ms and 97 chars in 9 493 ms, imply a
+            // fixed cost of about 2.3 s on top of ~75 ms per character; this is
+            // what tells the two apart instead of inferring them from a line fit.
+            var audioMs = result.AudioData.Length * 1000L
+                          / Math.Max(1, _sampleRate * 2);
+            VoiceTrace.Write(
+                $"tts: {text.Length} chars -> {audioMs} ms audio in {sw.ElapsedMilliseconds} ms" +
+                $"{(loaded ? string.Empty : " (INCLUDING model open)")}");
+
+            return result;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens the model now, so that the first spoken sentence does not.
+    /// </summary>
+    /// <remarks>
+    /// THE THIRD TIME THIS EXACT MISTAKE WAS FOUND. The transcriber loaded
+    /// itself inside the first turn, the language model loaded itself inside the
+    /// first turn, and both were moved out; this one was still doing it, hidden
+    /// because the voice reports being "ready" when it has been CONSTRUCTED —
+    /// <c>new OnnxTtsEngine(...)</c> touches no file. The ONNX session was opened
+    /// lazily by the first call to <see cref="SynthesiseAsync"/>, which is to say
+    /// in the middle of the silence before the first word.
+    /// <para>
+    /// Cheap to call more than once: the session is created under a lock and
+    /// kept, so later callers get the one already open.
+    /// </para>
+    /// </remarks>
+    public Task PrepareAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Task.Run(() =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            EnsureSession();
+            VoiceTrace.Write($"tts: model open in {sw.ElapsedMilliseconds} ms");
+        }, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -359,6 +463,12 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             _hasSpeakerId = _session.InputMetadata.ContainsKey(SpeakerIdName);
             _hasLanguageId = _session.InputMetadata.ContainsKey(LanguageIdName);
 
+            // ESPnet VITS is identified by the two scalars only it declares.
+            // Matching on the filename would break the moment a voice is
+            // renamed or a second ESPnet model is added.
+            _useEspnetLayout = _session.InputMetadata.ContainsKey(EspnetNoiseScaleDurName)
+                               && _session.InputMetadata.ContainsKey(EspnetAlphaName);
+
             return _session;
         }
     }
@@ -376,7 +486,105 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         // otherwise (legacy generic fallback).
         long[] tokens;
         float noiseScale, lengthScale, noiseW;
-        if (_config is { HasPhonemeMap: true })
+
+        // A LEXICON BESIDE THE MODEL WINS, because it needs no phonemizer at all.
+        // These voices — Japanese, Chinese, Cantonese in this catalogue — carry a
+        // word-to-phoneme table as a file, which is what lets them ship in one
+        // APK with no GPL espeak process and no Python. See LexiconTokeniser.
+        LexiconTokeniser? lexicon = null;
+
+        // OPEN JTALK FIRST, for the voice that was trained on it. Japanese needs
+        // morphology, not a table: 聞き取れて is read by segmenting the sentence,
+        // finding 聞く and applying its conjugation. The table-driven voice this
+        // replaces covered 50/86 hiragana and 25/90 katakana as standalone
+        // characters and silently dropped the rest, measuring CER 0.42 against
+        // human speech where this pairing measures 0.11.
+        if (_useEspnetLayout)
+        {
+            var g2p = _openJTalk ??= OpenJTalkPhonemizer.TryCreate();
+            if (g2p is null)
+            {
+                // REFUSE RATHER THAN FALL BACK. Feeding character ids to a graph
+                // trained on prosody tokens produces confident noise, not
+                // degraded speech, and nothing downstream can tell.
+                throw new InvalidOperationException(
+                    "This voice needs Open JTalk and it is not available: either " +
+                    "libopenjtalk_g2p is missing from this build or the dictionary " +
+                    "has not been downloaded. Set OpenJTalkPhonemizer.DictionaryFolder.");
+            }
+
+            var prosody = _prosody ??= new OpenJTalkProsodyTokeniser();
+            var ids = prosody.Encode(g2p.Labels(text));
+            tokens = Array.ConvertAll(ids, static v => (long)v);
+
+            LastSkippedSymbols = prosody.LastUnknown;
+            LastSkippedCount = prosody.LastUnknown.Count;
+
+            // The scales here are ESPnet's inference defaults, not Piper's.
+            noiseScale  = NoiseScaleOverride  ?? 0.667f;
+            lengthScale = LengthScaleOverride ?? 1.0f;
+            noiseW      = NoiseWOverride      ?? 0.8f;
+
+            if (tokens.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "Open JTalk produced no tokens for that text. It is most likely " +
+                    "not Japanese, or the dictionary is incomplete.");
+            }
+
+            // The same refusal every other branch makes. Unmapped symbols here
+            // become <unk>, which the model renders as *something* — so counting
+            // them is the only way to notice.
+            if (LastSkippedCount > tokens.Length * MaxUnspeakableFraction)
+            {
+                throw new InvalidOperationException(
+                    $"This voice cannot say that: {LastSkippedCount} of {tokens.Length} tokens " +
+                    $"are outside its vocabulary ({string.Join(" ", System.Linq.Enumerable.Take(prosody.LastUnknown, 8))}).");
+            }
+
+            VoiceTrace.Write(
+                $"tts: open jtalk path — {tokens.Length} tokens, {LastSkippedCount} unknown" +
+                (LastSkippedCount > 0
+                    ? $" — {string.Join(" ", System.Linq.Enumerable.Take(prosody.LastUnknown, 6))}"
+                    : ""));
+        }
+        else if ((lexicon = _lexicon ??= LexiconTokeniser.TryLoadForModel(_modelPath)) is not null)
+        {
+            tokens = lexicon.Encode(text);
+            LastSkippedSymbols = lexicon.LastUnmapped;
+            LastSkippedCount = lexicon.LastUnmapped.Count;
+            noiseScale = NoiseScaleOverride ?? 0.667f;
+            lengthScale = LengthScaleOverride ?? 1.0f;
+            noiseW = NoiseWOverride ?? 0.8f;
+
+            // THE SAME REFUSAL AS THE PHONEME PATH, because a lexicon miss is the
+            // same failure: a symbol with no entry makes no sound, the audio is
+            // merely shorter, and every acoustic measure still passes.
+            //
+            // The guard was written for the phoneme branch alone and this branch
+            // was added later without it, so the first Japanese turn on the phone
+            // spoke with 33 of 48 symbols dropped — 69% of the sentence gone, and
+            // it sounded like speech. That is precisely the defect the guard
+            // exists to prevent, reproduced by putting the check in one branch
+            // instead of at the decision it belongs to.
+            var mappableLex = 0;
+            foreach (var ch in text) if (!char.IsWhiteSpace(ch)) mappableLex++;
+            if (mappableLex > 0 && LastSkippedCount > mappableLex * MaxUnspeakableFraction)
+            {
+                throw new InvalidOperationException(
+                    $"This voice cannot say that: {LastSkippedCount} of {mappableLex} symbols " +
+                    $"are absent from its lexicon ({string.Join(" ", System.Linq.Enumerable.Take(lexicon.LastUnmapped, 8))}). " +
+                    "The text is most likely in a script or language this voice was not built for.");
+            }
+
+            VoiceTrace.Write(
+                $"tts: lexicon path — {tokens.Length} tokens, " +
+                $"{mappableLex - LastSkippedCount}/{mappableLex} symbols mappable" +
+                (LastSkippedCount > 0
+                    ? $" — dropping {string.Join(" ", System.Linq.Enumerable.Take(lexicon.LastUnmapped, 6))}"
+                    : ""));
+        }
+        else if (_config is { HasPhonemeMap: true })
         {
             var phonemes = _phonemizer.Phonemize(text);
             tokens = _config.PhonemesToIds(
@@ -389,14 +597,74 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
             // it so the front-end can be inspected instead of inferred.
             LastSkippedCount = skipped;
             LastSkippedSymbols = droppedSymbols;
+
+            // REFUSE TEXT THIS VOICE CANNOT SAY, rather than saying part of it.
+            //
+            // A symbol with no id makes no sound. The audio is merely shorter, and
+            // every acoustic measure — level, duration, noise floor — still passes,
+            // so nothing downstream can tell. That is not a theoretical hazard; it
+            // is shipping right now:
+            //
+            //   MMS-amh   20% of Amharic maps.  Vocab is 'a'..'z' — the model
+            //   MMS-tir   20% of Tigrinya maps. wants uroman-romanised input, and
+            //             four fifths of every sentence is dropped in silence.
+            //
+            // The same mistake in two other shapes was found the same day: a
+            // grapheme voice handed espeak IPA, and Kokoro handed espeak IPA where
+            // it wanted misaki. Three models, one error — the alphabet did not
+            // match the text — and all three produced output that measured fine.
+            //
+            // A wrong alphabet is not a bad accent. It is a different writing
+            // system, and the only honest response is to say so. The caller turns
+            // this into "I cannot speak that yet", which is worth far more than a
+            // fluent-sounding fifth of a sentence.
+            var mappable = 0;
+            foreach (var p in phonemes) if (!string.IsNullOrWhiteSpace(p)) mappable++;
+
+            // Printed on every utterance, not only on refusal. Four languages were
+            // tapped believing this check was covering them and it never ran; a
+            // guard that is silent when it passes cannot be told apart from a guard
+            // that is not there.
+            VoiceTrace.Write(
+                $"tts: alphabet {mappable - skipped}/{mappable} symbols mappable" +
+                (skipped > 0 ? $" — dropping {string.Join(" ", System.Linq.Enumerable.Take(droppedSymbols, 6))}" : ""));
+            if (mappable > 0 && skipped > mappable * MaxUnspeakableFraction)
+            {
+                throw new InvalidOperationException(
+                    $"This voice cannot say that: {skipped} of {mappable} symbols are " +
+                    $"absent from its vocabulary ({droppedSymbols.Count} distinct: " +
+                    $"{string.Join(" ", System.Linq.Enumerable.Take(droppedSymbols, 8))}). " +
+                    "The text is most likely in a script this voice was not built for.");
+            }
             noiseScale  = _config.NoiseScale;
             lengthScale = _config.LengthScale;
             noiseW      = _config.NoiseW;
         }
         else
         {
+            // THE UNCHECKABLE PATH, AND IT HAS TO SAY SO. TokeniseText maps every
+            // character to its code point plus one. It consults no vocabulary, so
+            // it drops nothing and can never report that the text was unspeakable —
+            // the alphabet guard above cannot protect this branch because there is
+            // nothing here to compare against.
+            //
+            // Worse, the ids it produces are code points: Ethiopic lands near 4650
+            // against a model whose vocabulary is 29 symbols. That is not speech,
+            // it is an out-of-range lookup, and the model will emit something
+            // regardless.
+            //
+            // Reached only when no sidecar config was found next to the model, so
+            // it is a packaging fault rather than a normal path. Said out loud
+            // because it silently produced audio for four languages while the
+            // guard was believed to be covering them.
             tokens = TokeniseText(text);
             noiseScale = 0.667f; lengthScale = 1.0f; noiseW = 0.8f;
+            LastSkippedCount = 0;
+            LastSkippedSymbols = System.Array.Empty<string>();
+            VoiceTrace.Write(
+                $"tts: NO VOICE CONFIG for {System.IO.Path.GetFileName(_modelPath)} — " +
+                $"falling back to raw code points for {text.Length} chars. " +
+                "Nothing can verify this voice can say this text.");
         }
 
         // Caller overrides win, whichever path produced the defaults above.
@@ -437,7 +705,22 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         // Feed the scales in the shape this export actually declares: three
         // separate scalars for sherpa-onnx/MMS, one scales[3] for Piper.
         List<NamedOnnxValue> inputs;
-        if (_session.InputMetadata.ContainsKey(HfInputIdsName))
+        if (_useEspnetLayout)
+        {
+            // ESPnet names its scalars differently and adds alpha (speaking
+            // rate) where Piper has noise-w. length_scale maps onto alpha
+            // because both stretch duration, so an existing LengthScaleOverride
+            // keeps meaning what it meant.
+            inputs =
+            [
+                NamedOnnxValue.CreateFromTensor(EspnetInputName, inputTensor),
+                NamedOnnxValue.CreateFromTensor(EspnetInputLengthsName, inputLengths),
+                NamedOnnxValue.CreateFromTensor(MmsNoiseScaleName, Scalar(noiseScale)),
+                NamedOnnxValue.CreateFromTensor(EspnetNoiseScaleDurName, Scalar(noiseW)),
+                NamedOnnxValue.CreateFromTensor(EspnetAlphaName, Scalar(lengthScale)),
+            ];
+        }
+        else if (_session.InputMetadata.ContainsKey(HfInputIdsName))
         {
             // transformers VITS: ids + a mask of ones. No scales — the model holds
             // them. Detected from the graph's own metadata, like the other layouts,
@@ -539,6 +822,11 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         // that is genuinely quiet, so if the model put speech there — nothing to
         // stretch, no drag to absorb — this does nothing and takes nothing.
         if (LeadInPads > 0) waveform = TrimLeadingSilence(waveform);
+
+        // Tone, while it is still floats. Doing this before the PCM conversion
+        // keeps the filter out of 16-bit rounding and lets it restore the peak
+        // without a second quantisation.
+        Tone?.Apply(waveform, _sampleRate);
 
         // Convert float waveform [-1, 1] to 16-bit signed PCM.
         var pcmBytes = FloatWaveformToPcm16(waveform);

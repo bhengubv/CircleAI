@@ -56,6 +56,24 @@ public sealed class VoiceTurn
     /// </remarks>
     public double SpeechOverNoise { get; init; } = 3.0;
 
+    /// <summary>
+    /// A level loud enough to be speech whatever the floor says.
+    /// </summary>
+    /// <remarks>
+    /// THE FLOOR CAN BE MEASURED ON THE SPEAKER. It was taken from the first
+    /// three frames, and after a wake word people start talking immediately —
+    /// so the "room noise" was somebody's voice, the threshold became three
+    /// times their own speech, and nothing ever counted as speech again. The
+    /// turn could then only end by timing out, which is exactly the symptom:
+    /// it kept listening long after the person had finished.
+    /// <para>
+    /// This is the backstop. Ordinary speech into a phone sits well above 0.02
+    /// RMS; room tone and fan noise sit far below it. A floor-relative test is
+    /// still the primary one, because it is what makes a noisy taxi work.
+    /// </para>
+    /// </remarks>
+    public double AbsoluteSpeechLevel { get; init; } = 0.02;
+
     /// <summary>Raised roughly every 100 ms with the current level, 0 to 1.</summary>
     public event EventHandler<float>? Level;
 
@@ -74,12 +92,29 @@ public sealed class VoiceTurn
         DateTimeOffset? lastVoice = null;
         var heardAnything = false;
 
+        // A DEADLINE THAT DOES NOT DEPEND ON AUDIO ARRIVING.
+        //
+        // Every limit below — end of speech, no-speech, max length — was checked
+        // inside the loop body, which only runs when a chunk turns up. If the
+        // capture stalls or slows, `await foreach` simply waits, and none of the
+        // three can fire: the turn stays open indefinitely with the microphone
+        // held. That is the reported behaviour, listening on long after the
+        // person stopped talking, and no amount of tuning the thresholds could
+        // have reached it.
+        //
+        // The token ends the enumeration itself, so the ceiling holds whether or
+        // not the device is producing audio.
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(MaxLength);
+
+        try
+        {
         // The first few frames measure the room rather than the speaker, so the
         // floor is the room's own noise instead of a number chosen at a desk.
         var floorSamples = new List<double>();
         var floor = 0.0;
 
-        await foreach (var chunk in capture.CaptureAsync(ct).ConfigureAwait(false))
+        await foreach (var chunk in capture.CaptureAsync(deadline.Token).ConfigureAwait(false))
         {
             var now = DateTimeOffset.UtcNow;
             var span = chunk.Span;
@@ -106,7 +141,15 @@ public sealed class VoiceTurn
             captured.AddRange(chunk.ToArray());
             Level?.Invoke(this, (float)Math.Clamp(rms / (floor * 12), 0, 1));
 
-            if (rms > floor * SpeechOverNoise)
+            // THE FLOOR FALLS BUT NEVER RISES. Measured once from three frames it
+            // is whatever was happening at the instant the microphone opened —
+            // and after a wake word that is usually the person already talking.
+            // Tracking the quietest thing heard so far lets a floor that was set
+            // on speech correct itself the moment they pause, instead of staying
+            // wrong for the whole turn.
+            if (rms < floor) floor = Math.Max(0.002, rms);
+
+            if (rms > floor * SpeechOverNoise || rms > AbsoluteSpeechLevel)
             {
                 if (!heardAnything) { heardAnything = true; SpeechStarted?.Invoke(this, EventArgs.Empty); }
                 lastVoice = now;
@@ -117,6 +160,14 @@ public sealed class VoiceTurn
             if (heardAnything && lastVoice is { } last && now - last > EndOfSpeech) break;
             if (!heardAnything && now - started > NoSpeechTimeout) break;
             if (now - started > MaxLength) break;
+        }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The deadline fired. Whatever was captured is still worth
+            // transcribing — a turn cut short by the ceiling has usually caught
+            // the question and lost only trailing silence. Throwing here would
+            // turn a slow microphone into a lost sentence.
         }
 
         return heardAnything ? captured.ToArray() : ReadOnlyMemory<byte>.Empty;

@@ -59,8 +59,21 @@ public sealed class ToolPromptRendererTests
         // THE drift guard. The renderer instructs the model to emit
         //   <tool_call>{"name": ..., "arguments": {...}}</tool_call>
         // so a model that obeys must produce something ParseToolCall reads.
+        //
+        // ASSERTS THE CONTRACT, NOT THE WORDING. This used to pin the exact
+        // placeholder text — "<function-name>", "<args-json-object>" — which is
+        // not what keeps the renderer and the parser agreeing; the tag and the
+        // two key names are. The pin failed the moment the block was shortened,
+        // and shortening it was worth doing: measured on a P30 Lite the rendered
+        // block was 1 726 characters, about 500 tokens, costing 13.7 s of
+        // prefill before the model could answer anything.
+        //
+        // A test that fails for a change that harms nothing teaches people to
+        // edit the test, which is how a real guard gets weakened later.
         var block = ToolPromptRenderer.Render(new[] { GetTime() });
-        Assert.Contains("{\"name\": <function-name>, \"arguments\": <args-json-object>}", block);
+        Assert.Contains("<tool_call>", block);
+        Assert.Contains("\"name\"", block);
+        Assert.Contains("\"arguments\"", block);
 
         var asAModelWouldEmit =
             "<tool_call>\n{\"name\": \"get_time\", \"arguments\": {\"city\": \"Durban\"}}\n</tool_call>";

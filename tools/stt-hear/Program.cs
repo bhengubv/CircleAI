@@ -48,8 +48,16 @@ var samples = LoadWav16kMono(wavPath, out var srcRate, out var srcChannels);
 Console.WriteLine($"audio : {srcRate} Hz {srcChannels}ch → 16000 Hz mono, {samples.Length} samples ({samples.Length / 16000.0:F1} s)");
 
 var sw = System.Diagnostics.Stopwatch.StartNew();
+// LANGUAGE IS AN ARGUMENT, NOT A CONSTANT. Hard-coded to "en" this tool will
+// happily "transcribe" Japanese into English-looking nonsense and report success,
+// which makes it useless for testing any other language — the failure looks like
+// a bad recording rather than a misconfigured recogniser. "auto" lets whisper
+// detect, which is also what the product does.
+var language = args.Length > 1 ? args[1] : "auto";
+Console.WriteLine($"lang  : {language}");
+
 using var factory = WhisperFactory.FromPath(modelPath);
-using var processor = factory.CreateBuilder().WithLanguage("en").Build();
+using var processor = factory.CreateBuilder().WithLanguage(language).Build();
 
 var heard = new System.Text.StringBuilder();
 await foreach (var seg in processor.ProcessAsync(samples))

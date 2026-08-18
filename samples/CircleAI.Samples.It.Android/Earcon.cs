@@ -50,6 +50,25 @@ public static class Earcon
         (ToneAudio.Ack2, 110));
 
     /// <summary>
+    /// "Got it — working on it." Played the instant somebody stops speaking.
+    /// </summary>
+    /// <remarks>
+    /// THE GAP THIS FILLS WAS DESCRIBED AS "so unnatural I forget I am waiting
+    /// for a reply". Between the last word and the first word back there is
+    /// transcription and then prefill — seconds, on this phone — and the only
+    /// sign of life was a circle on a screen the person has already looked away
+    /// from. A conversation has a sound for that moment and it is not silence:
+    /// somebody listening says "mm" while they think.
+    /// <para>
+    /// One tone, not two, and lower than <see cref="Woke"/>. Waking is an opening
+    /// and rises; this is an acknowledgement in the middle and should not read as
+    /// another question. It also has to be short enough to be over before the
+    /// answer starts.
+    /// </para>
+    /// </remarks>
+    public static void Heard() => Play((ToneAudio.Ack1, 70));
+
+    /// <summary>
     /// "I cannot say this out loud." Played when the answer exists but the voice does not.
     /// </summary>
     /// <remarks>

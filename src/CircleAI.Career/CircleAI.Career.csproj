@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Career</PackageId>
+    <Version>1.0.0</Version><Description>On-device career profile: the structured record of who someone is and what they have done, the interview that builds it by voice, and the tailoring of it to a specific job. The profile is the source of truth; a CV is one projection of it. Stored on the device and never synced.</Description>
+  </PropertyGroup>
+
+  <!-- net10.0 only, following CircleAI.Documents, which this projects a CV
+       through. Multi-targeting here would mean a net9.0 build that cannot
+       reference the renderer it exists to feed. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- CvDocument and the renderer: a CV is a projection of the profile, so the
+         profile owns the facts and Documents owns how they are laid out. -->
+    <ProjectReference Include="..\CircleAI.Documents\CircleAI.Documents.csproj" />
+  </ItemGroup>
+
+</Project>

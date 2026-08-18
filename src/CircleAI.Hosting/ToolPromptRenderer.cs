@@ -48,12 +48,24 @@ internal static class ToolPromptRenderer
     {
         if (tools is null || tools.Count == 0) return string.Empty;
 
+        // EVERY WORD HERE IS PREFILLED, AND PREFILL IS THE WAIT. Measured on a
+        // P30 Lite: this block rendered 1 726 characters — about 500 tokens —
+        // against a useful question of thirty. At ~34 ms per prompt token that
+        // is 13.7 to 17.5 seconds of silence before the model says anything, and
+        // once it enters the conversation's system prefix every later turn
+        // carries it.
+        //
+        // With only three tools registered, the SCHEMAS were the smaller half.
+        // The prose around them — an explanation of what tools are, a
+        // restatement of the format, and the guard below — was the larger, and
+        // it cost the same whether one tool was registered or ten.
+        //
+        // So it is written for a model, not for a reader. Qwen3 is trained on
+        // <tools> and <tool_call>; it does not need to be told that functions
+        // exist or that XML tags are XML tags. Everything removed here was
+        // ceremony. Nothing removed was information.
         var sb = new StringBuilder();
         sb.AppendLine("# Tools");
-        sb.AppendLine();
-        sb.AppendLine("You may call one or more functions to assist with the user query.");
-        sb.AppendLine();
-        sb.AppendLine("You are provided with function signatures within <tools></tools> XML tags:");
         sb.AppendLine("<tools>");
 
         foreach (var tool in tools)
@@ -63,25 +75,20 @@ internal static class ToolPromptRenderer
         }
 
         sb.AppendLine("</tools>");
-        sb.AppendLine();
-        sb.AppendLine(
-            "For each function call, return a json object with function name and arguments " +
-            "within <tool_call></tool_call> XML tags:");
-        sb.AppendLine("<tool_call>");
-        sb.AppendLine("{\"name\": <function-name>, \"arguments\": <args-json-object>}");
-        sb.AppendLine("</tool_call>");
+        sb.AppendLine("To call one, emit exactly:");
+        sb.AppendLine("<tool_call>{\"name\": <name>, \"arguments\": <args>}</tool_call>");
 
-        // OVERCLAIM GUARD. Observed on a real device: asked "can you make a cv
-        // for me", a 0.6B answered "I can assist with generating a CV once you
-        // provide the details" — a capability it does not have and cannot get.
-        // Small models are agreeable by default; the tool list alone does not
-        // stop them promising work they have no tool for. Naming the boundary
-        // explicitly is the cheapest correction available at this model size.
-        sb.AppendLine();
-        sb.AppendLine("Those are the ONLY actions you can perform. You have no other tools, and no");
-        sb.AppendLine("ability to create files, documents, images, or accounts. If the user asks for");
-        sb.AppendLine("something outside that list, say plainly that you cannot do it — do NOT offer");
-        sb.Append("to do it \"once they provide details\". Answering from your own knowledge is fine.");
+        // OVERCLAIM GUARD, KEPT — SHORTER. Observed on a real device: asked "can
+        // you make a cv for me", a 0.6B answered "I can assist with generating a
+        // CV once you provide the details" — a capability it does not have and
+        // cannot get. Small models are agreeable by default and the tool list
+        // alone does not stop them promising work they have no tool for.
+        //
+        // Trimmed from four lines to two. The instruction that did the work was
+        // "say you cannot"; the rest was emphasis, and emphasis is priced per
+        // token on this phone.
+        sb.Append("These are your only actions. If asked for anything else — files, documents, "
+                + "images, accounts — say you cannot, and never offer to do it later.");
 
         return sb.ToString();
     }
@@ -109,20 +116,36 @@ internal static class ToolPromptRenderer
             properties[paramName] = schema;
         }
 
+        var function = new Dictionary<string, object?>
+        {
+            ["name"]        = tool.Name,
+            ["description"] = tool.Description,
+        };
+
+        // NOTHING FOR A TOOL THAT TAKES NOTHING. get_battery_level was emitting
+        // "parameters":{"type":"object","properties":{},"required":[]} — sixty
+        // characters saying there is nothing to say, prefilled on every turn
+        // once the block latches. Omitted entirely; a function with no
+        // parameters is called with none.
+        if (properties.Count > 0)
+        {
+            var parameters = new Dictionary<string, object?>
+            {
+                ["type"]       = "object",
+                ["properties"] = properties,
+            };
+
+            // Likewise: an empty required list is not information.
+            if (tool.RequiredParameters is { Count: > 0 })
+                parameters["required"] = tool.RequiredParameters;
+
+            function["parameters"] = parameters;
+        }
+
         return new Dictionary<string, object?>
         {
-            ["type"] = "function",
-            ["function"] = new Dictionary<string, object?>
-            {
-                ["name"]        = tool.Name,
-                ["description"] = tool.Description,
-                ["parameters"]  = new Dictionary<string, object?>
-                {
-                    ["type"]       = "object",
-                    ["properties"] = properties,
-                    ["required"]   = tool.RequiredParameters,
-                },
-            },
+            ["type"]     = "function",
+            ["function"] = function,
         };
     }
 }

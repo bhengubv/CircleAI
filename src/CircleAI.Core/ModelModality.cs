@@ -93,4 +93,25 @@ public enum ModelModality
     /// clears the floor.
     /// </remarks>
     Coding,
+
+    /// <summary>
+    /// A grapheme-to-phoneme dictionary — pronunciation data consumed by a
+    /// phonemiser, not a model that is run.
+    /// </summary>
+    /// <remarks>
+    /// APPENDED LAST ON PURPOSE: these values are persisted, so inserting one
+    /// mid-enum would renumber every entry after it and silently re-label the
+    /// catalogue.
+    /// <para>
+    /// It is its own modality because it is not a voice and must never be
+    /// returned as one. The Open JTalk dictionary is 104 MB of compiled Japanese
+    /// morphology shared by EVERY Japanese voice, so it is catalogued once
+    /// rather than duplicated into each — but catalogued as <c>Tts</c> it would
+    /// have appeared in the language picker as a voice, and a language-blind
+    /// <c>BestFor(Tts)</c> could have selected a dictionary to speak with. No
+    /// existing selector asks for this modality, so adding it changes no
+    /// behaviour anywhere else.
+    /// </para>
+    /// </remarks>
+    Phonemizer,
 }

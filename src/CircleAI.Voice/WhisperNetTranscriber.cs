@@ -24,9 +24,98 @@ namespace CircleAI.Voice;
 /// </summary>
 public sealed class WhisperNetTranscriber : IVoiceTranscriber
 {
+    /// <summary>PCM sample rate whisper expects, and the only one it accepts.</summary>
+    private const int SampleRate = 16_000;
+
+    /// <summary>
+    /// Encoder states per second of audio: whisper's 30 s window is 1500 states.
+    /// </summary>
+    private const int StatesPerSecond = 1500 / 30;
+
     private readonly WhisperFactory _factory;
     private readonly string _language;
+
+    /// <summary>
+    /// One processor, kept between calls, and the window it was built for.
+    /// </summary>
+    /// <remarks>
+    /// A PROCESSOR WAS BUILT AND THROWN AWAY ON EVERY UTTERANCE. Building one
+    /// allocates whisper's decode state — the self- and cross-attention KV
+    /// buffers — so every turn paid for an allocation the previous turn had
+    /// already made and discarded. Kept here, the second utterance onward finds
+    /// it ready.
+    /// <para>
+    /// Rebuilt only when the window size changes, because the window is fixed
+    /// at build time. In practice spoken questions cluster in length, so the
+    /// bucketing below means most turns reuse and only an unusually long or
+    /// short one pays a rebuild.
+    /// </para>
+    /// </remarks>
+    private WhisperProcessor? _processor;
+    private int _processorContext = -1;
+
+    /// <summary>
+    /// Serialises access to <see cref="_processor"/>.
+    /// </summary>
+    /// <remarks>
+    /// Whisper's state is not re-entrant, and reusing one processor makes that
+    /// this class's problem rather than the caller's — building a fresh one per
+    /// call used to hide it. StreamTranscribeAsync calls straight back into
+    /// TranscribeAsync, so this is a real path, not a theoretical one.
+    /// </remarks>
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     private bool _disposed;
+
+    /// <summary>
+    /// Threads whisper decodes on. Defaults to half the cores, capped at four.
+    /// </summary>
+    /// <remarks>
+    /// NEVER LEFT TO THE DEFAULT AGAIN, because the default was invisible. Big/
+    /// little phones report every core through <see cref="Environment.ProcessorCount"/>
+    /// — the P30 Lite says eight and has four slow A53s among them — so counting
+    /// cores and believing the number puts half the work on the cores least able
+    /// to do it. Half, capped at four, keeps to the fast cluster on the phones
+    /// this has to run on, and being an init property it can be overridden by a
+    /// host that has measured its own.
+    /// </remarks>
+    public int Threads { get; init; } =
+        Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
+
+    /// <summary>
+    /// Widest encoder window, in states. 1500 is whisper's full 30 seconds.
+    /// </summary>
+    public int MaxAudioContext { get; init; } = 1500;
+
+    /// <summary>
+    /// Encoder window wide enough for <paramref name="seconds"/> of audio.
+    /// </summary>
+    /// <remarks>
+    /// THE ENCODER RAN OVER 30 SECONDS NO MATTER HOW LONG ANYBODY SPOKE.
+    /// Whisper pads its input to a fixed 30 s window and, left alone, attends
+    /// over the whole thing — so a 5.3 second question cost exactly what half a
+    /// minute of speech costs. Measured on a P30 Lite: 6 834 ms to transcribe
+    /// 5.3 s, the single largest wait between someone finishing a sentence and
+    /// hearing an answer.
+    /// <para>
+    /// Sizing the window to the audio is whisper.cpp's own <c>audio_ctx</c>
+    /// knob. The cost is not free of consequence: too narrow a window truncates
+    /// the tail of what was said, so this asks for a fifth more than the audio
+    /// needs and never goes below 256 states — about five seconds — however
+    /// short the clip.
+    /// </para>
+    /// <para>
+    /// Rounded to 128s so that utterances of similar length land on the same
+    /// window and reuse the same processor instead of rebuilding for every
+    /// slightly-different question.
+    /// </para>
+    /// </remarks>
+    internal static int AudioContextFor(double seconds, int max = 1500)
+    {
+        var needed = (int)Math.Ceiling(seconds * StatesPerSecond * 1.2);
+        var bucketed = (needed + 127) / 128 * 128;
+        return Math.Clamp(bucketed, 256, max);
+    }
 
     /// <param name="modelPath">Path to a whisper.cpp ggml model (e.g. ggml-tiny.bin).</param>
     /// <param name="language">
@@ -56,25 +145,89 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         if (samples.Length == 0)
             return new TranscriptionResult(string.Empty, 0f, "und");
 
-        await using var processor = _factory.CreateBuilder()
-            .WithLanguage(_language)
-            .Build();
+        var seconds = samples.Length / (double)SampleRate;
+        var window  = AudioContextFor(seconds, MaxAudioContext);
 
-        var text = new System.Text.StringBuilder();
-        double probSum = 0;
-        int segCount = 0;
-        string lang = _language == "auto" ? "und" : _language;
-
-        await foreach (var seg in processor.ProcessAsync(samples, ct).ConfigureAwait(false))
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            text.Append(seg.Text);
-            probSum += seg.Probability;
-            segCount++;
-            if (!string.IsNullOrWhiteSpace(seg.Language)) lang = seg.Language;
+            var total = System.Diagnostics.Stopwatch.StartNew();
+            var processor = Rent(window, out var built);
+            var buildMs = total.ElapsedMilliseconds;
+
+            var text = new System.Text.StringBuilder();
+            double probSum = 0;
+            int segCount = 0;
+            string lang = _language == "auto" ? "und" : _language;
+
+            await foreach (var seg in processor.ProcessAsync(samples, ct).ConfigureAwait(false))
+            {
+                text.Append(seg.Text);
+                probSum += seg.Probability;
+                segCount++;
+                if (!string.IsNullOrWhiteSpace(seg.Language)) lang = seg.Language;
+            }
+
+            var result = text.ToString().Trim();
+
+            // WHAT THE CALLER COULD NOT SEE. A stopwatch around this method gives
+            // one number; these are the four that say what to do about it —
+            // whether the window was sized to the audio, whether the processor
+            // was reused, how many threads did the work, and how much of the
+            // time was setup rather than decoding.
+            VoiceTrace.Write(
+                $"stt: {seconds:F1} s audio | window={window}/{MaxAudioContext} " +
+                $"({window * 100 / MaxAudioContext}%) | threads={Threads} | " +
+                $"{(built ? $"built={buildMs} ms" : "reused")} | " +
+                $"decode={total.ElapsedMilliseconds - buildMs} ms | " +
+                $"{result.Length} chars | {segCount} seg");
+
+            var confidence = segCount > 0 ? (float)(probSum / segCount) : 0f;
+            return new TranscriptionResult(result, confidence, lang);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The processor for <paramref name="window"/>, building one only when the
+    /// window it was made for no longer fits.
+    /// </summary>
+    /// <remarks>
+    /// Caller must hold <see cref="_gate"/>.
+    /// </remarks>
+    private WhisperProcessor Rent(int window, out bool built)
+    {
+        if (_processor is not null && _processorContext == window)
+        {
+            built = false;
+            return _processor;
         }
 
-        var confidence = segCount > 0 ? (float)(probSum / segCount) : 0f;
-        return new TranscriptionResult(text.ToString().Trim(), confidence, lang);
+        // Disposed BEFORE the replacement is built, not after. Two whisper
+        // states on a phone with 3.7 GB — where the language model already
+        // holds hundreds of MB — is how a rebuild turns into an out-of-memory
+        // kill, and the old one is worthless the moment the window changes.
+        _processor?.Dispose();
+        _processor = null;
+
+        _processor = _factory.CreateBuilder()
+            .WithLanguage(_language)
+            .WithThreads(Threads)
+            .WithAudioContextSize(window)
+            // NOTHING CARRIES OVER FROM THE LAST QUESTION. Whisper will feed a
+            // previous transcript in as a prompt to help it stay consistent,
+            // which is right for one long recording and wrong for a series of
+            // unrelated questions — it costs decode time and lets an earlier
+            // question colour the next one's wording.
+            .WithNoContext()
+            .Build();
+
+        _processorContext = window;
+        built = true;
+        return _processor;
     }
 
     /// <summary>
@@ -178,7 +331,40 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     {
         if (_disposed) return ValueTask.CompletedTask;
         _disposed = true;
-        _factory.Dispose();
+
+        // THE GATE IS DELIBERATELY NOT DISPOSED. Disposing a SemaphoreSlim that
+        // still has a waiter throws, and this runs from Activity.OnDestroy — which
+        // Android calls while a transcription may be mid-flight. Observed on the
+        // phone as a hard process kill:
+        //
+        //   AndroidRuntime: at WhisperNetTranscriber.DisposeAsync
+        //                   at ItListener.DisposeAsync
+        //                   at HomeActivity.OnDestroy
+        //
+        // Every Japanese turn died there, which read as a slow turn rather than a
+        // crash because the log simply stopped after "listened=".
+        //
+        // A SemaphoreSlim with no AvailableWaitHandle holds nothing unmanaged, so
+        // not disposing it leaks nothing. Correctness beats tidiness here.
+        //
+        // The processor still goes before the factory: it holds state belonging to
+        // the factory, and freeing the factory underneath a live processor is a
+        // native use-after-free that surfaces somewhere else entirely.
+        try
+        {
+            _processor?.Dispose();
+            _processor = null;
+            _processorContext = -1;
+            _factory.Dispose();
+        }
+        catch (Exception ex)
+        {
+            // Teardown must not take the process with it. A transcriber that will
+            // not release cleanly is a leak until the process ends; a throw here
+            // is a crash the person sees.
+            VoiceTrace.Write($"stt: dispose failed, continuing — {ex.GetType().Name}: {ex.Message}");
+        }
+
         return ValueTask.CompletedTask;
     }
 }

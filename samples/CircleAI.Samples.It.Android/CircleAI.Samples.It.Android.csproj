@@ -16,12 +16,12 @@
     <LangVersion>latest</LangVersion>
 
     <RootNamespace>CircleAI.Samples.It.Mobile</RootNamespace>
-    <ApplicationId>com.bhengubv.itsample</ApplicationId>
+    <ApplicationId>com.bhengubv.circleai</ApplicationId>
     <!-- ApplicationVersion is Android's versionCode: it MUST increase on every
          build a user could install over, or the install is refused. It sat at 1
          from the first commit, so no update could ever have replaced an earlier
          copy. Bump it with each build that leaves this machine. -->
-    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationVersion>4</ApplicationVersion>
     <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
 
     <!-- Plain APK so `adb install` just works (no bundletool step). -->
@@ -36,6 +36,8 @@
     <ProjectReference Include="..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
     <!-- Offline document generation (CV, …). Pure-managed PDFsharp — no native .so. -->
     <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- The career profile: the structured record the CV is projected from. -->
+    <ProjectReference Include="..\..\src\CircleAI.Career\CircleAI.Career.csproj" />
     <!-- Capability sweep: every "hands make things" + "systems" library the
          CapabilitySweep exercises end-to-end. All pure-managed / offline. -->
     <ProjectReference Include="..\..\src\CircleAI.Charts\CircleAI.Charts.csproj" />
@@ -63,6 +65,21 @@
   <PropertyGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
     <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
   </PropertyGroup>
+
+  <!--
+    OPEN JTALK — Japanese readings, in-process.
+
+    Gated on the same switch as the rest of voice: these are ~11 MB (arm64) and
+    ~8 MB (v7a), and the chat-only APK has no use for them. Modified BSD, which
+    is why this links in rather than living in a second package the way GPL
+    espeak-ng has to.
+
+    The 104 MB dictionary is deliberately NOT here — it downloads as a bundle.
+  -->
+  <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
+    <AndroidNativeLibrary Include="native/arm64-v8a/libopenjtalk_g2p.so" Abi="arm64-v8a" />
+    <AndroidNativeLibrary Include="native/armeabi-v7a/libopenjtalk_g2p.so" Abi="armeabi-v7a" />
+  </ItemGroup>
 
   <!-- Voice/ is normally excluded (the *.cs glob below is non-recursive);
        pull it in only when Android voice is switched on. -->

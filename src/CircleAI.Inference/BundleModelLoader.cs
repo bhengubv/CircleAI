@@ -100,7 +100,41 @@ public sealed class BundleModelLoader : IModelLoader
     /// Ensures the model is on disk and returns the path the generator should
     /// load — <c>config.json</c> for bundles, the weight file for legacy entries.
     /// </summary>
+    /// <summary>
+    /// Same as <see cref="DownloadModelAsync(string, IProgress{float})"/>, but
+    /// reporting bytes, rate, ETA, which file and what phase.
+    /// </summary>
+    /// <remarks>
+    /// A BARE RATIO IS NOT ENOUGH TO WAIT ON, and how much it is not enough by
+    /// depends entirely on the phone. The same 22.8 GB bundle is minutes on a
+    /// premium handset and the better part of an hour on a P30 Lite over 48 Mbps
+    /// — measured, on both a single stream and eight. A percentage that creeps
+    /// is indistinguishable from a hang at the slow end, and the slow end is
+    /// exactly where the people this is built for are.
+    /// <para>
+    /// The download service has computed all of this all along and the ratio-only
+    /// overload threw it away one call before the screen. This is that call, not
+    /// throwing it away.
+    /// </para>
+    /// </remarks>
+    public Task<string> DownloadModelAsync(
+        string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress,
+        CancellationToken ct = default)
+        => DownloadCoreAsync(modelName, progress, ct);
+
     public async Task<string> DownloadModelAsync(string modelName, IProgress<float>? progress = null)
+    {
+        // Adapt onto the rich path so there is one implementation, not two that
+        // drift.
+        IProgress<CircleAI.Core.DownloadProgress>? rich = progress is null
+            ? null
+            : new Progress<CircleAI.Core.DownloadProgress>(p => progress.Report((float)p.Ratio));
+
+        return await DownloadCoreAsync(modelName, rich, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private async Task<string> DownloadCoreAsync(
+        string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress, CancellationToken ct)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
@@ -119,10 +153,7 @@ public sealed class BundleModelLoader : IModelLoader
                 throw new ModelDownloadBlockedException(blocked);
         }
 
-        // IModelLoader speaks IProgress<float>; ModelDownloadService speaks double.
-        IProgress<double>? relay = progress is null
-            ? null
-            : new Progress<double>(d => progress.Report((float)d));
+        var relay = progress;
 
         if (entry.IsBundle)
         {
@@ -138,7 +169,7 @@ public sealed class BundleModelLoader : IModelLoader
             // that do not exist. It fails as a 404 at download time, far from
             // the registry entry that actually caused it.
             var modelDir = await _downloads
-                .EnsureBundleAsync(modelName, entry.Repo!, entry.Source, spec, relay, CancellationToken.None)
+                .EnsureBundleAsync(modelName, entry.Repo!, entry.Source, spec, relay, ct)
                 .ConfigureAwait(false);
 
             // Stamp installed.json so ModelRegistryService.CheckForUpgradesAsync
@@ -160,8 +191,19 @@ public sealed class BundleModelLoader : IModelLoader
             throw new InvalidOperationException(
                 $"Registry entry '{modelName}' has neither BundleFiles nor a valid Url.");
 
+        // The single-file path still speaks ratio-only; it is used by the legacy
+        // entries, none of which are large enough for the difference to matter.
+        IProgress<double>? ratio = relay is null
+            ? null
+            : new Progress<double>(d => relay.Report(new CircleAI.Core.DownloadProgress
+            {
+                FileName      = modelName,
+                BytesReceived = (long)(d * Math.Max(0, entry.TotalBytes)),
+                TotalBytes    = Math.Max(0, entry.TotalBytes),
+            }));
+
         return await _downloads
-            .EnsureModelAsync(modelName, uri, entry.Checksum, relay, CancellationToken.None)
+            .EnsureModelAsync(modelName, uri, entry.Checksum, ratio, ct)
             .ConfigureAwait(false);
     }
 
