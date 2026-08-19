@@ -267,6 +267,27 @@ public static class ItTtsProbe
         foreach (var f in entry.BundleFiles)
             specs.Add(new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes));
 
+        // A VOICE CAN NEED SOMETHING THAT IS NOT A VOICE.
+        //
+        // An ESPnet VITS speaks Open JTalk phoneme ids, which means it is useless
+        // without the 104 MB Japanese dictionary — and that dictionary is NOT part
+        // of this bundle, deliberately: it is shared by every Japanese voice, so
+        // it is catalogued once (OpenJTalk-Dic-ja) rather than duplicated into
+        // each one.
+        //
+        // Cataloguing it was not enough. The entry existed, the phonemiser knew
+        // where a downloaded copy would live, and NOTHING EVER FETCHED IT — so it
+        // worked only on a phone that had received the dictionary over a cable. A
+        // registry entry nothing downloads is decorative.
+        //
+        // Keyed on the architecture rather than on the language: "vits-espnet" IS
+        // the statement "this voice is driven by Open JTalk phonemes", so a future
+        // ESPnet voice in any language pulls the right prerequisite without anyone
+        // remembering to add it here.
+        if (string.Equals(entry.Architecture, "vits-espnet", StringComparison.OrdinalIgnoreCase))
+            await EnsurePrerequisiteAsync(registry, storageDir, "OpenJTalk-Dic-ja", log, ct)
+                .ConfigureAwait(false);
+
         // A BUNDLE ALREADY ON THE DEVICE BEATS A DOWNLOAD, and this path had no
         // way to use one. ItSpeaker imports sideloaded voices before it loads
         // them; this preview did not, so tapping "Hear it" on a voice that was
@@ -737,5 +758,75 @@ public static class ItTtsProbe
         w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
         w.Write(pcm.Length);
         w.Write(pcm);
+    }
+
+    /// <summary>
+    /// Make a non-voice prerequisite bundle present, by side-load or download.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort and non-fatal: if it cannot be fetched, the voice load that
+    /// follows fails with its own clear message ("this voice needs Open JTalk and
+    /// it is not available") rather than this throwing something less specific
+    /// from further away.
+    /// </remarks>
+    private static async Task EnsurePrerequisiteAsync(
+        ModelRegistryService registry, string storageDir, string modelId,
+        Action<string>? log, CancellationToken ct)
+    {
+        var entry = registry.GetLatestModel(modelId);
+        if (entry?.BundleFiles is null || string.IsNullOrWhiteSpace(entry.Repo))
+        {
+            log?.Invoke($"prereq: {modelId} is not a downloadable bundle");
+            return;
+        }
+
+        // Already unpacked? The marker is the biggest file in the bundle, not the
+        // folder: an interrupted download leaves the folder behind.
+        var target = Path.Combine(storageDir, entry.Name);
+        var biggest = entry.BundleFiles.OrderByDescending(f => f.SizeBytes).First();
+        var marker = Path.Combine(target, biggest.Name.Replace('/', Path.DirectorySeparatorChar));
+        if (File.Exists(marker) && new FileInfo(marker).Length == biggest.SizeBytes)
+        {
+            log?.Invoke($"prereq: {modelId} already present");
+            return;
+        }
+
+        // Same order as a voice: a copy already on the device beats the network.
+        var sideload = ItSpeaker.SideloadFolder;
+        if (!string.IsNullOrWhiteSpace(sideload))
+        {
+            var staged = Path.Combine(sideload!, entry.Name);
+            if (Directory.Exists(staged))
+            {
+                try
+                {
+                    var importer = new CircleAI.Inference.SideloadedBundleImporter(registry, storageDir);
+                    var imported = await importer.ImportAsync(entry.Name, staged, ct).ConfigureAwait(false);
+                    log?.Invoke($"prereq: {modelId} side-loaded — {imported.Detail}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    log?.Invoke($"prereq: {modelId} side-load skipped — {ex.Message}");
+                }
+            }
+        }
+
+        try
+        {
+            var specs = new List<BundleFileSpec>(entry.BundleFiles.Count);
+            foreach (var f in entry.BundleFiles)
+                specs.Add(new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes));
+
+            log?.Invoke($"prereq: downloading {modelId} ({entry.TotalBytes / 1_000_000} MB)");
+            using var downloads = new ModelDownloadService(storageDir);
+            await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs, null, ct)
+                .ConfigureAwait(false);
+            log?.Invoke($"prereq: {modelId} ready");
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"prereq: {modelId} FAILED — {ex.Message}");
+        }
     }
 }
