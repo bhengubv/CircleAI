@@ -43,14 +43,27 @@ public class Circle33ReassuranceFillerTests
             LongFillerEvery:  TimeSpan.FromSeconds(5)));
         var session = new FakeCallSession();
         var ttsCalls = new ConcurrentBag<string>();
+
+        // Same race as the long-filler test, not yet lost: a 50 ms timer against
+        // 200 ms of work. Fixed the same way — end the work when the thing being
+        // asserted has happened — so it cannot start failing on a busier machine.
+        var spokeShort = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         BriefingSynthesiser tts = (text, ct) =>
         {
             ttsCalls.Add(text);
+            if (ReassuranceVocabulary.Default.ShortFillers.Contains(text))
+                spokeShort.TrySetResult();
             return ValueTask.FromResult<ReadOnlyMemory<byte>>(new byte[] { 1 });
         };
 
         var result = await filler.RunWithFillerAsync(
-            async ct => { await Task.Delay(200, ct); return "ok"; },
+            async ct =>
+            {
+                await Eventually.CompletesAsync(spokeShort.Task, "a short filler to be spoken");
+                return "ok";
+            },
             session, tts);
 
         Assert.Equal("ok", result);
@@ -65,14 +78,35 @@ public class Circle33ReassuranceFillerTests
             LongFillerEvery:  TimeSpan.FromMilliseconds(80)));
         var session = new FakeCallSession();
         var ttsCalls = new ConcurrentBag<string>();
+
+        // THE WORK ENDS WHEN THE LONG FILLER HAS SPOKEN, not after a fixed 500 ms
+        // — the same fix already applied to the rotation test below, for the same
+        // reason.
+        //
+        // It raced an 80 ms long-filler timer against 500 ms of pretend work. That
+        // is a generous window on an idle machine and not a window at all under the
+        // full solution run, where fifteen test projects are competing for cores:
+        // the timer never gets a thread, only the 50 ms SHORT filler lands, and the
+        // assertion fails with Collection: ["One moment."] — a scheduling verdict
+        // wearing the costume of a product bug. It passed run alone and failed in
+        // company, which is the signature.
+        var spokeLong = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         BriefingSynthesiser tts = (text, ct) =>
         {
             ttsCalls.Add(text);
+            if (ReassuranceVocabulary.Default.LongFillers.Contains(text))
+                spokeLong.TrySetResult();
             return ValueTask.FromResult<ReadOnlyMemory<byte>>(new byte[] { 1 });
         };
 
         await filler.RunWithFillerAsync(
-            async ct => { await Task.Delay(500, ct); return 0; },
+            async ct =>
+            {
+                await Eventually.CompletesAsync(spokeLong.Task, "a long filler to be spoken");
+                return 0;
+            },
             session, tts);
 
         Assert.Contains(ttsCalls, t => ReassuranceVocabulary.Default.LongFillers.Contains(t));

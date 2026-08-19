@@ -378,3 +378,8 @@ kotlin/.gradle/
 # Build output that surfaced as untracked and broke `git add -A` (2026-07)
 android/.kotlin/
 artifacts-nuget/
+
+# Local test-run output (TRX logs written during verification)
+TestOut/
+TestOut2/
+TestOut3/
