@@ -1,33 +1,38 @@
 [
   {
-    "language": "ln",
-    "voice": "MMS-lin",
-    "verdict": "SPEAKS",
-    "mapped": "9/9",
-    "seconds": 1.78,
-    "heard": "mbote na yo",
-    "cer": 0.0
-  },
-  {
-    "language": "am",
-    "voice": "MMS-amh",
-    "verdict": "UNMAPPED",
-    "mapped": "0/10",
-    "detail": "vocabulary cannot represent this script (needs romanisation)"
-  },
-  {
-    "language": "sw",
-    "voice": "MMS-swh",
-    "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
-  },
-  {
-    "language": "ne",
-    "voice": "MMS-npi",
+    "language": "af",
+    "voice": "Vits-11ZA",
     "verdict": "GIBBERISH",
-    "mapped": "14/14",
-    "seconds": 10.94,
-    "heard": "न कउ तeललरi rरललi ौउतrrriहo",
-    "cer": 2.11
+    "mapped": "17/17",
+    "langid": 0,
+    "seconds": 1.38,
+    "heard": "ak goie moore me friem",
+    "cer": 0.47
+  },
+  {
+    "language": "zu",
+    "voice": "Vits-11ZA",
+    "verdict": "SPEAKS",
+    "mapped": "18/18",
+    "langid": 10,
+    "seconds": 1.6,
+    "heard": "saul bonamvane 1an",
+    "cer": 0.39
+  },
+  {
+    "language": "xh",
+    "voice": "Vits-11ZA",
+    "verdict": "SPEAKS",
+    "mapped": "13/13",
+    "langid": 9,
+    "seconds": 1.26,
+    "heard": "monom soboam",
+    "cer": 0.31
+  },
+  {
+    "language": "en",
+    "voice": "Piper-en_US-lessac-high",
+    "verdict": "NOVOICE",
+    "detail": "model absent"
   }
 ]

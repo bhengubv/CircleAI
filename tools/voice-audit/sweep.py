@@ -93,13 +93,17 @@ def fetch(remote: str) -> pathlib.Path | None:
     if p.exists() and p.stat().st_size > 200:
         return p
     CACHE.mkdir(exist_ok=True)
-    try:
-        with urllib.request.urlopen(BUCKET + remote, timeout=900) as r, open(p, "wb") as o:
-            shutil.copyfileobj(r, o)
-        return p
-    except Exception:
-        p.unlink(missing_ok=True)
-        return None
+    # Bucket folders are lowercase; the registry carries mixed case for some
+    # Piper voices (piper-en_US-lessac-high). Try as written, then lowered —
+    # otherwise a voice that exists reads as NOVOICE on a naming detail.
+    for candidate in (remote, remote.lower()):
+        try:
+            with urllib.request.urlopen(BUCKET + candidate, timeout=900) as r, open(p, "wb") as o:
+                shutil.copyfileobj(r, o)
+            return p
+        except Exception:
+            p.unlink(missing_ok=True)
+    return None
 
 
 def encode(text: str, pm: dict) -> tuple[list[int], int, int]:
@@ -122,7 +126,8 @@ def encode(text: str, pm: dict) -> tuple[list[int], int, int]:
     return ids, mapped, len(chars)
 
 
-def synth(model_path: pathlib.Path, ids: list[int], cfg: dict) -> tuple[np.ndarray, int]:
+def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
+          sid: int = 0, langid: int | None = None) -> tuple[np.ndarray, int]:
     import onnxruntime as ort
     s = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
     names = {i.name for i in s.get_inputs()}
@@ -141,6 +146,15 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict) -> tuple[np.ndarr
         feed = {"input_ids": x, "attention_mask": np.ones_like(x)}
     else:                                               # Piper
         feed = {"input": x, "input_lengths": n, "scales": np.array([ns, ls, nw], "float32")}
+    # Multi-speaker / multi-lingual VITS declares these separately. A voice that
+    # serves 11 languages through ONE graph needs to be TOLD which one; feeding
+    # the default 0 would score every SA language as Afrikaans and call ten of
+    # them broken.
+    if "sid" in names:
+        feed["sid"] = np.array([sid], dtype=np.int64)
+    if "langid" in names:
+        feed["langid"] = np.array([langid if langid is not None else 0], dtype=np.int64)
+
     y = s.run(None, feed)[0].ravel().astype(np.float32)
     return y, cfg.get("audio", {}).get("sample_rate", 16000)
 
@@ -238,7 +252,28 @@ def main():
             row["detail"] = "vocabulary cannot represent this script (needs romanisation)"
             results.append(row); continue
 
-        y, rate = synth(model, ids, cfg)
+        # A multilingual bundle ships the map from language tag to langid.
+        langid = None
+        lids = fetch(f"{folder}/language_ids.json")
+        if lids is not None:
+            try:
+                table = json.loads(lids.read_text(encoding="utf-8"))
+                # The bundle keys these by ISO-639-3 ("afr"), the registry by
+                # 2-letter tag ("af"). ASR_LANG already holds that mapping.
+                want = {tag.lower(), (ASR_LANG.get(tag) or "").lower()} - {""}
+                for k, val in table.items():
+                    if str(k).strip().lower() in want:
+                        langid = int(val); break
+                    if str(val).strip().lower() in want:
+                        langid = int(k); break
+            except Exception:
+                pass
+            if langid is None:
+                row["verdict"] = "UNJUDGED"
+                row["detail"] = f"multilingual voice has no langid for '{tag}'"
+                results.append(row); continue
+        row["langid"] = langid
+        y, rate = synth(model, ids, cfg, langid=langid)
         secs = len(y) / rate
         row["seconds"] = round(secs, 2)
         if secs < 0.4:
