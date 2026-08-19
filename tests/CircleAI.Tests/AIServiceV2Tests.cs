@@ -411,7 +411,11 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         Assert.Single(gen.CapturedSystemMessages);
         var sys = gen.CapturedSystemMessages[0]!;
-        Assert.Contains("Battery: 15%", sys);
+        // A BAND, NOT A FIGURE. Standing context carries "Battery: low" (15% is
+        // <= 25), not "15%": the model uses this to decline something expensive
+        // on a dying phone, and the exact level is a tool call the same as the
+        // exact time. See the battery band in AIService.BuildEnrichmentAsync.
+        Assert.Contains("Battery: low", sys);
     }
 
     [Fact]
