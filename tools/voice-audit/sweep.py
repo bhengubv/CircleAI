@@ -285,7 +285,7 @@ def main():
         if secs < 0.4:
             row["verdict"] = "SILENT"; results.append(row); continue
 
-        wav = CACHE / f"{folder}.wav"
+        wav = CACHE / f"{folder}.{tag}.wav"
         with wave.open(str(wav), "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
             w.writeframes((np.clip(y, -1, 1) * 32767).astype("<i2").tobytes())
@@ -337,7 +337,7 @@ def main():
                     ny, nrate = synth(model, noise, cfg, langid=langid)
                     if len(ny) / nrate < 0.3:
                         continue
-                    nwav = CACHE / f"{folder}.noise.wav"
+                    nwav = CACHE / f"{folder}.{tag}.noise.wav"
                     with wave.open(str(nwav), "wb") as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(nrate)
                         w.writeframes((np.clip(ny, -1, 1) * 32767).astype("<i2").tobytes())
