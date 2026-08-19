@@ -735,8 +735,8 @@
         },
         {
           "Name": "mms-aka/model.onnx.json",
-          "Sha256": "adf75ba77c48c52cc40126125dba1c8d1f0f24eeb0da4f0e059dcc33e61ba0d6",
-          "SizeBytes": 1095
+          "Sha256": "42ef1cbe1d82dd677cdae79709f0cb48f6e542fc9df0ec0202274faf79c88a4b",
+          "SizeBytes": 1755
         }
       ]
     },
@@ -767,8 +767,8 @@
         },
         {
           "Name": "mms-ara/model.onnx.json",
-          "Sha256": "9aef2679c9a65814e11b1502e55e6ffb0dab99aa4b737dbf6d1ded5962aba100",
-          "SizeBytes": 1399
+          "Sha256": "3de6651d29ac7202d46c76f700b30832808ee250ec58215b70e0d26d9fc50d74",
+          "SizeBytes": 1368
         }
       ]
     },
@@ -799,8 +799,8 @@
         },
         {
           "Name": "mms-bam/model.onnx.json",
-          "Sha256": "bc9d7e68aeae54e3e6dfba92d31bba090c72516a0a88b8fa0bcd628b287e3467",
-          "SizeBytes": 1277
+          "Sha256": "c65b68ffd45d92fccb0470f3c36c7133344b53d3aa750e28a7220601a7de3f92",
+          "SizeBytes": 2141
         }
       ]
     },
@@ -831,8 +831,8 @@
         },
         {
           "Name": "mms-bem/model.onnx.json",
-          "Sha256": "ea06ce3a160e01f1fdec2f4f70b57364a2042261c632b2f0511dd11a75a531e9",
-          "SizeBytes": 1189
+          "Sha256": "4e73a62c33c1f3376cc70dd0b178bc7a9f0d7b84d0ceeb49720ddf33a2d80f63",
+          "SizeBytes": 2025
         }
       ]
     },
@@ -863,8 +863,8 @@
         },
         {
           "Name": "mms-ewe/model.onnx.json",
-          "Sha256": "8fd95a4505d4ec2e424f79c880a735b9881ca4581dd6c635699d3aaa3e4a1e00",
-          "SizeBytes": 1746
+          "Sha256": "fdafddf7a325ce3c0227c4007e647171e3f438377411bdd84f26af414d66b421",
+          "SizeBytes": 3048
         }
       ]
     },
@@ -895,8 +895,8 @@
         },
         {
           "Name": "mms-fas/model.onnx.json",
-          "Sha256": "2a899044cb8481fdfa2d5e4e27d67f20529d210c01c252284d2e5717878ad223",
-          "SizeBytes": 1551
+          "Sha256": "fe481c188ed8c9af316e1a6a510091171865a816c912dd02ea15bbaa7b364f0c",
+          "SizeBytes": 1521
         }
       ]
     },
@@ -927,8 +927,8 @@
         },
         {
           "Name": "mms-fon/model.onnx.json",
-          "Sha256": "9bee4810bb1b2d835874f10164c42c253a8d918a3b14f9fda8c869fc52b10f3c",
-          "SizeBytes": 1589
+          "Sha256": "1b3c5c1862242903db75f64518b57fe5c4cb7df30e2002bf5625c450697da02f",
+          "SizeBytes": 2768
         }
       ]
     },
@@ -959,8 +959,8 @@
         },
         {
           "Name": "mms-ful/model.onnx.json",
-          "Sha256": "dd6aabd1adb2b72b0857736cd69764357933e118b79f911527a7d88c7e4145cc",
-          "SizeBytes": 1429
+          "Sha256": "a291ac1ae15a909150a7ece2ca64d00cf59586f5e32483918c1e09001efb5a07",
+          "SizeBytes": 2203
         }
       ]
     },
@@ -991,8 +991,8 @@
         },
         {
           "Name": "mms-grn/model.onnx.json",
-          "Sha256": "193965353d99e7f97dff4701d7ae9785f48cc0577d60fde9ed71a6356c1184ac",
-          "SizeBytes": 1798
+          "Sha256": "733e1208593f60c9bd25a0671567bbaeb44b9d4941ae24b5dcccd55d6ac34476",
+          "SizeBytes": 2915
         }
       ]
     },
@@ -1023,8 +1023,8 @@
         },
         {
           "Name": "mms-guj/model.onnx.json",
-          "Sha256": "db676e7c38efa5b7449a4b16f7993732a15c671ffb8b3b28c385c789ed979b8e",
-          "SizeBytes": 2103
+          "Sha256": "370eefb061fa93c896af2e27023b949163a5ac353df6bbe0ccc4d4747ddafa7d",
+          "SizeBytes": 2102
         }
       ]
     },
@@ -1055,8 +1055,8 @@
         },
         {
           "Name": "mms-hat/model.onnx.json",
-          "Sha256": "d88917591fba8b49bacfa74b15830961eb15bdac614cd528b077e7061e9fd9c6",
-          "SizeBytes": 1156
+          "Sha256": "7e1b2c9048c48bdc6b35f923521480a71fe73eff945c9fa08f7bb970a9ac7727",
+          "SizeBytes": 1959
         }
       ]
     },
@@ -1087,8 +1087,8 @@
         },
         {
           "Name": "mms-hau/model.onnx.json",
-          "Sha256": "6d600fc232990c18eca71e8e7931f3ed1afce6d7e4c837c2db2679bd206d16e4",
-          "SizeBytes": 1218
+          "Sha256": "b9447db3a49f0b1a342b507ade7481dcc00565ac562ce2a9a26fdd4893f141c1",
+          "SizeBytes": 2025
         }
       ]
     },
@@ -1119,8 +1119,8 @@
         },
         {
           "Name": "mms-jav/model.onnx.json",
-          "Sha256": "4dc6d3645995fd4c7d976a08680fa11140f497060425c6c4ba09c4880b42d716",
-          "SizeBytes": 971
+          "Sha256": "4c0b6066c1dc538265efc7a613c2dd0d79c91cb0718c36df1b02fdaed929c5e1",
+          "SizeBytes": 1651
         }
       ]
     },
@@ -1151,8 +1151,8 @@
         },
         {
           "Name": "mms-kan/model.onnx.json",
-          "Sha256": "a79d8659ce5cb7e4c2a248e71426371fb392031d64bd521cabd98414f9b7dd5f",
-          "SizeBytes": 2563
+          "Sha256": "be1a3fc49825f753ff2a1007de1c69e02f98a634682ccabcd6b776428dc98da3",
+          "SizeBytes": 2532
         }
       ]
     },
@@ -1183,8 +1183,8 @@
         },
         {
           "Name": "mms-kby/model.onnx.json",
-          "Sha256": "0eebc3bb61e9375b2e0aaa22556126375548fc40df9b3881c5dadc1fcc4d3efe",
-          "SizeBytes": 1093
+          "Sha256": "fd83c2ae593e26fa5b9c3766c6b98228744b34db24442524b237511497dff179",
+          "SizeBytes": 1774
         }
       ]
     },
@@ -1215,8 +1215,8 @@
         },
         {
           "Name": "mms-kik/model.onnx.json",
-          "Sha256": "1c5b06d93749607ae3926abf11c9200750c2c5175237f09970a296e7e794e386",
-          "SizeBytes": 1304
+          "Sha256": "8b490919e97819e3b2d073ef35613f28f4fc58896281b0c2f792476b99975eff",
+          "SizeBytes": 2078
         }
       ]
     },
@@ -1247,8 +1247,8 @@
         },
         {
           "Name": "mms-kin/model.onnx.json",
-          "Sha256": "82462a8a610aff1f5596abcca6cd2bdeee80fcda25d2e6efe39dfa9a3e66c869",
-          "SizeBytes": 1516
+          "Sha256": "5fc44b410e42e3fb703f478adaf02242027a3548a6a34c9889f67ca453f2d953",
+          "SizeBytes": 2381
         }
       ]
     },
@@ -1279,8 +1279,8 @@
         },
         {
           "Name": "mms-lgg/model.onnx.json",
-          "Sha256": "1168fd94a4637f331273d3a70618d4a7503696cbfb481ee8126c3e2aac3e81c6",
-          "SizeBytes": 1212
+          "Sha256": "afd5f3fdd4b10614174345f6caef9c11d336216238f19c3a9c697aaef03868f2",
+          "SizeBytes": 1952
         }
       ]
     },
@@ -1311,8 +1311,8 @@
         },
         {
           "Name": "mms-lug/model.onnx.json",
-          "Sha256": "5ef0ff594c599a659eb48f165213e6ceeb931c9ecae60d23804fee2814c053c5",
-          "SizeBytes": 1092
+          "Sha256": "f9bef5eadeb1f26bcf199f51db2016c1ee0deff3bb6c024cc77388bbab787a9f",
+          "SizeBytes": 1803
         }
       ]
     },
@@ -1343,8 +1343,8 @@
         },
         {
           "Name": "mms-mal/model.onnx.json",
-          "Sha256": "571144e745570c15dfd823b9897217a867a532a7211e7a75448769e1dd883647",
-          "SizeBytes": 2847
+          "Sha256": "24c25244bb498b6570b060e57a2d0aa27fb3e13e55c82bd0e085935332152235",
+          "SizeBytes": 2966
         }
       ]
     },
@@ -1375,8 +1375,8 @@
         },
         {
           "Name": "mms-mar/model.onnx.json",
-          "Sha256": "a7da07a74427439e1877a5c61c1cf20c770849ddce0133dd2e29fe0800dddd3b",
-          "SizeBytes": 2503
+          "Sha256": "c4050f5957cffc8b95e70afa0b93f3c3a75bd4c841fb4e7052237baf0e2c796d",
+          "SizeBytes": 2535
         }
       ]
     },
@@ -1407,8 +1407,8 @@
         },
         {
           "Name": "mms-mlg/model.onnx.json",
-          "Sha256": "f799f03bc9a417635bd6c295afae6561c56469728357c0ba84ee34eb02d09737",
-          "SizeBytes": 1097
+          "Sha256": "8d66383b2e7993cfcaa3b72e417ff5911432154affe619af847c3fdd6bfabf27",
+          "SizeBytes": 1873
         }
       ]
     },
@@ -1439,8 +1439,8 @@
         },
         {
           "Name": "mms-mos/model.onnx.json",
-          "Sha256": "9666b123358627bc4e582684009cba12ca65ec737c63b9a6e8f86236f03828ab",
-          "SizeBytes": 1252
+          "Sha256": "deb8b9569941cfa7cac29807ab0f297a0156c0dc5a9afa47ec1d1ba3e5c6fe30",
+          "SizeBytes": 2121
         }
       ]
     },
@@ -1471,8 +1471,8 @@
         },
         {
           "Name": "mms-mya/model.onnx.json",
-          "Sha256": "078be205e3904018f0a65609fa7723baeb74232997f8ae144d8e4dc75de0c7e3",
-          "SizeBytes": 2011
+          "Sha256": "8cbb4b40a0b45863e93f98bf52a279bb4c054f2b73652d89b2838991dda15982",
+          "SizeBytes": 2010
         }
       ]
     },
@@ -1503,8 +1503,8 @@
         },
         {
           "Name": "mms-nya/model.onnx.json",
-          "Sha256": "31b5ff08f219d54c83711d1985c1631fc30f66778611a5b215b96339dfcf101c",
-          "SizeBytes": 1362
+          "Sha256": "50ee5a53fffefc4551fc7ff02ce088811044e49e8d18d56de425062a927530c2",
+          "SizeBytes": 2074
         }
       ]
     },
@@ -1535,8 +1535,8 @@
         },
         {
           "Name": "mms-nyn/model.onnx.json",
-          "Sha256": "5d112a70b25fcfb2cd900d52a52063b016c4290c606c2106e56667b70cadba59",
-          "SizeBytes": 1031
+          "Sha256": "a99a43579308f8c36373afbc8858fc7a5e17d759c50b049606689e23437bb8f0",
+          "SizeBytes": 1741
         }
       ]
     },
@@ -1567,8 +1567,8 @@
         },
         {
           "Name": "mms-orm/model.onnx.json",
-          "Sha256": "a68609c703ecdd3439cde988ccdd94902df122b34431bfa868d0e7e68957ffdc",
-          "SizeBytes": 1061
+          "Sha256": "abf5df1ad5559381e4a0ad03fb1a9b06cf24a67c2aacf868ffd2be757a163d89",
+          "SizeBytes": 1772
         }
       ]
     },
@@ -1599,8 +1599,8 @@
         },
         {
           "Name": "mms-pan/model.onnx.json",
-          "Sha256": "07504c574000f3c510cdbb813b9b7785936c40cd72eb3576590c8100b19a7658",
-          "SizeBytes": 2069
+          "Sha256": "995d33e4c208bee6a5648994c230a608a6127c591928ce59e95b40540f2bc1fb",
+          "SizeBytes": 2068
         }
       ]
     },
@@ -1631,8 +1631,8 @@
         },
         {
           "Name": "mms-quy/model.onnx.json",
-          "Sha256": "3979ad372ae0351e44447155529ab35b3eb2e140ca2df8f67db6577c64cbaed2",
-          "SizeBytes": 1279
+          "Sha256": "1255f4b9d4f5bfdf3204437bf20c296e525758c883788ec4cd4183406d99f2dc",
+          "SizeBytes": 2206
         }
       ]
     },
@@ -1663,8 +1663,8 @@
         },
         {
           "Name": "mms-run/model.onnx.json",
-          "Sha256": "5c174ae1095e39fdc459e854098e9a3d5630ef5a4b587d9f1b66a63886b934fc",
-          "SizeBytes": 1063
+          "Sha256": "8bc77de8e80784f03481269495b04d5950262cc826bfc11909ebefb615a3e546",
+          "SizeBytes": 1773
         }
       ]
     },
@@ -1695,8 +1695,8 @@
         },
         {
           "Name": "mms-sag/model.onnx.json",
-          "Sha256": "5a2e184f8d596e631026b459697c605a2166a0afd38280318c9de9f6376d44b0",
-          "SizeBytes": 1402
+          "Sha256": "671e8e4ca24786743e5ecd7416b07e4883ca8d2754ead693bf79aa6f006ae554",
+          "SizeBytes": 2451
         }
       ]
     },
@@ -1727,8 +1727,8 @@
         },
         {
           "Name": "mms-sna/model.onnx.json",
-          "Sha256": "a7acde7d33c649b9f32f032fd0a0232d95e42d8a3ec9d718291f063cbe9a0a4c",
-          "SizeBytes": 1182
+          "Sha256": "c5c11cd0771693553b416a2a58c3e6a6426abeb229317643cce85ead8b269f55",
+          "SizeBytes": 1893
         }
       ]
     },
@@ -1759,8 +1759,8 @@
         },
         {
           "Name": "mms-som/model.onnx.json",
-          "Sha256": "38a685d16f896038c8c35a6e5494ec01e9ab649711a88296db539b1e17d81495",
-          "SizeBytes": 1001
+          "Sha256": "ccc80d1e4a4439a739d62ce2a01bcbec93e7a29aa56a8a77daebc22cf420d17d",
+          "SizeBytes": 1653
         }
       ]
     },
@@ -1791,8 +1791,8 @@
         },
         {
           "Name": "mms-sun/model.onnx.json",
-          "Sha256": "1702c4a09da95e86b107aa92ec1b05580c1f63e487a7db0d6bfc799410430a17",
-          "SizeBytes": 1301
+          "Sha256": "9f28246f32221e5962639c3fbac448050fb86bb454303cfd8e97077636e16ec8",
+          "SizeBytes": 1981
         }
       ]
     },
@@ -1823,8 +1823,8 @@
         },
         {
           "Name": "mms-swh/model.onnx.json",
-          "Sha256": "819562ebb635b103b0aa8a22da1880ae72f3856e31b48ac244ab147a3d426331",
-          "SizeBytes": 1362
+          "Sha256": "d9dfed43a04f608b0c6762d5f29a92c174b9b703b85023f293a13328c26291c3",
+          "SizeBytes": 2074
         }
       ]
     },
@@ -1855,8 +1855,8 @@
         },
         {
           "Name": "mms-tam/model.onnx.json",
-          "Sha256": "c1be5155e70e2235839602705763e81e2864719de3c3e516af000fb2f58aa011",
-          "SizeBytes": 2021
+          "Sha256": "fed1b7baccb79f7e7c5acaf629e0810676ccf2697ef96059a17313e2337736ff",
+          "SizeBytes": 2022
         }
       ]
     },
@@ -1887,8 +1887,8 @@
         },
         {
           "Name": "mms-tel/model.onnx.json",
-          "Sha256": "744cfe414cee5165572b1b2b213f99e8c1743ffff31157ad7a82cd3ba956defc",
-          "SizeBytes": 2261
+          "Sha256": "5a0e9d1101caea96ada004f14484ca8e345f9393784249e976258f0bae8c6dda",
+          "SizeBytes": 2230
         }
       ]
     },
@@ -1919,8 +1919,8 @@
         },
         {
           "Name": "mms-tgl/model.onnx.json",
-          "Sha256": "6399981a9398d276e887d1018239c410055682e70f65ba7b7ecaecb0e5a9f9fd",
-          "SizeBytes": 1485
+          "Sha256": "dc9159fa0892d0a30d97698dc7e839f702cf9d9987e9ebec7550fe9fcd2fc96d",
+          "SizeBytes": 2257
         }
       ]
     },
@@ -1951,8 +1951,8 @@
         },
         {
           "Name": "mms-tha/model.onnx.json",
-          "Sha256": "6a5e668831ddcd48cf5987bbbe3103767459f425e243c656b733a99c5af535f5",
-          "SizeBytes": 2449
+          "Sha256": "1707ce209f1ebea1032fe1da0ae134065c4f7dc2e2aea205f55987ce6046beb2",
+          "SizeBytes": 2448
         }
       ]
     },
@@ -1983,8 +1983,8 @@
         },
         {
           "Name": "mms-tpi/model.onnx.json",
-          "Sha256": "99d660e54b67af1ec0a27bf24312e506632bf6a7dd78b84c260609bb6336784b",
-          "SizeBytes": 1301
+          "Sha256": "ddba69581322f1aca855fccb053b427efc9c52192fa320e7feb39bf7863ae40f",
+          "SizeBytes": 1955
         }
       ]
     },
@@ -2015,8 +2015,8 @@
         },
         {
           "Name": "mms-vie/model.onnx.json",
-          "Sha256": "e6c74577292f2a2a7b6e61bea0abd4b4287da64f94ba4ac138e9e579bf4e82a6",
-          "SizeBytes": 3155
+          "Sha256": "8ea08429fdc7a54e575045e34b6a2a3fb20354b2bd5e137fa4f1b613295a2092",
+          "SizeBytes": 5896
         }
       ]
     },
@@ -2047,8 +2047,8 @@
         },
         {
           "Name": "mms-yor/model.onnx.json",
-          "Sha256": "a0600600d17e10dc5fb7801258b49a0c4c36695e54653fa84a89a186bd96eee2",
-          "SizeBytes": 1503
+          "Sha256": "2d60fde5da0b4ebea9f02f9cb69f7ac610c24c87cd35ea0dbffa0ff42b0100f6",
+          "SizeBytes": 2591
         }
       ]
     },
