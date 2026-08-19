@@ -207,7 +207,9 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", default="")
     ap.add_argument("--pass-cer", type=float, default=0.45,
-                    help="CER at or below which a language counts as SPEAKS")
+                    help="fallback absolute CER, used only when no control can be built")
+    ap.add_argument("--margin", type=float, default=0.7,
+                    help="fraction of the voice's own noise floor the real CER must beat")
     a = ap.parse_args()
 
     reg = json.loads(REGISTRY.read_text(encoding="utf-8"))
@@ -294,9 +296,55 @@ def main():
 
         row["heard"] = heard
         row["cer"] = round(cer(ref, heard), 2)
-        row["verdict"] = "SPEAKS" if row["cer"] <= a.pass_cer else "GIBBERISH"
+
+        # THE VOICE'S OWN NOISE FLOOR, not a threshold I picked.
+        #
+        # An absolute CER gate measures the recogniser as much as the voice: MMS
+        # ASR is CTC with no language model, so it spells phonetically and
+        # inflates CER on correct audio. Afrikaans scored 0.47 for
+        # "ak goie moore me friem" — unmistakably "Goeie more my vriend" — and
+        # failed a 0.45 gate that Zulu passed at 0.39. That gate was ranking
+        # spelling luck.
+        #
+        # So each voice is compared against ITSELF: the same model synthesising
+        # the same number of RANDOM in-vocabulary tokens. That control is
+        # genuinely meaningless speech in this voice, through this recogniser,
+        # in this language — every confound the absolute gate could not separate
+        # is present in both numbers and cancels.
+        #
+        # A voice that is saying the sentence scores well below its own floor.
+        # A voice that is not scores level with it.
+        rng = np.random.default_rng(12345)          # fixed: reruns must agree
+        vocab = [v for vs in cfg.get("phoneme_id_map", {}).values()
+                 for v in (vs if isinstance(vs, list) else [vs])]
+        floor = None
+        if len(vocab) > 4 and len(ids) > 2:
+            noise = [int(x) for x in rng.choice(vocab, size=len(ids))]
+            try:
+                ny, nrate = synth(model, noise, cfg, langid=langid)
+                if len(ny) / nrate >= 0.3:
+                    nwav = CACHE / f"{folder}.noise.wav"
+                    with wave.open(str(nwav), "wb") as w:
+                        w.setnchannels(1); w.setsampwidth(2); w.setframerate(nrate)
+                        w.writeframes((np.clip(ny, -1, 1) * 32767).astype("<i2").tobytes())
+                    nheard = judge.hear(nwav, lang3)
+                    if nheard is not None:
+                        floor = round(cer(ref, nheard), 2)
+            except Exception:
+                floor = None
+
+        row["floor"] = floor
+        if floor is None:
+            # No usable control — fall back to the flag, and say so.
+            row["verdict"] = "SPEAKS" if row["cer"] <= a.pass_cer else "GIBBERISH"
+            row["basis"] = f"absolute cer<={a.pass_cer} (no control)"
+        else:
+            # Comfortably clear of its own noise: it is saying the sentence.
+            row["verdict"] = "SPEAKS" if row["cer"] <= floor * a.margin else "GIBBERISH"
+            row["basis"] = f"cer {row['cer']} vs floor {floor} x{a.margin}"
         results.append(row)
-        print(f"  {tag:4} {row['verdict']:9} cer={row.get('cer','-'):<5} {heard[:48]}", flush=True)
+        print(f"  {tag:4} {row['verdict']:9} cer={row.get('cer','-'):<5} "
+              f"floor={row.get('floor','-'):<5} {heard[:40]}", flush=True)
 
     (ROOT / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2),
                                        encoding="utf-8")
