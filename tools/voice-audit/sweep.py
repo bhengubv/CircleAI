@@ -208,6 +208,10 @@ def main():
     ap.add_argument("--only", default="")
     ap.add_argument("--pass-cer", type=float, default=0.45,
                     help="fallback absolute CER, used only when no control can be built")
+    ap.add_argument("--controls", type=int, default=3,
+                    help="noise controls per voice; the floor is their median")
+    ap.add_argument("--max-cer", type=float, default=1.0,
+                    help="hard fail above this, whatever the floor says")
     ap.add_argument("--margin", type=float, default=0.7,
                     help="fraction of the voice's own noise floor the real CER must beat")
     a = ap.parse_args()
@@ -314,27 +318,49 @@ def main():
         #
         # A voice that is saying the sentence scores well below its own floor.
         # A voice that is not scores level with it.
+        # MEDIAN OF SEVERAL CONTROLS, NOT ONE. A single control was not a floor,
+        # it was a coin toss: VITS resamples noise every run, so both the real
+        # CER and the control moved, and the RATIO moved more than either. On the
+        # full sweep that flipped Nepali (a known-broken merged vocabulary) to
+        # SPEAKS and Afrikaans and Xhosa to GIBBERISH. Replacing an arbitrary
+        # constant with an unstable measurement was better reasoning and still
+        # not sound.
         rng = np.random.default_rng(12345)          # fixed: reruns must agree
         vocab = [v for vs in cfg.get("phoneme_id_map", {}).values()
                  for v in (vs if isinstance(vs, list) else [vs])]
         floor = None
         if len(vocab) > 4 and len(ids) > 2:
-            noise = [int(x) for x in rng.choice(vocab, size=len(ids))]
-            try:
-                ny, nrate = synth(model, noise, cfg, langid=langid)
-                if len(ny) / nrate >= 0.3:
+            samples = []
+            for _ in range(a.controls):
+                noise = [int(x) for x in rng.choice(vocab, size=len(ids))]
+                try:
+                    ny, nrate = synth(model, noise, cfg, langid=langid)
+                    if len(ny) / nrate < 0.3:
+                        continue
                     nwav = CACHE / f"{folder}.noise.wav"
                     with wave.open(str(nwav), "wb") as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(nrate)
                         w.writeframes((np.clip(ny, -1, 1) * 32767).astype("<i2").tobytes())
                     nheard = judge.hear(nwav, lang3)
                     if nheard is not None:
-                        floor = round(cer(ref, nheard), 2)
-            except Exception:
-                floor = None
+                        samples.append(cer(ref, nheard))
+                except Exception:
+                    continue
+            if samples:
+                floor = round(float(np.median(samples)), 2)
+                row["floor_spread"] = [round(x, 2) for x in sorted(samples)]
 
         row["floor"] = floor
-        if floor is None:
+
+        # A TRANSCRIPT LONGER THAN THE REFERENCE IS NOT THE REFERENCE. CER above
+        # 1.0 means more edits than there are characters to edit — the recogniser
+        # heard something else entirely. Igbo passed the relative test at cer 3.89
+        # because its noise floor happened to be 8.67; that is two kinds of
+        # garbage being compared, not evidence. No floor can rescue this.
+        if row["cer"] > a.max_cer:
+            row["verdict"] = "GIBBERISH"
+            row["basis"] = f"cer {row['cer']} > {a.max_cer} (not the sentence at any floor)"
+        elif floor is None:
             # No usable control — fall back to the flag, and say so.
             row["verdict"] = "SPEAKS" if row["cer"] <= a.pass_cer else "GIBBERISH"
             row["basis"] = f"absolute cer<={a.pass_cer} (no control)"
