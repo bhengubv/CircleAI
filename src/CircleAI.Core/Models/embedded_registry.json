@@ -717,7 +717,7 @@
       "Modality": "Tts",
       "Language": "ak",
       "Architecture": "vits",
-      "TotalBytes": 114011066,
+      "TotalBytes": 114012161,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -732,6 +732,11 @@
           "Name": "mms-aka/tokens.txt",
           "Sha256": "e45ba292dd337d7dd2a83bd81aed813c706412d6e6887c91329d943e02abd300",
           "SizeBytes": 258
+        },
+        {
+          "Name": "mms-aka/model.onnx.json",
+          "Sha256": "adf75ba77c48c52cc40126125dba1c8d1f0f24eeb0da4f0e059dcc33e61ba0d6",
+          "SizeBytes": 1095
         }
       ]
     },
@@ -744,7 +749,7 @@
       "Modality": "Tts",
       "Language": "ar",
       "Architecture": "vits",
-      "TotalBytes": 114017943,
+      "TotalBytes": 114019342,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -759,6 +764,11 @@
           "Name": "mms-ara/tokens.txt",
           "Sha256": "410e2609def202a337fb77e0ab50e866c77c0bdaf9d1cd748968fe4aa8b32eff",
           "SizeBytes": 223
+        },
+        {
+          "Name": "mms-ara/model.onnx.json",
+          "Sha256": "9aef2679c9a65814e11b1502e55e6ffb0dab99aa4b737dbf6d1ded5962aba100",
+          "SizeBytes": 1399
         }
       ]
     },
@@ -771,7 +781,7 @@
       "Modality": "Tts",
       "Language": "bm",
       "Architecture": "vits",
-      "TotalBytes": 114015732,
+      "TotalBytes": 114017009,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -786,6 +796,11 @@
           "Name": "mms-bam/tokens.txt",
           "Sha256": "1aac384d1a5f612b7c123066cb736bf661ae4a304a62667ca24af005cd36e962",
           "SizeBytes": 316
+        },
+        {
+          "Name": "mms-bam/model.onnx.json",
+          "Sha256": "bc9d7e68aeae54e3e6dfba92d31bba090c72516a0a88b8fa0bcd628b287e3467",
+          "SizeBytes": 1277
         }
       ]
     },
@@ -798,7 +813,7 @@
       "Modality": "Tts",
       "Language": "bem",
       "Architecture": "vits",
-      "TotalBytes": 114013412,
+      "TotalBytes": 114014601,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -813,6 +828,11 @@
           "Name": "mms-bem/tokens.txt",
           "Sha256": "3bd05cc9fb0fedaa994ada8d0e6a361b5bb0f01b9c4023800fb4b95b4faaa81e",
           "SizeBytes": 300
+        },
+        {
+          "Name": "mms-bem/model.onnx.json",
+          "Sha256": "ea06ce3a160e01f1fdec2f4f70b57364a2042261c632b2f0511dd11a75a531e9",
+          "SizeBytes": 1189
         }
       ]
     },
@@ -825,7 +845,7 @@
       "Modality": "Tts",
       "Language": "ee",
       "Architecture": "vits",
-      "TotalBytes": 114027439,
+      "TotalBytes": 114029185,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -840,6 +860,11 @@
           "Name": "mms-ewe/tokens.txt",
           "Sha256": "4991afa36af2598579b09c25cad441eea04d78a0dea47fd1f560b9cdf2687cdf",
           "SizeBytes": 503
+        },
+        {
+          "Name": "mms-ewe/model.onnx.json",
+          "Sha256": "8fd95a4505d4ec2e424f79c880a735b9881ca4581dd6c635699d3aaa3e4a1e00",
+          "SizeBytes": 1746
         }
       ]
     },
@@ -852,7 +877,7 @@
       "Modality": "Tts",
       "Language": "fa",
       "Architecture": "vits",
-      "TotalBytes": 114021810,
+      "TotalBytes": 114023361,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -867,6 +892,11 @@
           "Name": "mms-fas/tokens.txt",
           "Sha256": "3de1b505f31f18b107f08523b3d5c9ffb8db70c798c7c9d4b437762784640f98",
           "SizeBytes": 250
+        },
+        {
+          "Name": "mms-fas/model.onnx.json",
+          "Sha256": "2a899044cb8481fdfa2d5e4e27d67f20529d210c01c252284d2e5717878ad223",
+          "SizeBytes": 1551
         }
       ]
     },
@@ -879,7 +909,7 @@
       "Modality": "Tts",
       "Language": "fon",
       "Architecture": "vits",
-      "TotalBytes": 114023543,
+      "TotalBytes": 114025132,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -894,6 +924,11 @@
           "Name": "mms-fon/tokens.txt",
           "Sha256": "642ce204be8f71d47d6afb3aa7335cbaf0730a8891a670e2144f946558474c33",
           "SizeBytes": 447
+        },
+        {
+          "Name": "mms-fon/model.onnx.json",
+          "Sha256": "9bee4810bb1b2d835874f10164c42c253a8d918a3b14f9fda8c869fc52b10f3c",
+          "SizeBytes": 1589
         }
       ]
     },
@@ -906,7 +941,7 @@
       "Modality": "Tts",
       "Language": "ff",
       "Architecture": "vits",
-      "TotalBytes": 114019584,
+      "TotalBytes": 114021013,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -921,6 +956,11 @@
           "Name": "mms-ful/tokens.txt",
           "Sha256": "b34fca4aa77eee1b64b709eed4b83252dc25ea9132fea1b1d6e938d6bf1d753e",
           "SizeBytes": 328
+        },
+        {
+          "Name": "mms-ful/model.onnx.json",
+          "Sha256": "dd6aabd1adb2b72b0857736cd69764357933e118b79f911527a7d88c7e4145cc",
+          "SizeBytes": 1429
         }
       ]
     },
@@ -933,7 +973,7 @@
       "Modality": "Tts",
       "Language": "gn",
       "Architecture": "vits",
-      "TotalBytes": 114028942,
+      "TotalBytes": 114030740,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -948,6 +988,11 @@
           "Name": "mms-grn/tokens.txt",
           "Sha256": "3a82f4a962da76b81e91428205d8b98a423b96a21960006c5794cef8d22cff97",
           "SizeBytes": 470
+        },
+        {
+          "Name": "mms-grn/model.onnx.json",
+          "Sha256": "193965353d99e7f97dff4701d7ae9785f48cc0577d60fde9ed71a6356c1184ac",
+          "SizeBytes": 1798
         }
       ]
     },
@@ -960,7 +1005,7 @@
       "Modality": "Tts",
       "Language": "gu",
       "Architecture": "vits",
-      "TotalBytes": 114034250,
+      "TotalBytes": 114036353,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -975,6 +1020,11 @@
           "Name": "mms-guj/tokens.txt",
           "Sha256": "2d855f2affb7586cc6be095a4382eb0bee2a22242deda32c86aab6b1a810d8c4",
           "SizeBytes": 402
+        },
+        {
+          "Name": "mms-guj/model.onnx.json",
+          "Sha256": "db676e7c38efa5b7449a4b16f7993732a15c671ffb8b3b28c385c789ed979b8e",
+          "SizeBytes": 2103
         }
       ]
     },
@@ -987,7 +1037,7 @@
       "Modality": "Tts",
       "Language": "ht",
       "Architecture": "vits",
-      "TotalBytes": 114012628,
+      "TotalBytes": 114013784,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1002,6 +1052,11 @@
           "Name": "mms-hat/tokens.txt",
           "Sha256": "79e3717b32acb413d43cd28aa801222409fb3701f9515ff54eb7332372b1194c",
           "SizeBytes": 284
+        },
+        {
+          "Name": "mms-hat/model.onnx.json",
+          "Sha256": "d88917591fba8b49bacfa74b15830961eb15bdac614cd528b077e7061e9fd9c6",
+          "SizeBytes": 1156
         }
       ]
     },
@@ -1014,7 +1069,7 @@
       "Modality": "Tts",
       "Language": "ha",
       "Architecture": "vits",
-      "TotalBytes": 114014184,
+      "TotalBytes": 114015402,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1029,6 +1084,11 @@
           "Name": "mms-hau/tokens.txt",
           "Sha256": "78b39313ddfc60be59cc12a957f11bf0f5dd4d1cdd3d5c16fe0bf3fae165d0c9",
           "SizeBytes": 304
+        },
+        {
+          "Name": "mms-hau/model.onnx.json",
+          "Sha256": "6d600fc232990c18eca71e8e7931f3ed1afce6d7e4c837c2db2679bd206d16e4",
+          "SizeBytes": 1218
         }
       ]
     },
@@ -1041,7 +1101,7 @@
       "Modality": "Tts",
       "Language": "jv",
       "Architecture": "vits",
-      "TotalBytes": 114007962,
+      "TotalBytes": 114008933,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1056,6 +1116,11 @@
           "Name": "mms-jav/tokens.txt",
           "Sha256": "bb92676f9376fbb68d9b686e77cacfd060199608b6f0e056fac964353c743184",
           "SizeBytes": 226
+        },
+        {
+          "Name": "mms-jav/model.onnx.json",
+          "Sha256": "4dc6d3645995fd4c7d976a08680fa11140f497060425c6c4ba09c4880b42d716",
+          "SizeBytes": 971
         }
       ]
     },
@@ -1068,7 +1133,7 @@
       "Modality": "Tts",
       "Language": "kn",
       "Architecture": "vits",
-      "TotalBytes": 114045855,
+      "TotalBytes": 114048418,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1083,6 +1148,11 @@
           "Name": "mms-kan/tokens.txt",
           "Sha256": "a4a44037f7492c9e5b69a4483250e54af9a2d528bd4e19de95a21ff0c5e82a8a",
           "SizeBytes": 487
+        },
+        {
+          "Name": "mms-kan/model.onnx.json",
+          "Sha256": "a79d8659ce5cb7e4c2a248e71426371fb392031d64bd521cabd98414f9b7dd5f",
+          "SizeBytes": 2563
         }
       ]
     },
@@ -1095,7 +1165,7 @@
       "Modality": "Tts",
       "Language": "kr",
       "Architecture": "vits",
-      "TotalBytes": 114011062,
+      "TotalBytes": 114012155,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1110,6 +1180,11 @@
           "Name": "mms-kby/tokens.txt",
           "Sha256": "29f9b048000ff445f79ff350b107ada9f342a4144994feb313458c1c50eb4931",
           "SizeBytes": 254
+        },
+        {
+          "Name": "mms-kby/model.onnx.json",
+          "Sha256": "0eebc3bb61e9375b2e0aaa22556126375548fc40df9b3881c5dadc1fcc4d3efe",
+          "SizeBytes": 1093
         }
       ]
     },
@@ -1122,7 +1197,7 @@
       "Modality": "Tts",
       "Language": "ki",
       "Architecture": "vits",
-      "TotalBytes": 114016492,
+      "TotalBytes": 114017796,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1137,6 +1212,11 @@
           "Name": "mms-kik/tokens.txt",
           "Sha256": "333d41d3ad489a23fc7826f71262c1ded4a07c4fb68ebf15e151e99907e89ff2",
           "SizeBytes": 308
+        },
+        {
+          "Name": "mms-kik/model.onnx.json",
+          "Sha256": "1c5b06d93749607ae3926abf11c9200750c2c5175237f09970a296e7e794e386",
+          "SizeBytes": 1304
         }
       ]
     },
@@ -1149,7 +1229,7 @@
       "Modality": "Tts",
       "Language": "rw",
       "Architecture": "vits",
-      "TotalBytes": 114021916,
+      "TotalBytes": 114023432,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1164,6 +1244,11 @@
           "Name": "mms-kin/tokens.txt",
           "Sha256": "2ab58191eec47a2cf944503c11ce307a05b13bc9e908a3c29c1e06d2881b4ee4",
           "SizeBytes": 356
+        },
+        {
+          "Name": "mms-kin/model.onnx.json",
+          "Sha256": "82462a8a610aff1f5596abcca6cd2bdeee80fcda25d2e6efe39dfa9a3e66c869",
+          "SizeBytes": 1516
         }
       ]
     },
@@ -1176,7 +1261,7 @@
       "Modality": "Tts",
       "Language": "lgg",
       "Architecture": "vits",
-      "TotalBytes": 114014157,
+      "TotalBytes": 114015369,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1191,6 +1276,11 @@
           "Name": "mms-lgg/tokens.txt",
           "Sha256": "1a38e4ed80aa5539c2f32fd9ea8581e6b54f467d01b7859c71d094bf31ae0c2b",
           "SizeBytes": 277
+        },
+        {
+          "Name": "mms-lgg/model.onnx.json",
+          "Sha256": "1168fd94a4637f331273d3a70618d4a7503696cbfb481ee8126c3e2aac3e81c6",
+          "SizeBytes": 1212
         }
       ]
     },
@@ -1203,7 +1293,7 @@
       "Modality": "Tts",
       "Language": "lg",
       "Architecture": "vits",
-      "TotalBytes": 114011066,
+      "TotalBytes": 114012158,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1218,6 +1308,11 @@
           "Name": "mms-lug/tokens.txt",
           "Sha256": "5a6a6c8aa49c1c44811a8aa5041cb8728b0d219024fee3901cb982b025538adf",
           "SizeBytes": 258
+        },
+        {
+          "Name": "mms-lug/model.onnx.json",
+          "Sha256": "5ef0ff594c599a659eb48f165213e6ceeb931c9ecae60d23804fee2814c053c5",
+          "SizeBytes": 1092
         }
       ]
     },
@@ -1230,7 +1325,7 @@
       "Modality": "Tts",
       "Language": "ml",
       "Architecture": "vits",
-      "TotalBytes": 114052851,
+      "TotalBytes": 114055698,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1245,6 +1340,11 @@
           "Name": "mms-mal/tokens.txt",
           "Sha256": "3a752c36593cc519193c8caa6c00371369b423366fa6ead8d91945a28b2c46a3",
           "SizeBytes": 571
+        },
+        {
+          "Name": "mms-mal/model.onnx.json",
+          "Sha256": "571144e745570c15dfd823b9897217a867a532a7211e7a75448769e1dd883647",
+          "SizeBytes": 2847
         }
       ]
     },
@@ -1257,7 +1357,7 @@
       "Modality": "Tts",
       "Language": "mr",
       "Architecture": "vits",
-      "TotalBytes": 114044322,
+      "TotalBytes": 114046825,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1272,6 +1372,11 @@
           "Name": "mms-mar/tokens.txt",
           "Sha256": "4d968029d0754b41633cb0871cce6796a5ab3d3bc2b9b91c5721cfdf85156083",
           "SizeBytes": 490
+        },
+        {
+          "Name": "mms-mar/model.onnx.json",
+          "Sha256": "a7da07a74427439e1877a5c61c1cf20c770849ddce0133dd2e29fe0800dddd3b",
+          "SizeBytes": 2503
         }
       ]
     },
@@ -1284,7 +1389,7 @@
       "Modality": "Tts",
       "Language": "mg",
       "Architecture": "vits",
-      "TotalBytes": 114011081,
+      "TotalBytes": 114012178,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1299,6 +1404,11 @@
           "Name": "mms-mlg/tokens.txt",
           "Sha256": "3820c57711dd3efd606524206de79451726b39e7c643179960e13d926c873321",
           "SizeBytes": 273
+        },
+        {
+          "Name": "mms-mlg/model.onnx.json",
+          "Sha256": "f799f03bc9a417635bd6c295afae6561c56469728357c0ba84ee34eb02d09737",
+          "SizeBytes": 1097
         }
       ]
     },
@@ -1311,7 +1421,7 @@
       "Modality": "Tts",
       "Language": "mos",
       "Architecture": "vits",
-      "TotalBytes": 114014969,
+      "TotalBytes": 114016221,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1326,6 +1436,11 @@
           "Name": "mms-mos/tokens.txt",
           "Sha256": "785218808f07e80b9007543b261c207d49ba0875bb1f95abd3c6d99f638eaf0e",
           "SizeBytes": 321
+        },
+        {
+          "Name": "mms-mos/model.onnx.json",
+          "Sha256": "9666b123358627bc4e582684009cba12ca65ec737c63b9a6e8f86236f03828ab",
+          "SizeBytes": 1252
         }
       ]
     },
@@ -1338,7 +1453,7 @@
       "Modality": "Tts",
       "Language": "my",
       "Architecture": "vits",
-      "TotalBytes": 114031929,
+      "TotalBytes": 114033940,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1353,6 +1468,11 @@
           "Name": "mms-mya/tokens.txt",
           "Sha256": "cd0a6ecfb0c91dde4d8ced1a6f8d18a7bc48086a438a179ae00230b86d5e76e3",
           "SizeBytes": 385
+        },
+        {
+          "Name": "mms-mya/model.onnx.json",
+          "Sha256": "078be205e3904018f0a65609fa7723baeb74232997f8ae144d8e4dc75de0c7e3",
+          "SizeBytes": 2011
         }
       ]
     },
@@ -1365,7 +1485,7 @@
       "Modality": "Tts",
       "Language": "ny",
       "Architecture": "vits",
-      "TotalBytes": 114018023,
+      "TotalBytes": 114019385,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1380,6 +1500,11 @@
           "Name": "mms-nya/tokens.txt",
           "Sha256": "e6868455fdd5ee56329d9a51512f7a0902911cc36ecdcd6cf5c05498563b7e2c",
           "SizeBytes": 303
+        },
+        {
+          "Name": "mms-nya/model.onnx.json",
+          "Sha256": "31b5ff08f219d54c83711d1985c1631fc30f66778611a5b215b96339dfcf101c",
+          "SizeBytes": 1362
         }
       ]
     },
@@ -1392,7 +1517,7 @@
       "Modality": "Tts",
       "Language": "nyn",
       "Architecture": "vits",
-      "TotalBytes": 114009513,
+      "TotalBytes": 114010544,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1407,6 +1532,11 @@
           "Name": "mms-nyn/tokens.txt",
           "Sha256": "09a616648d5c62c5436013599c2620a64339e8c7d3765720f00c7273fb3034ec",
           "SizeBytes": 241
+        },
+        {
+          "Name": "mms-nyn/model.onnx.json",
+          "Sha256": "5d112a70b25fcfb2cd900d52a52063b016c4290c606c2106e56667b70cadba59",
+          "SizeBytes": 1031
         }
       ]
     },
@@ -1419,7 +1549,7 @@
       "Modality": "Tts",
       "Language": "om",
       "Architecture": "vits",
-      "TotalBytes": 114010292,
+      "TotalBytes": 114011353,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1434,6 +1564,11 @@
           "Name": "mms-orm/tokens.txt",
           "Sha256": "46e28b6027703c5c408615085599063f334236984519c299ea387716e458a4e1",
           "SizeBytes": 252
+        },
+        {
+          "Name": "mms-orm/model.onnx.json",
+          "Sha256": "a68609c703ecdd3439cde988ccdd94902df122b34431bfa868d0e7e68957ffdc",
+          "SizeBytes": 1061
         }
       ]
     },
@@ -1446,7 +1581,7 @@
       "Modality": "Tts",
       "Language": "pa",
       "Architecture": "vits",
-      "TotalBytes": 114033477,
+      "TotalBytes": 114035546,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1461,6 +1596,11 @@
           "Name": "mms-pan/tokens.txt",
           "Sha256": "91344d6f3d6287e8adc71e66c7e9ca83f5f6e9a7d0c24f043a219773d9dec163",
           "SizeBytes": 397
+        },
+        {
+          "Name": "mms-pan/model.onnx.json",
+          "Sha256": "07504c574000f3c510cdbb813b9b7785936c40cd72eb3576590c8100b19a7658",
+          "SizeBytes": 2069
         }
       ]
     },
@@ -1473,7 +1613,7 @@
       "Modality": "Tts",
       "Language": "qu",
       "Architecture": "vits",
-      "TotalBytes": 114015751,
+      "TotalBytes": 114017030,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1488,6 +1628,11 @@
           "Name": "mms-quy/tokens.txt",
           "Sha256": "91d2d9049dc739ea4094ff7aa9067f9d152dbb5ef99372795fde841c35dab896",
           "SizeBytes": 335
+        },
+        {
+          "Name": "mms-quy/model.onnx.json",
+          "Sha256": "3979ad372ae0351e44447155529ab35b3eb2e140ca2df8f67db6577c64cbaed2",
+          "SizeBytes": 1279
         }
       ]
     },
@@ -1500,7 +1645,7 @@
       "Modality": "Tts",
       "Language": "rn",
       "Architecture": "vits",
-      "TotalBytes": 114010288,
+      "TotalBytes": 114011351,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1515,6 +1660,11 @@
           "Name": "mms-run/tokens.txt",
           "Sha256": "f8aef360a3fcd3b367721d8a1ad571ada76818d075dda2015302ac06609ae4ba",
           "SizeBytes": 248
+        },
+        {
+          "Name": "mms-run/model.onnx.json",
+          "Sha256": "5c174ae1095e39fdc459e854098e9a3d5630ef5a4b587d9f1b66a63886b934fc",
+          "SizeBytes": 1063
         }
       ]
     },
@@ -1527,7 +1677,7 @@
       "Modality": "Tts",
       "Language": "sg",
       "Architecture": "vits",
-      "TotalBytes": 114018864,
+      "TotalBytes": 114020266,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1542,6 +1692,11 @@
           "Name": "mms-sag/tokens.txt",
           "Sha256": "79a6e4e39028178cfb281d4ef846ef56ee63902fae46f27d4acd6538e437eab4",
           "SizeBytes": 376
+        },
+        {
+          "Name": "mms-sag/model.onnx.json",
+          "Sha256": "5a2e184f8d596e631026b459697c605a2166a0afd38280318c9de9f6376d44b0",
+          "SizeBytes": 1402
         }
       ]
     },
@@ -1554,7 +1709,7 @@
       "Modality": "Tts",
       "Language": "sn",
       "Architecture": "vits",
-      "TotalBytes": 114013384,
+      "TotalBytes": 114014566,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1569,6 +1724,11 @@
           "Name": "mms-sna/tokens.txt",
           "Sha256": "98391f18dc3ba8db4876b75abe253a0053d49c02b85c4295f1db8c6af646f443",
           "SizeBytes": 272
+        },
+        {
+          "Name": "mms-sna/model.onnx.json",
+          "Sha256": "a7acde7d33c649b9f32f032fd0a0232d95e42d8a3ec9d718291f063cbe9a0a4c",
+          "SizeBytes": 1182
         }
       ]
     },
@@ -1581,7 +1741,7 @@
       "Modality": "Tts",
       "Language": "so",
       "Architecture": "vits",
-      "TotalBytes": 114008736,
+      "TotalBytes": 114009737,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1596,6 +1756,11 @@
           "Name": "mms-som/tokens.txt",
           "Sha256": "7735b35bace882ce0116589b5243f4072d7ff26f76903353bf879e3501c9b088",
           "SizeBytes": 232
+        },
+        {
+          "Name": "mms-som/model.onnx.json",
+          "Sha256": "38a685d16f896038c8c35a6e5494ec01e9ab649711a88296db539b1e17d81495",
+          "SizeBytes": 1001
         }
       ]
     },
@@ -1608,7 +1773,7 @@
       "Modality": "Tts",
       "Language": "su",
       "Architecture": "vits",
-      "TotalBytes": 114016465,
+      "TotalBytes": 114017766,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1623,6 +1788,11 @@
           "Name": "mms-sun/tokens.txt",
           "Sha256": "b0803ad9a381188f7ecb9fcb6b677596b42550ef084d8533ae5540f546e8dde4",
           "SizeBytes": 281
+        },
+        {
+          "Name": "mms-sun/model.onnx.json",
+          "Sha256": "1702c4a09da95e86b107aa92ec1b05580c1f63e487a7db0d6bfc799410430a17",
+          "SizeBytes": 1301
         }
       ]
     },
@@ -1635,7 +1805,7 @@
       "Modality": "Tts",
       "Language": "sw",
       "Architecture": "vits",
-      "TotalBytes": 114018024,
+      "TotalBytes": 114019386,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1650,6 +1820,11 @@
           "Name": "mms-swh/tokens.txt",
           "Sha256": "783097de87c5fbd965298ffd8733986d6f4d2e7d14749965a2836f96f198a293",
           "SizeBytes": 304
+        },
+        {
+          "Name": "mms-swh/model.onnx.json",
+          "Sha256": "819562ebb635b103b0aa8a22da1880ae72f3856e31b48ac244ab147a3d426331",
+          "SizeBytes": 1362
         }
       ]
     },
@@ -1662,7 +1837,7 @@
       "Modality": "Tts",
       "Language": "ta",
       "Architecture": "vits",
-      "TotalBytes": 114032687,
+      "TotalBytes": 114034708,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1677,6 +1852,11 @@
           "Name": "mms-tam/tokens.txt",
           "Sha256": "0b3f692319bb5fae8658e2f84bf252bca92450d0207bbba7273caa1a182d81b8",
           "SizeBytes": 375
+        },
+        {
+          "Name": "mms-tam/model.onnx.json",
+          "Sha256": "c1be5155e70e2235839602705763e81e2864719de3c3e516af000fb2f58aa011",
+          "SizeBytes": 2021
         }
       ]
     },
@@ -1689,7 +1869,7 @@
       "Modality": "Tts",
       "Language": "te",
       "Architecture": "vits",
-      "TotalBytes": 114038123,
+      "TotalBytes": 114040384,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1704,6 +1884,11 @@
           "Name": "mms-tel/tokens.txt",
           "Sha256": "528152cb4121272e6e71f7a1d91c8d4922b92fae414ae599db608cb92a738bb7",
           "SizeBytes": 435
+        },
+        {
+          "Name": "mms-tel/model.onnx.json",
+          "Sha256": "744cfe414cee5165572b1b2b213f99e8c1743ffff31157ad7a82cd3ba956defc",
+          "SizeBytes": 2261
         }
       ]
     },
@@ -1716,7 +1901,7 @@
       "Modality": "Tts",
       "Language": "tl",
       "Architecture": "vits",
-      "TotalBytes": 114021129,
+      "TotalBytes": 114022614,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1731,6 +1916,11 @@
           "Name": "mms-tgl/tokens.txt",
           "Sha256": "5f4883ec7ba2128b7467cda01aa875d02bee8d600dc5822843216d8a14224ab0",
           "SizeBytes": 337
+        },
+        {
+          "Name": "mms-tgl/model.onnx.json",
+          "Sha256": "6399981a9398d276e887d1018239c410055682e70f65ba7b7ecaecb0e5a9f9fd",
+          "SizeBytes": 1485
         }
       ]
     },
@@ -1743,7 +1933,7 @@
       "Modality": "Tts",
       "Language": "th",
       "Architecture": "vits",
-      "TotalBytes": 114042769,
+      "TotalBytes": 114045218,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1758,6 +1948,11 @@
           "Name": "mms-tha/tokens.txt",
           "Sha256": "7e1f455df08c2bed0583f91b91921d6fc4d149bc232511a0ae11041cf489d798",
           "SizeBytes": 473
+        },
+        {
+          "Name": "mms-tha/model.onnx.json",
+          "Sha256": "6a5e668831ddcd48cf5987bbbe3103767459f425e243c656b733a99c5af535f5",
+          "SizeBytes": 2449
         }
       ]
     },
@@ -1770,7 +1965,7 @@
       "Modality": "Tts",
       "Language": "tpi",
       "Architecture": "vits",
-      "TotalBytes": 114016468,
+      "TotalBytes": 114017769,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1785,6 +1980,11 @@
           "Name": "mms-tpi/tokens.txt",
           "Sha256": "b8b5e19bcd0ecb08559454283b5fad293666b92620698b0c001f3e8cf888e56f",
           "SizeBytes": 284
+        },
+        {
+          "Name": "mms-tpi/model.onnx.json",
+          "Sha256": "99d660e54b67af1ec0a27bf24312e506632bf6a7dd78b84c260609bb6336784b",
+          "SizeBytes": 1301
         }
       ]
     },
@@ -1797,7 +1997,7 @@
       "Modality": "Tts",
       "Language": "vi",
       "Architecture": "vits",
-      "TotalBytes": 114061854,
+      "TotalBytes": 114065009,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1812,6 +2012,11 @@
           "Name": "mms-vie/tokens.txt",
           "Sha256": "8a57eabd6f4c64caf8682f3464c44a07a5ca13bd68eb57e54f6c48d8ad89deb4",
           "SizeBytes": 1126
+        },
+        {
+          "Name": "mms-vie/model.onnx.json",
+          "Sha256": "e6c74577292f2a2a7b6e61bea0abd4b4287da64f94ba4ac138e9e579bf4e82a6",
+          "SizeBytes": 3155
         }
       ]
     },
@@ -1824,7 +2029,7 @@
       "Modality": "Tts",
       "Language": "yo",
       "Architecture": "vits",
-      "TotalBytes": 114021208,
+      "TotalBytes": 114022711,
       "MinRamGb": 0.3,
       "MinStorageGb": 0.138,
       "QualityRank": 6,
@@ -1839,6 +2044,11 @@
           "Name": "mms-yor/tokens.txt",
           "Sha256": "3fca3219266d24915a05e358f16fc57e7f748150cf25d1ffe5b8b6e530f915f0",
           "SizeBytes": 416
+        },
+        {
+          "Name": "mms-yor/model.onnx.json",
+          "Sha256": "a0600600d17e10dc5fb7801258b49a0c4c36695e54653fa84a89a186bd96eee2",
+          "SizeBytes": 1503
         }
       ]
     },
