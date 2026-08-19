@@ -69,16 +69,27 @@
   <!--
     OPEN JTALK — Japanese readings, in-process.
 
-    Gated on the same switch as the rest of voice: these are ~11 MB (arm64) and
-    ~8 MB (v7a), and the chat-only APK has no use for them. Modified BSD, which
-    is why this links in rather than living in a second package the way GPL
-    espeak-ng has to.
+    Gated on the same switch as the rest of voice: ~11 MB each, and the chat-only
+    APK has no use for them. Modified BSD, which is why this links in rather than
+    living in a second package the way GPL espeak-ng has to.
+
+    MATCH THE ABIS THE APK ACTUALLY SHIPS — arm64-v8a and x86_64. This listed
+    armeabi-v7a first, which was wrong twice: the APK ships no v7a at all (the
+    build dropped it silently), and whisper's runtime only publishes
+    android-arm64-v8a, so a v7a device could not do speech regardless. Shipping a
+    lone lib/armeabi-v7a/ folder would be worse than useless — the presence of
+    ANY native library for an ABI tells Android the app supports that ABI, so the
+    install would succeed on a device with no recogniser and no MNN behind it.
+
+    x86_64 is not hypothetical: it is in the APK, it carries whisper, and without
+    this entry it was the one configuration where speech worked and Japanese
+    refused.
 
     The 104 MB dictionary is deliberately NOT here — it downloads as a bundle.
   -->
   <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
     <AndroidNativeLibrary Include="native/arm64-v8a/libopenjtalk_g2p.so" Abi="arm64-v8a" />
-    <AndroidNativeLibrary Include="native/armeabi-v7a/libopenjtalk_g2p.so" Abi="armeabi-v7a" />
+    <AndroidNativeLibrary Include="native/x86_64/libopenjtalk_g2p.so" Abi="x86_64" />
   </ItemGroup>
 
   <!-- Voice/ is normally excluded (the *.cs glob below is non-recursive);
