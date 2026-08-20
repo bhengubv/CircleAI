@@ -242,12 +242,24 @@ def main():
         if not ref:
             row["verdict"] = "NOPHRASE"; results.append(row); continue
 
-        folder = v["BundleFiles"][0]["Name"].split("/")[0]
-        model = fetch(f"{folder}/model.onnx")
-        cfg_p = fetch(f"{folder}/model.onnx.json")
+        # USE THE NAMES THE REGISTRY GIVES, do not assume "model.onnx". Piper
+        # voices ship en_US-lessac-high.onnx, Cantonese ships
+        # vits-cantonese-hf-xiaomaiiwn.onnx. Guessing the filename reported 15
+        # voices as NOVOICE that are sitting in the bucket returning 200 —
+        # understating real coverage and sending someone to re-upload files that
+        # were already there.
+        files = [b["Name"] for b in v["BundleFiles"]]
+        folder = files[0].split("/")[0]
+        onnx = next((f for f in files if f.endswith(".onnx")), None)
+        conf = next((f for f in files if f.endswith(".onnx.json")), None)
+        model = fetch(onnx) if onnx else None
+        cfg_p = fetch(conf) if conf else None
         if model is None or cfg_p is None:
             row["verdict"] = "NOVOICE"
-            row["detail"] = "model.onnx.json absent from bucket" if model else "model absent"
+            row["detail"] = (f"no .onnx.json in bundle ({folder})" if conf is None
+                             else f"{conf} absent from bucket") if model else (
+                             f"no .onnx in bundle ({folder})" if onnx is None
+                             else f"{onnx} absent from bucket")
             results.append(row); continue
 
         cfg = json.loads(cfg_p.read_text(encoding="utf-8"))
