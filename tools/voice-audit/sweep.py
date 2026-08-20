@@ -372,10 +372,28 @@ def main():
         print(f"  {tag:4} {row['verdict']:9} cer={row.get('cer','-'):<5} "
               f"floor={row.get('floor','-'):<5} {heard[:40]}", flush=True)
 
-    (ROOT / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=2),
-                                       encoding="utf-8")
-    counts: dict[str, int] = {}
+    # MERGE, DO NOT CLOBBER. A partial run (--only, --limit) used to overwrite the
+    # whole table, so `--only af` reduced a full 78-row sweep to one row and the
+    # real numbers were gone. Rows for languages this run did not touch are kept
+    # exactly as they were; rows it did touch are replaced.
+    out = ROOT / "results.json"
+    merged: dict[str, dict] = {}
+    if out.exists():
+        try:
+            for row in json.loads(out.read_text(encoding="utf-8")):
+                if row.get("language"):
+                    merged[row["language"]] = row
+        except Exception:
+            merged = {}                      # unreadable: start clean rather than fail
+    stale = set(merged) - {r["language"] for r in results}
     for r in results:
+        merged[r["language"]] = r
+    out.write_text(json.dumps([merged[k] for k in sorted(merged)], ensure_ascii=False, indent=2),
+                   encoding="utf-8")
+    if stale:
+        print(f"  kept {len(stale)} row(s) from an earlier run, not re-tested now")
+    counts: dict[str, int] = {}
+    for r in results:                        # this run only; results.json holds the union
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1
     print("\n  " + "  ".join(f"{k}={v}" for k, v in sorted(counts.items())))
     speaks = counts.get("SPEAKS", 0)
