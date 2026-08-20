@@ -224,7 +224,18 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
         feed["langid"] = np.array([langid if langid is not None else 0], dtype=np.int64)
 
     y = s.run(None, feed)[0].ravel().astype(np.float32)
-    return y, cfg.get("audio", {}).get("sample_rate", 16000)
+
+    # THE MODEL KNOWS ITS OWN SAMPLE RATE, and for lexicon voices it is the ONLY
+    # place that says so — they ship no model.onnx.json, so cfg is empty and the
+    # 16000 default was silently wrong: melo-zh is 44100 and vits-yue is 22050.
+    # Correct audio written into a header claiming 16 kHz plays 2.75x too slow
+    # and transcribes as gibberish, which is exactly how a labelling mistake
+    # masquerades as a broken voice.
+    rate = cfg.get("audio", {}).get("sample_rate")
+    if not rate:
+        meta = s.get_modelmeta().custom_metadata_map
+        rate = int(meta.get("sample_rate", 0)) or 16000
+    return y, rate
 
 
 STT_EXE = REPO / "tools" / "stt-hear" / "bin" / "Release" / "net10.0" / "stt-hear.exe"
