@@ -227,6 +227,30 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
     return y, cfg.get("audio", {}).get("sample_rate", 16000)
 
 
+STT_EXE = REPO / "tools" / "stt-hear" / "bin" / "Release" / "net10.0" / "stt-hear.exe"
+
+
+def whisper_hear(wav: pathlib.Path, lang2: str) -> str | None:
+    """Second-opinion recogniser for languages mms-1b-all has no adapter for.
+
+    mms-1b-all covers ~1100 languages but not every one this catalogue serves —
+    it declined cmn and yue, which whisper handles well. Neither recogniser is
+    universal, so the sweep asks the one that can actually hear the language and
+    records WHICH answered, because a verdict is only as good as its judge.
+    """
+    if not STT_EXE.exists():
+        return None
+    try:
+        out = subprocess.run([str(STT_EXE), str(wav), lang2], capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=300).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        if line.startswith("HEARD"):
+            return line.split(":", 1)[1].strip().strip('"') if ":" in line else None
+    return None
+
+
 class Judge:
     """MMS ASR, loaded once. Returns None when no adapter covers the language."""
 
@@ -387,8 +411,15 @@ def main():
             row["verdict"] = "UNJUDGED"; results.append(row); continue
         judge = judge or Judge()
         heard = judge.hear(wav, lang3)
+        row["judge"] = "mms-1b-all"
         if heard is None:
-            row["verdict"] = "UNJUDGED"; results.append(row); continue
+            heard = whisper_hear(wav, tag)          # no MMS adapter -> try whisper
+            row["judge"] = "whisper"
+        if not heard:
+            row["verdict"] = "UNJUDGED"
+            row["detail"] = f"no recogniser covers '{tag}' (mms adapter '{lang3}' declined)"
+            row.pop("judge", None)
+            results.append(row); continue
 
         row["heard"] = heard
         row["cer"] = round(cer(ref, heard), 2)
@@ -433,7 +464,8 @@ def main():
                     with wave.open(str(nwav), "wb") as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(nrate)
                         w.writeframes((np.clip(ny, -1, 1) * 32767).astype("<i2").tobytes())
-                    nheard = judge.hear(nwav, lang3)
+                    nheard = (judge.hear(nwav, lang3) if row.get("judge") != "whisper"
+                              else whisper_hear(nwav, tag))
                     if nheard is not None:
                         samples.append(cer(ref, nheard))
                 except Exception:
@@ -462,7 +494,8 @@ def main():
             row["basis"] = f"cer {row['cer']} vs floor {floor} x{a.margin}"
         results.append(row)
         print(f"  {tag:4} {row['verdict']:9} cer={row.get('cer','-'):<5} "
-              f"floor={row.get('floor','-'):<5} {heard[:40]}", flush=True)
+              f"floor={row.get('floor') if row.get('floor') is not None else '-':<5} "
+              f"[{row.get('judge','?')}] {heard[:36]}", flush=True)
 
     # MERGE, DO NOT CLOBBER. A partial run (--only, --limit) used to overwrite the
     # whole table, so `--only af` reduced a full 78-row sweep to one row and the
