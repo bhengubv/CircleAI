@@ -251,9 +251,22 @@ def whisper_hear(wav: pathlib.Path, lang2: str) -> str | None:
     """
     if not STT_EXE.exists():
         return None
+    # ROUTE THROUGH POWERSHELL WITH UTF-8 SET ON THE CONSOLE.
+    #
+    # Called directly with redirected stdout, .NET falls back to the ANSI code
+    # page and every CJK character comes back as literal 0x3f '?'. That is not a
+    # bad transcript, it is a destroyed one — and it scored Chinese at cer 1.00
+    # and Cantonese at 2.38, verdicts about this harness rather than the voices.
+    # Verified by codepoint. PowerShell with Console.OutputEncoding forced to
+    # UTF-8 writes the real characters, which is how the Japanese runs earlier
+    # were correct while these were not.
+    tmp = CACHE / (wav.stem + ".heard.txt")
+    ps = (f"[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+          f"& '{STT_EXE}' '{wav}' '{lang2}' | Out-File -LiteralPath '{tmp}' -Encoding utf8")
     try:
-        out = subprocess.run([str(STT_EXE), str(wav), lang2], capture_output=True,
-                             text=True, encoding="utf-8", errors="replace", timeout=300).stdout
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                       capture_output=True, timeout=600)
+        out = tmp.read_text(encoding="utf-8", errors="replace") if tmp.exists() else ""
     except Exception:
         return None
     for line in out.splitlines():
