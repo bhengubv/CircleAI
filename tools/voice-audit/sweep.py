@@ -126,8 +126,66 @@ def encode(text: str, pm: dict) -> tuple[list[int], int, int]:
     return ids, mapped, len(chars)
 
 
+def lexicon_encode(text: str, lex_path: pathlib.Path, tok_path: pathlib.Path):
+    """Ids for a LEXICON-driven voice — the family with no model.onnx.json.
+
+    Chinese, Cantonese and Japanese voices carry a word->phoneme table as a file
+    instead of a phoneme_id_map, which is what lets them ship without a
+    phonemizer. LexiconTokeniser does this in the app; the sweep reported them
+    NOVOICE simply because it only knew how to read a config.
+
+    Longest-match over the lexicon, then tokens.txt for the ids, blank-
+    interleaved (these exports are add_blank=1).
+    """
+    TOK = {}
+    for line in tok_path.read_text(encoding="utf-8").splitlines():
+        parts = line.rstrip().split(" ")
+        if len(parts) == 2:
+            TOK.setdefault(parts[0], int(parts[1]))
+    LEX = {}
+    for line in lex_path.read_text(encoding="utf-8").splitlines():
+        parts = [x for x in line.rstrip().split(" ") if x]
+        if len(parts) >= 2:
+            # MeloTTS carries TONE as a parallel channel: "一 y i 1 1" is
+            # phonemes y,i with tones 1,1. The trailing all-numeric half is the
+            # tone track. Cantonese takes the other approach and writes tone into
+            # the phoneme itself, so it has no numeric tail and this leaves it be.
+            body = parts[1:]
+            half = len(body) // 2
+            if half and all(t.isdigit() for t in body[half:]):
+                LEX.setdefault(parts[0], (body[:half], [int(t) for t in body[half:]]))
+            else:
+                LEX.setdefault(parts[0], (body, None))
+    if not TOK or not LEX:
+        return [], 0, len(text), []
+
+    widest = max(len(k) for k in LEX)
+    xs, ts, i, mapped = [], [], 0, 0
+    while i < len(text):
+        for L in range(min(widest, len(text) - i), 0, -1):
+            word = text[i:i + L]
+            if word in LEX:
+                phones, tones = LEX[word]
+                for n, ph in enumerate(phones):
+                    if ph in TOK:
+                        xs.append(TOK[ph])
+                        ts.append(tones[n] if tones and n < len(tones) else 0)
+                i += L; mapped += L
+                break
+        else:
+            ch = text[i]
+            if ch in TOK:
+                xs.append(TOK[ch]); ts.append(0); mapped += 1
+            i += 1
+
+    ids, tone_ids = [0], [0]
+    for a, t in zip(xs, ts):
+        ids += [a, 0]; tone_ids += [t, 0]
+    return ids, mapped, len([c for c in text if not c.isspace()]), tone_ids
+
+
 def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
-          sid: int = 0, langid: int | None = None) -> tuple[np.ndarray, int]:
+          sid: int = 0, langid: int | None = None, tones: list[int] | None = None) -> tuple[np.ndarray, int]:
     import onnxruntime as ort
     s = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
     names = {i.name for i in s.get_inputs()}
@@ -150,6 +208,16 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
     # serves 11 languages through ONE graph needs to be TOLD which one; feeding
     # the default 0 would score every SA language as Afrikaans and call ten of
     # them broken.
+    # MeloTTS: x_lengths (plural) plus a parallel tone channel. A tone array
+    # out of step with the phonemes would not fail — it would mispronounce every
+    # syllable after the drift, in a language where tone IS the word.
+    if "x_lengths" in names:
+        feed.pop("x_length", None)
+        feed["x_lengths"] = n
+    if "tones" in names:
+        t = (tones or [0] * len(ids))[:len(ids)]
+        t += [0] * (len(ids) - len(t))
+        feed["tones"] = np.array([t], dtype=np.int64)
     if "sid" in names:
         feed["sid"] = np.array([sid], dtype=np.int64)
     if "langid" in names:
@@ -254,7 +322,15 @@ def main():
         conf = next((f for f in files if f.endswith(".onnx.json")), None)
         model = fetch(onnx) if onnx else None
         cfg_p = fetch(conf) if conf else None
-        if model is None or cfg_p is None:
+
+        # No config? It may be the lexicon family rather than a missing asset.
+        lex, tok = (next((f for f in files if f.endswith("lexicon.txt")), None),
+                    next((f for f in files if f.endswith("tokens.txt")), None))
+        lex_p = fetch(lex) if (cfg_p is None and lex) else None
+        tok_p = fetch(tok) if (cfg_p is None and tok) else None
+        has_lexicon = lex_p is not None and tok_p is not None
+
+        if model is None or (cfg_p is None and not has_lexicon):
             row["verdict"] = "NOVOICE"
             row["detail"] = (f"no .onnx.json in bundle ({folder})" if conf is None
                              else f"{conf} absent from bucket") if model else (
@@ -262,8 +338,12 @@ def main():
                              else f"{onnx} absent from bucket")
             results.append(row); continue
 
-        cfg = json.loads(cfg_p.read_text(encoding="utf-8"))
-        ids, mapped, total = encode(ref, cfg.get("phoneme_id_map", {}))
+        cfg = json.loads(cfg_p.read_text(encoding="utf-8")) if cfg_p else {}
+        tones = None
+        if cfg.get("phoneme_id_map"):
+            ids, mapped, total = encode(ref, cfg["phoneme_id_map"])
+        else:
+            ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)
         row["mapped"] = f"{mapped}/{total}"
         if mapped == 0:
             row["verdict"] = "UNMAPPED"
@@ -291,7 +371,7 @@ def main():
                 row["detail"] = f"multilingual voice has no langid for '{tag}'"
                 results.append(row); continue
         row["langid"] = langid
-        y, rate = synth(model, ids, cfg, langid=langid)
+        y, rate = synth(model, ids, cfg, langid=langid, tones=tones)
         secs = len(y) / rate
         row["seconds"] = round(secs, 2)
         if secs < 0.4:
