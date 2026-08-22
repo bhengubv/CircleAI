@@ -563,6 +563,27 @@ X-SAMPA (as `NchltPhonemizer` emits) → IPA (as Mimic3-family voices expect).
 - **Index by CODE POINT, not by UTF-16 unit or byte.** A piece boundary inside a
   surrogate pair or a UTF-8 sequence produces pieces that match nothing.
 
+### WavIo
+
+Minimal RIFF/WAVE reading and PCM-16 packing, so a reference recording can
+become the float samples a voice needs.
+
+| Operation | Contract |
+|---|---|
+| `parse(bytes) -> (samples, rate, channels)` | Interleaved float in [-1,1] |
+| `toMono24k(wav, maxSeconds)` | Downmix by averaging, resample to 24 kHz, cap |
+| `toPcm16(samples)` | Little-endian signed 16-bit |
+
+- **WALK THE CHUNKS.** Data does NOT always start at byte 44 — a `LIST` or
+  `fact` chunk before it is normal, and assuming otherwise reads metadata as
+  audio, which sounds like a burst of noise before the recording. The fixture
+  carries a LIST-chunk case for exactly this.
+- Chunks are word-aligned: advance by `size + (size & 1)`.
+- Formats decoded: PCM 8/16/24/32-bit and IEEE float 32. `0xFFFE`
+  (WAVE_FORMAT_EXTENSIBLE) is treated as PCM.
+- Multi-channel is averaged, not left-channel-only.
+- Resampling is linear — the target is a speaker embedding, not playback.
+
 ### Known port gaps
 
 Recorded rather than hidden. Both are honest divergences on input the fixtures
@@ -580,15 +601,15 @@ All ten, from the same fixtures:
 | Port | Result |
 |---|---|
 | C# (reference) | full suite green |
-| Swift | 7 tests |
-| Go | 7 tests |
-| Rust | 7 tests |
-| TypeScript | 7 tests |
-| HarmonyOS (ArkTS) | 7 tests |
-| Python | 7 tests |
-| Kotlin | 7 tests |
-| Android (Kotlin) | 7 tests |
-| C | 23 checks |
+| Swift | 9 tests |
+| Go | 9 tests |
+| Rust | 9 tests |
+| TypeScript | 9 tests |
+| HarmonyOS (ArkTS) | 9 tests |
+| Python | 9 tests |
+| Kotlin | 9 tests |
+| Android (Kotlin) | 9 tests |
+| C | 23 + 4 checks |
 
 ---
 
