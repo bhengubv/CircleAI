@@ -9,7 +9,7 @@
 // multi-character token, the script-g that is U+0261 rather than ASCII 'g', and
 // a phone that cannot map and must be REPORTED rather than dropped.
 
-package com.bhengubv.circleai.voice
+package com.bhengubv.circleai.android.voice
 
 import kotlinx.serialization.json.*
 import java.io.File
