@@ -116,8 +116,10 @@ public enum VoiceWavIo {
             samples = map(data, 2) { Float(Int16(bitPattern: UInt16($0[0]) | UInt16($0[1]) << 8)) / 32768 }
         case (1, 24), (0xFFFE, 24):
             samples = map(data, 3) {
-                let v = Int32($0[0]) | Int32($0[1]) << 8 | Int32($0[2]) << 16
-                return Float(v << 8 >> 8) / 8388608
+                let v = Int32($0[0]) | (Int32($0[1]) << 8) | (Int32($0[2]) << 16)
+                // Sign-extend the 24-bit value. Swift's shift operators are
+                // non-associative, so the parentheses are required, not style.
+                return Float((v << 8) >> 8) / 8388608
             }
         case (1, 32), (0xFFFE, 32):
             samples = map(data, 4) { Float(Int32(bitPattern: le32v($0))) / 2147483648 }
