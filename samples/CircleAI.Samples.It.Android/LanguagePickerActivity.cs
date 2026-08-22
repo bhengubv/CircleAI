@@ -434,7 +434,7 @@ public class LanguagePickerActivity : Activity
         var cts = new CancellationTokenSource();
         _running = cts;
 
-        SetSub(row, "preparing…");
+        BeginHeartbeat(row, "preparing");
         try
         {
 #if IT_VOICE_ANDROID
@@ -442,20 +442,38 @@ public class LanguagePickerActivity : Activity
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
             var wav = System.IO.Path.Combine(FilesDir!.AbsolutePath, $"say-{row.Tag}.wav");
 
-            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
-                store, row.Tag, row.Phrase, wav,
-                line => RunOnUiThread(() => SetSub(row, Summarise(line))), cts.Token);
+            // OFF THE UI THREAD, DELIBERATELY. RunCataloguedAsync is `async`, but an
+            // async method runs SYNCHRONOUSLY until its first real await, and on the
+            // warm path — voice already downloaded, so the prereq/sideload/download
+            // awaits are all skipped — the first one it reaches is the synthesis
+            // itself. Everything before that (registry scan, config and tokens.txt
+            // parsing, and the ONNX session build, which is the expensive part) was
+            // therefore running on the UI thread.
+            //
+            // The symptom was not a missing progress line: the lines were being
+            // produced all along and RunOnUiThread was faithfully QUEUEING them
+            // behind the very work that was blocking the looper. They all flushed
+            // at the end, so the row sat on "preparing…" for six seconds and the
+            // app looked hung — which is exactly what it was. Task.Run frees the
+            // looper so those callbacks land while the work is still happening.
+            var report = await Task.Run(
+                () => CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                    store, row.Tag, row.Phrase, wav,
+                    line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
+                cts.Token);
 
             if (cts.IsCancellationRequested) return;
 
             if (System.IO.File.Exists(wav) && report.Contains("SYNTHESIS OK", StringComparison.Ordinal))
             {
+                EndHeartbeat();
                 SetSub(row, $"“{row.Phrase}”");
                 await MainActivity.PlayWavStaticAsync(wav);
                 RestoreSub(row);
             }
             else
             {
+                EndHeartbeat();
                 // Say what actually failed, in the row the user tapped, instead of
                 // logging it somewhere they will never look.
                 SetSub(row, FirstLine(report));
@@ -466,22 +484,90 @@ public class LanguagePickerActivity : Activity
             // is the honest version of this screen without the speech stack, and it
             // is better than a button that looks live and does nothing.
             await Task.Yield();
+            EndHeartbeat();
             SetSub(row, $"“{row.Phrase}”");
 #endif
         }
-        catch (System.OperationCanceledException) { RestoreSub(row); }
-        catch (Exception ex) { SetSub(row, ex.Message); }
+        catch (System.OperationCanceledException) { EndHeartbeat(); RestoreSub(row); }
+        catch (Exception ex) { EndHeartbeat(); SetSub(row, ex.Message); }
+    }
+
+    // ---- the row's "still working" heartbeat -------------------------------
+    //
+    // Freeing the looper (above) is what makes progress possible; this is what
+    // makes it VISIBLE. Even running properly off-thread, one stage dominates —
+    // building the ONNX session takes seconds and reports once, at the start. A
+    // caption that is correct but motionless for four seconds still reads as a
+    // hang to the person holding the phone, so the caption animates while the
+    // stage it names is still running. The text is the truth; the dots are the
+    // proof that something is still happening.
+
+    Android.OS.Handler? _beat;
+    Java.Lang.IRunnable? _beatTick;
+    string _beatPhase = "";
+    int _beatDots;
+
+    void BeginHeartbeat(Row row, string phase)
+    {
+        EndHeartbeat();
+        _beatPhase = phase;
+        _beatDots  = 0;
+        _beat = new Android.OS.Handler(Android.OS.Looper.MainLooper!);
+        _beatTick = new Java.Lang.Runnable(() =>
+        {
+            _beatDots = (_beatDots + 1) % 4;
+            SetSub(row, _beatPhase + new string('.', _beatDots));
+            _beat?.PostDelayed(_beatTick!, 400);
+        });
+        SetSub(row, _beatPhase);
+        _beat.PostDelayed(_beatTick, 400);
+    }
+
+    /// <summary>Swap the caption without losing the animation.</summary>
+    void Phase(Row row, string phase)
+    {
+        if (_beat is null) { SetSub(row, phase); return; }
+        _beatPhase = phase.TrimEnd('.', '…');
+        _beatDots  = 0;
+        SetSub(row, _beatPhase);
+    }
+
+    void EndHeartbeat()
+    {
+        if (_beat is not null && _beatTick is not null) _beat.RemoveCallbacks(_beatTick);
+        _beat = null;
+        _beatTick = null;
     }
 
     /// <summary>Turn an engine log line into something worth showing a person.</summary>
+    /// <remarks>
+    /// Anything that falls through to "working" is a stage the person cannot name,
+    /// and on the warm path most of them did — the engine emits eight or nine lines
+    /// and only three were recognised. A caption that says "working" for six seconds
+    /// carries no more information than a frozen one, which is the complaint this
+    /// screen earned. Each branch below is a stage the engine actually reports, in
+    /// the order it reports them.
+    ///
+    /// ORDER MATTERS: "voice-under-test" also starts with "voice", so the specific
+    /// prefix has to be tested before the general one or every voice line collapses
+    /// into "found the voice".
+    /// </remarks>
     static string Summarise(string line)
     {
         line = line.Trim();
-        if (line.Contains("%", StringComparison.Ordinal)) return "downloading… " + line;
-        if (line.StartsWith("voice", StringComparison.OrdinalIgnoreCase)) return "found the voice";
-        if (line.StartsWith("downloaded", StringComparison.OrdinalIgnoreCase)) return "downloaded — loading";
-        if (line.StartsWith("engine", StringComparison.OrdinalIgnoreCase)) return "loading the voice";
-        return "working…";
+        if (line.Contains("%", StringComparison.Ordinal))                             return "downloading… " + line;
+        if (line.StartsWith("prereq", StringComparison.OrdinalIgnoreCase))            return "fetching what it needs";
+        if (line.StartsWith("sideload", StringComparison.OrdinalIgnoreCase))          return "importing the voice";
+        if (line.StartsWith("downloaded", StringComparison.OrdinalIgnoreCase))        return "downloaded — loading";
+        if (line.StartsWith("voice-under-test", StringComparison.OrdinalIgnoreCase))  return "getting ready";
+        if (line.StartsWith("voice", StringComparison.OrdinalIgnoreCase))             return "found the voice";
+        if (line.StartsWith("engine", StringComparison.OrdinalIgnoreCase))
+            return line.Contains("WARM", StringComparison.Ordinal) ? "voice ready" : "loading the voice";
+        if (line.StartsWith("phones", StringComparison.OrdinalIgnoreCase))            return "sounding out the words";
+        if (line.StartsWith("saying it", StringComparison.OrdinalIgnoreCase))         return "saying it";
+        if (line.StartsWith("respelt", StringComparison.OrdinalIgnoreCase))           return "saying it";
+        if (line.StartsWith("synthesised", StringComparison.OrdinalIgnoreCase))       return "ready to play";
+        return "getting ready";
     }
 
     static string FirstLine(string report)
@@ -509,6 +595,7 @@ public class LanguagePickerActivity : Activity
     protected override void OnDestroy()
     {
         _running?.Cancel();
+        EndHeartbeat();
         base.OnDestroy();
     }
 }

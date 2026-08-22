@@ -90,6 +90,27 @@
   <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
     <AndroidNativeLibrary Include="native/arm64-v8a/libopenjtalk_g2p.so" Abi="arm64-v8a" />
     <AndroidNativeLibrary Include="native/x86_64/libopenjtalk_g2p.so" Abi="x86_64" />
+
+    <!--
+      espeak-ng, IN THIS APK. It used to live in a second package because linking
+      GPL code here would have forced a relicense; with that constraint lifted by
+      the owner it comes in-process, and the one-APK rule stops being violated.
+      Every voice trained on espeak IPA — the 22 Piper languages and Mimic3's SA
+      voices — needed a phonemiser on the install-to-first-use path and had none.
+
+      arm64 only: this is the .so cross-compiled for the P30. An x86_64 build
+      would need the same NDK recipe run again (native/build-espeak-arm64.ps1 in
+      the espeak-ng-g2p repo), so on x86_64 EspeakPhonemizer.IsAvailable returns
+      false and callers fall back rather than crash.
+    -->
+    <AndroidNativeLibrary Include="native/arm64-v8a/libespeak-ng.so" Abi="arm64-v8a" />
+
+    <!--
+      espeak's dictionaries. Arch-independent, unpacked once on first use — the
+      lib and the data are version-locked (both espeak-ng 1.52.0) and a mismatch
+      is a silent wrong-pronunciation bug, not a load error.
+    -->
+    <AndroidAsset Include="Assets/espeak-ng-data.zip" />
   </ItemGroup>
 
   <!-- Voice/ is normally excluded (the *.cs glob below is non-recursive);

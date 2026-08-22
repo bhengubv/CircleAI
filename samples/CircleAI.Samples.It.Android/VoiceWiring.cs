@@ -23,6 +23,7 @@
 // first, is a rule no one can keep by remembering. Both activities now call this,
 // it is idempotent, and it is the only place the assignment lives.
 
+using System.IO.Compression;
 using Android.Content;
 using Android.Util;
 
@@ -61,11 +62,100 @@ public static class VoiceWiring
             // process-wide hook leaks a window.
             var app = context.ApplicationContext ?? context;
 
+            // ESPEAK IS IN THIS APK NOW. It lived in a second package only because
+            // linking GPL code here would have forced a relicense; with that
+            // constraint lifted it links in, and the one-APK rule — an app may
+            // never require a second install to work — stops being violated.
+            // Unpack the dictionaries once, point the phonemiser at them, and
+            // confirm the native library actually loads before committing to it.
+            var espeakData = UnpackEspeakData(app);
+            if (espeakData is not null)
+            {
+                CircleAI.Voice.NativeEspeakPhonemizer.DataPath = espeakData;
+
+                // Prove the native library loads AND produces phonemes before
+                // committing to it. A DllNotFoundException surfacing later, from
+                // inside synthesis, reads as "the voice broke" rather than "this
+                // build has no espeak".
+                try
+                {
+                    var probe = new CircleAI.Voice.NativeEspeakPhonemizer("en-us").Phonemize("test");
+                    if (probe.Count > 0)
+                    {
+                        CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory =
+                            voice => new CircleAI.Voice.NativeEspeakPhonemizer(voice);
+                        _installed = true;
+                        Log.Info(Tag, $"phonemizer: espeak IN-PROCESS ({probe.Count} symbols, data={espeakData})");
+                        return;
+                    }
+                    Log.Warn(Tag, "phonemizer: in-process espeak returned no symbols");
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn(Tag, $"phonemizer: in-process espeak failed — {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            // Fallback, not the plan: the separate GPL app, if the user happens to
+            // have it. Kept because an arm64-only .so means x86_64 has no
+            // in-process espeak, and a missing voice beats a crash.
             CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory =
                 voice => new OutOfProcessEspeakPhonemizer(app, voice);
 
             _installed = true;
-            Log.Info(Tag, "phonemizer factory installed");
+            Log.Warn(Tag, "phonemizer: in-process espeak unavailable — falling back to the separate app");
+        }
+    }
+
+    /// <summary>
+    /// Unpack <c>espeak-ng-data.zip</c> once into app storage and return the
+    /// directory that CONTAINS <c>espeak-ng-data</c>.
+    /// </summary>
+    /// <remarks>
+    /// espeak wants a real filesystem path; Android assets live inside the APK
+    /// and have none, so they must be extracted before first use. Done once and
+    /// then skipped — the marker is the unpacked folder itself, so a half-finished
+    /// extraction (killed mid-copy) re-runs rather than leaving espeak pointed at
+    /// a partial dictionary set, which would mispronounce rather than fail.
+    /// </remarks>
+    private static string? UnpackEspeakData(Context app)
+    {
+        try
+        {
+            var root = app.FilesDir?.AbsolutePath;
+            if (string.IsNullOrEmpty(root)) return null;
+
+            var target = System.IO.Path.Combine(root, "espeak");
+            var dataDir = System.IO.Path.Combine(target, "espeak-ng-data");
+
+            // phontab is the file espeak loads first; its presence means the
+            // unpack completed, where a bare directory would not.
+            if (System.IO.File.Exists(System.IO.Path.Combine(dataDir, "phontab")))
+                return target;
+
+            if (System.IO.Directory.Exists(target)) System.IO.Directory.Delete(target, true);
+            System.IO.Directory.CreateDirectory(target);
+
+            using (var zip = app.Assets!.Open("espeak-ng-data.zip"))
+            using (var archive = new System.IO.Compression.ZipArchive(zip, System.IO.Compression.ZipArchiveMode.Read))
+            {
+                foreach (var entry in archive.Entries)
+                {
+                    var dest = System.IO.Path.GetFullPath(System.IO.Path.Combine(target, entry.FullName));
+                    if (!dest.StartsWith(target, StringComparison.Ordinal)) continue;   // zip-slip
+                    if (string.IsNullOrEmpty(entry.Name)) { System.IO.Directory.CreateDirectory(dest); continue; }
+                    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest)!);
+                    entry.ExtractToFile(dest, overwrite: true);
+                }
+            }
+
+            Log.Info(Tag, $"espeak data unpacked to {dataDir}");
+            return target;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn(Tag, $"espeak data unpack failed: {ex.GetType().Name}: {ex.Message}");
+            return null;
         }
     }
 }

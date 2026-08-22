@@ -6,15 +6,16 @@
     "mapped": "17/17",
     "langid": 0,
     "seconds": 1.38,
-    "heard": "coilaia mor an me fin",
-    "cer": 0.71,
+    "judge": "mms-1b-all",
+    "heard": "chaui an mur an me frin",
+    "cer": 0.76,
     "floor_spread": [
-      0.94,
-      1.0,
-      1.0
+      0.88,
+      0.88,
+      0.88
     ],
-    "floor": 1.0,
-    "basis": "cer 0.71 vs floor 1.0 x0.7"
+    "floor": 0.88,
+    "basis": "cer 0.76 vs floor 0.88 x0.7"
   },
   {
     "language": "ak",
@@ -32,7 +33,7 @@
     "language": "ar",
     "voice": "MMS-ara",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-ara/model.onnx.json absent from bucket"
   },
   {
     "language": "bem",
@@ -47,8 +48,9 @@
   {
     "language": "bn",
     "voice": "Piper-bn_BD",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "UNMAPPED",
+    "mapped": "0/17",
+    "detail": "vocabulary cannot represent this script (needs romanisation)"
   },
   {
     "language": "ee",
@@ -61,11 +63,12 @@
     "verdict": "SPEAKS",
     "mapped": "17/19",
     "langid": null,
-    "seconds": 0.86,
-    "heard": "or imol inn motin",
+    "seconds": 0.81,
+    "judge": "mms-1b-all",
+    "heard": "or mo in fin",
     "cer": 0.58,
     "floor_spread": [
-      0.84,
+      0.79,
       0.84,
       0.89
     ],
@@ -75,8 +78,20 @@
   {
     "language": "es",
     "voice": "Piper-es_ES",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "SPEAKS",
+    "mapped": "15/18",
+    "langid": null,
+    "seconds": 0.79,
+    "judge": "mms-1b-all",
+    "heard": "bueno estás a mí",
+    "cer": 0.5,
+    "floor_spread": [
+      0.83,
+      0.83,
+      0.89
+    ],
+    "floor": 0.83,
+    "basis": "cer 0.5 vs floor 0.83 x0.7"
   },
   {
     "language": "es-ES",
@@ -92,7 +107,7 @@
     "language": "fa",
     "voice": "MMS-fas",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-fas/model.onnx.json absent from bucket"
   },
   {
     "language": "ff",
@@ -107,19 +122,20 @@
   {
     "language": "fr",
     "voice": "Piper-fr_FR",
-    "verdict": "SPEAKS",
+    "verdict": "GIBBERISH",
     "mapped": "13/13",
     "langid": null,
-    "seconds": 0.86,
-    "heard": "polur mon ami",
-    "cer": 0.31,
+    "seconds": 0.92,
+    "judge": "mms-1b-all",
+    "heard": "pe lo mene",
+    "cer": 0.77,
     "floor_spread": [
-      0.77,
-      0.92,
-      1.0
+      0.85,
+      0.85,
+      0.85
     ],
-    "floor": 0.92,
-    "basis": "cer 0.31 vs floor 0.92 x0.7"
+    "floor": 0.85,
+    "basis": "cer 0.77 vs floor 0.85 x0.7"
   },
   {
     "language": "gn",
@@ -130,19 +146,20 @@
     "language": "gu",
     "voice": "MMS-guj",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-guj/model.onnx.json absent from bucket"
   },
   {
     "language": "ha",
     "voice": "MMS-hau",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-hau/model.onnx.json absent from bucket"
   },
   {
     "language": "hi",
     "voice": "Piper-hi_IN",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "UNMAPPED",
+    "mapped": "0/17",
+    "detail": "vocabulary cannot represent this script (needs romanisation)"
   },
   {
     "language": "ht",
@@ -152,8 +169,20 @@
   {
     "language": "id",
     "voice": "Piper-id_ID",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "SPEAKS",
+    "mapped": "18/18",
+    "langid": null,
+    "seconds": 1.29,
+    "judge": "mms-1b-all",
+    "heard": "selamat payi temanku",
+    "cer": 0.06,
+    "floor_spread": [
+      0.83,
+      0.89,
+      0.94
+    ],
+    "floor": 0.89,
+    "basis": "cer 0.06 vs floor 0.89 x0.7"
   },
   {
     "language": "ig",
@@ -161,16 +190,17 @@
     "verdict": "GIBBERISH",
     "mapped": "9/9",
     "langid": null,
-    "seconds": 5.1,
-    "heard": "oor gụgo ọnya ghaịre irio agaa ka enwurụ nya erie",
-    "cer": 3.78,
+    "seconds": 4.44,
+    "judge": "mms-1b-all",
+    "heard": "majiizi ihi gi ore ihi ihi iri iịra imụbụghị obede",
+    "cer": 4.22,
     "floor_spread": [
-      6.22,
-      6.33,
-      6.78
+      4.89,
+      6.0,
+      7.11
     ],
-    "floor": 6.33,
-    "basis": "cer 3.78 > 1.0 (not the sentence at any floor)"
+    "floor": 6.0,
+    "basis": "cer 4.22 > 1.0 (not the sentence at any floor)"
   },
   {
     "language": "ja",
@@ -182,7 +212,7 @@
     "language": "jv",
     "voice": "MMS-jav",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-jav/model.onnx.json absent from bucket"
   },
   {
     "language": "ki",
@@ -193,13 +223,13 @@
     "language": "kn",
     "voice": "MMS-kan",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-kan/model.onnx.json absent from bucket"
   },
   {
     "language": "ko",
     "voice": "Piper-ko_KR-kss-medium",
     "verdict": "NOVOICE",
-    "detail": "model absent"
+    "detail": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx absent from bucket"
   },
   {
     "language": "kr",
@@ -222,16 +252,17 @@
     "verdict": "SPEAKS",
     "mapped": "9/9",
     "langid": null,
-    "seconds": 2.37,
-    "heard": "mbote na yo",
-    "cer": 0.0,
+    "seconds": 2.18,
+    "judge": "mms-1b-all",
+    "heard": "mbote na ye",
+    "cer": 0.11,
     "floor_spread": [
-      0.78,
-      1.0,
-      1.11
+      0.89,
+      0.89,
+      1.0
     ],
-    "floor": 1.0,
-    "basis": "cer 0.0 vs floor 1.0 x0.7"
+    "floor": 0.89,
+    "basis": "cer 0.11 vs floor 0.89 x0.7"
   },
   {
     "language": "mg",
@@ -242,7 +273,7 @@
     "language": "ml",
     "voice": "MMS-mal",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-mal/model.onnx.json absent from bucket"
   },
   {
     "language": "mos",
@@ -253,13 +284,13 @@
     "language": "mr",
     "voice": "MMS-mar",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-mar/model.onnx.json absent from bucket"
   },
   {
     "language": "my",
     "voice": "MMS-mya",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-mya/model.onnx.json absent from bucket"
   },
   {
     "language": "ne",
@@ -267,22 +298,35 @@
     "verdict": "GIBBERISH",
     "mapped": "14/14",
     "langid": null,
-    "seconds": 10.61,
-    "heard": "दsारही गु रिलेरु परररलिली हतल तalलला दररौररी rहयो हो",
+    "seconds": 7.92,
+    "judge": "mms-1b-all",
+    "heard": "नौस हरु परिरेरलजि करुराला रररी होवा तरआकरयु ताहरहाँरािो ह",
     "cer": 3.11,
     "floor_spread": [
-      1.56,
-      3.0,
-      6.44
+      1.67,
+      2.22,
+      3.11
     ],
-    "floor": 3.0,
+    "floor": 2.22,
     "basis": "cer 3.11 > 1.0 (not the sentence at any floor)"
   },
   {
     "language": "nl",
     "voice": "Piper-nl_BE",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "SPEAKS",
+    "mapped": "19/21",
+    "langid": null,
+    "seconds": 1.01,
+    "judge": "mms-1b-all",
+    "heard": "dedumor in mivi",
+    "cer": 0.52,
+    "floor_spread": [
+      0.76,
+      0.81,
+      0.81
+    ],
+    "floor": 0.81,
+    "basis": "cer 0.52 vs floor 0.81 x0.7"
   },
   {
     "language": "nl-BE",
@@ -323,13 +367,25 @@
     "language": "pa",
     "voice": "MMS-pan",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-pan/model.onnx.json absent from bucket"
   },
   {
     "language": "pt",
     "voice": "Piper-pt_BR",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "GIBBERISH",
+    "mapped": "13/14",
+    "langid": null,
+    "seconds": 0.58,
+    "judge": "mms-1b-all",
+    "heard": "gospodino",
+    "cer": 0.79,
+    "floor_spread": [
+      0.93,
+      1.0,
+      1.0
+    ],
+    "floor": 1.0,
+    "basis": "cer 0.79 vs floor 1.0 x0.7"
   },
   {
     "language": "pt-BR",
@@ -354,8 +410,9 @@
   {
     "language": "ru",
     "voice": "Piper-ru_RU",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "UNMAPPED",
+    "mapped": "0/17",
+    "detail": "vocabulary cannot represent this script (needs romanisation)"
   },
   {
     "language": "rw",
@@ -370,8 +427,9 @@
   {
     "language": "si",
     "voice": "Piper-si_LK",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "UNMAPPED",
+    "mapped": "0/16",
+    "detail": "vocabulary cannot represent this script (needs romanisation)"
   },
   {
     "language": "sn",
@@ -382,7 +440,7 @@
     "language": "so",
     "voice": "MMS-som",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-som/model.onnx.json absent from bucket"
   },
   {
     "language": "ss",
@@ -392,40 +450,50 @@
   {
     "language": "st",
     "voice": "Vits-11ZA",
-    "verdict": "UNJUDGED",
+    "verdict": "SPEAKS",
     "mapped": "19/19",
     "langid": 4,
-    "seconds": 1.68
+    "seconds": 1.68,
+    "judge": "whisper",
+    "heard": "Do me la mosa.",
+    "cer": 0.53,
+    "floor_spread": [
+      0.79,
+      0.89,
+      1.0
+    ],
+    "floor": 0.89,
+    "basis": "cer 0.53 vs floor 0.89 x0.7"
   },
   {
     "language": "su",
     "voice": "MMS-sun",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-sun/model.onnx.json absent from bucket"
   },
   {
     "language": "sw",
     "voice": "MMS-swh",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-swh/model.onnx.json absent from bucket"
   },
   {
     "language": "ta",
     "voice": "MMS-tam",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-tam/model.onnx.json absent from bucket"
   },
   {
     "language": "te",
     "voice": "MMS-tel",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-tel/model.onnx.json absent from bucket"
   },
   {
     "language": "th",
     "voice": "MMS-tha",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-tha/model.onnx.json absent from bucket"
   },
   {
     "language": "ti",
@@ -438,7 +506,7 @@
     "language": "tl",
     "voice": "MMS-tgl",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-tgl/model.onnx.json absent from bucket"
   },
   {
     "language": "tn",
@@ -458,8 +526,9 @@
   {
     "language": "ur",
     "voice": "Piper-ur_PK",
-    "verdict": "NOVOICE",
-    "detail": "model absent"
+    "verdict": "UNMAPPED",
+    "mapped": "0/15",
+    "detail": "vocabulary cannot represent this script (needs romanisation)"
   },
   {
     "language": "ve",
@@ -470,7 +539,7 @@
     "language": "vi",
     "voice": "MMS-vie",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-vie/model.onnx.json absent from bucket"
   },
   {
     "language": "xh",
@@ -479,21 +548,22 @@
     "mapped": "13/13",
     "langid": 9,
     "seconds": 1.26,
-    "heard": "nonom shoboam",
+    "judge": "mms-1b-all",
+    "heard": "monum soboam",
     "cer": 0.38,
     "floor_spread": [
-      0.77,
       0.85,
+      0.92,
       1.0
     ],
-    "floor": 0.85,
-    "basis": "cer 0.38 vs floor 0.85 x0.7"
+    "floor": 0.92,
+    "basis": "cer 0.38 vs floor 0.92 x0.7"
   },
   {
     "language": "yo",
     "voice": "MMS-yor",
     "verdict": "NOVOICE",
-    "detail": "model.onnx.json absent from bucket"
+    "detail": "mms-yor/model.onnx.json absent from bucket"
   },
   {
     "language": "yue",
@@ -501,7 +571,7 @@
     "verdict": "GIBBERISH",
     "mapped": "8/9",
     "langid": null,
-    "seconds": 1.43,
+    "seconds": 1.42,
     "judge": "whisper",
     "heard": "Thank you for watching.",
     "cer": 2.38,
@@ -528,14 +598,15 @@
     "mapped": "18/18",
     "langid": 10,
     "seconds": 1.6,
-    "heard": "sawubonamvane wano",
+    "judge": "mms-1b-all",
+    "heard": "sawobonamudhane wami",
     "cer": 0.22,
     "floor_spread": [
+      0.72,
       0.78,
-      0.89,
-      0.94
+      0.89
     ],
-    "floor": 0.89,
-    "basis": "cer 0.22 vs floor 0.89 x0.7"
+    "floor": 0.78,
+    "basis": "cer 0.22 vs floor 0.78 x0.7"
   }
 ]

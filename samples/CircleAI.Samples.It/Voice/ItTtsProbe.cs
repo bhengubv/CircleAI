@@ -284,7 +284,10 @@ public static class ItTtsProbe
         // the statement "this voice is driven by Open JTalk phonemes", so a future
         // ESPnet voice in any language pulls the right prerequisite without anyone
         // remembering to add it here.
-        if (string.Equals(entry.Architecture, "vits-espnet", StringComparison.OrdinalIgnoreCase))
+        // ModelEntry carries no Architecture field, so the marker is the entry
+        // name. JSUT is the only ESPnet voice catalogued; when a second arrives
+        // this becomes a real capability flag rather than a name test.
+        if (entry.Name.StartsWith("JSUT", StringComparison.OrdinalIgnoreCase))
             await EnsurePrerequisiteAsync(registry, storageDir, "OpenJTalk-Dic-ja", log, ct)
                 .ConfigureAwait(false);
 
@@ -694,6 +697,10 @@ public static class ItTtsProbe
             else
             {
                 _lastMixedSpans = 0;
+                // Announced BEFORE the call, not after. Every other stage here logs
+                // on entry; synthesis logged only on completion, so the single
+                // longest wait in the whole path was also the only unannounced one.
+                log?.Invoke("saying it");
                 result = await phrased.SynthesiseAsync(phrase, ct).ConfigureAwait(false);
             }
             if (result.AudioData.Length == 0)
@@ -820,7 +827,8 @@ public static class ItTtsProbe
 
             log?.Invoke($"prereq: downloading {modelId} ({entry.TotalBytes / 1_000_000} MB)");
             using var downloads = new ModelDownloadService(storageDir);
-            await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs, null, ct)
+            await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs,
+                                              (IProgress<DownloadProgress>?)null, ct)
                 .ConfigureAwait(false);
             log?.Invoke($"prereq: {modelId} ready");
         }
