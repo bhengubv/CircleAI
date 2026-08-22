@@ -1,6 +1,6 @@
 // LanguagePickerActivity.cs
 //
-// The front door. CircleAI speaks 74 languages entirely on the phone, and until
+// The front door. CircleAI speaks entirely on the phone, and until
 // this screen existed there was no way for a person holding the device to hear
 // any of them — the language was an adb intent extra, so the single most
 // remarkable thing about the project was reachable only by its authors.
@@ -156,7 +156,7 @@ public class LanguagePickerActivity : Activity
         _status.SetPadding(0, Ui.Dp(this, 6), 0, 0);
         head.AddView(_status);
 
-        _search = new EditText(this) { Hint = "Search 74 languages" };
+        _search = new EditText(this) { Hint = "Search 10 plus languages" };
         _search.SetTextColor(Ui.Ink);
         _search.SetHintTextColor(Ui.InkSoft);
         _search.SetSingleLine(true);

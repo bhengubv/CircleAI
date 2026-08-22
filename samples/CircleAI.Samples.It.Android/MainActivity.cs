@@ -105,7 +105,7 @@ public class MainActivity : Activity
         Append("Everything here runs on this phone.\n");
         Append("No account. No cloud. Nothing you type or say is sent anywhere.\n\n");
 
-        Append("Tap Languages to hear it speak in any of 74 languages.\n");
+        Append("Tap Languages to hear it speak in any of 10 plus languages.\n");
         Append("Tap What it can do to see what this phone can run — that one\n");
         Append("needs no download and answers straight away.\n\n");
 
@@ -373,7 +373,7 @@ public class MainActivity : Activity
         var hero = new LinearLayout(this) { Orientation = Orientation.Vertical };
         hero.SetBackgroundColor(Ui.Surface);
         hero.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 12), Ui.Dp(this, 16), 0);
-        var languages = Ui.Action(this, "Speak in 74 languages", primary: true);
+        var languages = Ui.Action(this, "Speak in 10 plus languages", primary: true);
         languages.Click += (s, e) => StartActivity(new Intent(this, typeof(LanguagePickerActivity)));
         hero.AddView(languages, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent));

@@ -796,7 +796,7 @@ public class HomeActivity : Activity
         markLp.Gravity = GravityFlags.CenterHorizontal;
         // PRESSING THE CIRCLE TALKS TO IT. That is the product, and it is the only
         // large control on the screen. Before it can listen, pressing it makes it
-        // say hello in one of the 74 languages instead of doing nothing — because
+        // say hello in one of the catalogued languages instead of doing nothing — because
         // "nothing happens" is indistinguishable from "broken", and hearing it
         // speak is the fastest way to understand what this is.
         _mark.Clickable = true;
@@ -930,7 +930,7 @@ public class HomeActivity : Activity
         claims.SetPadding(pad, 0, pad, Ui.Dp(this, 16));
         foreach (var line in new[]
                  {
-                     "74 languages, spoken out loud",
+                     "10 plus languages, spoken out loud",
                      "Runs on the phone — works with no signal",
                      "Free, no account — only searches leave the phone",
                  })
@@ -1010,7 +1010,7 @@ public class HomeActivity : Activity
             nav.AddView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         }
 
-        Quiet("74 languages", typeof(LanguagePickerActivity));
+        Quiet("10 plus languages", typeof(LanguagePickerActivity));
         Quiet("What it can do", typeof(AbilitiesActivity));
 
         root.AddView(nav, Ui.Fill());
