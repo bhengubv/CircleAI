@@ -297,11 +297,16 @@ def _modified_gram_schmidt(g: list[float], dim: int) -> list[float]:
     # its own list instead makes the two hot loops zip/sum over contiguous
     # sequences, which CPython runs at C speed.
     #
-    # OPERATION ORDER IS PRESERVED EXACTLY, which is the only reason this is
-    # allowed: `sum()` accumulates left to right just as the explicit loop did,
-    # and the zips walk i ascending. Verified BIT-IDENTICAL against the previous
-    # implementation across dim 4..256 before landing. (`math.fsum` would NOT be
-    # safe here — it is more accurate, and therefore different.)
+    # NOT BIT-IDENTICAL IN float64, AND THAT WAS CHECKED RATHER THAN ASSUMED.
+    # Measured against the previous implementation at dim 8: 41 of 64 elements
+    # differ, worst case 5.0e-16 — last-ULP rounding from `sum()` accumulating a
+    # generator instead of an explicit `+=`, not a change of algorithm. Every
+    # element is IDENTICAL once narrowed to float32, which is the precision this
+    # matrix is consumed at (`rotate` narrows every accumulation through _f32),
+    # and the fp32-exact parity tests against the C# reference still pass.
+    #
+    # `math.fsum` would NOT be a safe substitute here — it is more accurate, and
+    # therefore different in a way float32 would not absorb.
     cols: list[list[float]] = []
 
     for j in range(dim):
