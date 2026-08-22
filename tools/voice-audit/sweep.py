@@ -87,6 +87,23 @@ ASR_LANG = {
 }
 
 
+# Catalogue tag -> the language code to ASK WHISPER FOR, where they differ.
+#
+# whisper-tiny has no "yue". Asked for it, it does not fail — it falls back to
+# auto-detect, decides 1.4 s of Cantonese is English, and returns its stock
+# hallucination "Thank you for watching.", which scored as cer 2.38 and
+# condemned a voice that was word-perfect. Written Cantonese is Han script, so
+# asking for "zh" gives a directly comparable transcript:
+#
+#     ref            你好，今日天氣好好
+#     asked as yue   "Thank you for watching."
+#     asked as zh    你好今日天氣好好      <- identical but for the comma
+#
+# The mapping belongs next to ASR_LANG above: each recogniser is asked in the
+# code IT knows, not in the code the catalogue happens to use.
+WHISPER_LANG = {"yue": "zh"}
+
+
 def fetch(remote: str) -> pathlib.Path | None:
     """Pull a bucket file into the cache. None when the bucket has no such file."""
     p = CACHE / remote.replace("/", "__")
@@ -387,6 +404,45 @@ class Judge:
         return self.proc.decode(np.argmax(logits.numpy(), axis=-1)[0])
 
 
+def foreign_script(pm: dict, ref: str) -> str | None:
+    """Name a script in the vocabulary that has no business being there.
+
+    MMS-ibo synthesises fluent Igbo-sounding speech that is not the input, at
+    two to three times the duration a comparable voice produces for the same
+    token count. That reads as a poor voice. It is not: its vocabulary is 73
+    symbols containing 22 HEBREW letters, while the real Igbo MMS vocabulary is
+    43 symbols with none — and ours is sorted alphabetically where a real MMS
+    vocab is in the tokenizer's own arbitrary order. Every letter therefore
+    indexes the wrong embedding row, which is exactly what fluent-but-unrelated
+    speech looks like. MMS-npi is the same defect (Hebrew merged with
+    Devanagari), so this is a batch, not an accident.
+
+    A voice whose vocabulary is wrong cannot be judged by listening to it, and
+    calling it GIBBERISH hides a bundle that needs replacing behind a verdict
+    that sounds like a quality problem. Detected here so it is named.
+    """
+    BLOCKS = [("Hebrew", 0x0590, 0x05FF), ("Arabic", 0x0600, 0x06FF),
+              ("Devanagari", 0x0900, 0x097F), ("Cyrillic", 0x0400, 0x04FF),
+              ("Han", 0x4E00, 0x9FFF), ("Hangul", 0xAC00, 0xD7AF),
+              ("Ethiopic", 0x1200, 0x137F), ("Bengali", 0x0980, 0x09FF),
+              ("Thai", 0x0E00, 0x0E7F), ("Greek", 0x0370, 0x03FF)]
+    def blocks_of(text):
+        return {name for ch in text for name, lo, hi in BLOCKS if lo <= ord(ch) <= hi}
+    wanted = blocks_of(ref)
+    counts = {}
+    for sym in pm:
+        if len(sym) != 1:
+            continue                                  # <PAD>, <BLNK> and friends
+        for name, lo, hi in BLOCKS:
+            if lo <= ord(sym) <= hi and name not in wanted:
+                counts[name] = counts.get(name, 0) + 1
+    # One stray symbol is a quirk; a whole alphabet is a merged vocabulary.
+    strays = {k: v for k, v in counts.items() if v >= 10}
+    if not strays:
+        return None
+    return ", ".join(f"{v} {k} letters" for k, v in sorted(strays.items()))
+
+
 def script_agreement(ref: str, hyp: str) -> float:
     """Fraction of the transcript's letters written in the reference's script.
 
@@ -507,6 +563,16 @@ def main():
         else:
             ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)
         row["mapped"] = f"{mapped}/{total}"
+
+        # A WRONG VOCABULARY IS A WRONG BUNDLE, NOT A BAD VOICE.
+        stray = foreign_script(cfg.get("phoneme_id_map", {}), ref)
+        if stray:
+            row["verdict"] = "BADVOCAB"
+            row["detail"] = (f"vocabulary contains {stray} — this is not this "
+                             f"language's vocabulary, so every symbol indexes the "
+                             f"wrong embedding row; the BUNDLE needs replacing")
+            results.append(row); continue
+
         if mapped == 0:
             row["verdict"] = "UNMAPPED"
             row["detail"] = "vocabulary cannot represent this script (needs romanisation)"
@@ -551,7 +617,7 @@ def main():
         heard = judge.hear(wav, lang3)
         row["judge"] = "mms-1b-all"
         if heard is None:
-            heard = whisper_hear(wav, tag)          # no MMS adapter -> try whisper
+            heard = whisper_hear(wav, WHISPER_LANG.get(tag, tag))          # no MMS adapter -> try whisper
             row["judge"] = "whisper"
 
         # A RECOGNISER WRITING IN THE WRONG SCRIPT IS NOT A VERDICT ON THE VOICE.
@@ -571,7 +637,7 @@ def main():
         # mms declined it and whisper-tiny hallucinated the English stock phrase
         # "See you next time!" on 1.4 s of real Sinhala speech.
         if heard and script_agreement(ref, heard) < 0.6:
-            other = (whisper_hear(wav, tag) if row["judge"] == "mms-1b-all"
+            other = (whisper_hear(wav, WHISPER_LANG.get(tag, tag)) if row["judge"] == "mms-1b-all"
                      else judge.hear(wav, lang3))
             if other and script_agreement(ref, other) > script_agreement(ref, heard):
                 heard = other
