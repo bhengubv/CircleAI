@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CircleAI.Voice;
 
@@ -96,7 +97,13 @@ public sealed class NativeEspeakPhonemizer : IPhonemizer, IDisposable
                     if (cursor == IntPtr.Zero) break;
                 }
 
-                return PiperVoiceConfig.SplitPhonemeString(sb.ToString().Trim());
+                // "(en)hello(af)" - espeak annotates a language switch whenever the
+                // text is not in the voice's own language, which real user text does
+                // constantly (an Afrikaans sentence containing "WhatsApp"). They are
+                // annotations, not phonemes; left in, the letters inside the brackets
+                // get mapped and spoken aloud.
+                var text2 = Regex.Replace(sb.ToString().Trim(), @"\([^)]*\)", "").Trim();
+                return PiperVoiceConfig.SplitPhonemeString(text2);
             }
             finally
             {

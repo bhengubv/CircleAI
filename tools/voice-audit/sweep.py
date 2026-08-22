@@ -11,7 +11,7 @@ Needs Python 3.10 here (torch + transformers live there, not in 3.12):
 Writes tools/voice-audit/results.json and prints a table. See README.md for why
 this exists and what each verdict means.
 """
-import argparse, json, pathlib, subprocess, sys, urllib.request, wave, shutil, warnings
+import argparse, json, pathlib, re, subprocess, sys, urllib.request, wave, shutil, warnings
 
 sys.stdout.reconfigure(encoding="utf-8")
 warnings.filterwarnings("ignore")
@@ -124,6 +124,90 @@ def encode(text: str, pm: dict) -> tuple[list[int], int, int]:
         ids += (v if isinstance(v, list) else [v]) + pad
         mapped += 1
     return ids, mapped, len(chars)
+
+
+ESPEAK_EXE = None
+
+
+def espeak_ipa(text: str, voice: str) -> str | None:
+    """Run espeak-ng and return IPA. None when espeak is not on this machine."""
+    global ESPEAK_EXE
+    if ESPEAK_EXE is None:
+        import os
+        cands = [shutil.which("espeak-ng"), shutil.which("espeak"),
+                 str(pathlib.Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+                     / "eSpeak NG" / "espeak-ng.exe")]
+        ESPEAK_EXE = next((c for c in cands if c and pathlib.Path(c).exists()), "")
+    if not ESPEAK_EXE:
+        return None
+    # TEXT GOES IN ON STDIN, NEVER AS AN ARGUMENT. espeak-ng.exe reads argv
+    # through the ANSI code page on Windows, so Devanagari, Cyrillic, Hangul,
+    # Bengali, Sinhala and Arabic script all arrive as nothing — and it exits 0
+    # with EMPTY output rather than failing, which is the silent kind. Latin
+    # scripts survive, so fr/es/pt/en/id/nl looked fine and every non-Latin
+    # espeak voice looked like it had no phonemizer at all. UTF-8 on stdin is
+    # read as UTF-8 and all six phonemise correctly.
+    try:
+        out = subprocess.run([ESPEAK_EXE, "-q", "-v", voice, "--ipa=3"],
+                             input=text.encode("utf-8"), capture_output=True, timeout=60)
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    ipa = out.stdout.decode("utf-8", "replace").strip()
+    # espeak marks language switches as "(en)...(ko)". They are annotations, not
+    # phonemes; left in, the letters inside them get mapped and spoken.
+    ipa = re.sub(r"\([^)]*\)", "", ipa).strip()
+    return ipa
+
+
+def espeak_encode(text: str, cfg: dict) -> tuple[list[int], int, int, str]:
+    """Ids for the espeak family — the one the sweep was never doing.
+
+    THIS WAS THE BUG THAT MADE fr AND pt "GIBBERISH". `encode()` below maps raw
+    LETTERS through a table keyed by IPA PHONEMES. For Spanish that nearly works,
+    because the orthography is close to phonemic and most Latin letters double as
+    IPA symbols. For French it is not speech at all: "Bonjour mon ami" is
+    /bɔ̃ʒˈuʁ mɔ̃n amˈi/, and feeding the spelling drops both nasal vowels, turns
+    ʒ into IPA j (the "y" glide, so bonjour comes out "bon-yoor") and ʁ into a
+    trilled r. Portuguese loses ŋ, dʒ, æ and ʊ the same way. Even English loses
+    its first sound, because IPA ɡ is U+0261 and the letter g is not.
+
+    The config SAYS so — `phoneme_type: "espeak"` and `espeak.voice` name the
+    phonemiser and the voice to use. Nothing had to be guessed; it simply was
+    not read. Every character of the real French IPA is already in that voice's
+    map, stress marks and combining tilde included.
+
+    Encoding is Piper's own: BOS, pad, then symbol+pad per phoneme, then EOS,
+    with the ids taken from the config — `_` is 0 in these exports, NOT the 3
+    that Piper-family voices elsewhere use. That is THE PAD RULE working as
+    intended: read the blank from the model, never assume it.
+
+    Word boundaries are KEPT. ' ' is a real symbol in these maps (id 3 here) and
+    espeak marks the boundaries; dropping them, as the grapheme path does, runs
+    the sentence together as one word.
+    """
+    pm = cfg["phoneme_id_map"]
+    voice = (cfg.get("espeak") or {}).get("voice") or "en-us"
+    ipa = espeak_ipa(text, voice)
+    if ipa is None:
+        return [], 0, 0, ""
+
+    def ids_for(sym):
+        v = pm.get(sym)
+        return list(v) if isinstance(v, list) else ([v] if v is not None else None)
+
+    pad = ids_for("_") or []
+    ids = (ids_for("^") or []) + pad
+    mapped = 0
+    for ch in ipa:
+        got = ids_for(ch)
+        if got is None:
+            continue
+        ids += got + pad
+        mapped += 1
+    ids += ids_for("$") or []
+    return ids, mapped, len(ipa), ipa
 
 
 def lexicon_encode(text: str, lex_path: pathlib.Path, tok_path: pathlib.Path):
@@ -388,7 +472,20 @@ def main():
 
         cfg = json.loads(cfg_p.read_text(encoding="utf-8")) if cfg_p else {}
         tones = None
-        if cfg.get("phoneme_id_map"):
+        if cfg.get("phoneme_type") == "espeak" and cfg.get("phoneme_id_map"):
+            # The voice declares a phonemiser; honour it. Falling back to the
+            # grapheme path here is what produced the fr/pt "GIBBERISH" verdicts,
+            # so a missing espeak is reported as its own verdict rather than
+            # silently measuring the wrong thing.
+            ids, mapped, total, ipa = espeak_encode(ref, cfg)
+            if not ipa:
+                row["verdict"] = "NOESPEAK"
+                row["detail"] = ("this voice is phoneme-driven (phoneme_type=espeak, "
+                                 f"voice={(cfg.get('espeak') or {}).get('voice')}) and "
+                                 "espeak-ng is not installed on this machine")
+                results.append(row); continue
+            row["ipa"] = ipa
+        elif cfg.get("phoneme_id_map"):
             ids, mapped, total = encode(ref, cfg["phoneme_id_map"])
         else:
             ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)

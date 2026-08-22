@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CircleAI.Voice;
 
@@ -81,7 +82,19 @@ public sealed class EspeakPhonemizer : IPhonemizer
         psi.ArgumentList.Add("-q");
         psi.ArgumentList.Add("-v"); psi.ArgumentList.Add(_voice);
         psi.ArgumentList.Add("--ipa=3");
-        psi.ArgumentList.Add(text);
+
+        // THE TEXT GOES IN ON STDIN, NOT AS AN ARGUMENT.
+        //
+        // espeak-ng.exe reads argv through the ANSI code page on Windows, so
+        // Devanagari, Cyrillic, Hangul, Bengali, Sinhala and Arabic script never
+        // reach it - and it exits 0 with EMPTY output rather than failing, which
+        // is the silent kind. Passed as an argument, Hindi, Russian, Korean,
+        // Urdu, Bengali and Sinhala all produced nothing at all; fed on stdin as
+        // UTF-8, all six phonemise correctly. Latin script survives either way,
+        // which is precisely why this hid - every language anyone spot-checked
+        // in English or French worked.
+        psi.RedirectStandardInput = true;
+        psi.StandardInputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         Process proc;
         try
@@ -98,12 +111,20 @@ public sealed class EspeakPhonemizer : IPhonemizer
                 ex);
         }
 
+        proc.StandardInput.Write(text);
+        proc.StandardInput.Close();
+
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
 
         // espeak emits stress marks (ˈ ˌ), length (ː) and IPA letters — exactly
         // the symbols in Piper's phoneme_id_map. Split by codepoint.
         var cleaned = stdout.Replace("\r", "").Replace("\n", " ").Trim();
+        // "(en)hello(ko)" - espeak annotates language switches when the text is
+        // not in the voice's own language. They are not phonemes; left in, the
+        // letters inside them get mapped and spoken aloud.
+        cleaned = Regex.Replace(cleaned, @"\([^)]*\)", "").Trim();
+
         return PiperVoiceConfig.SplitPhonemeString(cleaned);
     }
 }

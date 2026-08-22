@@ -440,7 +440,14 @@ public class LanguagePickerActivity : Activity
 #if IT_VOICE_ANDROID
             var store = System.IO.Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
-            var wav = System.IO.Path.Combine(FilesDir!.AbsolutePath, $"say-{row.Tag}.wav");
+            // Written to the EXTERNAL files dir when there is one. Same app-private
+            // storage as far as the user is concerned, but adb can read it without
+            // run-as — and run-as refuses on a Release build ("package not
+            // debuggable"), which is the only build worth judging. Without this the
+            // audio a language actually produces cannot be got off the phone, so
+            // "it spoke" rests on a symbol count instead of on listening to it.
+            var audioDir = GetExternalFilesDir(null)?.AbsolutePath ?? FilesDir!.AbsolutePath;
+            var wav = System.IO.Path.Combine(audioDir, $"say-{row.Tag}.wav");
 
             // OFF THE UI THREAD, DELIBERATELY. RunCataloguedAsync is `async`, but an
             // async method runs SYNCHRONOUSLY until its first real await, and on the
