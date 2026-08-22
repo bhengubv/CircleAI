@@ -12,11 +12,13 @@
 package circleai_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	circleai "github.com/bhengubv/CircleAI/go"
@@ -170,5 +172,84 @@ func TestVoiceEmptyTextEncodesToNothing(t *testing.T) {
 	sp, _ := loadSpFixture(t)
 	if got := sp.Encode(""); len(got) != 0 {
 		t.Errorf("got %v, want empty", got)
+	}
+}
+
+// ── WAV I/O ─────────────────────────────────────────────────────────────────
+
+type wavFixture struct {
+	Cases []struct {
+		Name      string `json:"name"`
+		WavBase64 string `json:"wavBase64"`
+		Expected  struct {
+			SampleCount int       `json:"sampleCount"`
+			Samples     []float64 `json:"samples"`
+		} `json:"expected"`
+	} `json:"cases"`
+}
+
+func TestVoiceWavIoMatchesReference(t *testing.T) {
+	var fix wavFixture
+	readVoiceFixture(t, "voice_wav_io.json", &fix)
+	if len(fix.Cases) == 0 {
+		t.Fatal("fixture has no cases")
+	}
+
+	for _, c := range fix.Cases {
+		raw, err := base64.StdEncoding.DecodeString(c.WavBase64)
+		if err != nil {
+			t.Fatalf("%s: bad base64: %v", c.Name, err)
+		}
+		samples, _, channels, err := circleai.ParseWav(raw, c.Name)
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+
+		// Downmix, as ReadWavMono24k would. Every fixture case is already 24 kHz.
+		if channels > 1 {
+			mono := make([]float32, len(samples)/channels)
+			for i := range mono {
+				var sum float32
+				for ch := 0; ch < channels; ch++ {
+					sum += samples[i*channels+ch]
+				}
+				mono[i] = sum / float32(channels)
+			}
+			samples = mono
+		}
+
+		if len(samples) != c.Expected.SampleCount {
+			t.Errorf("%s: got %d samples, want %d", c.Name, len(samples), c.Expected.SampleCount)
+			continue
+		}
+		for i, want := range c.Expected.Samples {
+			if diff := float64(samples[i]) - want; diff > 1e-6 || diff < -1e-6 {
+				t.Errorf("%s sample %d: got %v, want %v", c.Name, i, samples[i], want)
+			}
+		}
+	}
+}
+
+func TestVoiceWavIoWalksChunksRatherThanAssumingByte44(t *testing.T) {
+	// The LIST-chunk case is the one that matters: a reader that assumes data
+	// starts at byte 44 reads metadata as audio.
+	var fix wavFixture
+	readVoiceFixture(t, "voice_wav_io.json", &fix)
+
+	var plain, listed []float32
+	for _, c := range fix.Cases {
+		raw, _ := base64.StdEncoding.DecodeString(c.WavBase64)
+		samples, _, _, err := circleai.ParseWav(raw, c.Name)
+		if err != nil {
+			t.Fatalf("%s: %v", c.Name, err)
+		}
+		if strings.Contains(c.Name, "plain") {
+			plain = samples
+		} else if strings.Contains(c.Name, "LIST") {
+			listed = samples
+		}
+	}
+	if !reflect.DeepEqual(plain, listed) {
+		t.Errorf("a LIST chunk before the data changed the decoded audio: %v vs %v", plain, listed)
 	}
 }

@@ -161,3 +161,90 @@ fn empty_text_encodes_to_nothing() {
     let (sp, _) = load_sp();
     assert!(sp.encode("").is_empty());
 }
+
+// ── WAV I/O ─────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct WavExpected {
+    #[serde(rename = "sampleCount")]
+    sample_count: usize,
+    samples: Vec<f32>,
+}
+
+#[derive(Deserialize)]
+struct WavCase {
+    name: String,
+    #[serde(rename = "wavBase64")]
+    wav_base64: String,
+    expected: WavExpected,
+}
+
+#[derive(Deserialize)]
+struct WavFixture {
+    cases: Vec<WavCase>,
+}
+
+/// Minimal base64 decoder — the port takes no third-party crates for this.
+fn b64(input: &str) -> Vec<u8> {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in input.bytes() {
+        if c == b'=' || c.is_ascii_whitespace() {
+            continue;
+        }
+        let v = T.iter().position(|&t| t == c).expect("valid base64") as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    out
+}
+
+fn mono(wav: &circle_ai::voice_wav::Wav) -> Vec<f32> {
+    let ch = wav.channels as usize;
+    if ch <= 1 {
+        return wav.samples.clone();
+    }
+    wav.samples
+        .chunks_exact(ch)
+        .map(|f| f.iter().sum::<f32>() / ch as f32)
+        .collect()
+}
+
+#[test]
+fn wav_io_matches_reference() {
+    let fixture: WavFixture = read_fixture("voice_wav_io.json");
+    assert!(!fixture.cases.is_empty(), "fixture has no cases");
+
+    for case in &fixture.cases {
+        let wav = circle_ai::voice_wav::parse(&b64(&case.wav_base64))
+            .unwrap_or_else(|e| panic!("{}: {e}", case.name));
+        let samples = mono(&wav);
+        assert_eq!(samples.len(), case.expected.sample_count, "sampleCount for {}", case.name);
+        for (i, want) in case.expected.samples.iter().enumerate() {
+            assert!(
+                (samples[i] - want).abs() < 1e-6,
+                "sample {i} of {}: got {}, want {want}",
+                case.name,
+                samples[i]
+            );
+        }
+    }
+}
+
+#[test]
+fn wav_io_walks_chunks_rather_than_assuming_byte_44() {
+    // The LIST-chunk case is the one that matters: a reader that assumes data
+    // starts at byte 44 reads metadata as audio.
+    let fixture: WavFixture = read_fixture("voice_wav_io.json");
+    let plain = fixture.cases.iter().find(|c| c.name.contains("plain")).unwrap();
+    let listed = fixture.cases.iter().find(|c| c.name.contains("LIST")).unwrap();
+
+    let a = circle_ai::voice_wav::parse(&b64(&plain.wav_base64)).unwrap();
+    let b = circle_ai::voice_wav::parse(&b64(&listed.wav_base64)).unwrap();
+    assert_eq!(a.samples, b.samples, "a LIST chunk before the data changed the decoded audio");
+}
