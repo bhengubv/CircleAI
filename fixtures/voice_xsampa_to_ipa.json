@@ -1,0 +1,127 @@
+{
+  "_comment": "X-SAMPA (NchltPhonemizer) -> IPA (Mimic3-family voices). Longest-match on WHOLE tokens; 'g' is U+0261 LATIN SMALL LETTER SCRIPT G, not ASCII 'g'. An unmapped phone must be reported, never dropped silently.",
+  "_source": "src/CircleAI.Voice/XsampaToIpa.cs",
+  "knownPhones": [
+    "2:",
+    "9",
+    "9y",
+    "@",
+    "@i",
+    "@u",
+    "A:",
+    "A:r",
+    "E",
+    "N",
+    "O",
+    "S",
+    "Z",
+    "a",
+    "b",
+    "d",
+    "f",
+    "g",
+    "h\\",
+    "i",
+    "i@",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "p",
+    "r",
+    "s",
+    "t",
+    "u",
+    "u@",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z",
+    "{"
+  ],
+  "cases": [
+    {
+      "xsampa": [
+        "h\\",
+        "O",
+        "n",
+        "t"
+      ],
+      "ipa": [
+        "h",
+        "ɔ",
+        "n",
+        "t"
+      ],
+      "unmapped": [],
+      "canSayAll": true
+    },
+    {
+      "xsampa": [
+        "A:r",
+        "b",
+        "e",
+        "i"
+      ],
+      "ipa": [
+        "ɑ",
+        "ː",
+        "r",
+        "b",
+        "i"
+      ],
+      "unmapped": [
+        "e"
+      ],
+      "canSayAll": false
+    },
+    {
+      "xsampa": [
+        "g",
+        "u",
+        "d"
+      ],
+      "ipa": [
+        "ɡ",
+        "u",
+        "d"
+      ],
+      "unmapped": [],
+      "canSayAll": true
+    },
+    {
+      "xsampa": [
+        "9y",
+        "@i",
+        "@u"
+      ],
+      "ipa": [
+        "œ",
+        "y",
+        "ə",
+        "i",
+        "ə",
+        "u"
+      ],
+      "unmapped": [],
+      "canSayAll": true
+    },
+    {
+      "xsampa": [
+        "a",
+        "ZZZ",
+        "b"
+      ],
+      "ipa": [
+        "a",
+        "b"
+      ],
+      "unmapped": [
+        "ZZZ"
+      ],
+      "canSayAll": false
+    }
+  ]
+}

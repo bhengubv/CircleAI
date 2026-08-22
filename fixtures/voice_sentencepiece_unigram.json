@@ -1,0 +1,95 @@
+{
+  "_comment": "SentencePiece unigram encoding. VITERBI over the piece lattice, NOT greedy longest-match: scores are not monotone in piece length, and this vocabulary is built so the two disagree. Normalise NFKC, replace ' ' with U+2581, prepend one. Unknown characters fall back to <0xNN> BYTE pieces and are never dropped.",
+  "_source": "src/CircleAI.Voice/SentencePieceUnigram.cs",
+  "fallbackPenalty": 10,
+  "vocab": {
+    "<unk>": 0,
+    "<s>": 1,
+    "</s>": 2,
+    "<pad>": 3,
+    "▁": 4,
+    "▁he": 5,
+    "▁hell": 6,
+    "▁hello": 7,
+    "h": 8,
+    "e": 9,
+    "l": 10,
+    "o": 11,
+    "w": 12,
+    "r": 13,
+    "d": 14,
+    "▁world": 15,
+    "▁wor": 16,
+    "ld": 17,
+    "lo": 18,
+    "ll": 19,
+    "<0xC3>": 20,
+    "<0xA9>": 21
+  },
+  "scores": {
+    "<unk>": 0,
+    "<s>": 0,
+    "</s>": 0,
+    "<pad>": 0,
+    "▁": -6,
+    "▁he": -4,
+    "▁hell": -2,
+    "▁hello": -9,
+    "h": -7,
+    "e": -5,
+    "l": -5,
+    "o": -1,
+    "w": -7,
+    "r": -7,
+    "d": -6,
+    "▁world": -1.5,
+    "▁wor": -5,
+    "ld": -3,
+    "lo": -4,
+    "ll": -4,
+    "<0xC3>": -20,
+    "<0xA9>": -20
+  },
+  "cases": [
+    {
+      "text": "hello world",
+      "ids": [
+        6,
+        11,
+        15
+      ]
+    },
+    {
+      "text": "hello",
+      "ids": [
+        6,
+        11
+      ]
+    },
+    {
+      "text": "world",
+      "ids": [
+        15
+      ]
+    },
+    {
+      "text": "hell",
+      "ids": [
+        6
+      ]
+    },
+    {
+      "text": "",
+      "ids": []
+    },
+    {
+      "text": "hé",
+      "ids": [
+        4,
+        8,
+        20,
+        21
+      ]
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "_comment": "RIFF/WAVE reading. WALK THE CHUNKS — data does not always start at byte 44; a LIST or fact chunk before it is normal and assuming otherwise reads metadata as audio. Samples are mono float in [-1,1]; multi-channel is averaged.",
+  "_source": "src/CircleAI.Voice/WavIo.cs",
+  "cases": [
+    {
+      "name": "pcm16-mono-plain",
+      "wavBase64": "UklGRioAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YQYAAAAAAABAAMA=",
+      "expected": {
+        "sampleCount": 3,
+        "samples": [
+          0,
+          0.5,
+          -0.5
+        ]
+      }
+    },
+    {
+      "name": "pcm16-mono-with-LIST-chunk",
+      "wavBase64": "UklGRjYAAABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAATElTVAQAAABJTkZPZGF0YQYAAAAAAABAAMA=",
+      "expected": {
+        "sampleCount": 3,
+        "samples": [
+          0,
+          0.5,
+          -0.5
+        ]
+      }
+    },
+    {
+      "name": "pcm16-stereo-averaged",
+      "wavBase64": "UklGRiwAAABXQVZFZm10IBAAAAABAAIAwF0AAAB3AQAEABAAZGF0YQgAAAAAQADAAEAAQA==",
+      "expected": {
+        "sampleCount": 2,
+        "samples": [
+          0,
+          0.5
+        ]
+      }
+    }
+  ]
+}

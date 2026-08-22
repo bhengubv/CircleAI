@@ -143,10 +143,21 @@ public sealed class SentencePieceUnigram
             }
             else
             {
+                // BACKWARDS, because this whole list is built backwards.
+                //
+                // The lattice is walked from the end, so `reversed` accumulates
+                // in reverse and is flipped once at the bottom. A multi-byte
+                // character appended in forward order therefore comes out
+                // byte-reversed: é is UTF-8 C3 A9 and was being emitted A9 C3.
+                // Nothing throws — those are real pieces with real ids — so the
+                // model simply pronounces a different character, and only for
+                // text outside ASCII, which is precisely the African and Asian
+                // languages this catalogue exists for.
                 var raw = s.Substring(start, i - start);
-                foreach (var b in Encoding.UTF8.GetBytes(raw))
+                var bytes = Encoding.UTF8.GetBytes(raw);
+                for (var b = bytes.Length - 1; b >= 0; b--)
                 {
-                    if (_ids.TryGetValue($"<0x{b:X2}>", out var byteId)) reversed.Add(byteId);
+                    if (_ids.TryGetValue($"<0x{bytes[b]:X2}>", out var byteId)) reversed.Add(byteId);
                 }
             }
             i = start;
