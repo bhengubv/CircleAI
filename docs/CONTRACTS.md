@@ -505,6 +505,93 @@ interface IToolBridge {
 
 ---
 
+## Module: voice
+
+The C# assembly `CircleAI.Voice` is 52 files; **this module is the portable
+subset** — the parts with no ONNX Runtime binding and no native library behind
+them. Everything else in that assembly (the six TTS engines, espeak, Open JTalk,
+Whisper, the wake-word stack) is deliberately NOT in this contract, because it
+cannot be honoured without per-platform native builds.
+
+**Parity here is PROVEN, not asserted.** The C# reference emits the expected
+answers into `fixtures/voice_*.json` via `dotnet run --project tools/voice-fixtures`,
+and every port asserts against those files. A port that drifts fails; a port
+that agrees is provably identical rather than merely plausible. **A changed
+fixture is a contract change** — if regenerating produces a diff you did not
+intend, the C# side moved and every port has to move with it.
+
+### XsampaToIpa
+
+X-SAMPA (as `NchltPhonemizer` emits) → IPA (as Mimic3-family voices expect).
+38 phones, exactly the distinct set in `nchlt_afr.dict`.
+
+| Operation | Contract |
+|---|---|
+| `convert(phones) -> (ipa, unmapped)` | Longest match on WHOLE tokens; emits ONE CODE POINT per element |
+| `canSayAll(phones) -> bool` | False when any phone has no mapping |
+| `knownPhones() -> [string]` | The 38 keys |
+
+- **`g` maps to U+0261 ɡ, not ASCII `g`.** The voices' vocabularies carry the
+  IPA letter; ASCII `g` misses and is dropped. Invisible in a diff.
+- **Multi-character tokens match whole.** `A:r` is one token, not `A` + `:` + `r`.
+- **Unmapped phones are RETURNED, never dropped silently.** An unmapped phone
+  produces no sound and the audio is merely shorter — every acoustic measure
+  still passes, so a caller that cannot see the misses cannot refuse.
+- `h\` → `h` is the one deliberate approximation (X-SAMPA `h\` is ɦ; these
+  voices have no ɦ). Voicing is lost, place and manner are right.
+
+### SentencePieceUnigram
+
+| Operation | Contract |
+|---|---|
+| `encode(text) -> [id]` | **VITERBI** over the piece lattice, with byte fallback |
+
+- **VITERBI, NOT GREEDY LONGEST-MATCH.** Unigram scores are not monotone in
+  piece length, so greedy silently produces plausible-but-wrong segmentations.
+  The fixture vocabulary is built so the two disagree — `▁hello` scores worse
+  than `▁hell` + `o` — and a greedy port fails on that case alone.
+- **Normalisation:** NFKC, then `' '` → U+2581, with one U+2581 prepended.
+- **Byte fallback is mandatory.** A character no piece covers is emitted as
+  `<0xNN>` pieces and never dropped — dropping makes the audio shorter than the
+  text, which no acoustic check catches.
+- **Byte order is UTF-8 order.** The lattice is walked backwards, so a naive
+  implementation emits multi-byte characters reversed (é is C3 A9 and comes out
+  A9 C3). Nothing throws — those are real pieces with real ids — the model just
+  says a different character, and only outside ASCII, which is exactly the
+  African and Asian languages this catalogue serves. **This bug was live in the
+  C# reference and the fixtures caught it.**
+- **Index by CODE POINT, not by UTF-16 unit or byte.** A piece boundary inside a
+  surrogate pair or a UTF-8 sequence produces pieces that match nothing.
+
+### Known port gaps
+
+Recorded rather than hidden. Both are honest divergences on input the fixtures
+do not exercise:
+
+| Port | Gap |
+|---|---|
+| Rust | No NFKC — no stdlib normaliser, and `unicode-normalization` was not pulled in for a step no fixture covers. Byte-identical on already-normalised input. |
+| C | No NFKC, same reason. Also the ONLY port whose test transcribes the fixture values as literals instead of reading the JSON — the C port has no JSON reader. Change a fixture, change those literals in the same commit. |
+
+### Verified
+
+All ten, from the same fixtures:
+
+| Port | Result |
+|---|---|
+| C# (reference) | full suite green |
+| Swift | 7 tests |
+| Go | 7 tests |
+| Rust | 7 tests |
+| TypeScript | 7 tests |
+| HarmonyOS (ArkTS) | 7 tests |
+| Python | 7 tests |
+| Kotlin | 7 tests |
+| Android (Kotlin) | 7 tests |
+| C | 23 checks |
+
+---
+
 ## Module: sync
 
 ### SyncDeliveryMode
