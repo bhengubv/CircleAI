@@ -34,6 +34,59 @@ namespace CircleAI.Samples.It.Voice;
 /// <summary>Runs on-device TTS synthesis once and returns a pull-able report.</summary>
 public static class ItTtsProbe
 {
+    /// <summary>
+    /// Run the Pocket-TTS pipeline on this device and report what it cost.
+    /// </summary>
+    /// <remarks>
+    /// Pocket-TTS is five graphs and an autoregressive loop, not the single-graph
+    /// VITS every other catalogued voice uses, so it cannot go through
+    /// <c>RunCataloguedAsync</c> — see <c>PocketTtsEngine</c>. It gets its own
+    /// entry point rather than a special case inside that one.
+    ///
+    /// WHAT THIS IS FOR IS THE NUMBER AT THE END. "Real-time on CPU" is measured
+    /// on laptops and Apple Silicon; this phone is a 2019 Kirin 710, and the only
+    /// figure that decides whether Pocket-TTS can ship here is milliseconds of
+    /// compute per second of speech ON IT. Desktop measured 1277 ms/s — already
+    /// slower than real time before the phone is involved.
+    /// </remarks>
+    public static async Task<string> RunPocketAsync(
+        string bundleDir, string referenceWav, string text, string wavPath,
+        Action<string>? log = null, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(bundleDir))
+            return $"pocket-tts bundle not found at {bundleDir}\n";
+
+        var missing = new[] { "text_conditioner.onnx", "encoder.onnx", "vocab.json", "token_scores.json" }
+            .Where(f => !File.Exists(Path.Combine(bundleDir, f))).ToList();
+        if (missing.Count > 0)
+            return $"pocket-tts bundle incomplete — missing {string.Join(", ", missing)}\n";
+        if (!File.Exists(referenceWav))
+            return $"pocket-tts reference voice not found at {referenceWav}\n";
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        log?.Invoke("engine: loading pocket-tts");
+        using var engine = CircleAI.Voice.PocketTtsEngine.Create(bundleDir, referenceWav);
+        var loadMs = sw.ElapsedMilliseconds;
+        log?.Invoke($"engine: loaded in {loadMs} ms");
+
+        sw.Restart();
+        log?.Invoke("saying it");
+        var result = await engine.SynthesiseAsync(text, ct).ConfigureAwait(false);
+        var genMs = sw.ElapsedMilliseconds;
+
+        if (result.AudioData.Length == 0)
+            return "pocket-tts loaded but produced 0 audio bytes\n";
+
+        WriteWav(wavPath, result.AudioData.Span, result.SampleRate, result.Channels, result.BitsPerSample);
+        var seconds = (result.AudioData.Length / 2.0) / result.SampleRate;
+        var perSecond = genMs / Math.Max(seconds, 0.001);
+
+        log?.Invoke($"pocket: {perSecond:F0} ms/s of speech");
+        return "SYNTHESIS OK\n" +
+               $"pocket-tts: {seconds:F2} s of audio in {genMs} ms ({perSecond:F0} ms per second of speech)\n" +
+               $"load {loadMs} ms, {result.SampleRate} Hz, {new FileInfo(wavPath).Length:N0} bytes\n";
+    }
+
     /// <summary>A fixed phrase — a pangram, so a real synthesis exercises every letter.</summary>
     public const string Phrase = "The quick brown fox jumps over the lazy dog.";
 

@@ -67,6 +67,39 @@ var outDir = args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])
 //       isolates the SYNTHESIS half, needs no espeak.
 //   text mode ("--text ..."): arg[1..] is plain English, run through
 //       EspeakPhonemizer — proves the FULL text→speech chain.
+// POCKET MODE: the five-graph Pocket-TTS pipeline, which is a different engine
+// entirely (see PocketTtsEngine). Proves the C# port against the same bundle and
+// reference audio the Python scaffold used, so any divergence is the port's.
+//   tts-speak <outDir> --pocket <bundleDir> <referenceWav> <text...>
+if (args.Length > 4 && args[1] == "--pocket")
+{
+    var bundleDir = args[2];
+    var refWav    = args[3];
+    var sayText   = string.Join(' ', args.Skip(4));
+    Directory.CreateDirectory(args[0]);
+
+    Console.WriteLine($"bundle : {bundleDir}");
+    Console.WriteLine($"voice  : {refWav}");
+    Console.WriteLine($"text   : {sayText}");
+
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    using var pocket = PocketTtsEngine.Create(bundleDir, refWav);
+    Console.WriteLine($"loaded : {sw.ElapsedMilliseconds} ms");
+
+    sw.Restart();
+    var pocketResult = await pocket.SynthesiseAsync(sayText);
+    var pocketSamples = pocketResult.AudioData.Length / 2;
+    var pocketSeconds = pocketSamples / (double)pocketResult.SampleRate;
+    Console.WriteLine($"spoke  : {pocketSeconds:F2} s of audio in {sw.ElapsedMilliseconds} ms " +
+                      $"({sw.ElapsedMilliseconds / Math.Max(pocketSeconds, 0.001):F0} ms per second of speech)");
+
+    var pocketWav = Path.Combine(args[0], "pocket.wav");
+    WriteWav(pocketWav, pocketResult.AudioData.Span, pocketResult.SampleRate,
+             pocketResult.Channels, pocketResult.BitsPerSample);
+    Console.WriteLine($"wrote  : {pocketWav}");
+    return 0;
+}
+
 var textMode = args.Length > 1 && args[1] == "--text";
 var input = textMode
     ? string.Join(' ', args.Skip(2))

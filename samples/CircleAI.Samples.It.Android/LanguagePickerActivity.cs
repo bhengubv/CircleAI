@@ -10,6 +10,7 @@
 // speech itself, and nothing leaves the device.
 
 using System;
+using Android.Util;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -463,13 +464,37 @@ public class LanguagePickerActivity : Activity
             // at the end, so the row sat on "preparing…" for six seconds and the
             // app looked hung — which is exactly what it was. Task.Run frees the
             // looper so those callbacks land while the work is still happening.
-            var report = await Task.Run(
-                () => CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
-                    store, row.Tag, row.Phrase, wav,
-                    line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
-                cts.Token);
+            // Pocket-TTS when its bundle is side-loaded, for the languages it
+            // covers. It is a different engine (five graphs and an AR loop, not
+            // one VITS graph), so it takes its own entry point rather than a
+            // branch inside the catalogued path — and it only ever runs when
+            // somebody has deliberately put the bundle on the device, so the
+            // ordinary catalogue behaviour is unchanged for everyone else.
+            var pocketDir = System.IO.Path.Combine(audioDir, "pocket-tts");
+            var usePocket = PocketLanguages.Contains(row.Tag) && System.IO.Directory.Exists(pocketDir);
+
+            var report = usePocket
+                ? await Task.Run(
+                    () => CircleAI.Samples.It.Voice.ItTtsProbe.RunPocketAsync(
+                        pocketDir, System.IO.Path.Combine(pocketDir, "loona.wav"),
+                        row.Phrase, wav,
+                        line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
+                    cts.Token)
+                : await Task.Run(
+                    () => CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                        store, row.Tag, row.Phrase, wav,
+                        line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
+                    cts.Token);
 
             if (cts.IsCancellationRequested) return;
+
+            // The cost belongs in logcat, not only on a caption that is about to
+            // be replaced by the phrase. Whether Pocket-TTS can ship on this
+            // phone is one number — milliseconds of compute per second of speech
+            // — and it is worth being able to read it after the fact.
+            if (usePocket)
+                foreach (var line in report.Split('\n'))
+                    if (line.Trim().Length > 0) Log.Info("CircleAI.It", line.Trim());
 
             if (System.IO.File.Exists(wav) && report.Contains("SYNTHESIS OK", StringComparison.Ordinal))
             {
@@ -498,6 +523,17 @@ public class LanguagePickerActivity : Activity
         catch (System.OperationCanceledException) { EndHeartbeat(); RestoreSub(row); }
         catch (Exception ex) { EndHeartbeat(); SetSub(row, ex.Message); }
     }
+
+    /// <summary>The six languages Pocket-TTS actually covers.</summary>
+    /// <remarks>
+    /// Its own list, not the catalogue's: German and Italian are not catalogued
+    /// here at all, and the rest already have voices. Listing them explicitly
+    /// keeps the bundle from being used for a language it was never trained on
+    /// — which would produce confident, fluent, wrong speech rather than an
+    /// error.
+    /// </remarks>
+    static readonly HashSet<string> PocketLanguages =
+        new(StringComparer.OrdinalIgnoreCase) { "en", "fr", "es-ES", "es-MX", "pt-BR", "pt-PT", "de", "it" };
 
     // ---- the row's "still working" heartbeat -------------------------------
     //
@@ -572,6 +608,7 @@ public class LanguagePickerActivity : Activity
             return line.Contains("WARM", StringComparison.Ordinal) ? "voice ready" : "loading the voice";
         if (line.StartsWith("phones", StringComparison.OrdinalIgnoreCase))            return "sounding out the words";
         if (line.StartsWith("saying it", StringComparison.OrdinalIgnoreCase))         return "saying it";
+        if (line.StartsWith("pocket:", StringComparison.OrdinalIgnoreCase))           return line;
         if (line.StartsWith("respelt", StringComparison.OrdinalIgnoreCase))           return "saying it";
         if (line.StartsWith("synthesised", StringComparison.OrdinalIgnoreCase))       return "ready to play";
         return "getting ready";
