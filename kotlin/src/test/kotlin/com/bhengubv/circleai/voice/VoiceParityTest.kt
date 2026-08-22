@@ -13,6 +13,7 @@ package com.bhengubv.circleai.voice
 
 import kotlinx.serialization.json.*
 import java.io.File
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -136,5 +137,48 @@ class VoiceParityTest {
     fun `empty text encodes to nothing`() {
         val (sp, _) = loadSp()
         assertEquals(emptyList(), sp.encode(""))
+    }
+
+    // ── WAV I/O ─────────────────────────────────────────────────────────────
+
+    private fun wavCases(): List<JsonObject> =
+        readFixture("voice_wav_io.json")["cases"]!!.jsonArray.map { it.jsonObject }
+
+    private fun decode(case: JsonObject): Wav =
+        WavIo.parse(Base64.getDecoder().decode(case["wavBase64"]!!.jsonPrimitive.content))
+
+    @Test
+    fun `wav io matches reference`() {
+        val cases = wavCases()
+        assertTrue(cases.isNotEmpty(), "fixture has no cases")
+
+        for (case in cases) {
+            val name = case["name"]!!.jsonPrimitive.content
+            val expected = case["expected"]!!.jsonObject
+            val wantCount = expected["sampleCount"]!!.jsonPrimitive.int
+            val wantSamples = expected["samples"]!!.jsonArray.map { it.jsonPrimitive.float }
+
+            val mono = WavIo.toMono24k(decode(case))
+            assertEquals(wantCount, mono.size, "sampleCount for $name")
+            for ((i, want) in wantSamples.withIndex()) {
+                assertTrue(
+                    kotlin.math.abs(mono[i] - want) < 1e-6f,
+                    "sample $i of $name: got ${mono[i]}, want $want",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `wav io walks chunks rather than assuming byte 44`() {
+        // The LIST-chunk case is the one that matters: a reader that assumes data
+        // starts at byte 44 reads metadata as audio.
+        val cases = wavCases()
+        val plain = cases.first { it["name"]!!.jsonPrimitive.content.contains("plain") }
+        val listed = cases.first { it["name"]!!.jsonPrimitive.content.contains("LIST") }
+        assertTrue(
+            decode(plain).samples.contentEquals(decode(listed).samples),
+            "a LIST chunk before the data changed the decoded audio",
+        )
     }
 }

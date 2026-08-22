@@ -11,11 +11,13 @@ phone that cannot map and must be REPORTED rather than dropped.
 """
 from __future__ import annotations
 
+import base64
 import json
 import pathlib
 
 import pytest
 
+from circle_ai.voice_wav import parse_wav, to_mono_24k
 from circle_ai.voice_xsampa import (
     SentencePieceUnigram,
     xsampa_can_say_all,
@@ -112,3 +114,35 @@ def test_byte_fallback_keeps_utf8_order(sp: SentencePieceUnigram, sp_fixture: di
 
 def test_empty_text_encodes_to_nothing(sp: SentencePieceUnigram) -> None:
     assert sp.encode("") == []
+
+
+# ── WAV I/O ─────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="module")
+def wav_fixture() -> dict:
+    return _read("voice_wav_io.json")
+
+
+def test_wav_io_matches_reference(wav_fixture: dict) -> None:
+    cases = wav_fixture["cases"]
+    assert cases, "fixture has no cases"
+    for case in cases:
+        raw = base64.b64decode(case["wavBase64"])
+        mono = to_mono_24k(parse_wav(raw))
+        expected = case["expected"]
+        assert len(mono) == expected["sampleCount"], f"sampleCount for {case['name']}"
+        for i, want in enumerate(expected["samples"]):
+            assert abs(mono[i] - want) < 1e-6, f"sample {i} of {case['name']}"
+
+
+def test_wav_io_walks_chunks_rather_than_assuming_byte_44(wav_fixture: dict) -> None:
+    # The LIST-chunk case is the one that matters: a reader that assumes data
+    # starts at byte 44 reads metadata as audio.
+    cases = {c["name"]: c for c in wav_fixture["cases"]}
+    plain = next(c for n, c in cases.items() if "plain" in n)
+    listed = next(c for n, c in cases.items() if "LIST" in n)
+
+    a = parse_wav(base64.b64decode(plain["wavBase64"])).samples
+    b = parse_wav(base64.b64decode(listed["wavBase64"])).samples
+    assert a == b, "a LIST chunk before the data changed the decoded audio"

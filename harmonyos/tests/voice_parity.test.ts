@@ -19,6 +19,7 @@ import {
   xsampaKnownPhones,
   SentencePieceUnigram,
 } from '../src/voice/xsampa_to_ipa';
+import { parseWav, toMono24k } from '../src/voice/wav_io';
 
 // tests/ -> typescript/ -> CircleAI/ -> fixtures/
 const FIXTURES = path.resolve(__dirname, '..', '..', 'fixtures');
@@ -114,5 +115,47 @@ describe('voice parity — SentencePiece unigram', () => {
 
   it('encodes empty text to nothing', () => {
     assert.deepEqual(sp.encode(''), []);
+  });
+});
+
+interface WavFixture {
+  cases: Array<{
+    name: string;
+    wavBase64: string;
+    expected: { sampleCount: number; samples: number[] };
+  }>;
+}
+
+describe('voice parity — WAV I/O', () => {
+  const fixture = readFixture<WavFixture>('voice_wav_io.json');
+
+  it('matches the reference for every case', () => {
+    assert.ok(fixture.cases.length > 0, 'fixture has no cases');
+    for (const c of fixture.cases) {
+      const raw = new Uint8Array(Buffer.from(c.wavBase64, 'base64'));
+      const wav = parseWav(raw);
+      const mono = toMono24k(wav);
+      assert.equal(mono.length, c.expected.sampleCount, `sampleCount for ${c.name}`);
+      for (let i = 0; i < c.expected.samples.length; i++) {
+        assert.ok(
+          Math.abs(mono[i] - c.expected.samples[i]) < 1e-6,
+          `sample ${i} of ${c.name}: got ${mono[i]}, want ${c.expected.samples[i]}`,
+        );
+      }
+    }
+  });
+
+  it('walks the chunks rather than assuming data starts at byte 44', () => {
+    // The LIST-chunk case is the one that matters: a reader that assumes data
+    // starts at byte 44 reads metadata as audio.
+    const plain = fixture.cases.find((c) => c.name.includes('plain'))!;
+    const listed = fixture.cases.find((c) => c.name.includes('LIST'))!;
+    const a = parseWav(new Uint8Array(Buffer.from(plain.wavBase64, 'base64')));
+    const b = parseWav(new Uint8Array(Buffer.from(listed.wavBase64, 'base64')));
+    assert.deepEqual(
+      Array.from(a.samples),
+      Array.from(b.samples),
+      'a LIST chunk before the data changed the decoded audio',
+    );
   });
 });
