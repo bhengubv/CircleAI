@@ -197,6 +197,7 @@ add_library(circle_ai STATIC
     src/wearable.c
     src/wearable_biosignals.c
     src/accessibility.c
+    src/voice_xsampa.c
     src/ambient.c
 
     # CircleAI.Integration (+ .Calendar / .Email / .Geo / .HomeAssistant / .News)
