@@ -3,3 +3,10 @@ build/
 local.properties
 *.class
 *.jar
+
+# THE WRAPPER JAR MUST BE COMMITTED. A blanket *.jar rule catches it, and then
+# a fresh clone has gradlew but not the class it loads:
+#   Could not find or load main class org.gradle.wrapper.GradleWrapperMain
+# which is the exact opposite of what a wrapper is for — building without a
+# preinstalled Gradle. 43 KB, and it pins the build to gradle 8.10.2.
+!gradle/wrapper/gradle-wrapper.jar
