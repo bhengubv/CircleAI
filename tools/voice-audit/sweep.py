@@ -387,6 +387,23 @@ class Judge:
         return self.proc.decode(np.argmax(logits.numpy(), axis=-1)[0])
 
 
+def script_agreement(ref: str, hyp: str) -> float:
+    """Fraction of the transcript's letters written in the reference's script.
+
+    A recogniser answering a Devanagari question in Latin letters has not heard
+    the language, and the CER it produces is a fact about the recogniser. 1.0
+    when the reference itself is Latin, because then there is nothing to check.
+    """
+    def latin(ch): return ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+    ref_letters = [c for c in ref if c.isalpha()]
+    if not ref_letters or sum(latin(c) for c in ref_letters) / len(ref_letters) > 0.5:
+        return 1.0                                   # reference is Latin: nothing to check
+    hyp_letters = [c for c in hyp if c.isalpha()]
+    if not hyp_letters:
+        return 0.0
+    return sum(not latin(c) for c in hyp_letters) / len(hyp_letters)
+
+
 def cer(ref: str, hyp: str) -> float:
     a = [c for c in ref.lower() if c.isalnum()]
     b = [c for c in hyp.lower() if c.isalnum()]
@@ -536,10 +553,41 @@ def main():
         if heard is None:
             heard = whisper_hear(wav, tag)          # no MMS adapter -> try whisper
             row["judge"] = "whisper"
+
+        # A RECOGNISER WRITING IN THE WRONG SCRIPT IS NOT A VERDICT ON THE VOICE.
+        #
+        # Russian came back "doб oт мой drog" from mms-1b-all — half Cyrillic,
+        # half Latin — and scored 0.71 against a 0.88 floor, so the voice was
+        # condemned as GIBBERISH. Asked again through whisper the same audio
+        # reads "Доброе утро, мой трог" against a reference of "Доброе утро мой
+        # друг": three words of four exactly right. The voice was always fine;
+        # mms-1b-all is CTC with no language model and transliterates.
+        #
+        # So when the transcript is not mostly in the reference's own script,
+        # the answer is about the recogniser and gets a second opinion. If no
+        # recogniser will write in the right script, that is UNJUDGED — a thing
+        # we cannot score — and never GIBBERISH, which is a claim about the
+        # voice that this evidence does not support. Sinhala is exactly that:
+        # mms declined it and whisper-tiny hallucinated the English stock phrase
+        # "See you next time!" on 1.4 s of real Sinhala speech.
+        if heard and script_agreement(ref, heard) < 0.6:
+            other = (whisper_hear(wav, tag) if row["judge"] == "mms-1b-all"
+                     else judge.hear(wav, lang3))
+            if other and script_agreement(ref, other) > script_agreement(ref, heard):
+                heard = other
+                row["judge"] = "whisper" if row["judge"] == "mms-1b-all" else "mms-1b-all"
+
         if not heard:
             row["verdict"] = "UNJUDGED"
             row["detail"] = f"no recogniser covers '{tag}' (mms adapter '{lang3}' declined)"
             row.pop("judge", None)
+            results.append(row); continue
+
+        if script_agreement(ref, heard) < 0.6:
+            row["heard"] = heard
+            row["verdict"] = "UNJUDGED"
+            row["detail"] = (f"no recogniser writes '{tag}' in its own script — "
+                             f"transcript is off-script, so CER measures the judge")
             results.append(row); continue
 
         row["heard"] = heard
