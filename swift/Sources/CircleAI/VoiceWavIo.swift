@@ -108,23 +108,29 @@ public enum VoiceWavIo {
         // 3 is IEEE float; 0xFFFE is WAVE_FORMAT_EXTENSIBLE, whose real format
         // lives in a sub-chunk — treated as PCM here, which is what it is in
         // every file the voice stack has met.
+        // BY BYTE OFFSET, NOT BY SLICE. An ArraySlice keeps its PARENT's indices,
+        // so `data[3..<5][0]` traps rather than returning the first element —
+        // and it traps at runtime, in a decoder, on real audio. Closing over
+        // `data` and indexing from a plain Int sidesteps the whole hazard.
         let samples: [Float]
         switch (format, bits) {
         case (1, 8), (0xFFFE, 8):
-            samples = map(data, 1) { Float(Int($0[0]) - 128) / 128 }
+            samples = map(data, 1) { Float(Int(data[$0]) - 128) / 128 }
         case (1, 16), (0xFFFE, 16):
-            samples = map(data, 2) { Float(Int16(bitPattern: UInt16($0[0]) | UInt16($0[1]) << 8)) / 32768 }
+            samples = map(data, 2) {
+                Float(Int16(bitPattern: UInt16(data[$0]) | (UInt16(data[$0 + 1]) << 8))) / 32768
+            }
         case (1, 24), (0xFFFE, 24):
             samples = map(data, 3) {
-                let v = Int32($0[0]) | (Int32($0[1]) << 8) | (Int32($0[2]) << 16)
+                let v = Int32(data[$0]) | (Int32(data[$0 + 1]) << 8) | (Int32(data[$0 + 2]) << 16)
                 // Sign-extend the 24-bit value. Swift's shift operators are
                 // non-associative, so the parentheses are required, not style.
                 return Float((v << 8) >> 8) / 8388608
             }
         case (1, 32), (0xFFFE, 32):
-            samples = map(data, 4) { Float(Int32(bitPattern: le32v($0))) / 2147483648 }
+            samples = map(data, 4) { Float(Int32(bitPattern: le32(data, $0))) / 2147483648 }
         case (3, 32):
-            samples = map(data, 4) { Float(bitPattern: le32v($0)) }
+            samples = map(data, 4) { Float(bitPattern: le32(data, $0)) }
         default:
             throw WavError.unsupported(format: format, bits: bits)
         }
@@ -132,13 +138,12 @@ public enum VoiceWavIo {
         return (samples, rate, channels)
     }
 
+    /// Convert `count` fixed-width frames, handing the closure a BYTE OFFSET.
     private static func map(_ data: [UInt8], _ stride: Int,
-                            _ convert: (ArraySlice<UInt8>) -> Float) -> [Float] {
+                            _ convert: (Int) -> Float) -> [Float] {
         let count = data.count / stride
         var out = [Float](repeating: 0, count: count)
-        for i in 0..<count {
-            out[i] = convert(data[(i * stride)..<((i + 1) * stride)])
-        }
+        for i in 0..<count { out[i] = convert(i * stride) }
         return out
     }
 
@@ -162,10 +167,6 @@ public enum VoiceWavIo {
     }
     private static func le32(_ b: [UInt8], _ i: Int) -> UInt32 {
         UInt32(b[i]) | UInt32(b[i + 1]) << 8 | UInt32(b[i + 2]) << 16 | UInt32(b[i + 3]) << 24
-    }
-    private static func le32v(_ s: ArraySlice<UInt8>) -> UInt32 {
-        let a = Array(s)
-        return UInt32(a[0]) | UInt32(a[1]) << 8 | UInt32(a[2]) << 16 | UInt32(a[3]) << 24
     }
     private static func le16(_ b: [UInt8], _ i: Int) -> UInt16 {
         UInt16(b[i]) | UInt16(b[i + 1]) << 8
