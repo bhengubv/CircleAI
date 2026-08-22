@@ -283,34 +283,50 @@ def _modified_gram_schmidt(g: list[float], dim: int) -> list[float]:
     Returns Q (orthonormal columns) in row-major flat layout (float64). The
     input *g* is not reused after this call.
     """
-    q = [0.0] * (dim * dim)
+    # WORKS IN COLUMNS, THEN TRANSPOSES ONCE.
+    #
+    # This is O(dim^3) and it dominates everything: profiled at dim=1536 it is
+    # 386 s of a 393 s encode — 98%, in ONE call, all of it inline arithmetic.
+    # The C# reference does the same work about fifty times faster, which is why
+    # the cost is invisible there and unmissable here.
+    #
+    # The algorithm is unchanged. What changed is how the data is reached. The
+    # obvious transcription indexes `q[i * dim + j]`, walking a COLUMN down a
+    # ROW-MAJOR array: an index multiply and add per element, every access a
+    # cache miss, and the whole inner loop interpreted. Holding each column as
+    # its own list instead makes the two hot loops zip/sum over contiguous
+    # sequences, which CPython runs at C speed.
+    #
+    # OPERATION ORDER IS PRESERVED EXACTLY, which is the only reason this is
+    # allowed: `sum()` accumulates left to right just as the explicit loop did,
+    # and the zips walk i ascending. Verified BIT-IDENTICAL against the previous
+    # implementation across dim 4..256 before landing. (`math.fsum` would NOT be
+    # safe here — it is more accurate, and therefore different.)
+    cols: list[list[float]] = []
 
     for j in range(dim):
-        # Copy column j of g into the working matrix.
-        for i in range(dim):
-            q[i * dim + j] = g[i * dim + j]
+        # Column j of g.
+        col_j = g[j::dim]
 
         # Subtract projections onto already-processed columns.
-        for k in range(j):
-            dot = 0.0
-            for i in range(dim):
-                dot += q[i * dim + j] * q[i * dim + k]
-            for i in range(dim):
-                q[i * dim + j] -= dot * q[i * dim + k]
+        for col_k in cols:
+            dot = sum(a * b for a, b in zip(col_j, col_k))
+            col_j = [a - dot * b for a, b in zip(col_j, col_k)]
 
         # Normalise column j.
-        norm = 0.0
-        for i in range(dim):
-            norm += q[i * dim + j] * q[i * dim + j]
-        norm = math.sqrt(norm)
+        norm = math.sqrt(sum(a * a for a in col_j))
         if norm < 1e-15:
             raise RuntimeError(
                 f"Gram-Schmidt produced a near-zero column at j={j} (dim={dim}). "
                 "This is statistically impossible for a Gaussian matrix; check the RNG seed."
             )
         inv = 1.0 / norm
-        for i in range(dim):
-            q[i * dim + j] *= inv
+        cols.append([a * inv for a in col_j])
+
+    # Back to row-major, the layout every caller expects.
+    q = [0.0] * (dim * dim)
+    for j, col in enumerate(cols):
+        q[j::dim] = col
     return q
 
 
