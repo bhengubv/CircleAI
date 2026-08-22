@@ -23,9 +23,44 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+# GUARDED, BECAUSE THIS PACKAGE PROMISES PURE STDLIB ON A BARE INSTALL.
+#
+# pyproject declares `dependencies = []` and documents "bare install is pure
+# stdlib; add what you need". An unguarded import here broke that promise in the
+# worst possible way: `circle_ai/__init__.py` imports this module, so a missing
+# `cryptography` made the ENTIRE package unimportable, and every test in the
+# port failed at collection — not with "you need cryptography" but with a
+# ModuleNotFoundError from a file most callers have never heard of.
+#
+# Deferred to first USE instead. Importing circle_ai now works on bare stdlib;
+# constructing a UhidKeyRing without cryptography raises a message that names
+# the package and the install command.
+try:
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    _CRYPTOGRAPHY_IMPORT_ERROR: Optional[ImportError] = None
+except ImportError as exc:  # pragma: no cover - exercised only on a bare install
+    _CRYPTOGRAPHY_IMPORT_ERROR = exc
+    hashes = serialization = ec = None  # type: ignore[assignment]
+
+    class InvalidSignature(Exception):  # type: ignore[no-redef]
+        """Stand-in so the ``except`` clause below stays a valid exception type.
+
+        Never raised: every path that could catch it needs a key, and a key
+        cannot exist without the real package.
+        """
+
+
+def _require_cryptography() -> None:
+    """Fail with a message that says what to install, not what failed to import."""
+    if _CRYPTOGRAPHY_IMPORT_ERROR is not None:
+        raise ImportError(
+            "UhidKeyRing needs the 'cryptography' package for ECDSA P-256 "
+            "signing (parity with the C# ECDsa.Create(nistP256) spec). "
+            "Install it with:  pip install 'circle-ai-sdk[security]'"
+        ) from _CRYPTOGRAPHY_IMPORT_ERROR
 
 
 def _utc_now() -> datetime:
@@ -166,6 +201,10 @@ class UhidKeyRing:
     # ── Private helpers ──────────────────────────────────────────────────────
 
     def _regenerate_key(self) -> None:
+        # The single gate. Every other cryptography call in this class needs a
+        # key, and a key can only come from here, so checking once at the point
+        # of creation covers construction, rotate() and generate_fresh().
+        _require_cryptography()
         with self._lock:
             self._key = ec.generate_private_key(ec.SECP256R1())
             self._ring_id = uuid4()

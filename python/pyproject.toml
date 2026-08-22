@@ -13,8 +13,13 @@ dependencies = []
 # Graceful-degrade extras — bare install is pure stdlib; add what you need.
 prompt = ["jinja2>=3.1"]
 device = ["psutil>=5.9"]
-all = ["jinja2>=3.1", "psutil>=5.9"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "jinja2>=3.1", "psutil>=5.9"]
+# UhidKeyRing needs real ECDSA P-256 to match the C# spec. The import is guarded
+# so a bare install still imports; this extra is what makes the class usable.
+security = ["cryptography>=42.0"]
+all = ["jinja2>=3.1", "psutil>=5.9", "cryptography>=42.0"]
+# `dev` must be able to run the WHOLE suite — cryptography was missing here, so
+# the documented dev install could not collect a single test.
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "jinja2>=3.1", "psutil>=5.9", "cryptography>=42.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/circle_ai"]
