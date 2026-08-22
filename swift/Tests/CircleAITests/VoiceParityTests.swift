@@ -119,4 +119,55 @@ final class VoiceParityTests: XCTestCase {
         let fixture = try load("voice_sentencepiece_unigram.json")
         XCTAssertEqual(makeTokeniser(fixture).encode(""), [])
     }
+
+    // ── WAV I/O ─────────────────────────────────────────────────────────────
+
+    func testWavIoMatchesReference() throws {
+        let fixture = try load("voice_wav_io.json")
+        let cases = fixture["cases"] as! [[String: Any]]
+        XCTAssertFalse(cases.isEmpty, "fixture has no cases")
+
+        for c in cases {
+            let name = c["name"] as! String
+            let raw = Data(base64Encoded: c["wavBase64"] as! String)!
+            let expected = c["expected"] as! [String: Any]
+            let expectedSamples = (expected["samples"] as! [NSNumber]).map(\.floatValue)
+
+            let wav = try VoiceWavIo.read(raw, path: name)
+            let mono = wav.channels > 1 || wav.rate != VoiceWavIo.targetRate
+                ? try monoFrom(raw, name: name)
+                : wav.samples
+
+            XCTAssertEqual(mono.count, expected["sampleCount"] as! Int, "sampleCount for \(name)")
+            for (i, want) in expectedSamples.enumerated() {
+                XCTAssertEqual(mono[i], want, accuracy: 1e-6, "sample \(i) of \(name)")
+            }
+        }
+    }
+
+    /// The LIST-chunk case is the one that matters: a reader that assumes data
+    /// starts at byte 44 reads metadata as audio.
+    func testWavIoWalksChunksRatherThanAssumingByte44() throws {
+        let fixture = try load("voice_wav_io.json")
+        let cases = fixture["cases"] as! [[String: Any]]
+        let plain = cases.first { ($0["name"] as! String).contains("plain") }!
+        let listed = cases.first { ($0["name"] as! String).contains("LIST") }!
+
+        let a = try VoiceWavIo.read(Data(base64Encoded: plain["wavBase64"] as! String)!)
+        let b = try VoiceWavIo.read(Data(base64Encoded: listed["wavBase64"] as! String)!)
+        XCTAssertEqual(a.samples, b.samples,
+                       "a LIST chunk before the data changed the decoded audio")
+    }
+
+    private func monoFrom(_ raw: Data, name: String) throws -> [Float] {
+        let wav = try VoiceWavIo.read(raw, path: name)
+        guard wav.channels > 1 else { return wav.samples }
+        var mono = [Float](repeating: 0, count: wav.samples.count / wav.channels)
+        for i in 0..<mono.count {
+            var sum: Float = 0
+            for c in 0..<wav.channels { sum += wav.samples[i * wav.channels + c] }
+            mono[i] = sum / Float(wav.channels)
+        }
+        return mono
+    }
 }
