@@ -603,14 +603,28 @@ def main():
             ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)
         row["mapped"] = f"{mapped}/{total}"
 
-        # A WRONG VOCABULARY IS A WRONG BUNDLE, NOT A BAD VOICE.
+        # A WRONG VOCABULARY IS A WRONG BUNDLE, NOT A BAD VOICE — but a foreign
+        # alphabet ALONE does not prove one, and this check used to say it did.
+        #
+        # It condemned isiZulu, isiXhosa and Sesotho on the strength of 38
+        # Cyrillic letters in Vits-11ZA's vocabulary. That vocabulary is a pooled
+        # multilingual set of 141 symbols and the Cyrillic simply goes unused:
+        # the same graph measures zu 0.33 and xh 0.38, which is a working voice.
+        # Three languages were failed without one sample being synthesised.
+        #
+        # The Igbo case it was written for looked identical and was fatal for a
+        # different reason: that vocabulary was FABRICATED by sorting a character
+        # set, so the Hebrew shifted every id after it. You cannot tell those two
+        # apart by reading the vocabulary — only by listening.
+        #
+        # So a stray alphabet is now a NOTE, and the verdict still comes from the
+        # audio. BADVOCAB is reserved for the case where the audio also fails,
+        # and then it says something the CER alone would not: WHY it failed.
         stray = foreign_script(cfg.get("phoneme_id_map", {}), ref)
         if stray:
-            row["verdict"] = "BADVOCAB"
-            row["detail"] = (f"vocabulary contains {stray} — this is not this "
-                             f"language's vocabulary, so every symbol indexes the "
-                             f"wrong embedding row; the BUNDLE needs replacing")
-            results.append(row); continue
+            row["vocab_note"] = (f"vocabulary contains {stray}; harmless if the model was "
+                                 f"trained with that pooled vocabulary, fatal if the vocab "
+                                 f"was rebuilt by sorting — the audio decides")
 
         if mapped == 0:
             row["verdict"] = "UNMAPPED"
@@ -787,6 +801,19 @@ def main():
             # Comfortably clear of its own noise: it is saying the sentence.
             row["verdict"] = "SPEAKS" if row["cer"] <= floor * a.margin else "GIBBERISH"
             row["basis"] = f"cer {row['cer']} vs floor {floor} x{a.margin}"
+
+        # NOW the stray alphabet earns its verdict. A voice that failed on the
+        # audio AND carries someone else's alphabet is not merely bad, it is the
+        # wrong bundle — and that distinction is the difference between "find a
+        # better voice" and "this file is not what its name says". A voice that
+        # PASSED keeps its note and its SPEAKS: the vocabulary was pooled, not
+        # fabricated.
+        if row.get("vocab_note") and row["verdict"] == "GIBBERISH":
+            row["verdict"] = "BADVOCAB"
+            row["detail"] = (f"{row['vocab_note']} — and the audio failed "
+                             f"(cer {row['cer']}), so the vocabulary is the reason: "
+                             f"every symbol indexes the wrong embedding row and the "
+                             f"BUNDLE needs replacing")
         results.append(row)
         print(f"  {tag:4} {row['verdict']:9} cer={row.get('cer','-'):<5} "
               f"floor={row.get('floor') if row.get('floor') is not None else '-':<5} "
