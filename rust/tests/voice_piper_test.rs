@@ -8,9 +8,8 @@
 //! THE PAD RULE, and getting it wrong is what made 42 MMS voices speak fluent
 //! nonsense.
 
-use circle_ai::voice_piper::{
-    split_phoneme_string, LexiconTokeniser, PiperVoiceConfig, PCM16_MONO_16K,
-};
+use circle_ai::voice::AudioFormat;
+use circle_ai::voice_piper::{split_phoneme_string, LexiconTokeniser, PiperVoiceConfig};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -220,7 +219,7 @@ struct AudioFormatFixture {
 #[test]
 fn audio_format_matches_reference() {
     let fixture: AudioFormatFixture = read_fixture("voice_audio_format.json");
-    assert_eq!(PCM16_MONO_16K.sample_rate, fixture.pcm16_mono_16k.sample_rate);
-    assert_eq!(PCM16_MONO_16K.channels, fixture.pcm16_mono_16k.channels);
-    assert_eq!(PCM16_MONO_16K.bits_per_sample, fixture.pcm16_mono_16k.bits_per_sample);
+    assert_eq!(AudioFormat::PCM16_MONO_16K.sample_rate, fixture.pcm16_mono_16k.sample_rate);
+    assert_eq!(AudioFormat::PCM16_MONO_16K.channels, fixture.pcm16_mono_16k.channels);
+    assert_eq!(AudioFormat::PCM16_MONO_16K.bits_per_sample, fixture.pcm16_mono_16k.bits_per_sample);
 }

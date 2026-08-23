@@ -6,22 +6,9 @@
 // Parity is asserted against fixtures/voice_piper_config.json,
 // fixtures/voice_lexicon_tokeniser.json and fixtures/voice_audio_format.json.
 
-/** A PCM audio format expected or produced by voice components. */
-export interface AudioFormat {
-  readonly sampleRate: number;
-  readonly channels: number;
-  readonly bitsPerSample: number;
-}
-
-/**
- * Canonical input format: PCM signed 16-bit, mono, 16 kHz. Most open-source ASR
- * engines (sherpa-onnx, Vosk) accept this directly.
- */
-export const PCM16_MONO_16K: AudioFormat = Object.freeze({
-  sampleRate: 16000,
-  channels: 1,
-  bitsPerSample: 16,
-});
+// AudioFormat IS ALREADY IN THIS PORT — PCM16_MONO_16K in voice/contracts.ts. It was ported with the
+// original voice module and does not belong here; declaring it again would
+// shadow the real one and split the type in two.
 
 /** What a `phonemesToIds` call did, beyond the ids. */
 export interface PhonemeMapping {

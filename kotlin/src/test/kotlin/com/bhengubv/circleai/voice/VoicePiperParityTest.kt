@@ -185,11 +185,11 @@ class VoicePiperParityTest {
     @Test
     fun `audio format matches reference`() {
         val want = readFixture("voice_audio_format.json")["pcm16Mono16k"]!!.jsonObject
-        assertEquals(want["sampleRate"]!!.jsonPrimitive.int, AudioFormat.PCM16_MONO_16K.sampleRate)
-        assertEquals(want["channels"]!!.jsonPrimitive.int, AudioFormat.PCM16_MONO_16K.channels)
+        assertEquals(want["sampleRate"]!!.jsonPrimitive.int, AudioFormat.Pcm16Mono16k.sampleRate)
+        assertEquals(want["channels"]!!.jsonPrimitive.int, AudioFormat.Pcm16Mono16k.channels)
         assertEquals(
             want["bitsPerSample"]!!.jsonPrimitive.int,
-            AudioFormat.PCM16_MONO_16K.bitsPerSample,
+            AudioFormat.Pcm16Mono16k.bitsPerSample,
         )
     }
 }

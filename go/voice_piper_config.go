@@ -16,16 +16,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// VoiceAudioFormat describes a PCM format expected or produced by voice components.
-type VoiceAudioFormat struct {
-	SampleRate    int
-	Channels      int
-	BitsPerSample int
-}
-
-// VoicePcm16Mono16k is the canonical input format: PCM signed 16-bit, mono,
-// 16 kHz. Most open-source ASR engines (sherpa-onnx, Vosk) take this directly.
-var VoicePcm16Mono16k = VoiceAudioFormat{SampleRate: 16000, Channels: 1, BitsPerSample: 16}
+// AudioFormat IS ALREADY IN THIS PORT — AudioFormatPcm16Mono16k. It was ported with the
+// original voice module and does not belong here; declaring it again would
+// shadow the real one and split the type in two.
 
 // VoicePhonemeMapping is what a PhonemesToIDs call did, beyond the ids.
 type VoicePhonemeMapping struct {

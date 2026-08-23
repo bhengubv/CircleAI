@@ -10,16 +10,9 @@ package com.bhengubv.circleai.voice
 
 import java.text.Normalizer
 
-/** A PCM audio format expected or produced by voice components. */
-data class AudioFormat(val sampleRate: Int, val channels: Int, val bitsPerSample: Int) {
-    companion object {
-        /**
-         * Canonical input format: PCM signed 16-bit, mono, 16 kHz. Most
-         * open-source ASR engines (sherpa-onnx, Vosk) accept this directly.
-         */
-        val PCM16_MONO_16K = AudioFormat(16000, 1, 16)
-    }
-}
+// AudioFormat IS ALREADY IN THIS PORT — AudioFormat.Pcm16Mono16k in Voice.kt. It was ported with the
+// original voice module and does not belong here; declaring it again would
+// shadow the real one and split the type in two.
 
 /** What a [PiperVoiceConfig.phonemesToIds] call did, beyond the ids. */
 data class PhonemeMapping(

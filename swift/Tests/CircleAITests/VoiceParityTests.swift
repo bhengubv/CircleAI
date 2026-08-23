@@ -290,8 +290,8 @@ final class VoiceParityTests: XCTestCase {
     func testAudioFormatMatchesReference() throws {
         let fixture = try load("voice_audio_format.json")
         let want = fixture["pcm16Mono16k"] as! [String: Any]
-        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.sampleRate, want["sampleRate"] as! Int)
-        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.channels, want["channels"] as! Int)
-        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.bitsPerSample, want["bitsPerSample"] as! Int)
+        XCTAssertEqual(AudioFormat.pcm16Mono16k.sampleRate, want["sampleRate"] as! Int)
+        XCTAssertEqual(AudioFormat.pcm16Mono16k.channels, want["channels"] as! Int)
+        XCTAssertEqual(AudioFormat.pcm16Mono16k.bitsPerSample, want["bitsPerSample"] as! Int)
     }
 }

@@ -8,22 +8,9 @@
 
 import Foundation
 
-/// A PCM audio format expected or produced by voice components.
-public struct VoiceAudioFormat: Equatable, Sendable {
-    public let sampleRate: Int
-    public let channels: Int
-    public let bitsPerSample: Int
-
-    public init(sampleRate: Int, channels: Int, bitsPerSample: Int) {
-        self.sampleRate = sampleRate
-        self.channels = channels
-        self.bitsPerSample = bitsPerSample
-    }
-
-    /// Canonical input format: PCM signed 16-bit, mono, 16 kHz. Most
-    /// open-source ASR engines (sherpa-onnx, Vosk) accept this directly.
-    public static let pcm16Mono16k = VoiceAudioFormat(sampleRate: 16000, channels: 1, bitsPerSample: 16)
-}
+// AudioFormat IS ALREADY IN THIS PORT — AudioFormat.pcm16Mono16k in VoiceCore.swift. It was ported with the
+// original voice module and does not belong here; declaring it again would
+// shadow the real one and split the type in two.
 
 /// What a `phonemesToIds` call did, beyond the ids.
 public struct VoicePhonemeMapping: Equatable {

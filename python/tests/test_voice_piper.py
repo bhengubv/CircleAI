@@ -14,8 +14,8 @@ import pathlib
 
 import pytest
 
+from circle_ai.voice import PCM16_MONO_16K
 from circle_ai.voice_piper import (
-    PCM16_MONO_16K,
     LexiconTokeniser,
     PiperVoiceConfig,
     split_phoneme_string,

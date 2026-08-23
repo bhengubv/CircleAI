@@ -17,19 +17,8 @@ _BOS = "^"
 _EOS = "$"
 
 
-@dataclass(frozen=True)
-class AudioFormat:
-    """A PCM audio format expected or produced by voice components."""
-
-    sample_rate: int
-    channels: int
-    bits_per_sample: int
-
-
-#: Canonical input format: PCM signed 16-bit, mono, 16 kHz. Most open-source ASR
-#: engines (sherpa-onnx, Vosk) accept this directly.
-PCM16_MONO_16K = AudioFormat(sample_rate=16000, channels=1, bits_per_sample=16)
-
+# AudioFormat IS ALREADY IN THIS PORT — circle_ai.voice.PCM16_MONO_16K. It was
+# ported with the original voice module and does not belong here.
 
 @dataclass(frozen=True)
 class PhonemeMapping:

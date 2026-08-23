@@ -8,21 +8,8 @@
 
 use std::collections::HashMap;
 
-/// A PCM audio format expected or produced by voice components.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AudioFormat {
-    pub sample_rate: i32,
-    pub channels: i32,
-    pub bits_per_sample: i32,
-}
-
-/// Canonical input format: PCM signed 16-bit, mono, 16 kHz. Most open-source
-/// ASR engines (sherpa-onnx, Vosk) take this directly.
-pub const PCM16_MONO_16K: AudioFormat = AudioFormat {
-    sample_rate: 16_000,
-    channels: 1,
-    bits_per_sample: 16,
-};
+// AudioFormat IS ALREADY IN THIS PORT — `voice::AudioFormat::PCM16_MONO_16K`.
+// It was ported with the original voice module and does not belong here.
 
 /// What a [`PiperVoiceConfig::phonemes_to_ids`] call did, beyond the ids.
 #[derive(Debug, Clone, PartialEq, Eq)]

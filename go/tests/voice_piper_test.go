@@ -205,7 +205,7 @@ func TestVoiceAudioFormatMatchesReference(t *testing.T) {
 	}
 	readVoiceFixture(t, "voice_audio_format.json", &fix)
 
-	got := circleai.VoicePcm16Mono16k
+	got := circleai.AudioFormatPcm16Mono16k
 	if got.SampleRate != fix.Pcm16Mono16k.SampleRate ||
 		got.Channels != fix.Pcm16Mono16k.Channels ||
 		got.BitsPerSample != fix.Pcm16Mono16k.BitsPerSample {
