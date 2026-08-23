@@ -200,6 +200,7 @@ add_library(circle_ai STATIC
     src/voice_xsampa.c
     src/voice_wav.c
     src/voice_piper.c
+    src/voice_text.c
     src/ambient.c
 
     # CircleAI.Integration (+ .Calendar / .Email / .Geo / .HomeAssistant / .News)
