@@ -251,12 +251,11 @@ final class VoiceParityTests: XCTestCase {
     private func makeLexicon(_ fixture: [String: Any]) -> VoiceLexiconTokeniser {
         let tokens = fixture["tokens"] as! [String: NSNumber]
         let lexicon = fixture["lexicon"] as! [[String: Any]]
-        let tokensText = tokens.map { "\($0.key) \($0.value)" }.joined(separator: "
-")
+        let newline = "\n"
+        let tokensText = tokens.map { "\($0.key) \($0.value)" }.joined(separator: newline)
         let lexiconText = lexicon.map {
             "\($0["word"] as! String) \(($0["phonemes"] as! [String]).joined(separator: " "))"
-        }.joined(separator: "
-")
+        }.joined(separator: newline)
         return VoiceLexiconTokeniser.from(tokensText: tokensText, lexiconText: lexiconText)!
     }
 
