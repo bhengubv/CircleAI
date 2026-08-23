@@ -72,6 +72,22 @@ longer compliant.
 |---|---|---|
 | ne_NP google medium (Nepali) | CC-BY-SA-4.0 | rhasspy/piper-voices, openSLR 43, 18 speakers |
 | ko_KR kss medium (Korean) | CC-BY-NC-SA-4.0 | rhasspy/piper-voices, Korean Single Speaker corpus |
+| ig_IB soro medium (Igbo) | CC-BY-NC-4.0 | Shinzmann/soro-tts-ibo, WaxalNLP — re-exported to ONNX by us |
+
+Igbo replaces `MMS-ibo`, which was not an MMS voice either. That bundle was
+`multilingual-tts/VITS-OpenBible-Igbo`, and re-exporting it correctly — with its
+own vocabulary and its duration noise finally wired to `scales` — proved the
+CHECKPOINT is broken, not our pipeline: it answers "ndewo enyi m kedu ka i mere
+taa" with fluent, well-formed Igbo that has nothing to do with the input, in 8
+seconds for six words. The Hebrew letters in its character set, long suspected as
+the fault, are upstream's own and were never the problem.
+
+The replacement is honest rather than good: **CER 0.56 against its own 0.76 noise
+floor.** It follows its input where the old one did not, and `enyi` survives
+verbatim in a longer sentence, but it is far behind the European voices here. It
+ships because wrong words spoken confidently are worse than a weak voice, and
+because it is the best free Igbo voice that exists — Igbo is absent from MMS,
+from Piper's catalogue, and from all 642 assets in sherpa-onnx's tts-models.
 
 Nepali replaces `MMS-npi`, which was never an MMS voice: Meta's own list of 1077
 TTS languages contains no Nepali, no Igbo and no Lingala. That bundle carried a

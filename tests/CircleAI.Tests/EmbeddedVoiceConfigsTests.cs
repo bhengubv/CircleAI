@@ -163,10 +163,13 @@ public class EmbeddedVoiceConfigsTests
 
     [Theory]
     // Piper layout — inputs (input, input_lengths, scales). Their blank is
-    // <BLNK> = 3, and one of these (lin) is a WORKING voice.
-    [InlineData("mms-ibo/model.onnx.json", 3, 22050)]
+    // <BLNK> = 3, and lin is a WORKING voice.
+    //
+    // ibo and npi used to be here and are gone: neither was ever an MMS voice
+    // (Meta's own list of 1077 TTS languages has no Igbo, Nepali or Lingala),
+    // and both have been replaced by voices that actually track their input.
+    // lin survives because it is the one of the three that works.
     [InlineData("mms-lin/model.onnx.json", 3, 22050)]
-    [InlineData("mms-npi/model.onnx.json", 3, 22050)]
     // transformers VITS — inputs (input_ids, attention_mask).
     [InlineData("mms-amh/model.onnx.json", 1, 16000)]
     public void A_non_MMS_bundle_keeps_its_own_blank_and_rate(string file, int blank, int rate)

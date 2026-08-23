@@ -2505,33 +2505,6 @@
    ]
   },
   {
-   "Name": "MMS-ibo",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ig",
-   "Architecture": "vits",
-   "TotalBytes": 114245506,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.106,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-ibo/model.onnx",
-     "Sha256": "bbc471c6529502da4116b12c764413abe702ccab096bf5f923567acaede1c110",
-     "SizeBytes": 114244509
-    },
-    {
-     "Name": "mms-ibo/model.onnx.json",
-     "Sha256": "c46847c5c4c4ca915093cd0642de0d9c1e7b19a7bad831299d7260155d6e6f06",
-     "SizeBytes": 997
-    }
-   ]
-  },
-  {
    "Name": "MMS-lin",
    "Version": "1.0",
    "Quantization": "ONNX",
@@ -3128,6 +3101,33 @@
      "Name": "voices-v1/ko_KR-kss-medium.onnx.json",
      "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
      "SizeBytes": 5232
+    }
+   ]
+  },
+  {
+   "Name": "Vits-ig_IB-soro",
+   "Version": "1.0",
+   "Quantization": "ONNX",
+   "Repo": "bhengubv/circleai-voices",
+   "Source": "GitHubRelease",
+   "Modality": "Tts",
+   "Language": "ig",
+   "Architecture": "vits",
+   "TotalBytes": 114339191,
+   "MinRamGb": 0.3,
+   "MinStorageGb": 0.1384,
+   "QualityRank": 5,
+   "Capabilities": [],
+   "BundleFiles": [
+    {
+     "Name": "voices-v1/ig_IB-soro-medium.onnx",
+     "Sha256": "a39894c4807a1471ad0eaa1794a2d166f34d86ecf89043b279795a07ab510237",
+     "SizeBytes": 114334140
+    },
+    {
+     "Name": "voices-v1/ig_IB-soro-medium.onnx.json",
+     "Sha256": "0c86f3bea1bdbc91ff1b59ccb2796d905df518019a66ade975ffccacc4d1c8b4",
+     "SizeBytes": 5051
     }
    ]
   }
