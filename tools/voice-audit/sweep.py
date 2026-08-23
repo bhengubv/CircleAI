@@ -11,7 +11,7 @@ Needs Python 3.10 here (torch + transformers live there, not in 3.12):
 Writes tools/voice-audit/results.json and prints a table. See README.md for why
 this exists and what each verdict means.
 """
-import argparse, json, pathlib, re, subprocess, sys, urllib.request, wave, shutil, warnings
+import argparse, json, pathlib, re, subprocess, sys, urllib.parse, urllib.request, wave, shutil, warnings
 
 sys.stdout.reconfigure(encoding="utf-8")
 warnings.filterwarnings("ignore")
@@ -75,6 +75,39 @@ PHRASES = {
     "ko":  "좋은 아침이야 친구",
 }
 
+PICKER = (REPO / "samples" / "CircleAI.Samples.It.Android" / "LanguagePickerActivity.cs")
+
+
+def picker_phrases() -> dict[str, str]:
+    """The greeting the APP shows and speaks for each language.
+
+    TEST WHAT THE APP ACTUALLY SAYS. 35 languages were catalogued, downloadable
+    and reported NOPHRASE — untested — while the picker had a written greeting
+    for every one of them. Two tables of sentences drifting apart is the same
+    shape as the two registries that disagreed, so this reads the picker rather
+    than keeping a second copy: a phrase nobody ships is a phrase nobody checked.
+
+    Returns {} and says so if the file moves — a missing picker must not take
+    the whole sweep down with it.
+    """
+    try:
+        src = PICKER.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    out = {}
+    for m in re.finditer(
+            r'\["([a-zA-Z-]+)"\]\s*=\s*\(\s*"[^"]*"\s*,\s*"[^"]*"\s*,\s*"([^"]+)"\s*\)', src):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+# The sweep's OWN phrases win where both exist. They are what every CER on
+# record was measured against, and swapping them silently would make this run
+# incomparable with the last one for no gain. The picker only fills gaps.
+_picker = picker_phrases()
+PHRASES = {**_picker, **PHRASES}
+
+
 # Two-letter catalogue tag -> ISO-639-3 code MMS ASR uses for its adapter.
 ASR_LANG = {
     "sw": "swh", "ln": "lin", "ig": "ibo", "am": "amh", "ti": "tir", "ne": "npi",
@@ -85,6 +118,35 @@ ASR_LANG = {
     "jv": "jav", "su": "sun", "tl": "tgl", "fr": "fra", "es": "spa", "pt": "por",
     "ru": "rus", "nl": "nld", "hi": "hin", "bn": "ben", "ur": "urd", "si": "sin",
     "ko": "kor",
+
+    # THE 35 THAT WERE NEVER JUDGED. They had voices and (in the picker) phrases
+    # all along; what they lacked was a line here, so lang3 came back empty, the
+    # judge was never asked, and every one reported UNJUDGED. Spanish was in that
+    # list — which is how you know it was the mapping and not coverage.
+    #
+    # Every code below was checked against the 1198 adapters in the cached
+    # mms-1b-all vocab, not guessed. Regional tags collapse to one adapter:
+    # MMS has no es-MX/es-ES split.
+    "es-ES": "spa", "es-MX": "spa", "pt-BR": "por", "pt-PT": "por",
+    "nl-BE": "nld", "nl-NL": "nld",
+    "ak": "aka", "bem": "bem", "bm": "bam", "ee": "ewe", "ff": "ful",
+    "fon": "fon", "gn": "grn", "ht": "hat", "ki": "kik", "kr": "kby",
+    "lg": "lug", "lgg": "lgg", "mg": "mlg", "mos": "mos", "ny": "nya",
+    "nyn": "nyn", "om": "orm", "qu": "quy", "rn": "run", "rw": "kin",
+    "sg": "sag", "sn": "sna", "tpi": "tpi", "ts": "tso", "nso": "nso",
+
+    # THESE FOUR HAVE NO RECOGNISER and are listed anyway. mms-1b-all has no
+    # adapter for nbl, ssw, tsn or ven under any spelling and whisper does not
+    # cover them, so they will still come out UNJUDGED — but for the RIGHT
+    # reason.
+    #
+    # This table does double duty: it is also the tag -> ISO-639-3 map the
+    # multilingual langid lookup uses, and "nr" IS "nbl" whether or not anyone
+    # can hear it. Leaving them out to be careful made the sweep report "no
+    # langid for 'nr'" — a claim about the BUNDLE, which ships all eleven — when
+    # the truth is "no recogniser covers it". Wrong diagnoses send people to fix
+    # the wrong file.
+    "nr": "nbl", "ss": "ssw", "tn": "tsn", "ve": "ven",
 }
 
 
@@ -105,6 +167,26 @@ ASR_LANG = {
 WHISPER_LANG = {"yue": "zh"}
 
 
+# LANGUAGES NO RECOGNISER HERE ACTUALLY COVERS.
+#
+# mms-1b-all has no adapter for nbl, ssw, tsn or ven under any spelling, and
+# whisper has never been trained on them. Ask whisper anyway and it does not
+# decline: it transliterates into something Latin-shaped —
+#
+#     ref  Sawubona live. Unjani lamuhla?      heard  "Sao Bonaleve, un Janila Musa."
+#     ref  Lotjhani phasi. Unjani namhlanje?   heard  "Los Sanipas, un Janina, emsange."
+#
+# which is close enough to a Latin reference to score well and be recorded as
+# SPEAKS. It is not evidence: the same recogniser answered 1.4 s of Sinhala with
+# the English stock phrase "See you next time!". A plausible transcript from a
+# recogniser that does not know the language is the most dangerous verdict this
+# tool can produce, because it reads like proof.
+#
+# So these four are UNJUDGED and say why. They still resolve a langid above, so
+# the app speaks them correctly — we simply cannot measure it here.
+NO_JUDGE = {"nr", "ss", "tn", "ve"}
+
+
 def urls_for(entry: dict | None, remote: str) -> list[str]:
     """Every address a bundle file might live at, in order.
 
@@ -116,6 +198,13 @@ def urls_for(entry: dict | None, remote: str) -> list[str]:
     """
     src = (entry or {}).get("Source") or "HuggingFaceBucket"
     repo = (entry or {}).get("Repo") or "thegeekco/circleai-voices"
+
+    # PERCENT-ENCODE THE PATH. Portuguese ships as pt_PT-tugão-medium.onnx, and
+    # urllib hands a raw "ã" straight to the server, which answers 400 — so the
+    # sweep reported a voice that is sitting there as NOVOICE and someone would
+    # have gone looking for a file that was never lost. The product has done this
+    # all along (ModelDownloadService.EscapePath); only the audit had the hole.
+    remote = urllib.parse.quote(remote, safe="/")
     if src == "GitHubRelease":
         # Release assets are flat; the tag rides in the file name.
         return [f"https://github.com/{repo}/releases/download/{remote}"]
@@ -665,7 +754,20 @@ def main():
 
         lang3 = ASR_LANG.get(tag)
         if lang3 is None:
-            row["verdict"] = "UNJUDGED"; results.append(row); continue
+            row["verdict"] = "UNJUDGED"
+            row["detail"] = f"no ISO-639-3 mapping for '{tag}' — add one to ASR_LANG"
+            results.append(row); continue
+
+        # Stop before asking a recogniser that does not know this language. It
+        # will not decline; it will transliterate into something Latin-shaped
+        # that scores well against a Latin reference and gets recorded as SPEAKS.
+        if tag in NO_JUDGE:
+            row["verdict"] = "UNJUDGED"
+            row["detail"] = (f"no recogniser covers '{tag}': mms-1b-all has no '{lang3}' "
+                             f"adapter and whisper was never trained on it. The voice "
+                             f"synthesises with the right langid — this is a gap in the "
+                             f"JUDGES, not in the app")
+            results.append(row); continue
         judge = judge or Judge()
         heard = judge.hear(wav, lang3)
         row["judge"] = "mms-1b-all"

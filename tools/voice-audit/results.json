@@ -21,7 +21,20 @@
   {
     "language": "ak",
     "voice": "MMS-aka",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "16/18",
+    "langid": null,
+    "seconds": 1.66,
+    "judge": "mms-1b-all",
+    "heard": "akwa aba wo te sɛn",
+    "cer": 0.12,
+    "floor_spread": [
+      0.81,
+      0.88,
+      0.94
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.12 vs floor 0.88 x0.7"
   },
   {
     "language": "am",
@@ -51,12 +64,38 @@
   {
     "language": "bem",
     "voice": "MMS-bem",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "17/19",
+    "langid": null,
+    "seconds": 1.94,
+    "judge": "mms-1b-all",
+    "heard": "muli shani ndi bwino",
+    "cer": 0.0,
+    "floor_spread": [
+      0.71,
+      0.82,
+      0.88
+    ],
+    "floor": 0.82,
+    "basis": "cer 0.0 vs floor 0.82 x0.7"
   },
   {
     "language": "bm",
     "voice": "MMS-bam",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "14/16",
+    "langid": null,
+    "seconds": 1.39,
+    "judge": "mms-1b-all",
+    "heard": "i ni ci ka kɛlen wa",
+    "cer": 0.29,
+    "floor_spread": [
+      0.64,
+      0.71,
+      0.79
+    ],
+    "floor": 0.71,
+    "basis": "cer 0.29 vs floor 0.71 x0.7"
   },
   {
     "language": "bn",
@@ -80,7 +119,20 @@
   {
     "language": "ee",
     "voice": "MMS-ewe",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "17/19",
+    "langid": null,
+    "seconds": 2.22,
+    "judge": "mms-1b-all",
+    "heard": "ŋudina wòfɔa nuya",
+    "cer": 0.29,
+    "floor_spread": [
+      0.76,
+      0.88,
+      0.88
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.29 vs floor 0.88 x0.7"
   },
   {
     "language": "en",
@@ -123,12 +175,40 @@
   {
     "language": "es-ES",
     "voice": "Piper-es_ES",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "ˈola mˈundo\r\nkˈomo estˈas ˈo‍ɪ",
+    "mapped": "27/30",
+    "langid": null,
+    "seconds": 1.58,
+    "judge": "mms-1b-all",
+    "heard": "ola mundo cómo estás hoy",
+    "cer": 0.05,
+    "floor_spread": [
+      0.76,
+      0.86,
+      0.95
+    ],
+    "floor": 0.86,
+    "basis": "cer 0.05 vs floor 0.86 x0.7"
   },
   {
     "language": "es-MX",
     "voice": "Piper-es_MX",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "ˈola mˈundo\r\nkˈomo estˈas ˈo‍ɪ",
+    "mapped": "27/30",
+    "langid": null,
+    "seconds": 1.68,
+    "judge": "mms-1b-all",
+    "heard": "ola mundo cómo es tás voy",
+    "cer": 0.1,
+    "floor_spread": [
+      0.81,
+      1.14,
+      1.38
+    ],
+    "floor": 1.14,
+    "basis": "cer 0.1 vs floor 1.14 x0.7"
   },
   {
     "language": "fa",
@@ -151,12 +231,38 @@
   {
     "language": "ff",
     "voice": "MMS-ful",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "17/19",
+    "langid": null,
+    "seconds": 1.81,
+    "judge": "mms-1b-all",
+    "heard": "jamwaali non mbaɗɗaa",
+    "cer": 0.06,
+    "floor_spread": [
+      0.82,
+      0.88,
+      0.94
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.06 vs floor 0.88 x0.7"
   },
   {
     "language": "fon",
     "voice": "MMS-fon",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "14/17",
+    "langid": null,
+    "seconds": 1.65,
+    "judge": "mms-1b-all",
+    "heard": "kúdó fɔngán jí",
+    "cer": 0.14,
+    "floor_spread": [
+      0.86,
+      0.93,
+      1.0
+    ],
+    "floor": 0.93,
+    "basis": "cer 0.14 vs floor 0.93 x0.7"
   },
   {
     "language": "fr",
@@ -180,7 +286,20 @@
   {
     "language": "gn",
     "voice": "MMS-grn",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "19/21",
+    "langid": null,
+    "seconds": 2.27,
+    "judge": "mms-1b-all",
+    "heard": "mba'éichapa iporãnte",
+    "cer": 0.0,
+    "floor_spread": [
+      0.83,
+      0.94,
+      1.17
+    ],
+    "floor": 0.94,
+    "basis": "cer 0.0 vs floor 0.94 x0.7"
   },
   {
     "language": "gu",
@@ -240,7 +359,20 @@
   {
     "language": "ht",
     "voice": "MMS-hat",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "19/21",
+    "langid": null,
+    "seconds": 2.06,
+    "judge": "mms-1b-all",
+    "heard": "bonjou moun ti jann wi ye",
+    "cer": 0.26,
+    "floor_spread": [
+      0.68,
+      0.84,
+      0.89
+    ],
+    "floor": 0.84,
+    "basis": "cer 0.26 vs floor 0.84 x0.7"
   },
   {
     "language": "id",
@@ -306,7 +438,20 @@
   {
     "language": "ki",
     "voice": "MMS-kik",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "16/18",
+    "langid": null,
+    "seconds": 2.0,
+    "judge": "mms-1b-all",
+    "heard": "ũhoro waku nĩmwera",
+    "cer": 0.06,
+    "floor_spread": [
+      0.81,
+      0.88,
+      0.94
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.06 vs floor 0.88 x0.7"
   },
   {
     "language": "kn",
@@ -348,17 +493,56 @@
   {
     "language": "kr",
     "voice": "MMS-kby",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "13/15",
+    "langid": null,
+    "seconds": 1.74,
+    "judge": "mms-1b-all",
+    "heard": "ndarama wo cira",
+    "cer": 0.0,
+    "floor_spread": [
+      0.85,
+      0.92,
+      1.0
+    ],
+    "floor": 0.92,
+    "basis": "cer 0.0 vs floor 0.92 x0.7"
   },
   {
     "language": "lg",
     "voice": "MMS-lug",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "17/19",
+    "langid": null,
+    "seconds": 1.89,
+    "judge": "mms-1b-all",
+    "heard": "oly otyandi gulungi",
+    "cer": 0.12,
+    "floor_spread": [
+      0.82,
+      0.88,
+      0.88
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.12 vs floor 0.88 x0.7"
   },
   {
     "language": "lgg",
     "voice": "MMS-lgg",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "13/15",
+    "langid": null,
+    "seconds": 1.73,
+    "judge": "mms-1b-all",
+    "heard": "mi ngoni ma muke",
+    "cer": 0.0,
+    "floor_spread": [
+      0.92,
+      0.92,
+      1.0
+    ],
+    "floor": 0.92,
+    "basis": "cer 0.0 vs floor 0.92 x0.7"
   },
   {
     "language": "ln",
@@ -381,7 +565,20 @@
   {
     "language": "mg",
     "voice": "MMS-mlg",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "22/24",
+    "langid": null,
+    "seconds": 2.0,
+    "judge": "mms-1b-all",
+    "heard": "manao oana salamasara",
+    "cer": 0.14,
+    "floor_spread": [
+      0.86,
+      0.91,
+      0.95
+    ],
+    "floor": 0.91,
+    "basis": "cer 0.14 vs floor 0.91 x0.7"
   },
   {
     "language": "ml",
@@ -404,7 +601,20 @@
   {
     "language": "mos",
     "voice": "MMS-mos",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "16/18",
+    "langid": null,
+    "seconds": 2.0,
+    "judge": "mms-1b-all",
+    "heard": "ne y windga ki bare",
+    "cer": 0.06,
+    "floor_spread": [
+      0.88,
+      0.94,
+      1.0
+    ],
+    "floor": 0.94,
+    "basis": "cer 0.06 vs floor 0.94 x0.7"
   },
   {
     "language": "mr",
@@ -483,37 +693,123 @@
   {
     "language": "nl-BE",
     "voice": "Piper-nl_BE",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "hˈɑloː ʋˈɪːrəlt\r\nhˈu ɣˈaːt hət mɛt jə",
+    "mapped": "35/37",
+    "langid": null,
+    "seconds": 1.57,
+    "judge": "mms-1b-all",
+    "heard": "hallo wereld hoe gaat het metje",
+    "cer": 0.0,
+    "floor_spread": [
+      0.73,
+      0.85,
+      0.92
+    ],
+    "floor": 0.85,
+    "basis": "cer 0.0 vs floor 0.85 x0.7"
   },
   {
     "language": "nl-NL",
     "voice": "Piper-nl_NL",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "hˈɑloː ʋˈɪːrəlt\r\nhˈu ɣˈaːt hət mɛt jə",
+    "mapped": "35/37",
+    "langid": null,
+    "seconds": 1.31,
+    "judge": "mms-1b-all",
+    "heard": "hallowereld hoe gaat het met je",
+    "cer": 0.0,
+    "floor_spread": [
+      0.81,
+      0.88,
+      0.96
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.0 vs floor 0.88 x0.7"
   },
   {
     "language": "nr",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "UNJUDGED",
+    "mapped": "30/30",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 2,
+    "seconds": 2.54,
+    "detail": "no recogniser covers 'nr': mms-1b-all has no 'nbl' adapter and whisper was never trained on it. The voice synthesises with the right langid — this is a gap in the JUDGES, not in the app"
   },
   {
     "language": "nso",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "24/24",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 3,
+    "seconds": 2.22,
+    "judge": "mms-1b-all",
+    "heard": "dimelanifasi koka eli hun",
+    "cer": 0.36,
+    "floor_spread": [
+      0.73,
+      0.82,
+      0.86
+    ],
+    "floor": 0.82,
+    "basis": "cer 0.36 vs floor 0.82 x0.7"
   },
   {
     "language": "ny",
     "voice": "MMS-nya",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "14/16",
+    "langid": null,
+    "seconds": 1.9,
+    "judge": "mms-1b-all",
+    "heard": "muli muli bwanji",
+    "cer": 0.14,
+    "floor_spread": [
+      0.64,
+      0.93,
+      0.93
+    ],
+    "floor": 0.93,
+    "basis": "cer 0.14 vs floor 0.93 x0.7"
   },
   {
     "language": "nyn",
     "voice": "MMS-nyn",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "15/17",
+    "langid": null,
+    "seconds": 1.58,
+    "judge": "mms-1b-all",
+    "heard": "agandiiri marundi",
+    "cer": 0.2,
+    "floor_spread": [
+      0.8,
+      0.8,
+      0.93
+    ],
+    "floor": 0.8,
+    "basis": "cer 0.2 vs floor 0.8 x0.7"
   },
   {
     "language": "om",
     "voice": "MMS-orm",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "18/20",
+    "langid": null,
+    "seconds": 1.89,
+    "judge": "mms-1b-all",
+    "heard": "akkan niiltanaa gaan dhera",
+    "cer": 0.44,
+    "floor_spread": [
+      0.72,
+      0.78,
+      0.94
+    ],
+    "floor": 0.78,
+    "basis": "cer 0.44 vs floor 0.78 x0.7"
   },
   {
     "language": "pa",
@@ -555,22 +851,76 @@
   {
     "language": "pt-BR",
     "voice": "Piper-pt_BR",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "olˈa mˈũŋdʊ\r\nkˌomʊ vosˌe estˌa ˈoʒy",
+    "mapped": "34/36",
+    "langid": null,
+    "seconds": 1.58,
+    "judge": "mms-1b-all",
+    "heard": "olá mundo como você está hoje",
+    "cer": 0.0,
+    "floor_spread": [
+      0.75,
+      0.79,
+      0.88
+    ],
+    "floor": 0.79,
+    "basis": "cer 0.0 vs floor 0.79 x0.7"
   },
   {
     "language": "pt-PT",
     "voice": "Piper-pt_PT",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "ipa": "ɔlˈa mˈũŋdʊ\r\nkˈomw estˌa ˈoʒɨ",
+    "mapped": "28/30",
+    "langid": null,
+    "seconds": 1.23,
+    "judge": "mms-1b-all",
+    "heard": "el há muito comoque stá hoje",
+    "cer": 0.3,
+    "floor_spread": [
+      0.75,
+      0.8,
+      0.85
+    ],
+    "floor": 0.8,
+    "basis": "cer 0.3 vs floor 0.8 x0.7"
   },
   {
     "language": "qu",
     "voice": "MMS-quy",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "22/24",
+    "langid": null,
+    "seconds": 2.3,
+    "judge": "mms-1b-all",
+    "heard": "allillan churinmi kani",
+    "cer": 0.14,
+    "floor_spread": [
+      0.68,
+      0.73,
+      0.86
+    ],
+    "floor": 0.73,
+    "basis": "cer 0.14 vs floor 0.73 x0.7"
   },
   {
     "language": "rn",
     "voice": "MMS-run",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "13/15",
+    "langid": null,
+    "seconds": 1.68,
+    "judge": "mms-1b-all",
+    "heard": "amakuru ni neza",
+    "cer": 0.08,
+    "floor_spread": [
+      0.92,
+      0.92,
+      1.08
+    ],
+    "floor": 0.92,
+    "basis": "cer 0.08 vs floor 0.92 x0.7"
   },
   {
     "language": "ru",
@@ -594,12 +944,38 @@
   {
     "language": "rw",
     "voice": "MMS-kin",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "13/15",
+    "langid": null,
+    "seconds": 1.23,
+    "judge": "mms-1b-all",
+    "heard": "amakuru ni meza",
+    "cer": 0.0,
+    "floor_spread": [
+      0.77,
+      0.85,
+      0.85
+    ],
+    "floor": 0.85,
+    "basis": "cer 0.0 vs floor 0.85 x0.7"
   },
   {
     "language": "sg",
     "voice": "MMS-sag",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "18/20",
+    "langid": null,
+    "seconds": 1.73,
+    "judge": "mms-1b-all",
+    "heard": "baa ala tongana lier",
+    "cer": 0.22,
+    "floor_spread": [
+      0.72,
+      0.83,
+      0.89
+    ],
+    "floor": 0.83,
+    "basis": "cer 0.22 vs floor 0.83 x0.7"
   },
   {
     "language": "si",
@@ -616,7 +992,20 @@
   {
     "language": "sn",
     "voice": "MMS-sna",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "22/24",
+    "langid": null,
+    "seconds": 2.56,
+    "judge": "mms-1b-all",
+    "heard": "moronika wakadiina asi",
+    "cer": 0.14,
+    "floor_spread": [
+      0.68,
+      0.82,
+      0.82
+    ],
+    "floor": 0.82,
+    "basis": "cer 0.14 vs floor 0.82 x0.7"
   },
   {
     "language": "so",
@@ -639,7 +1028,12 @@
   {
     "language": "ss",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "UNJUDGED",
+    "mapped": "27/27",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 5,
+    "seconds": 2.4,
+    "detail": "no recogniser covers 'ss': mms-1b-all has no 'ssw' adapter and whisper was never trained on it. The voice synthesises with the right langid — this is a gap in the JUDGES, not in the app"
   },
   {
     "language": "st",
@@ -778,17 +1172,49 @@
   {
     "language": "tn",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "UNJUDGED",
+    "mapped": "28/28",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 6,
+    "seconds": 2.46,
+    "detail": "no recogniser covers 'tn': mms-1b-all has no 'tsn' adapter and whisper was never trained on it. The voice synthesises with the right langid — this is a gap in the JUDGES, not in the app"
   },
   {
     "language": "tpi",
     "voice": "MMS-tpi",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "16/18",
+    "langid": null,
+    "seconds": 1.73,
+    "judge": "mms-1b-all",
+    "heard": "midiwol i orait",
+    "cer": 0.44,
+    "floor_spread": [
+      0.69,
+      0.88,
+      0.88
+    ],
+    "floor": 0.88,
+    "basis": "cer 0.44 vs floor 0.88 x0.7"
   },
   {
     "language": "ts",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "SPEAKS",
+    "mapped": "31/31",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 7,
+    "seconds": 2.59,
+    "judge": "mms-1b-all",
+    "heard": "avuxeninisava kunjani namuntlha",
+    "cer": 0.1,
+    "floor_spread": [
+      0.79,
+      0.83,
+      0.86
+    ],
+    "floor": 0.83,
+    "basis": "cer 0.1 vs floor 0.83 x0.7"
   },
   {
     "language": "ur",
@@ -812,7 +1238,12 @@
   {
     "language": "ve",
     "voice": "Vits-11ZA",
-    "verdict": "NOPHRASE"
+    "verdict": "UNJUDGED",
+    "mapped": "23/23",
+    "vocab_note": "vocabulary contains 38 Cyrillic letters; harmless if the model was trained with that pooled vocabulary, fatal if the vocab was rebuilt by sorting — the audio decides",
+    "langid": 8,
+    "seconds": 2.1,
+    "detail": "no recogniser covers 've': mms-1b-all has no 'ven' adapter and whisper was never trained on it. The voice synthesises with the right langid — this is a gap in the JUDGES, not in the app"
   },
   {
     "language": "vi",
