@@ -1,0 +1,394 @@
+{
+  "_comment": "Piper phoneme->id layout. THE PAD RULE: `_` resolves to THAT model's blank — 0 in sherpa/MMS exports, 3 in Piper-family ones — never a constant. Layout is [BOS, PAD, id, PAD, id, PAD, ..., EOS], with BOS/EOS emitted only when the map has them. Unknown symbols are SKIPPED and REPORTED, never fatal. Approximations are reported separately because they are a compromise, not a success.",
+  "_source": "src/CircleAI.Voice/PiperVoiceConfig.cs",
+  "configs": [
+    {
+      "name": "piper-like (pad=0, has BOS/EOS)",
+      "configJson": {
+        "_": [
+          0
+        ],
+        "^": [
+          1
+        ],
+        "$": [
+          2
+        ],
+        " ": [
+          3
+        ],
+        "a": [
+          4
+        ],
+        "b": [
+          5
+        ],
+        "k": [
+          6
+        ],
+        "s": [
+          7
+        ],
+        "t": [
+          8
+        ],
+        "n": [
+          9
+        ],
+        "ŋ": [
+          10
+        ],
+        "ʃ": [
+          11
+        ],
+        "d": [
+          12
+        ],
+        "ɡ": [
+          13
+        ]
+      },
+      "sampleRate": 22050,
+      "padId": 0,
+      "hasPhonemeMap": true,
+      "cases": [
+        {
+          "phonemes": [
+            "b",
+            "a",
+            "t"
+          ],
+          "ids": [
+            1,
+            0,
+            5,
+            0,
+            4,
+            0,
+            8,
+            0,
+            2
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "B",
+            "A",
+            "T"
+          ],
+          "ids": [
+            1,
+            0,
+            5,
+            0,
+            4,
+            0,
+            8,
+            0,
+            2
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "a",
+            "ZZZ",
+            "t"
+          ],
+          "ids": [
+            1,
+            0,
+            4,
+            0,
+            8,
+            0,
+            2
+          ],
+          "skipped": 1,
+          "skippedSymbols": [
+            "ZZZ"
+          ],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "ṅ",
+            "a"
+          ],
+          "ids": [
+            1,
+            0,
+            10,
+            0,
+            4,
+            0,
+            2
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "ṅ"
+          ]
+        },
+        {
+          "phonemes": [
+            "š",
+            "a"
+          ],
+          "ids": [
+            1,
+            0,
+            11,
+            0,
+            4,
+            0,
+            2
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "š"
+          ]
+        },
+        {
+          "phonemes": [
+            "ṱ",
+            "a"
+          ],
+          "ids": [
+            1,
+            0,
+            8,
+            0,
+            4,
+            0,
+            2
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "ṱ"
+          ]
+        },
+        {
+          "phonemes": [
+            "ก",
+            "a"
+          ],
+          "ids": [
+            1,
+            0,
+            4,
+            0,
+            2
+          ],
+          "skipped": 1,
+          "skippedSymbols": [
+            "ก"
+          ],
+          "approximatedSymbols": []
+        }
+      ]
+    },
+    {
+      "name": "mms-like (pad=3, no BOS/EOS)",
+      "configJson": {
+        "<PAD>": [
+          0
+        ],
+        "<EOS>": [
+          1
+        ],
+        "<BOS>": [
+          2
+        ],
+        "<BLNK>": [
+          3
+        ],
+        "_": [
+          3
+        ],
+        "a": [
+          4
+        ],
+        "b": [
+          5
+        ],
+        "k": [
+          6
+        ],
+        "s": [
+          7
+        ],
+        "t": [
+          8
+        ],
+        "n": [
+          9
+        ]
+      },
+      "sampleRate": 16000,
+      "padId": 3,
+      "hasPhonemeMap": true,
+      "cases": [
+        {
+          "phonemes": [
+            "b",
+            "a",
+            "t"
+          ],
+          "ids": [
+            3,
+            5,
+            3,
+            4,
+            3,
+            8,
+            3
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "B",
+            "A",
+            "T"
+          ],
+          "ids": [
+            3,
+            5,
+            3,
+            4,
+            3,
+            8,
+            3
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "a",
+            "ZZZ",
+            "t"
+          ],
+          "ids": [
+            3,
+            4,
+            3,
+            8,
+            3
+          ],
+          "skipped": 1,
+          "skippedSymbols": [
+            "ZZZ"
+          ],
+          "approximatedSymbols": []
+        },
+        {
+          "phonemes": [
+            "ṅ",
+            "a"
+          ],
+          "ids": [
+            3,
+            9,
+            3,
+            4,
+            3
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "ṅ"
+          ]
+        },
+        {
+          "phonemes": [
+            "š",
+            "a"
+          ],
+          "ids": [
+            3,
+            7,
+            3,
+            4,
+            3
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "š"
+          ]
+        },
+        {
+          "phonemes": [
+            "ṱ",
+            "a"
+          ],
+          "ids": [
+            3,
+            8,
+            3,
+            4,
+            3
+          ],
+          "skipped": 0,
+          "skippedSymbols": [],
+          "approximatedSymbols": [
+            "ṱ"
+          ]
+        },
+        {
+          "phonemes": [
+            "ก",
+            "a"
+          ],
+          "ids": [
+            3,
+            4,
+            3
+          ],
+          "skipped": 1,
+          "skippedSymbols": [
+            "ก"
+          ],
+          "approximatedSymbols": []
+        }
+      ]
+    }
+  ],
+  "splitPhonemeString": [
+    {
+      "input": "bat",
+      "elements": [
+        "b",
+        "a",
+        "t"
+      ]
+    },
+    {
+      "input": "bát",
+      "elements": [
+        "b",
+        "á",
+        "t"
+      ]
+    },
+    {
+      "input": "กัb",
+      "elements": [
+        "กั",
+        "b"
+      ]
+    }
+  ]
+}

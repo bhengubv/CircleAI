@@ -145,6 +145,168 @@ var json = new JsonSerializerOptions
     Write(Path.Combine(outDir, "voice_wav_io.json"), payload);
 }
 
+// ------------------------------------------------------- PiperVoiceConfig
+{
+    // A HAND-BUILT VOCABULARY WITH TWO DIFFERENT PAD IDS, because that is THE
+    // rule this module exists to get right: `_` resolves to whatever THAT model
+    // calls blank — id 0 in sherpa/MMS exports, 3 in Piper-family ones — and
+    // pointing it at an ordinary vocab entry is what made 42 MMS voices speak
+    // fluent nonsense. A port that hard-codes 0 passes the first config and
+    // fails the second.
+    var piperLike = new Dictionary<string, long[]>(StringComparer.Ordinal)
+    {
+        ["_"] = [0], ["^"] = [1], ["$"] = [2], [" "] = [3],
+        ["a"] = [4], ["b"] = [5], ["k"] = [6], ["s"] = [7], ["t"] = [8],
+        ["n"] = [9], ["ŋ"] = [10], ["ʃ"] = [11], ["d"] = [12], ["ɡ"] = [13],
+    };
+    var mmsLike = new Dictionary<string, long[]>(StringComparer.Ordinal)
+    {
+        ["<PAD>"] = [0], ["<EOS>"] = [1], ["<BOS>"] = [2],
+        // Both names point at 3 — the sherpa/MMS convention this catalogue ships.
+        ["<BLNK>"] = [3], ["_"] = [3],
+        ["a"] = [4], ["b"] = [5], ["k"] = [6], ["s"] = [7], ["t"] = [8], ["n"] = [9],
+    };
+
+    var configs = new[]
+    {
+        (name: "piper-like (pad=0, has BOS/EOS)", map: piperLike, rate: 22050),
+        (name: "mms-like (pad=3, no BOS/EOS)", map: mmsLike, rate: 16000),
+    };
+
+    // Each case exercises one trap named in the source.
+    string[][] phonemeCases =
+    [
+        ["b", "a", "t"],                 // ordinary
+        ["B", "A", "T"],                 // lower-case fallback (grapheme vocabs have no capitals)
+        ["a", "ZZZ", "t"],               // unknown symbol: skipped AND reported
+        ["ṅ", "a"],                      // exact phonetic stand-in: ṅ IS /ŋ/
+        ["š", "a"],                      // exact phonetic stand-in: š IS /ʃ/
+        ["ṱ", "a"],                      // diacritic fold to a Latin base: ṱ -> t
+        ["ก", "a"],                      // Thai: NOT Latin-based, must NOT be folded
+    ];
+
+    var payload = new
+    {
+        _comment = "Piper phoneme->id layout. THE PAD RULE: `_` resolves to THAT model's blank "
+                 + "— 0 in sherpa/MMS exports, 3 in Piper-family ones — never a constant. Layout is "
+                 + "[BOS, PAD, id, PAD, id, PAD, ..., EOS], with BOS/EOS emitted only when the map "
+                 + "has them. Unknown symbols are SKIPPED and REPORTED, never fatal. Approximations "
+                 + "are reported separately because they are a compromise, not a success.",
+        _source = "src/CircleAI.Voice/PiperVoiceConfig.cs",
+        configs = configs.Select(c =>
+        {
+            var json = JsonSerializer.Serialize(new
+            {
+                audio = new { sample_rate = c.rate },
+                inference = new { noise_scale = 0.667, length_scale = 1.0, noise_w = 0.8 },
+                phoneme_type = "espeak",
+                phoneme_id_map = c.map,
+            }, System.Text.Json.JsonSerializerOptions.Default);
+            var cfg = PiperVoiceConfig.Parse(JsonDocument.Parse(json).RootElement);
+
+            return new
+            {
+                name = c.name,
+                configJson = c.map,
+                sampleRate = cfg.SampleRate,
+                padId = cfg.PadId,
+                hasPhonemeMap = cfg.HasPhonemeMap,
+                cases = phonemeCases.Select(p =>
+                {
+                    var ids = cfg.PhonemesToIds(p, out var skipped, out var skippedSymbols,
+                                                out var approximated);
+                    return new
+                    {
+                        phonemes = p,
+                        ids,
+                        skipped,
+                        skippedSymbols = skippedSymbols.ToArray(),
+                        approximatedSymbols = approximated.ToArray(),
+                    };
+                }).ToArray(),
+            };
+        }).ToArray(),
+        splitPhonemeString = new[] { "bat", "bát", "กัb" }
+            .Select(s => new { input = s, elements = PiperVoiceConfig.SplitPhonemeString(s).ToArray() })
+            .ToArray(),
+    };
+    Write(Path.Combine(outDir, "voice_piper_config.json"), payload);
+}
+
+// -------------------------------------------------------- LexiconTokeniser
+{
+    // Word-keyed, overlapping entries, so LONGEST MATCH FIRST is observable:
+    // あい, あいさつ and あいかわらず all start the same way, and taking the
+    // shortest pronounces a different word.
+    var tokens = new Dictionary<string, long>(StringComparer.Ordinal)
+    {
+        ["<blank>"] = 0, ["a"] = 1, ["i"] = 2, ["s"] = 3, ["ts"] = 4,
+        ["k"] = 5, ["w"] = 6, ["r"] = 7, ["u"] = 8, ["n"] = 9, ["o"] = 10,
+    };
+    var lexicon = new (string Word, string[] Phonemes)[]
+    {
+        ("あ", ["a"]),
+        ("あい", ["a", "i"]),
+        ("あいさつ", ["a", "i", "s", "a", "ts", "u"]),
+        ("あいかわらず", ["a", "i", "k", "a", "w", "a", "r", "a", "z", "u"]),
+        ("ん", ["n"]),
+    };
+
+    var dir = Path.Combine(Path.GetTempPath(), "voicefix-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    File.WriteAllLines(Path.Combine(dir, "tokens.txt"),
+        tokens.Select(kv => $"{kv.Key} {kv.Value}"), Encoding.UTF8);
+    File.WriteAllLines(Path.Combine(dir, "lexicon.txt"),
+        lexicon.Select(e => $"{e.Word} {string.Join(' ', e.Phonemes)}"), Encoding.UTF8);
+    var model = Path.Combine(dir, "model.onnx");
+    File.WriteAllBytes(model, [0]);
+
+    var lex = LexiconTokeniser.TryLoadForModel(model)
+              ?? throw new InvalidOperationException("fixture lexicon failed to load");
+
+    string[] texts = ["あいさつ", "あい", "あ", "あいかわらず", "あい ん", "あXい"];
+    var payload = new
+    {
+        _comment = "Lexicon-driven tokenising: a word->phoneme table plus a phoneme->id table, "
+                 + "no phonemizer process and no licence wall. LONGEST MATCH FIRST over the word "
+                 + "keys — the entries overlap, and the shortest match pronounces a different word. "
+                 + "Falls back to the single character when nothing matches, and REPORTS what it "
+                 + "could not map. tokens.txt splits on the LAST space, because the symbol itself "
+                 + "may be a space. With add_blank, a blank opens the utterance and follows every "
+                 + "token.",
+        _source = "src/CircleAI.Voice/LexiconTokeniser.cs",
+        tokens,
+        lexicon = lexicon.Select(e => new { word = e.Word, phonemes = e.Phonemes }).ToArray(),
+        blank = 0,
+        cases = texts.Select(t =>
+        {
+            var bare = lex.Encode(t, interleaveBlank: false);
+            var bareUnmapped = lex.LastUnmapped.ToArray();
+            var padded = lex.Encode(t, interleaveBlank: true);
+            return new { text = t, ids = bare, idsWithBlank = padded, unmapped = bareUnmapped };
+        }).ToArray(),
+    };
+    Write(Path.Combine(outDir, "voice_lexicon_tokeniser.json"), payload);
+    Directory.Delete(dir, recursive: true);
+}
+
+// ------------------------------------------------------------- AudioFormat
+{
+    var payload = new
+    {
+        _comment = "The canonical PCM format the voice components expect. Most open-source ASR "
+                 + "engines (sherpa-onnx, Vosk) take this directly.",
+        _source = "src/CircleAI.Voice/AudioFormat.cs",
+        pcm16Mono16k = new
+        {
+            sampleRate = AudioFormat.Pcm16Mono16k.SampleRate,
+            channels = AudioFormat.Pcm16Mono16k.Channels,
+            bitsPerSample = AudioFormat.Pcm16Mono16k.BitsPerSample,
+        },
+    };
+    Write(Path.Combine(outDir, "voice_audio_format.json"), payload);
+}
+
 Console.WriteLine("fixtures written to " + outDir);
 return 0;
 

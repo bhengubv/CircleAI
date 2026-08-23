@@ -1,0 +1,9 @@
+{
+  "_comment": "The canonical PCM format the voice components expect. Most open-source ASR engines (sherpa-onnx, Vosk) take this directly.",
+  "_source": "src/CircleAI.Voice/AudioFormat.cs",
+  "pcm16Mono16k": {
+    "sampleRate": 16000,
+    "channels": 1,
+    "bitsPerSample": 16
+  }
+}

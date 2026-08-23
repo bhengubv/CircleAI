@@ -1,0 +1,190 @@
+{
+  "_comment": "Lexicon-driven tokenising: a word->phoneme table plus a phoneme->id table, no phonemizer process and no licence wall. LONGEST MATCH FIRST over the word keys — the entries overlap, and the shortest match pronounces a different word. Falls back to the single character when nothing matches, and REPORTS what it could not map. tokens.txt splits on the LAST space, because the symbol itself may be a space. With add_blank, a blank opens the utterance and follows every token.",
+  "_source": "src/CircleAI.Voice/LexiconTokeniser.cs",
+  "tokens": {
+    "<blank>": 0,
+    "a": 1,
+    "i": 2,
+    "s": 3,
+    "ts": 4,
+    "k": 5,
+    "w": 6,
+    "r": 7,
+    "u": 8,
+    "n": 9,
+    "o": 10
+  },
+  "lexicon": [
+    {
+      "word": "あ",
+      "phonemes": [
+        "a"
+      ]
+    },
+    {
+      "word": "あい",
+      "phonemes": [
+        "a",
+        "i"
+      ]
+    },
+    {
+      "word": "あいさつ",
+      "phonemes": [
+        "a",
+        "i",
+        "s",
+        "a",
+        "ts",
+        "u"
+      ]
+    },
+    {
+      "word": "あいかわらず",
+      "phonemes": [
+        "a",
+        "i",
+        "k",
+        "a",
+        "w",
+        "a",
+        "r",
+        "a",
+        "z",
+        "u"
+      ]
+    },
+    {
+      "word": "ん",
+      "phonemes": [
+        "n"
+      ]
+    }
+  ],
+  "blank": 0,
+  "cases": [
+    {
+      "text": "あいさつ",
+      "ids": [
+        1,
+        2,
+        3,
+        1,
+        4,
+        8
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0,
+        2,
+        0,
+        3,
+        0,
+        1,
+        0,
+        4,
+        0,
+        8,
+        0
+      ],
+      "unmapped": []
+    },
+    {
+      "text": "あい",
+      "ids": [
+        1,
+        2
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0,
+        2,
+        0
+      ],
+      "unmapped": []
+    },
+    {
+      "text": "あ",
+      "ids": [
+        1
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0
+      ],
+      "unmapped": []
+    },
+    {
+      "text": "あいかわらず",
+      "ids": [
+        1,
+        2,
+        5,
+        1,
+        6,
+        1,
+        7,
+        1,
+        8
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0,
+        2,
+        0,
+        5,
+        0,
+        1,
+        0,
+        6,
+        0,
+        1,
+        0,
+        7,
+        0,
+        1,
+        0,
+        8,
+        0
+      ],
+      "unmapped": []
+    },
+    {
+      "text": "あい ん",
+      "ids": [
+        1,
+        2,
+        9
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0,
+        2,
+        0,
+        9,
+        0
+      ],
+      "unmapped": []
+    },
+    {
+      "text": "あXい",
+      "ids": [
+        1
+      ],
+      "idsWithBlank": [
+        0,
+        1,
+        0
+      ],
+      "unmapped": [
+        "X",
+        "い"
+      ]
+    }
+  ]
+}

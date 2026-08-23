@@ -170,4 +170,129 @@ final class VoiceParityTests: XCTestCase {
         }
         return mono
     }
+
+    // ── PiperVoiceConfig ────────────────────────────────────────────────────
+
+    func testPiperConfigMatchesReference() throws {
+        let fixture = try load("voice_piper_config.json")
+        let configs = fixture["configs"] as! [[String: Any]]
+        XCTAssertEqual(configs.count, 2, "both pad conventions must be covered")
+
+        for c in configs {
+            let name = c["name"] as! String
+            let rawMap = c["configJson"] as! [String: [NSNumber]]
+            var map: [String: [Int64]] = [:]
+            for (k, v) in rawMap { map[k] = v.map(\.int64Value) }
+            let cfg = VoicePiperConfig(map: map, sampleRate: c["sampleRate"] as! Int)
+
+            XCTAssertEqual(cfg.padId, Int64(c["padId"] as! Int), "padId for \(name)")
+            XCTAssertEqual(cfg.hasPhonemeMap, c["hasPhonemeMap"] as! Bool)
+
+            for one in c["cases"] as! [[String: Any]] {
+                let phonemes = one["phonemes"] as! [String]
+                let got = cfg.phonemesToIds(phonemes)
+                XCTAssertEqual(got.ids, (one["ids"] as! [NSNumber]).map(\.int64Value),
+                               "ids for \(phonemes) in \(name)")
+                XCTAssertEqual(got.skipped, one["skipped"] as! Int, "skipped for \(phonemes)")
+                XCTAssertEqual(got.skippedSymbols, one["skippedSymbols"] as! [String],
+                               "skippedSymbols for \(phonemes)")
+                XCTAssertEqual(got.approximatedSymbols, one["approximatedSymbols"] as! [String],
+                               "approximatedSymbols for \(phonemes)")
+            }
+        }
+    }
+
+    func testPadIsReadFromTheModelNotAssumed() throws {
+        // THE PAD RULE. The two fixture configs disagree — 0 in the Piper-layout
+        // one, 3 in the MMS-layout one — so a port that hard-codes either fails
+        // on the other. Pointing `_` at an ordinary vocabulary entry is what made
+        // 42 MMS voices speak fluent nonsense.
+        let fixture = try load("voice_piper_config.json")
+        let configs = fixture["configs"] as! [[String: Any]]
+        let pads = configs.map { $0["padId"] as! Int }
+        XCTAssertEqual(Set(pads), Set([0, 3]), "the fixture must cover BOTH pad conventions")
+
+        for c in configs {
+            let rawMap = c["configJson"] as! [String: [NSNumber]]
+            var map: [String: [Int64]] = [:]
+            for (k, v) in rawMap { map[k] = v.map(\.int64Value) }
+            XCTAssertEqual(VoicePiperConfig(map: map).padId, Int64(c["padId"] as! Int))
+        }
+    }
+
+    func testThaiIsNotFoldedButTshivendaIs() throws {
+        // The asymmetry is the whole point. Latin ṱ still sounds like a t with
+        // the mark gone; Thai ก's marks ARE the vowels, so folding deletes the
+        // word rather than approximating it.
+        let fixture = try load("voice_piper_config.json")
+        let c = (fixture["configs"] as! [[String: Any]])[0]
+        let rawMap = c["configJson"] as! [String: [NSNumber]]
+        var map: [String: [Int64]] = [:]
+        for (k, v) in rawMap { map[k] = v.map(\.int64Value) }
+        let cfg = VoicePiperConfig(map: map)
+
+        XCTAssertEqual(cfg.phonemesToIds(["ṱ"]).approximatedSymbols, ["ṱ"],
+                       "ṱ should fold to a Latin base and be REPORTED as approximate")
+        XCTAssertEqual(cfg.phonemesToIds(["ก"]).skippedSymbols, ["ก"],
+                       "Thai must be skipped, not folded")
+    }
+
+    func testSplitPhonemeStringMatchesReference() throws {
+        let fixture = try load("voice_piper_config.json")
+        for c in fixture["splitPhonemeString"] as! [[String: Any]] {
+            XCTAssertEqual(VoicePiperConfig.splitPhonemeString(c["input"] as! String),
+                           c["elements"] as! [String],
+                           "grapheme clusters for \(c["input"] as! String)")
+        }
+    }
+
+    // ── LexiconTokeniser ────────────────────────────────────────────────────
+
+    private func makeLexicon(_ fixture: [String: Any]) -> VoiceLexiconTokeniser {
+        let tokens = fixture["tokens"] as! [String: NSNumber]
+        let lexicon = fixture["lexicon"] as! [[String: Any]]
+        let tokensText = tokens.map { "\($0.key) \($0.value)" }.joined(separator: "
+")
+        let lexiconText = lexicon.map {
+            "\($0["word"] as! String) \(($0["phonemes"] as! [String]).joined(separator: " "))"
+        }.joined(separator: "
+")
+        return VoiceLexiconTokeniser.from(tokensText: tokensText, lexiconText: lexiconText)!
+    }
+
+    func testLexiconTokeniserMatchesReference() throws {
+        let fixture = try load("voice_lexicon_tokeniser.json")
+        let lex = makeLexicon(fixture)
+
+        for c in fixture["cases"] as! [[String: Any]] {
+            let text = c["text"] as! String
+            let bare = lex.encode(text, interleaveBlank: false)
+            XCTAssertEqual(bare, (c["ids"] as! [NSNumber]).map(\.int64Value), "ids for \(text)")
+            XCTAssertEqual(lex.lastUnmapped, c["unmapped"] as! [String], "unmapped for \(text)")
+            XCTAssertEqual(lex.encode(text, interleaveBlank: true),
+                           (c["idsWithBlank"] as! [NSNumber]).map(\.int64Value),
+                           "idsWithBlank for \(text)")
+        }
+    }
+
+    func testLexiconTakesTheLongestMatch() throws {
+        // あい, あいさつ and あいかわらず all start the same way. Taking the
+        // shortest pronounces a different word.
+        let fixture = try load("voice_lexicon_tokeniser.json")
+        let lex = makeLexicon(fixture)
+        let full = lex.encode("あいさつ", interleaveBlank: false)
+        let short = lex.encode("あい", interleaveBlank: false)
+        XCTAssertGreaterThan(full.count, short.count,
+                             "あいさつ matched only the あい prefix — this is shortest-match")
+    }
+
+    // ── AudioFormat ─────────────────────────────────────────────────────────
+
+    func testAudioFormatMatchesReference() throws {
+        let fixture = try load("voice_audio_format.json")
+        let want = fixture["pcm16Mono16k"] as! [String: Any]
+        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.sampleRate, want["sampleRate"] as! Int)
+        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.channels, want["channels"] as! Int)
+        XCTAssertEqual(VoiceAudioFormat.pcm16Mono16k.bitsPerSample, want["bitsPerSample"] as! Int)
+    }
 }
