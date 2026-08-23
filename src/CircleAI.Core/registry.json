@@ -1125,5 +1125,31 @@
         "SizeBytes": 5051
       }
     ]
+  },
+  "Vits-af_ZA-mimic3": {
+    "Version": "1.0",
+    "Quantization": "ONNX",
+    "Repo": "bhengubv/circleai-voices",
+    "Source": "GitHubRelease",
+    "Modality": "Tts",
+    "Language": "af",
+    "Architecture": "vits",
+    "TotalBytes": 76353524,
+    "MinRamGb": 0.3,
+    "MinStorageGb": 0.0924,
+    "QualityRank": 7,
+    "Capabilities": [],
+    "BundleFiles": [
+      {
+        "Name": "voices-v1/af_ZA-google-nwu-low.onnx",
+        "Sha256": "9b0969ee195ed33503292b6a2cd7763c838e3ae41c37caf9196d3226c4c6afeb",
+        "SizeBytes": 76351459
+      },
+      {
+        "Name": "voices-v1/af_ZA-google-nwu-low.onnx.json",
+        "Sha256": "44b41d0df028b84609202b244bf638584f1d2ae44771d064a918e58cb1eee711",
+        "SizeBytes": 2065
+      }
+    ]
   }
 }

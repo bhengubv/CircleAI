@@ -73,6 +73,24 @@ longer compliant.
 | ne_NP google medium (Nepali) | CC-BY-SA-4.0 | rhasspy/piper-voices, openSLR 43, 18 speakers |
 | ko_KR kss medium (Korean) | CC-BY-NC-SA-4.0 | rhasspy/piper-voices, Korean Single Speaker corpus |
 | ig_IB soro medium (Igbo) | CC-BY-NC-4.0 | Shinzmann/soro-tts-ibo, WaxalNLP — re-exported to ONNX by us |
+| af_ZA google-nwu low (Afrikaans) | CC-BY-SA-4.0 | MycroftAI/mimic3-voices, openSLR 32 (Google/NWU) via sherpa-onnx |
+
+Afrikaans is the last of the four. `Vits-11ZA` measured **at its own noise
+floor** for it — cer 0.76 against a 0.76 floor, unmoved by every encoding, every
+one of the eleven language ids, and both recognisers. The replacement,
+`vits-mimic3-af_ZA-google-nwu_low`, measures **CER 0.48 against a 1.17 floor**:
+`Goeie môre` comes back "Goeiemor", `Die son skyn vandag mooi` as "Disone schijn
+van dach moui".
+
+Two details that are not guesses. Mimic3 ships a TRAINING config, not a Piper
+sidecar — `phoneme_to_id` is null and the vocabulary is in `tokens.txt` beside
+it, 60 tokens opening `_ ^ $`. And its scales are **0.333/0.333**, not Piper's
+0.667/0.8; the bundle's own config says so.
+
+`Vits-11ZA` keeps its other ten languages and simply no longer claims `af`. It
+is NOT ranked below the new voice, because `BestFor` with no language also sorts
+on QualityRank — bumping the Afrikaans voice to 8 made it the global default TTS
+ahead of English, which a test caught.
 
 Igbo replaces `MMS-ibo`, which was not an MMS voice either. That bundle was
 `multilingual-tts/VITS-OpenBible-Igbo`, and re-exporting it correctly — with its

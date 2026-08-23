@@ -2447,7 +2447,7 @@
    "Repo": "thegeekco/circleai-voices",
    "Source": "HuggingFaceBucket",
    "Modality": "Tts",
-   "Language": "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+   "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
    "Architecture": "vits",
    "TotalBytes": 122139761,
    "MinRamGb": 0.3,
@@ -2479,7 +2479,7 @@
    "Repo": "thegeekco/circleai-voices",
    "Source": "HuggingFaceBucket",
    "Modality": "Tts",
-   "Language": "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+   "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
    "Architecture": "vits",
    "TotalBytes": 32432726,
    "MinRamGb": 0.3,
@@ -3128,6 +3128,33 @@
      "Name": "voices-v1/ig_IB-soro-medium.onnx.json",
      "Sha256": "0c86f3bea1bdbc91ff1b59ccb2796d905df518019a66ade975ffccacc4d1c8b4",
      "SizeBytes": 5051
+    }
+   ]
+  },
+  {
+   "Name": "Vits-af_ZA-mimic3",
+   "Version": "1.0",
+   "Quantization": "ONNX",
+   "Repo": "bhengubv/circleai-voices",
+   "Source": "GitHubRelease",
+   "Modality": "Tts",
+   "Language": "af",
+   "Architecture": "vits",
+   "TotalBytes": 76353524,
+   "MinRamGb": 0.3,
+   "MinStorageGb": 0.0924,
+   "QualityRank": 7,
+   "Capabilities": [],
+   "BundleFiles": [
+    {
+     "Name": "voices-v1/af_ZA-google-nwu-low.onnx",
+     "Sha256": "9b0969ee195ed33503292b6a2cd7763c838e3ae41c37caf9196d3226c4c6afeb",
+     "SizeBytes": 76351459
+    },
+    {
+     "Name": "voices-v1/af_ZA-google-nwu-low.onnx.json",
+     "Sha256": "44b41d0df028b84609202b244bf638584f1d2ae44771d064a918e58cb1eee711",
+     "SizeBytes": 2065
     }
    ]
   }
