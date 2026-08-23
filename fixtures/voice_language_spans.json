@@ -1,0 +1,163 @@
+{
+  "_comment": "Cuts mixed-language text where the language changes, so each run can be synthesised under its own language id. Detection is deliberately CONSERVATIVE — internal capitals and short all-caps runs only. Guessing at ordinary lowercase words would mispronounce native words to fix foreign ones, which insults the speaker in their own language. Separators ride along with the run they FOLLOW, so a language change never strands a comma.",
+  "_source": "src/CircleAI.Voice/LanguageSpanSplitter.cs",
+  "split": [
+    {
+      "text": "",
+      "spans": []
+    },
+    {
+      "text": "Sawubona",
+      "spans": [
+        {
+          "text": "Sawubona",
+          "isForeign": false
+        }
+      ]
+    },
+    {
+      "text": "Igama lami ngu-CircleAI",
+      "spans": [
+        {
+          "text": "Igama lami ngu-",
+          "isForeign": false
+        },
+        {
+          "text": "CircleAI",
+          "isForeign": true
+        }
+      ]
+    },
+    {
+      "text": "Ngicela i-GPS yakho, ngiyabonga",
+      "spans": [
+        {
+          "text": "Ngicela i-",
+          "isForeign": false
+        },
+        {
+          "text": "GPS ",
+          "isForeign": true
+        },
+        {
+          "text": "yakho, ngiyabonga",
+          "isForeign": false
+        }
+      ]
+    },
+    {
+      "text": "WhatsApp iyasebenza kahle",
+      "spans": [
+        {
+          "text": "WhatsApp ",
+          "isForeign": true
+        },
+        {
+          "text": "iyasebenza kahle",
+          "isForeign": false
+        }
+      ]
+    },
+    {
+      "text": "CircleAI ne-YouTube",
+      "spans": [
+        {
+          "text": "CircleAI ",
+          "isForeign": true
+        },
+        {
+          "text": "ne-",
+          "isForeign": false
+        },
+        {
+          "text": "YouTube",
+          "isForeign": true
+        }
+      ]
+    }
+  ],
+  "toSpokenForm": [
+    {
+      "input": "CircleAI",
+      "output": "Circle A.I."
+    },
+    {
+      "input": "YouTube",
+      "output": "You Tube"
+    },
+    {
+      "input": "OpenAPIKey",
+      "output": "Open A.P.I. Key"
+    },
+    {
+      "input": "GPS",
+      "output": "G.P.S."
+    },
+    {
+      "input": "Sawubona",
+      "output": "Sawubona"
+    },
+    {
+      "input": "A",
+      "output": "A"
+    },
+    {
+      "input": "",
+      "output": ""
+    },
+    {
+      "input": "iPhone",
+      "output": "i Phone"
+    }
+  ],
+  "isForeignWord": [
+    {
+      "word": "CircleAI",
+      "foreign": true
+    },
+    {
+      "word": "WhatsApp",
+      "foreign": true
+    },
+    {
+      "word": "GPS",
+      "foreign": true
+    },
+    {
+      "word": "SMS",
+      "foreign": true
+    },
+    {
+      "word": "ATM",
+      "foreign": true
+    },
+    {
+      "word": "Sawubona",
+      "foreign": false
+    },
+    {
+      "word": "hello",
+      "foreign": false
+    },
+    {
+      "word": "a",
+      "foreign": false
+    },
+    {
+      "word": "AB",
+      "foreign": true
+    },
+    {
+      "word": "ABCDEF",
+      "foreign": false
+    },
+    {
+      "word": "Ngiyabonga",
+      "foreign": false
+    },
+    {
+      "word": "iPhone",
+      "foreign": true
+    }
+  ]
+}

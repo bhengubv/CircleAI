@@ -1,0 +1,160 @@
+{
+  "_comment": "Grapheme-to-phoneme over the CC-BY NCHLT resources. NOT espeak (GPLv3 would taint the app), NOT phonemeza (unlicensed, weights unpublished), and not neural. Because the rule set covers ANY word there is no OOV gap: a word is either catalogued exactly or synthesised by the rules, which is what makes agglutinative isiZulu tractable. The data here is a SYNTHETIC mini-language — the real dictionaries are 15 000 words and live in Data/nchlt. Rules sort most-specific-first and the sort MUST BE STABLE.",
+  "_source": "src/CircleAI.Voice/NchltPhonemizer.cs",
+  "dict": "sawubona\ts a w u b O n a\nsawubona\ts a w u b o n a\nbanga\tb a N a\n\tnot a word\nnovalue\t",
+  "rules": "a;;;1;0;100\nb;;;2;0;100\nn;;;3;0;100\nn;;g;4;2;40\ng;;;5;0;100\ng;n;;0;2;40\nbad line without semicolons\nx;;;;9;0",
+  "phoneMap": "1\ta\n2\tb\n3\tn\n4\tN\n5\tg\ntoolong\tz",
+  "graphMap": "b\tq",
+  "gnulls": "bb;b",
+  "cases": [
+    {
+      "name": "dictionary-hit",
+      "text": "sawubona",
+      "phones": [
+        "s",
+        "a",
+        "w",
+        "u",
+        "b",
+        "O",
+        "n",
+        "a"
+      ],
+      "rulePredictedWords": 0,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "rule-predicted",
+      "text": "gaba",
+      "phones": [
+        "g",
+        "a",
+        "b",
+        "a"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "context-rule",
+      "text": "nganga",
+      "phones": [
+        "N",
+        "a",
+        "N",
+        "a"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "grapheme-remap",
+      "text": "qanga",
+      "phones": [
+        "b",
+        "a",
+        "N",
+        "a"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "gnull-collapse",
+      "text": "abba",
+      "phones": [
+        "a",
+        "b",
+        "a"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "unknown-grapheme",
+      "text": "azb",
+      "phones": [
+        "a",
+        "b"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": [
+        "z"
+      ]
+    },
+    {
+      "name": "mixed-sentence",
+      "text": "Sawubona, gaba!",
+      "phones": [
+        "s",
+        "a",
+        "w",
+        "u",
+        "b",
+        "O",
+        "n",
+        "a",
+        "g",
+        "a",
+        "b",
+        "a"
+      ],
+      "rulePredictedWords": 1,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "phones": [],
+      "rulePredictedWords": 0,
+      "unknownGraphemes": []
+    },
+    {
+      "name": "punctuation-only",
+      "text": "!!! ...",
+      "phones": [],
+      "rulePredictedWords": 0,
+      "unknownGraphemes": []
+    }
+  ],
+  "predictWord": [
+    {
+      "word": "banga",
+      "phones": [
+        "b",
+        "a",
+        "N",
+        "a"
+      ]
+    },
+    {
+      "word": "gaba",
+      "phones": [
+        "g",
+        "a",
+        "b",
+        "a"
+      ]
+    },
+    {
+      "word": "nganga",
+      "phones": [
+        "N",
+        "a",
+        "N",
+        "a"
+      ]
+    },
+    {
+      "word": "azb",
+      "phones": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "word": "",
+      "phones": []
+    }
+  ]
+}

@@ -307,6 +307,355 @@ var json = new JsonSerializerOptions
     Write(Path.Combine(outDir, "voice_audio_format.json"), payload);
 }
 
+// ------------------------------------------------------------ SentenceSplitter
+{
+    // The cases are chosen for what BREAKS a port, not for what is typical:
+    // a decimal point and a domain name that must NOT split, a danda and an
+    // Arabic full stop that must, a CJK stop with no space after it, an
+    // over-long run with and without a space to cut at, and a segment of pure
+    // punctuation that has no sound to make.
+    (string Name, string Text)[] cases =
+    [
+        ("empty",             ""),
+        ("whitespace-only",   "   \t  "),
+        ("two-sentences",     "Sawubona. Unjani?"),
+        ("clause-breaks",     "Listen: this matters; then go. Done!"),
+        ("decimal-point",     "It costs 3.5 rand. Really."),
+        ("domain-name",       "Visit thegeek.co.za for more. Thanks."),
+        ("devanagari-danda",  "नमस्ते। आप कैसे हैं। ठीक"),
+        ("urdu-full-stop",    "السلام علیکم۔ آپ کیسے ہیں؟"),
+        ("cjk-no-space",      "你好。你好吗？很好"),
+        ("ethiopic-stop",     "ሰላም። እንዴት ነህ"),
+        ("khmer-khan",        "សួស្តី។ អ្នកសុខសប្បាយទេ"),
+        ("paragraph-break",   "Line one\nLine two."),
+        ("ellipsis-absorbed", "Wait... Then go."),
+        ("quote-absorbed",    "He said \"go.\" Then left."),
+        ("punctuation-only",  "... Hello."),
+        ("forced-cut",        new string('a', 60) + " " + new string('b', 60) + " "
+                              + new string('c', 60) + " " + new string('d', 60) + " tail."),
+        ("no-space-to-cut",   new string('x', 260) + " end."),
+    ];
+
+    var payload = new
+    {
+        _comment = "Sentence-sized units for synthesis, plus the silence that follows each. "
+                 + "The voices carry no punctuation tokens, so the PAUSE is the only sentence "
+                 + "break they get. Splits at sentence boundaries only, never at commas: a "
+                 + "VITS model ends every utterance with falling prosody, so cutting at a comma "
+                 + "makes each clause land like a finished sentence. The last segment always "
+                 + "has a pause of 0 — trailing silence at the end of a passage serves nothing.",
+        _source = "src/CircleAI.Voice/SentenceSplitter.cs",
+        maxCharsPerSegment = SentenceSplitter.MaxCharsPerSegment,
+        pauses = new { sentence = 280, clause = 200, paragraph = 400, forced = 60 },
+        cases = cases.Select(c => new
+        {
+            name = c.Name,
+            text = c.Text,
+            segments = SentenceSplitter.Split(c.Text)
+                .Select(s => new { text = s.Text, trailingPauseMs = s.TrailingPauseMs })
+                .ToArray(),
+        }).ToArray(),
+    };
+
+    Write(Path.Combine(outDir, "voice_sentence_splitter.json"), payload);
+}
+
+// -------------------------------------------------------- LanguageSpanSplitter
+{
+    string[] splitCases =
+    [
+        "",
+        "Sawubona",
+        "Igama lami ngu-CircleAI",
+        "Ngicela i-GPS yakho, ngiyabonga",
+        "WhatsApp iyasebenza kahle",
+        "CircleAI ne-YouTube",
+    ];
+
+    string[] spokenCases =
+    [
+        "CircleAI", "YouTube", "OpenAPIKey", "GPS", "Sawubona", "A", "", "iPhone",
+    ];
+
+    string[] foreignCases =
+    [
+        "CircleAI", "WhatsApp", "GPS", "SMS", "ATM", "Sawubona", "hello", "a",
+        "AB", "ABCDEF", "Ngiyabonga", "iPhone",
+    ];
+
+    var payload = new
+    {
+        _comment = "Cuts mixed-language text where the language changes, so each run can be "
+                 + "synthesised under its own language id. Detection is deliberately "
+                 + "CONSERVATIVE — internal capitals and short all-caps runs only. Guessing at "
+                 + "ordinary lowercase words would mispronounce native words to fix foreign "
+                 + "ones, which insults the speaker in their own language. Separators ride "
+                 + "along with the run they FOLLOW, so a language change never strands a comma.",
+        _source = "src/CircleAI.Voice/LanguageSpanSplitter.cs",
+        split = splitCases.Select(t => new
+        {
+            text = t,
+            spans = LanguageSpanSplitter.Split(t)
+                .Select(s => new { text = s.Text, isForeign = s.IsForeign })
+                .ToArray(),
+        }).ToArray(),
+        toSpokenForm = spokenCases.Select(t => new
+        {
+            input = t,
+            output = LanguageSpanSplitter.ToSpokenForm(t),
+        }).ToArray(),
+        isForeignWord = foreignCases.Select(w => new
+        {
+            word = w,
+            foreign = LanguageSpanSplitter.IsForeignWord(w),
+        }).ToArray(),
+    };
+
+    Write(Path.Combine(outDir, "voice_language_spans.json"), payload);
+}
+
+// --------------------------------------------------------------- GeezRomanizer
+{
+    string[] ethiopicCases = ["", "hello", "ኣማርኛ", "abc ሰላም", "123"];
+    string[] romanizeCases =
+    [
+        "",
+        "ሰላም",           // selam — the sixth order is SILENT, so no trailing vowel
+        "አማርኛ",          // amarnya — a silent-consonant row, heard as "a"
+        "እንኳን",          // enkwan — labialised row; plain "k" would give "enkan"
+        "ሰላም። እንዴት ነህ",  // Ethiopic full stop must become '.' so splitting still works
+        "ሰላም፣ ጤና ይስጥልኝ",
+        "abc 123",        // non-Ethiopic passes through untouched
+        "ሰላም abc",
+        "፩፪፫",            // Ethiopic numerals have no sound and are dropped
+        "ፘፙፚ",            // the three LONE syllables, not a row of eight
+        "ሰ፟ላ",           // a combining mark has no sound of its own
+    ];
+
+    var payload = new
+    {
+        _comment = "Ethiopic (Ge'ez) -> Latin, because the Amharic and Tigrinya voices are "
+                 + "is_uroman:true and hold 27-28 plain LATIN letters — they have never seen "
+                 + "an Ethiopic codepoint. Computed, not tabulated: Unicode lays the syllabary "
+                 + "out as consecutive blocks of EIGHT codepoints, one consonant across its "
+                 + "vowel orders, so consonant = (cp-0x1200)/8 and vowel = (cp-0x1200)%8. Six "
+                 + "rows are LABIALISED (the consonant carries a built-in /w/); writing them "
+                 + "plain turns 'enkwan' into 'enkan' and silently changes the word.",
+        _source = "src/CircleAI.Voice/GeezRomanizer.cs",
+        isEthiopic = ethiopicCases.Select(t => new
+        {
+            text = t,
+            ethiopic = GeezRomanizer.IsEthiopic(t),
+        }).ToArray(),
+        romanize = romanizeCases.Select(t => new
+        {
+            input = t,
+            output = GeezRomanizer.Romanize(t),
+        }).ToArray(),
+    };
+
+    Write(Path.Combine(outDir, "voice_geez_romanizer.json"), payload);
+}
+
+// ------------------------------------------------------------------ ToneShaper
+{
+    // THE FIXTURE CARRIES THE COEFFICIENTS, and the ports assert two things
+    // separately, because the two halves have very different reproducibility.
+    //
+    // The biquad itself is add and multiply on doubles — bit-reproducible
+    // everywhere, so ports filter the fixture's OWN coefficients and must match
+    // to 1e-6. Deriving those coefficients needs pow, sin and cos, and no
+    // language guarantees those to the last bit; ports compare their own derived
+    // values to 1e-9 relative instead of pretending otherwise.
+    var shaper = ToneShaper.Warm;
+
+    // A deterministic two-tone signal: a 440 Hz body the low shelf lifts, and a
+    // 3 kHz component sitting in the presence dip. Both are audible in the
+    // output, so a port that silently applied only one filter fails.
+    const int rate = 22050;
+    const int n = 64;
+    var input = new float[n];
+    for (var i = 0; i < n; i++)
+    {
+        input[i] = (float)(0.5 * Math.Sin(2 * Math.PI * 440 * i / rate)
+                         + 0.2 * Math.Sin(2 * Math.PI * 3000 * i / rate));
+    }
+
+    var filtered = (float[])input.Clone();
+    shaper.Apply(filtered, rate);
+
+    // A silent buffer must come back untouched: Apply bails when the peak is 0,
+    // and a port that divided by that peak instead would produce NaN.
+    var silence = new float[8];
+    shaper.Apply(silence, rate);
+
+    var payload = new
+    {
+        _comment = "Two RBJ biquads in series — a low shelf and a peaking dip — over the float "
+                 + "waveform before it becomes PCM. The speaker was NOT the lever: across all "
+                 + "130 speakers warmth and intelligibility are inversely related, so the "
+                 + "waveform is corrected instead. PEAK IS RESTORED afterwards, because lifting "
+                 + "the low shelf adds energy and a waveform already near full scale would clip "
+                 + "— heard as crackle and blamed on the quantised model rather than on this. "
+                 + "Ports assert the filtered waveform to 1e-6 using THESE coefficients, and "
+                 + "their own derived coefficients to 1e-9 relative: pow/sin/cos are not "
+                 + "bit-identical across languages, but add and multiply are.",
+        _source = "src/CircleAI.Voice/ToneShaper.cs",
+        waveformTolerance = 1e-6,
+        coefficientTolerance = 1e-9,
+        settings = new
+        {
+            lowShelfHz = shaper.LowShelfHz,
+            lowShelfDb = shaper.LowShelfDb,
+            presenceHz = shaper.PresenceHz,
+            presenceDb = shaper.PresenceDb,
+            presenceQ = shaper.PresenceQ,
+            lowShelfSlope = 0.9,
+        },
+        coefficients = new[] { 22050, 16000, 24000 }.Select(r => new
+        {
+            sampleRate = r,
+            lowShelf = Coeffs(shaper, r, lowShelf: true),
+            peaking = Coeffs(shaper, r, lowShelf: false),
+        }).ToArray(),
+        waveform = new
+        {
+            sampleRate = rate,
+            input = input.Select(v => (double)v).ToArray(),
+            output = filtered.Select(v => (double)v).ToArray(),
+        },
+        silenceStaysSilent = silence.Select(v => (double)v).ToArray(),
+    };
+
+    Write(Path.Combine(outDir, "voice_tone_shaper.json"), payload);
+
+    // Recomputed here rather than exposed on ToneShaper: the coefficients are an
+    // implementation detail of the filter, and widening the public surface just
+    // to emit a fixture would be the fixture dictating the design.
+    static object Coeffs(ToneShaper s, int rate, bool lowShelf)
+    {
+        double[] b, a;
+        if (lowShelf)
+        {
+            const double slope = 0.9;
+            var A = Math.Pow(10, s.LowShelfDb / 40);
+            var w0 = 2 * Math.PI * s.LowShelfHz / rate;
+            var alpha = Math.Sin(w0) / 2 * Math.Sqrt((A + 1 / A) * (1 / slope - 1) + 2);
+            var c = Math.Cos(w0);
+            var s2 = 2 * Math.Sqrt(A) * alpha;
+            b = [A * ((A + 1) - (A - 1) * c + s2),
+                 2 * A * ((A - 1) - (A + 1) * c),
+                 A * ((A + 1) - (A - 1) * c - s2)];
+            a = [(A + 1) + (A - 1) * c + s2,
+                 -2 * ((A - 1) + (A + 1) * c),
+                 (A + 1) + (A - 1) * c - s2];
+        }
+        else
+        {
+            var A = Math.Pow(10, s.PresenceDb / 40);
+            var w0 = 2 * Math.PI * s.PresenceHz / rate;
+            var alpha = Math.Sin(w0) / (2 * s.PresenceQ);
+            var c = Math.Cos(w0);
+            b = [1 + alpha * A, -2 * c, 1 - alpha * A];
+            a = [1 + alpha / A, -2 * c, 1 - alpha / A];
+        }
+        var a0 = a[0];
+        for (var i = 0; i < 3; i++) { b[i] /= a0; a[i] /= a0; }
+        return new { b, a };
+    }
+}
+
+// ------------------------------------------------------------- NchltPhonemizer
+{
+    // A SYNTHETIC MINI-LANGUAGE, not a slice of the real NCHLT data. The real
+    // dictionaries are ~15 000 words under CC BY and belong in Data/nchlt, not
+    // inlined into nine ports' test fixtures. This one is four graphemes wide
+    // and exercises every input the loader takes: dictionary hit, rule
+    // prediction, context-dependent rules, a NULL code that must be dropped, a
+    // grapheme remap, a grapheme-null substitution, and an unknown grapheme
+    // that must be REPORTED rather than guessed at.
+    //
+    // Rule format is the NCHLT one: grapheme;left;right;code;order[;count].
+    // Rules are applied MOST SPECIFIC FIRST, and the sort must be STABLE — two
+    // rules of equal order have to stay in file order or ports disagree on ties.
+    var dictText = string.Join("\n",
+        "sawubona\ts a w u b O n a",
+        "sawubona\ts a w u b o n a",          // second variant — the FIRST wins
+        "banga\tb a N a",                     // also predictable by rule; dict takes priority
+        "\tnot a word",                       // no key — skipped
+        "novalue\t");                         // no pronunciation — skipped
+
+    var rulesText = string.Join("\n",
+        "a;;;1;0;100",
+        "b;;;2;0;100",
+        "n;;;3;0;100",
+        "n;;g;4;2;40",       // n before g is the velar nasal
+        "g;;;5;0;100",
+        "g;n;;0;2;40",       // g after n is absorbed into it — code 0 is a NULL
+        "bad line without semicolons",
+        "x;;;;9;0");         // no code at all — falls back to the null
+
+    var phoneMapText = string.Join("\n",
+        "1\ta", "2\tb", "3\tn", "4\tN", "5\tg", "toolong\tz");
+
+    var graphMapText = "b\tq";                // file is funny<TAB>std, so q is read as b
+    var gnullsText = "bb;b";                  // a doubled b collapses before the rules run
+
+    (string Name, string Text)[] cases =
+    [
+        ("dictionary-hit",     "sawubona"),
+        ("rule-predicted",     "gaba"),
+        ("context-rule",       "nganga"),
+        ("grapheme-remap",     "qanga"),      // q is remapped to b
+        ("gnull-collapse",     "abba"),       // bb collapses to b
+        ("unknown-grapheme",   "azb"),        // z has no rule at all
+        ("mixed-sentence",     "Sawubona, gaba!"),
+        ("empty",              ""),
+        ("punctuation-only",   "!!! ..."),
+    ];
+
+    static Stream S(string t) => new MemoryStream(Encoding.UTF8.GetBytes(t));
+
+    var payload = new
+    {
+        _comment = "Grapheme-to-phoneme over the CC-BY NCHLT resources. NOT espeak (GPLv3 "
+                 + "would taint the app), NOT phonemeza (unlicensed, weights unpublished), "
+                 + "and not neural. Because the rule set covers ANY word there is no OOV gap: "
+                 + "a word is either catalogued exactly or synthesised by the rules, which is "
+                 + "what makes agglutinative isiZulu tractable. The data here is a SYNTHETIC "
+                 + "mini-language — the real dictionaries are 15 000 words and live in "
+                 + "Data/nchlt. Rules sort most-specific-first and the sort MUST BE STABLE.",
+        _source = "src/CircleAI.Voice/NchltPhonemizer.cs",
+        dict = dictText,
+        rules = rulesText,
+        phoneMap = phoneMapText,
+        graphMap = graphMapText,
+        gnulls = gnullsText,
+        cases = cases.Select(c =>
+        {
+            var p = NchltPhonemizer.Load(S(dictText), S(rulesText), S(phoneMapText),
+                                         S(graphMapText), S(gnullsText));
+            var phones = p.Phonemize(c.Text);
+            return new
+            {
+                name = c.Name,
+                text = c.Text,
+                phones = phones.ToArray(),
+                rulePredictedWords = p.LastRulePredictedWords,
+                unknownGraphemes = p.LastUnknownGraphemes.Select(ch => ch.ToString()).ToArray(),
+            };
+        }).ToArray(),
+        predictWord = new[] { "banga", "gaba", "nganga", "azb", "" }.Select(w =>
+        {
+            var p = NchltPhonemizer.Load(S(dictText), S(rulesText), S(phoneMapText),
+                                         S(graphMapText), S(gnullsText));
+            return new { word = w, phones = p.PredictWord(w).ToArray() };
+        }).ToArray(),
+    };
+
+    Write(Path.Combine(outDir, "voice_nchlt_phonemizer.json"), payload);
+}
+
 Console.WriteLine("fixtures written to " + outDir);
 return 0;
 

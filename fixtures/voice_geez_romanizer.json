@@ -1,0 +1,72 @@
+{
+  "_comment": "Ethiopic (Ge'ez) -> Latin, because the Amharic and Tigrinya voices are is_uroman:true and hold 27-28 plain LATIN letters — they have never seen an Ethiopic codepoint. Computed, not tabulated: Unicode lays the syllabary out as consecutive blocks of EIGHT codepoints, one consonant across its vowel orders, so consonant = (cp-0x1200)/8 and vowel = (cp-0x1200)%8. Six rows are LABIALISED (the consonant carries a built-in /w/); writing them plain turns 'enkwan' into 'enkan' and silently changes the word.",
+  "_source": "src/CircleAI.Voice/GeezRomanizer.cs",
+  "isEthiopic": [
+    {
+      "text": "",
+      "ethiopic": false
+    },
+    {
+      "text": "hello",
+      "ethiopic": false
+    },
+    {
+      "text": "ኣማርኛ",
+      "ethiopic": true
+    },
+    {
+      "text": "abc ሰላም",
+      "ethiopic": true
+    },
+    {
+      "text": "123",
+      "ethiopic": false
+    }
+  ],
+  "romanize": [
+    {
+      "input": "",
+      "output": ""
+    },
+    {
+      "input": "ሰላም",
+      "output": "selam"
+    },
+    {
+      "input": "አማርኛ",
+      "output": "amarnya"
+    },
+    {
+      "input": "እንኳን",
+      "output": "enkwan"
+    },
+    {
+      "input": "ሰላም። እንዴት ነህ",
+      "output": "selam. endet neh"
+    },
+    {
+      "input": "ሰላም፣ ጤና ይስጥልኝ",
+      "output": "selam, tena ystlny"
+    },
+    {
+      "input": "abc 123",
+      "output": "abc 123"
+    },
+    {
+      "input": "ሰላም abc",
+      "output": "selam abc"
+    },
+    {
+      "input": "፩፪፫",
+      "output": ""
+    },
+    {
+      "input": "ፘፙፚ",
+      "output": "ryamyafya"
+    },
+    {
+      "input": "ሰ፟ላ",
+      "output": "sela"
+    }
+  ]
+}

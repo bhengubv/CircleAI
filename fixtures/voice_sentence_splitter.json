@@ -1,0 +1,245 @@
+{
+  "_comment": "Sentence-sized units for synthesis, plus the silence that follows each. The voices carry no punctuation tokens, so the PAUSE is the only sentence break they get. Splits at sentence boundaries only, never at commas: a VITS model ends every utterance with falling prosody, so cutting at a comma makes each clause land like a finished sentence. The last segment always has a pause of 0 — trailing silence at the end of a passage serves nothing.",
+  "_source": "src/CircleAI.Voice/SentenceSplitter.cs",
+  "maxCharsPerSegment": 220,
+  "pauses": {
+    "sentence": 280,
+    "clause": 200,
+    "paragraph": 400,
+    "forced": 60
+  },
+  "cases": [
+    {
+      "name": "empty",
+      "text": "",
+      "segments": []
+    },
+    {
+      "name": "whitespace-only",
+      "text": "   \t  ",
+      "segments": []
+    },
+    {
+      "name": "two-sentences",
+      "text": "Sawubona. Unjani?",
+      "segments": [
+        {
+          "text": "Sawubona.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "Unjani?",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "clause-breaks",
+      "text": "Listen: this matters; then go. Done!",
+      "segments": [
+        {
+          "text": "Listen:",
+          "trailingPauseMs": 200
+        },
+        {
+          "text": "this matters;",
+          "trailingPauseMs": 200
+        },
+        {
+          "text": "then go.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "Done!",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "decimal-point",
+      "text": "It costs 3.5 rand. Really.",
+      "segments": [
+        {
+          "text": "It costs 3.5 rand.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "Really.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "domain-name",
+      "text": "Visit thegeek.co.za for more. Thanks.",
+      "segments": [
+        {
+          "text": "Visit thegeek.co.za for more.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "Thanks.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "devanagari-danda",
+      "text": "नमस्ते। आप कैसे हैं। ठीक",
+      "segments": [
+        {
+          "text": "नमस्ते।",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "आप कैसे हैं।",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "ठीक",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "urdu-full-stop",
+      "text": "السلام علیکم۔ آپ کیسے ہیں؟",
+      "segments": [
+        {
+          "text": "السلام علیکم۔",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "آپ کیسے ہیں؟",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "cjk-no-space",
+      "text": "你好。你好吗？很好",
+      "segments": [
+        {
+          "text": "你好。",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "你好吗？",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "很好",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "ethiopic-stop",
+      "text": "ሰላም። እንዴት ነህ",
+      "segments": [
+        {
+          "text": "ሰላም።",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "እንዴት ነህ",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "khmer-khan",
+      "text": "សួស្តី។ អ្នកសុខសប្បាយទេ",
+      "segments": [
+        {
+          "text": "សួស្តី។",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "អ្នកសុខសប្បាយទេ",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "paragraph-break",
+      "text": "Line one\nLine two.",
+      "segments": [
+        {
+          "text": "Line one",
+          "trailingPauseMs": 400
+        },
+        {
+          "text": "Line two.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "ellipsis-absorbed",
+      "text": "Wait... Then go.",
+      "segments": [
+        {
+          "text": "Wait.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "Then go.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "quote-absorbed",
+      "text": "He said \"go.\" Then left.",
+      "segments": [
+        {
+          "text": "He said \"go.",
+          "trailingPauseMs": 280
+        },
+        {
+          "text": "\" Then left.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "punctuation-only",
+      "text": "... Hello.",
+      "segments": [
+        {
+          "text": "Hello.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "forced-cut",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd tail.",
+      "segments": [
+        {
+          "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "trailingPauseMs": 60
+        },
+        {
+          "text": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd tail.",
+          "trailingPauseMs": 0
+        }
+      ]
+    },
+    {
+      "name": "no-space-to-cut",
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx end.",
+      "segments": [
+        {
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "trailingPauseMs": 60
+        },
+        {
+          "text": "end.",
+          "trailingPauseMs": 0
+        }
+      ]
+    }
+  ]
+}

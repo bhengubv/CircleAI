@@ -35,6 +35,31 @@ public static class GeezRomanizer
     private const int OrdersPerConsonant = 8;
 
     /// <summary>
+    /// Last codepoint that follows the eight-orders-per-consonant layout. The
+    /// syllabary ends here; everything above is lone syllables, marks and
+    /// numerals, and treating any of it as a row invents a pronunciation.
+    /// </summary>
+    private const int LastSyllable = 0x1357;
+
+    /// <summary>
+    /// The three syllables Unicode assigns singly rather than as a row of eight.
+    /// They are already in the -a order, so the vowel is part of the value.
+    /// </summary>
+    private static readonly Dictionary<char, string> LoneSyllables = new()
+    {
+        ['ፘ'] = "rya",   // ፘ
+        ['ፙ'] = "mya",   // ፙ
+        ['ፚ'] = "fya",   // ፚ
+    };
+
+    /// <summary>
+    /// Combining marks. They modify the syllable before them and have no sound
+    /// of their own, so they are dropped rather than passed through — a bare
+    /// mark reaching a Latin-only vocabulary is one more unmapped symbol.
+    /// </summary>
+    private static readonly HashSet<char> Marks = new() { '፝', '፞', '፟' };
+
+    /// <summary>
     /// Consonant per 8-codepoint row, in Unicode order. ASCII only: these voices
     /// hold 27-28 plain Latin letters, so a transliteration carrying ḥ, š or ṣ
     /// would be dropped as surely as the Ethiopic was.
@@ -51,7 +76,7 @@ public static class GeezRomanizer
         "h",  "hw", "n",  "ny", "",   "k",  "kw", "k",    // ኀ ኈ ነ ኘ አ ከ ኰ ኸ
         "kw", "w",  "",   "z",  "zh", "y",  "d",  "d",    // ዀ ወ ዐ ዘ ዠ የ ደ ዸ
         "j",  "g",  "gw", "ng", "t",  "ch", "p",  "ts",   // ጀ ገ ጐ ጘ ጠ ጨ ጰ ጸ
-        "ts", "f",  "p",  "ry", "my", "fy"                // ፀ ፈ ፐ and rare tail rows
+        "ts", "f",  "p"                                   // ፀ ፈ ፐ
     };
 
     /// <summary>
@@ -103,11 +128,24 @@ public static class GeezRomanizer
         {
             if (Punctuation.TryGetValue(c, out var p)) { sb.Append(p); continue; }
 
+            // THE EIGHT-PER-CONSONANT LAYOUT STOPS AT U+1357, and the range check
+            // has to stop with it. Beyond that the block is no longer a
+            // syllabary: U+1358..U+135A are three LONE syllables (rya, mya, fya)
+            // already in their -a order, U+135D..U+135F are combining marks, and
+            // U+1369 onward are the numerals. Sizing the check off the table
+            // instead swept seven of those numerals back into the syllabary — a
+            // table one row too long made ፩፪፫ read as "fyufyifya", and it
+            // read as sound, so nothing failed. It was the OTHER numerals, the
+            // ones past the table's end, that were correctly dropped, which is
+            // exactly why the bug looked handled.
+            if (Marks.Contains(c)) continue;
+            if (LoneSyllables.TryGetValue(c, out var lone)) { sb.Append(lone); continue; }
+
             var i = c - Base;
-            if (i < 0 || i >= Consonants.Length * OrdersPerConsonant)
+            if (i < 0 || i > LastSyllable - Base)
             {
-                // Ethiopic digits and rarely-used supplement blocks have no sound
-                // we can render; anything else is not Ethiopic and is left alone.
+                // Numerals and the rarely-used supplement blocks have no sound we
+                // can render; anything else is not Ethiopic and is left alone.
                 if (c is >= '፩' and <= '፼') continue;
                 sb.Append(c);
                 continue;
