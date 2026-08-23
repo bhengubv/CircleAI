@@ -126,6 +126,7 @@ pub mod speech_cloud;
 pub mod voice;
 pub mod voice_piper;
 pub mod voice_wav;
+pub mod voice_text;
 pub mod voice_xsampa;
 // CircleAI.Embeddings.Local.HnswEmbeddingStore — index-backed store over the IEmbeddingIndex seam.
 pub mod embeddings_local_hnsw;
