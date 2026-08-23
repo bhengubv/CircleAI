@@ -479,6 +479,10 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 new($"https://huggingface.co/buckets/{repo}/resolve/{EscapePath(fileName)}?download=true"),
             CircleAI.Core.ModelSource.HuggingFace =>
                 new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}?download=true"),
+            // The file name carries the release tag: "voices-v1/ne_NP-...onnx".
+            // Release assets are flat, so the tag is the only directory there is.
+            CircleAI.Core.ModelSource.GitHubRelease =>
+                new($"https://github.com/{repo}/releases/download/{EscapePath(fileName)}"),
             _ =>
                 new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}"),
         };
@@ -490,6 +494,10 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 new($"https://huggingface.co/buckets/{repo}/resolve/{EscapePath(fileName)}"),
             CircleAI.Core.ModelSource.HuggingFace =>
                 new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}"),
+            // A release asset has one address; there is no second host to fall
+            // back to, so the fallback is the same URL and the retry is the point.
+            CircleAI.Core.ModelSource.GitHubRelease =>
+                new($"https://github.com/{repo}/releases/download/{EscapePath(fileName)}"),
             _ =>
                 new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}"),
         };

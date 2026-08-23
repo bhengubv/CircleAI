@@ -34,4 +34,25 @@ public enum ModelSource
     /// — pins must still come from the file's own bytes.
     /// </remarks>
     HuggingFaceBucket = 2,
+
+    /// <summary>
+    /// A GitHub release. URL:
+    /// <c>github.com/{repo}/releases/download/{tag}/{asset}</c>, where the
+    /// bundle file name carries the tag: <c>voices-v1/ne_NP-google-medium.onnx</c>.
+    /// </summary>
+    /// <remarks>
+    /// THE STORE WE CAN ACTUALLY WRITE TO. The Hugging Face bucket needs a
+    /// credential that does not exist on any machine here, and the cost of that
+    /// showed: 45 of the small files the catalogue named had quietly stopped
+    /// existing, so those languages downloaded a 114 MB model and then failed on
+    /// 2 KB of settings. `github.com/bhengubv` is the account's canonical
+    /// storage and we hold its token, so a voice can be published the same day
+    /// it is proven instead of waiting on a key.
+    ///
+    /// Release assets are FLAT — no directories — which is why the tag stands in
+    /// for one. Attribution for every asset lives in that repository's README;
+    /// each licence here permits redistribution and every one requires the
+    /// credit, so removing that file breaks compliance.
+    /// </remarks>
+    GitHubRelease = 3,
 }

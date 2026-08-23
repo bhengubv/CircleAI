@@ -44,6 +44,42 @@ character of apps that call it — the same error as saying the Linux kernel mak
 commercial use of itself because a shop runs on it. Nothing NC lives in this
 repository; the repository is open source.)
 
+## A second store we control — 2026-08-23
+
+The bucket above needs a credential that exists on no machine here, and the cost
+of that was measured rather than guessed: **45 of the small files the catalogue
+named had quietly stopped existing.** Those languages downloaded a 114 MB model
+and then failed on 2 KB of settings. A store nobody can write to cannot be kept
+correct, and a voice proven on a Tuesday sat unpublished for weeks.
+
+So voices may now also live in
+[bhengubv/circleai-voices](https://github.com/bhengubv/circleai-voices) as
+release assets, addressed `<tag>/<asset>` under `ModelSource.GitHubRelease`.
+That is the account's canonical storage and we hold its token, so a voice ships
+the day it is proven.
+
+**The rule did not change — it was about CONTROL, not about a company.** What is
+still forbidden is pointing the catalogue at whichever stranger's repository
+first published a voice; that is the guarantee this document exists to give, and
+`ModelModalityTests` enforces both halves: a voice must come from one of our two
+stores, and a GitHub-hosted one must sit under `bhengubv/`.
+
+That repository carries the same per-voice attribution README the bucket does.
+The obligation is met by that file; if it is removed, the redistribution is no
+longer compliant.
+
+| voice | licence | upstream |
+|---|---|---|
+| ne_NP google medium (Nepali) | CC-BY-SA-4.0 | rhasspy/piper-voices, openSLR 43, 18 speakers |
+| ko_KR kss medium (Korean) | CC-BY-NC-SA-4.0 | rhasspy/piper-voices, Korean Single Speaker corpus |
+
+Nepali replaces `MMS-npi`, which was never an MMS voice: Meta's own list of 1077
+TTS languages contains no Nepali, no Igbo and no Lingala. That bundle carried a
+vocabulary with 19 Hebrew letters sorted into the middle of the Devanagari, so it
+produced fluent speech that was not the input. Korean moves here from a
+half-migrated entry that built a bucket URL for an upstream path and 404'd on
+every file.
+
 ## Permissive — safe for an open-source CircleAI
 | voice | licence | source |
 |---|---|---|

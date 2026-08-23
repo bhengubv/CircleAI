@@ -139,36 +139,30 @@ public sealed class ModelModalityTests
         // from whichever stranger's repository first published it — see
         // docs/VOICE_PROVENANCE.md.
         //
-        // ONE NAMED EXCEPTION, and it is a list rather than a predicate so it
-        // cannot quietly grow. Korean was catalogued but never uploaded: its
-        // bundle is absent from the bucket under every path, while its pins match
-        // rhasspy/piper-voices byte for byte. The entry had Repo pointing
-        // upstream and Source still saying bucket, so it built
-        // huggingface.co/buckets/rhasspy/piper-voices/... and 404'd on every
-        // file — catalogued, undownloadable, and silent about it.
+        // TWO STORES QUALIFY, and the rule is about CONTROL, not about which
+        // company hosts it. The Hugging Face bucket needs a credential that
+        // exists on no machine here, and the cost of that was measured: 45 of
+        // the small files the catalogue named had quietly stopped existing, so
+        // those languages downloaded a 114 MB model and then failed on 2 KB of
+        // settings. A store we cannot write to cannot be kept correct.
         //
-        // Pointing it upstream is the weaker guarantee the provenance doc warns
-        // about: if rhasspy's repository goes away, Korean goes with it. It is
-        // accepted deliberately because the alternative is a voice that does not
-        // work at all. When the bundle reaches the bucket, delete this entry from
-        // the list and the assertion tightens itself back up.
-        var upstreamUntilUploaded = new[] { "Piper-ko_KR-kss-medium" };
+        // github.com/bhengubv is the account's canonical storage and we hold its
+        // token, so GitHubRelease satisfies the same intent: one address we
+        // control, and a voice can be published the day it is proven.
+        //
+        // What is still forbidden is pointing at whichever stranger's repository
+        // first published a voice — that is the guarantee the doc exists to give.
+        var ourStores = new[] { ModelSource.HuggingFaceBucket, ModelSource.GitHubRelease };
 
+        Assert.All(registry.AllModels.Where(e => e.Modality == ModelModality.Tts),
+            e => Assert.Contains(e.Source, ourStores));
+
+        // And "ours" has to mean ours: a GitHub-hosted voice must sit under our
+        // own account, or the source enum is just a label on someone else's repo.
         Assert.All(
             registry.AllModels.Where(e => e.Modality == ModelModality.Tts
-                                       && !upstreamUntilUploaded.Contains(e.Name)),
-            e => Assert.Equal(ModelSource.HuggingFaceBucket, e.Source));
-
-        // The exception is not a free pass: an entry on that list must still name
-        // a real upstream repository, or it is just a broken entry with a note.
-        Assert.All(
-            registry.AllModels.Where(e => upstreamUntilUploaded.Contains(e.Name)),
-            e =>
-            {
-                Assert.Equal(ModelSource.HuggingFace, e.Source);
-                Assert.False(string.IsNullOrWhiteSpace(e.Repo));
-                Assert.DoesNotContain("circleai-voices", e.Repo);
-            });
+                                       && e.Source == ModelSource.GitHubRelease),
+            e => Assert.StartsWith("bhengubv/", e.Repo));
 
         // EVERY MODEL COMES OFF A CDN. This asserted ModelScope until it was
         // measured: from Osaka, on the same file in the same minute, Hugging
