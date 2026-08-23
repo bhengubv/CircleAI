@@ -20,6 +20,7 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parent
 REPO = ROOT.parent.parent
 REGISTRY = REPO / "src" / "CircleAI.Core" / "Models" / "embedded_registry.json"
+VOICE_CONFIGS = REPO / "src" / "CircleAI.Core" / "Models" / "VoiceConfigs"
 BUCKET = "https://huggingface.co/buckets/thegeekco/circleai-voices/resolve/"
 CACHE = ROOT / ".cache"
 
@@ -104,18 +105,47 @@ ASR_LANG = {
 WHISPER_LANG = {"yue": "zh"}
 
 
-def fetch(remote: str) -> pathlib.Path | None:
-    """Pull a bucket file into the cache. None when the bucket has no such file."""
+def urls_for(entry: dict | None, remote: str) -> list[str]:
+    """Every address a bundle file might live at, in order.
+
+    THE SWEEP MUST RESOLVE THE SAME WAY THE PRODUCT DOES. It used to assume one
+    hardcoded bucket, which stopped being true: voices now also live in a GitHub
+    release we control, and a sweep that only knows the bucket reports a working
+    voice as NOVOICE — understating coverage and sending someone to re-upload
+    files that are fine.
+    """
+    src = (entry or {}).get("Source") or "HuggingFaceBucket"
+    repo = (entry or {}).get("Repo") or "thegeekco/circleai-voices"
+    if src == "GitHubRelease":
+        # Release assets are flat; the tag rides in the file name.
+        return [f"https://github.com/{repo}/releases/download/{remote}"]
+    if src == "HuggingFace":
+        return [f"https://huggingface.co/{repo}/resolve/main/{remote}"]
+    # Bucket folders are lowercase; the registry carries mixed case for some
+    # Piper voices (piper-en_US-lessac-high). Try as written, then lowered —
+    # otherwise a voice that exists reads as NOVOICE on a naming detail.
+    return [BUCKET + remote, BUCKET + remote.lower()]
+
+
+def fetch(remote: str, entry: dict | None = None) -> pathlib.Path | None:
+    """Resolve a bundle file to a local path. None when it cannot be had."""
+    # THE SIDECARS SHIP IN THE ASSEMBLY, so look there before the network. 45 of
+    # them 404'd from the bucket for weeks — they were generated once and lost —
+    # and the product now carries them as embedded resources. A sweep that still
+    # went to the bucket would score voices the app can speak as NOVOICE.
+    if remote.endswith(("model.onnx.json", "language_ids.json")):
+        voice, _, fname = remote.partition("/")
+        local = VOICE_CONFIGS / f"{voice}.{fname}"
+        if local.exists():
+            return local
+
     p = CACHE / remote.replace("/", "__")
     if p.exists() and p.stat().st_size > 200:
         return p
     CACHE.mkdir(exist_ok=True)
-    # Bucket folders are lowercase; the registry carries mixed case for some
-    # Piper voices (piper-en_US-lessac-high). Try as written, then lowered —
-    # otherwise a voice that exists reads as NOVOICE on a naming detail.
-    for candidate in (remote, remote.lower()):
+    for url in urls_for(entry, remote):
         try:
-            with urllib.request.urlopen(BUCKET + candidate, timeout=900) as r, open(p, "wb") as o:
+            with urllib.request.urlopen(url, timeout=900) as r, open(p, "wb") as o:
                 shutil.copyfileobj(r, o)
             return p
         except Exception:
@@ -534,14 +564,14 @@ def main():
         folder = files[0].split("/")[0]
         onnx = next((f for f in files if f.endswith(".onnx")), None)
         conf = next((f for f in files if f.endswith(".onnx.json")), None)
-        model = fetch(onnx) if onnx else None
-        cfg_p = fetch(conf) if conf else None
+        model = fetch(onnx, v) if onnx else None
+        cfg_p = fetch(conf, v) if conf else None
 
         # No config? It may be the lexicon family rather than a missing asset.
         lex, tok = (next((f for f in files if f.endswith("lexicon.txt")), None),
                     next((f for f in files if f.endswith("tokens.txt")), None))
-        lex_p = fetch(lex) if (cfg_p is None and lex) else None
-        tok_p = fetch(tok) if (cfg_p is None and tok) else None
+        lex_p = fetch(lex, v) if (cfg_p is None and lex) else None
+        tok_p = fetch(tok, v) if (cfg_p is None and tok) else None
         has_lexicon = lex_p is not None and tok_p is not None
 
         if model is None or (cfg_p is None and not has_lexicon):
@@ -589,7 +619,7 @@ def main():
 
         # A multilingual bundle ships the map from language tag to langid.
         langid = None
-        lids = fetch(f"{folder}/language_ids.json")
+        lids = fetch(f"{folder}/language_ids.json", v)
         if lids is not None:
             try:
                 table = json.loads(lids.read_text(encoding="utf-8"))
@@ -651,6 +681,27 @@ def main():
             if other and script_agreement(ref, other) > script_agreement(ref, heard):
                 heard = other
                 row["judge"] = "whisper" if row["judge"] == "mms-1b-all" else "mms-1b-all"
+
+        # AND A JUDGE CAN BE WRONG IN THE RIGHT SCRIPT, which the rule above
+        # cannot see. Korean: mms-1b-all answered "저 나지미아 친구" for a
+        # reference of "좋은 아침이야 친구" — Hangul, plausible, and wrong enough
+        # to score 0.75 and read GIBBERISH. Whisper, on the SAME wav, returned
+        # "좋은 아침이야 친구" exactly. On the phone the same voice is
+        # character-perfect.
+        #
+        # So a poor score also earns a second opinion, and the BETTER reading
+        # wins. That is not grading on a curve: the question is what the voice
+        # said, and a recogniser that cannot hear it is not evidence against it.
+        # A voice is at least as good as the best judge available says it is —
+        # the same reasoning that cleared yue and Russian above.
+        elif heard and cer(ref, heard) >= 0.5:
+            other = (whisper_hear(wav, WHISPER_LANG.get(tag, tag)) if row["judge"] == "mms-1b-all"
+                     else judge.hear(wav, lang3))
+            if (other and script_agreement(ref, other) >= 0.6
+                    and cer(ref, other) < cer(ref, heard)):
+                heard = other
+                row["judge"] = "whisper" if row["judge"] == "mms-1b-all" else "mms-1b-all"
+                row["second_opinion"] = "primary judge scored poorly; better reading taken"
 
         if not heard:
             row["verdict"] = "UNJUDGED"
