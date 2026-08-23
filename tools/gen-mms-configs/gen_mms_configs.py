@@ -166,7 +166,7 @@ def serialise(cfg: dict) -> bytes:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=str(REPO / "src" / "CircleAI.Voice" / "VoiceConfigs"))
+    ap.add_argument("--out", default=str(REPO / "src" / "CircleAI.Core" / "Models" / "VoiceConfigs"))
     args = ap.parse_args()
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

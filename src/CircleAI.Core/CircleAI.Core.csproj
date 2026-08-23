@@ -17,6 +17,12 @@
 		     consumed by ModelRegistryService is Models\embedded_registry.json. -->
 		<EmbeddedResource Include="registry.json" />
 		<EmbeddedResource Include="Models\embedded_registry.json" />
+		<!-- The MMS voice sidecars. 91 KB of JSON that the registry used to pin as
+		     REMOTE bundle files; 43 of the 47 were 404 because the bytes were
+		     generated once and lost. They are our own work product and smaller than
+		     a single icon, so they ship in the assembly and the download step
+		     satisfies them locally instead of over the network. -->
+		<EmbeddedResource Include="Models\VoiceConfigs\*.json" />
 	</ItemGroup>
 
 	<ItemGroup>

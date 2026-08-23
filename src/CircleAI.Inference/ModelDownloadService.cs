@@ -296,6 +296,24 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             var destPath = Path.Combine(modelDir, file.Name);
             Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
 
+            // SATISFY IT FROM THE ASSEMBLY FIRST, if we carry it.
+            //
+            // The voice sidecars are 2 KB of our own JSON that the registry pins
+            // like any other bundle file. 43 of the 47 addresses were dead —
+            // generated once, never published, bytes lost — so every one of those
+            // voices downloaded its model and then failed on the sidecar. Writing
+            // the embedded copy here puts it through the SAME verify-then-skip
+            // path below, so its SHA is still checked against the registry and a
+            // mismatch fails exactly like a corrupt download.
+            if (!File.Exists(destPath))
+            {
+                var embedded = CircleAI.Core.Models.EmbeddedVoiceConfigs.TryGet(file.Name);
+                if (embedded is not null)
+                {
+                    await File.WriteAllBytesAsync(destPath, embedded, ct).ConfigureAwait(false);
+                }
+            }
+
             // Skip when cached + valid. Hashing a 400 MB file is not instant, so
             // say so — otherwise a cached start looks like a freeze.
             if (File.Exists(destPath))
