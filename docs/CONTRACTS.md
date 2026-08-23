@@ -584,15 +584,224 @@ become the float samples a voice needs.
 - Multi-channel is averaged, not left-channel-only.
 - Resampling is linear — the target is a speaker embedding, not playback.
 
+### PiperVoiceConfig
+
+A voice's phoneme→id vocabulary, and the token layout the model expects.
+
+| Operation | Contract |
+|---|---|
+| `padId` | The id THIS voice uses for blank — read from the vocabulary, never assumed |
+| `hasPhonemeMap` | False when the voice ships no vocabulary at all |
+| `phonemesToIds(phonemes)` | `[BOS, PAD, id, PAD, …, id, PAD, EOS]`, plus what was skipped and what was approximated |
+| `splitPhonemeString(s)` | Grapheme clusters, not codepoints |
+
+- **THE PAD RULE.** `_` resolves to *that model's* blank: 0 in sherpa/MMS
+  exports, 3 in Piper-family ones. Pointing it at an ordinary vocabulary entry
+  is what made 42 MMS voices speak fluent nonsense. The fixture carries TWO
+  configs, one of each convention, so a port that hard-codes either fails.
+- BOS and EOS are emitted **only when the vocabulary has them** — the
+  MMS-family exports do not.
+- Lookup order is exact → lower-cased → split the grapheme cluster →
+  approximate. Splitting comes BEFORE approximating because it keeps every mark.
+- An unknown symbol is **skipped and reported**, never fatal. A dropped symbol
+  is inaudible, so those lists are the only evidence a front-end is broken.
+- Approximation folds Latin diacritics only. Thai, Burmese, Devanagari, Arabic
+  and Vietnamese marks ARE the vowels and tones — dropping them does not
+  approximate the word, it deletes it. Thai measured 4.3 s instead of ~15 s
+  when every vowel sign was folded off its consonant and filed as harmless.
+
+### LexiconTokeniser
+
+Word-keyed pronunciation for voices that ship `lexicon.txt` + `tokens.txt`.
+
+| Operation | Contract |
+|---|---|
+| `fromText(tokens, lexicon, blank)` | Null when either file is unusable — absence is normal |
+| `encode(text, interleaveBlank)` | Longest match first; `add_blank` opens with blank and follows every token |
+| `lastUnmapped` | Symbols with no entry, whitespace excluded |
+
+- **LONGEST MATCH FIRST**, because these lexicons are word-keyed and the words
+  overlap: あい, あいさつ and あいかわらず all start the same way, and taking the
+  shortest pronounces a different word.
+- `tokens.txt` splits on the LAST space, because the symbol may itself be a space.
+- A lexicon phoneme absent from `tokens.txt` drops out of the ids rather than
+  failing the whole entry.
+- Scanning indexes **characters**, not bytes — a byte index cuts a CJK character
+  in half and matches nothing.
+
+### SentenceSplitter
+
+Cuts a passage into the units a VITS voice should synthesise one at a time.
+
+| Operation | Contract |
+|---|---|
+| `split(text)` | Segments plus the silence that follows each; empty for blank input |
+| `MAX_CHARS_PER_SEGMENT` | 220 UTF-16 units |
+
+- Pauses: sentence 280 ms, clause (`:` `;`) 200 ms, paragraph 400 ms, forced
+  cut 60 ms. The last segment is always 0 — trailing silence serves nothing.
+- **The pause is the only sentence break these voices get.** They were trained
+  on text with the punctuation stripped, so their vocabularies hold no `.`,
+  `,`, `?` or `:` at all, and a paragraph fed in one pass comes back as one
+  unbroken run of speech.
+- **Splits at SENTENCE boundaries only, never at commas.** A VITS model ends
+  every utterance with falling, sentence-final prosody, so cutting at a comma
+  makes each clause land like a finished sentence — worse than the run-on.
+- The terminator table covers the danda, the Arabic full stop, the CJK and
+  fullwidth stops, the Ethiopic stop, the Khmer khan and the Myanmar marks. A
+  Latin-only list under-splits for about a billion people and fails silently:
+  Hindi, Bengali and Urdu produced THREE segments where eleven other languages
+  produced six from the same text.
+- `.` `:` `;` need a following space before they may end a sentence (3.5,
+  co.za, 12:30). Every other terminator does not — demanding a space would
+  never split Chinese, Japanese, Khmer, Thai or Burmese at all, because those
+  scripts write without spaces between words.
+- The terminator STAYS in the segment text. The SA-11 voice's vocabulary DOES
+  carry `?` and `.`, so it renders a real question rise that no inserted
+  silence could imitate; stripping would discard that from all eleven South
+  African languages.
+- A segment of nothing but punctuation is dropped — no sound to make, and no
+  token for it either.
+- Indexing is by **UTF-16 code unit**, matching the reference. Every terminator
+  is in the BMP so the splits agree, but the length cut counts units.
+
+### LanguageSpanSplitter
+
+Cuts mixed-language text where the language changes.
+
+| Operation | Contract |
+|---|---|
+| `split(text)` | Runs, each flagged native or foreign; 1 span for single-language text |
+| `isForeignWord(word)` | Internal capitals, or 2-5 all-caps letters |
+| `toSpokenForm(text)` | Split at case boundaries, then punctuate acronyms |
+
+- A multi-lingual model takes ONE language id per utterance, so an English name
+  inside an isiZulu sentence has to be cut out and synthesised separately —
+  read wholly in isiZulu it comes out mangled, and the listener hears the
+  machine fail at a word they know perfectly well.
+- Detection is deliberately **CONSERVATIVE**: internal capitals (CircleAI,
+  WhatsApp) and short all-caps runs (GPS, SMS, ATM) only. It does NOT guess at
+  ordinary lowercase English words — that needs a lexicon per language pair,
+  and mispronouncing a native word to "fix" a foreign one insults the speaker
+  in their own language.
+- A sentence-initial capital is NOT a signal. isiZulu, isiXhosa and Sesotho
+  capitalise sentence openings and proper nouns and nothing else, so only
+  capitals after position zero count.
+- Separators ride along with the run they **FOLLOW**, so a language change
+  never strands a comma on its own.
+- `toSpokenForm` exists because a compound is one token to a synthesiser and it
+  has no idea where the words are: `CircleAI` → `Circle A.I.`, `YouTube` →
+  `You Tube`, `OpenAPIKey` → `Open A.P.I. Key`. The full stops are for the
+  voice, not the reader.
+
+### GeezRomanizer
+
+Ethiopic (Ge'ez) → Latin, for the two `is_uroman: true` MMS voices.
+
+| Operation | Contract |
+|---|---|
+| `isEthiopic(text)` | Any codepoint in U+1200–U+139F |
+| `romanize(text)` | Latin; non-Ethiopic passes through untouched |
+
+- The Amharic and Tigrinya models hold 28 and 27 **plain Latin letters** and
+  have never seen an Ethiopic codepoint. Measured on the P30, Amharic lost 43
+  distinct characters and produced 3.2 s of noise for a 15 s paragraph.
+- **Computed, not tabulated.** Unicode lays the syllabary out as consecutive
+  blocks of EIGHT codepoints, one consonant across its vowel orders, so
+  consonant = `(cp - 0x1200) / 8` and vowel = `(cp - 0x1200) % 8`. Two small
+  tables replace three hundred entries.
+- **The layout stops at U+1357, and the range check must stop with it.** Above
+  that: U+1358–U+135A are three LONE syllables already in their -a order,
+  U+135D–U+135F are combining marks, U+1360–U+1368 is punctuation, and
+  U+1369 onward are the numerals. Sizing the check off the consonant table
+  instead swept seven numerals back into the syllabary and made ፩፪፫ read as
+  "fyufyifya" — as *sound*, so nothing failed. The numerals past the table's
+  end were dropped correctly, which is exactly why it looked handled.
+- Six rows are **LABIALISED** — the consonant carries a built-in /w/. Writing
+  them plain turns "enkwan" into "enkan" and silently changes the word.
+- The sixth vowel order is SILENT; the glottal and pharyngeal rows write no
+  consonant, so their vowel IS the character (first order reads as "a").
+- Ethiopic punctuation maps to Latin so sentence splitting still works.
+
+### ToneShaper
+
+Two RBJ biquads over the float waveform, before it becomes PCM.
+
+| Operation | Contract |
+|---|---|
+| `WARM` | shelf 320 Hz +4 dB, dip 3200 Hz −4 dB Q 0.8, shelf slope 0.9 |
+| `lowShelf` / `peaking` | RBJ audio-cookbook coefficients, normalised by a0 |
+| `biquad(x, coeffs)` | Direct-form-I, double state, float store |
+| `apply(waveform, rate)` | Both filters in series, then peak restored |
+
+- **The speaker was not the lever.** Measured across all 130 speakers in the
+  bundle, warmth and intelligibility are inversely related: word error rate
+  rewards the bright top end that "tinny" describes. So the waveform is
+  corrected instead, and it is entirely ours once the model hands it over.
+- The dip matters more than the boost on a phone: a P30 speaker cannot move
+  enough air to reproduce a low shelf, but cutting 2–5 kHz works on hardware
+  that cannot do bass. The boost is for headphones; both ship because the
+  product is used on both.
+- **PEAK IS RESTORED AFTERWARDS.** Lifting the shelf adds energy, and a
+  waveform already near full scale would clip — heard as crackle and blamed on
+  the quantised model rather than on this.
+- The filter memory is **double**; only the stored sample is narrowed to float.
+  The recursion therefore never sees the rounding, which is why the biquad is
+  bit-reproducible across ports.
+- The gain restore divides two **floats**. Widening it to double shifts the
+  gain a few ULP and the whole tail of the waveform drifts with it.
+- A silent buffer returns untouched — dividing by a zero peak is NaN.
+- **The fixture carries the coefficients, and the two halves are asserted
+  separately.** Ports filter the fixture's own coefficients and must match to
+  1e-6; their own *derived* coefficients are compared at 1e-9 relative, because
+  `pow`, `sin` and `cos` are not bit-identical across languages and pretending
+  otherwise buys a flaky test rather than a strict one.
+
+### NchltPhonemizer
+
+Grapheme-to-phoneme for the South African languages, over the CC-BY NCHLT data.
+
+| Operation | Contract |
+|---|---|
+| `fromText(dict, rules, phoneMap, graphMap?, gnulls?)` | Build from file CONTENTS, not paths |
+| `phonemize(text)` | Dictionary first, rules otherwise |
+| `predictWord(word)` | Rules only, bypassing the dictionary |
+| `lastRulePredictedWords` / `lastUnknownGraphemes` | Coverage diagnostics |
+
+- NOT espeak-ng (GPLv3 would taint the app), NOT phonemeza (unlicensed, weights
+  unpublished), and not neural — no GPU to build, no runtime to infer.
+- **There is no OOV gap.** A word is either catalogued exactly or synthesised by
+  the rules, which is what makes agglutinative isiZulu tractable. isiZulu needs
+  only ~74 rules because its orthography is near-phonemic — the same reason the
+  approach is sound.
+- Rule format is `grapheme;left;right;code;order[;count]`, matched as
+  `pat.contains(left + "-" + g + "-" + right)` where
+  `pat = " " + left-context + "-" + g + "-" + right-context + " "`.
+- Rules sort **most-specific-first, and the sort MUST BE STABLE** — two rules of
+  equal order have to stay in file order, or ports disagree on exactly the ties
+  that dense rule sets produce most. Go needs `sort.SliceStable`, Swift sorts on
+  `(order, index)`, and the C port hand-rolls an insertion sort because `qsort`
+  is not stable.
+- Code `0` is a NULL and is dropped, not emitted.
+- The dictionary keeps the **FIRST** variant of a repeated word.
+- `graphMap` lines are `funny<TAB>std` and map **std → funny**.
+- An unknown grapheme is **skipped and reported**, never guessed at.
+- Tokenising lower-cases and splits on non-letters. Diacritics survive
+  (Afrikaans ê/ë/ô are real graphemes); number and abbreviation expansion is out
+  of scope and belongs to a normalisation pass upstream.
+
 ### Known port gaps
 
-Recorded rather than hidden. Both are honest divergences on input the fixtures
-do not exercise:
+Recorded rather than hidden. All are honest divergences on input the fixtures do
+not exercise:
 
 | Port | Gap |
 |---|---|
 | Rust | No NFKC — no stdlib normaliser, and `unicode-normalization` was not pulled in for a step no fixture covers. Byte-identical on already-normalised input. |
-| C | No NFKC, same reason. Also the ONLY port whose test transcribes the fixture values as literals instead of reading the JSON — the C port has no JSON reader. Change a fixture, change those literals in the same commit. |
+| C | No NFKC, same reason. Its Unicode character classes are range tables covering Latin, Greek, Cyrillic, the Indic and Arabic blocks, CJK, Ethiopic, Khmer and Myanmar rather than a full database — NARROWER than the reference, which is the safe direction: text splits more, never less, and no word is silently merged with its neighbour. |
+| C | The ONLY port whose test transcribes the fixture values as literals instead of reading the JSON, because it has no JSON reader. `c/tests/voice_text_expected.h` is GENERATED — regenerate it in the same commit as any fixture change: `python tools/gen_c_voice_expected.py fixtures c/tests/voice_text_expected.h` |
+| All | `SentenceSplitter` leaves a closing quote at the START of the next segment (`He said "go.` / `" Then left.`). `endsSentence` absorbs closers when deciding, but the cut lands at the terminator. Inaudible — no voice has a token for `"` — so it is documented rather than changed, because changing it moves all nine ports. |
+| All | An ellipsis is consumed rather than kept: `Wait... Then go.` yields `Wait.` and `Then go.`. The trailing dots flush as punctuation-only segments and are dropped. |
 
 ### Verified
 
@@ -600,16 +809,19 @@ All ten, from the same fixtures:
 
 | Port | Result |
 |---|---|
-| C# (reference) | full suite green |
-| Swift | 9 tests |
-| Go | 9 tests |
-| Rust | 9 tests |
-| TypeScript | 9 tests |
-| HarmonyOS (ArkTS) | 9 tests |
-| Python | 9 tests |
-| Kotlin | 9 tests |
-| Android (Kotlin) | 9 tests |
-| C | 23 + 4 checks |
+| C# (reference) | full suite green; Companion 178/178 |
+| Swift | 16 tests |
+| Go | full package suite green |
+| Rust | 15 tests |
+| TypeScript | 19 tests |
+| HarmonyOS (ArkTS) | 19 tests |
+| Python | 19 tests |
+| Kotlin | 16 tests |
+| Android (Kotlin) | 16 tests |
+| C | 90 + 361 checks |
+
+Counts are for the voice parity tests only; each port's wider suite runs
+alongside them.
 
 ---
 
