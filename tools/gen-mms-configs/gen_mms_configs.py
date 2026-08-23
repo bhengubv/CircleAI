@@ -131,13 +131,61 @@ def read_existing_config(voice: str) -> list[tuple[str, int]]:
     return pairs
 
 
-def build_config(voice: str) -> dict:
+#: Bundles that are NOT sherpa MMS, whatever their folder is called. Detected
+#: from each model's own graph (see `family_of`), then listed here so a run with
+#: no cached models still refuses to touch them.
+NOT_SHERPA_MMS = {
+    # Piper layout: inputs (input, input_lengths, scales), text_encoder.emb.weight.
+    # Their blank is <BLNK> = 3, NOT 0.
+    "mms-ibo", "mms-lin", "mms-npi",
+    # transformers VITS: inputs (input_ids, attention_mask).
+    "mms-amh", "mms-tir",
+}
+
+
+def family_of(voice: str) -> str:
+    """Which export family a bundle belongs to, read from the model's own graph.
+
+    DETECT FROM THE GRAPH, NEVER FROM THE FILENAME. Five bundles under `mms-*`
+    are not MMS at all: ibo, lin and npi carry Piper's (input, input_lengths,
+    scales) signature and amh and tir carry transformers-VITS's (input_ids,
+    attention_mask). Their blank is 3, 1, or absent — never 0 — so applying the
+    MMS rule to them silently retunes a WORKING voice. Returns "unknown" when
+    the model is not cached, which callers treat as "do not touch".
+    """
+    model = CACHE / f"{voice}__model.onnx"
+    if not model.exists():
+        return "unknown"
     try:
-        pairs = read_tokens(voice)
-    except Exception:
-        pairs = read_existing_config(voice)
+        import onnxruntime as ort
+    except ImportError:
+        return "unknown"
+    names = {i.name for i in ort.InferenceSession(
+        str(model), providers=["CPUExecutionProvider"]).get_inputs()}
+    if {"x", "x_length"} <= names:
+        return "sherpa-mms"
+    if {"input", "input_lengths"} <= names:
+        return "piper"
+    if {"input_ids", "attention_mask"} <= names:
+        return "transformers-vits"
+    return "unknown"
+
+
+def build_config(voice: str) -> dict:
+    # REFUSE ANYTHING THAT IS NOT SHERPA MMS. This generator encodes one
+    # family's convention — blank at 0, 16 kHz — and that convention is wrong
+    # for the other two. The five non-MMS bundles already publish a sidecar,
+    # and that sidecar is the ONLY surviving record of their convention, so it
+    # is left exactly as it is.
+    if voice in NOT_SHERPA_MMS:
+        raise RuntimeError(f"{voice}: not sherpa MMS; its published sidecar is authoritative")
+    fam = family_of(voice)
+    if fam not in ("sherpa-mms", "unknown"):
+        raise RuntimeError(f"{voice}: graph says {fam}, not sherpa MMS")
+
+    pairs = read_tokens(voice)
     if not pairs:
-        raise RuntimeError(f"{voice}: no vocabulary in tokens.txt or the sidecar")
+        raise RuntimeError(f"{voice}: tokens.txt yielded no entries")
 
     id_map: dict[str, list[int]] = {}
     for sym, tid in pairs:

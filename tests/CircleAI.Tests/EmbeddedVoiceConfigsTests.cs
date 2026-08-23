@@ -161,6 +161,51 @@ public class EmbeddedVoiceConfigsTests
         Assert.Equal(0, blank[0].GetInt32());
     }
 
+    [Theory]
+    // Piper layout — inputs (input, input_lengths, scales). Their blank is
+    // <BLNK> = 3, and one of these (lin) is a WORKING voice.
+    [InlineData("mms-ibo/model.onnx.json", 3, 22050)]
+    [InlineData("mms-lin/model.onnx.json", 3, 22050)]
+    [InlineData("mms-npi/model.onnx.json", 3, 22050)]
+    // transformers VITS — inputs (input_ids, attention_mask).
+    [InlineData("mms-amh/model.onnx.json", 1, 16000)]
+    public void A_non_MMS_bundle_keeps_its_own_blank_and_rate(string file, int blank, int rate)
+    {
+        // FIVE BUNDLES UNDER mms-* ARE NOT MMS. Applying the MMS convention
+        // (blank 0, 16 kHz) to them retunes a working voice without any error:
+        // the audio still arrives, it is just the wrong sound at the wrong speed.
+        // The published sidecar is the only surviving record of their convention,
+        // so it is authoritative and the generator refuses to touch them.
+        var bytes = EmbeddedVoiceConfigs.TryGet(file);
+        Assert.NotNull(bytes);
+
+        using var doc = JsonDocument.Parse(bytes!);
+        Assert.Equal(rate, doc.RootElement.GetProperty("audio").GetProperty("sample_rate").GetInt32());
+        Assert.Equal(blank, doc.RootElement.GetProperty("phoneme_id_map").GetProperty("_")[0].GetInt32());
+    }
+
+    [Fact]
+    public void The_blank_is_not_harmonised_across_families()
+    {
+        // The whole catalogue must NOT agree on one blank. If it ever does,
+        // someone has flattened the families together — which is the single
+        // mistake that made 42 voices speak fluent nonsense, in reverse.
+        var blanks = new HashSet<int>();
+        foreach (var pin in SidecarPins().Where(p => p.FileName.EndsWith("model.onnx.json", StringComparison.Ordinal)))
+        {
+            var bytes = EmbeddedVoiceConfigs.TryGet(pin.FileName);
+            if (bytes is null) continue;
+            using var doc = JsonDocument.Parse(bytes);
+            if (doc.RootElement.GetProperty("phoneme_id_map").TryGetProperty("_", out var blank))
+                blanks.Add(blank[0].GetInt32());
+        }
+
+        Assert.True(blanks.Count > 1,
+            "Every voice now claims the same blank id. The families genuinely differ — "
+            + "0 for sherpa MMS, 3 for Piper, 1 for transformers VITS — so one value "
+            + "across all of them means a generator overwrote the ones it should not touch.");
+    }
+
     [Fact]
     public void An_unknown_name_returns_null_rather_than_throwing()
     {
