@@ -70,6 +70,12 @@ public class LanguagePickerActivity : Activity
         ["ki"]   = ("Kikuyu",          "Gĩkũyũ",       "Ũhoro waku? Nĩ mwega."),
         ["kn"]   = ("Kannada",         "ಕನ್ನಡ",         "ನಮಸ್ಕಾರ ಜಗತ್ತು. ಹೇಗಿದ್ದೀರಿ?"),
         ["kr"]   = ("Kanuri",          "Kanuri",       "Ndaram. Awo cira?"),
+        // Korean was catalogued and downloadable but MISSING HERE, so Display()
+        // fell through to (tag, tag, null): the row read "ko" and the phrase it
+        // would have spoken was the literal string "ko". A voice absent from this
+        // table is invisible to the person choosing, however correct the registry
+        // entry is — the picker searches these names, not the catalogue.
+        ["ko"]   = ("Korean",          "한국어",         "안녕하세요 세계. 어떻게 지내세요?"),
         ["lg"]   = ("Luganda",         "Luganda",      "Oli otya? Ndi bulungi."),
         ["lgg"]  = ("Lugbara",         "Lugbarati",    "Mi ngoni? Ma muke."),
         ["ln"]   = ("Lingala",         "Lingála",      "Mbote na yo. Ozali malamu?"),
