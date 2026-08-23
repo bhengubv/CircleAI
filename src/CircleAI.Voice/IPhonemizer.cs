@@ -111,7 +111,21 @@ public sealed class EspeakPhonemizer : IPhonemizer
                 ex);
         }
 
+        // AND IT ENDS WITH A NEWLINE, which is not cosmetic.
+        //
+        // espeak treats a newline as the end of a clause and will not flush the
+        // final one without it. Unterminated, the last character is either
+        // dropped or — worse — read as a Unicode character NAME and spoken in
+        // English: "안녕하세요 친구" phonemised as
+        // "…tʃhˈin(en)ɣzˌiːsˈɜːkəmflˌɛksmˈaɪkɹəʊ", which is "circumflex micro"
+        // said out loud, wrapped in an (en) language switch. Nepali साथी came
+        // out "sˈaːtʰeˌaː" instead of "sˈaːtʰi" the same way.
+        //
+        // Every one of those is audible, none of it is an error, and it costs
+        // exactly the last character of every utterance — which is why it hid:
+        // a long sentence still sounds broadly right.
         proc.StandardInput.Write(text);
+        proc.StandardInput.Write('\n');
         proc.StandardInput.Close();
 
         var stdout = proc.StandardOutput.ReadToEnd();

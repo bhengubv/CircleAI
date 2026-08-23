@@ -506,7 +506,7 @@
    "Version": "1.0",
    "Quantization": "ONNX",
    "Repo": "rhasspy/piper-voices",
-   "Source": "HuggingFaceBucket",
+   "Source": "HuggingFace",
    "Modality": "Tts",
    "Language": "ko",
    "Architecture": "vits",
@@ -517,12 +517,12 @@
    "Capabilities": [],
    "BundleFiles": [
     {
-     "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx",
+     "Name": "ko/ko_KR/kss/medium/ko_KR-kss-medium.onnx",
      "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
      "SizeBytes": 63221984
     },
     {
-     "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx.json",
+     "Name": "ko/ko_KR/kss/medium/ko_KR-kss-medium.onnx.json",
      "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
      "SizeBytes": 5232
     }

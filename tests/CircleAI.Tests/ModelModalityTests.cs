@@ -138,8 +138,37 @@ public sealed class ModelModalityTests
         // Source: every voice comes from our own Hugging Face bucket rather than
         // from whichever stranger's repository first published it — see
         // docs/VOICE_PROVENANCE.md.
-        Assert.All(registry.AllModels.Where(e => e.Modality == ModelModality.Tts),
+        //
+        // ONE NAMED EXCEPTION, and it is a list rather than a predicate so it
+        // cannot quietly grow. Korean was catalogued but never uploaded: its
+        // bundle is absent from the bucket under every path, while its pins match
+        // rhasspy/piper-voices byte for byte. The entry had Repo pointing
+        // upstream and Source still saying bucket, so it built
+        // huggingface.co/buckets/rhasspy/piper-voices/... and 404'd on every
+        // file — catalogued, undownloadable, and silent about it.
+        //
+        // Pointing it upstream is the weaker guarantee the provenance doc warns
+        // about: if rhasspy's repository goes away, Korean goes with it. It is
+        // accepted deliberately because the alternative is a voice that does not
+        // work at all. When the bundle reaches the bucket, delete this entry from
+        // the list and the assertion tightens itself back up.
+        var upstreamUntilUploaded = new[] { "Piper-ko_KR-kss-medium" };
+
+        Assert.All(
+            registry.AllModels.Where(e => e.Modality == ModelModality.Tts
+                                       && !upstreamUntilUploaded.Contains(e.Name)),
             e => Assert.Equal(ModelSource.HuggingFaceBucket, e.Source));
+
+        // The exception is not a free pass: an entry on that list must still name
+        // a real upstream repository, or it is just a broken entry with a note.
+        Assert.All(
+            registry.AllModels.Where(e => upstreamUntilUploaded.Contains(e.Name)),
+            e =>
+            {
+                Assert.Equal(ModelSource.HuggingFace, e.Source);
+                Assert.False(string.IsNullOrWhiteSpace(e.Repo));
+                Assert.DoesNotContain("circleai-voices", e.Repo);
+            });
 
         // EVERY MODEL COMES OFF A CDN. This asserted ModelScope until it was
         // measured: from Osaka, on the same file in the same minute, Hugging

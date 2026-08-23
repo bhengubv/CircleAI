@@ -165,8 +165,17 @@ def espeak_ipa(text: str, voice: str) -> str | None:
     # espeak voice looked like it had no phonemizer at all. UTF-8 on stdin is
     # read as UTF-8 and all six phonemise correctly.
     try:
+        # AND THE INPUT ENDS WITH A NEWLINE. espeak treats it as end-of-clause
+        # and will not flush the last one without it: unterminated, the final
+        # character is dropped, or read as a Unicode character NAME and spoken
+        # in English. Korean "안녕하세요 친구" came back as
+        # "...tʃhˈin(en)ɣzˌiːsˈɜːkəmflˌɛksmˈaɪkɹəʊ" — "circumflex micro" — and
+        # Nepali साथी as "sˈaːtʰeˌaː" instead of "sˈaːtʰi". Both are audible,
+        # neither is an error, and it costs the last character of every phrase,
+        # so short references suffer most and the CER looks like a bad voice.
         out = subprocess.run([ESPEAK_EXE, "-q", "-v", voice, "--ipa=3"],
-                             input=text.encode("utf-8"), capture_output=True, timeout=60)
+                             input=(text + "\n").encode("utf-8"),
+                             capture_output=True, timeout=60)
     except Exception:
         return None
     if out.returncode != 0:
