@@ -502,6 +502,70 @@
       ]
     },
     {
+      "Name": "Piper-ko_KR-kss-medium",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "rhasspy/piper-voices",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ko",
+      "Architecture": "vits",
+      "TotalBytes": 63227216,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0632,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx",
+          "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
+          "SizeBytes": 63221984
+        },
+        {
+          "Name": "piper-ko_kr-kss-medium/ko_KR-kss-medium.onnx.json",
+          "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
+          "SizeBytes": 5232
+        }
+      ]
+    },
+    {
+      "Name": "Kokoro-82M-int8",
+      "Version": "1.0",
+      "Quantization": "Int8",
+      "Repo": "onnx-community/Kokoro-82M-v1.0-ONNX",
+      "Source": "HuggingFace",
+      "Modality": "Tts",
+      "Language": "ja,zh",
+      "Architecture": "kokoro",
+      "TotalBytes": 93409093,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0934,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "onnx/model_quantized.onnx",
+          "Sha256": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+          "SizeBytes": 92361116
+        },
+        {
+          "Name": "tokenizer.json",
+          "Sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+          "SizeBytes": 3497
+        },
+        {
+          "Name": "voices/jf_alpha.bin",
+          "Sha256": "56b479360aad9f367aeb8cef908f9201cf48b4555e488c5f4590c9dfcd978bb6",
+          "SizeBytes": 522240
+        },
+        {
+          "Name": "voices/zf_xiaobei.bin",
+          "Sha256": "5dde6e1c9c4f12c8b327bc29c0cee361a23b52b952c04636858ba637ec66e640",
+          "SizeBytes": 522240
+        }
+      ]
+    },
+    {
       "Name": "Whisper-tiny-ggml",
       "Version": "1.0",
       "Quantization": "ggml",
@@ -2289,6 +2353,38 @@
         },
         {
           "Name": "vits-11za/language_ids.json",
+          "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+          "SizeBytes": 157
+        }
+      ]
+    },
+    {
+      "Name": "Vits-11ZA-int8",
+      "Version": "1.0",
+      "Quantization": "Int8",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "af,en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+      "Architecture": "vits",
+      "TotalBytes": 32432726,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0324,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-11za-int8/model.onnx",
+          "Sha256": "2bcc377d2fc080d869c5a5472a0d263dbc04b56a0475a46612a3cc546060e871",
+          "SizeBytes": 32430658
+        },
+        {
+          "Name": "vits-11za-int8/model.onnx.json",
+          "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+          "SizeBytes": 1911
+        },
+        {
+          "Name": "vits-11za-int8/language_ids.json",
           "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
           "SizeBytes": 157
         }

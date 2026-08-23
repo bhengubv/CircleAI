@@ -991,5 +991,31 @@
       }
     ],
     "Source": "HuggingFace"
+  },
+  "Vits-11ZA-int8": {
+    "Repo": "thegeekco/circleai-voices",
+    "Source": "HuggingFaceBucket",
+    "Modality": "Tts",
+    "Architecture": "vits",
+    "QuantizationType": "Int8",
+    "Version": "1.0",
+    "TotalBytes": 32432726,
+    "BundleFiles": [
+      {
+        "Name": "vits-11za-int8/model.onnx",
+        "Sha256": "2bcc377d2fc080d869c5a5472a0d263dbc04b56a0475a46612a3cc546060e871",
+        "SizeBytes": 32430658
+      },
+      {
+        "Name": "vits-11za-int8/model.onnx.json",
+        "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+        "SizeBytes": 1911
+      },
+      {
+        "Name": "vits-11za-int8/language_ids.json",
+        "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+        "SizeBytes": 157
+      }
+    ]
   }
 }
