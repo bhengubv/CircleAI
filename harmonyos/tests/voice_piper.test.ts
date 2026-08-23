@@ -16,7 +16,7 @@ import {
   LexiconTokeniser,
   splitPhonemeString,
 } from '../src/voice/piper_config';
-import { PCM16_MONO_16K } from '../src/voice/contracts';
+import { PCM16_MONO_16K } from '../src/voice/audio_format';
 
 const FIXTURES = path.resolve(__dirname, '..', '..', 'fixtures');
 
