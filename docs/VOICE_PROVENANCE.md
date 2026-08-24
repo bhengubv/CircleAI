@@ -138,6 +138,29 @@ recogniser heard `これはテスト文です` exactly right and wrote `これ�
 perfect reading. Scored as phonemes, through the analyser that is already open,
 it is **0.00**; on longer sentences 0.01–0.12, with `unk=0`.
 
+**Verified on the P30 Lite, downloaded rather than sideloaded** — a clean install
+pulling all 247 MB from the release, which is what makes it a test of the
+addressing and not just of the voice:
+
+    g2p: Open JTalk ready — .../Models/OpenJTalk-Dic-ja/open-jtalk-dic
+    tts: open jtalk path — 18 tokens, 0 unknown
+    tts: 8 chars -> 1172 ms audio in 7992 ms (INCLUDING model open)
+    tts: open jtalk path — 16 tokens, 0 unknown
+    tts: 7 chars -> 893 ms audio in 2408 ms
+
+On `こんにちは世界。お元気ですか。` the phone produced 22050 Hz audio scoring
+**spoken CER 0.02** — one phoneme in twenty-two, げんき heard as でんき. Written CER
+reads 0.20 for the same clip, which is the homophone problem above, not the voice.
+
+**It is slow, and that is the honest limitation.** Warm, 2408 ms of work for
+893 ms of audio: **~2.7x slower than real time.** Acceptable for a phrase, not for
+a conversation. The first utterance additionally pays 8 s to open the model.
+
+One rough edge left alone deliberately: the language picker shows Japanese as
+144 MB, the size of the voice, while tapping it fetches 247 MB because the
+dictionary is a shared prerequisite catalogued separately. On a metered
+connection that is a surprise.
+
 Nepali replaces `MMS-npi`, which was never an MMS voice: Meta's own list of 1077
 TTS languages contains no Nepali, no Igbo and no Lingala. That bundle carried a
 vocabulary with 19 Hebrew letters sorted into the middle of the Devanagari, so it
