@@ -426,8 +426,17 @@
   {
     "language": "ja",
     "voice": "JSUT-VITS",
-    "verdict": "NOVOICE",
-    "detail": "jsut-vits/model.onnx absent from bucket"
+    "verdict": "SPEAKS",
+    "phonetic_cer": true,
+    "ipa": "^ k o [ r e w a # t e [ s u t o ] b u N d e s u $",
+    "mapped": "25/25",
+    "langid": null,
+    "seconds": 1.32,
+    "judge": "mms-1b-all",
+    "heard": "これは手スト分です",
+    "cer": 0.0,
+    "floor": null,
+    "basis": "absolute cer<=0.45 (no control)"
   },
   {
     "language": "jv",

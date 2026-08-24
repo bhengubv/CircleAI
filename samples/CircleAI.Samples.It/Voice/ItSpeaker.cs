@@ -268,7 +268,7 @@ public sealed class ItSpeaker : IDisposable
     /// </remarks>
     internal const string EnglishVoice = "Piper-en_US-lessac-medium";
 
-    /// <summary>The Japanese voice: lexicon-driven, no phonemizer of any kind.</summary>
+    /// <summary>The Japanese voice: Open JTalk labels, not a lexicon and not espeak.</summary>
     /// <remarks>
     /// Already in the catalogue. Measured CER 0.12 — the only Japanese path that
     /// is both measured and shippable. Kokoro needs Python misaki; sherpa's

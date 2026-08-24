@@ -471,6 +471,50 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
     private static string EscapePath(string fileName)
         => string.Join('/', fileName.Split('/').Select(Uri.EscapeDataString));
 
+    /// <summary>
+    /// Split <c>owner/name@tag</c> into the repo and its release tag.
+    /// </summary>
+    /// <remarks>
+    /// THE TAG NEEDS ITS OWN PLACE BECAUSE THE FILE NAME ALREADY HAS A JOB.
+    /// A bundle file's <c>Name</c> is the path it unpacks to on disk, and for
+    /// at least one bundle that path is load-bearing: Open JTalk's dictionary
+    /// has to land in a directory the phonemiser can find, and the phonemiser
+    /// looks for the layout, not for a release tag.
+    /// <para>
+    /// The first attempt spelled the tag as the leading directory —
+    /// <c>voices-v1/sys.dic</c> — which builds a correct URL and then unpacks
+    /// 103 MB into a folder nothing looks in. Nothing errors: the download
+    /// succeeds, the SHA verifies, and Japanese silently has no phonemiser.
+    /// Release assets are flat, so the tag was never a directory in the first
+    /// place; putting it on the repo says that out loud.
+    /// </para>
+    /// <para>
+    /// '@' is safe as the separator: GitHub allows only alphanumerics, '-', '_'
+    /// and '.' in owner and repository names, so it cannot occur in either half.
+    /// </para>
+    /// </remarks>
+    private static (string Repo, string? Tag) SplitReleaseRef(string repo)
+    {
+        var at = repo.IndexOf('@');
+        return at < 0 ? (repo, null) : (repo[..at], repo[(at + 1)..]);
+    }
+
+    /// <summary>
+    /// The download URL for one release asset. Assets are FLAT — a release has
+    /// no directories — so only the last segment of the bundle path names the
+    /// asset, and the rest is the on-disk layout that stays behind.
+    /// </summary>
+    private static Uri ReleaseUrl(string repo, string fileName)
+    {
+        var (owner, tag) = SplitReleaseRef(repo);
+        // No tag on the repo? The name carries it, which is the older spelling
+        // and still what four voices use.
+        var path = tag is null
+            ? EscapePath(fileName)
+            : $"{Uri.EscapeDataString(tag)}/{Uri.EscapeDataString(fileName.Split('/')[^1])}";
+        return new($"https://github.com/{owner}/releases/download/{path}");
+    }
+
     private static Uri BuildPrimaryUrl(CircleAI.Core.ModelSource source, string repo, string fileName)
         => source switch
         {
@@ -479,10 +523,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 new($"https://huggingface.co/buckets/{repo}/resolve/{EscapePath(fileName)}?download=true"),
             CircleAI.Core.ModelSource.HuggingFace =>
                 new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}?download=true"),
-            // The file name carries the release tag: "voices-v1/ne_NP-...onnx".
-            // Release assets are flat, so the tag is the only directory there is.
-            CircleAI.Core.ModelSource.GitHubRelease =>
-                new($"https://github.com/{repo}/releases/download/{EscapePath(fileName)}"),
+            CircleAI.Core.ModelSource.GitHubRelease => ReleaseUrl(repo, fileName),
             _ =>
                 new($"https://modelscope.cn/api/v1/models/{repo}/repo?Revision=master&FilePath={Uri.EscapeDataString(fileName)}"),
         };
@@ -496,8 +537,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 new($"https://huggingface.co/{repo}/resolve/main/{EscapePath(fileName)}"),
             // A release asset has one address; there is no second host to fall
             // back to, so the fallback is the same URL and the retry is the point.
-            CircleAI.Core.ModelSource.GitHubRelease =>
-                new($"https://github.com/{repo}/releases/download/{EscapePath(fileName)}"),
+            CircleAI.Core.ModelSource.GitHubRelease => ReleaseUrl(repo, fileName),
             _ =>
                 new($"https://modelscope.cn/models/{repo}/resolve/master/{Uri.EscapeDataString(fileName)}"),
         };

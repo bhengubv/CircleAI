@@ -233,8 +233,15 @@ def urls_for(entry: dict | None, remote: str) -> list[str]:
     # all along (ModelDownloadService.EscapePath); only the audit had the hole.
     remote = urllib.parse.quote(remote, safe="/")
     if src == "GitHubRelease":
-        # Release assets are flat; the tag rides in the file name.
-        return [f"https://github.com/{repo}/releases/download/{remote}"]
+        # RELEASE ASSETS ARE FLAT: only the last segment names the asset, and
+        # anything before it is the layout the file unpacks into on disk. The
+        # tag rides on the repo as owner/name@tag — it has to live somewhere
+        # other than the file name, because for the Open JTalk dictionary that
+        # name IS the folder the phonemiser goes looking in.
+        repo, _, tag = repo.partition("@")
+        asset = remote.rsplit("/", 1)[-1] if tag else remote
+        return [f"https://github.com/{repo}/releases/download/"
+                f"{tag + '/' if tag else ''}{asset}"]
     if src == "HuggingFace":
         return [f"https://huggingface.co/{repo}/resolve/main/{remote}"]
     # Bucket folders are lowercase; the registry carries mixed case for some
@@ -440,6 +447,132 @@ def lexicon_encode(text: str, lex_path: pathlib.Path, tok_path: pathlib.Path):
     return ids, mapped, len([c for c in text if not c.isspace()]), tone_ids
 
 
+# ---------------------------------------------------------------------------
+# The fourth family: Open JTalk prosody (Japanese).
+#
+# The three families above all read their vocabulary out of a file that ships
+# beside the model. This one does not. JSUT-VITS is an ESPnet export: it has no
+# model.onnx.json, no lexicon.txt and no tokens.txt, so by the rules above it
+# looked exactly like a voice whose sidecar had gone missing — and the sweep
+# reported it NOVOICE while a working 144 MB voice sat in the release.
+#
+# What it needs instead is a MORPHOLOGICAL ANALYSER. Japanese is written without
+# spaces and its pitch accent is not recoverable from the characters, so the text
+# goes through Open JTalk's dictionary to get full-context labels, and the accent
+# fields in those labels become the bracket tokens the model was trained on. That
+# is a native DLL and a 103 MB dictionary, not a JSON file.
+#
+# The symbol table below is the model's own, in its own order, and is the one
+# place a constant is unavoidable: ESPnet bakes the token list into the training
+# config rather than shipping it beside the graph. It is duplicated in
+# OpenJTalkProsodyTokeniser.cs and validate_jsut.py; those three must agree, and
+# the test suite is what holds them together.
+#
+# THE PAD RULE still applies and still is not a constant: this model's blank is
+# <blank> = 0 — same number as MMS, different reason, and unknown maps to 1 (not
+# to the blank), which is why unk is counted and reported rather than hidden.
+JA_VOCAB = ["<blank>", "<unk>", "a", "o", "i", "[", "#", "u", "]", "e", "k", "n",
+            "t", "r", "s", "N", "m", "_", "sh", "d", "g", "^", "$", "w", "cl",
+            "h", "y", "b", "j", "ts", "ch", "z", "p", "f", "ky", "ry", "gy",
+            "hy", "ny", "by", "my", "py", "v", "dy", "?", "ty", "<sos/eos>"]
+JA_ID = {s: i for i, s in enumerate(JA_VOCAB)}
+JA_DLL = REPO / "native" / "open-jtalk" / "build" / "windows" / "Release" / "openjtalk_g2p.dll"
+JA_DIC = REPO / "native" / "open-jtalk" / "dic" / "open_jtalk_dic_utf_8-1.11"
+_JA_HANDLE = None
+ABSENT = -50
+
+
+def open_jtalk_labels(text: str) -> list[str] | None:
+    """Full-context labels, one per mora-ish unit. None when Open JTalk is absent.
+
+    Absence is reported rather than worked around. Every fallback available here
+    — reading the kana directly, or running espeak at the text — produces audio,
+    and that audio would be scored as if it were the voice's fault.
+    """
+    global _JA_HANDLE
+    import ctypes
+    if _JA_HANDLE is None:
+        if not JA_DLL.exists() or not (JA_DIC / "sys.dic").exists():
+            return None
+        lib = ctypes.CDLL(str(JA_DLL))
+        lib.openjtalk_g2p_open.restype = ctypes.c_void_p
+        lib.openjtalk_g2p_open.argtypes = [ctypes.c_char_p]
+        lib.openjtalk_labels.restype = ctypes.c_int
+        # WITHOUT argtypes ctypes hands the handle back as a Python int and the
+        # 64-bit pointer overflows the default c_int conversion.
+        lib.openjtalk_labels.argtypes = [ctypes.c_void_p, ctypes.c_char_p,
+                                         ctypes.c_char_p, ctypes.c_int]
+        h = lib.openjtalk_g2p_open(str(JA_DIC).encode("utf-8"))
+        if not h:
+            return None
+        _JA_HANDLE = (lib, h)
+
+    lib, h = _JA_HANDLE
+    buf = ctypes.create_string_buffer(1 << 20)
+    n = lib.openjtalk_labels(h, text.encode("utf-8"), buf, len(buf))
+    if n <= 0:
+        return None
+    return buf.value.decode("utf-8").split(chr(10))
+
+
+def _ja_num(pattern: str, label: str) -> int:
+    m = re.search(pattern, label)
+    return int(m.group(1)) if m else ABSENT
+
+
+def prosody_symbols(labels: list[str]) -> list[str]:
+    """ESPnet's pyopenjtalk_g2p_prosody, mirrored.
+
+    The brackets are the whole point. `[` opens a pitch rise, `]` closes it and
+    `#` marks an accent-phrase boundary; strip them and the model still speaks,
+    with flat wrong-sounding prosody that a recogniser will happily transcribe.
+    That is the failure this path exists to avoid measuring as success.
+    """
+    out: list[str] = []
+    N = len(labels)
+    for n, cur in enumerate(labels):
+        m = re.search(r"\-(.*?)\+", cur)
+        if not m:
+            continue
+        p3 = m.group(1)
+        if len(p3) == 1 and p3 in "AEIOU":
+            p3 = p3.lower()
+        if p3 == "sil":
+            if n == 0:
+                out.append("^")
+            elif n == N - 1:
+                out.append("?" if _ja_num(r"!(\d+)_", cur) == 1 else "$")
+            continue
+        if p3 == "pau":
+            out.append("_")
+            continue
+        out.append(p3)
+        a1 = _ja_num(r"/A:([0-9\-]+)\+", cur)
+        a2 = _ja_num(r"\+(\d+)\+", cur)
+        a3 = _ja_num(r"\+(\d+)/", cur)
+        f1 = _ja_num(r"/F:(\d+)_", cur)
+        a2_next = _ja_num(r"\+(\d+)\+", labels[n + 1]) if n + 1 < N else ABSENT
+        carries = (len(p3) == 1 and p3 in "aeiouAEIOUN") or p3 == "cl"
+        if a3 == 1 and a2_next == 1 and carries:
+            out.append("#")
+        elif a1 == 0 and a2_next == a2 + 1 and a2 != f1:
+            out.append("]")
+        elif a2 == 1 and a2_next == 2:
+            out.append("[")
+    return out
+
+
+def prosody_encode(text: str) -> tuple[list[int], int, int, list[str]]:
+    """Ids for the Open JTalk family. Returns (ids, mapped, total, symbols)."""
+    labels = open_jtalk_labels(text)
+    if labels is None:
+        return [], 0, len(text), []
+    syms = prosody_symbols(labels)
+    ids = [JA_ID.get(s, 1) for s in syms]
+    mapped = sum(1 for s in syms if s in JA_ID)
+    return ids, mapped, len(syms), syms
+
+
 def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
           sid: int = 0, langid: int | None = None, tones: list[int] | None = None) -> tuple[np.ndarray, int]:
     import onnxruntime as ort
@@ -450,7 +583,7 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
                   float(inf.get("noise_w", .8)))
     x = np.array([ids], dtype=np.int64)
     n = np.array([x.shape[1]], dtype=np.int64)
-    # Three layouts ship in this catalogue and all three are in use.
+    # Four layouts ship in this catalogue and all four are in use.
     if "x" in names:                                    # sherpa / MMS
         feed = {"x": x, "x_length": n,
                 "noise_scale": np.array([ns], "float32"),
@@ -458,6 +591,22 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
                 "noise_scale_w": np.array([nw], "float32")}
     elif "input_ids" in names:                          # transformers VITS
         feed = {"input_ids": x, "attention_mask": np.ones_like(x)}
+    elif "text" in names:                               # ESPnet VITS (JSUT)
+        # SCALARS, NOT ONE-ELEMENT ARRAYS. This graph declares shape [] for its
+        # three knobs; every other family here declares [1]. Feeding [ns] raises
+        # a rank error rather than mispronouncing anything, which is the good
+        # kind of failure — but it is why the shapes are written out separately
+        # instead of shared with the branches above.
+        #
+        # THE MAPPING IS THE PRODUCT'S, NOT AN INVENTION HERE. OnnxTtsEngine
+        # feeds noise_scale, noise_scale_dur <- noise_w, and alpha <-
+        # length_scale, because alpha and length_scale both stretch duration.
+        # The sweep exists to measure what the app does, so any divergence here
+        # would be measuring a voice the app never plays.
+        feed = {"text": x, "text_lengths": n,
+                "noise_scale": np.array(ns, "float32"),
+                "noise_scale_dur": np.array(nw, "float32"),
+                "alpha": np.array(ls, "float32")}
     else:                                               # Piper
         feed = {"input": x, "input_lengths": n, "scales": np.array([ns, ls, nw], "float32")}
     # Multi-speaker / multi-lingual VITS declares these separately. A voice that
@@ -490,7 +639,12 @@ def synth(model_path: pathlib.Path, ids: list[int], cfg: dict,
     rate = cfg.get("audio", {}).get("sample_rate")
     if not rate:
         meta = s.get_modelmeta().custom_metadata_map
-        rate = int(meta.get("sample_rate", 0)) or 16000
+        # ESPnet exports carry NEITHER a sidecar NOR graph metadata — JSUT's
+        # custom_metadata_map is literally empty — so the generic 16000 default
+        # would write 22.05 kHz audio into a 16 kHz header. That plays 1.38x too
+        # slow and transcribes as gibberish, and the voice would be blamed for
+        # it. 22050 is what OnnxTtsEngine falls back to for exactly this case.
+        rate = int(meta.get("sample_rate", 0)) or (22050 if "text" in names else 16000)
     return y, rate
 
 
@@ -643,10 +797,40 @@ def cer_for(row: dict, ref: str, hyp: str) -> float:
     both become roughly "selam", and what gets measured is what was SAID rather
     than how the recogniser chose to spell it. The floor is computed the same
     way or the comparison is rigged.
+
+    THE SAME TRAP CATCHES JAPANESE, for a different reason. Japanese has no
+    single correct spelling of a spoken sentence: /te/ is テ or 手, /bun/ is 文
+    or 分, and which kanji a writer would have chosen is not in the audio. The
+    recogniser heard これはテスト文です perfectly and wrote これは手スト分です —
+    two characters different out of nine, cer 0.22, for a reading that is
+    exactly right. Scored as phonemes instead it is 0.01.
+
+    So Japanese is scored through Open JTalk, which is already open for the
+    synthesis. The brackets come out first: they encode pitch accent, which the
+    recogniser does not transcribe, and leaving them in would penalise the voice
+    for information the judge never had.
     """
     if row.get("romanised"):
         return cer(romanize(ref), romanize(hyp))
+    if row.get("phonetic_cer"):
+        a, b = spoken_form(ref), spoken_form(hyp)
+        # Only if the analyser could read BOTH. A failure on either side would
+        # silently compare a phoneme string against raw characters and score
+        # near 1.0 — a harness fault wearing a broken voice's clothes.
+        if a and b:
+            return cer(a, b)
     return cer(ref, hyp)
+
+
+NOT_SPOKEN = {"[", "]", "#", "^", "$", "?"}
+
+
+def spoken_form(text: str) -> str | None:
+    """The sounds of a Japanese sentence, as one string. None if unreadable."""
+    labels = open_jtalk_labels(text)
+    if labels is None:
+        return None
+    return " ".join(s for s in prosody_symbols(labels) if s not in NOT_SPOKEN)
 
 
 def main():
@@ -709,7 +893,26 @@ def main():
         tok_p = fetch(tok, v) if (cfg_p is None and tok) else None
         has_lexicon = lex_p is not None and tok_p is not None
 
-        if model is None or (cfg_p is None and not has_lexicon):
+        # ...or the Open JTalk family, which ships a bare .onnx and nothing else.
+        #
+        # ASK THE GRAPH, NEVER THE FILENAME. That rule is why three different
+        # export families can sit under mms-* without being confused for one
+        # another, and it is the only honest way to recognise this one: an
+        # ESPnet VITS declares `text` + `noise_scale_dur`, and no other layout
+        # in the catalogue does. Before this, JSUT-VITS was reported NOVOICE
+        # with "no .onnx.json in bundle" — which read as a missing upload and is
+        # in fact a whole family the harness could not drive.
+        has_prosody = False
+        if model is not None and cfg_p is None and not has_lexicon:
+            try:
+                import onnxruntime as _ort
+                _names = {i.name for i in _ort.InferenceSession(
+                    str(model), providers=["CPUExecutionProvider"]).get_inputs()}
+                has_prosody = {"text", "noise_scale_dur"} <= _names
+            except Exception as ex:
+                row["detail"] = f"cannot open graph: {type(ex).__name__}"
+
+        if model is None or (cfg_p is None and not has_lexicon and not has_prosody):
             row["verdict"] = "NOVOICE"
             row["detail"] = (f"no .onnx.json in bundle ({folder})" if conf is None
                              else f"{conf} absent from bucket") if model else (
@@ -747,6 +950,27 @@ def main():
                 spoken = romanize(ref)
                 row["romanised"] = spoken
             ids, mapped, total = encode(spoken, pm)
+        elif has_prosody:
+            ids, mapped, total, syms = prosody_encode(ref)
+            if not ids:
+                # Same discipline as NOESPEAK: a missing phonemiser is reported
+                # as a fact about this machine, not scored as a bad voice. There
+                # is no fallback worth having — reading the kana straight would
+                # produce fluent-sounding audio with the pitch accent stripped,
+                # and a recogniser would pass it.
+                row["verdict"] = "NOJTALK"
+                row["detail"] = ("this voice is phoneme-driven (Open JTalk full-context "
+                                 f"labels) and the analyser is not usable here: dll="
+                                 f"{JA_DLL.exists()} dic={(JA_DIC / 'sys.dic').exists()}")
+                results.append(row); continue
+            row["phonetic_cer"] = True
+            unk = [x for x in syms if x not in JA_ID]
+            row["ipa"] = " ".join(syms[:40]) + (" …" if len(syms) > 40 else "")
+            if unk:
+                # Not fatal — <unk> is id 1 and the model speaks through it —
+                # but it is the number that moved when the tokeniser was fixed,
+                # so it is reported rather than folded into the CER.
+                row["unk"] = f"{len(unk)}: {' '.join(sorted(set(unk))[:6])}"
         else:
             ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)
         row["mapped"] = f"{mapped}/{total}"

@@ -112,10 +112,19 @@ public sealed class OpenJTalkPhonemizer : IDisposable
     /// <summary>
     /// Every place a dictionary might be, cheapest first. THE ENTRY EXISTS IN
     /// THE CATALOGUE, SO IT CAN ARRIVE TWO WAYS — pushed over a cable into the
-    /// sideload folder, or downloaded into the model store as
-    /// <c>OpenJTalk-Dic-ja/open-jtalk-dic/</c>. Looking in only one of those is
-    /// how a registry entry becomes decorative: it downloads, and nothing finds
-    /// it.
+    /// sideload folder, or downloaded into the model store under
+    /// <c>OpenJTalk-Dic-ja/</c>. Looking in only one of those is how a registry
+    /// entry becomes decorative: it downloads, and nothing finds it.
+    ///
+    /// THE SUBFOLDER IS NOT FIXED, AND MUST NOT BE HARDCODED. A downloaded
+    /// bundle unpacks into whatever directory its BundleFiles names carry, and
+    /// that prefix changes with the store: it was <c>open-jtalk-dic/</c> on the
+    /// bucket and became <c>voices-v1/</c> the day the files moved to a GitHub
+    /// release, because release assets are flat and the tag is the only
+    /// directory there is. Nothing failed loudly when that happened — 103 MB
+    /// downloaded correctly and Japanese silently had no phonemiser. So the
+    /// last resort searches one level down for the file that actually matters
+    /// rather than for a folder name someone has to remember to update.
     /// </summary>
     private static IEnumerable<string> Candidates(string? explicitFolder)
     {
@@ -126,13 +135,42 @@ public sealed class OpenJTalkPhonemizer : IDisposable
             if (string.IsNullOrWhiteSpace(root)) continue;
 
             yield return root!;
-            // The bundle's own layout, as named in BundleFiles.
+            // The layouts we know by name, tried before touching the disk.
             yield return Path.Combine(root!, "OpenJTalk-Dic-ja", "open-jtalk-dic");
             yield return Path.Combine(root!, "open-jtalk-dic");
             // The upstream tarball unpacks into a version-named folder; accept
             // that too, so a hand-extracted copy works without renaming.
             yield return Path.Combine(root!, "open_jtalk_dic_utf_8-1.11");
+
+            // Whatever the bundle actually called itself.
+            foreach (var found in ContainingSysDic(Path.Combine(root!, "OpenJTalk-Dic-ja")))
+                yield return found;
         }
+    }
+
+    /// <summary>
+    /// Directories directly under <paramref name="parent"/> that hold a
+    /// <c>sys.dic</c>. Enumerated lazily and defensively: this runs on a phone
+    /// where the model store may not exist yet, and a missing folder is the
+    /// normal case before the first download, not an error.
+    /// </summary>
+    private static IEnumerable<string> ContainingSysDic(string parent)
+    {
+        string[] subdirs;
+        try
+        {
+            if (!Directory.Exists(parent)) yield break;
+            subdirs = Directory.GetDirectories(parent);
+        }
+        catch (Exception ex)
+        {
+            VoiceTrace.Write($"g2p: cannot list {parent} — {ex.GetType().Name}");
+            yield break;
+        }
+
+        foreach (var dir in subdirs)
+            if (File.Exists(Path.Combine(dir, "sys.dic")))
+                yield return dir;
     }
 
     /// <summary>Full-context labels, one per line — what the prosody tokeniser needs.</summary>

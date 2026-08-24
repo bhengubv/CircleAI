@@ -979,7 +979,7 @@
   "Piper-ko_KR-kss-medium": {
     "Version": "1.0",
     "Quantization": "ONNX",
-    "Repo": "bhengubv/circleai-voices",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
     "Source": "GitHubRelease",
     "Modality": "Tts",
     "Language": "ko",
@@ -991,20 +991,20 @@
     "Capabilities": [],
     "BundleFiles": [
       {
-        "Name": "voices-v1/ko_KR-kss-medium.onnx",
+        "Name": "ko_KR-kss-medium.onnx",
         "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
         "SizeBytes": 63221984
       },
       {
-        "Name": "voices-v1/ko_KR-kss-medium.onnx.json",
+        "Name": "ko_KR-kss-medium.onnx.json",
         "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
         "SizeBytes": 5232
       }
     ]
   },
   "JSUT-VITS": {
-    "Repo": "thegeekco/circleai-voices",
-    "Source": "HuggingFaceBucket",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
+    "Source": "GitHubRelease",
     "Modality": "Tts",
     "Architecture": "vits-espnet",
     "QuantizationType": "ONNX",
@@ -1012,15 +1012,15 @@
     "TotalBytes": 144280383,
     "BundleFiles": [
       {
-        "Name": "jsut-vits/model.onnx",
+        "Name": "jsut_vits_prosody.onnx",
         "Sha256": "78672bceed1f62389a8b0604cba978d7f4af934ddf43f71190b4870b14ef2f57",
         "SizeBytes": 144280383
       }
     ]
   },
   "OpenJTalk-Dic-ja": {
-    "Repo": "thegeekco/circleai-voices",
-    "Source": "HuggingFaceBucket",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
+    "Source": "GitHubRelease",
     "Modality": "Phonemizer",
     "Architecture": "open-jtalk-naist-jdic",
     "QuantizationType": "None",
@@ -1077,7 +1077,7 @@
   "Piper-ne_NP": {
     "Version": "1.0",
     "Quantization": "ONNX",
-    "Repo": "bhengubv/circleai-voices",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
     "Source": "GitHubRelease",
     "Modality": "Tts",
     "Language": "ne",
@@ -1089,12 +1089,12 @@
     "Capabilities": [],
     "BundleFiles": [
       {
-        "Name": "voices-v1/ne_NP-google-medium.onnx",
+        "Name": "ne_NP-google-medium.onnx",
         "Sha256": "e3ff3cbf97a7c01ebf29263c7fa1899ebed15e27a2d819b93dcfb86e10d39eaa",
         "SizeBytes": 76766385
       },
       {
-        "Name": "voices-v1/ne_NP-google-medium.onnx.json",
+        "Name": "ne_NP-google-medium.onnx.json",
         "Sha256": "8c3c364bd2ab369850ae0b5d97b9c7a37ea15fb2eb5b91f8fd10e7ffd85ae4eb",
         "SizeBytes": 5165
       }
@@ -1103,7 +1103,7 @@
   "Vits-ig_IB-soro": {
     "Version": "1.0",
     "Quantization": "ONNX",
-    "Repo": "bhengubv/circleai-voices",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
     "Source": "GitHubRelease",
     "Modality": "Tts",
     "Language": "ig",
@@ -1115,12 +1115,12 @@
     "Capabilities": [],
     "BundleFiles": [
       {
-        "Name": "voices-v1/ig_IB-soro-medium.onnx",
+        "Name": "ig_IB-soro-medium.onnx",
         "Sha256": "a39894c4807a1471ad0eaa1794a2d166f34d86ecf89043b279795a07ab510237",
         "SizeBytes": 114334140
       },
       {
-        "Name": "voices-v1/ig_IB-soro-medium.onnx.json",
+        "Name": "ig_IB-soro-medium.onnx.json",
         "Sha256": "0c86f3bea1bdbc91ff1b59ccb2796d905df518019a66ade975ffccacc4d1c8b4",
         "SizeBytes": 5051
       }
@@ -1129,7 +1129,7 @@
   "Vits-af_ZA-mimic3": {
     "Version": "1.0",
     "Quantization": "ONNX",
-    "Repo": "bhengubv/circleai-voices",
+    "Repo": "bhengubv/circleai-voices@voices-v1",
     "Source": "GitHubRelease",
     "Modality": "Tts",
     "Language": "af",
@@ -1141,12 +1141,12 @@
     "Capabilities": [],
     "BundleFiles": [
       {
-        "Name": "voices-v1/af_ZA-google-nwu-low.onnx",
+        "Name": "af_ZA-google-nwu-low.onnx",
         "Sha256": "9b0969ee195ed33503292b6a2cd7763c838e3ae41c37caf9196d3226c4c6afeb",
         "SizeBytes": 76351459
       },
       {
-        "Name": "voices-v1/af_ZA-google-nwu-low.onnx.json",
+        "Name": "af_ZA-google-nwu-low.onnx.json",
         "Sha256": "44b41d0df028b84609202b244bf638584f1d2ae44771d064a918e58cb1eee711",
         "SizeBytes": 2065
       }

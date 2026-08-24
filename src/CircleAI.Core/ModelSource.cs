@@ -37,9 +37,17 @@ public enum ModelSource
 
     /// <summary>
     /// A GitHub release. URL:
-    /// <c>github.com/{repo}/releases/download/{tag}/{asset}</c>, where the
-    /// bundle file name carries the tag: <c>voices-v1/ne_NP-google-medium.onnx</c>.
+    /// <c>github.com/{owner}/{name}/releases/download/{tag}/{asset}</c>, where
+    /// the tag rides on the repo as <c>owner/name@tag</c> —
+    /// <c>bhengubv/circleai-voices@voices-v1</c>.
     /// </summary>
+    /// <remarks>
+    /// THE TAG IS NOT PART OF THE FILE NAME, though it was at first. A bundle
+    /// file's name is the path it unpacks to, and Open JTalk's dictionary has to
+    /// land where the phonemiser looks; spelling the tag as a leading directory
+    /// built a correct URL and then put 103 MB somewhere nothing reads. Release
+    /// assets are flat, so only the last segment of the name is the asset.
+    /// </remarks>
     /// <remarks>
     /// THE STORE WE CAN ACTUALLY WRITE TO. The Hugging Face bucket needs a
     /// credential that does not exist on any machine here, and the cost of that

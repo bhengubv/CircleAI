@@ -74,6 +74,8 @@ longer compliant.
 | ko_KR kss medium (Korean) | CC-BY-NC-SA-4.0 | rhasspy/piper-voices, Korean Single Speaker corpus |
 | ig_IB soro medium (Igbo) | CC-BY-NC-4.0 | Shinzmann/soro-tts-ibo, WaxalNLP — re-exported to ONNX by us |
 | af_ZA google-nwu low (Afrikaans) | CC-BY-SA-4.0 | MycroftAI/mimic3-voices, openSLR 32 (Google/NWU) via sherpa-onnx |
+| jsut_vits_prosody (Japanese) | CC-BY-4.0 | espnet/kan-bayashi_jsut_vits_prosody, JSUT corpus (U. Tokyo) — re-exported to ONNX by us |
+| open_jtalk_dic_utf_8-1.11 (Japanese phonemiser) | BSD 3-clause | Open JTalk / NAIST, 2009 — dictionary only, no engine code redistributed |
 
 Afrikaans is the last of the four. `Vits-11ZA` measured **at its own noise
 floor** for it — cer 0.76 against a 0.76 floor, unmoved by every encoding, every
@@ -106,6 +108,35 @@ verbatim in a longer sentence, but it is far behind the European voices here. It
 ships because wrong words spoken confidently are worse than a weak voice, and
 because it is the best free Igbo voice that exists — Igbo is absent from MMS,
 from Piper's catalogue, and from all 642 assets in sherpa-onnx's tts-models.
+
+Japanese was the last language in the catalogue whose files existed nowhere. The
+144 MB `JSUT-VITS` export and its 103 MB dictionary were built by hand months ago,
+measured, and never published — the registry pinned SHAs for two things that
+returned 404. Both are now in the release, byte-identical to what was measured.
+
+**The tag is not a directory.** The first spelling put it in the bundle file name
+— `voices-v1/sys.dic` — which builds a correct URL and then unpacks the dictionary
+into a folder `OpenJTalkPhonemizer` does not search. Nothing fails: 103 MB
+downloads, its SHA verifies, and Japanese silently has no phonemiser. Release
+assets are FLAT, so the tag now rides on the repo as `owner/name@tag` and the file
+name stays the on-disk layout. `GitHubReleaseLayoutTests` holds that line, and the
+phonemiser additionally walks one level down for `sys.dic` so the next rename is
+survivable rather than silent.
+
+Japanese is also the one voice here that is neither grapheme-driven nor
+espeak-driven. It needs a MORPHOLOGICAL ANALYSER: Japanese is written without
+spaces and its pitch accent is not recoverable from the characters, so the text
+goes through Open JTalk's dictionary to full-context labels, and the accent fields
+in those become the bracket tokens the model was trained on. Stripping the
+brackets still produces confident speech with flat, wrong prosody — which a
+recogniser will happily transcribe, which is why the audit measures them.
+
+Scoring it needed the same correction the Ethiopic voices did, for a different
+reason. Japanese has no single correct spelling of a spoken sentence: the
+recogniser heard `これはテスト文です` exactly right and wrote `これは手スト分です`
+— /te/ as 手 rather than テ, /bun/ as 分 rather than 文. That is CER 0.22 for a
+perfect reading. Scored as phonemes, through the analyser that is already open,
+it is **0.00**; on longer sentences 0.01–0.12, with `unk=0`.
 
 Nepali replaces `MMS-npi`, which was never an MMS voice: Meta's own list of 1077
 TTS languages contains no Nepali, no Igbo and no Lingala. That bundle carried a
