@@ -7,10 +7,18 @@
     Ink bold, sub 14sp InkSoft with 4 above, "Hear it" 15sp Blue bold.
 */
 
+/*
+    Full-bleed, INCLUDING at the top.
+
+    The native block sits directly under the bar. This cancelled only the body's
+    horizontal gutter, leaving a strip of page colour above it that the native
+    screen does not have - so the two did not line up even though every size
+    inside matched.
+*/
 .head {
     background: var(--surface);
     padding: 16px 20px;
-    margin: 0 -16px;        /* the body's own gutter, so the block is full-bleed */
+    margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
 }
 
 .title {

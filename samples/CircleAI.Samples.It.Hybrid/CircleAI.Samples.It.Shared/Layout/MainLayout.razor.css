@@ -12,8 +12,16 @@
     gap: 0.75rem;
     min-height: var(--bar-height);
     padding: 0.5rem var(--gutter);
-    /* Clears a notch or punch-hole without hardcoding a device. */
-    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    /*
+        CLEARS THE STATUS BAR, with a floor.
+
+        env(safe-area-inset-top) alone is not enough: Android's WebView reports 0
+        for it unless the app opts into edge-to-edge, so the bar rendered UNDER
+        the clock and the wordmark was sliced in half. max() keeps the real inset
+        where a device reports one (a notch, a punch-hole) and falls back to the
+        24dp status bar everywhere else.
+    */
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
     background: var(--surface);
     border-bottom: 1px solid var(--hairline);
     cursor: pointer;
