@@ -189,6 +189,44 @@ public class BrandMarkAssetTests
     }
 
     [Fact]
+    public void The_android_head_declares_its_Application_class()
+    {
+        // [Application] IS LOAD-BEARING AND ITS ABSENCE IS SILENT.
+        //
+        // Without it the manifest names no Application class, Android instantiates
+        // the default one, MauiApplication.CreateMauiApp is never called, and MAUI
+        // never initialises. The activity still starts and still draws: a blank
+        // window whose android:id/content has NO CHILD AT ALL. No exception, no
+        // logcat entry, no WebView - which reads exactly like a Blazor component
+        // that failed to render, and sent this investigation down that path for a
+        // long time. A grep is cheap; that afternoon was not.
+        var main = File.ReadAllText(
+            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+                  "Platforms", "Android", "MainApplication.cs"));
+
+        Assert.Contains("MauiApplication", main, StringComparison.Ordinal);
+        Assert.True(
+            Regex.IsMatch(main, @"^\s*\[Application[\]\(]", RegexOptions.Multiline),
+            "MainApplication has no [Application] attribute, so Android will use the "
+            + "default Application class and MAUI will never start. The app launches "
+            + "to a blank screen with no error.");
+    }
+
+    [Fact]
+    public void The_android_head_declares_its_launcher_activity()
+    {
+        // The same class of failure one layer down: no MainLauncher means the app
+        // installs and appears nowhere.
+        var activity = File.ReadAllText(
+            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+                  "Platforms", "Android", "MainActivity.cs"));
+        Assert.Contains("MauiAppCompatActivity", activity, StringComparison.Ordinal);
+        Assert.Contains("MainLauncher = true", activity, StringComparison.Ordinal);
+        // The splash theme is what actually paints MauiSplashScreen's output.
+        Assert.Contains("Maui.SplashTheme", activity, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_maui_head_declares_a_splash_at_all()
     {
         // The whole point of the exercise. The native head has no splash because
