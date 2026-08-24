@@ -1,0 +1,137 @@
+@*
+    Pick a language and hear it.
+
+    Search filters on the English name, the endonym AND the tag, because somebody
+    looking for isiZulu may type "zulu", "isiZulu" or "zu" and all three are
+    reasonable. Matching only the English name makes a language findable solely by
+    a word its speakers do not use.
+*@
+@page "/languages"
+@inject IVoiceHost Voice
+
+<h1 class="sr-only">Pick a language</h1>
+
+<div class="stack">
+
+    <div>
+        <h2>Pick a language</h2>
+        <p class="muted">@Status</p>
+    </div>
+
+    @* Search sits ABOVE the list: it is the tool for a 75-row list, and putting
+       it below would mean scrolling past what you are trying to filter. *@
+    <input class="field" type="search" placeholder="Search 75 languages"
+           aria-label="Search languages"
+           value="@_query" @oninput="OnQuery" />
+
+    @if (Voice.Availability != VoiceAvailability.OnDevice)
+    {
+        <p class="notice">@Voice.Provenance</p>
+    }
+
+    @if (Shown.Count == 0)
+    {
+        <p class="muted">Nothing matches “@_query”.</p>
+    }
+
+    <div class="rows">
+        @* Keyed on the tag so filtering reuses rows instead of rebuilding them,
+           which matters on a phone at 75 rows. *@
+        @foreach (var lang in Shown)
+        {
+            <div class="row" @key="lang.Tag">
+                <div class="row-text">
+                    <div class="row-name">@lang.Name</div>
+                    @*
+                        The endonym carries its own direction. Without dir="auto"
+                        an Arabic or Urdu name renders left-to-right inside a
+                        left-to-right row and reads as mangled to anyone who can
+                        actually read it.
+                    *@
+                    <div class="native" dir="auto">@lang.Native</div>
+                </div>
+
+                <button class="btn" @onclick="() => Speak(lang)"
+                        disabled="@(_busy is not null)">
+                    @(_busy == lang.Tag ? "…" : "Hear it")
+                </button>
+            </div>
+
+            @if (_detail.TryGetValue(lang.Tag, out var line))
+            {
+                <p class="row-detail muted">@line</p>
+            }
+        }
+    </div>
+
+</div>
+
+@code {
+    string _query = "";
+    string? _busy;
+    readonly Dictionary<string, string> _detail = new();
+
+    IReadOnlyList<SampleLanguage> All { get; } = SampleLanguages.All.Values
+        .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    List<SampleLanguage> Shown = [];
+
+    string Status => _query.Length == 0
+        ? $"{All.Count} languages · {Where}"
+        : $"{Shown.Count} of {All.Count} match “{_query}”";
+
+    string Where => Voice.Availability == VoiceAvailability.OnDevice
+        ? "runs on this phone · nothing leaves the device"
+        : "catalogue only in a browser";
+
+    protected override void OnInitialized() => Filter();
+
+    void OnQuery(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        Filter();
+    }
+
+    void Filter()
+    {
+        var q = _query.Trim();
+        Shown = q.Length == 0
+            ? All.ToList()
+            : All.Where(l =>
+                    l.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                 || l.Native.Contains(q, StringComparison.OrdinalIgnoreCase)
+                 || l.Tag.StartsWith(q, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+    }
+
+    async Task Speak(SampleLanguage lang)
+    {
+        // One at a time. Tapping a second language mid-download used to leave two
+        // synthesisers racing for the speaker on the native head.
+        if (_busy is not null) return;
+
+        _busy = lang.Tag;
+        _detail[lang.Tag] = "preparing…";
+
+        var progress = new Progress<string>(line =>
+        {
+            _detail[lang.Tag] = line;
+            StateHasChanged();
+        });
+
+        try
+        {
+            var outcome = await Voice.SpeakAsync(lang.Tag, progress);
+            _detail[lang.Tag] = outcome.Detail;
+        }
+        catch (Exception ex)
+        {
+            _detail[lang.Tag] = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        finally
+        {
+            _busy = null;
+        }
+    }
+}

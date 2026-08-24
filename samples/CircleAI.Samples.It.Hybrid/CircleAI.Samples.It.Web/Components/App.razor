@@ -1,0 +1,29 @@
+@*
+    The web head's document.
+
+    The page background is set on the html element as well as in the stylesheet.
+    The stylesheet arrives a moment after the document does, and for that moment a
+    dark app renders on the browser's default white - the same white flash the
+    MAUI splash exists to remove, arriving through a different door.
+*@
+<!DOCTYPE html>
+<html lang="en" style="background:#121A21">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#121A21" />
+    <base href="/" />
+    <title>Circle AI</title>
+    <link rel="stylesheet" href="_content/CircleAI.Samples.It.Shared/app.css" />
+    <link rel="stylesheet" href="CircleAI.Samples.It.Web.styles.css" />
+    <ImportMap />
+    <HeadOutlet @rendermode="InteractiveAuto" />
+</head>
+
+<body>
+    <Routes @rendermode="InteractiveAuto" />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>

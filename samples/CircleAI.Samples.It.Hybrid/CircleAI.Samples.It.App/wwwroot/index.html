@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <!-- viewport-fit=cover lets the layout reach under a notch, which the header
+         and body then pad back with env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Circle AI</title>
+    <base href="/" />
+    <!-- Set on the document as well as in the stylesheet: the web view paints
+         before the stylesheet is applied, and for that frame a dark app would
+         render on white - the same flash the splash exists to remove. -->
+    <style>html,body{background:#121A21;margin:0}</style>
+    <link rel="stylesheet" href="_content/CircleAI.Samples.It.Shared/app.css" />
+    <link rel="stylesheet" href="CircleAI.Samples.It.App.styles.css" />
+    <link rel="icon" href="data:," />
+</head>
+<body>
+    <div id="app"></div>
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+</body>
+</html>

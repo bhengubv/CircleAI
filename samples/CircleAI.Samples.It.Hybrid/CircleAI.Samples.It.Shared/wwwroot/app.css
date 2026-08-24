@@ -1,0 +1,132 @@
+/*
+    The shared palette and page frame.
+
+    THREE COLOURS, and the shades are derived rather than picked. Blue #2196F3,
+    slate #2c3e50, white - the same three the native head uses, and the greys are
+    computed from slate exactly as Ui.Shade does (slate * factor), so the two
+    heads cannot end up almost-matching. #121A21 is Shade(slate, 0.42), and it is
+    the colour a screenshot of the running app actually measures.
+
+    NO SCROLLBARS. Content still scrolls - the bars are hidden, not the overflow.
+    A visible scrollbar on a phone is chrome nobody asked for, and on a dark page
+    it is a bright stripe down the edge.
+
+    RESPONSIVE FROM 344px. The narrowest device in the test set is 344; the others
+    are 360, 412, 430, 820 and 1920. Everything below uses relative units or grid
+    so those are all one layout rather than six.
+*/
+
+:root {
+    --brand-blue: #2196F3;
+    --brand-slate: #2c3e50;
+
+    --page: #121A21;        /* Shade(slate, 0.42) */
+    --surface: #1B2631;     /* Shade(slate, 0.62) */
+    --raised: #22303E;      /* Shade(slate, 0.78) */
+    --hairline: #293A4C;    /* Shade(slate, 0.95) */
+
+    --ink: #ffffff;
+    --ink-soft: #A0A8B0;    /* Blend(white, slate, 0.45) */
+
+    --bar-height: 3.5rem;
+    --gutter: 1rem;
+    --radius: 0.75rem;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--page);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Hidden, not disabled: the wheel and touch still scroll. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; }
+
+h1, h2, h3 { margin: 0; font-weight: 700; line-height: 1.2; }
+h1 { font-size: 1.625rem; }
+h2 { font-size: 1.125rem; }
+p  { margin: 0; line-height: 1.5; }
+
+a { color: var(--brand-blue); text-decoration: none; }
+
+/* -- the app frame ------------------------------------------------------- */
+
+.app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100dvh;         /* dvh, so a mobile URL bar appearing does not clip it */
+    overflow: hidden;
+}
+
+.app-body {
+    overflow-y: auto;
+    padding: var(--gutter);
+    /* Room for a home gesture bar without hardcoding a phone. */
+    padding-bottom: calc(var(--gutter) + env(safe-area-inset-bottom, 0px));
+}
+
+.stack { display: grid; gap: var(--gutter); }
+
+/* -- cards and controls ------------------------------------------------- */
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: var(--gutter);
+}
+
+.btn {
+    font: inherit;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+    border-radius: var(--radius);
+    padding: 0.6rem 1.1rem;
+    cursor: pointer;
+    /* 44px is the smallest target most people can hit reliably. */
+    min-height: 2.75rem;
+}
+
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/*
+    The stock button in a dark theme renders as a grey slab with no visible
+    pressed state, which reads as "did that work?" - so pressed is explicit.
+*/
+.btn:active:not(:disabled) { background: #1976D2; }
+
+.btn-quiet {
+    background: transparent;
+    color: var(--brand-blue);
+    border: 1px solid var(--hairline);
+}
+
+.field {
+    font: inherit;
+    width: 100%;
+    color: var(--ink);
+    background: var(--raised);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: 0.7rem 0.9rem;
+    min-height: 2.75rem;
+}
+
+.field::placeholder { color: var(--ink-soft); }
+
+.muted { color: var(--ink-soft); font-size: 0.875rem; }
+
+.native { color: var(--ink-soft); }
+
+/* Right-to-left endonyms sit in their own span so Arabic, Urdu and Persian
+   render in their own direction without flipping the whole row. */
+.native[dir="rtl"] { unicode-bidi: isolate; }

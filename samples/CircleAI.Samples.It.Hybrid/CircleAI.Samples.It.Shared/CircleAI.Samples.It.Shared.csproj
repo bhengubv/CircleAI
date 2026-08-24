@@ -1,0 +1,41 @@
+<!--
+  The UI, written once.
+
+  Razor SDK, no platform target: this project is rendered by all three heads -
+  the MAUI app through a BlazorWebView, the Blazor Web App on the server, and the
+  WebAssembly client in a browser. Anything that cannot run in all three belongs
+  behind an interface in Services/, not in a component.
+
+  SupportedPlatform browser makes the analyser tell us when we reach for
+  something WASM does not have, at build time rather than at runtime in someone
+  else's browser.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A Razor class library ships no docs and pack validation would demand a
+         README for something that is never packed. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Data and interfaces ONLY, and deliberately not CircleAI.Samples.It: that
+         is an Exe whose CircleAI.Hosting reference drags the whole SDK and the
+         ONNX runtime, which cannot load in a WebAssembly client. Each head
+         satisfies the interfaces with whatever it actually has. -->
+    <ProjectReference Include="..\..\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

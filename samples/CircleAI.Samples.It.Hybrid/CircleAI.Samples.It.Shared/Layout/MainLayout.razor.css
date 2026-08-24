@@ -1,0 +1,49 @@
+/*
+    The header bar.
+
+    Deliberately not a back arrow. "Back" means the previous screen, which is a
+    fact about history; the mark means the product, and tapping it goes to the
+    thing itself from three screens deep in one press.
+*/
+
+.app-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: var(--bar-height);
+    padding: 0.5rem var(--gutter);
+    /* Clears a notch or punch-hole without hardcoding a device. */
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    background: var(--surface);
+    border-bottom: 1px solid var(--hairline);
+    cursor: pointer;
+    user-select: none;
+}
+
+.app-name {
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.app-where {
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+    /*
+        The screen name is the part that gives way when the bar runs out of room.
+        On a 344px phone with a long name, truncating here keeps the mark and the
+        product name whole - losing the wordmark would be losing the brand to fit
+        a breadcrumb.
+    */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.app-where::before {
+    content: "·";
+    margin-right: 0.5rem;
+    color: var(--hairline);
+}

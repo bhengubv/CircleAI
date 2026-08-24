@@ -1,0 +1,23 @@
+<!--
+  The web host.
+
+  Serves the same shared pages the phone renders, with InteractiveAuto: the first
+  load renders on the server so the page appears immediately, then hands over to
+  the WebAssembly client once it has downloaded.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Samples.It.Web.Client\CircleAI.Samples.It.Web.Client.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.2" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+@*
+    A wrong URL is not a crash. Says where you are and offers the way back,
+    rather than a bare "404" that leaves somebody stuck on a phone with no
+    address bar to correct.
+*@
+@page "/not-found"
+
+<h1 class="sr-only">Not found</h1>
+
+<div class="stack">
+    <div>
+        <h2>Nothing here</h2>
+        <p class="muted">That address does not match a screen in this app.</p>
+    </div>
+    <a class="btn" href="">Back to the circle</a>
+</div>

@@ -1,0 +1,32 @@
+<!--
+  What the shared UI is allowed to know.
+
+  ZERO ProjectReferences, and that is the point. This assembly is loaded by a
+  WebAssembly client as well as by a phone, so it holds only data and interfaces:
+  the hand-checked language table, and the contracts a head implements to make
+  the UI do something. Nothing here touches ONNX, a native library, or a file.
+
+  The rule it enforces: CircleAI.Samples.It is an Exe that pulls the whole SDK
+  and the ONNX runtime through CircleAI.Hosting. Referencing that from the Razor
+  library would drag native binaries into a browser build, where they cannot
+  load. So the shared UI references THIS, and each head references whatever it
+  needs to satisfy these interfaces.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Tells the analyser to flag anything a browser cannot run, here, at build
+         time - rather than in somebody's browser. -->
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+</Project>

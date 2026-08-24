@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    INTERNET is declared, and declaring it is the point of this file.
+
+    The native head shipped with no INTERNET permission at all for months and
+    nobody noticed, because every model had been sideloaded over a cable. A voice
+    is 60-150 MB and is downloaded on request, so without this the first "Hear it"
+    fails in a way that looks like a broken server.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<uses-permission android:name="android.permission.INTERNET" />
+	<application android:allowBackup="true" android:supportsRtl="true"></application>
+</manifest>

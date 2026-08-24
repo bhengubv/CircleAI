@@ -1,0 +1,45 @@
+// The MAUI head's composition root.
+//
+// Registers this device's answers to the shared UI's questions and hands it a
+// BlazorWebView to render in.
+
+using CircleAI.Samples.It;
+using CircleAI.Samples.It.App.Services;
+using Microsoft.Extensions.Logging;
+
+namespace CircleAI.Samples.It.App;
+
+/// <summary>Builds the app.</summary>
+public static class MauiProgram
+{
+    /// <summary>Compose and return the app.</summary>
+    public static MauiApp CreateMauiApp()
+    {
+        var builder = MauiApp.CreateBuilder();
+        builder.UseMauiApp<App>();
+
+        // Device-specific services the shared UI depends on. This is the seam that
+        // lets one set of pages render on a phone and in a browser: the pages ask
+        // these interfaces what is possible, and each head answers for itself.
+        builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
+        builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
+
+        builder.Services.AddMauiBlazorWebView();
+
+#if DEBUG
+        // Lets the web view be inspected from Chrome's remote devtools, which is
+        // the only way to see a Blazor error on a phone: a component that throws
+        // during render leaves a BLANK PAGE and writes nothing to logcat.
+        builder.Services.AddBlazorWebViewDeveloperTools();
+
+        // NO ILogger PROVIDER IS ADDED HERE, and that is deliberate rather than an
+        // omission. AddDebug() reaches nothing on Android - every warning goes
+        // invisible while the radios stay audible in logcat - and AddConsole()
+        // needs a package this head does not reference, which is how a build that
+        // only ever ran in Release compiled a Debug block nobody had tried.
+        // Platform logging is what actually arrives; use logcat.
+#endif
+
+        return builder.Build();
+    }
+}

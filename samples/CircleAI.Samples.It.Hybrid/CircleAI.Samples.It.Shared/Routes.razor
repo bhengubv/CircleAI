@@ -1,0 +1,13 @@
+@*
+    The router, shared by all three heads.
+
+    AppAssembly is taken off a type in THIS assembly rather than off the entry
+    assembly, because the entry assembly differs per head - a MAUI app, a web
+    server, a WASM client - and only this one holds the pages.
+*@
+<Router AppAssembly="typeof(Layout.MainLayout).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

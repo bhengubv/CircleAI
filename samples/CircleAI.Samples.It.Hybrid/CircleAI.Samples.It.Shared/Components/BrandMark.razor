@@ -1,0 +1,131 @@
+@*
+    The mark, as SVG.
+
+    THE FOURTH DRAWING OF ONE SHAPE, and the last one that needed writing by
+    hand. The others are MarkView.OnDraw (native Android head, live on a Canvas)
+    and the three files tools/brand-mark/gen_mark.py generates - the Android
+    launcher vector, the MAUI launcher SVG, and the splash.
+
+    Every number below is that same geometry: a ring at 0.46r stroke 0.11r opening
+    80 degrees at the TOP, three arcs stepping outward by 0.16r at stroke 0.085r
+    spanning 68 degrees on the right, fading 235/150/80. Written against a 100x100
+    viewBox so r = 50 and the fractions read as the numbers they are.
+
+    Why not just embed splash.svg? Because this one MOVES. The native mark is a
+    state machine, and a static image cannot answer "can it hear me" - the
+    question everybody asks silently the moment they start talking to a machine.
+    The states are CSS, so Idle costs nothing.
+*@
+
+@*
+    Fluid omits width/height ENTIRELY rather than setting them to zero. CSS wins
+    over SVG presentation attributes either way, but width="0" renders an invisible
+    mark if the stylesheet does not arrive, and an invisible logo is a worse
+    failure than an unsized one.
+*@
+<svg class="brand-mark @StateClass @(Fluid ? "bm-fluid" : null)"
+     style="@LevelStyle"
+     viewBox="0 0 100 100"
+     width="@(Fluid ? null : Size.ToString())"
+     height="@(Fluid ? null : Size.ToString())"
+     role="img"
+     aria-label="@AriaLabel"
+     xmlns="http://www.w3.org/2000/svg">
+
+    @* The halo: the same 28/255 plate the native mark sits on. *@
+    @if (Halo)
+    {
+        <circle class="bm-halo" cx="50" cy="50" r="49" />
+    }
+
+    @* The ring, open at the TOP: -50 sweeping 280 clockwise leaves 230..310 open. *@
+    <path class="bm-ring" d="@RingPath" />
+
+    @* Three arcs leaving on the right, quieter as they widen. *@
+    <path class="bm-arc bm-arc1" d="@ArcPath(0)" />
+    <path class="bm-arc bm-arc2" d="@ArcPath(1)" />
+    <path class="bm-arc bm-arc3" d="@ArcPath(2)" />
+</svg>
+
+@code {
+    // -- the geometry, shared with MarkView.OnDraw and gen_mark.py -------------
+    const double R = 50.0;              // half the 100-unit viewBox
+    const double RingR = 0.46 * R;
+    const double ArcStep = 0.16 * R;
+    const double RingStart = -50.0, RingSweep = 280.0;
+    const double ArcStart = -34.0, ArcSweep = 68.0;
+
+    static readonly System.Globalization.CultureInfo Inv =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    /// <summary>Rendered size in CSS pixels. The shape itself is scale-free.</summary>
+    [Parameter] public int Size { get; set; } = 32;
+
+    /// <summary>
+    /// Let the container decide the size - for the hero, which fills its column.
+    /// </summary>
+    [Parameter] public bool Fluid { get; set; }
+
+    /// <summary>What the mark is doing. Idle is static and schedules no frames.</summary>
+    [Parameter] public MarkState State { get; set; } = MarkState.Idle;
+
+    /// <summary>The faint plate behind the mark. Off in a header, on for the hero.</summary>
+    [Parameter] public bool Halo { get; set; }
+
+    /// <summary>How loud the microphone is hearing you, 0 to 1. Drives Listening.</summary>
+    /// <remarks>
+    /// A REAL level or nothing. The native mark's notes make the point: a spinner
+    /// spins whether the microphone is working, muted, or pointed at a wall, so a
+    /// fake meter lies about the one thing the person is trying to find out. With
+    /// no level reported, Listening falls back to a steady breath rather than
+    /// inventing movement.
+    /// </remarks>
+    [Parameter] public double Level { get; set; }
+
+    /// <summary>
+    /// The level as a CSS custom property, so arcs can track a voice without
+    /// Blazor re-rendering on every audio frame.
+    /// </summary>
+    string LevelStyle => string.Create(Inv, $"--bm-level:{Math.Clamp(Level, 0, 1):F3}");
+
+    string StateClass => State switch
+    {
+        MarkState.Listening => "bm-listening",
+        MarkState.Thinking  => "bm-thinking",
+        MarkState.Speaking  => "bm-speaking",
+        _                   => "bm-idle",
+    };
+
+    string AriaLabel => State switch
+    {
+        MarkState.Listening => "Listening",
+        MarkState.Thinking  => "Thinking",
+        MarkState.Speaking  => "Speaking",
+        _                   => "Circle AI",
+    };
+
+    string RingPath => Arc(RingR, RingStart, RingSweep);
+
+    string ArcPath(int i) => Arc(RingR + ArcStep * (i + 1), ArcStart, ArcSweep);
+
+    /// <summary>One arc as an SVG `A` command.</summary>
+    /// <remarks>
+    /// y grows DOWNWARD in an SVG viewport, so a positive sweep is clockwise and
+    /// the sweep-flag is 1 with no sign flip. Getting that wrong does not fail a
+    /// build - it silently mirrors the mark.
+    /// </remarks>
+    static string Arc(double radius, double start, double sweep)
+    {
+        var (x0, y0) = Point(radius, start);
+        var (x1, y1) = Point(radius, start + sweep);
+        var large = sweep > 180 ? 1 : 0;
+        return string.Create(Inv,
+            $"M {x0:F2} {y0:F2} A {radius:F2} {radius:F2} 0 {large} 1 {x1:F2} {y1:F2}");
+    }
+
+    static (double X, double Y) Point(double radius, double degrees)
+    {
+        var a = degrees * Math.PI / 180.0;
+        return (50 + radius * Math.Cos(a), 50 + radius * Math.Sin(a));
+    }
+}

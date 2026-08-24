@@ -1,0 +1,70 @@
+@*
+    What it can do - and, just as usefully, where.
+
+    The native head's version of this screen lists capabilities. This one also
+    says which of them hold on the head you are currently looking at, because the
+    same UI now renders in a browser tab where "works with no signal" is simply
+    untrue.
+*@
+@page "/abilities"
+@inject IFormFactor Host
+@inject IVoiceHost Voice
+
+<h1 class="sr-only">What it can do</h1>
+
+<div class="stack">
+
+    <div>
+        <h2>What it can do</h2>
+        <p class="muted">Running as @Host.GetFormFactor() on @Host.GetPlatform().</p>
+    </div>
+
+    @foreach (var group in Groups)
+    {
+        <section class="card stack">
+            <h2>@group.Title</h2>
+            <ul class="claims">
+                @foreach (var item in group.Items)
+                {
+                    <li>@item</li>
+                }
+            </ul>
+            @if (group.Caveat is not null)
+            {
+                <p class="muted">@group.Caveat</p>
+            }
+        </section>
+    }
+
+</div>
+
+@code {
+    sealed record Group(string Title, string[] Items, string? Caveat = null);
+
+    IEnumerable<Group> Groups => new[]
+    {
+        new Group("Speech", [
+            "75 languages, spoken out loud",
+            "Speech recognition for the languages a recogniser covers",
+        ], Host.IsOnDevice
+            ? null
+            : Voice.Provenance),
+
+        new Group("Where the work happens", Host.IsOnDevice
+            ? [
+                "Models run on this device",
+                "Works with no signal once a voice is downloaded",
+                "No account, and only searches leave the device",
+              ]
+            : [
+                "This head is a web page: it browses the catalogue",
+                "Synthesis needs the phone app, where the models are",
+              ]),
+
+        new Group("Written for old hardware", [
+            "Benchmarked on a Huawei P30 Lite, not on a desktop",
+            "A voice is 60-150 MB and is downloaded once, on request",
+        ], "Japanese is the exception: its voice needs a 103 MB "
+         + "morphological dictionary as well, so it is 247 MB in total."),
+    };
+}

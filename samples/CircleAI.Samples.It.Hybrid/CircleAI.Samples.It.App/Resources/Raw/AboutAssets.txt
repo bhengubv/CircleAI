@@ -1,0 +1,2 @@
+Files placed in Resources/Raw are packaged as app assets, readable with
+FileSystem.OpenAppPackageFileAsync. Nothing needs one yet.

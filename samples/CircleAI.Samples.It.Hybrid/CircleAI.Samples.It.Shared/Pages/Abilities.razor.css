@@ -1,0 +1,27 @@
+/* .card and .claims come from app.css; only the screen-reader heading needs
+   repeating, because scoped styles do not leak between components. */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.claims { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; }
+
+.claims li {
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    padding-left: 1rem;
+    position: relative;
+}
+
+.claims li::before {
+    content: "·";
+    position: absolute;
+    left: 0.25rem;
+    color: var(--brand-blue);
+}

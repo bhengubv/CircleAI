@@ -1,0 +1,115 @@
+/*
+    The mark's own styles, scoped to the component.
+
+    Colours come from the palette in app.css rather than being repeated here, so
+    the mark cannot end up a slightly different blue from the buttons - which is
+    the exact failure the launcher-icon background comment warns about.
+
+    Stroke widths are the geometry, not styling: 0.11r for the ring and 0.085r for
+    the arcs, with r = 50 in this viewBox. They live here because SVG presentation
+    attributes and CSS both set them and CSS wins; putting them in the markup as
+    well would mean two numbers, one of which never takes effect.
+*/
+
+.brand-mark {
+    display: block;
+    overflow: visible;          /* the halo reaches r=49 of a 50 viewBox */
+    flex: none;
+}
+
+.bm-halo {
+    fill: var(--brand-blue);
+    opacity: 0.11;              /* 28/255, the native mark's halo alpha */
+}
+
+.bm-ring,
+.bm-arc {
+    fill: none;
+    stroke: var(--brand-blue);
+    stroke-linecap: round;
+}
+
+.bm-ring { stroke-width: 5.5; }      /* 0.11 * 50 */
+.bm-arc  { stroke-width: 4.25; }     /* 0.085 * 50 */
+
+/* Idle: the arcs fade outward, 235/150/80 of 255. */
+.bm-arc1 { opacity: 0.922; }
+.bm-arc2 { opacity: 0.588; }
+.bm-arc3 { opacity: 0.314; }
+
+/*
+    LISTENING - the arcs scale with your voice.
+
+    Driven by --bm-level, which the head sets from a real microphone level. At
+    level 0 the transform is identity, so a head that reports nothing shows a
+    still mark rather than a lie about hearing something. Each arc gains a little
+    more than the one inside it, the way the native mark widens its spread.
+*/
+.bm-listening .bm-arc {
+    transform-origin: 50% 50%;
+    transition: transform 90ms linear, opacity 90ms linear;
+}
+.bm-listening .bm-arc1 { transform: scale(calc(1 + 0.06 * var(--bm-level, 0))); opacity: calc(0.30 + 0.70 * var(--bm-level, 0)); }
+.bm-listening .bm-arc2 { transform: scale(calc(1 + 0.11 * var(--bm-level, 0))); opacity: calc(0.22 + 0.60 * var(--bm-level, 0)); }
+.bm-listening .bm-arc3 { transform: scale(calc(1 + 0.16 * var(--bm-level, 0))); opacity: calc(0.16 + 0.48 * var(--bm-level, 0)); }
+
+/*
+    THINKING - one bright band travels outward, over and over.
+
+    Deliberately a travelling band rather than three arcs pulsing on their own
+    phases: that reads as a shimmer, while one thing moving through them reads as
+    something being carried from here to there. The stagger is a third of the
+    cycle each, so exactly one arc is lit at a time.
+*/
+.bm-thinking .bm-arc { animation: bm-travel 1.35s linear infinite; }
+.bm-thinking .bm-arc2 { animation-delay: 0.45s; }
+.bm-thinking .bm-arc3 { animation-delay: 0.90s; }
+
+@keyframes bm-travel {
+    0%,  100% { opacity: 0.18; }
+    18%       { opacity: 1; }
+    45%       { opacity: 0.18; }
+}
+
+/*
+    SPEAKING - the arcs fire outward in sequence.
+
+    The inner arc leads and the outer trails, so motion pushes AWAY from the mark:
+    the opposite direction to Listening, which pulls inward as you talk. Same
+    reason the native mark inverts them.
+*/
+.bm-speaking .bm-arc { animation: bm-fire 0.72s ease-in-out infinite; }
+.bm-speaking .bm-arc2 { animation-delay: 0.10s; }
+.bm-speaking .bm-arc3 { animation-delay: 0.20s; }
+
+@keyframes bm-fire {
+    0%, 100% { opacity: 0.25; transform: scale(1); }
+    50%      { opacity: 1;    transform: scale(1.04); }
+}
+
+.bm-speaking .bm-arc { transform-origin: 50% 50%; }
+
+/*
+    Somebody who has asked for less movement gets less movement. The mark still
+    changes state - the opacity steps stay - it just stops animating, which keeps
+    the information and drops the motion.
+*/
+@media (prefers-reduced-motion: reduce) {
+    .bm-thinking .bm-arc,
+    .bm-speaking .bm-arc {
+        animation: none;
+    }
+    .bm-listening .bm-arc {
+        transition: none;
+    }
+}
+
+/*
+    Fluid: the container decides. Used by the hero, which is a square that scales
+    with the viewport so the mark is the same proportion of the screen on a 344px
+    phone and a 1920px window.
+*/
+.bm-fluid {
+    width: 100%;
+    height: 100%;
+}

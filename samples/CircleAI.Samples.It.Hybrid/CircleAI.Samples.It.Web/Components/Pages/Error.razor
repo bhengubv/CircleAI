@@ -1,0 +1,21 @@
+@page "/Error"
+@using System.Diagnostics
+
+<h1>Something went wrong</h1>
+<p class="muted">An error occurred while handling this request.</p>
+
+@if (RequestId is not null)
+{
+    @* The id is here so a report can be matched to a log line. It is not an
+       apology and not a stack trace: a reader gets neither. *@
+    <p class="muted">Request ID: <code>@RequestId</code></p>
+}
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    protected override void OnInitialized()
+        => RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

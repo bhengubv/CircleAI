@@ -1,0 +1,66 @@
+/*
+    THE HERO IS THE CONTROL, so it is sized as one: a square that scales with the
+    viewport, capped so it does not become absurd in a 1920px window. min() keeps
+    the same layout on a 344px phone and a desktop without a media query.
+*/
+.home { align-content: start; }
+
+.hero {
+    display: grid;
+    place-items: center;
+    width: min(62vw, 42vh, 20rem);
+    aspect-ratio: 1;
+    margin: 0.5rem auto 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+.hero:disabled { cursor: default; }
+
+.hero-text { text-align: center; gap: 0.35rem; }
+
+.claims {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.claims li {
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    padding-left: 1rem;
+    position: relative;
+}
+
+.claims li::before {
+    content: "·";
+    position: absolute;
+    left: 0.25rem;
+    color: var(--brand-blue);
+}
+
+/*
+    Side by side while they fit, stacked when they do not. auto-fit rather than a
+    breakpoint, so it responds to the actual space instead of a guessed width.
+*/
+.home-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 0.75rem;
+}
+
+/* Announced to a screen reader, invisible on screen: the visible heading is the
+   mark, which a reader cannot read. */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}

@@ -1,0 +1,129 @@
+@*
+    Home. The first screen, not a splash.
+
+    THE MARK IS THE CONTROL. Tapping it starts a turn, which is why it is 40% of
+    the viewport rather than decoration: on the native head this is the one thing
+    a person is meant to press, and it answers "is it listening" by moving with
+    your voice instead of spinning.
+
+    Everything reachable without scrolling. The primary action must not be below
+    the fold - somebody should not have to scroll in order to act.
+*@
+@page "/"
+@inject IVoiceHost Voice
+@inject IFormFactor Host
+@inject NavigationManager Nav
+
+<div class="home stack">
+
+    <h1 class="sr-only">Circle AI</h1>
+
+    <button class="hero" @onclick="Talk" disabled="@(_state != MarkState.Idle)"
+            aria-label="@(_state == MarkState.Idle ? "Start talking" : "Busy")">
+        <BrandMark Fluid="true" State="_state" Halo="true" />
+    </button>
+
+    <div class="hero-text stack">
+        <h2>@Prompt</h2>
+        <p class="muted">@Caption</p>
+    </div>
+
+    @* The claims, and only the ones true on THIS head. *@
+    <ul class="claims">
+        <li>75 languages, spoken out loud</li>
+        @if (Host.IsOnDevice)
+        {
+            <li>Runs on the phone — works with no signal</li>
+            <li>Free, no account — only searches leave the phone</li>
+        }
+        else
+        {
+            @*
+                NOT the offline claim. This head is a browser tab and the sentence
+                "runs on the phone, nothing leaves the device" would simply be
+                false here. Saying so is the honest version of the same screen.
+            *@
+            <li>Browsing the catalogue — voices run on the phone app</li>
+            <li>@Voice.Provenance</li>
+        }
+    </ul>
+
+    <div class="home-actions">
+        <button class="btn" @onclick="@(() => Nav.NavigateTo("languages"))">
+            75 languages
+        </button>
+        <button class="btn btn-quiet" @onclick="@(() => Nav.NavigateTo("abilities"))">
+            What it can do
+        </button>
+    </div>
+
+</div>
+
+@code {
+    MarkState _state = MarkState.Idle;
+    string? _detail;
+
+    /*
+        NO MIC LEVEL HERE, AND NO PRETEND ONE. BrandMark can scale its arcs with a
+        real microphone level, and the native head feeds it one - but IVoiceHost
+        only speaks, it does not listen, so no hybrid head has a level to report
+        yet. Passing a fabricated value would animate the mark as though it were
+        hearing you, which is the exact lie the component's own notes forbid: a
+        fake meter lies about the one thing the person is trying to find out.
+
+        Listening therefore never appears on this head. When a head gains a listen
+        channel, it feeds Level and the state becomes reachable.
+    */
+
+    string Prompt => _state switch
+    {
+        MarkState.Listening => "Listening…",
+        MarkState.Thinking  => "Working on it…",
+        MarkState.Speaking  => "Answering…",
+        _ => Voice.Availability == VoiceAvailability.OnDevice
+                ? "Tap to talk"
+                : "Pick a language to hear",
+    };
+
+    string Caption => _detail
+        ?? (Voice.Availability == VoiceAvailability.OnDevice
+                ? "Everything happens on this device."
+                : Voice.Provenance);
+
+    /// <summary>
+    /// Speak the sample's own greeting, in English, as a "does this work at all"
+    /// tap. The real conversation lives on the native head; here the point is that
+    /// the shared UI drives whichever voice host it was given.
+    /// </summary>
+    async Task Talk()
+    {
+        if (Voice.Availability != VoiceAvailability.OnDevice)
+        {
+            Nav.NavigateTo("languages");
+            return;
+        }
+
+        _detail = null;
+        _state = MarkState.Thinking;
+
+        var progress = new Progress<string>(line =>
+        {
+            // A voice can be 247 MB. A screen that sits on one word for that long
+            // is indistinguishable from a hang, so progress is shown as it lands.
+            _detail = line;
+            StateHasChanged();
+        });
+
+        try
+        {
+            var outcome = await Voice.SpeakAsync("en", progress);
+            _state = MarkState.Idle;
+            _detail = outcome.Detail;
+        }
+        catch (Exception ex)
+        {
+            _state = MarkState.Idle;
+            _detail = $"{ex.GetType().Name}: {ex.Message}";
+        }
+    }
+}
