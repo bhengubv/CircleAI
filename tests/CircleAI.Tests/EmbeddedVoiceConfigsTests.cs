@@ -170,8 +170,12 @@ public class EmbeddedVoiceConfigsTests
     // and both have been replaced by voices that actually track their input.
     // lin survives because it is the one of the three that works.
     [InlineData("mms-lin/model.onnx.json", 3, 22050)]
-    // transformers VITS — inputs (input_ids, attention_mask).
-    [InlineData("mms-amh/model.onnx.json", 1, 16000)]
+    // transformers VITS — inputs (input_ids, attention_mask). Its blank is 0
+    // like every other MMS export; the SHIPPED sidecar said 1, which was
+    // measured wrong: pad=1 gave "ተለበቤስዬይ" for "selam tena ystlny" where pad=0
+    // gives "ስለም ትላይሽሊ" — ስለም is selam. The Piper-family bundles below genuinely
+    // do use 3; amh and tir were simply in the wrong bucket.
+    [InlineData("mms-amh/model.onnx.json", 0, 16000)]
     public void A_non_MMS_bundle_keeps_its_own_blank_and_rate(string file, int blank, int rate)
     {
         // FIVE BUNDLES UNDER mms-* ARE NOT MMS. Applying the MMS convention

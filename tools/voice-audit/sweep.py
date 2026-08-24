@@ -187,6 +187,33 @@ WHISPER_LANG = {"yue": "zh"}
 NO_JUDGE = {"nr", "ss", "tn", "ve"}
 
 
+# ETHIOPIC HAS TO BE ROMANISED BEFORE THESE VOICES CAN READ IT.
+#
+# The Amharic and Tigrinya bundles are is_uroman voices: their vocabularies are
+# 29 and 28 PLAIN LATIN letters and they have never seen an Ethiopic codepoint.
+# Fed ኣማርኛ they map nothing, which the sweep correctly called UNMAPPED — but
+# UNMAPPED was a statement about the harness, not the voice. The app romanises
+# first (GeezRomanizer) and speaks them fine.
+#
+# This imports the PYTHON PORT of that same romaniser rather than reimplementing
+# it. There are already ten implementations of this table across the ports, all
+# asserted against fixtures/voice_geez_romanizer.json; an eleventh written here
+# would be the one nobody checks, and it would drift the first time the table
+# changes. If the import fails the sweep still runs and says so.
+sys.path.insert(0, str(REPO / "python" / "src"))
+try:
+    from circle_ai.voice_text import is_ethiopic, romanize
+    GEEZ = True
+except Exception:                                    # noqa: BLE001
+    GEEZ = False
+
+    def is_ethiopic(_):                              # type: ignore[misc]
+        return False
+
+    def romanize(t):                                 # type: ignore[misc]
+        return t
+
+
 def urls_for(entry: dict | None, remote: str) -> list[str]:
     """Every address a bundle file might live at, in order.
 
@@ -603,6 +630,25 @@ def cer(ref: str, hyp: str) -> float:
     return d[len(a), len(b)] / len(a)
 
 
+def cer_for(row: dict, ref: str, hyp: str) -> float:
+    """CER in the space the voice actually works in.
+
+    AN is_uroman VOICE IS SPOKEN IN LATIN AND HEARD BACK IN ETHIOPIC, and that
+    round trip is not reversible: the recogniser picks whichever spelling fits
+    the sound. "ሰላም" comes back "ስለም" — same word, same pronunciation, every
+    character different — which scores 1.0 and reads as a broken voice.
+
+    So when the reference was romanised to be spoken, the transcript is
+    romanised to be scored. Both sides go through the same table, ሰላም and ስለም
+    both become roughly "selam", and what gets measured is what was SAID rather
+    than how the recogniser chose to spell it. The floor is computed the same
+    way or the comparison is rigged.
+    """
+    if row.get("romanised"):
+        return cer(romanize(ref), romanize(hyp))
+    return cer(ref, hyp)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
@@ -687,7 +733,20 @@ def main():
                 results.append(row); continue
             row["ipa"] = ipa
         elif cfg.get("phoneme_id_map"):
-            ids, mapped, total = encode(ref, cfg["phoneme_id_map"])
+            # ROMANISE FIRST when the text is Ethiopic and the voice's alphabet
+            # is not. That is the whole of what makes an is_uroman voice work,
+            # and it is what the app does before speaking Amharic or Tigrinya.
+            #
+            # The CER is still taken against the ORIGINAL Ethiopic reference:
+            # we romanise the input, the voice speaks it, and MMS transcribes
+            # back into Ethiopic. Scoring the Latin against the Latin would be
+            # marking our own transliteration, not the voice.
+            spoken = ref
+            pm = cfg["phoneme_id_map"]
+            if is_ethiopic(ref) and not any(is_ethiopic(s) for s in pm):
+                spoken = romanize(ref)
+                row["romanised"] = spoken
+            ids, mapped, total = encode(spoken, pm)
         else:
             ids, mapped, total, tones = lexicon_encode(ref, lex_p, tok_p)
         row["mapped"] = f"{mapped}/{total}"
@@ -810,11 +869,11 @@ def main():
         # said, and a recogniser that cannot hear it is not evidence against it.
         # A voice is at least as good as the best judge available says it is —
         # the same reasoning that cleared yue and Russian above.
-        elif heard and cer(ref, heard) >= 0.5:
+        elif heard and cer_for(row, ref, heard) >= 0.5:
             other = (whisper_hear(wav, WHISPER_LANG.get(tag, tag)) if row["judge"] == "mms-1b-all"
                      else judge.hear(wav, lang3))
             if (other and script_agreement(ref, other) >= 0.6
-                    and cer(ref, other) < cer(ref, heard)):
+                    and cer_for(row, ref, other) < cer_for(row, ref, heard)):
                 heard = other
                 row["judge"] = "whisper" if row["judge"] == "mms-1b-all" else "mms-1b-all"
                 row["second_opinion"] = "primary judge scored poorly; better reading taken"
@@ -833,7 +892,7 @@ def main():
             results.append(row); continue
 
         row["heard"] = heard
-        row["cer"] = round(cer(ref, heard), 2)
+        row["cer"] = round(cer_for(row, ref, heard), 2)
 
         # THE VOICE'S OWN NOISE FLOOR, not a threshold I picked.
         #
@@ -878,7 +937,7 @@ def main():
                     nheard = (judge.hear(nwav, lang3) if row.get("judge") != "whisper"
                               else whisper_hear(nwav, tag))
                     if nheard is not None:
-                        samples.append(cer(ref, nheard))
+                        samples.append(cer_for(row, ref, nheard))
                 except Exception:
                     continue
             if samples:

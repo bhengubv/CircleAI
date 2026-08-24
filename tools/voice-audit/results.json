@@ -39,9 +39,21 @@
   {
     "language": "am",
     "voice": "MMS-amh",
-    "verdict": "UNMAPPED",
-    "mapped": "0/10",
-    "detail": "vocabulary cannot represent this script (needs romanisation)"
+    "verdict": "SPEAKS",
+    "romanised": "selam tena ystlny",
+    "mapped": "15/15",
+    "langid": null,
+    "seconds": 1.36,
+    "judge": "mms-1b-all",
+    "heard": "ስለምትናይትነኝ",
+    "cer": 0.4,
+    "floor_spread": [
+      0.87,
+      0.87,
+      0.93
+    ],
+    "floor": 0.87,
+    "basis": "cer 0.4 vs floor 0.87 x0.7"
   },
   {
     "language": "ar",
@@ -1147,9 +1159,21 @@
   {
     "language": "ti",
     "voice": "MMS-tir",
-    "verdict": "UNMAPPED",
-    "mapped": "0/9",
-    "detail": "vocabulary cannot represent this script (needs romanisation)"
+    "verdict": "SPEAKS",
+    "romanised": "selam kemey aleka",
+    "mapped": "15/15",
+    "langid": null,
+    "seconds": 1.36,
+    "judge": "mms-1b-all",
+    "heard": "ስሎም ክምይልከም",
+    "cer": 0.53,
+    "floor_spread": [
+      0.8,
+      0.8,
+      0.93
+    ],
+    "floor": 0.8,
+    "basis": "cer 0.53 vs floor 0.8 x0.7"
   },
   {
     "language": "tl",

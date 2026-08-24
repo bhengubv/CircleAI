@@ -603,8 +603,8 @@
       },
       {
         "Name": "mms-amh/model.onnx.json",
-        "Sha256": "dab1a2eba1656906656bfe75c013db93dcb45a65bf8cf2c6da835a60c9381ad7",
-        "SizeBytes": 464
+        "Sha256": "55d4c473f4f252d45c0770576e8df7c9b33089ba61739bf82939d4b172fca8e8",
+        "SizeBytes": 1033
       }
     ]
   },
@@ -624,8 +624,8 @@
       },
       {
         "Name": "mms-tir/model.onnx.json",
-        "Sha256": "267950fb1ac020ab33ebdb47d47e694766628aa59aa705a5a5e1566fada8ebba",
-        "SizeBytes": 453
+        "Sha256": "112c770c8f01faa8e47f4204a25c03518b2b01668447e047cb323021afe0ed41",
+        "SizeBytes": 1032
       }
     ]
   },
