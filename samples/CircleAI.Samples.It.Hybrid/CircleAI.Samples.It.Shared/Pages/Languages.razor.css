@@ -1,46 +1,87 @@
-.rows { display: grid; gap: 0.5rem; }
+/*
+    The picker, measured off LanguagePickerActivity.
 
-.row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    head: Ui.Surface, padding 20/16/20/16. Title 26sp Ink bold. Status 14sp
+    InkSoft with 6 above. Search 16sp on Ui.Raised, radius 10, padding 14/12, top
+    margin 14. Cards: Ui.Surface rounded 12, padding 16/14, 10 below, title 18sp
+    Ink bold, sub 14sp InkSoft with 4 above, "Hear it" 15sp Blue bold.
+*/
+
+.head {
     background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius);
-    padding: 0.75rem var(--gutter);
+    padding: 16px 20px;
+    margin: 0 -16px;        /* the body's own gutter, so the block is full-bleed */
 }
 
-/* min-width:0 is what lets the text column actually truncate inside a flex row -
-   without it a long endonym pushes the button off a 344px screen. */
-.row-text { flex: 1; min-width: 0; }
+.title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+}
 
-.row-name { font-weight: 600; }
+.status {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
 
-.row-text .native {
-    font-size: 0.875rem;
+.search {
+    font: inherit;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px 14px;
+    color: var(--ink);
+    background: var(--raised);
+    border: 0;
+    border-radius: 10px;
+}
+
+.search::placeholder { color: var(--ink-soft); }
+
+.list { padding-top: 16px; }
+
+.card {
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+}
+
+/* The words take the space; "Hear it" takes what it needs. min-width:0 is what
+   lets the text actually truncate rather than pushing the control off a 344px
+   screen. */
+.card-text { flex: 1; min-width: 0; }
+
+.card-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.card-sub {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-top: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.row-detail { margin: -0.25rem 0 0.25rem 0.25rem; }
+/* isolate does in CSS what U+2066 does in the native string: the endonym renders
+   in its own direction without flipping the line around it. */
+.endonym { unicode-bidi: isolate; }
 
-.notice {
-    background: var(--raised);
-    border: 1px solid var(--hairline);
-    border-left: 3px solid var(--brand-blue);
-    border-radius: var(--radius);
-    padding: 0.75rem var(--gutter);
-    color: var(--ink-soft);
-    font-size: 0.9375rem;
-}
+.dot { padding: 0 0.5em; }
 
-.sr-only {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
+.hear {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--brand-blue);
+    padding: 8px 4px 8px 14px;
+    cursor: pointer;
+    user-select: none;
     white-space: nowrap;
-    border: 0;
 }

@@ -1,66 +1,150 @@
 /*
-    THE HERO IS THE CONTROL, so it is sized as one: a square that scales with the
-    viewport, capped so it does not become absurd in a 1920px window. min() keeps
-    the same layout on a 344px phone and a desktop without a media query.
-*/
-.home { align-content: start; }
+    Home, measured off HomeActivity.BuildUi.
 
+    Every number here is that method's, converted 1dp = 1px at the CSS reference
+    density: pad 24, wordmark 18sp top 28, mark 200 top 40, prompt 20sp top 28,
+    caption 15sp top 8, claims 15sp with 6 between and 16 below, "Or type instead"
+    15sp with 14 above and below (a 48dp target), nav 15sp with 4 above and 24
+    below. Guessing them would have produced something that merely resembles the
+    app, which is the whole complaint this replaces.
+*/
+
+/*
+    height, NOT min-height. The spacer below is what pushes the claims to the
+    bottom so the circle owns the upper half - and a flex child can only grow into
+    space the container actually has. With min-height the column sized itself to
+    its content, the spacer had nothing to expand into, and the claims sat directly
+    under the caption with the empty space left at the BOTTOM: the native screen
+    inverted.
+*/
+.home {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    padding: 0 24px;
+}
+
+/* Ui.Label(this, "Circle AI", 18f, Ui.InkSoft, bold: true), padding top 28. */
+.wordmark {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    padding-top: 28px;
+    text-align: center;
+}
+
+/*
+    MarkView at 200dp square, top margin 40, centred.
+
+    Fixed at 200 rather than a viewport fraction, because that is what the phone
+    screen does. min() with the available width keeps it whole on a 344px device
+    without changing it anywhere else.
+*/
 .hero {
-    display: grid;
-    place-items: center;
-    width: min(62vw, 42vh, 20rem);
+    width: min(200px, 62vw);
     aspect-ratio: 1;
-    margin: 0.5rem auto 0;
+    margin-top: 40px;
     padding: 0;
     background: none;
     border: 0;
     cursor: pointer;
+    flex: none;
 }
 
 .hero:disabled { cursor: default; }
 
-.hero-text { text-align: center; gap: 0.35rem; }
-
-.claims {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: grid;
-    gap: 0.5rem;
+/* _prompt: 20sp, Ink, bold, centred, padding top 28. */
+.prompt {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    padding-top: 28px;
+    text-align: center;
 }
 
-.claims li {
+/* _caption: 15sp, InkSoft, centred, padding top 8. */
+.caption {
+    font-size: 15px;
     color: var(--ink-soft);
-    font-size: 0.9375rem;
-    padding-left: 1rem;
-    position: relative;
+    padding-top: 8px;
+    text-align: center;
 }
 
-.claims li::before {
-    content: "·";
-    position: absolute;
-    left: 0.25rem;
-    color: var(--brand-blue);
-}
-
-/*
-    Side by side while they fit, stacked when they do not. auto-fit rather than a
-    breakpoint, so it responds to the actual space instead of a guessed width.
-*/
-.home-actions {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: 0.75rem;
-}
-
-/* Announced to a screen reader, invisible on screen: the visible heading is the
-   mark, which a reader cannot read. */
-.sr-only {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
+/* _bar: 6dp tall, margins pad*2 either side, 16 above. Hidden until it matters. */
+.bar {
+    width: calc(100% - 48px);
+    height: 6px;
+    margin-top: 16px;
+    background: var(--raised);
+    border-radius: 3px;
     overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
+}
+
+.bar > span {
+    display: block;
+    height: 100%;
+    background: var(--brand-blue);
+    /* Indeterminate: the host reports progress in words, not a fraction, so a
+       filled bar would be inventing a number. */
+    animation: bar-sweep 1.1s ease-in-out infinite;
+    width: 40%;
+}
+
+@keyframes bar-sweep {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+/* Spacer, so the claims sit low and the circle owns the upper half. */
+.spacer { flex: 1 1 auto; min-height: 16px; }
+
+/* claims: padding 0 pad, bottom 16; each row 15sp InkSoft with 6 above. */
+.claims {
+    width: 100%;
+    padding-bottom: 16px;
+}
+
+.claim {
+    font-size: 15px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+/* The native prefixes each line with "·   " - a bullet and three spaces - inside
+   the string itself. Done here as a pseudo-element so the text stays selectable
+   and a screen reader does not announce the bullet. */
+.claim::before {
+    content: "·";
+    padding-right: 0.75em;
+}
+
+/* typeInstead: 15sp Blue bold, centred, 14 above and below for a 48dp target. */
+.type-instead {
+    width: 100%;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--brand-blue);
+    text-align: center;
+    padding: 14px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* nav: horizontal, two equal weights, padding 4 above and 24 below. */
+.nav {
+    display: flex;
+    width: 100%;
+    padding: 4px 0 24px;
+}
+
+.quiet {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--brand-blue);
+    text-align: center;
+    padding: 14px 0;
+    cursor: pointer;
+    user-select: none;
 }

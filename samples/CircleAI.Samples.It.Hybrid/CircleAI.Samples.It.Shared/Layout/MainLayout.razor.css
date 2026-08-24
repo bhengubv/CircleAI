@@ -47,3 +47,16 @@
     margin-right: 0.5rem;
     color: var(--hairline);
 }
+
+/*
+    Home has no bar, so its body owns the whole window and must clear the status
+    bar itself. env() is used with a fallback because Android's WebView reports 0
+    for safe-area insets unless the app opts into edge-to-edge, and a header
+    sitting under the clock is what that looks like.
+*/
+.app-body-full {
+    padding: 0;
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+    /* The page inside must be able to resolve height:100% against this. */
+    box-sizing: border-box;
+}

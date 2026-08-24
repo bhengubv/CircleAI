@@ -30,6 +30,16 @@ public sealed class BrowserVoiceHost : IVoiceHost
         + "Install the app to hear one.";
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The name table, with no sizes. A browser has no model registry and no
+    /// device to select against, and inventing a megabyte figure here would put a
+    /// number on screen that nothing checked.
+    /// </remarks>
+    public Task<IReadOnlyList<VoiceRow>> CatalogueAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<VoiceRow>>(
+            SampleLanguages.All.Keys.Select(t => new VoiceRow(t, null)).ToList());
+
+    /// <inheritdoc />
     public Task<SpeakOutcome> SpeakAsync(
         string tag, IProgress<string>? progress = null, CancellationToken ct = default)
         => Task.FromResult(new SpeakOutcome(false, Provenance));

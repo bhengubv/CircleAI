@@ -1,104 +1,130 @@
 @*
-    Home. The first screen, not a splash.
+    Home.
 
-    THE MARK IS THE CONTROL. Tapping it starts a turn, which is why it is 40% of
-    the viewport rather than decoration: on the native head this is the one thing
-    a person is meant to press, and it answers "is it listening" by moving with
-    your voice instead of spinning.
+    A FAITHFUL COPY OF HomeActivity.BuildUi, NOT A NEW DESIGN. Every string, size,
+    colour and gap below is read off that method, and the order is the same:
+    wordmark, the circle, headline, caption, progress bar, spacer, three claims,
+    "Or type instead", then two quiet siblings.
 
-    Everything reachable without scrolling. The primary action must not be below
-    the fold - somebody should not have to scroll in order to act.
+    Deliberately NOT what a web page would do differently. This is one product with
+    two hosts, and somebody who has used the phone app should not have to relearn
+    anything. The native screen has no header bar, so this has none: the layout
+    starts with the wordmark, centred, and the circle owns the upper half.
 *@
 @page "/"
 @inject IVoiceHost Voice
-@inject IFormFactor Host
 @inject NavigationManager Nav
 
-<div class="home stack">
+<div class="home">
 
-    <h1 class="sr-only">Circle AI</h1>
+    @* Wordmark, small. The product name is not the pitch. "Circle AI" with the
+       space: set solid the two capitals collide and the eye lands on "leAI". *@
+    <div class="wordmark">Circle AI</div>
 
-    <button class="hero" @onclick="Talk" disabled="@(_state != MarkState.Idle)"
-            aria-label="@(_state == MarkState.Idle ? "Start talking" : "Busy")">
+    @* THE THING YOU PRESS, and the only large control on the screen. *@
+    <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
+            aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">
         <BrandMark Fluid="true" State="_state" Halo="true" />
     </button>
 
-    <div class="hero-text stack">
-        <h2>@Prompt</h2>
-        <p class="muted">@Caption</p>
+    <div class="prompt">@Prompt</div>
+    <div class="caption">@Caption</div>
+
+    @* A BAR, BECAUSE THE WAIT IS NOT ONE LENGTH. Hidden unless something is
+       actually downloading, so the finished screen stays as quiet as it was. *@
+    @if (_progress is not null)
+    {
+        <div class="bar"><span></span></div>
+    }
+
+    @* Spacer, so the claims sit low and the circle owns the upper half. *@
+    <div class="spacer"></div>
+
+    @*
+        Three claims, three lines.
+
+        The third does NOT say "nothing sent anywhere". Web search means a question
+        about today's weather sends those words off the phone, and a privacy claim
+        that is subtly false is worse than one that is honestly narrower.
+    *@
+    <div class="claims">
+        @foreach (var line in Claims)
+        {
+            <div class="claim">@line</div>
+        }
     </div>
 
-    @* The claims, and only the ones true on THIS head. *@
-    <ul class="claims">
-        <li>75 languages, spoken out loud</li>
-        @if (Host.IsOnDevice)
-        {
-            <li>Runs on the phone — works with no signal</li>
-            <li>Free, no account — only searches leave the phone</li>
-        }
-        else
-        {
-            @*
-                NOT the offline claim. This head is a browser tab and the sentence
-                "runs on the phone, nothing leaves the device" would simply be
-                false here. Saying so is the honest version of the same screen.
-            *@
-            <li>Browsing the catalogue — voices run on the phone app</li>
-            <li>@Voice.Provenance</li>
-        }
-    </ul>
+    @* TYPING IS THE FALLBACK, so it is a link and not the loudest control here. As
+       a full-width button it made the text box the headline act. *@
+    <div class="type-instead" role="button" tabindex="0" @onclick="Type">Or type instead</div>
 
-    <div class="home-actions">
-        <button class="btn" @onclick="@(() => Nav.NavigateTo("languages"))">
-            75 languages
-        </button>
-        <button class="btn btn-quiet" @onclick="@(() => Nav.NavigateTo("abilities"))">
-            What it can do
-        </button>
+    @* Two quiet, equal siblings. Text rather than outlined boxes: an outline reads
+       as "press this NOW", and these are for later. *@
+    <div class="nav">
+        <div class="quiet" role="button" tabindex="0"
+             @onclick='() => Nav.NavigateTo("languages")'>10 plus languages</div>
+        <div class="quiet" role="button" tabindex="0"
+             @onclick='() => Nav.NavigateTo("abilities")'>What it can do</div>
     </div>
 
 </div>
 
 @code {
     MarkState _state = MarkState.Idle;
+    string? _progress;
     string? _detail;
 
     /*
-        NO MIC LEVEL HERE, AND NO PRETEND ONE. BrandMark can scale its arcs with a
-        real microphone level, and the native head feeds it one - but IVoiceHost
-        only speaks, it does not listen, so no hybrid head has a level to report
-        yet. Passing a fabricated value would animate the mark as though it were
-        hearing you, which is the exact lie the component's own notes forbid: a
-        fake meter lies about the one thing the person is trying to find out.
-
-        Listening therefore never appears on this head. When a head gains a listen
-        channel, it feeds Level and the state becomes reachable.
+        NO MIC LEVEL, AND NO PRETEND ONE. BrandMark can scale its arcs with a real
+        microphone level and the native mark feeds it one, but IVoiceHost only
+        speaks - it does not listen - so no head here has a level to report. A
+        fabricated value would animate the mark as though it were hearing you,
+        which is the one lie the component's own notes forbid.
     */
 
+    /// <summary>
+    /// The headline. Taken from what this host can actually do rather than
+    /// hard-coded to a working state - the native screen takes it from Readiness
+    /// for the same reason: a screen must not claim to be usable before it is.
+    /// </summary>
     string Prompt => _state switch
     {
-        MarkState.Listening => "Listening…",
-        MarkState.Thinking  => "Working on it…",
-        MarkState.Speaking  => "Answering…",
+        MarkState.Thinking => "Getting it ready",
+        MarkState.Speaking => "Speaking",
         _ => Voice.Availability == VoiceAvailability.OnDevice
                 ? "Tap to talk"
-                : "Pick a language to hear",
+                : "Getting ready",
     };
 
     string Caption => _detail
+        ?? _progress
         ?? (Voice.Availability == VoiceAvailability.OnDevice
-                ? "Everything happens on this device."
-                : Voice.Provenance);
+                ? "Press the circle and it will say hello."
+                : "You can talk to it in a moment.");
 
-    /// <summary>
-    /// Speak the sample's own greeting, in English, as a "does this work at all"
-    /// tap. The real conversation lives on the native head; here the point is that
-    /// the shared UI drives whichever voice host it was given.
-    /// </summary>
-    async Task Talk()
+    static readonly string[] OnDeviceClaims =
+    [
+        "10 plus languages, spoken out loud",
+        "Runs on the phone — works with no signal",
+        "Free, no account — only searches leave the phone",
+    ];
+
+    /// <summary>The claims, and only the ones true on THIS host.</summary>
+    /// <remarks>
+    /// The last two are promises about where the work happens. In a browser tab
+    /// they are false - the models are not there - and printing them anyway would
+    /// make the shared UI lie on one of its two hosts.
+    /// </remarks>
+    string[] Claims => Voice.Availability == VoiceAvailability.OnDevice
+        ? OnDeviceClaims
+        : [OnDeviceClaims[0], "Runs on the phone — install the app to hear a voice"];
+
+    async Task Tap()
     {
         if (Voice.Availability != VoiceAvailability.OnDevice)
         {
+            // Nothing here to speak with, so go where the list is rather than doing
+            // nothing: "nothing happens" is indistinguishable from "broken".
             Nav.NavigateTo("languages");
             return;
         }
@@ -108,22 +134,25 @@
 
         var progress = new Progress<string>(line =>
         {
-            // A voice can be 247 MB. A screen that sits on one word for that long
-            // is indistinguishable from a hang, so progress is shown as it lands.
-            _detail = line;
+            _progress = line;
             StateHasChanged();
         });
 
         try
         {
             var outcome = await Voice.SpeakAsync("en", progress);
-            _state = MarkState.Idle;
             _detail = outcome.Detail;
         }
         catch (Exception ex)
         {
-            _state = MarkState.Idle;
             _detail = $"{ex.GetType().Name}: {ex.Message}";
         }
+        finally
+        {
+            _progress = null;
+            _state = MarkState.Idle;
+        }
     }
+
+    void Type() => Nav.NavigateTo("languages");
 }

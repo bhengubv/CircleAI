@@ -44,6 +44,64 @@ public sealed class DeviceVoiceHost : IVoiceHost
         => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
 
     /// <inheritdoc />
+    /// <remarks>
+    /// EXACTLY WHAT LanguagePickerActivity.LoadLanguages DOES, and deliberately so:
+    /// every Tts tag in the registry, sized by asking SpeechModelSelector which
+    /// voice would actually play on THIS device. Picking independently here - the
+    /// smallest voice, say - is how a row came to advertise 122 MB while "Hear it"
+    /// played a 137.6 MB voice.
+    /// <para>
+    /// A selector that declines or throws for one language must not empty the whole
+    /// list, so that language falls back to the smallest voice serving it. Rough is
+    /// better than a row that vanishes.
+    /// </para>
+    /// </remarks>
+    public Task<IReadOnlyList<VoiceRow>> CatalogueAsync(CancellationToken ct = default)
+        => Task.Run<IReadOnlyList<VoiceRow>>(() =>
+        {
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            var voices = registry.AllModels
+                .Where(m => m.Modality == CircleAI.Core.ModelModality.Tts)
+                .ToList();
+
+            CircleAI.Inference.ISpeechModelSelector selector =
+                new CircleAI.Inference.SpeechModelSelector(registry);
+            var device = CircleAI.Core.DeviceProbe.Snapshot();
+
+            var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var v in voices)
+                foreach (var raw in (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    if (raw.Trim().Length > 0) tags.Add(raw.Trim());
+
+            var best = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (var tag in tags)
+            {
+                try
+                {
+                    var plan = selector.PlanFor(device, CircleAI.Core.ModelModality.Tts, tag);
+                    if (plan.IsAvailable && plan.Model is not null)
+                    {
+                        var entry = registry.GetLatestModel(plan.Model.ModelId);
+                        if (entry is not null) { best[tag] = entry.TotalBytes; continue; }
+                    }
+                }
+                catch
+                {
+                    // One language the selector cannot answer for must not empty
+                    // the list.
+                }
+
+                foreach (var v in voices)
+                    foreach (var raw in (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (string.Equals(raw.Trim(), tag, StringComparison.OrdinalIgnoreCase)
+                            && (!best.TryGetValue(tag, out var cur) || v.TotalBytes < cur))
+                            best[tag] = v.TotalBytes;
+            }
+
+            return best.Select(kv => new VoiceRow(kv.Key, kv.Value)).ToList();
+        }, ct);
+
+    /// <inheritdoc />
     public async Task<SpeakOutcome> SpeakAsync(
         string tag, IProgress<string>? progress = null, CancellationToken ct = default)
     {

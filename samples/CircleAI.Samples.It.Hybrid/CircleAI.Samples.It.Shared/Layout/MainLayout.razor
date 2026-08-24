@@ -14,17 +14,21 @@
 @inject NavigationManager Nav
 
 <div class="app">
-    <header class="app-bar" @onclick="GoHome" role="banner">
-        <BrandMark Size="30" />
-        <span class="app-name">Circle AI</span>
-        @if (ScreenName is not null)
-        {
-            @* Where you are. Somebody who has navigated somewhere should be told. *@
+    @*
+        NO BAR ON HOME, because the native screen has none: HomeActivity builds a
+        wordmark, not a Ui.HomeBar, and the circle owns the upper half. Every other
+        screen calls Ui.HomeBar(this, "<name>"), so every other screen gets one.
+    *@
+    @if (ScreenName is not null)
+    {
+        <header class="app-bar" @onclick="GoHome" role="banner">
+            <BrandMark Size="30" />
+            <span class="app-name">Circle AI</span>
             <span class="app-where">@ScreenName</span>
-        }
-    </header>
+        </header>
+    }
 
-    <main class="app-body">
+    <main class="app-body @(ScreenName is null ? "app-body-full" : null)">
         @Body
     </main>
 </div>

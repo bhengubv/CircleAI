@@ -58,14 +58,28 @@ a { color: var(--brand-blue); text-decoration: none; }
 
 /* -- the app frame ------------------------------------------------------- */
 
+/*
+    FLEX, NOT GRID, and the difference is not cosmetic.
+
+    This was `grid-template-rows: auto 1fr`, which assumes the header is always
+    there. Home has no header - the native screen has none either - so <main>
+    became the FIRST grid item and took the `auto` row, sizing itself to its
+    content. Nothing inside could then resolve height:100%, so Home's spacer had
+    no space to expand into: the claims sat directly under the caption and the
+    empty space ended up at the BOTTOM, the native layout upside down.
+
+    Flex with `flex: 1` on the body is correct whether or not a header is present.
+*/
 .app {
-    display: grid;
-    grid-template-rows: auto 1fr;
+    display: flex;
+    flex-direction: column;
     height: 100dvh;         /* dvh, so a mobile URL bar appearing does not clip it */
     overflow: hidden;
 }
 
 .app-body {
+    flex: 1 1 auto;
+    min-height: 0;          /* or a tall child refuses to let the body shrink */
     overflow-y: auto;
     padding: var(--gutter);
     /* Room for a home gesture bar without hardcoding a phone. */

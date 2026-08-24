@@ -48,9 +48,37 @@ public sealed record SpeakOutcome(
     long? Milliseconds = null,
     long? AudioMilliseconds = null);
 
+/// <summary>One row of the language list: a tag and the download it implies.</summary>
+/// <param name="Tag">Registry tag.</param>
+/// <param name="Bytes">
+/// Size of the voice that will ACTUALLY PLAY, or null when this head cannot say.
+/// </param>
+/// <remarks>
+/// THE SIZE MUST COME FROM THE SAME SELECTOR THAT SPEAKS. It is device-aware, so
+/// it cannot be baked into a table. It was once picked independently - smallest
+/// voice for the label, selector's choice for the audio - and the row then
+/// described a voice you would never hear: Japanese read 122 MB while "Hear it"
+/// played the 137.6 MB one. A size belonging to a different voice is worse than no
+/// size, because it looks checked.
+/// </remarks>
+public sealed record VoiceRow(string Tag, long? Bytes);
+
 /// <summary>Speaks a language on whichever head is hosting the shared UI.</summary>
 public interface IVoiceHost
 {
+    /// <summary>
+    /// Every language this head can offer, with the size of the voice that would
+    /// play. Ordered by the caller, not here.
+    /// </summary>
+    /// <remarks>
+    /// Comes from the head rather than from <see cref="SampleLanguages"/> so the
+    /// phone lists exactly what its own catalogue holds - including any tag the
+    /// name table has no row for, which the native screen renders as the bare tag.
+    /// Reproducing that faithfully keeps the two apps the same screen; it also
+    /// keeps the gap visible instead of hiding it behind a shorter list.
+    /// </remarks>
+    Task<IReadOnlyList<VoiceRow>> CatalogueAsync(CancellationToken ct = default);
+
     /// <summary>Whether this head can synthesise at all.</summary>
     VoiceAvailability Availability { get; }
 
