@@ -129,12 +129,18 @@ internal static class Ui
         bar.SetMinimumHeight(Dp(a, 56));
         bar.Clickable = true;
 
-        // The mark, small. Solid blue so it reads as the same object as the hero
-        // rather than a decorative dot.
-        var dot = new View(a) { Background = Rounded(a, Blue, 11f) };
-        var dotLp = new LinearLayout.LayoutParams(Dp(a, 22), Dp(a, 22));
-        dotLp.RightMargin = Dp(a, 12);
-        bar.AddView(dot, dotLp);
+        // THE MARK ITSELF, not a stand-in for it. This was a filled circle —
+        // Rounded(a, Blue, 11f) — under a comment asserting it read as the same
+        // object as the hero. It did not: the hero is an open ring with three
+        // arcs leaving it, and a solid dot shares nothing with that but the
+        // colour. Every screen except home was showing a different logo.
+        //
+        // Small enough that the arcs need room to be legible, so it is given 30dp
+        // rather than the dot's 22 and the same 12dp gap to the wordmark.
+        var mark = new MarkView(a);
+        var markLp = new LinearLayout.LayoutParams(Dp(a, 30), Dp(a, 30));
+        markLp.RightMargin = Dp(a, 12);
+        bar.AddView(mark, markLp);
 
         var name = Label(a, "Circle AI", 17f, Ink, bold: true);
         bar.AddView(name);
