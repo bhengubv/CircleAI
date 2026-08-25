@@ -1,153 +1,44 @@
 /*
-    Measured off AbilitiesActivity: header on Ui.Surface with 20 side padding,
-    tabs 15sp with 12 above and below (a 48dp target), panel outlined in blue at
-    radius 14, rows 16/12/14/12, title 16sp Blue bold, blurb 12.5sp InkSoft with
-    2 above, dividers blue at alpha 70 of 255.
+    A pitch, not a panel. No cards, no borders, no controls - the shapes of a
+    settings screen are what made the old one read as configuration.
 */
-
-.head {
-    background: var(--surface);
-    padding: 0 20px;
-    /* Full-bleed, including at the top: the native block sits directly under the
-       bar, and cancelling only the horizontal gutter leaves a strip of page
-       colour above it. */
-    margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
+.pitch {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 18px;
+    padding-top: 8px;
 }
 
-.tabs { display: flex; padding-top: 12px; }
+.lead {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--ink);
+}
 
-.tab {
-    flex: 1;
+.claims { display: grid; gap: 16px; }
+
+.claim { display: flex; gap: 12px; align-items: flex-start; }
+
+.claim-icon { font-size: 22px; line-height: 1.2; flex: none; }
+
+.claim-text { display: grid; gap: 2px; min-width: 0; }
+
+.claim-title { font-size: 16px; font-weight: 700; color: var(--ink); }
+
+.claim-sub { font-size: 13.5px; line-height: 1.4; color: var(--ink-soft); }
+
+/* Pushed to the bottom by the claims above it, so the way in is where a thumb
+   is rather than wherever the text happened to end. */
+.start {
+    margin-top: auto;
+    padding: 14px;
     text-align: center;
     font-size: 15px;
-    color: var(--ink-soft);
-    padding: 12px 0;
-    cursor: pointer;
-    user-select: none;
-    /* A transparent border of the same weight as the selected one, so choosing a
-       tab does not shift the whole row by 3px. */
-    border-bottom: 3px solid transparent;
-}
-
-.tab-on {
-    color: var(--brand-blue);
-    font-weight: 700;
-    border-bottom-color: var(--brand-blue);
-}
-
-/*
-    The border is blue so the panel has a visible edge. On a dark theme a
-    surface-on-surface card is nearly invisible in daylight, and "where does this
-    box end" is not a question a person should have to work at.
-*/
-.panel {
-    margin-top: 16px;
-    border: 1px solid var(--brand-blue);
-    border-radius: 14px;
-    padding: 2px 0;
-}
-
-/*
-    Blue at low alpha, NOT the slate hairline. Hairline is the slate darkened, so
-    on a dark panel it is slate-on-slate and vanishes completely in sunlight -
-    which is where these phones actually get used. 70/255 = 0.27.
-*/
-.divider {
-    height: 1px;
-    background: rgba(33, 150, 243, 0.27);
-}
-
-.ability {
-    display: flex;
-    align-items: center;
-    padding: 12px 14px 12px 16px;
-}
-
-.ability-text { flex: 1; min-width: 0; }
-
-.ability-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--brand-blue);
-}
-
-.ability-blurb {
-    font-size: 12.5px;
-    color: var(--ink-soft);
-    padding-top: 2px;
-}
-
-.ability-on,
-.ability-go,
-.ability-note {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--brand-blue);
-    white-space: nowrap;
-    padding-left: 12px;
-}
-
-.ability-note {
-    font-weight: 400;
-    color: var(--ink-soft);
-}
-
-.ability-progress {
-    font-size: 11.5px;
-    color: var(--brand-blue);
-    padding: 0 16px 10px;
-}
-
-.compact {
-    font: inherit;
-    font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ink);
     background: var(--brand-blue);
-    border: 0;
-    border-radius: 10px;
-    padding: 8px 14px;
-    margin-left: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-}
-
-.compact:disabled { opacity: 0.45; cursor: default; }
-
-.card {
-    margin-top: 16px;
-    background: var(--surface);
-    border-radius: 14px;
-    padding: 16px 18px;
-}
-
-.fact-title { font-size: 13px; color: var(--ink-soft); }
-
-.fact-value {
-    font-size: 16px;
-    color: var(--brand-blue);
-    padding: 2px 0 14px;
-}
-
-.wide {
-    font: inherit;
-    font-weight: 600;
-    width: 100%;
-    margin-top: 16px;
-    color: var(--brand-blue);
-    background: transparent;
-    border: 1px solid var(--hairline);
     border-radius: 12px;
-    padding: 12px;
-    cursor: pointer;
-}
-
-.tech { margin-top: 10px; }
-
-.tech-line {
-    font-size: 11.5px;
-    color: var(--ink-soft);
-    /* The entry carries its own newline between the model name and its numbers. */
-    white-space: pre-line;
-    padding-bottom: 10px;
+    text-decoration: none;
 }

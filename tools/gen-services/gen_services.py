@@ -51,25 +51,25 @@ INFRASTRUCTURE = (
 # what somebody calls it. The openers are first sentences rather than categories,
 # because a tile exists to get somebody past the blank page.
 SERVICES = {
-    # Money and work
-    "Career":            ("Money and work", "Your CV", "\U0001F4C4", "Help me build my CV", "career"),
-    "HR":                ("Money and work", "Work rights", "\U0001F4CB", "I have a question about my job or my rights at work"),
-    "Banking":           ("Money and work", "Banking", "\U0001F3E6", "Help me understand my bank account"),
-    "Personal.Finance":  ("Money and work", "Money", "\U0001F4B0", "Help me plan my money this month"),
-    "Commerce":          ("Money and work", "Buying and selling", "\U0001F6D2", "Help me sell something"),
-    "Commerce.Accounting": ("Money and work", "Bookkeeping", "\U0001F9EE", "Help me keep my books"),
-    "Commerce.Finance":  ("Money and work", "Invoices", "\U0001F9FE", "Help me write an invoice"),
-    "Business":          ("Money and work", "My business", "\U0001F4BC", "Help me run my small business"),
-    "BusinessOps":       ("Money and work", "Running it", "⚙", "Help me organise my business"),
-    "AutonomousBiz":     ("Money and work", "Growing it", "\U0001F680", "Help me grow my business"),
-    "CRM":               ("Money and work", "Customers", "\U0001F91D", "Help me keep track of my customers"),
-    "Markets":           ("Money and work", "Markets", "\U0001F4C8", "Explain what is happening in the markets"),
-    "Retail":            ("Money and work", "Shop", "\U0001F3EA", "Help me run my shop"),
-    "Logistics":         ("Money and work", "Deliveries", "\U0001F69A", "Help me plan deliveries"),
-    "Construction":      ("Money and work", "Building", "\U0001F3D7", "Help me with a building job"),
-    "Agriculture":       ("Money and work", "Farming", "\U0001F331", "Help me with my crops or livestock"),
-    "Hospitality":       ("Money and work", "Hosting", "\U0001F374", "Help me run a place that feeds people"),
-    "Beauty":            ("Money and work", "Hair and beauty", "\U0001F485", "Help me with my salon"),
+    # Money - what a person earns and owes
+    "Career":            ("Money", "Your CV", "\U0001F4C4", "Help me build my CV", "career"),
+    "HR":                ("Money", "Work rights", "\U0001F4CB", "I have a question about my job or my rights at work"),
+    "Banking":           ("Money", "Banking", "\U0001F3E6", "Help me understand my bank account"),
+    "Personal.Finance":  ("Money", "Money", "\U0001F4B0", "Help me plan my money this month"),
+    "Commerce":          ("Work and business", "Buying and selling", "\U0001F6D2", "Help me sell something"),
+    "Commerce.Accounting": ("Work and business", "Bookkeeping", "\U0001F9EE", "Help me keep my books"),
+    "Commerce.Finance":  ("Work and business", "Invoices", "\U0001F9FE", "Help me write an invoice"),
+    "Business":          ("Work and business", "My business", "\U0001F4BC", "Help me run my small business"),
+    "BusinessOps":       ("Work and business", "Running it", "⚙", "Help me organise my business"),
+    "AutonomousBiz":     ("Work and business", "Growing it", "\U0001F680", "Help me grow my business"),
+    "CRM":               ("Work and business", "Customers", "\U0001F91D", "Help me keep track of my customers"),
+    "Markets":           ("Money", "Markets", "\U0001F4C8", "Explain what is happening in the markets"),
+    "Retail":            ("Trades and land", "Shop", "\U0001F3EA", "Help me run my shop"),
+    "Logistics":         ("Trades and land", "Deliveries", "\U0001F69A", "Help me plan deliveries"),
+    "Construction":      ("Trades and land", "Building", "\U0001F3D7", "Help me with a building job"),
+    "Agriculture":       ("Trades and land", "Farming", "\U0001F331", "Help me with my crops or livestock"),
+    "Hospitality":       ("Trades and land", "Hosting", "\U0001F374", "Help me run a place that feeds people"),
+    "Beauty":            ("Trades and land", "Hair and beauty", "\U0001F485", "Help me with my salon"),
 
     # Health and safety
     "Healthcare":        ("Health", "Health", "❤", "I have a health question"),
@@ -124,10 +124,15 @@ SERVICES = {
     "Gaming":            ("For enjoyment", "Gaming", "\U0001F579", "Talk to me about gaming"),
 }
 
+# NO GROUP OVER EIGHT TILES. Four across and two rows is what fits a 344px screen
+# under the chips, and a ninth tile is the one nobody scrolls to find - which is
+# the same as not having it. "Money and work" was eighteen and scrolled.
 GROUP_ORDER = [
-    "Money and work", "Health", "Family and home",
+    "Money", "Work and business", "Trades and land", "Health", "Family and home",
     "Learning", "Making things", "Getting by", "For enjoyment",
 ]
+
+MAX_PER_GROUP = 8
 
 
 def modules():
@@ -218,6 +223,22 @@ def render():
 
 
 def main():
+    # A group that does not fit is a group somebody scrolls, and a tile below the
+    # fold is a capability that does not exist.
+    import collections
+    counts = collections.Counter(v[0] for v in SERVICES.values())
+    over = {g: n for g, n in counts.items() if n > MAX_PER_GROUP}
+    if over:
+        print(f"groups over {MAX_PER_GROUP} tiles, so they would scroll:", file=sys.stderr)
+        for g, n in over.items():
+            print(f"  {g}: {n}", file=sys.stderr)
+        return 1
+
+    missing = [g for g in counts if g not in GROUP_ORDER]
+    if missing:
+        print(f"groups not in GROUP_ORDER: {missing}", file=sys.stderr)
+        return 1
+
     unknown = classify()
     if unknown:
         print("UNCLASSIFIED MODULES - add to SERVICES or INFRASTRUCTURE:", file=sys.stderr)

@@ -156,3 +156,15 @@
     text-align: center;
     padding-top: 10px;
 }
+
+/* Quiet. The circle is the product; this is for the person still deciding. */
+.pitch-link {
+    display: block;
+    width: 100%;
+    padding: 14px 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--brand-blue);
+    text-decoration: none;
+}

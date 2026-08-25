@@ -51,7 +51,7 @@ public static class Capabilities
     /// </remarks>
     public static IReadOnlyList<CapabilityGroup> All { get; } =
     [
-        new("Money and work",
+        new("Money",
         [
             // src/CircleAI.Career
             new("Your CV", "📄", "Help me build my CV", "career"),
@@ -61,6 +61,12 @@ public static class Capabilities
             new("Banking", "🏦", "Help me understand my bank account"),
             // src/CircleAI.Personal.Finance
             new("Money", "💰", "Help me plan my money this month"),
+            // src/CircleAI.Markets
+            new("Markets", "📈", "Explain what is happening in the markets"),
+        ]),
+
+        new("Work and business",
+        [
             // src/CircleAI.Commerce
             new("Buying and selling", "🛒", "Help me sell something"),
             // src/CircleAI.Commerce.Accounting
@@ -75,8 +81,10 @@ public static class Capabilities
             new("Growing it", "🚀", "Help me grow my business"),
             // src/CircleAI.CRM
             new("Customers", "🤝", "Help me keep track of my customers"),
-            // src/CircleAI.Markets
-            new("Markets", "📈", "Explain what is happening in the markets"),
+        ]),
+
+        new("Trades and land",
+        [
             // src/CircleAI.Retail
             new("Shop", "🏪", "Help me run my shop"),
             // src/CircleAI.Logistics

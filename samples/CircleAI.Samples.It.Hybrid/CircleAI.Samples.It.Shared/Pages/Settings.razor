@@ -35,6 +35,7 @@
 @page "/settings"
 @inject ISettings Store
 @inject IVoiceHost Voice
+@inject IDeviceFacts Facts
 
 <div class="tabs" role="tablist">
     @for (var i = 0; i < TabNames.Length; i++)
@@ -198,6 +199,57 @@ else
     }
 </section>
 
+}
+else if (_tab == 3)
+{
+    @*
+        WHAT IS INSTALLED AND WHAT THIS PHONE IS.
+
+        This used to live on "What it can do", which made a marketing screen behave
+        like a download manager - turn-on buttons, free space, memory readings.
+        Configuration belongs where somebody goes to change something.
+    *@
+    <section class="group">
+        <h2 class="group-title">What is turned on</h2>
+
+        @foreach (var row in _abilities)
+        {
+            <div class="row" @key="row.Title">
+                <span class="row-text">
+                    <span class="row-title">@row.Title</span>
+                    <span class="row-sub">@Detail(row)</span>
+                </span>
+
+                @if (row.State == AbilityState.Available)
+                {
+                    <button class="compact" disabled="@(_turning is not null)"
+                            @onclick="() => TurnOn(row)">
+                        @(_turning == row.Title ? "..." : "Turn on")
+                    </button>
+                }
+                else if (row.State == AbilityState.On)
+                {
+                    <span class="on">&#10003;</span>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="group">
+        <h2 class="group-title">This phone</h2>
+        @foreach (var fact in _phone.Facts)
+        {
+            <div class="row">
+                <span class="row-text">
+                    <span class="row-title">@fact.Title</span>
+                    <span class="row-sub">@fact.Value</span>
+                </span>
+            </div>
+        }
+    </section>
+}
+else
+{
 <section class="group">
     <h2 class="group-title">Where the work happens</h2>
     <details class="why">
@@ -218,11 +270,14 @@ else
     /// language puts both language decisions in one place, which is where somebody
     /// looks when either of them is wrong.
     /// </remarks>
-    static readonly string[] TabNames = ["What it is for", "How it speaks", "What it kept"];
+    static readonly string[] TabNames = ["What it is for", "How it speaks", "What it kept", "This phone"];
 
     int _tab;
     AppSettings _s = new();
     IReadOnlyList<StoredDocument> _docs = [];
+    IReadOnlyList<AbilityRow> _abilities = [];
+    PhoneFacts _phone = new([], []);
+    string? _turning;
 
     /// <summary>
     /// The languages on offer, by name.
@@ -242,6 +297,34 @@ else
     {
         _s = await Store.LoadAsync();
         _docs = await Store.DocumentsAsync();
+        _abilities = await Facts.AbilitiesAsync();
+        _phone = await Facts.PhoneAsync();
+    }
+
+    /// <summary>
+    /// What an ability costs, or what is stopping it.
+    /// </summary>
+    /// <remarks>
+    /// The SIZE is the number that decides whether somebody on a metered
+    /// connection taps, so it sits next to the button rather than behind it. And
+    /// "needs more memory" tells a person about their phone where "unavailable"
+    /// would tell them about ours.
+    /// </remarks>
+    static string Detail(AbilityRow row) => row.State switch
+    {
+        AbilityState.On => row.Blurb,
+        AbilityState.Available when row.Bytes is long b => $"{row.Blurb} · {b / 1_000_000} MB",
+        AbilityState.TooBig => "Needs more memory than this phone has",
+        AbilityState.NotCatalogued => "Nothing for this yet",
+        _ => row.Blurb,
+    };
+
+    async Task TurnOn(AbilityRow row)
+    {
+        if (_turning is not null) return;
+        _turning = row.Title;
+        try { await Facts.TurnOnAsync(row.Title); await Reload(); }
+        finally { _turning = null; }
     }
 
     /// <summary>
