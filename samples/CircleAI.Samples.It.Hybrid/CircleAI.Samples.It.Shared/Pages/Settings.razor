@@ -1,0 +1,226 @@
+@*
+    Settings.
+
+    WHAT THIS IS FOR, given "This phone" already exists next door: that tab is a
+    READ-OUT. It reports free space, memory and which models are on disk, and it
+    configures nothing. This screen configures.
+
+    Each section is a property that is genuinely PERSISTENT. The conversation
+    language deliberately is not one - a household here moves through two or three
+    languages inside a single exchange - which is why the policy below defaults to
+    following the speaker rather than pinning a language.
+*@
+@page "/settings"
+@inject ISettings Store
+@inject IVoiceHost Voice
+
+<section class="group">
+    <h2 class="group-title">What it is for</h2>
+    <p class="group-why">
+        The same phone can answer you, or stand between two people who do not share
+        a language.
+    </p>
+
+    <label class="row">
+        <span class="row-text">
+            <span class="row-title">Assistant</span>
+            <span class="row-sub">Ask it things and it answers you.</span>
+        </span>
+        <input type="radio" name="mode" checked="@(_s.Mode == AppMode.Assistant)"
+               @onchange="() => Set(_s with { Mode = AppMode.Assistant })" />
+    </label>
+
+    <label class="row">
+        <span class="row-text">
+            <span class="row-title">Interpreter</span>
+            <span class="row-sub">It renders what one person says for the other.</span>
+        </span>
+        <input type="radio" name="mode" checked="@(_s.Mode == AppMode.Interpreter)"
+               @onchange="() => Set(_s with { Mode = AppMode.Interpreter })" />
+    </label>
+
+    @if (_s.Mode == AppMode.Interpreter)
+    {
+        <div class="pair">
+            <label class="field-label">
+                From
+                <select class="select" value="@_s.InterpretFrom"
+                        @onchange="e => Set(_s with { InterpretFrom = Tag(e) })">
+                    @foreach (var l in Languages)
+                    {
+                        <option value="@l.Tag">@l.Name</option>
+                    }
+                </select>
+            </label>
+            <label class="field-label">
+                To
+                <select class="select" value="@_s.InterpretTo"
+                        @onchange="e => Set(_s with { InterpretTo = Tag(e) })">
+                    @foreach (var l in Languages)
+                    {
+                        <option value="@l.Tag">@l.Name</option>
+                    }
+                </select>
+            </label>
+        </div>
+    }
+</section>
+
+<section class="group">
+    <h2 class="group-title">What it answers in</h2>
+    <p class="group-why">
+        A clan moves through two or three languages inside one exchange, so a
+        language fixed on the first turn is wrong by the third. Following the
+        speaker is the default for that reason.
+    </p>
+
+    <label class="row">
+        <span class="row-text">
+            <span class="row-title">Follow whoever is speaking</span>
+            <span class="row-sub">Every turn is answered in the language it was asked in.</span>
+        </span>
+        <input type="radio" name="policy"
+               checked="@(_s.Policy == LanguagePolicy.FollowTheSpeaker)"
+               @onchange="() => Set(_s with { Policy = LanguagePolicy.FollowTheSpeaker })" />
+    </label>
+
+    <label class="row">
+        <span class="row-text">
+            <span class="row-title">Always one language</span>
+            <span class="row-sub">Answer in the same language whatever it hears.</span>
+        </span>
+        <input type="radio" name="policy" checked="@(_s.Policy == LanguagePolicy.Fixed)"
+               @onchange="() => Set(_s with { Policy = LanguagePolicy.Fixed })" />
+    </label>
+
+    @if (_s.Policy == LanguagePolicy.Fixed)
+    {
+        <label class="field-label">
+            Answer in
+            <select class="select" value="@(_s.FixedLanguage ?? "en")"
+                    @onchange="e => Set(_s with { FixedLanguage = Tag(e) })">
+                @foreach (var l in Languages)
+                {
+                    <option value="@l.Tag">@l.Name</option>
+                }
+            </select>
+        </label>
+    }
+</section>
+
+<section class="group">
+    <h2 class="group-title">Waking</h2>
+    <p class="group-why">
+        The wake phrase is a SEPARATE property from the language it answers in. You
+        can have it wake to English and reply in Japanese; before this screen those
+        two were welded together, so choosing a language silently changed what you
+        had to say to wake it.
+    </p>
+
+    <label class="row">
+        <span class="row-text">
+            <span class="row-title">Listen for the wake phrase</span>
+            <span class="row-sub">The microphone stays open on this phone. Nothing is recorded.</span>
+        </span>
+        <input type="checkbox" checked="@_s.WakeEnabled"
+               @onchange="e => Set(_s with { WakeEnabled = (bool)(e.Value ?? false) })" />
+    </label>
+
+    @if (_s.WakeEnabled)
+    {
+        <label class="field-label">
+            Wake phrase language
+            <select class="select" value="@_s.WakeLanguage"
+                    @onchange="e => Set(_s with { WakeLanguage = Tag(e) })">
+                @foreach (var l in Languages)
+                {
+                    <option value="@l.Tag">@l.Name</option>
+                }
+            </select>
+        </label>
+    }
+</section>
+
+<section class="group">
+    <h2 class="group-title">Your documents</h2>
+    <p class="group-why">
+        Everything it has written for you, kept on this phone. Being able to see
+        what was kept and remove it is the other half of a promise that nothing
+        leaves the device.
+    </p>
+
+    @if (_docs.Count == 0)
+    {
+        <p class="empty">Nothing written yet.</p>
+    }
+    else
+    {
+        @foreach (var doc in _docs)
+        {
+            <div class="row" @key="doc.Path">
+                <span class="row-text">
+                    <span class="row-title">@doc.Name</span>
+                    <span class="row-sub">@doc.Kind · @Size(doc.Bytes) · @doc.Written.ToLocalTime().ToString("d MMM yyyy")</span>
+                </span>
+                <button class="delete" @onclick="() => Delete(doc)">Delete</button>
+            </div>
+        }
+    }
+</section>
+
+<section class="group">
+    <h2 class="group-title">Where the work happens</h2>
+    <p class="group-why">@Voice.Provenance</p>
+</section>
+
+@code {
+    AppSettings _s = new();
+    IReadOnlyList<StoredDocument> _docs = [];
+
+    /// <summary>
+    /// The languages on offer, by name.
+    /// </summary>
+    /// <remarks>
+    /// From the shared table rather than the model registry: this is a list of
+    /// languages a person picks from, not a list of voices that happen to be
+    /// downloadable, and the two are not the same set.
+    /// </remarks>
+    static IReadOnlyList<SampleLanguage> Languages { get; } = SampleLanguages.All.Values
+        .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    async Task Reload()
+    {
+        _s = await Store.LoadAsync();
+        _docs = await Store.DocumentsAsync();
+    }
+
+    /// <summary>
+    /// Applies a change immediately.
+    /// </summary>
+    /// <remarks>
+    /// NO SAVE BUTTON. A settings screen with one has two states - what is on
+    /// screen and what is in force - and somebody who backs out has silently
+    /// changed nothing. Saving on change means the screen always shows the truth.
+    /// </remarks>
+    async Task Set(AppSettings next)
+    {
+        _s = next;
+        await Store.SaveAsync(next);
+    }
+
+    static string Tag(ChangeEventArgs e) => e.Value?.ToString() ?? "en";
+
+    static string Size(long bytes)
+        => bytes >= 1_000_000
+            ? $"{bytes / 1_000_000.0:0.#} MB"
+            : $"{Math.Max(1, bytes / 1024)} KB";
+
+    async Task Delete(StoredDocument doc)
+    {
+        await Store.DeleteDocumentAsync(doc.Path);
+        _docs = await Store.DocumentsAsync();
+    }
+}

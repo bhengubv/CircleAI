@@ -1,9 +1,9 @@
 /*
-    The header bar.
+    The bar, and the menu it opens.
 
-    Deliberately not a back arrow. "Back" means the previous screen, which is a
-    fact about history; the mark means the product, and tapping it goes to the
-    thing itself from three screens deep in one press.
+    The mark is deliberately not a back arrow. "Back" means the previous screen,
+    which is a fact about history; the mark means the product, and pressing it
+    goes to the thing itself from three screens deep in one press.
 */
 
 .app-bar {
@@ -13,19 +13,29 @@
     min-height: var(--bar-height);
     padding: 0.5rem var(--gutter);
     /*
-        CLEARS THE STATUS BAR, with a floor.
-
-        env(safe-area-inset-top) alone is not enough: Android's WebView reports 0
-        for it unless the app opts into edge-to-edge, so the bar rendered UNDER
-        the clock and the wordmark was sliced in half. max() keeps the real inset
-        where a device reports one (a notch, a punch-hole) and falls back to the
-        24dp status bar everywhere else.
+        CLEARS THE STATUS BAR, with a floor. env(safe-area-inset-top) alone is not
+        enough: Android's WebView reports 0 unless the app opts into edge-to-edge,
+        so the bar rendered UNDER the clock and the wordmark was sliced in half.
+        max() keeps a real inset where a device reports one and falls back to the
+        status bar height everywhere else.
     */
     padding-top: max(env(safe-area-inset-top, 0px), 24px);
     background: var(--surface);
     border-bottom: 1px solid var(--hairline);
+    flex: none;
+}
+
+/*
+    Its own target now, rather than the whole bar. The bar holds the menu button
+    too, and a bar that navigates home would swallow that tap.
+*/
+.bar-home {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     cursor: pointer;
     user-select: none;
+    flex: none;
 }
 
 .app-name {
@@ -40,14 +50,15 @@
     color: var(--ink-soft);
     /*
         The screen name is the part that gives way when the bar runs out of room.
-        On a 344px phone with a long name, truncating here keeps the mark and the
-        product name whole - losing the wordmark would be losing the brand to fit
-        a breadcrumb.
+        On a 344px phone with a long name, truncating here keeps the mark, the
+        product name and the menu whole - losing the wordmark would be losing the
+        brand to fit a breadcrumb.
     */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
+    flex: 1;
 }
 
 .app-where::before {
@@ -56,15 +67,97 @@
     color: var(--hairline);
 }
 
+/* Pushed right even on Home, where there is no screen name to fill the gap. */
+.bar-menu {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    /* 44px: the smallest target most people can hit reliably. */
+    width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    flex: none;
+}
+
+.bar-menu > span {
+    display: block;
+    height: 2px;
+    background: var(--ink);
+    border-radius: 1px;
+}
+
 /*
-    Home has no bar, so its body owns the whole window and must clear the status
-    bar itself. env() is used with a fallback because Android's WebView reports 0
-    for safe-area insets unless the app opts into edge-to-edge, and a header
-    sitting under the clock is what that looks like.
+    The backdrop is what makes the menu escapable. Without it the only way out is
+    to pick something, which is a trap rather than a menu.
 */
-.app-body-full {
-    padding: 0;
+.backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10;
+}
+
+.menu {
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 11;
+    display: flex;
+    flex-direction: column;
+    /* Capped so it is never a full-screen wall on a tablet, and never wider than
+       the phone it is on. */
+    width: min(85vw, 22rem);
+    max-height: 100dvh;
+    overflow-y: auto;
     padding-top: max(env(safe-area-inset-top, 0px), 24px);
-    /* The page inside must be able to resolve height:100% against this. */
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-left: 1px solid var(--hairline);
+}
+
+.menu-item {
+    display: block;
+    padding: 0.85rem var(--gutter);
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--hairline);
+}
+
+.menu-item:active { background: var(--raised); }
+
+/* Where you already are, marked - so the menu answers "where am I" as well as
+   "where can I go". */
+.menu-on {
+    border-left: 3px solid var(--brand-blue);
+    padding-left: calc(var(--gutter) - 3px);
+}
+
+.menu-on .menu-title { color: var(--brand-blue); }
+
+.menu-title {
+    display: block;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.menu-sub {
+    display: block;
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    padding-top: 0.15rem;
+}
+
+/*
+    Home takes the full width: it has its own 24px gutter, and its spacer needs a
+    container whose height it can resolve against. The top inset is the bar's job
+    now that Home has a bar too.
+*/
+.app-body-flush {
+    padding: 0;
     box-sizing: border-box;
 }

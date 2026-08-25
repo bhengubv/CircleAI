@@ -17,9 +17,8 @@
 
 <div class="home">
 
-    @* Wordmark, small. The product name is not the pitch. "Circle AI" with the
-       space: set solid the two capitals collide and the eye lands on "leAI". *@
-    <div class="wordmark">Circle AI</div>
+    @* No wordmark here any more: the bar above carries it now that the bar is on
+       every screen. The native screen prints its own because it has no bar. *@
 
     @* THE THING YOU PRESS, and the only large control on the screen. *@
     <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"

@@ -31,6 +31,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
         builder.Services.AddSingleton<IWakeWord, DeviceWakeWord>();
+        builder.Services.AddSingleton<ISettings, DeviceSettings>();
 
         builder.Services.AddMauiBlazorWebView();
 

@@ -1,13 +1,16 @@
 @*
-    The frame every page sits in - and the reason the mark is now everywhere.
+    The frame every screen sits in.
 
-    On the native head this bar was a plain filled dot for months, under a comment
-    claiming it read as the same object as the hero. It did not. Here the header
-    renders the SAME BrandMark component the hero does, at a smaller size, so the
-    two cannot drift: one drawing, one set of numbers.
+    THE BAR IS NOW A MENU, not just a way home. It was the mark, the wordmark and
+    the screen's name, and tapping anywhere on it went to the circle - a good
+    gesture and a poor menu: everything the app could do was reachable only by
+    guessing which of two links on Home led there, and Career and the job-spec
+    screen were reachable from NOWHERE, their only entry being a setup-tour step.
 
-    The whole bar navigates home, not the 30px mark. A control the size of a
-    full-stop is a control most people miss.
+    The mark still goes home. Beside it is a button that opens the rest.
+
+    The mark itself is the SAME BrandMark component the hero uses, at a smaller
+    size, so the two cannot drift: one drawing, one set of numbers.
 *@
 @implements IDisposable
 @inherits LayoutComponentBase
@@ -15,33 +18,84 @@
 
 <div class="app">
     @*
-        NO BAR ON HOME, because the native screen has none: HomeActivity builds a
-        wordmark, not a Ui.HomeBar, and the circle owns the upper half. Every other
-        screen calls Ui.HomeBar(this, "<name>"), so every other screen gets one.
+        THE BAR IS ON EVERY SCREEN, INCLUDING HOME, and that is a change from the
+        native app rather than a copy of it.
+
+        The native Home has no bar - it builds its own wordmark and lets the circle
+        own the upper half - which was right when the bar only went home, since
+        Home cannot navigate to itself. It stops being right the moment the bar
+        carries the menu: a menu absent from the one screen everybody lands on is
+        not a menu. Home drops its own wordmark instead, because the bar now
+        carries it and two would be silly.
     *@
-    @if (ScreenName is not null)
+    <header class="app-bar" role="banner">
+            <div class="bar-home" role="button" tabindex="0" @onclick="GoHome">
+                <BrandMark Size="30" />
+                <span class="app-name">Circle AI</span>
+            </div>
+
+            @if (ScreenName is not null)
+            {
+                <span class="app-where">@ScreenName</span>
+            }
+
+            <button class="bar-menu" aria-label="Menu" aria-expanded="@_open"
+                    @onclick="ToggleMenu">
+                @* Three bars. A glyph everybody already knows beats a word here -
+                   the opposite of the "Hear it" decision, where a speaker icon
+                   would have been a guess for someone meeting the product. *@
+                <span></span><span></span><span></span>
+            </button>
+    </header>
+
+    @if (_open)
     {
-        <header class="app-bar" @onclick="GoHome" role="banner">
-            <BrandMark Size="30" />
-            <span class="app-name">Circle AI</span>
-            <span class="app-where">@ScreenName</span>
-        </header>
+        @* The sheet, and something to dismiss it with. Without the backdrop the
+           only way out of a menu is to pick something, which is a trap. *@
+        <div class="backdrop" @onclick="CloseMenu"></div>
+        <nav class="menu">
+            @foreach (var item in Menu)
+            {
+                <a class="menu-item @(IsHere(item.Route) ? "menu-on" : null)"
+                   href="@item.Route" @onclick="CloseMenu">
+                    <span class="menu-title">@item.Title</span>
+                    <span class="menu-sub">@item.Sub</span>
+                </a>
+            }
+        </nav>
     }
 
-    <main class="app-body @(ScreenName is null ? "app-body-full" : null)">
+    <main class="app-body @(ScreenName is null ? "app-body-flush" : null)">
         @Body
     </main>
 </div>
 
 @code {
-    /*
-        THE NAME COMES FROM THE ROUTE, not from a parameter.
+    sealed record MenuItem(string Route, string Title, string Sub);
 
-        Blazor cannot pass a value from a routed page up into its layout, and the
-        alternatives - cascading the layout instance, or a state service - are a
-        lot of plumbing that can fall out of step with where you actually are.
-        Reading the path cannot: if the URL says /languages, the bar says
-        Languages.
+    /// <summary>Everything the app can do, in one place.</summary>
+    /// <remarks>
+    /// EACH LINE SAYS WHAT IT IS FOR, not just where it goes. A menu of nouns
+    /// makes somebody open every screen to find out what the app does; the second
+    /// line is what stops "Aim at a job" from being a mystery.
+    /// </remarks>
+    static readonly MenuItem[] Menu =
+    [
+        new("", "Talk", "The circle. Press it and speak."),
+        new("chat", "Type instead", "The same conversation, written."),
+        new("languages", "Languages", "Hear a language, or choose one."),
+        new("career", "Your CV", "Build it by answering questions."),
+        new("job-spec", "Aim at a job", "Rearrange your CV for one advert."),
+        new("wake", "Hey B", "Wake it without touching the phone."),
+        new("abilities", "What it can do", "Turn things on, and what this phone is."),
+        new("settings", "Settings", "How it answers, wakes, and files things."),
+    ];
+
+    /*
+        THE NAME COMES FROM THE ROUTE, not from a parameter. Blazor cannot pass a
+        value from a routed page up into its layout, and the alternatives -
+        cascading the layout instance, or a state service - are plumbing that can
+        fall out of step with where you actually are. Reading the path cannot.
     */
     static readonly Dictionary<string, string> Names = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -51,9 +105,11 @@
         ["job-spec"] = "Aim at a job",
         ["chat"] = "Ask CircleAI",
         ["wake"] = "Hey B",
+        ["settings"] = "Settings",
     };
 
     string? ScreenName { get; set; }
+    bool _open;
 
     protected override void OnInitialized()
     {
@@ -64,17 +120,29 @@
     void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         Resolve();
+        // Navigating closes the menu. A sheet left open over the screen somebody
+        // just asked for is the app arguing with them.
+        _open = false;
         StateHasChanged();
     }
 
-    void Resolve()
+    void ToggleMenu() => _open = !_open;
+
+    void CloseMenu() => _open = false;
+
+    string Path()
     {
         var path = Nav.ToBaseRelativePath(Nav.Uri);
-        // Drop any query or fragment before matching, or "/languages?q=ja" misses.
+        // Drop any query or fragment, or "/languages?q=ja" misses.
         var cut = path.IndexOfAny(['?', '#']);
         if (cut >= 0) path = path[..cut];
-        ScreenName = Names.TryGetValue(path.Trim('/'), out var name) ? name : null;
+        return path.Trim('/');
     }
+
+    void Resolve() => ScreenName = Names.TryGetValue(Path(), out var name) ? name : null;
+
+    bool IsHere(string route)
+        => string.Equals(Path(), route.Trim('/'), StringComparison.OrdinalIgnoreCase);
 
     void GoHome() => Nav.NavigateTo("");
 

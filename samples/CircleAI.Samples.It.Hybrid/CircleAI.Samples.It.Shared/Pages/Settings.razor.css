@@ -1,0 +1,115 @@
+/*
+    Grouped, with a reason under each heading.
+
+    THE "why" LINE IS NOT PADDING. Half of these settings are only sensible once
+    you know why they exist - that the wake phrase and the answering language are
+    different properties, or that following the speaker is the default because a
+    household changes language mid-exchange. A setting somebody does not
+    understand is one they will not touch.
+*/
+
+.group {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-top: 16px;
+}
+
+.group-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--brand-blue);
+}
+
+.group-why {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding: 6px 0 4px;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--hairline);
+    cursor: pointer;
+}
+
+.row-text { flex: 1; min-width: 0; }
+
+.row-title {
+    display: block;
+    font-size: 15px;
+    color: var(--ink);
+}
+
+.row-sub {
+    display: block;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding-top: 2px;
+}
+
+/* Big enough to hit. The stock control is around 13px on Android, which is under
+   half the smallest reliable target. */
+.row input[type="radio"],
+.row input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    accent-color: var(--brand-blue);
+    flex: none;
+}
+
+.field-label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding-top: 12px;
+}
+
+.select {
+    font: inherit;
+    font-size: 16px;
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: var(--raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
+
+/* Side by side while they fit, stacked when they do not - a from/to pair on a
+   344px screen has no room for two columns. */
+.pair {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 12px;
+}
+
+.empty {
+    font-size: 13px;
+    color: var(--ink-soft);
+    padding: 10px 0 2px;
+}
+
+/*
+    Deleting a document is destructive and unrecoverable, so it does not wear the
+    brand colour. Blue here would put it in the same visual class as "Turn on".
+*/
+.delete {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    flex: none;
+}
+
+.delete:active { color: var(--ink); border-color: var(--ink-soft); }
