@@ -127,3 +127,107 @@
 }
 
 .tabbar-on .tabbar-label { font-weight: 700; }
+
+/* The hamburger. Three bars: a glyph everybody already knows. */
+.bar-menu {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    flex: none;
+}
+
+.bar-menu > span {
+    display: block;
+    height: 2px;
+    background: var(--ink);
+    border-radius: 1px;
+}
+
+/* Without a backdrop the only way out of a menu is to pick something. */
+.backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10;
+}
+
+/*
+    THE GRID, and the reason it is a grid.
+
+    Forty capabilities as a list is a scroll nobody finishes. As tiles they are
+    SCANNED - an icon and two words each, eight to a screen - which is how a
+    person finds out what the thing does in the five seconds they will give it.
+*/
+.menu {
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    overflow-y: auto;
+    background: var(--page);
+    padding: 0 var(--gutter) calc(2rem + env(safe-area-inset-bottom, 0px));
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+}
+
+.menu-head { padding: 12px 0 4px; }
+
+.menu-title { font-size: 22px; font-weight: 700; color: var(--ink); }
+
+.menu-sub { font-size: 13px; color: var(--ink-soft); padding-top: 4px; }
+
+.menu-section {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brand-blue);
+    padding: 18px 0 8px;
+}
+
+/*
+    FOUR ACROSS on a phone, more when there is room. auto-fill with a floor rather
+    than a fixed count, so a 344px screen and a tablet both get whole tiles rather
+    than one column of stretched ones.
+*/
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+    gap: 10px;
+}
+
+.tile {
+    font: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 12px 4px;
+    min-height: 5.25rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    cursor: pointer;
+}
+
+.tile:active { background: var(--raised); }
+
+.tile-icon { font-size: 22px; line-height: 1; }
+
+.tile-label {
+    font-size: 11.5px;
+    line-height: 1.2;
+    text-align: center;
+    /* Two lines, then clipped: "Aim at a job" must not make one tile taller than
+       its neighbours and stagger the whole row. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

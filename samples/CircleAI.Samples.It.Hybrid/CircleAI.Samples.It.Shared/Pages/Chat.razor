@@ -86,6 +86,26 @@
     {
         var state = await Brain.StateAsync();
         _ready = state.Ready;
+
+        // A TILE ARRIVES AS A QUESTION, not as a category. The grid's whole point
+        // is getting somebody past the blank page, so the opener is put in the box
+        // rather than sent - they can edit it, which somebody nudged into a
+        // subject usually wants to.
+        //
+        // Parsed by hand rather than with QueryHelpers: that lives in
+        // Microsoft.AspNetCore.WebUtilities, which this Razor library does not
+        // reference, and one query parameter is not worth a package.
+        var q = new Uri(Nav.Uri).Query;
+        const string key = "ask=";
+        var at = q.IndexOf(key, StringComparison.Ordinal);
+        if (at >= 0)
+        {
+            var value = q[(at + key.Length)..];
+            var amp = value.IndexOf('&');
+            if (amp >= 0) value = value[..amp];
+            _draft = Uri.UnescapeDataString(value);
+        }
+
         // The reason, not "unavailable": "Answering needs a 548 MB model" tells
         // somebody what to do next.
         _status = state.Ready ? "" : state.Detail;

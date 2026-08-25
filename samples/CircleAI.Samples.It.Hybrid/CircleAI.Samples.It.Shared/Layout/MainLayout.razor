@@ -6,8 +6,14 @@
     furthest point on the screen from the hand holding the phone, and invisible
     until somebody thought to look there.
 
-    Five items, always visible, always in the same place. The bar at the top keeps
-    the mark and says where you are; it no longer has to be the navigation too.
+    Five items, always visible, always in the same place. They are the things
+    somebody DOES.
+
+    The menu is a different job: it GROUPS the features, so the app can say what it
+    is capable of rather than listing the screens that happen to exist. A flat list
+    of destinations is an overflow drawer - it tells you where the leftovers went.
+    Groups tell you what the thing is for, and give a place for the next capability
+    to land without redesigning anything.
 *@
 @implements IDisposable
 @inherits LayoutComponentBase
@@ -24,7 +30,42 @@
         {
             <span class="app-where">@ScreenName</span>
         }
+
+        <button class="bar-menu" aria-label="Menu" aria-expanded="@_open"
+                @onclick="() => _open = !_open">
+            <span></span><span></span><span></span>
+        </button>
     </header>
+
+    @if (_open)
+    {
+        @* The backdrop is what makes the menu escapable. Without it the only way
+           out is to pick something, which is a trap rather than a menu. *@
+        <div class="backdrop" @onclick="Close"></div>
+        <nav class="menu">
+            <div class="menu-head">
+                <div class="menu-title">What it can do</div>
+                <div class="menu-sub">Tap anything and it starts there.</div>
+            </div>
+
+            @foreach (var group in Capabilities.All)
+            {
+                <div class="menu-section">@group.Title</div>
+                <div class="grid">
+                    @foreach (var c in group.Items)
+                    {
+                        @* A TILE OPENS THE CONVERSATION, pointed at the thing.
+                           That is what makes breadth cost nothing: forty tiles
+                           need forty first sentences, not forty screens. *@
+                        <button class="tile" @onclick="() => Go(c)">
+                            <span class="tile-icon" aria-hidden="true">@c.Icon</span>
+                            <span class="tile-label">@c.Title</span>
+                        </button>
+                    }
+                </div>
+            }
+        </nav>
+    }
 
     <main class="app-body @(ScreenName is null ? "app-body-flush" : null)">
         @Body
@@ -51,18 +92,57 @@
 @code {
     sealed record BottomItem(string Route, string Title, string Icon);
 
-    /// <summary>The five places a person actually goes.</summary>
+    bool _open;
+
+    void Close() => _open = false;
+
+    /// <summary>
+    /// Open a capability: its own screen where one exists, otherwise the
+    /// conversation with the first sentence already asked.
+    /// </summary>
     /// <remarks>
-    /// Talk is first and is the circle, because that is the product. Settings is
-    /// last, where a settings item belongs: it is what you reach for when
+    /// MOST OF THESE HAVE NO SCREEN AND SHOULD NOT. An assistant is asked, not
+    /// navigated - and forty screens for forty capabilities is how a phone app
+    /// becomes a menu system. The handful with a real screen (the CV, the language
+    /// list) go there because they are genuinely a form rather than a question.
+    /// </remarks>
+    void Go(Capability c)
+    {
+        Close();
+        Nav.NavigateTo(c.Route ?? $"chat?ask={Uri.EscapeDataString(c.Opener)}");
+    }
+
+    /// <summary>Five AREAS, not five screens.</summary>
+    /// <remarks>
+    /// THE FIRST ATTEMPT LISTED THE SCREENS THAT HAPPENED TO EXIST, and got three
+    /// of the five wrong for the same reason.
+    /// <para>
+    /// "Talk" and "Type" were separate items, which made a fallback a peer of the
+    /// product: they are one conversation with two input methods, and this
+    /// codebase already says so - typing is the BACKUP, the circle is the thing.
+    /// Home carries "Or type instead", so nothing is lost by removing it here.
+    /// </para>
+    /// <para>
+    /// "CV" was worse. Putting it on the most permanent surface in the app
+    /// declares that one of the five things this app IS, is a CV writer - which
+    /// is exactly the narrowness the shell was already being blamed for.
+    /// Documents is the area; the CV is one thing in it, and CircleAI.Documents
+    /// already holds cover letters, invoices and reports for the rest.
+    /// </para>
+    /// <para>
+    /// And "Languages" was a once-ever pick given a permanent fifth of the screen.
+    /// As VOICE it earns the space: which languages it speaks, what wakes it, and
+    /// how to talk to it at all.
+    /// </para>
+    /// Settings stays last, where a settings item belongs: what you reach for when
     /// something is wrong, not what you came to do.
     /// </remarks>
     static readonly BottomItem[] Bottom =
     [
         new("", "Talk", "◉"),
-        new("chat", "Type", "⌨"),
-        new("languages", "Languages", "🌐"),
-        new("career", "CV", "📄"),
+        new("languages", "Voice", "🎙"),
+        new("career", "Documents", "📄"),
+        new("abilities", "Abilities", "✦"),
         new("settings", "Settings", "⚙"),
     ];
 
@@ -97,6 +177,9 @@
         Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         Resolve();
+        // Navigating closes the menu. A sheet left open over the screen somebody
+        // just asked for is the app arguing with them.
+        _open = false;
         StateHasChanged();
     }
 
