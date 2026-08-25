@@ -1,0 +1,67 @@
+@*
+    Services - what the app can do.
+
+    THIS SCREEN EXISTS BECAUSE NOBODY COULD FIND OUT. The repository carries 165
+    projects across 43 life domains and the app surfaced one of them. Somebody with
+    the whole source tree open could not have said it does agriculture; a person
+    holding the phone had no chance.
+
+    NOTHING SCROLLS. Seven sections of tiles stacked would be a scroll nobody
+    finishes, which is the same failure as hiding them - a capability below the
+    fold is a capability that does not exist. So the sections are chips and one
+    section's tiles show at a time: eight tiles, two rows, always whole on the
+    screen.
+
+    A tile OPENS THE CONVERSATION pointed at the thing, rather than going to a
+    screen. That is what makes breadth free - thirty-nine tiles need thirty-nine
+    first sentences, not thirty-nine screens - and it is how an assistant works:
+    you ask it, you do not navigate to it.
+*@
+@page "/services"
+@inject NavigationManager Nav
+
+<div class="services">
+
+    <div class="chips" role="tablist">
+        @for (var i = 0; i < Capabilities.All.Count; i++)
+        {
+            var index = i;
+            <button class="chip @(i == _group ? "chip-on" : null)"
+                    role="tab" @onclick="() => _group = index">
+                @Capabilities.All[i].Title
+            </button>
+        }
+    </div>
+
+    <div class="grid">
+        @foreach (var c in Capabilities.All[_group].Items)
+        {
+            <button class="tile" @onclick="() => Open(c)">
+                <span class="tile-icon" aria-hidden="true">@c.Icon</span>
+                <span class="tile-label">@c.Title</span>
+            </button>
+        }
+    </div>
+
+</div>
+
+@code {
+    int _group;
+
+    /// <summary>
+    /// Open a capability: its own screen where one genuinely exists, otherwise the
+    /// conversation with the first sentence already written.
+    /// </summary>
+    /// <remarks>
+    /// MOST OF THESE HAVE NO SCREEN AND SHOULD NOT. Forty screens for forty
+    /// capabilities is how an assistant becomes a menu system. The two that go
+    /// somewhere - the CV and the language list - are a form and a list rather
+    /// than a question.
+    /// <para>
+    /// The opener is put in the box rather than sent, so somebody nudged into a
+    /// subject can change it first.
+    /// </para>
+    /// </remarks>
+    void Open(Capability c)
+        => Nav.NavigateTo(c.Route ?? $"chat?ask={Uri.EscapeDataString(c.Opener)}");
+}

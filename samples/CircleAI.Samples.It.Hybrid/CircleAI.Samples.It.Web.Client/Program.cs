@@ -24,5 +24,6 @@ builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 builder.Services.AddSingleton<ISettings, BrowserSettings>();
 builder.Services.AddSingleton<ISetup, BrowserSetup>();
 builder.Services.AddSingleton<IConversation, BrowserConversation>();
+builder.Services.AddSingleton<IProfile, BrowserProfile>();
 
 await builder.Build().RunAsync();

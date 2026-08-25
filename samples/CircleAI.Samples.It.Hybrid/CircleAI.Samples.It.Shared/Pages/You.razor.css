@@ -1,0 +1,57 @@
+.you { display: grid; gap: 12px; align-content: start; }
+
+.bar-line { display: flex; align-items: center; gap: 10px; }
+
+.done { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+
+/* Shown so somebody can see what one more line buys them, rather than nagged. */
+.track {
+    flex: 1;
+    height: 6px;
+    background: var(--raised);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.track > span { display: block; height: 100%; background: var(--brand-blue); }
+
+.field { display: grid; gap: 4px; }
+
+.field-label { font-size: 12.5px; color: var(--ink-soft); }
+
+.field-input {
+    font: inherit;
+    font-size: 16px;
+    width: 100%;
+    padding: 10px 12px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    resize: none;
+}
+
+.field-input::placeholder { color: var(--ink-soft); }
+
+.actions { display: flex; gap: 10px; padding-top: 4px; }
+
+.soft, .danger {
+    font: inherit;
+    font-weight: 600;
+    flex: 1;
+    min-height: 2.75rem;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.soft { color: var(--ink); background: var(--brand-blue); border: 0; }
+
+/* Deleting everything is unrecoverable, so it does not wear the brand colour -
+   blue would put it in the same class as the thing beside it. */
+.danger {
+    color: var(--ink-soft);
+    background: transparent;
+    border: 1px solid var(--hairline);
+}
+
+.said { font-size: 13px; color: var(--brand-blue); }

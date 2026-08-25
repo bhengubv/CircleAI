@@ -1,0 +1,87 @@
+@*
+    You.
+
+    WHAT THE PHONE KNOWS ABOUT YOU, gathered once and used everywhere. The CV
+    interview already asks for a name, a number, where somebody lives and what they
+    do - and then buries it in a career database only the CV screen can reach. A
+    letter, an invoice, a clinic form and an application to a landlord all want the
+    same facts, and today each would ask again.
+
+    So the profile is the thing and the CV is one document made FROM it.
+
+    It is on the bar because this is the most personal thing the app holds. Being
+    able to see it, change it, and delete it is the other half of promising it
+    never leaves the phone.
+
+    NOTHING SCROLLS: five fields and two buttons, whole on a 344px screen.
+*@
+@page "/you"
+@inject IProfile Store
+@inject NavigationManager Nav
+
+<div class="you">
+
+    <div class="bar-line">
+        <span class="done">@($"{_profile.Completeness * 100:0}%") complete</span>
+        <span class="track"><span style="width:@($"{_profile.Completeness * 100:0}%")"></span></span>
+    </div>
+
+    @foreach (var fact in _profile.Facts)
+    {
+        <label class="field" @key="fact.Key">
+            <span class="field-label">@fact.Label</span>
+            @if (fact.Multiline)
+            {
+                <textarea class="field-input" rows="2" placeholder="@fact.Hint"
+                          value="@fact.Value"
+                          @onchange="e => Save(fact.Key, e)"></textarea>
+            }
+            else
+            {
+                <input class="field-input" placeholder="@fact.Hint"
+                       value="@fact.Value"
+                       @onchange="e => Save(fact.Key, e)" />
+            }
+        </label>
+    }
+
+    <div class="actions">
+        <button class="soft" @onclick='() => Nav.NavigateTo("career")'>Make my CV</button>
+        <button class="danger" @onclick="Forget">Forget me</button>
+    </div>
+
+    @if (_said is not null)
+    {
+        <p class="said">@_said</p>
+    }
+
+</div>
+
+@code {
+    Profile _profile = new([], 0);
+    string? _said;
+
+    protected override async Task OnInitializedAsync() => _profile = await Store.LoadAsync();
+
+    /// <summary>
+    /// Saved on leaving the field, not on every keystroke.
+    /// </summary>
+    /// <remarks>
+    /// A write per character would hit SQLite on every letter of somebody's name.
+    /// @onchange fires when the field loses focus, which is also when a person has
+    /// finished the thought - and there is no save button, so what is on screen is
+    /// always what is stored.
+    /// </remarks>
+    async Task Save(string key, ChangeEventArgs e)
+    {
+        await Store.SetAsync(key, e.Value?.ToString() ?? "");
+        _profile = await Store.LoadAsync();
+    }
+
+    async Task Forget()
+    {
+        await Store.ForgetAsync();
+        _profile = await Store.LoadAsync();
+        _said = "Everything it knew about you is gone from this phone.";
+    }
+}

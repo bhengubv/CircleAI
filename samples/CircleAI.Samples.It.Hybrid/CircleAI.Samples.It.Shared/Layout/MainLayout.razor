@@ -1,23 +1,24 @@
 @*
     The frame every screen sits in.
 
-    A BOTTOM MENU, because that is where a thumb is. The hamburger sheet this
-    replaces put every destination behind a tap in the top-right corner - the
-    furthest point on the screen from the hand holding the phone, and invisible
-    until somebody thought to look there.
+    FIVE ITEMS, and the middle one is not a destination.
 
-    Five items, always visible, always in the same place. They are the things
-    somebody DOES.
+    Home, Services, Voice, You, Settings. Voice is the mark itself, raised into the
+    middle of the bar where a thumb rests, because talking is not a screen you go
+    to - it is what you do from wherever you already are. That is also why an
+    earlier bar with "Talk" and "Type" as separate items was the wrong shape: one
+    conversation, two ways in, reachable everywhere.
 
-    The menu is a different job: it GROUPS the features, so the app can say what it
-    is capable of rather than listing the screens that happen to exist. A flat list
-    of destinations is an overflow drawer - it tells you where the leftovers went.
-    Groups tell you what the thing is for, and give a place for the next capability
-    to land without redesigning anything.
+    What is NOT here is as decided as what is. Documents and Language are settings
+    of a particular SERVICE rather than places: somebody can use the app in
+    English, want their CV in Japanese, and want interpreting between Korean and
+    Mandarin. Three language settings, each belonging to the service it configures,
+    none of them global and none of them a tab.
 *@
 @implements IDisposable
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
+@inject IConversation Talk
 
 <div class="app">
     <header class="app-bar" role="banner">
@@ -31,41 +32,8 @@
             <span class="app-where">@ScreenName</span>
         }
 
-        <button class="bar-menu" aria-label="Menu" aria-expanded="@_open"
-                @onclick="() => _open = !_open">
-            <span></span><span></span><span></span>
-        </button>
     </header>
 
-    @if (_open)
-    {
-        @* The backdrop is what makes the menu escapable. Without it the only way
-           out is to pick something, which is a trap rather than a menu. *@
-        <div class="backdrop" @onclick="Close"></div>
-        <nav class="menu">
-            <div class="menu-head">
-                <div class="menu-title">What it can do</div>
-                <div class="menu-sub">Tap anything and it starts there.</div>
-            </div>
-
-            @foreach (var group in Capabilities.All)
-            {
-                <div class="menu-section">@group.Title</div>
-                <div class="grid">
-                    @foreach (var c in group.Items)
-                    {
-                        @* A TILE OPENS THE CONVERSATION, pointed at the thing.
-                           That is what makes breadth cost nothing: forty tiles
-                           need forty first sentences, not forty screens. *@
-                        <button class="tile" @onclick="() => Go(c)">
-                            <span class="tile-icon" aria-hidden="true">@c.Icon</span>
-                            <span class="tile-label">@c.Title</span>
-                        </button>
-                    }
-                </div>
-            }
-        </nav>
-    }
 
     <main class="app-body @(ScreenName is null ? "app-body-flush" : null)">
         @Body
@@ -80,15 +48,16 @@
     <nav class="tabbar" role="navigation">
         @foreach (var item in Bottom)
         {
-            @if (item.Route == MenuRoute)
+            @if (item.Route == VoiceRoute)
             {
-                @* The grid opens in place rather than navigating: it is a view of
-                   everything, not a destination, and coming back from it should
-                   not be a Back press. *@
-                <button class="tabbar-item @(_open ? "tabbar-on" : null)"
-                        @onclick="() => _open = !_open">
-                    <span class="tabbar-icon" aria-hidden="true">@item.Icon</span>
-                    <span class="tabbar-label">@item.Title</span>
+                @* THE LOGO IS THE BUTTON. It is what somebody already presses on
+                   Home, so the persistent voice control being the same object
+                   means one thing to learn rather than two doing the same job. *@
+                <button class="tabbar-item tabbar-voice" @onclick="Listen"
+                        aria-label="@(_state == MarkState.Idle ? "Talk to it" : "Listening")">
+                    <span class="voice-ring @(_state != MarkState.Idle ? "voice-on" : null)">
+                        <BrandMark Size="38" State="_state" Level="_level" />
+                    </span>
                 </button>
             }
             else
@@ -106,25 +75,7 @@
 @code {
     sealed record BottomItem(string Route, string Title, string Icon);
 
-    bool _open;
 
-    void Close() => _open = false;
-
-    /// <summary>
-    /// Open a capability: its own screen where one exists, otherwise the
-    /// conversation with the first sentence already asked.
-    /// </summary>
-    /// <remarks>
-    /// MOST OF THESE HAVE NO SCREEN AND SHOULD NOT. An assistant is asked, not
-    /// navigated - and forty screens for forty capabilities is how a phone app
-    /// becomes a menu system. The handful with a real screen (the CV, the language
-    /// list) go there because they are genuinely a form rather than a question.
-    /// </remarks>
-    void Go(Capability c)
-    {
-        Close();
-        Nav.NavigateTo(c.Route ?? $"chat?ask={Uri.EscapeDataString(c.Opener)}");
-    }
 
     /// <summary>Five AREAS, not five screens.</summary>
     /// <remarks>
@@ -153,30 +104,24 @@
     /// </remarks>
     static readonly BottomItem[] Bottom =
     [
-        new("", "Talk", "◉"),
-        new("chat", "Type", "⌨"),
-        new(MenuRoute, "All", "▦"),
-        new("career", "CV", "📄"),
+        new("", "Home", "⌂"),
+        new("services", "Services", "🔧"),
+        new(VoiceRoute, "Voice", "🎙"),
+        new("you", "You", "👤"),
         new("settings", "Settings", "⚙"),
     ];
 
     /// <summary>
-    /// The grid is a bar item, not a hamburger.
+    /// The middle button is the microphone, and it is not a destination.
     /// </summary>
     /// <remarks>
-    /// NOT KNOWING WHAT THE APP CAN DO IS THE CORE PROBLEM, so the surface that
-    /// answers it does not live behind a tap in the corner. Every other item here
-    /// is ONE capability; this one is all thirty-nine, and it is the only place
-    /// somebody finds out the thing helps with farming, or a landlord, or a clinic
-    /// visit.
-    /// <para>
-    /// It took Languages' slot rather than adding a sixth: six items on a 344px
-    /// phone gives each a target too narrow to hit, and Languages is a tile in the
-    /// grid now like everything else - a once-ever choice does not earn a
-    /// permanent fifth of the screen.
-    /// </para>
+    /// IT IS THE PRODUCT, so it sits in the middle where a thumb rests and is
+    /// raised above the rest of the bar. Talking is not a screen you go to - it is
+    /// what you do, from wherever you already are, which is why it acts in place
+    /// rather than navigating. Two items called Talk and Type were the wrong shape
+    /// for the same reason: one conversation, reached whatever screen you are on.
     /// </remarks>
-    const string MenuRoute = "#all";
+    const string VoiceRoute = "#voice";
 
     /*
         THE NAME COMES FROM THE ROUTE, not from a parameter. Blazor cannot pass a
@@ -193,6 +138,8 @@
         ["chat"] = "Ask CircleAI",
         ["wake"] = "Hey B",
         ["settings"] = "Settings",
+        ["services"] = "Services",
+        ["you"] = "You",
         ["setup"] = "Setting it up",
     };
 
@@ -211,7 +158,6 @@
         Resolve();
         // Navigating closes the menu. A sheet left open over the screen somebody
         // just asked for is the app arguing with them.
-        _open = false;
         StateHasChanged();
     }
 
@@ -230,6 +176,41 @@
         => string.Equals(Path(), route.Trim('/'), StringComparison.OrdinalIgnoreCase);
 
     void GoHome() => Nav.NavigateTo("");
+
+    MarkState _state = MarkState.Idle;
+    double _level;
+
+    /// <summary>One spoken turn, from wherever you already are.</summary>
+    /// <remarks>
+    /// IN PLACE, NOT A NAVIGATION. Talking is not a screen: sending somebody to a
+    /// "voice screen" to say one sentence would throw away whatever they were
+    /// looking at, which is usually the thing they are asking about.
+    /// <para>
+    /// The mark shows the phase - listening scales its arcs with your voice,
+    /// thinking travels outward, speaking fires them in sequence - so the button
+    /// is also the progress indicator, and there is nowhere else to look.
+    /// </para>
+    /// </remarks>
+    async Task Listen()
+    {
+        if (_state != MarkState.Idle) return;
+
+        var updates = new Progress<TurnState>(t =>
+        {
+            _state = t.Phase switch
+            {
+                TurnPhase.Listening => MarkState.Listening,
+                TurnPhase.Thinking => MarkState.Thinking,
+                TurnPhase.Speaking => MarkState.Speaking,
+                _ => MarkState.Idle,
+            };
+            _level = t.Level;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Talk.TurnAsync(updates); }
+        finally { _state = MarkState.Idle; _level = 0; StateHasChanged(); }
+    }
 
     public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }
