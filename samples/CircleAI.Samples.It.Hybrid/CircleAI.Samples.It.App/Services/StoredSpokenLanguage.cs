@@ -6,12 +6,17 @@ namespace CircleAI.Samples.It.App.Services;
 
 /// <inheritdoc />
 /// <remarks>
-/// Backed by MAUI Preferences, which is SharedPreferences on Android - the same
-/// store the native head writes to, though under its own package. Two apps, two
-/// stores; nothing is shared between them and nothing should be.
+/// IN THE SAME SQLITE FILE AS EVERYTHING ELSE, not in SharedPreferences. Which
+/// language a person chose is part of how their phone is set up, and setup that
+/// lives in four different mechanisms is setup that has to be done four times.
 /// </remarks>
 public sealed class StoredSpokenLanguage : ISpokenLanguage
 {
+    private readonly SqliteAppStore _store;
+
+    /// <summary>Takes the app's one state store.</summary>
+    public StoredSpokenLanguage(SqliteAppStore store) => _store = store;
+
     private const string Key = "spoken.language";
     private const string ChosenKey = "spoken.language.chosen";
 
@@ -23,14 +28,14 @@ public sealed class StoredSpokenLanguage : ISpokenLanguage
     public const string Default = "en";
 
     /// <inheritdoc />
-    public string Current => Preferences.Get(Key, Default);
+    public string Current => _store.Get(Key, Default)!;
 
     /// <inheritdoc />
     public string? Chosen
     {
         get
         {
-            var v = Preferences.Get(ChosenKey, null as string);
+            var v = _store.Get(ChosenKey);
             return string.IsNullOrWhiteSpace(v) ? null : v;
         }
     }
@@ -38,10 +43,10 @@ public sealed class StoredSpokenLanguage : ISpokenLanguage
     /// <inheritdoc />
     public void Choose(string tag)
     {
-        Preferences.Set(ChosenKey, tag);
-        Preferences.Set(Key, tag);
+        _store.Set(ChosenKey, tag);
+        _store.Set(Key, tag);
     }
 
     /// <inheritdoc />
-    public void ClearChoice() => Preferences.Remove(ChosenKey);
+    public void ClearChoice() => _store.Set(ChosenKey, null);
 }

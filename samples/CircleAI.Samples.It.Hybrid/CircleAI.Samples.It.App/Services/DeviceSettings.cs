@@ -8,9 +8,17 @@ namespace CircleAI.Samples.It.App.Services;
 public sealed class DeviceSettings : ISettings
 {
     private readonly ISpokenLanguage _spoken;
+    private readonly SqliteAppStore _store;
 
-    /// <summary>Takes the language store, because saving has to apply as well.</summary>
-    public DeviceSettings(ISpokenLanguage spoken) => _spoken = spoken;
+    /// <summary>
+    /// Takes the language store, because saving has to apply as well, and the one
+    /// SQLite file the whole app keeps its state in.
+    /// </summary>
+    public DeviceSettings(ISpokenLanguage spoken, SqliteAppStore store)
+    {
+        _spoken = spoken;
+        _store = store;
+    }
 
     private const string ModeKey = "app.mode";
     private const string PolicyKey = "app.language.policy";
@@ -25,32 +33,32 @@ public sealed class DeviceSettings : ISettings
     /// <inheritdoc />
     public Task<AppSettings> LoadAsync(CancellationToken ct = default)
         => Task.FromResult(new AppSettings(
-            Enum.TryParse<AppMode>(Preferences.Get(ModeKey, nameof(AppMode.Assistant)), out var m)
+            Enum.TryParse<AppMode>(_store.Get(ModeKey, nameof(AppMode.Assistant))!, out var m)
                 ? m : AppMode.Assistant,
             Enum.TryParse<LanguagePolicy>(
-                Preferences.Get(PolicyKey, nameof(LanguagePolicy.FollowTheSpeaker)), out var p)
+                _store.Get(PolicyKey, nameof(LanguagePolicy.FollowTheSpeaker))!, out var p)
                 ? p : LanguagePolicy.FollowTheSpeaker,
-            Preferences.Get(FixedKey, null as string),
+            _store.Get(FixedKey),
             // ENGLISH BY DEFAULT, AND SEPARATELY FROM THE ANSWERING LANGUAGE.
             // "Hey B" is an English phrase; defaulting this to whatever language
             // somebody last spoke is how the wake word silently changed under them.
-            Preferences.Get(WakeLangKey, "en"),
-            Preferences.Get(FromKey, "en"),
-            Preferences.Get(ToKey, "zu"),
-            Preferences.Get(WakeOnKey, true)));
+            _store.Get(WakeLangKey, "en")!,
+            _store.Get(FromKey, "en")!,
+            _store.Get(ToKey, "zu")!,
+            _store.GetBool(WakeOnKey, true)));
 
     /// <inheritdoc />
     public Task SaveAsync(AppSettings settings, CancellationToken ct = default)
     {
-        Preferences.Set(ModeKey, settings.Mode.ToString());
-        Preferences.Set(PolicyKey, settings.Policy.ToString());
-        Preferences.Set(WakeLangKey, settings.WakeLanguage);
-        Preferences.Set(WakeOnKey, settings.WakeEnabled);
-        Preferences.Set(FromKey, settings.InterpretFrom);
-        Preferences.Set(ToKey, settings.InterpretTo);
+        _store.Set(ModeKey, settings.Mode.ToString());
+        _store.Set(PolicyKey, settings.Policy.ToString());
+        _store.Set(WakeLangKey, settings.WakeLanguage);
+        _store.SetBool(WakeOnKey, settings.WakeEnabled);
+        _store.Set(FromKey, settings.InterpretFrom);
+        _store.Set(ToKey, settings.InterpretTo);
 
-        if (settings.FixedLanguage is null) Preferences.Remove(FixedKey);
-        else Preferences.Set(FixedKey, settings.FixedLanguage);
+        if (settings.FixedLanguage is null) _store.Set(FixedKey, null);
+        else _store.Set(FixedKey, settings.FixedLanguage);
 
         // APPLYING, NOT JUST STORING.
         //

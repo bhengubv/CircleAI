@@ -21,6 +21,13 @@ public static class MauiProgram
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask
         // these interfaces what is possible, and each head answers for itself.
+        // ONE FILE FOR ALL OF THE APP'S STATE, beside the career database rather
+        // than in SharedPreferences: state spread across four mechanisms is state
+        // that cannot be backed up, moved to another phone, or restored after a
+        // reinstall - which is why setting up again means setting up everything.
+        builder.Services.AddSingleton(_ => new SqliteAppStore(
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "app.db")));
+
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
         builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
