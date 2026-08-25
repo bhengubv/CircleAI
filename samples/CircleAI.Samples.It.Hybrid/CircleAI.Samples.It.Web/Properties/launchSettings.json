@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+
+  "//": [
+    "WITHOUT THIS FILE THE SITE SERVES A BLANK WHITE PAGE.",
+    "",
+    "dotnet run with no launch profile defaults ASPNETCORE_ENVIRONMENT to",
+    "Production, and static web assets - everything under _content/ and",
+    "_framework/ - are only wired up outside a published build when the",
+    "environment is Development. In Production against a non-published build,",
+    "MapStaticAssets still MATCHES the route, so every stylesheet and every",
+    "framework script came back as 200 with a zero-byte body.",
+    "",
+    "That failure is close to undiagnosable from the outside. Nothing 404s, the",
+    "HTML arrives intact, and the browser reports two stylesheets loaded with",
+    "zero rules in them - so the page renders as unstyled text and looks like a",
+    "CSS bug. The only honest signal is one line in the server log:",
+    "'the application is not running against the published output and Static Web",
+    "Assets are not enabled'.",
+    "",
+    "So the environment is pinned here rather than left to whoever types the",
+    "command. A published deployment carries its own wwwroot and does not need",
+    "any of this."
+  ],
+
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5183",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+
+    "https": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:7183;http://localhost:5183",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

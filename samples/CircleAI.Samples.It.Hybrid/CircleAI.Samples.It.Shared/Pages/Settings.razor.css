@@ -29,7 +29,19 @@
     justify-content: space-between;
     gap: 10px;
     background: var(--surface);
-    padding: 12px 14px 0;
+    /*
+        BOUNDED, so the row does not spread to the edges of a desktop.
+
+        space-between fills whatever it is given: at 1920 the four tabs sat 561px
+        apart with Mode against one edge and Phone against the other, which stops
+        reading as a group of tabs at all. The side padding grows with the window
+        instead, so the strip stays full-bleed - the background is the bar - while
+        the tabs themselves never spread wider than a comfortable line.
+
+        max() rather than a media query: below 544px the computed padding goes
+        negative and the 14px floor wins, which is exactly the phone case.
+    */
+    padding: 12px max(14px, calc((100% - 34rem) / 2)) 0;
     /* Full-bleed, so the tab strip reads as part of the bar rather than as a
        card floating under it. */
     margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
