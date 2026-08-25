@@ -70,19 +70,13 @@
         }
     </div>
 
-    @* TYPING IS THE FALLBACK, so it is a link and not the loudest control here. As
-       a full-width button it made the text box the headline act. *@
-    <div class="type-instead" role="button" tabindex="0" @onclick="Type">Or type instead</div>
-
-    @* Two quiet, equal siblings. Text rather than outlined boxes: an outline reads
-       as "press this NOW", and these are for later. *@
-    <div class="nav">
-        <div class="quiet" role="button" tabindex="0"
-             @onclick='() => Nav.NavigateTo("languages")'>10 plus languages</div>
-        <div class="quiet" role="button" tabindex="0"
-             @onclick='() => Nav.NavigateTo("abilities")'>What it can do</div>
-    </div>
-
+    @*
+        NO LINKS HERE ANY MORE. "Or type instead", "10 plus languages" and "What it
+        can do" all became items on the bottom bar or tiles in Services, and a
+        screen that offers the same three destinations twice is a screen arguing
+        with its own navigation. Home is the circle, what it is doing, and what it
+        promises.
+    *@
 </div>
 
 @code {
