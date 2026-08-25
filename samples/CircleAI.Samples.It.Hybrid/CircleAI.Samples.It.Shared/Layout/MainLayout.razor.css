@@ -70,7 +70,13 @@
     container whose height it can resolve against. The top inset is the bar's job.
 */
 .app-body-flush {
-    padding: 0;
+    /*
+        Everything but the bottom. The side and top padding go because Home brings
+        its own 24px gutter, but the clearance under the lifted voice button stays:
+        Home is the ONE screen that puts a link on its very last row, and that link
+        was sitting half behind the circle.
+    */
+    padding: 0 0 calc(1.15rem + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
 }
 

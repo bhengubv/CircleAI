@@ -22,6 +22,22 @@
     @* No wordmark here any more: the bar above carries it now that the bar is on
        every screen. The native screen prints its own because it has no bar. *@
 
+    @*
+        SLACK SPLIT ABOVE AND BELOW, not pooled underneath.
+
+        The native screen ends with the claims, "Or type instead" and two more
+        rows of links - about four rows of content holding the bottom of the
+        column. Three of those moved to the bottom bar, and the single spacer
+        inherited the whole difference: on a 2312px phone that left a third of the
+        screen empty between the caption and the claims, with the circle stranded
+        at the top. Nobody designed that gap; it is what was left over.
+
+        A spacer at each end restores the balance the removed rows used to give,
+        without moving anything the native screen still has. Weighted 1 above and
+        1.4 below, so the circle sits a little above centre where it was.
+    *@
+    <div class="spacer spacer-top"></div>
+
     @* THE THING YOU PRESS, and the only large control on the screen. *@
     <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
             aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">

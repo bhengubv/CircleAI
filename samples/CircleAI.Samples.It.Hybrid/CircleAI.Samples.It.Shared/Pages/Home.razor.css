@@ -96,8 +96,21 @@
     100% { transform: translateX(350%); }
 }
 
-/* Spacer, so the claims sit low and the circle owns the upper half. */
-.spacer { flex: 1 1 auto; min-height: 16px; }
+/*
+    Spacers, so the claims sit low and the circle owns the upper half.
+
+    TWO OF THEM, weighted. One spacer took all the slack and put it in a single
+    place - a third of a 2312px screen, empty, between the caption and the claims.
+    The native screen does not have that gap because it still has three rows of
+    links down there; those moved to the bottom bar and the hole was what was
+    left. Splitting the slack 1 above to 1.4 below keeps the circle a little above
+    centre, which is where it was, and gives the gap back to both ends.
+
+    On a short screen both collapse to their floor and the layout is unchanged.
+*/
+.spacer { flex: 1.4 1 auto; min-height: 16px; }
+
+.spacer-top { flex: 1 1 auto; min-height: 0; }
 
 /* claims: padding 0 pad, bottom 16; each row 15sp InkSoft with 6 above. */
 .claims {
