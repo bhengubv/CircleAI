@@ -21,6 +21,11 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSingleton<IFormFactor, ServerFormFactor>();
 builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
 builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
+builder.Services.AddSingleton<ISpokenLanguage, BrowserSpokenLanguage>();
+builder.Services.AddSingleton<IBrain, BrowserBrain>();
+builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
+builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
+builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 
 var app = builder.Build();
 

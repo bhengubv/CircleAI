@@ -1,0 +1,67 @@
+@*
+    Aim at a job.
+
+    A COPY OF JobSpecActivity: the lead paragraph, a six-line box to paste the
+    advert into, one primary button, and the result underneath.
+
+    THE MODEL CHOOSES IDS, NOT WORDS. It is asked which of the facts already in the
+    profile to lead with, so the output can only ever be a reordering of what
+    somebody actually said about themselves. A CV that improves itself is a CV that
+    lies in an interview.
+*@
+@page "/job-spec"
+@inject IJobSpecTailor Tailor
+
+<p class="lead">
+    Paste the advert, or share it here from WhatsApp. Your CV will be rearranged to
+    put the parts that match it first — using only what you already told me.
+</p>
+
+<textarea class="spec" rows="6" placeholder="Paste the job advert here"
+          aria-label="The job advert"
+          value="@_advert"
+          @oninput="e => _advert = e.Value?.ToString() ?? string.Empty"></textarea>
+
+<button class="go" @onclick="Run" disabled="@_busy">@_action</button>
+
+@if (_out.Length > 0)
+{
+    @* pre-line, because the result carries its own paragraph breaks. *@
+    <div class="out">@_out</div>
+}
+
+@code {
+    string _advert = "";
+    string _out = "";
+    string _action = "Aim my CV at this job";
+    bool _busy;
+
+    async Task Run()
+    {
+        if (_busy) return;
+        _busy = true;
+        _action = "Reading the advert…";
+
+        var progress = new Progress<string>(line =>
+        {
+            _action = line;
+            StateHasChanged();
+        });
+
+        try
+        {
+            var result = await Tailor.TailorAsync(_advert, progress);
+            _out = result.Text;
+            _action = result.Ok ? "Aim at another job" : "Try again";
+        }
+        catch (Exception ex)
+        {
+            _out = $"Could not read that advert. ({ex.GetType().Name})";
+            _action = "Try again";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

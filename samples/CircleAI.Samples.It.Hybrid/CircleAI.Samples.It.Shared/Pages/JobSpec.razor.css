@@ -1,0 +1,50 @@
+/*
+    Measured off JobSpecActivity: lead 14sp InkSoft with 8 above and 12 below,
+    the box on Ui.Surface radius 10 with 14/12 padding and six lines, the button
+    with 14 above, the result 14sp Ink with 18 above.
+*/
+
+.lead {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding: 8px 0 12px;
+}
+
+.spec {
+    font: inherit;
+    font-size: 16px;
+    width: 100%;
+    padding: 12px 14px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 0;
+    border-radius: 10px;
+    /* Vertical only. A horizontally resizable box inside a phone-width column
+       lets somebody drag it wider than the screen. */
+    resize: vertical;
+}
+
+.spec::placeholder { color: var(--ink-soft); }
+
+.go {
+    font: inherit;
+    font-weight: 600;
+    width: 100%;
+    margin-top: 14px;
+    min-height: 2.75rem;
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.go:disabled { opacity: 0.45; cursor: default; }
+
+.out {
+    font-size: 14px;
+    color: var(--ink);
+    padding: 18px 0 20px;
+    /* The result carries its own paragraph breaks. */
+    white-space: pre-line;
+}

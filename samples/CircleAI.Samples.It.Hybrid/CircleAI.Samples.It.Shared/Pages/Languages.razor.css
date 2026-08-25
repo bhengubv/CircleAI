@@ -93,3 +93,15 @@
     user-select: none;
     white-space: nowrap;
 }
+
+/* The row is a control now, so it says so when pressed. */
+.card { cursor: pointer; }
+
+.card:active { background: var(--raised); }
+
+/* The one already chosen, marked so returning to this screen shows the choice
+   took rather than leaving the person to remember. */
+.card-on {
+    border: 1px solid var(--brand-blue);
+    padding: 13px 15px;     /* the border's 1px, taken back so rows stay level */
+}

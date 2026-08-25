@@ -154,5 +154,9 @@
         }
     }
 
-    void Type() => Nav.NavigateTo("languages");
+    /// <summary>
+    /// The typing screen. The native "Or type instead" opens MainActivity, which
+    /// is the conversation - not the language list.
+    /// </summary>
+    void Type() => Nav.NavigateTo("chat");
 }

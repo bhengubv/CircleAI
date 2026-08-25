@@ -39,6 +39,13 @@
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+
+    <!-- THE LINKED SOURCES ARE GUARDED BY THIS. AndroidAudio.cs is wrapped in
+         #if IT_VOICE_ANDROID from end to end, so without the symbol it compiles
+         to an empty file and the type simply is not there - which reads as a
+         missing namespace rather than as a missing definition. This head speaks
+         and listens, so the symbol is on. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -74,6 +81,10 @@
          than the phone's RAM, every model fails its fit check, and the abilities
          screen reports "Needs more memory" for all of them. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
+    <!-- The CV interview: its script, its profile store and the renderer. The
+         screen only maps an answer onto a field - the questions and the document
+         are this library's, so both apps run one interview. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Career\CircleAI.Career.csproj" />
   </ItemGroup>
 
   <!--
@@ -100,6 +111,26 @@
     <!-- ItSpeaker asks it which language a reply is in, to pick a voice. -->
     <Compile Include="..\..\CircleAI.Samples.It\LanguageGuess.cs"
              Link="Shared\LanguageGuess.cs" />
+    <!-- The brain: the conversation session and what it needs to run a turn.
+         CapabilitySweep and Program are still excluded - the sweep drags a dozen
+         library references for code no screen here calls. -->
+    <Compile Include="..\..\CircleAI.Samples.It\ItSession.cs" Link="Shared\ItSession.cs" />
+    <Compile Include="..\..\CircleAI.Samples.It\ItGenerator.cs" Link="Shared\ItGenerator.cs" />
+    <Compile Include="..\..\CircleAI.Samples.It\ItToolBridge.cs" Link="Shared\ItToolBridge.cs" />
+    <Compile Include="..\..\CircleAI.Samples.It\WebSearch.cs" Link="Shared\WebSearch.cs" />
+    <Compile Include="..\..\CircleAI.Samples.It\FirstRun.cs" Link="Shared\FirstRun.cs" />
+  </ItemGroup>
+
+  <!-- The microphone. Android-only by nature, and taken from the native head
+       rather than rewritten: the PCM16-to-float conversion in the wake listener
+       has to match what this produces, and a second copy is a second chance to
+       scale the samples wrong - which made the wake word deaf for a day. -->
+  <ItemGroup>
+    <!-- Linked into Shared\, NOT Platforms\Android\: MAUI's single-project
+         convention filters items by their Platforms path, so a file linked there
+         is excluded from the build and the type simply is not there. -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\AndroidAudio.cs"
+             Link="Shared\AndroidAudio.cs" />
   </ItemGroup>
 
 </Project>

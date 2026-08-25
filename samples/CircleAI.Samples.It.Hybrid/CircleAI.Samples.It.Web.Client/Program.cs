@@ -16,5 +16,10 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.Services.AddSingleton<IFormFactor, BrowserFormFactor>();
 builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
 builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
+builder.Services.AddSingleton<ISpokenLanguage, BrowserSpokenLanguage>();
+builder.Services.AddSingleton<IBrain, BrowserBrain>();
+builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
+builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
+builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 
 await builder.Build().RunAsync();

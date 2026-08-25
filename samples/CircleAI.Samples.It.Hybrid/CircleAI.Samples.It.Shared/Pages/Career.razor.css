@@ -1,0 +1,110 @@
+/*
+    Measured off CareerActivity: card on Ui.Surface radius 14 with 20/18 padding
+    and 12 above; question 18sp Ink bold; why 13.5sp InkSoft with 6 above; the
+    answer box on Ui.Bg radius 10 with 14/12 padding and 14 above; two buttons
+    with a 10 gap; progress 13sp Blue with 14 above and 6 below; the document on
+    WHITE at radius 8 with 20 all round.
+*/
+
+.card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-top: 12px;
+}
+
+.question {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.why {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+/*
+    The answer box is the PAGE colour, not the surface: it sits on a surface card,
+    and surface-on-surface gives an input with no visible edge.
+*/
+.answer {
+    font: inherit;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px 14px;
+    color: var(--ink);
+    background: var(--page);
+    border: 0;
+    border-radius: 10px;
+}
+
+.answer::placeholder { color: var(--ink-soft); }
+
+.buttons {
+    display: flex;
+    gap: 10px;
+    padding-top: 12px;
+}
+
+.btn-soft,
+.btn-primary {
+    font: inherit;
+    font-weight: 600;
+    flex: 1;
+    min-height: 2.75rem;
+    border-radius: 12px;
+    cursor: pointer;
+    padding: 0.6rem 0.5rem;
+}
+
+.btn-soft {
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+}
+
+.btn-primary {
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+}
+
+.btn-soft:disabled,
+.btn-primary:disabled { opacity: 0.45; cursor: default; }
+
+.progress {
+    font-size: 13px;
+    color: var(--brand-blue);
+    padding: 14px 0 6px;
+}
+
+/*
+    WHITE, because it is a document.
+
+    A CV rendered in the app's dark theme looks like an app screen; on white it
+    looks like the thing that will be printed and emailed, which is what somebody
+    needs to believe before they will trust it.
+*/
+.paper {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 20px;
+    color: #111111;
+}
+
+.cv-name { font-size: 20px; font-weight: 700; }
+.cv-headline { font-size: 14px; }
+.cv-small { font-size: 12.5px; }
+.cv-section { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
+.cv-entry { font-size: 13px; font-weight: 700; }
+.cv-body { font-size: 13px; }
+.cv-gap { height: 12px; }
+
+.saved {
+    font-size: 13px;
+    color: var(--brand-blue);
+    padding: 12px 0 24px;
+}

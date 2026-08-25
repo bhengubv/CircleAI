@@ -7,6 +7,8 @@
 *@
 @page "/languages"
 @inject IVoiceHost Voice
+@inject ISpokenLanguage Spoken
+@inject NavigationManager Nav
 
 <div class="head">
     <div class="title">Pick a language</div>
@@ -22,7 +24,14 @@
     @foreach (var lang in Shown)
     {
         @* Keyed on the tag so filtering reuses rows rather than rebuilding 75. *@
-        <div class="card" @key="lang.Tag">
+        @*
+            TAPPING THE ROW SELECTS. Hearing it first is still worth having, so
+            "Hear it" keeps its own control rather than stealing the tap that
+            everybody will read as "choose this one".
+        *@
+        <div class="card @(Spoken.Chosen == lang.Tag ? "card-on" : null)"
+             role="button" tabindex="0"
+             @key="lang.Tag" @onclick="() => Choose(lang)">
             <div class="card-text">
                 <div class="card-title">@lang.Name</div>
                 @*
@@ -47,7 +56,8 @@
                not met one, and this screen is read by people meeting the product
                for the first time. *@
             <div class="hear" role="button" tabindex="0"
-                 @onclick="() => Speak(lang)">Hear it</div>
+                 @onclick="() => Speak(lang)"
+                 @onclick:stopPropagation="true">Hear it</div>
         </div>
     }
 </div>
@@ -132,6 +142,21 @@
         => _detail.TryGetValue(row.Tag, out var line)
             ? line
             : row.Bytes is long b ? $"{b / 1_000_000} MB" : "";
+
+    /// <summary>
+    /// Answers in this language from now on, and goes back to the circle.
+    /// </summary>
+    /// <remarks>
+    /// PERSISTED, THEN LEFT. Storing it without leaving would be the same defect
+    /// in a quieter form: the person would still be looking at a list, with no
+    /// signal that their choice took. Returning to the circle is where the choice
+    /// becomes visible.
+    /// </remarks>
+    void Choose(Row row)
+    {
+        Spoken.Choose(row.Tag);
+        Nav.NavigateTo("");
+    }
 
     async Task Speak(Row row)
     {

@@ -1,0 +1,90 @@
+@*
+    Hey B.
+
+    A COPY OF WakeWordActivity: the mark at 200dp, the instruction, the quiet hint,
+    then the two claims low on the screen.
+
+    THE INSTRUCTION IS THE INTERFACE. Quotation marks around the phrase so it reads
+    as something to say out loud rather than as a label - there is nothing to press
+    on this screen, and that is the point of it.
+*@
+@page "/wake"
+@implements IAsyncDisposable
+@inject IWakeWord Wake
+
+<div class="wake">
+
+    @* The same mark as everywhere else, listening. EarView in the native screen is
+       the same ring and arcs; reusing BrandMark keeps one drawing rather than a
+       fifth copy of the shape. *@
+    <div class="ear">
+        <BrandMark Fluid="true" Halo="true"
+                   State="@(_status.State == WakeState.Listening ? MarkState.Listening : MarkState.Idle)"
+                   Level="@_flash" />
+    </div>
+
+    <div class="status">@_status.Status</div>
+    <div class="hint">@_status.Hint</div>
+
+    <div class="spacer"></div>
+
+    @if (_status.State == WakeState.NeedsPermission)
+    {
+        <button class="allow" @onclick="Start">Allow the microphone</button>
+    }
+
+    <div class="claims">
+        <div class="claim">Listening happens on this phone</div>
+        <div class="claim">Nothing is recorded and nothing is sent</div>
+    </div>
+
+</div>
+
+@code {
+    WakeStatus _status = new(WakeState.Preparing, "Say “Hey B”", "Getting ready…");
+    CancellationTokenSource? _cts;
+
+    /// <summary>
+    /// A brief pulse when the phrase lands, so the mark acknowledges being heard.
+    /// </summary>
+    /// <remarks>
+    /// Driven by an actual detection, not by a timer. The mark's own rule: a fake
+    /// level lies about the one thing the person is trying to find out.
+    /// </remarks>
+    double _flash;
+
+    protected override async Task OnInitializedAsync() => await Start();
+
+    async Task Start()
+    {
+        await StopAsync();
+        _cts = new CancellationTokenSource();
+
+        var updates = new Progress<WakeStatus>(s =>
+        {
+            _status = s;
+            _flash = s.State == WakeState.Heard ? 1 : 0;
+            InvokeAsync(StateHasChanged);
+        });
+
+        // Not awaited: ListenAsync runs until cancelled, and awaiting it here
+        // would block the component's initialisation for the life of the screen.
+        _ = Wake.ListenAsync(updates, _cts.Token);
+    }
+
+    async Task StopAsync()
+    {
+        if (_cts is null) return;
+        await _cts.CancelAsync();
+        _cts.Dispose();
+        _cts = null;
+    }
+
+    /// <summary>Releases the microphone when the screen goes away.</summary>
+    /// <remarks>
+    /// A wake listener has no natural end, so leaving the screen has to be the
+    /// end. Without this the microphone stays open behind whatever the person
+    /// navigated to.
+    /// </remarks>
+    public async ValueTask DisposeAsync() => await StopAsync();
+}

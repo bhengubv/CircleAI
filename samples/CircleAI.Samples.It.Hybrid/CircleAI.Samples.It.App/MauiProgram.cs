@@ -24,6 +24,13 @@ public static class MauiProgram
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
         builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
+        builder.Services.AddSingleton<ISpokenLanguage, StoredSpokenLanguage>();
+        // One brain for the app, shared by the chat screen and the job-spec
+        // tailoring: loading a model is seconds and hundreds of megabytes.
+        builder.Services.AddSingleton<IBrain, DeviceBrain>();
+        builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
+        builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
+        builder.Services.AddSingleton<IWakeWord, DeviceWakeWord>();
 
         builder.Services.AddMauiBlazorWebView();
 

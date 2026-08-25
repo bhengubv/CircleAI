@@ -1,0 +1,63 @@
+/*
+    Measured off WakeWordActivity: the ear 200dp with 44 above, status 22sp Ink
+    bold with 30 above, hint 15sp InkSoft with 8 above, a spacer, then the claims
+    14sp with 22 below.
+*/
+
+.wake {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    padding: 0 24px;
+}
+
+.ear {
+    width: min(200px, 62vw);
+    aspect-ratio: 1;
+    margin-top: 44px;
+    flex: none;
+}
+
+.status {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+    padding-top: 30px;
+}
+
+.hint {
+    font-size: 15px;
+    color: var(--ink-soft);
+    text-align: center;
+    padding-top: 8px;
+}
+
+.spacer { flex: 1 1 auto; min-height: 16px; }
+
+.allow {
+    font: inherit;
+    font-weight: 600;
+    width: 100%;
+    margin-bottom: 16px;
+    min-height: 2.75rem;
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.claims { width: 100%; padding-bottom: 22px; }
+
+.claim {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding-top: 4px;
+}
+
+.claim::before {
+    content: "·";
+    padding-right: 0.75em;
+}

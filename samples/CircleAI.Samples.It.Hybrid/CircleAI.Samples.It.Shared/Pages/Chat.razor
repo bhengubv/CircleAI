@@ -1,0 +1,128 @@
+@*
+    Ask CircleAI.
+
+    A COPY OF MainActivity + ChatView: a quiet status line, the turns as bubbles -
+    yours solid blue on the right, its bordered surface on the left - and a
+    composer pinned to the bottom.
+
+    THE BORDER ON THE REPLY MATTERS. On a dark background an unbordered card and
+    the page behind it are the same colour at a glance, and the reply stops looking
+    like a distinct thing.
+*@
+@page "/chat"
+@inject IBrain Brain
+
+<div class="chat">
+    @if (_status.Length > 0)
+    {
+        @* Centred and quiet, so it reads as the app speaking about itself rather
+           than as a turn in the conversation. *@
+        <div class="status">@_status</div>
+    }
+
+    <div class="turns">
+        @if (_turns.Count == 0 && _status.Length == 0)
+        {
+            <div class="welcome">Ask it something.</div>
+        }
+
+        @foreach (var (turn, i) in _turns.Select((t, i) => (t, i)))
+        {
+            <div class="row @(turn.Mine ? "row-mine" : "row-its")" @key="i">
+                <div class="bubble @(turn.Mine ? "mine" : "its")">@turn.Text</div>
+            </div>
+        }
+    </div>
+
+    <div class="composer">
+        <input class="input" placeholder="Type a message"
+               aria-label="Your message"
+               disabled="@(!_ready)"
+               value="@_draft"
+               @oninput="e => _draft = e.Value?.ToString() ?? string.Empty"
+               @onkeydown="OnKey" />
+        <button class="send" @onclick="Send" disabled="@(!_ready || _busy)">Send</button>
+    </div>
+</div>
+
+@code {
+    readonly List<Utterance> _turns = [];
+    string _draft = "";
+    string _status = "Getting ready…";
+    bool _ready;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await Brain.StateAsync();
+        _ready = state.Ready;
+        // The reason, not "unavailable": "Answering needs a 548 MB model" tells
+        // somebody what to do next.
+        _status = state.Ready ? "" : state.Detail;
+    }
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Send();
+    }
+
+    async Task Send()
+    {
+        var text = _draft.Trim();
+        if (text.Length == 0 || _busy || !_ready) return;
+
+        _turns.Add(new Utterance(true, text));
+        _draft = "";
+        _busy = true;
+
+        // The open reply, appended to as fragments arrive.
+        var reply = new Utterance(false, "");
+        _turns.Add(reply);
+        var at = _turns.Count - 1;
+
+        try
+        {
+            await Brain.AskAsync(text, fragment =>
+            {
+                _turns[at] = _turns[at] with { Text = Strip(_turns[at].Text + fragment) };
+                InvokeAsync(StateHasChanged);
+            });
+        }
+        catch (Exception ex)
+        {
+            _turns[at] = _turns[at] with { Text = $"{ex.GetType().Name}: {ex.Message}" };
+        }
+        finally
+        {
+            // AN EMPTY BUBBLE MEANS THE MODEL PRODUCED NOTHING. Leaving it is a
+            // grey rectangle with no explanation, which reads as a bug rather
+            // than as silence.
+            if (string.IsNullOrWhiteSpace(_turns[at].Text)) _turns.RemoveAt(at);
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Removes the routing marker the session streams in front of its answers.
+    /// </summary>
+    /// <remarks>
+    /// The session prefixes replies with something like "IT! &gt; ", which made
+    /// sense when every turn was a line in one text buffer and you needed to know
+    /// who was talking. A bubble already says that by its side and its colour, so
+    /// the prefix is the old interface leaking into the new one - and left alone,
+    /// the first thing the assistant appears to say is its own name and a piece of
+    /// punctuation.
+    /// <para>
+    /// Chunks arrive a few characters at a time, so the marker can be split across
+    /// several. Re-checked while the text is still short rather than tried once.
+    /// </para>
+    /// </remarks>
+    static string Strip(string text)
+    {
+        if (text.Length > 24) return text;
+        var cut = text.IndexOf('>');
+        return cut >= 0 && cut <= 12 && text[..cut].Trim().Length <= 10
+            ? text[(cut + 1)..].TrimStart()
+            : text;
+    }
+}

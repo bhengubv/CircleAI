@@ -1,0 +1,149 @@
+@*
+    Your CV.
+
+    A COPY OF CareerActivity: one card holding the current question, why it is
+    being asked, a box to answer in and two buttons; a progress line; then the
+    document itself on white, so what you are building is always visible under
+    what you are being asked.
+
+    ONE QUESTION AT A TIME, not a form. A form asks somebody with no CV to produce
+    one before they can start; a question they can answer in a sentence gets a
+    first draft out of a conversation.
+*@
+@page "/career"
+@inject ICareerInterview Interview
+@inject NavigationManager Nav
+
+<div class="card">
+    <div class="question">@_step.Question</div>
+    <div class="why">@_step.Why</div>
+
+    @if (!_step.Done)
+    {
+        <input class="answer" placeholder="Say it or type it"
+               aria-label="Your answer"
+               value="@_answer" @oninput="e => _answer = e.Value?.ToString() ?? string.Empty"
+               @onkeydown="OnKey" />
+    }
+
+    <div class="buttons">
+        @* Two, side by side and equal. The left is the softer option in both
+           states, so the position keeps its meaning as the screen changes. *@
+        <button class="btn-soft" @onclick="Secondary" disabled="@_busy">
+            @(_step.Done ? "Aim it at a job" : Verify)
+        </button>
+        <button class="btn-primary" @onclick="Primary" disabled="@_busy">
+            @(_step.Done ? "Save my CV" : "Next")
+        </button>
+    </div>
+</div>
+
+<div class="progress">@_progress</div>
+
+@*
+    The document, on white.
+
+    Not a preview pane that shows something else - it is built from the same
+    CvDocument the renderer takes, so what somebody sees here is what comes out.
+*@
+<div class="paper">
+    @foreach (var line in _preview)
+    {
+        @switch (line.Kind)
+        {
+            case CvLineKind.Gap:
+                <div class="cv-gap"></div>
+                break;
+            case CvLineKind.Name:
+                <div class="cv-name">@line.Text</div>
+                break;
+            case CvLineKind.Headline:
+                <div class="cv-headline">@line.Text</div>
+                break;
+            case CvLineKind.Section:
+                <div class="cv-section">@line.Text</div>
+                break;
+            case CvLineKind.Entry:
+                <div class="cv-entry">@line.Text</div>
+                break;
+            case CvLineKind.Small:
+                <div class="cv-small">@line.Text</div>
+                break;
+            default:
+                <div class="cv-body">@line.Text</div>
+                break;
+        }
+    }
+</div>
+
+@if (_saved is not null)
+{
+    <div class="saved">@_saved</div>
+}
+
+@code {
+    CareerStep _step = new("", "", false, false);
+    IReadOnlyList<CvLine> _preview = [];
+    string _progress = "";
+    string _answer = "";
+    string? _saved;
+    bool _busy;
+
+    /// <summary>
+    /// The script says which answers must be read back before they are kept.
+    /// </summary>
+    /// <remarks>A mis-heard surname is worse than a blank one.</remarks>
+    string Verify => _step.Verify ? "Say it (I will check)" : "Say it";
+
+    protected override async Task OnInitializedAsync() => await Refresh();
+
+    async Task Refresh()
+    {
+        _step = await Interview.StepAsync();
+        _preview = await Interview.PreviewAsync();
+        _progress = await Interview.ProgressAsync();
+    }
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Primary();
+    }
+
+    async Task Primary()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            if (_step.Done)
+            {
+                _saved = await Interview.SaveAsync();
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_answer))
+                await Interview.AnswerAsync(_answer);
+
+            _answer = "";
+            await Refresh();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    void Secondary()
+    {
+        if (_step.Done)
+        {
+            Nav.NavigateTo("job-spec");
+            return;
+        }
+
+        // "Say it" needs the microphone, which this head does not have wired.
+        // Rather than a button that appears to listen and does not, it says so.
+        _saved = "Speaking your answer needs the microphone, which is not wired "
+               + "into this head yet. Type it for now.";
+    }
+}

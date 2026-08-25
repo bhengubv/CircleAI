@@ -9,5 +9,12 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 	<uses-permission android:name="android.permission.INTERNET" />
+	<!--
+	    RECORD_AUDIO must be in the manifest or requestPermissions is a SILENT
+	    no-op and AudioRecord yields silence - which looks exactly like a wake
+	    word that does not work rather than like a permission that was never
+	    asked for.
+	-->
+	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 	<application android:allowBackup="true" android:supportsRtl="true"></application>
 </manifest>

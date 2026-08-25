@@ -24,7 +24,20 @@ public sealed class DeviceFacts : IDeviceFacts
         ("Listening", "Understands you when you speak",                ModelModality.Asr),
         ("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         ("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
+        // Listed now that this head can actually wake. The rule stands: an
+        // ability is code that runs, not a model left on disk - the chat-only
+        // build advertised "Waking ✓ On" on a phone that could not wake at all.
+        ("Waking",    "Hears you say \"Hey B\" without being touched",  ModelModality.WakeWord),
     ];
+
+    /// <summary>The screen that demonstrates an ability, where one exists.</summary>
+    /// <remarks>
+    /// An ability that is ON should be somewhere you can GO rather than just a
+    /// tick - but a row that looks tappable and does nothing is worse than a plain
+    /// one, so this is null for everything without a screen.
+    /// </remarks>
+    private static string? RouteFor(ModelModality modality)
+        => modality == ModelModality.WakeWord ? "wake" : null;
 
     private static string StorageDir
         => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
@@ -45,7 +58,8 @@ public sealed class DeviceFacts : IDeviceFacts
 
                 if (installed is not null)
                 {
-                    rows.Add(new AbilityRow(title, blurb, AbilityState.On));
+                    rows.Add(new AbilityRow(title, blurb, AbilityState.On,
+                        TryRoute: RouteFor(modality)));
                     continue;
                 }
 
