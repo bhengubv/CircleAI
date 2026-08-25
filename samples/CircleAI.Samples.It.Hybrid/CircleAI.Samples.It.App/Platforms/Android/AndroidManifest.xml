@@ -17,23 +17,13 @@
 	-->
 	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 	<!--
-	    Models are large and expensive. On a metered connection a reinstall was
-	    costing about 250 MB and most of an hour, every time.
-	-->
-	<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-	                 android:maxSdkVersion="29" />
-	<!--
-	    hasFragileUserData: on Android 10+ the uninstall dialog then OFFERS to keep
-	    this app's data. One attribute, and a reinstall stops wiping the setup.
-
-	    requestLegacyExternalStorage: API 29 honours it, which is what lets the
-	    shared model folder work on the P30 this is developed against. Newer
-	    devices fall back to the private directory - see ModelStore, which proves
-	    the path is writable rather than assuming it.
+	    hasFragileUserData: on Android 10+ the uninstall dialog OFFERS to keep this
+	    app's data. One attribute, and a reinstall stops wiping 250 MB of models
+	    somebody already paid for - which is the mechanism Android provides for
+	    data an app NEEDS and cannot cheaply refetch. No storage permission is
+	    asked for: the models are app data and stay in private storage.
 	-->
 	<application android:allowBackup="true"
 	             android:supportsRtl="true"
-	             android:hasFragileUserData="true"
-	             android:requestLegacyExternalStorage="true"></application>
+	             android:hasFragileUserData="true"></application>
 </manifest>

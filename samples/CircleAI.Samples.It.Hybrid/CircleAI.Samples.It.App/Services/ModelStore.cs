@@ -1,86 +1,53 @@
 // ModelStore.cs
 //
-// Where the models live, and why it is not the app's private directory.
+// Where the models live: the app's own private storage.
 //
-// THE PROBLEM THIS SOLVES: a reinstall was costing about 250 MB and most of an
-// hour on a P30. Android deletes FileSystem.AppDataDirectory on uninstall, and it
-// deletes getExternalFilesDir with it, so every install started from nothing -
-// and with two CircleAI apps on one phone, the same voices were downloaded twice.
+// MODELS ARE APP DATA. Without them the app does nothing - no voice, no ears, no
+// answers - so they are not media and they are not optional. That distinction
+// decides where they belong.
 //
-// Models are not app data. They are more like media: large, expensive, and worth
-// exactly the same to whichever app opens them. So they go in shared storage
-// under one folder, and both apps find the same copy.
+// An earlier version of this file put them in shared storage so they would
+// survive an uninstall, on the reasoning that they were "large, expensive, and
+// worth the same to whichever app opens them". Both halves of that were wrong:
 //
-// FALLS BACK RATHER THAN FAILS. Shared storage is not writable on every device or
-// every Android version, and an app that cannot write its models is worse than
-// one that re-downloads them. When the shared path cannot be used, this returns
-// the private one and the old behaviour applies.
+//   They are ESSENTIAL, not optional. Putting the thing the app cannot run
+//   without into a world-visible folder means a file manager, a cleaner app, or
+//   an owner freeing space can break the app, and the folder looks like 250 MB of
+//   junk to anybody who does not know what it is.
+//
+//   And it ASSUMED shared storage exists. Android.OS.Environment
+//   .ExternalStorageDirectory is not a guarantee - plenty of devices have no
+//   removable card, and scoped storage can refuse the write on the ones that do.
+//   The fallback that hid this was papering over an assumption rather than
+//   removing it.
+//
+// Surviving a reinstall is handled where Android provides for it:
+// android:hasFragileUserData="true" in the manifest, which makes the uninstall
+// dialog offer to KEEP this app's data. That is the mechanism designed for data
+// an app needs and cannot cheaply refetch, and it keeps it private.
+//
+// This class earns its place anyway: six services used to build this path
+// themselves, and a model store spelled slightly differently in one of them is a
+// download that lands where nothing looks for it.
 
 namespace CircleAI.Samples.It.App.Services;
 
-/// <summary>Resolves the directory models are kept in.</summary>
+/// <summary>The one place the model directory is decided.</summary>
 public static class ModelStore
 {
-    /// <summary>
-    /// One folder, shared by every CircleAI app on the phone.
-    /// </summary>
-    /// <remarks>
-    /// Not under Android/data: that path is app-scoped and removed with the app.
-    /// A plain top-level folder is what survives an uninstall and what a person
-    /// can see, copy to an SD card, or hand to somebody over a cable - which is
-    /// the same thing the one-APK sideload rule needs.
-    /// </remarks>
-    private const string SharedFolder = "CircleAI";
-
     private static string? _resolved;
 
-    /// <summary>Where models are, creating it if it can be created.</summary>
+    /// <summary>Where models are, created if it does not exist yet.</summary>
     public static string Path
     {
         get
         {
             if (_resolved is not null) return _resolved;
-            return _resolved = Resolve();
+
+            var dir = System.IO.Path.Combine(
+                FileSystem.AppDataDirectory, "CircleAI", "Models");
+            System.IO.Directory.CreateDirectory(dir);
+            return _resolved = dir;
         }
-    }
-
-    /// <summary>True when models are in shared storage and survive a reinstall.</summary>
-    public static bool IsShared { get; private set; }
-
-    private static string Resolve()
-    {
-        var priv = System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
-
-#if ANDROID
-        try
-        {
-            var root = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
-            if (!string.IsNullOrWhiteSpace(root))
-            {
-                var shared = System.IO.Path.Combine(root!, SharedFolder, "Models");
-                System.IO.Directory.CreateDirectory(shared);
-
-                // PROVE IT IS WRITABLE, do not assume. On scoped storage the
-                // directory can be created and every write then fails, which
-                // turns a download into a silent zero-byte file rather than an
-                // error somebody can act on.
-                var probe = System.IO.Path.Combine(shared, ".writable");
-                System.IO.File.WriteAllText(probe, "1");
-                System.IO.File.Delete(probe);
-
-                IsShared = true;
-                return shared;
-            }
-        }
-        catch
-        {
-            // Not writable here. The private directory still works; it just does
-            // not survive an uninstall.
-        }
-#endif
-
-        IsShared = false;
-        System.IO.Directory.CreateDirectory(priv);
-        return priv;
     }
 }
