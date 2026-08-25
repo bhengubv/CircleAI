@@ -1,5 +1,5 @@
 /*
-    The bar, and the menu it opens.
+    The top bar, and the bottom menu.
 
     The mark is deliberately not a back arrow. "Back" means the previous screen,
     which is a fact about history; the mark means the product, and pressing it
@@ -25,10 +25,8 @@
     flex: none;
 }
 
-/*
-    Its own target now, rather than the whole bar. The bar holds the menu button
-    too, and a bar that navigates home would swallow that tap.
-*/
+/* Its own target rather than the whole bar, so the screen name beside it is
+   selectable text rather than part of a button. */
 .bar-home {
     display: flex;
     align-items: center;
@@ -50,9 +48,9 @@
     color: var(--ink-soft);
     /*
         The screen name is the part that gives way when the bar runs out of room.
-        On a 344px phone with a long name, truncating here keeps the mark, the
-        product name and the menu whole - losing the wordmark would be losing the
-        brand to fit a breadcrumb.
+        On a 344px phone with a long name, truncating here keeps the mark and the
+        product name whole - losing the wordmark would be losing the brand to fit
+        a breadcrumb.
     */
     overflow: hidden;
     text-overflow: ellipsis;
@@ -67,97 +65,65 @@
     color: var(--hairline);
 }
 
-/* Pushed right even on Home, where there is no screen name to fill the gap. */
-.bar-menu {
-    margin-left: auto;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
-    /* 44px: the smallest target most people can hit reliably. */
-    width: 44px;
-    height: 44px;
-    padding: 0 10px;
-    background: transparent;
-    border: 0;
-    cursor: pointer;
-    flex: none;
-}
-
-.bar-menu > span {
-    display: block;
-    height: 2px;
-    background: var(--ink);
-    border-radius: 1px;
-}
-
-/*
-    The backdrop is what makes the menu escapable. Without it the only way out is
-    to pick something, which is a trap rather than a menu.
-*/
-.backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 10;
-}
-
-.menu {
-    position: fixed;
-    top: 0;
-    right: 0;
-    z-index: 11;
-    display: flex;
-    flex-direction: column;
-    /* Capped so it is never a full-screen wall on a tablet, and never wider than
-       the phone it is on. */
-    width: min(85vw, 22rem);
-    max-height: 100dvh;
-    overflow-y: auto;
-    padding-top: max(env(safe-area-inset-top, 0px), 24px);
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
-    background: var(--surface);
-    border-left: 1px solid var(--hairline);
-}
-
-.menu-item {
-    display: block;
-    padding: 0.85rem var(--gutter);
-    color: var(--ink);
-    text-decoration: none;
-    border-bottom: 1px solid var(--hairline);
-}
-
-.menu-item:active { background: var(--raised); }
-
-/* Where you already are, marked - so the menu answers "where am I" as well as
-   "where can I go". */
-.menu-on {
-    border-left: 3px solid var(--brand-blue);
-    padding-left: calc(var(--gutter) - 3px);
-}
-
-.menu-on .menu-title { color: var(--brand-blue); }
-
-.menu-title {
-    display: block;
-    font-size: 1rem;
-    font-weight: 700;
-}
-
-.menu-sub {
-    display: block;
-    font-size: 0.8125rem;
-    color: var(--ink-soft);
-    padding-top: 0.15rem;
-}
-
 /*
     Home takes the full width: it has its own 24px gutter, and its spacer needs a
-    container whose height it can resolve against. The top inset is the bar's job
-    now that Home has a bar too.
+    container whose height it can resolve against. The top inset is the bar's job.
 */
 .app-body-flush {
     padding: 0;
     box-sizing: border-box;
 }
+
+/*
+    THE BOTTOM MENU.
+
+    Where a thumb is. It replaced a hamburger in the top-right corner - the
+    furthest point on the screen from the hand holding the phone, and invisible
+    until somebody thought to look there.
+*/
+.tabbar {
+    display: flex;
+    flex: none;
+    background: var(--surface);
+    border-top: 1px solid var(--hairline);
+    /* Clears the home gesture bar without hardcoding a phone. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.tabbar-item {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    /* 56px: a bottom bar is hit with a thumb, at arm's length, often moving. */
+    min-height: 56px;
+    padding: 7px 2px;
+    color: var(--ink-soft);
+    text-decoration: none;
+}
+
+.tabbar-item:active { background: var(--raised); }
+
+.tabbar-icon { font-size: 19px; line-height: 1; }
+
+.tabbar-label {
+    font-size: 11px;
+    /* Truncate rather than wrap: "Languages" wrapping to two lines makes that one
+       item taller than the other four and the whole bar looks broken. */
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+    Where you are, said twice - colour AND weight. Colour alone fails for anyone
+    colour-blind and washes out in sunlight, which is where these phones get used.
+*/
+.tabbar-on {
+    color: var(--brand-blue);
+}
+
+.tabbar-on .tabbar-label { font-weight: 700; }
