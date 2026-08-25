@@ -1,70 +1,176 @@
 @*
-    What it can do - and, just as usefully, where.
+    What it can do.
 
-    The native head's version of this screen lists capabilities. This one also
-    says which of them hold on the head you are currently looking at, because the
-    same UI now renders in a browser tab where "works with no signal" is simply
-    untrue.
+    A COPY OF AbilitiesActivity: two tabs in the header, then either one bordered
+    panel of hairline-separated ability rows, or the phone's own facts.
+
+    TWO TABS, NOT FIVE SECTIONS. A settings screen that scrolls forever makes a
+    person hunt, and hunting is what makes someone decide an app is complicated -
+    they never say the layout was wrong, they say they could not find it. The split
+    is what-it-does versus what-this-phone-is, because those are two questions
+    asked by two different people: the owner wants to turn something on, the
+    developer wants to know what it costs.
 *@
 @page "/abilities"
-@inject IFormFactor Host
-@inject IVoiceHost Voice
+@inject IDeviceFacts Facts
 
-<h1 class="sr-only">What it can do</h1>
-
-<div class="stack">
-
-    <div>
-        <h2>What it can do</h2>
-        <p class="muted">Running as @Host.GetFormFactor() on @Host.GetPlatform().</p>
+<div class="head">
+    <div class="tabs" role="tablist">
+        @for (var i = 0; i < TabNames.Length; i++)
+        {
+            var index = i;
+            @* Underlined, not just coloured. Colour alone fails for anyone
+               colour-blind and washes out in sunlight, which is the condition half
+               the people this is for will be holding the phone in. *@
+            <div class="tab @(i == _tab ? "tab-on" : null)"
+                 role="tab" tabindex="0"
+                 @onclick="() => _tab = index">@TabNames[i]</div>
+        }
     </div>
-
-    @foreach (var group in Groups)
-    {
-        <section class="card stack">
-            <h2>@group.Title</h2>
-            <ul class="claims">
-                @foreach (var item in group.Items)
-                {
-                    <li>@item</li>
-                }
-            </ul>
-            @if (group.Caveat is not null)
-            {
-                <p class="muted">@group.Caveat</p>
-            }
-        </section>
-    }
-
 </div>
 
-@code {
-    sealed record Group(string Title, string[] Items, string? Caveat = null);
+@if (_tab == 0)
+{
+    @* ONE bordered panel with hairline rows, not five fat cards. Five cards each
+       with their own padding and margin spent most of the screen on the gaps
+       BETWEEN things and pushed the fifth ability below the fold. *@
+    <div class="panel">
+        @for (var i = 0; i < _abilities.Count; i++)
+        {
+            var row = _abilities[i];
 
-    IEnumerable<Group> Groups => new[]
+            @if (i > 0)
+            {
+                <div class="divider"></div>
+            }
+
+            <div class="ability">
+                <div class="ability-text">
+                    <div class="ability-title">@row.Title</div>
+                    <div class="ability-blurb">@Blurb(row)</div>
+                </div>
+
+                @if (row.State == AbilityState.On && row.TryRoute is not null)
+                {
+                    @* An ability that is ON should be somewhere you can GO, not
+                       just a tick - but only where a screen really exists. *@
+                    <a class="ability-go" href="@row.TryRoute">Try it&nbsp;&nbsp;&rsaquo;</a>
+                }
+                else if (row.State == AbilityState.On)
+                {
+                    <div class="ability-on">&#10003; On</div>
+                }
+                else if (row.State == AbilityState.Available)
+                {
+                    <button class="compact" disabled="@(_turning is not null)"
+                            @onclick="() => TurnOn(row)">
+                        @(_turning == row.Title ? "..." : "Turn on")
+                    </button>
+                }
+                else if (row.State == AbilityState.TooBig)
+                {
+                    @* "Needs more memory" tells a person about their phone.
+                       "Not available" would tell them about ours. *@
+                    <div class="ability-note">Needs more memory</div>
+                }
+                else
+                {
+                    <div class="ability-note">Not yet</div>
+                }
+            </div>
+
+            @if (_progress.TryGetValue(row.Title, out var line))
+            {
+                @* Under the row, so starting a download does not reflow the list
+                   and shove the next ability off the screen mid-tap. *@
+                <div class="ability-progress">@line</div>
+            }
+        }
+    </div>
+}
+else
+{
+    <div class="card">
+        @foreach (var fact in _phone.Facts)
+        {
+            <div class="fact-title">@fact.Title</div>
+            <div class="fact-value">@fact.Value</div>
+        }
+    </div>
+
+    @if (_phone.Technical.Count > 0)
     {
-        new Group("Speech", [
-            "75 languages, spoken out loud",
-            "Speech recognition for the languages a recogniser covers",
-        ], Host.IsOnDevice
-            ? null
-            : Voice.Provenance),
+        <button class="wide" @onclick="() => _technical = !_technical">
+            @(_technical ? "Hide technical details" : "Show technical details")
+        </button>
 
-        new Group("Where the work happens", Host.IsOnDevice
-            ? [
-                "Models run on this device",
-                "Works with no signal once a voice is downloaded",
-                "No account, and only searches leave the device",
-              ]
-            : [
-                "This head is a web page: it browses the catalogue",
-                "Synthesis needs the phone app, where the models are",
-              ]),
+        @if (_technical)
+        {
+            <div class="card tech">
+                @foreach (var line in _phone.Technical)
+                {
+                    <div class="tech-line">@line</div>
+                }
+            </div>
+        }
+    }
+}
 
-        new Group("Written for old hardware", [
-            "Benchmarked on a Huawei P30 Lite, not on a desktop",
-            "A voice is 60-150 MB and is downloaded once, on request",
-        ], "Japanese is the exception: its voice needs a 103 MB "
-         + "morphological dictionary as well, so it is 247 MB in total."),
-    };
+@code {
+    static readonly string[] TabNames = ["What it does", "This phone"];
+
+    int _tab;
+    bool _technical;
+    string? _turning;
+
+    IReadOnlyList<AbilityRow> _abilities = [];
+    PhoneFacts _phone = new([], []);
+    readonly Dictionary<string, string> _progress = new();
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    async Task Load()
+    {
+        _abilities = await Facts.AbilitiesAsync();
+        _phone = await Facts.PhoneAsync();
+    }
+
+    /// <summary>The blurb, plus the download size when there is one to state.</summary>
+    /// <remarks>
+    /// The size is the number that decides whether somebody on a metered
+    /// connection taps, so it belongs beside the thing being offered rather than
+    /// behind it.
+    /// </remarks>
+    static string Blurb(AbilityRow row)
+        => row is { State: AbilityState.Available, Bytes: long b }
+            ? $"{row.Blurb}  ·  {Size(b)}"
+            : row.Blurb;
+
+    static string Size(long bytes)
+        => bytes >= 1_000_000_000
+            ? $"{bytes / 1_000_000_000.0:0.#} GB"
+            : $"{bytes / 1_000_000.0:0} MB";
+
+    async Task TurnOn(AbilityRow row)
+    {
+        if (_turning is not null) return;
+        _turning = row.Title;
+        _progress[row.Title] = "starting...";
+
+        var progress = new Progress<string>(line =>
+        {
+            _progress[row.Title] = line;
+            StateHasChanged();
+        });
+
+        try
+        {
+            _progress[row.Title] = await Facts.TurnOnAsync(row.Title, progress);
+            await Load();
+        }
+        finally
+        {
+            _turning = null;
+        }
+    }
 }

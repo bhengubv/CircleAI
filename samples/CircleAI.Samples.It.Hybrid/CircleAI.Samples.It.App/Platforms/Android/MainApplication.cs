@@ -23,5 +23,33 @@ public class MainApplication : MauiApplication
     }
 
     /// <inheritdoc />
+    public override void OnCreate()
+    {
+        base.OnCreate();
+
+        // TEACHES DeviceProbe TO READ THE PHONE'S REAL RAM, and without it the app
+        // quietly decides it is hardware that cannot run anything.
+        //
+        // DeviceProbe falls back to the GC HEAP LIMIT - a few hundred MB where the
+        // phone has 4 GB - so every model fails its own fit check and every ability
+        // reads "Needs more memory". Nothing throws. It happened here exactly as it
+        // happened in the native head, which is why that head installs it from
+        // Application.OnCreate rather than from whichever screen opens first.
+        CircleAI.Device.AndroidDeviceMemory.Install(this);
+
+        // Where the phonemiser looks for Open JTalk's dictionary once it has been
+        // downloaded. The model store, not the sideload folder: the catalogued
+        // entry unpacks into the store, and a registry entry nothing can find is
+        // decorative.
+        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = System.IO.Path.Combine(
+            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
+            "CircleAI", "Models");
+
+        // Managed voice logging reaches nothing through ILogger on Android, so it
+        // goes to logcat directly - the one place it is actually readable.
+        CircleAI.Voice.VoiceTrace.Sink = line => Android.Util.Log.Info("ITHYB", line);
+    }
+
+    /// <inheritdoc />
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
 }

@@ -20,6 +20,7 @@ builder.Services.AddRazorComponents()
 // same honest answers the client does: this head is not a device.
 builder.Services.AddSingleton<IFormFactor, ServerFormFactor>();
 builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
+builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
 
 var app = builder.Build();
 

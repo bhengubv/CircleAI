@@ -15,5 +15,6 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 // itself; the UI never asks what platform it is on directly.
 builder.Services.AddSingleton<IFormFactor, BrowserFormFactor>();
 builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
+builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
 
 await builder.Build().RunAsync();

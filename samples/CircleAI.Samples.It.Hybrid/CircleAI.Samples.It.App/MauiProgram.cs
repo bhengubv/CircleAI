@@ -23,6 +23,7 @@ public static class MauiProgram
         // these interfaces what is possible, and each head answers for itself.
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
+        builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
 
         builder.Services.AddMauiBlazorWebView();
 

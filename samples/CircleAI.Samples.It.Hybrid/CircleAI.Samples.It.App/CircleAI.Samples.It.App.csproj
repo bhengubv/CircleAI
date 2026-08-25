@@ -70,6 +70,10 @@
     <ProjectReference Include="..\..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- AndroidDeviceMemory. Without it DeviceProbe reads the GC heap limit rather
+         than the phone's RAM, every model fails its fit check, and the abilities
+         screen reports "Needs more memory" for all of them. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
   </ItemGroup>
 
   <!--
