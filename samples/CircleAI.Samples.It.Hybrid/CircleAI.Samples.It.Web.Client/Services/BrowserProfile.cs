@@ -15,10 +15,14 @@ public sealed class BrowserProfile : IProfile
 {
     /// <inheritdoc />
     public Task<Profile> LoadAsync(CancellationToken ct = default)
-        => Task.FromResult(new Profile([], 0));
+        => Task.FromResult(new Profile([], [], 0, ""));
 
     /// <inheritdoc />
     public Task SetAsync(string key, string value, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public Task RemoveAsync(string section, long id, CancellationToken ct = default)
         => Task.CompletedTask;
 
     /// <inheritdoc />

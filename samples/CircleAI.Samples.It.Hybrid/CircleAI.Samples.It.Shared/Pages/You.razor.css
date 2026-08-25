@@ -1,10 +1,39 @@
-.you { display: grid; gap: 12px; align-content: start; }
+/*
+    Six headings and whichever one is open, on a 344px screen.
 
-.bar-line { display: flex; align-items: center; gap: 10px; }
+    The arithmetic: six folds at 42px is 252, the bar and the missing line are
+    about 60 together, and the buttons at the bottom another 60 - so an open
+    section has roughly 130 to play with, which is three rows or five compact
+    fields. That is why the identity fields are one line each rather than a
+    stacked label and box; stacked, five of them filled the screen on their own
+    and pushed the other five sections off the bottom, which is how this screen
+    came to look as though the identity fields were all there was.
+*/
+.you {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 2px;
+    /* NOTHING SCROLLS. Clipping is loud where a scrollbar is quiet, and a
+       profile section nobody can see is one nobody checks. */
+    overflow: hidden;
+}
 
-.done { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+.bar-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    padding-bottom: 4px;
+}
 
-/* Shown so somebody can see what one more line buys them, rather than nagged. */
+.done {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+
 .track {
     flex: 1;
     height: 6px;
@@ -15,27 +44,149 @@
 
 .track > span { display: block; height: 100%; background: var(--brand-blue); }
 
-.field { display: grid; gap: 4px; }
+/*
+    The one absent thing worth most. An instruction, not a nag - which is the
+    difference between "40% complete" and "where you have worked counts for more
+    than anything else here".
+*/
+.missing {
+    flex: none;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    padding-bottom: 6px;
+}
 
-.field-label { font-size: 12.5px; color: var(--ink-soft); }
-
-.field-input {
+.fold {
     font: inherit;
-    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
-    padding: 10px 12px;
+    flex: none;
+    padding: 10px 2px;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--hairline);
+    text-align: left;
+    cursor: pointer;
+}
+
+.fold-title {
+    flex: none;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.fold-on .fold-title { color: var(--brand-blue); }
+
+/* What it holds, on the closed heading, so most visits need no taps at all. */
+.fold-now {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.fold-chevron {
+    flex: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--ink-soft);
+    transition: transform 120ms ease;
+}
+
+.fold-on .fold-chevron { transform: rotate(90deg); }
+
+/* One row, whether it is a field to type in or a thing on a list. */
+.line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    padding: 6px 2px;
+}
+
+/* 6.5rem, not 7.5: the widest label here is "Phone number", and every tenth of
+   a rem taken off it is one more character of the value that fits on a 344px
+   screen - where the value is the part somebody is reading. */
+.line-label {
+    flex: none;
+    width: 6.5rem;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+}
+
+.line-input {
+    font: inherit;
+    font-size: 15px;
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--hairline);
-    border-radius: 10px;
-    resize: none;
+    border-radius: 8px;
 }
 
-.field-input::placeholder { color: var(--ink-soft); }
+.line-input::placeholder { color: var(--ink-soft); }
 
-.actions { display: flex; gap: 10px; padding-top: 4px; }
+.line-text { flex: 1; min-width: 0; }
 
-.soft, .danger {
+.line-title { display: block; font-size: 15px; color: var(--ink); }
+
+.line-sub {
+    display: block;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding-top: 1px;
+}
+
+/* What would go here and why, for a list that is empty. */
+.nothing {
+    flex: none;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    padding: 6px 2px 2px;
+}
+
+.ask, .strike {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    flex: none;
+}
+
+.ask { align-self: flex-start; margin: 4px 0 2px; }
+
+/* Removing one entry is not the brand action on the row it sits in. */
+.strike { color: var(--ink-soft); }
+
+.strike:active { color: var(--ink); border-color: var(--ink-soft); }
+
+/* Pushed to the bottom, so the way in is where a thumb is rather than wherever
+   the open section happened to end. */
+.actions {
+    display: flex;
+    gap: 10px;
+    flex: none;
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+.soft, .soft-2 {
     font: inherit;
     font-weight: 600;
     flex: 1;
@@ -44,14 +195,73 @@
     cursor: pointer;
 }
 
-.soft { color: var(--ink); background: var(--brand-blue); border: 0; }
+/* Being asked is the primary way things get onto this screen, so it wears the
+   brand colour and the CV - one document made from it - does not. */
+.soft { color: #ffffff; background: var(--brand-blue); border: 0; }
 
-/* Deleting everything is unrecoverable, so it does not wear the brand colour -
-   blue would put it in the same class as the thing beside it. */
-.danger {
-    color: var(--ink-soft);
+.soft-2 {
+    color: var(--ink);
     background: transparent;
     border: 1px solid var(--hairline);
 }
 
-.said { font-size: 13px; color: var(--brand-blue); }
+/*
+    Quiet, and out of the row above.
+
+    It used to sit beside "Make my CV" as an equal, one tap from deleting a name,
+    a phone number and an entire employment history. The right to erase all of it
+    is real and it is still one tap away - it just is not one tap from where a
+    thumb already is.
+*/
+.quiet {
+    font: inherit;
+    font-size: 12.5px;
+    flex: none;
+    align-self: center;
+    color: var(--ink-soft);
+    background: transparent;
+    border: 0;
+    padding: 10px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.confirm {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: none;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--raised);
+    border-radius: 10px;
+}
+
+.confirm-text {
+    flex: 1 1 100%;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--ink);
+}
+
+/* Unrecoverable, so it does not wear the brand colour - blue would put it in the
+   same visual class as the thing that starts an interview. */
+.danger {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--ink-soft);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.said {
+    flex: none;
+    font-size: 13px;
+    color: var(--brand-blue);
+    padding-top: 8px;
+}

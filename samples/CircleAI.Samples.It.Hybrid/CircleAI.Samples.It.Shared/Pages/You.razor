@@ -1,19 +1,25 @@
 @*
     You.
 
-    WHAT THE PHONE KNOWS ABOUT YOU, gathered once and used everywhere. The CV
-    interview already asks for a name, a number, where somebody lives and what they
-    do - and then buries it in a career database only the CV screen can reach. A
-    letter, an invoice, a clinic form and an application to a landlord all want the
-    same facts, and today each would ask again.
+    WHAT THE PHONE KNOWS ABOUT YOU - ALL OF IT. This screen showed five identity
+    fields while the store underneath held work history, skills, education,
+    certificates and languages too, so the completeness bar printed at the top
+    could not pass 50% however carefully somebody filled it in: the fields on show
+    are worth 9 of the 18 points the career store weighs. A person filling in every
+    box they could see and being told they were half done is being told they failed
+    at something they were never shown.
 
-    So the profile is the thing and the CV is one document made FROM it.
+    AND IT WAS A FORM. The CV screen next door opens with the reason: "one
+    question at a time, not a form - a form asks somebody with no CV to produce one
+    before they can start." Then this screen, the one place the app talks about the
+    person themselves, was five empty boxes and 0%. So the way in is to be ASKED,
+    and the boxes are for correcting what the asking got.
 
-    It is on the bar because this is the most personal thing the app holds. Being
-    able to see it, change it, and delete it is the other half of promising it
-    never leaves the phone.
+    Folded, one section at a time, for the same reason as Services and Settings:
+    six headings and their counts fit on a 344px screen, and a section below the
+    fold is a section nobody checks.
 
-    NOTHING SCROLLS: five fields and two buttons, whole on a 344px screen.
+    NOTHING SCROLLS.
 *@
 @page "/you"
 @inject IProfile Store
@@ -21,34 +27,127 @@
 
 <div class="you">
 
+    @*
+        THE BAR EARNS ITS PLACE NOW, because everything it counts is on this
+        screen. Beside it, the one absent thing worth most - computed where the
+        weights live, so the sentence and the bar cannot disagree.
+    *@
     <div class="bar-line">
-        <span class="done">@($"{_profile.Completeness * 100:0}%") complete</span>
+        <span class="done">@($"{_profile.Completeness * 100:0}%")</span>
         <span class="track"><span style="width:@($"{_profile.Completeness * 100:0}%")"></span></span>
     </div>
 
-    @foreach (var fact in _profile.Facts)
+    @if (_profile.Missing.Length > 0)
     {
-        <label class="field" @key="fact.Key">
-            <span class="field-label">@fact.Label</span>
-            @if (fact.Multiline)
+        <p class="missing">@_profile.Missing</p>
+    }
+
+    <button class="fold @(_open == 0 ? "fold-on" : null)" @onclick="() => Open(0)"
+            aria-expanded="@(_open == 0)">
+        <span class="fold-title">About you</span>
+        <span class="fold-now">@Named</span>
+        <span class="fold-chevron" aria-hidden="true">›</span>
+    </button>
+
+    @if (_open == 0)
+    {
+        @foreach (var fact in _profile.Facts)
+        {
+            @*
+                LABEL AND BOX ON ONE LINE. Stacked, five fields took the whole
+                screen and pushed the other five sections off the bottom - which is
+                how this screen came to look as though the identity fields were all
+                there was.
+            *@
+            <label class="line" @key="fact.Key">
+                <span class="line-label">@fact.Label</span>
+                <input class="line-input" placeholder="@fact.Hint" value="@fact.Value"
+                       @onchange="e => Save(fact.Key, e)" />
+            </label>
+        }
+    }
+
+    @for (var i = 0; i < _profile.Sections.Count; i++)
+    {
+        var index = i + 1;
+        var section = _profile.Sections[i];
+
+        <button class="fold @(_open == index ? "fold-on" : null)" @onclick="() => Open(index)"
+                aria-expanded="@(_open == index)">
+            <span class="fold-title">@section.Title</span>
+            <span class="fold-now">@(section.Entries.Count == 0 ? "—" : section.Entries.Count.ToString())</span>
+            <span class="fold-chevron" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open == index)
+        {
+            @if (section.Entries.Count == 0)
             {
-                <textarea class="field-input" rows="2" placeholder="@fact.Hint"
-                          value="@fact.Value"
-                          @onchange="e => Save(fact.Key, e)"></textarea>
+                @*
+                    WHAT WOULD GO HERE AND WHY, not "nothing yet". Somebody who
+                    does not know a licence code decides applications outright has
+                    no reason to go and add one.
+                *@
+                <p class="nothing">@section.Nothing</p>
+                <button class="ask" @onclick="Interview">Tell it about this</button>
             }
             else
             {
-                <input class="field-input" placeholder="@fact.Hint"
-                       value="@fact.Value"
-                       @onchange="e => Save(fact.Key, e)" />
+                @foreach (var entry in section.Entries)
+                {
+                    @* Keyed on the section as well as the row id: ids come from
+                       five different tables and only happen not to collide because
+                       one section is open at a time. *@
+                    var key = section.Key + entry.Id;
+
+                    <div class="line" @key="key">
+                        <span class="line-text">
+                            <span class="line-title">@entry.Title</span>
+                            @if (entry.Detail.Length > 0)
+                            {
+                                <span class="line-sub">@entry.Detail</span>
+                            }
+                        </span>
+                        @*
+                            REMOVE, NOT EDIT. A job with its dates and what was
+                            achieved in it does not fit in a text box; what a person
+                            needs here is to strike out what is wrong or stale, and
+                            adding happens where it can be asked about properly.
+                        *@
+                        <button class="strike" @onclick="() => Remove(section, entry)"
+                                aria-label="@($"Remove {entry.Title}")">Remove</button>
+                    </div>
+                }
             }
-        </label>
+        }
     }
 
     <div class="actions">
-        <button class="soft" @onclick='() => Nav.NavigateTo("career")'>Make my CV</button>
-        <button class="danger" @onclick="Forget">Forget me</button>
+        <button class="soft" @onclick="Interview">@(_profile.Completeness > 0 ? "Add to this" : "Tell it about you")</button>
+        <button class="soft-2" @onclick='() => Nav.NavigateTo("career")'>Make my CV</button>
     </div>
+
+    @*
+        FORGET IS OUT OF THE ROW AND ASKS FIRST.
+
+        It sat beside "Make my CV" as an equal, one tap from deleting a name, a
+        phone number and an entire employment history with nothing in between. The
+        right to erase everything is real - it is the other half of promising this
+        never leaves the phone - and it is still one tap away. It just is not one
+        tap from where somebody's thumb already is.
+    *@
+    @if (_confirming)
+    {
+        <div class="confirm">
+            <span class="confirm-text">Delete everything it knows about you? This cannot be undone.</span>
+            <button class="danger" @onclick="Forget">Delete it</button>
+            <button class="strike" @onclick="() => _confirming = false">Keep it</button>
+        </div>
+    }
+    else
+    {
+        <button class="quiet" @onclick="() => _confirming = true">Forget me</button>
+    }
 
     @if (_said is not null)
     {
@@ -58,10 +157,36 @@
 </div>
 
 @code {
-    Profile _profile = new([], 0);
+    Profile _profile = new([], [], 0, "");
+
+    /// <summary>Which section is open, or -1 for none.</summary>
+    /// <remarks>
+    /// Starts on the identity fields: they are the ones somebody types, and the
+    /// lists below are read far more often than they are changed.
+    /// </remarks>
+    int _open;
+
+    bool _confirming;
     string? _said;
 
+    /// <summary>The name, for the closed heading.</summary>
+    /// <remarks>
+    /// So the commonest reason to open this screen - checking it still knows who
+    /// you are - needs no taps at all. Same reasoning as the wake phrase on the
+    /// settings tab.
+    /// </remarks>
+    string Named
+    {
+        get
+        {
+            var name = _profile.Facts.FirstOrDefault(f => f.Key == "name")?.Value;
+            return string.IsNullOrWhiteSpace(name) ? "—" : name;
+        }
+    }
+
     protected override async Task OnInitializedAsync() => _profile = await Store.LoadAsync();
+
+    void Open(int index) => _open = _open == index ? -1 : index;
 
     /// <summary>
     /// Saved on leaving the field, not on every keystroke.
@@ -78,10 +203,28 @@
         _profile = await Store.LoadAsync();
     }
 
+    async Task Remove(ProfileSection section, ProfileEntry entry)
+    {
+        await Store.RemoveAsync(section.Key, entry.Id);
+        _profile = await Store.LoadAsync();
+    }
+
+    /// <summary>
+    /// The way things get ONTO this screen.
+    /// </summary>
+    /// <remarks>
+    /// The CV interview is what asks the questions - where you worked, for how
+    /// long, what you actually did there - and it writes into the same store this
+    /// screen reads. Calling it "make my CV" hid that: somebody who wanted the
+    /// phone to know them, and did not want a CV, had no door.
+    /// </remarks>
+    void Interview() => Nav.NavigateTo("career");
+
     async Task Forget()
     {
         await Store.ForgetAsync();
         _profile = await Store.LoadAsync();
+        _confirming = false;
         _said = "Everything it knew about you is gone from this phone.";
     }
 }
