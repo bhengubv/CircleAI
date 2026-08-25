@@ -11,6 +11,8 @@
 *@
 @page "/chat"
 @inject IBrain Brain
+@inject IConversation Talk
+@inject NavigationManager Nav
 
 <div class="chat">
     @if (_status.Length > 0)
@@ -34,6 +36,31 @@
         }
     </div>
 
+    @*
+        THE PROBE ROW, on its own line above the input.
+
+        A phone fits about four buttons per row; keeping these here and Send below
+        means neither line ever overflows. Every one of them used to be an in-house
+        word - Sweep, Caps, Vision, TTS - that nobody outside the project could
+        guess at. They say what happens when you press them.
+    *@
+    <div class="probes">
+        <button class="probe" @onclick='() => Nav.NavigateTo("abilities")'>What it can do</button>
+        <label class="probe">
+            Read an image
+            <InputFile OnChange="OnImage" accept="image/*" hidden />
+        </label>
+        <button class="probe" @onclick="Speak" disabled="@(_busy || LastReply is null)">
+            Read it out
+        </button>
+    </div>
+
+    @* THE headline feature, so it gets a row to itself rather than a third of one.
+       Sharing the row wrapped the word to "Languag / es". *@
+    <button class="hero-btn" @onclick='() => Nav.NavigateTo("languages")'>
+        Speak in 10 plus languages
+    </button>
+
     <div class="composer">
         <input class="input" placeholder="Type a message"
                aria-label="Your message"
@@ -41,6 +68,9 @@
                value="@_draft"
                @oninput="e => _draft = e.Value?.ToString() ?? string.Empty"
                @onkeydown="OnKey" />
+        @* Use the mic: one spoken turn, heard and answered out loud. *@
+        <button class="mic" @onclick="Listen" disabled="@(!_ready || _busy)"
+                aria-label="Use the mic">🎙</button>
         <button class="send" @onclick="Send" disabled="@(!_ready || _busy)">Send</button>
     </div>
 </div>
@@ -98,6 +128,99 @@
             // grey rectangle with no explanation, which reads as a bug rather
             // than as silence.
             if (string.IsNullOrWhiteSpace(_turns[at].Text)) _turns.RemoveAt(at);
+            _busy = false;
+        }
+    }
+
+    string? LastReply => _turns.LastOrDefault(t => !t.Mine)?.Text;
+
+    /// <summary>Speak the last answer aloud.</summary>
+    /// <remarks>
+    /// The app is a VOICE assistant, and a chat screen that can only be read is
+    /// the demo rather than the product - especially for somebody who cannot read
+    /// comfortably, who is a large part of who this is for.
+    /// </remarks>
+    async Task Speak()
+    {
+        if (LastReply is not { Length: > 0 } text) return;
+        _busy = true;
+        try { await Talk.SayAsync(text); }
+        catch (Exception ex) { _status = $"{ex.GetType().Name}: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+
+    /// <summary>One spoken turn: listen, answer, say it back.</summary>
+    async Task Listen()
+    {
+        if (_busy) return;
+        _busy = true;
+
+        var updates = new Progress<TurnState>(t =>
+        {
+            _status = t.Phase switch
+            {
+                TurnPhase.Listening => "Listening…",
+                TurnPhase.Thinking => "Working on it…",
+                TurnPhase.Speaking => "Answering…",
+                _ => t.Detail ?? "",
+            };
+
+            // The heard question and the reply become turns as soon as they exist,
+            // so the conversation reads the same whether it was typed or spoken.
+            if (t.Heard is { Length: > 0 } heard
+                && _turns.LastOrDefault(x => x.Mine)?.Text != heard)
+                _turns.Add(new Utterance(true, heard));
+
+            if (t.Reply is { Length: > 0 } reply)
+            {
+                if (_turns.Count > 0 && !_turns[^1].Mine) _turns[^1] = new Utterance(false, reply);
+                else _turns.Add(new Utterance(false, reply));
+            }
+
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Talk.TurnAsync(updates); }
+        catch (Exception ex) { _status = $"{ex.GetType().Name}: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+
+    /// <summary>Answer a question about a picture.</summary>
+    async Task OnImage(InputFileChangeEventArgs e)
+    {
+        if (_busy) return;
+        _busy = true;
+        _status = "Looking at it…";
+
+        try
+        {
+            // Capped: a modern phone camera produces files a vision model has no
+            // use for at full size, and reading one into memory on a P30 is how a
+            // screen dies rather than answers.
+            await using var stream = e.File.OpenReadStream(8 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            _turns.Add(new Utterance(true, $"What is in this picture? ({e.File.Name})"));
+            var reply = new Utterance(false, "");
+            _turns.Add(reply);
+            var at = _turns.Count - 1;
+
+            await Brain.SeeAsync("What is in this picture?", buffer.ToArray(), fragment =>
+            {
+                _turns[at] = _turns[at] with { Text = _turns[at].Text + fragment };
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (string.IsNullOrWhiteSpace(_turns[at].Text)) _turns.RemoveAt(at);
+        }
+        catch (Exception ex)
+        {
+            _status = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        finally
+        {
+            _status = "";
             _busy = false;
         }
     }

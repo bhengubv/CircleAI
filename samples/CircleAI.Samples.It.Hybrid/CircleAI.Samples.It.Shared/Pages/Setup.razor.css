@@ -1,0 +1,115 @@
+.setup { padding-top: 12px; }
+
+.lead { font-size: 24px; font-weight: 700; color: var(--ink); }
+
+.sub {
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding: 8px 0 4px;
+}
+
+.plan {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 4px 16px;
+    margin-top: 16px;
+}
+
+.plan-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--hairline);
+}
+
+.plan-row:last-child { border-bottom: 0; }
+
+.plan-title { font-size: 15px; color: var(--ink); }
+
+.plan-size {
+    font-size: 15px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+
+.plan-total .plan-title,
+.plan-total .plan-size { font-weight: 700; color: var(--brand-blue); }
+
+.start {
+    display: block;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    width: 100%;
+    margin-top: 16px;
+    min-height: 3rem;
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+    border-radius: 12px;
+    text-align: center;
+    line-height: 3rem;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.start:disabled { opacity: 0.45; cursor: default; }
+
+/*
+    A REAL FRACTION, not an indeterminate sweep: this one is weighted by bytes
+    across the whole plan, so it means something. The indeterminate bar on Home is
+    for the case where nothing knows the total.
+*/
+.bar {
+    height: 8px;
+    margin-top: 20px;
+    background: var(--raised);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.bar > span {
+    display: block;
+    height: 100%;
+    background: var(--brand-blue);
+    transition: width 300ms linear;
+}
+
+.step {
+    font-size: 14px;
+    color: var(--ink);
+    padding: 10px 0 4px;
+}
+
+.of {
+    color: var(--ink-soft);
+    padding-left: 0.5em;
+}
+
+.tour {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-top: 12px;
+}
+
+.tour-title { font-size: 17px; font-weight: 700; color: var(--brand-blue); }
+
+.tour-body {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+.tour-action {
+    display: block;
+    margin-top: 12px;
+    padding: 12px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--brand-blue);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    text-decoration: none;
+}

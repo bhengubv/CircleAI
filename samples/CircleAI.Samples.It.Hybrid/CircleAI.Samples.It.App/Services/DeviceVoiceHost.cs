@@ -102,17 +102,27 @@ public sealed class DeviceVoiceHost : IVoiceHost
         }, ct);
 
     /// <inheritdoc />
-    public async Task<SpeakOutcome> SpeakAsync(
+    public Task<SpeakOutcome> SpeakAsync(
         string tag, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         var lang = SampleLanguages.Find(tag);
-        if (lang?.Greeting is null)
-        {
+        return lang?.Greeting is null
             // Not a fabricated sentence. The table leaves a greeting null when
             // nobody could confirm it, and mispronouncing an invented phrase at a
             // native speaker is worse than saying nothing.
-            return new SpeakOutcome(false, $"No checked phrase for '{tag}'.");
-        }
+            ? Task.FromResult(new SpeakOutcome(false, $"No checked phrase for '{tag}'."))
+            : SayAsync(tag, lang.Greeting, progress, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<SpeakOutcome> SayAsync(
+        string tag, string text,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new SpeakOutcome(false, "Nothing to say.");
+
+        var lang = SampleLanguages.Find(tag);
 
         if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
             return new SpeakOutcome(false, "Already speaking.");
@@ -125,7 +135,7 @@ public sealed class DeviceVoiceHost : IVoiceHost
             var sw = Stopwatch.StartNew();
             var report = await Task.Run(
                 () => ItTtsProbe.RunCataloguedAsync(
-                    StorageDir, tag, lang.Greeting, wav,
+                    StorageDir, tag, text, wav,
                     log: line => progress?.Report(line),
                     ct: ct),
                 ct).ConfigureAwait(false);
@@ -144,7 +154,7 @@ public sealed class DeviceVoiceHost : IVoiceHost
 
             return new SpeakOutcome(
                 true,
-                $"{lang.Name}: {audioMs} ms of audio in {sw.ElapsedMilliseconds} ms",
+                $"{lang?.Name ?? tag}: {audioMs} ms of audio in {sw.ElapsedMilliseconds} ms",
                 sw.ElapsedMilliseconds,
                 audioMs);
         }

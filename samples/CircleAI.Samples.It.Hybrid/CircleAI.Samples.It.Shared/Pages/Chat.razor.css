@@ -115,3 +115,63 @@
 }
 
 .send:disabled { opacity: 0.45; cursor: default; }
+
+/*
+    The probe row and the hero, above the composer. Their own lines so the button
+    strip never crowds the text box off the screen - voice builds used to push
+    Send and TTS off the right edge.
+*/
+.probes {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px 8px;
+}
+
+.probe {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    padding: 10px 6px;
+    cursor: pointer;
+}
+
+.probe:disabled { opacity: 0.45; cursor: default; }
+
+/* The file input inside the label is the control; the label is what is seen. */
+.probe input[type="file"] { display: none; }
+
+.hero-btn {
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    display: block;
+    width: calc(100% - 24px);
+    margin: 0 12px 8px;
+    min-height: 2.75rem;
+    color: var(--ink);
+    background: var(--brand-blue);
+    border: 0;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.mic {
+    font-size: 18px;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    color: var(--brand-blue);
+    background: var(--raised);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    cursor: pointer;
+    flex: none;
+}
+
+.mic:disabled { opacity: 0.45; cursor: default; }

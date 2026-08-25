@@ -43,4 +43,10 @@ public sealed class BrowserVoiceHost : IVoiceHost
     public Task<SpeakOutcome> SpeakAsync(
         string tag, IProgress<string>? progress = null, CancellationToken ct = default)
         => Task.FromResult(new SpeakOutcome(false, Provenance));
+
+    /// <inheritdoc />
+    public Task<SpeakOutcome> SayAsync(
+        string tag, string text,
+        IProgress<string>? progress = null, CancellationToken ct = default)
+        => Task.FromResult(new SpeakOutcome(false, Provenance));
 }

@@ -22,4 +22,10 @@ public sealed class BrowserBrain : IBrain
     public Task<string> AskAsync(
         string prompt, Action<string>? token = null, CancellationToken ct = default)
         => Task.FromResult(string.Empty);
+
+    /// <inheritdoc />
+    public Task<string> SeeAsync(
+        string question, byte[] image,
+        Action<string>? token = null, CancellationToken ct = default)
+        => Task.FromResult("Reading an image runs on the phone.");
 }

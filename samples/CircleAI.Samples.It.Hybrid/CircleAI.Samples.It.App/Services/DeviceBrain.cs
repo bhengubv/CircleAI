@@ -73,6 +73,29 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string> SeeAsync(
+        string question, byte[] image,
+        Action<string>? token = null, CancellationToken ct = default)
+    {
+        var session = await SessionAsync(ct).ConfigureAwait(false);
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // The session asks the selector whether this device can see BEFORE it
+            // tries, so "no vision model" comes back as a sentence rather than as
+            // an exception from somewhere deep inside.
+            return await session.RunImageTurnAsync(
+                question, image, _ => { }, fragment => token?.Invoke(fragment))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<ItSession> SessionAsync(CancellationToken ct)
     {
         if (_session is not null) return _session;

@@ -131,6 +131,12 @@
          is excluded from the build and the type simply is not there. -->
     <Compile Include="..\..\CircleAI.Samples.It.Android\AndroidAudio.cs"
              Link="Shared\AndroidAudio.cs" />
+    <!-- End-of-speech detection. Its thresholds were tuned on the P30 - speech at
+         3x the noise floor or an absolute 0.02, and 1.4 s of quiet to end a turn -
+         and a second implementation would be a second set of numbers to get wrong
+         in a way that only shows up as "it cuts me off". -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\VoiceTurn.cs"
+             Link="Shared\VoiceTurn.cs" />
   </ItemGroup>
 
 </Project>

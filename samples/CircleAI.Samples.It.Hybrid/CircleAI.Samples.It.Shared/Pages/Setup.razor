@@ -1,0 +1,150 @@
+@*
+    Setting it up.
+
+    THE FIRST THING ANYBODY MEETS, and until now the only screen the hybrid could
+    not show them. Everything verified before this was verified on a phone that had
+    already been set up by hand, which is a tour of the happy path rather than a
+    test.
+
+    Three things at once, deliberately: what is being fetched, how long the whole
+    of it has left, and something worth doing meanwhile. A bar on its own is a
+    screen that asks somebody to wait without telling them what for.
+*@
+@page "/setup"
+@inject ISetup Wizard
+@inject NavigationManager Nav
+
+<div class="setup">
+
+    <h1 class="lead">@(_running ? "Getting it ready" : "Let's set it up")</h1>
+    <p class="sub">@Sub</p>
+
+    @if (!_running)
+    {
+        <div class="plan">
+            @foreach (var item in _plan)
+            {
+                <div class="plan-row">
+                    <span class="plan-title">@item.Title</span>
+                    <span class="plan-size">@Size(item.Bytes)</span>
+                </div>
+            }
+            @if (_plan.Count > 0)
+            {
+                @* The total is the number that decides whether somebody on a
+                   metered connection starts at all, so it is stated up front
+                   rather than discovered halfway through. *@
+                <div class="plan-row plan-total">
+                    <span class="plan-title">Altogether</span>
+                    <span class="plan-size">@Size(_plan.Sum(p => p.Bytes))</span>
+                </div>
+            }
+        </div>
+
+        <button class="start" @onclick="Start" disabled="@(_plan.Count == 0)">
+            @(_plan.Count == 0 ? "Nothing to fetch" : "Start")
+        </button>
+    }
+    else
+    {
+        <div class="bar"><span style="width:@($"{_progress.Fraction * 100:0}%")"></span></div>
+        <p class="step">
+            @_progress.Title
+            @if (_progress.Count > 0)
+            {
+                <span class="of">@(_progress.Index + 1) of @_progress.Count</span>
+            }
+        </p>
+
+        @* THE WAIT, SPENT. On a slow link this is most of an hour somebody has to
+           spend anyway; offering something useful during it is the difference
+           between a progress bar and an app. *@
+        @foreach (var step in _tour)
+        {
+            <div class="tour">
+                <div class="tour-title">@step.Title</div>
+                <div class="tour-body">@step.Body</div>
+                @if (step.Action is not null && step.Route is not null)
+                {
+                    <a class="tour-action" href="@step.Route">@step.Action</a>
+                }
+            </div>
+        }
+    }
+
+    @if (_done)
+    {
+        <a class="start" href="">It is ready — take me to the circle</a>
+    }
+</div>
+
+@code {
+    IReadOnlyList<SetupItem> _plan = [];
+    IReadOnlyList<TourStep> _tour = [];
+    SetupProgressReport _progress = new(0, 0, "", 0, TimeSpan.Zero);
+    bool _running;
+    bool _done;
+    string? _error;
+
+    string Sub => _error
+        ?? (_running
+            ? Remaining
+            : _plan.Count == 0
+                ? "Everything it needs is already here."
+                : "It needs a few things first. They stay on this phone.");
+
+    /// <summary>
+    /// How long the WHOLE of setup has left, not the current file.
+    /// </summary>
+    /// <remarks>
+    /// A person wants to know when they can use the phone, which is when the last
+    /// byte lands. The same bundle is minutes on a premium handset and most of an
+    /// hour on a P30 Lite.
+    /// </remarks>
+    string Remaining => _progress.Remaining <= TimeSpan.Zero
+        ? "Working out how long this will take…"
+        : _progress.Remaining.TotalMinutes >= 1.5
+            ? $"About {_progress.Remaining.TotalMinutes:0} minutes left"
+            : $"About {Math.Max(5, _progress.Remaining.TotalSeconds):0} seconds left";
+
+    protected override async Task OnInitializedAsync()
+        => _plan = await Wizard.PlanAsync();
+
+    static string Size(long bytes)
+        => bytes >= 1_000_000_000
+            ? $"{bytes / 1_000_000_000.0:0.#} GB"
+            : $"{bytes / 1_000_000.0:0} MB";
+
+    async Task Start()
+    {
+        _running = true;
+        _error = null;
+
+        // The tour is chosen against the estimate, so it can only be picked once
+        // there is one. Rough is fine: it decides how much to offer, not what.
+        var estimate = TimeSpan.FromMinutes(Math.Max(2, _plan.Sum(p => p.Bytes) / 6_000_000.0 / 60));
+        _tour = await Wizard.TourAsync(estimate);
+
+        var progress = new Progress<SetupProgressReport>(p =>
+        {
+            _progress = p;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await Wizard.RunAsync(progress);
+            _done = true;
+        }
+        catch (Exception ex)
+        {
+            // The reason, and the state it stopped in. Setup resumes where it
+            // died - FirstRun.Plan skips whatever already landed - so saying so
+            // is the difference between "try again" and "start over".
+            _error = $"Stopped: {ex.Message}. Nothing already fetched is lost — "
+                   + "starting again picks up where it left off.";
+            _running = false;
+            _plan = await Wizard.PlanAsync();
+        }
+    }
+}

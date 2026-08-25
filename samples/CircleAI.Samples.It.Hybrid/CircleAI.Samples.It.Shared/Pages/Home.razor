@@ -13,6 +13,8 @@
 *@
 @page "/"
 @inject IVoiceHost Voice
+@inject ISetup Setup
+@inject IConversation Talk
 @inject NavigationManager Nav
 
 <div class="home">
@@ -23,7 +25,7 @@
     @* THE THING YOU PRESS, and the only large control on the screen. *@
     <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
             aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">
-        <BrandMark Fluid="true" State="_state" Halo="true" />
+        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" />
     </button>
 
     <div class="prompt">@Prompt</div>
@@ -34,6 +36,21 @@
     @if (_progress is not null)
     {
         <div class="bar"><span></span></div>
+    }
+
+    @*
+        NOT A SETTING. A READ-OUT.
+
+        This was a picker once: one tap, eleven languages, remembered - the wrong
+        shape, because a household here does not hold one language for a whole
+        conversation. Every turn decides for itself and this line only reports what
+        the words were. It stays empty until a turn has actually been heard, since
+        announcing a language before anybody has spoken is a claim the phone has
+        not earned.
+    *@
+    @if (_spokenIn is { Length: > 0 })
+    {
+        <div class="readout">Answering in @_spokenIn</div>
     }
 
     @* Spacer, so the claims sit low and the circle owns the upper half. *@
@@ -72,6 +89,19 @@
     MarkState _state = MarkState.Idle;
     string? _progress;
     string? _detail;
+    string? _spokenIn;
+    double _level;
+
+    /*
+        THE GREETING CYCLE, deliberately not English first. The point being made is
+        that this thing speaks languages other assistants do not, so the very first
+        sound it makes should say so.
+    */
+    static readonly string[] Greetings = ["zu", "af", "st", "sw", "en"];
+    int _greetIndex;
+    string _greetIn => Greetings[_greetIndex];
+
+    static string LanguageName(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
 
     /*
         NO MIC LEVEL, AND NO PRETEND ONE. BrandMark can scale its arcs with a real
@@ -86,20 +116,34 @@
     /// hard-coded to a working state - the native screen takes it from Readiness
     /// for the same reason: a screen must not claim to be usable before it is.
     /// </summary>
+    /*
+        THE HEADLINE COMES FROM READINESS, not from whether a voice host exists.
+
+        That is the whole point of the Readiness type: a screen must never claim
+        to be usable before it is. "Let's set it up" and "Tap and talk" are
+        different promises, and guessing between them from the wrong signal is how
+        a fresh install ends up inviting somebody to press a circle that cannot do
+        anything yet.
+    */
+    Readiness _ready = new(ReadyStage.Waking, "Getting ready", "", false);
+
     string Prompt => _state switch
     {
         MarkState.Thinking => "Getting it ready",
         MarkState.Speaking => "Speaking",
         _ => Voice.Availability == VoiceAvailability.OnDevice
-                ? "Tap to talk"
-                : "Getting ready",
+                ? _ready.Headline
+                : "Pick a language to hear",
     };
 
     string Caption => _detail
         ?? _progress
         ?? (Voice.Availability == VoiceAvailability.OnDevice
-                ? "Press the circle and it will say hello."
-                : "You can talk to it in a moment.");
+                ? _ready.Caption
+                : Voice.Provenance);
+
+    protected override async Task OnInitializedAsync()
+        => _ready = await Setup.ReadinessAsync();
 
     static readonly string[] OnDeviceClaims =
     [
@@ -120,6 +164,15 @@
 
     async Task Tap()
     {
+        // NOTHING INSTALLED AND NOTHING COMING. "Let's set it up. Tap to start"
+        // has to actually start something; a tap that does nothing is
+        // indistinguishable from broken.
+        if (_ready.Stage == ReadyStage.NeedsSetup)
+        {
+            Nav.NavigateTo("setup");
+            return;
+        }
+
         if (Voice.Availability != VoiceAvailability.OnDevice)
         {
             // Nothing here to speak with, so go where the list is rather than doing
@@ -129,7 +182,39 @@
         }
 
         _detail = null;
-        _state = MarkState.Thinking;
+
+        // CAN IT ACTUALLY CONVERSE? If it can, the circle does the thing the whole
+        // app is for. If it cannot yet - the brain is still arriving - it says
+        // hello in a catalogued language instead, because "nothing happens" is
+        // indistinguishable from "broken" and hearing it speak is the fastest way
+        // to understand what this is.
+        var brain = await Talk.StateAsync();
+
+        if (brain.Ready)
+        {
+            var updates = new Progress<TurnState>(t =>
+            {
+                _state = t.Phase switch
+                {
+                    TurnPhase.Listening => MarkState.Listening,
+                    TurnPhase.Thinking => MarkState.Thinking,
+                    TurnPhase.Speaking => MarkState.Speaking,
+                    _ => MarkState.Idle,
+                };
+                _level = t.Level;
+                _detail = t.Detail ?? t.Heard;
+                if (t.Language is { Length: > 0 } lang) _spokenIn = LanguageName(lang);
+                StateHasChanged();
+            });
+
+            try { await Talk.TurnAsync(updates); }
+            catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
+            finally { _state = MarkState.Idle; _level = 0; }
+            return;
+        }
+
+        _state = MarkState.Speaking;
+        _detail = brain.Detail;
 
         var progress = new Progress<string>(line =>
         {
@@ -139,8 +224,12 @@
 
         try
         {
-            var outcome = await Voice.SpeakAsync("en", progress);
+            var outcome = await Voice.SpeakAsync(_greetIn, progress);
             _detail = outcome.Detail;
+            // THROUGH THE CATALOGUE, one language per press. The point is that it
+            // speaks languages other assistants do not, so the first sound it makes
+            // should not always be English.
+            _greetIndex = (_greetIndex + 1) % Greetings.Length;
         }
         catch (Exception ex)
         {

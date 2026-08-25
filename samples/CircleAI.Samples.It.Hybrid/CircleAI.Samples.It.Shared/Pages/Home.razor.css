@@ -148,3 +148,11 @@
     cursor: pointer;
     user-select: none;
 }
+
+/* The read-out. Quiet and centred: it reports, it does not invite a tap. */
+.readout {
+    font-size: 14px;
+    color: var(--ink-soft);
+    text-align: center;
+    padding-top: 10px;
+}

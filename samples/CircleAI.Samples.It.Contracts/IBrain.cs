@@ -42,4 +42,16 @@ public interface IBrain
     /// </param>
     Task<string> AskAsync(
         string prompt, Action<string>? token = null, CancellationToken ct = default);
+
+    /// <summary>Answer a question about an image.</summary>
+    /// <remarks>
+    /// Its own method rather than a flag on <see cref="AskAsync"/>, because
+    /// whether the phone can SEE is a separate selection decision from whether it
+    /// can answer - a device may have a chat model and no vision model, and that
+    /// has to be reportable rather than discovered by catching an exception thrown
+    /// deep inside a session.
+    /// </remarks>
+    Task<string> SeeAsync(
+        string question, byte[] image,
+        Action<string>? token = null, CancellationToken ct = default);
 }

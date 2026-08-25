@@ -100,4 +100,19 @@ public interface IVoiceHost
         string tag,
         IProgress<string>? progress = null,
         CancellationToken ct = default);
+
+    /// <summary>Speak a given sentence in a given language.</summary>
+    /// <remarks>
+    /// SEPARATE FROM <see cref="SpeakAsync"/> ON PURPOSE. That one speaks the
+    /// table's CHECKED greeting, which is the right thing for a language demo:
+    /// every phrase there was verified by somebody, and a demo that mispronounces
+    /// an invented sentence at a native speaker is worse than one that says less.
+    /// This one speaks whatever the assistant actually replied, which is the point
+    /// of a voice assistant and cannot be a fixed phrase.
+    /// </remarks>
+    Task<SpeakOutcome> SayAsync(
+        string tag,
+        string text,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default);
 }
