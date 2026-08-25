@@ -39,8 +39,7 @@ public sealed class DeviceFacts : IDeviceFacts
     private static string? RouteFor(ModelModality modality)
         => modality == ModelModality.WakeWord ? "wake" : null;
 
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)

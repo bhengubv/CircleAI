@@ -40,8 +40,7 @@ public sealed class DeviceVoiceHost : IVoiceHost
     /// somewhere the phonemiser searches. Spelling that path by hand is how 103 MB
     /// once downloaded correctly into a folder nothing read.
     /// </remarks>
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     /// <remarks>

@@ -18,8 +18,7 @@ namespace CircleAI.Samples.It.App.Services;
 /// <inheritdoc />
 public sealed class DeviceSetup : ISetup
 {
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     public Task<Readiness> ReadinessAsync(CancellationToken ct = default)

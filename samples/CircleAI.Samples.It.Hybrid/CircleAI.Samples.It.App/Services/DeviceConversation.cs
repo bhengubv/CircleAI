@@ -152,8 +152,7 @@ public sealed class DeviceConversation : IConversation
 
     private ItListener? _listener;
 
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     public async Task SayAsync(

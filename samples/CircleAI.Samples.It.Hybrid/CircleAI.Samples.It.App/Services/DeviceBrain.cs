@@ -20,8 +20,7 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private ItSession? _session;
 
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     public Task<BrainState> StateAsync(CancellationToken ct = default)

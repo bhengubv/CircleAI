@@ -41,9 +41,8 @@ public class MainApplication : MauiApplication
         // downloaded. The model store, not the sideload folder: the catalogued
         // entry unpacks into the store, and a registry entry nothing can find is
         // decorative.
-        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-            "CircleAI", "Models");
+        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder =
+            CircleAI.Samples.It.App.Services.ModelStore.Path;
 
         // Managed voice logging reaches nothing through ILogger on Android, so it
         // goes to logcat directly - the one place it is actually readable.

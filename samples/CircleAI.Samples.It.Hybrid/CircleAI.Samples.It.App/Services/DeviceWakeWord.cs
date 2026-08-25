@@ -28,8 +28,7 @@ public sealed class DeviceWakeWord : IWakeWord
 
     private const string ModelName = "KWS-Zipformer-HeyB";
 
-    private static string StorageDir
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "Models");
+    private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
     public async Task<bool> RequestMicrophoneAsync()
