@@ -25,8 +25,6 @@ public sealed class DeviceSettings : ISettings
     private const string FixedKey = "app.language.fixed";
     private const string WakeLangKey = "app.wake.language";
     private const string WakeOnKey = "app.wake.enabled";
-    private const string FromKey = "app.interpret.from";
-    private const string ToKey = "app.interpret.to";
 
     private static string DocumentsDir => FileSystem.AppDataDirectory;
 
@@ -43,8 +41,6 @@ public sealed class DeviceSettings : ISettings
             // "Hey B" is an English phrase; defaulting this to whatever language
             // somebody last spoke is how the wake word silently changed under them.
             _store.Get(WakeLangKey, "en")!,
-            _store.Get(FromKey, "en")!,
-            _store.Get(ToKey, "zu")!,
             _store.GetBool(WakeOnKey, true)));
 
     /// <inheritdoc />
@@ -54,8 +50,6 @@ public sealed class DeviceSettings : ISettings
         _store.Set(PolicyKey, settings.Policy.ToString());
         _store.Set(WakeLangKey, settings.WakeLanguage);
         _store.SetBool(WakeOnKey, settings.WakeEnabled);
-        _store.Set(FromKey, settings.InterpretFrom);
-        _store.Set(ToKey, settings.InterpretTo);
 
         if (settings.FixedLanguage is null) _store.Set(FixedKey, null);
         else _store.Set(FixedKey, settings.FixedLanguage);
@@ -73,6 +67,24 @@ public sealed class DeviceSettings : ISettings
         else if (settings.Policy == LanguagePolicy.FollowTheSpeaker)
             _spoken.ClearChoice();
 
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Namespaced by service, so a new service brings its own settings without
+    /// anybody touching this class - "cv/language" and "interpret/from" never
+    /// collide, and neither is the app's own language.
+    /// </remarks>
+    public Task<string?> ServiceSettingAsync(
+        string service, string key, string? fallback = null, CancellationToken ct = default)
+        => Task.FromResult(_store.Get($"service.{service}.{key}", fallback));
+
+    /// <inheritdoc />
+    public Task SetServiceSettingAsync(
+        string service, string key, string? value, CancellationToken ct = default)
+    {
+        _store.Set($"service.{service}.{key}", value);
         return Task.CompletedTask;
     }
 

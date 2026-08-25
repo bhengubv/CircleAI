@@ -77,28 +77,11 @@
 
     @if (_s.Mode == AppMode.Interpreter)
     {
-        <div class="pair">
-            <label class="field-label">
-                From
-                <select class="select" value="@_s.InterpretFrom"
-                        @onchange="e => Set(_s with { InterpretFrom = Tag(e) })">
-                    @foreach (var l in Languages)
-                    {
-                        <option value="@l.Tag">@l.Name</option>
-                    }
-                </select>
-            </label>
-            <label class="field-label">
-                To
-                <select class="select" value="@_s.InterpretTo"
-                        @onchange="e => Set(_s with { InterpretTo = Tag(e) })">
-                    @foreach (var l in Languages)
-                    {
-                        <option value="@l.Tag">@l.Name</option>
-                    }
-                </select>
-            </label>
-        </div>
+        @* WHICH LANGUAGES is not set here. It belongs to the interpreter itself:
+           somebody can run the app in English and interpret between Korean and
+           Mandarin, and a pair stored next to the app's own language invites the
+           two to be confused for each other. *@
+        <a class="go" href="interpret">Set the languages it interprets</a>
     }
 </section>
 

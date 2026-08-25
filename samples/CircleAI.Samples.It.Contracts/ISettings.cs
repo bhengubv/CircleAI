@@ -59,16 +59,12 @@ public enum LanguagePolicy
 /// The language of the WAKE PHRASE, which is not the same property as the
 /// conversation language and must not be welded to it.
 /// </param>
-/// <param name="InterpretFrom">Interpreter mode: the language being spoken.</param>
-/// <param name="InterpretTo">Interpreter mode: the language to render it in.</param>
 /// <param name="WakeEnabled">Whether to listen for the wake phrase at all.</param>
 public sealed record AppSettings(
     AppMode Mode = AppMode.Assistant,
     LanguagePolicy Policy = LanguagePolicy.FollowTheSpeaker,
     string? FixedLanguage = null,
     string WakeLanguage = "en",
-    string InterpretFrom = "en",
-    string InterpretTo = "zu",
     bool WakeEnabled = true);
 
 /// <summary>One document the app has produced.</summary>
@@ -97,6 +93,27 @@ public interface ISettings
 
     /// <summary>Everything the app has written for this person.</summary>
     Task<IReadOnlyList<StoredDocument>> DocumentsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// A setting belonging to ONE service, rather than to the app.
+    /// </summary>
+    /// <remarks>
+    /// LANGUAGE IS NOT ONE SETTING. Somebody can use the app in English, want
+    /// their CV written in Japanese, and want interpreting between Korean and
+    /// Mandarin - three different answers to "which language", each belonging to
+    /// the service that asks. A single global value forces all three to agree,
+    /// which is wrong for every person who needs more than one.
+    /// <para>
+    /// Keyed by service so a new service brings its own settings without touching
+    /// this contract or the settings screen.
+    /// </para>
+    /// </remarks>
+    Task<string?> ServiceSettingAsync(
+        string service, string key, string? fallback = null, CancellationToken ct = default);
+
+    /// <summary>Change a setting belonging to one service.</summary>
+    Task SetServiceSettingAsync(
+        string service, string key, string? value, CancellationToken ct = default);
 
     /// <summary>Delete one document.</summary>
     /// <remarks>

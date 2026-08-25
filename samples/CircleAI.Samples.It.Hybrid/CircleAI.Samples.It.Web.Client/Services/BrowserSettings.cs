@@ -26,6 +26,21 @@ public sealed class BrowserSettings : ISettings
         return Task.CompletedTask;
     }
 
+    private readonly Dictionary<string, string?> _service = [];
+
+    /// <inheritdoc />
+    public Task<string?> ServiceSettingAsync(
+        string service, string key, string? fallback = null, CancellationToken ct = default)
+        => Task.FromResult(_service.TryGetValue($"{service}.{key}", out var v) ? v : fallback);
+
+    /// <inheritdoc />
+    public Task SetServiceSettingAsync(
+        string service, string key, string? value, CancellationToken ct = default)
+    {
+        _service[$"{service}.{key}"] = value;
+        return Task.CompletedTask;
+    }
+
     /// <inheritdoc />
     public Task<IReadOnlyList<StoredDocument>> DocumentsAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<StoredDocument>>([]);

@@ -183,3 +183,17 @@
 }
 
 .delete:active { color: var(--ink); border-color: var(--ink-soft); }
+
+/* A link out to a service's own settings, rather than a control for them. */
+.go {
+    display: block;
+    margin-top: 12px;
+    padding: 12px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    text-decoration: none;
+}

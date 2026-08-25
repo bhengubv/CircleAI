@@ -1,0 +1,157 @@
+@*
+    Interpreting - standing between two people who do not share a language.
+
+    ITS OWN LANGUAGES, ITS OWN SCREEN. The pair belongs to this service, not to
+    the app: somebody can run the app in English, keep their CV in Japanese, and
+    interpret between Korean and Mandarin. A single global "language" forces all
+    three to agree, which is wrong for everybody who needs more than one.
+
+    TWO DIRECTIONS, ONE TAP. A conversation between two people changes direction
+    every few seconds, and asking somebody to re-pick "from" and "to" each time
+    makes the phone the slowest person in the room.
+
+    NOTHING SCROLLS: two pickers, a box, two buttons, and the answer.
+*@
+@page "/interpret"
+@inject ISettings Settings
+@inject IBrain Brain
+@inject IConversation Talk
+
+<div class="interpret">
+
+    <div class="pair">
+        <label class="side">
+            <span class="side-label">From</span>
+            <select class="select" value="@_from" @onchange="e => SetFrom(Tag(e))">
+                @foreach (var l in Languages)
+                {
+                    <option value="@l.Tag">@l.Name</option>
+                }
+            </select>
+        </label>
+
+        <button class="swap" @onclick="Swap" aria-label="Swap the languages">&#8646;</button>
+
+        <label class="side">
+            <span class="side-label">To</span>
+            <select class="select" value="@_to" @onchange="e => SetTo(Tag(e))">
+                @foreach (var l in Languages)
+                {
+                    <option value="@l.Tag">@l.Name</option>
+                }
+            </select>
+        </label>
+    </div>
+
+    <textarea class="say" rows="3" placeholder="Type what they said"
+              aria-label="What to interpret"
+              value="@_input"
+              @oninput="e => _input = e.Value?.ToString() ?? string.Empty"></textarea>
+
+    <div class="actions">
+        <button class="soft" @onclick="Speak" disabled="@_busy">Read it out</button>
+        <button class="primary" @onclick="Run" disabled="@_busy">Interpret</button>
+    </div>
+
+    @if (_out.Length > 0)
+    {
+        <div class="out" dir="auto">@_out</div>
+    }
+
+    @if (_note is not null)
+    {
+        <p class="note">@_note</p>
+    }
+
+</div>
+
+@code {
+    const string Service = "interpret";
+
+    static IReadOnlyList<SampleLanguage> Languages { get; } = SampleLanguages.All.Values
+        .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    string _from = "en";
+    string _to = "zu";
+    string _input = "";
+    string _out = "";
+    string? _note;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _from = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
+        _to = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
+    }
+
+    static string Tag(ChangeEventArgs e) => e.Value?.ToString() ?? "en";
+
+    async Task SetFrom(string tag)
+    {
+        _from = tag;
+        await Settings.SetServiceSettingAsync(Service, "from", tag);
+    }
+
+    async Task SetTo(string tag)
+    {
+        _to = tag;
+        await Settings.SetServiceSettingAsync(Service, "to", tag);
+    }
+
+    /// <summary>Turn the pair around.</summary>
+    /// <remarks>
+    /// A conversation changes direction every few seconds. Without this the phone
+    /// is the slowest person in the room.
+    /// </remarks>
+    async Task Swap()
+    {
+        (_from, _to) = (_to, _from);
+        await Settings.SetServiceSettingAsync(Service, "from", _from);
+        await Settings.SetServiceSettingAsync(Service, "to", _to);
+    }
+
+    async Task Run()
+    {
+        if (_busy || _input.Trim().Length == 0) return;
+        _busy = true;
+        _note = null;
+
+        var fromName = SampleLanguages.Find(_from)?.Name ?? _from;
+        var toName = SampleLanguages.Find(_to)?.Name ?? _to;
+
+        try
+        {
+            // ASKED AS A TRANSLATION, NOT AS A CONVERSATION. Without "give only the
+            // translation" the model answers the sentence rather than rendering it,
+            // which is a different and much worse thing to hand somebody standing
+            // in front of a nurse.
+            _out = await Brain.AskAsync(
+                $"Translate this from {fromName} to {toName}. "
+              + $"Give only the translation, nothing else:\n\n{_input.Trim()}");
+        }
+        catch (Exception ex)
+        {
+            _note = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Read the translation out, in the language it is written in.</summary>
+    /// <remarks>
+    /// The point of interpreting on a phone is that the other person HEARS it.
+    /// Handing them a screen to read assumes they can, which is the assumption
+    /// this app exists to stop making.
+    /// </remarks>
+    async Task Speak()
+    {
+        if (_out.Length == 0) { _note = "Interpret something first."; return; }
+        _busy = true;
+        try { await Talk.SayAsync(_out, _to); }
+        catch (Exception ex) { _note = $"{ex.GetType().Name}: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+}

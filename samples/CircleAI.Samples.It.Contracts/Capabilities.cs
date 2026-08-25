@@ -85,7 +85,7 @@ public static class Capabilities
         [
             new("Study help", "📚", "Help me study"),
             new("Languages", "🌐", "Help me with a language", "languages"),
-            new("Translate", "🔤", "Translate something for me"),
+            new("Interpret", "🔤", "Interpret between two languages", "interpret"),
             new("Explain something", "💡", "Explain something to me simply"),
             new("Research", "🔎", "Help me research something"),
         ]),

@@ -108,3 +108,29 @@
     color: var(--brand-blue);
     padding: 12px 0 24px;
 }
+
+/*
+    The document's own language, at the top where it is a decision about the CV
+    rather than about the app. Not in Settings: that screen configures the phone,
+    this configures one document.
+*/
+.in-language {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 4px;
+}
+
+.in-label { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+
+.in-select {
+    font: inherit;
+    font-size: 15px;
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+}
