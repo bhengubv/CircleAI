@@ -49,6 +49,30 @@ html, body {
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { width: 0; height: 0; }
 
+/*
+    THE FOCUS RING IS OURS, NOT CHROME'S.
+
+    Android's WebView draws focus in ORANGE, which is the one colour this product
+    does not use - so tapping the language select put a bright orange ring around
+    it, on a screen otherwise built from two blues and white.
+
+    :focus-visible, not :focus. Turning focus off outright is the usual "fix" and
+    it takes the keyboard with it: somebody navigating by tab is then moving an
+    invisible cursor around the screen. This keeps the ring exactly where it is
+    useful - keyboard - and off where it is not, which is a thumb on glass.
+
+    The tap highlight goes for the same reason: it is the platform's orange
+    flashing over a control that already has its own pressed state.
+*/
+* { -webkit-tap-highlight-color: transparent; }
+
+:focus { outline: none; }
+
+:focus-visible {
+    outline: 2px solid var(--brand-blue);
+    outline-offset: 2px;
+}
+
 h1, h2, h3 { margin: 0; font-weight: 700; line-height: 1.2; }
 h1 { font-size: 1.625rem; }
 h2 { font-size: 1.125rem; }

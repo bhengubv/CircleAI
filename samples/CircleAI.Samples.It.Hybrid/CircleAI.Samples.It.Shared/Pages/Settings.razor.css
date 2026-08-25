@@ -1,11 +1,11 @@
 /*
-    Grouped, with a reason under each heading.
+    Settings. Controls and nothing else.
 
-    THE "why" LINE IS NOT PADDING. Half of these settings are only sensible once
-    you know why they exist - that the wake phrase and the answering language are
-    different properties, or that following the speaker is the default because a
-    household changes language mid-exchange. A setting somebody does not
-    understand is one they will not touch.
+    The screen used to carry a "why this matters" fold under every heading -
+    paragraphs explaining what the app is for, inside the screen somebody opens
+    when they already have it and want one thing different. Each control says what
+    it does in the line beneath it; that is the whole explanation a settings screen
+    is owed.
 */
 
 /*
@@ -14,23 +14,47 @@
 */
 .tabs {
     display: flex;
+    /*
+        EVEN GAPS, NOT EVEN WIDTHS.
+
+        These were flex:1 - one equal box per tab - which sounds fair and reads
+        badly: a short word sits in the middle of its box with slack on both sides
+        while a long one fills its box edge to edge. "Mode  Language Documents
+        Phone" came out with a wide gutter after Mode and almost none between the
+        two long words, so Language and Documents read as ONE item.
+
+        Sizing each tab to its word and distributing what is left between them puts
+        the same gutter everywhere, whatever the labels say.
+    */
+    justify-content: space-between;
+    gap: 10px;
     background: var(--surface);
-    padding: 12px 20px 0;
+    padding: 12px 14px 0;
     /* Full-bleed, so the tab strip reads as part of the bar rather than as a
        card floating under it. */
     margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
+    /* THE LINE THE STRIP SITS ON. Without it the tabs float over the content and
+       the selected underline reads as a stray mark rather than as one segment of
+       a rail; the active tab's 3px sits on top of this hairline. */
+    border-bottom: 1px solid var(--hairline);
 }
 
 .tab {
-    flex: 1;
+    /* Its own width, so the underline is exactly as wide as the word. */
+    flex: 0 1 auto;
+    min-width: 0;
     text-align: center;
-    font-size: 15px;
+    font-size: 14px;
     color: var(--ink-soft);
     padding: 12px 0;
     cursor: pointer;
     user-select: none;
+    white-space: nowrap;
     /* Transparent border of the same weight, so selecting does not shift the row. */
     border-bottom: 3px solid transparent;
+    /* Over the strip's hairline rather than above it, so the two do not stack
+       into a 4px double rule under the chosen tab. */
+    margin-bottom: -1px;
 }
 
 .tab-on {
@@ -53,39 +77,110 @@
 }
 
 /*
-    Closed by default. The setting is what somebody came for; the reasoning is for
-    the one time they wonder what it means.
-*/
-.why { padding: 4px 0 2px; }
+    A SECTION HEADING THAT OPENS, for the Phone tab.
 
-.why > summary {
-    font-size: 12.5px;
-    color: var(--brand-blue);
+    Its two sections - what is installed, and what the phone is - are each short,
+    and stacked they still ran past the bottom of the screen. One row per heading
+    buys the whole section, which is the trade the services screen makes for the
+    same reason.
+
+    Same weight and colour as .group-title, so a heading that folds and a heading
+    that does not look like the same kind of thing.
+*/
+.fold {
+    font: inherit;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 0;
+    background: none;
+    border: 0;
+    text-align: left;
     cursor: pointer;
-    /* A 44px target without a 44px-tall row: the padding is the target. */
-    padding: 8px 0;
-    list-style: none;
-    user-select: none;
 }
 
-/* Safari and Chrome draw their own marker; this replaces it with one that
-   matches the rest of the app rather than the browser. */
-.why > summary::-webkit-details-marker { display: none; }
+.fold-title {
+    flex: none;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--brand-blue);
+}
 
-.why > summary::after {
-    content: " ›";
-    display: inline-block;
+/*
+    WHAT IT IS SET TO, ON THE CLOSED HEADING.
+
+    The commonest reason to open Waking is to find out what to say to the phone.
+    Printing the answer on the heading means most visits to this tab are read-only
+    - which is the difference between a settings screen and a place you have to
+    go rummaging.
+*/
+.fold-now {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.fold-chevron {
+    flex: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--ink-soft);
     transition: transform 120ms ease;
 }
 
-.why[open] > summary::after { transform: rotate(90deg); }
+.fold-on .fold-chevron { transform: rotate(90deg); }
 
-.why > p {
-    font-size: 12.5px;
+/* A caveat about a control, not a paragraph about the app. */
+.note {
+    font-size: 12px;
+    line-height: 1.4;
     color: var(--ink-soft);
-    padding: 2px 0 6px;
-    margin: 0;
+    padding-top: 10px;
 }
+
+/*
+    A REFUSAL, and it has to look like one.
+
+    In the app's own blue it would read as guidance and get skipped; this is the
+    line that says the phrase cannot work at all, and somebody who misses it will
+    believe they set a wake word they did not set.
+*/
+.warn {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink);
+    padding: 10px 12px;
+    margin-top: 10px;
+    background: var(--raised);
+    border-left: 3px solid var(--ink-soft);
+    border-radius: 8px;
+}
+
+/* Sits ON the phrase it is about, so a weak one is visibly the weak one rather
+   than a warning floating near a list. */
+.row-warn {
+    display: block;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--ink-soft);
+    padding-top: 3px;
+}
+
+/* Field and button on one line, because "type a phrase and add it" is one act. */
+.add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+}
+
+.add > .select { flex: 1; min-width: 0; margin-top: 0; }
 
 .row {
     display: flex;
@@ -95,6 +190,12 @@
     border-top: 1px solid var(--hairline);
     cursor: pointer;
 }
+
+/* The separator goes BETWEEN rows, so the first one in a card does not draw a
+   line that floats under the card's own top edge. It showed as a stray rule on
+   the Mode tab, which has no heading above its first row. */
+.group > .row:first-child,
+.fold + .row { border-top: 0; }
 
 .row-text { flex: 1; min-width: 0; }
 

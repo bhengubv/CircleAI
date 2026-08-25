@@ -1,39 +1,24 @@
 @*
-    Settings.
+    Settings. Things you change.
 
-    WHAT THIS IS FOR, given "This phone" already exists next door: that tab is a
-    READ-OUT. It reports free space, memory and which models are on disk, and it
-    configures nothing. This screen configures.
+    NO MARKETING ON THIS SCREEN. It carried a tab called "What it is for" and a
+    "Why this matters" fold under every heading - a pitch for the app, inside the
+    screen somebody opens when they already have the app and want one thing
+    different. Selling to a person who has already bought wastes the only moment
+    they were willing to give you.
 
-    Each section is a property that is genuinely PERSISTENT. The conversation
-    language deliberately is not one - a household here moves through two or three
-    languages inside a single exchange - which is why the policy below defaults to
-    following the speaker rather than pinning a language.
+    So the tabs are named after the THING BEING CHANGED - Mode, Language,
+    Documents, Phone - and each control says what it does in the line under it.
 
-    TABBED, AND NOTHING BELOW THE FOLD. The first version of this screen was five
-    sections stacked, which is exactly what the abilities screen warns against: a
-    settings screen that scrolls forever makes a person hunt, and hunting is what
-    makes somebody decide an app is complicated - they never say the layout was
-    wrong, they say they could not find it.
-
-    Three tabs, split by the question being asked rather than by which service
-    answers it: what it is FOR, how it SPEAKS, and what it has KEPT. Each fits on
-    one screen. The documents list is the one thing that can grow without bound, so
-    it has a tab to itself where scrolling is expected rather than a surprise.
-
-    AND THE REASONS ARE FOLDED AWAY. Half of these settings only make sense once
-    you know why they exist - that the wake phrase and the answering language are
-    different properties, or that following the speaker is the default because a
-    household changes language mid-exchange. But a paragraph under every heading is
-    a wall of text on a screen somebody opened to flip one switch. The explanation
-    is one tap away for whoever wants it and invisible to whoever does not.
-
-    Native <details>, deliberately: it collapses with no script, it is keyboard
-    reachable, and a screen reader announces it as expandable. A hand-rolled
-    toggle would be three of those worse.
+    TABBED, AND NOTHING BELOW THE FOLD. Stacked sections make a person hunt, and
+    hunting is what makes somebody call an app complicated - they never say the
+    layout was wrong, they say they could not find it. The documents list is the
+    one thing that grows without bound, so it has a tab of its own where scrolling
+    is expected rather than a surprise.
 *@
 @page "/settings"
 @inject ISettings Store
+@inject IWakePhrases Phrases
 @inject IVoiceHost Voice
 @inject IDeviceFacts Facts
 
@@ -42,21 +27,19 @@
     {
         var index = i;
         @* Underlined, not just coloured: colour alone fails for anyone
-           colour-blind and washes out in sunlight. Same reasoning as Abilities. *@
+           colour-blind and washes out in sunlight. *@
+        @* The fold resets with the tab, so each one opens on its first section -
+           the language on one, the abilities on the other. Carrying the index
+           across meant landing on Phone with "This phone" open and the buttons
+           somebody came for still folded away. *@
         <div class="tab @(i == _tab ? "tab-on" : null)" role="tab" tabindex="0"
-             @onclick="() => _tab = index">@TabNames[i]</div>
+             @onclick="() => { _tab = index; _open = 0; }">@TabNames[i]</div>
     }
 </div>
 
 @if (_tab == 0)
 {
 <section class="group">
-    <h2 class="group-title">What it is for</h2>
-    <details class="why">
-        <summary>Why this matters</summary>
-        <p>The same phone can answer you, or stand between two people who do not share
-        a language.</p>
-    </details>
 
     <label class="row">
         <span class="row-text">
@@ -89,94 +72,196 @@
 }
 else if (_tab == 1)
 {
+@*
+    THE ORDER IS THE ARGUMENT.
+
+    Language, then Waking, then Answering - because each one only makes sense once
+    the one above it is settled. The wake phrase IS the language's phrase; there is
+    nothing to pick until the language is picked. Answering is what it replies in,
+    which is a separate question and reads as one because it comes last.
+
+    This tab used to have Answering at the top and a wake phrase LANGUAGE below it,
+    free to disagree with everything else - so the screen would happily let somebody
+    run the app in English and wake it with ビーさん. Nobody wants that combination.
+    The order above makes it unsayable rather than merely discouraged.
+
+    ONE FOLD OPEN AT A TIME, so all three headings stay on the screen. Three
+    stacked sections ran past the bottom on a 344px phone, and a control below the
+    fold on a settings screen is a control that does not exist.
+*@
 <section class="group">
-    <h2 class="group-title">What it answers in</h2>
-    <details class="why">
-        <summary>Why this matters</summary>
-        <p>A clan moves through two or three languages inside one exchange, so a
-        language fixed on the first turn is wrong by the third. Following the
-        speaker is the default for that reason.</p>
-    </details>
 
-    <label class="row">
-        <span class="row-text">
-            <span class="row-title">Follow whoever is speaking</span>
-            <span class="row-sub">Every turn is answered in the language it was asked in.</span>
-        </span>
-        <input type="radio" name="policy"
-               checked="@(_s.Policy == LanguagePolicy.FollowTheSpeaker)"
-               @onchange="() => Set(_s with { Policy = LanguagePolicy.FollowTheSpeaker })" />
-    </label>
+    <button class="fold @(_open == 0 ? "fold-on" : null)" @onclick="() => Open(0)"
+            aria-expanded="@(_open == 0)">
+        <span class="fold-title">Language</span>
+        <span class="fold-now">@Name(_s.Language)</span>
+        <span class="fold-chevron" aria-hidden="true">›</span>
+    </button>
 
-    <label class="row">
-        <span class="row-text">
-            <span class="row-title">Always one language</span>
-            <span class="row-sub">Answer in the same language whatever it hears.</span>
-        </span>
-        <input type="radio" name="policy" checked="@(_s.Policy == LanguagePolicy.Fixed)"
-               @onchange="() => Set(_s with { Policy = LanguagePolicy.Fixed })" />
-    </label>
-
-    @if (_s.Policy == LanguagePolicy.Fixed)
+    @if (_open == 0)
     {
-        <label class="field-label">
-            Answer in
-            <select class="select" value="@(_s.FixedLanguage ?? "en")"
-                    @onchange="e => Set(_s with { FixedLanguage = Tag(e) })">
-                @foreach (var l in Languages)
-                {
-                    <option value="@l.Tag">@l.Name</option>
-                }
-            </select>
-        </label>
+        <p class="note">What you speak or type to it. Everything below follows from this.</p>
+
+        @*
+            @bind:get / @bind:set, NOT value= with @onchange.
+
+            A plain value attribute on a select is re-applied on every render, so
+            the box snapped back to the stored value while the change was still in
+            flight - it looked like the control was refusing the choice when it had
+            actually saved it and then lied.
+        *@
+        <select class="select" @bind:get="_s.Language" @bind:set="ChangeLanguage">
+            @foreach (var l in Languages)
+            {
+                <option value="@l.Tag">@l.Name</option>
+            }
+        </select>
     }
-</section>
 
-<section class="group">
-    <h2 class="group-title">Waking</h2>
-    <details class="why">
-        <summary>Why this matters</summary>
-        <p>The wake phrase is a SEPARATE property from the language it answers in. You
-        can have it wake to English and reply in Japanese; before this screen those
-        two were welded together, so choosing a language silently changed what you
-        had to say to wake it.</p>
-    </details>
+    <button class="fold @(_open == 1 ? "fold-on" : null)" @onclick="() => Open(1)"
+            aria-expanded="@(_open == 1)">
+        <span class="fold-title">Waking</span>
+        <span class="fold-now">@(_s.WakeEnabled ? Chosen : "Off")</span>
+        <span class="fold-chevron" aria-hidden="true">›</span>
+    </button>
 
-    <label class="row">
-        <span class="row-text">
-            <span class="row-title">Listen for the wake phrase</span>
-            <span class="row-sub">The microphone stays open on this phone. Nothing is recorded.</span>
-        </span>
-        <input type="checkbox" checked="@_s.WakeEnabled"
-               @onchange="e => Set(_s with { WakeEnabled = (bool)(e.Value ?? false) })" />
-    </label>
-
-    @if (_s.WakeEnabled)
+    @if (_open == 1)
     {
-        <label class="field-label">
-            Wake phrase language
-            <select class="select" value="@_s.WakeLanguage"
-                    @onchange="e => Set(_s with { WakeLanguage = Tag(e) })">
+        <label class="row">
+            <span class="row-text">
+                <span class="row-title">Listen for the wake phrase</span>
+                <span class="row-sub">The microphone stays open on this phone. Nothing is recorded.</span>
+            </span>
+            <input type="checkbox" checked="@_s.WakeEnabled"
+                   @onchange="e => Set(_s with { WakeEnabled = (bool)(e.Value ?? false) })" />
+        </label>
+
+        @if (_s.WakeEnabled)
+        {
+            @if (_wake.Count == 0)
+            {
+                @*
+                    SEVENTY OF SEVENTY-FIVE LANGUAGES LAND HERE, and the old screen
+                    said nothing - it let you choose the language and went on
+                    listening for "Hey B". Saying so is the minimum; offering to fix
+                    it is the point, because it is their phone and their language.
+                *@
+                <p class="empty">
+                    No wake phrase for @Name(_s.Language) yet. Add what you would
+                    like to call it.
+                </p>
+            }
+            else
+            {
+                @foreach (var p in _wake)
+                {
+                    <label class="row" @key="p.Text">
+                        <span class="row-text">
+                            <span class="row-title">@p.Text</span>
+                            @if (p.Advice.Length > 0)
+                            {
+                                @* THE WARNING SITS ON THE PHRASE IT IS ABOUT. Four
+                                   tokens is the floor - three-token "Hey B" was heard
+                                   1 time in 10 through air - and somebody choosing a
+                                   weak phrase should see the cost at the moment of
+                                   choosing, not weeks later. *@
+                                <span class="row-warn">@p.Advice</span>
+                            }
+                        </span>
+
+                        @if (!p.BuiltIn)
+                        {
+                            <button class="delete" @onclick="() => Remove(p)"
+                                    @onclick:stopPropagation="true">Remove</button>
+                        }
+
+                        <input type="radio" name="phrase" checked="@p.Chosen"
+                               @onchange="() => Choose(p)" />
+                    </label>
+                }
+            }
+
+            @*
+                ADD, ALWAYS - not only when the list is empty. A language can have
+                several: Japanese ships with ビーさん, ビーさま and Bee san, and
+                somebody whose household calls the phone something else should be
+                able to say so.
+            *@
+            <div class="add">
+                @*
+                    TWO EVENTS, DELIBERATELY.
+
+                    Judging loads the wake model's tokenizer, so it runs on change
+                    rather than per keystroke. But an advice line that only updates
+                    on change goes STALE: typing "Bee" and then replacing it with
+                    something longer left "this is very short" sitting under a box
+                    containing a perfectly good phrase - a warning about text that
+                    is no longer there, which is worse than no warning.
+
+                    So input clears the verdict and change earns a new one.
+                *@
+                <input class="select" type="text" placeholder="What would you call it?"
+                       aria-label="A new wake phrase"
+                       @oninput="Typing"
+                       @bind:get="_typed" @bind:set="TypedAsync" @bind:event="onchange" />
+                <button class="compact" disabled="@(_typed.Trim().Length == 0 || _busy)"
+                        @onclick="Add">@(_busy ? "…" : "Add")</button>
+            </div>
+
+            @if (_said is { } said && said.Advice.Length > 0)
+            {
+                <p class="@(said.Quality == WakePhraseQuality.Unusable ? "warn" : "note")">@said.Advice</p>
+            }
+        }
+    }
+
+    <button class="fold @(_open == 2 ? "fold-on" : null)" @onclick="() => Open(2)"
+            aria-expanded="@(_open == 2)">
+        <span class="fold-title">Answering</span>
+        <span class="fold-now">@(_s.Policy == LanguagePolicy.Fixed
+            ? Name(_s.FixedLanguage ?? _s.Language) : "Follows you")</span>
+        <span class="fold-chevron" aria-hidden="true">›</span>
+    </button>
+
+    @if (_open == 2)
+    {
+        <label class="row">
+            <span class="row-text">
+                <span class="row-title">Follow whoever is speaking</span>
+                <span class="row-sub">Every turn is answered in the language it was asked in.</span>
+            </span>
+            <input type="radio" name="policy"
+                   checked="@(_s.Policy == LanguagePolicy.FollowTheSpeaker)"
+                   @onchange="() => Set(_s with { Policy = LanguagePolicy.FollowTheSpeaker })" />
+        </label>
+
+        <label class="row">
+            <span class="row-text">
+                <span class="row-title">Always one language</span>
+                <span class="row-sub">Answer in the same language whatever it hears.</span>
+            </span>
+            <input type="radio" name="policy" checked="@(_s.Policy == LanguagePolicy.Fixed)"
+                   @onchange="() => Set(_s with { Policy = LanguagePolicy.Fixed,
+                                                  FixedLanguage = _s.FixedLanguage ?? _s.Language })" />
+        </label>
+
+        @if (_s.Policy == LanguagePolicy.Fixed)
+        {
+            <select class="select" @bind:get="@(_s.FixedLanguage ?? _s.Language)"
+                    @bind:set="t => Set(_s with { FixedLanguage = t })">
                 @foreach (var l in Languages)
                 {
                     <option value="@l.Tag">@l.Name</option>
                 }
             </select>
-        </label>
+        }
     }
 </section>
 
 }
-else
+else if (_tab == 2)
 {
 <section class="group">
-    <h2 class="group-title">Your documents</h2>
-    <details class="why">
-        <summary>Why this matters</summary>
-        <p>Everything it has written for you, kept on this phone. Being able to see
-        what was kept and remove it is the other half of a promise that nothing
-        leaves the device.</p>
-    </details>
 
     @if (_docs.Count == 0)
     {
@@ -200,84 +285,122 @@ else
 </section>
 
 }
-else if (_tab == 3)
+else
 {
     @*
         WHAT IS INSTALLED AND WHAT THIS PHONE IS.
 
         This used to live on "What it can do", which made a marketing screen behave
-        like a download manager - turn-on buttons, free space, memory readings.
-        Configuration belongs where somebody goes to change something.
+        like a download manager - turn-on buttons, free space, memory readings. It
+        belongs here because every line of it is either a thing you change or a
+        number you check when something is not working.
+
+        The final branch rather than == 3: with four tabs an equality test leaves a
+        dead else, and a dead else is where a broken tab goes to hide.
     *@
     <section class="group">
-        <h2 class="group-title">What is turned on</h2>
 
-        @foreach (var row in _abilities)
+        <button class="fold @(_open == 0 ? "fold-on" : null)" @onclick="() => Open(0)"
+                aria-expanded="@(_open == 0)">
+            <span class="fold-title">Turned on</span>
+            <span class="fold-chevron" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open == 0)
         {
-            <div class="row" @key="row.Title">
-                <span class="row-text">
-                    <span class="row-title">@row.Title</span>
-                    <span class="row-sub">@Detail(row)</span>
-                </span>
+            @foreach (var row in _abilities)
+            {
+                <div class="row" @key="row.Title">
+                    <span class="row-text">
+                        <span class="row-title">@row.Title</span>
+                        <span class="row-sub">@Detail(row)</span>
+                    </span>
 
-                @if (row.State == AbilityState.Available)
-                {
-                    <button class="compact" disabled="@(_turning is not null)"
-                            @onclick="() => TurnOn(row)">
-                        @(_turning == row.Title ? "..." : "Turn on")
-                    </button>
-                }
-                else if (row.State == AbilityState.On)
-                {
-                    <span class="on">&#10003;</span>
-                }
-            </div>
+                    @if (row.State == AbilityState.Available)
+                    {
+                        <button class="compact" disabled="@(_turning is not null)"
+                                @onclick="() => TurnOn(row)">
+                            @(_turning == row.Title ? "..." : "Turn on")
+                        </button>
+                    }
+                    else if (row.State == AbilityState.On)
+                    {
+                        <span class="on">&#10003;</span>
+                    }
+                </div>
+            }
         }
-    </section>
 
-    <section class="group">
-        <h2 class="group-title">This phone</h2>
-        @foreach (var fact in _phone.Facts)
+        <button class="fold @(_open == 1 ? "fold-on" : null)" @onclick="() => Open(1)"
+                aria-expanded="@(_open == 1)">
+            <span class="fold-title">This phone</span>
+            <span class="fold-chevron" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open == 1)
         {
+            @foreach (var fact in _phone.Facts)
+            {
+                <div class="row" @key="fact.Title">
+                    <span class="row-text">
+                        <span class="row-title">@fact.Title</span>
+                        <span class="row-sub">@fact.Value</span>
+                    </span>
+                </div>
+            }
+
             <div class="row">
                 <span class="row-text">
-                    <span class="row-title">@fact.Title</span>
-                    <span class="row-sub">@fact.Value</span>
+                    <span class="row-title">Where the work happens</span>
+                    <span class="row-sub">@Voice.Provenance</span>
                 </span>
             </div>
         }
     </section>
-}
-else
-{
-<section class="group">
-    <h2 class="group-title">Where the work happens</h2>
-    <details class="why">
-        <summary>Why this matters</summary>
-        <p>@Voice.Provenance</p>
-    </details>
-</section>
 }
 
 @code {
     /// <summary>
-    /// Split by the QUESTION being asked, not by which service answers it.
+    /// Named after the thing being changed.
     /// </summary>
     /// <remarks>
-    /// "What it is for" and "How it speaks" are two different decisions made at
-    /// two different moments - one when somebody sets the phone up, the other when
-    /// they are unhappy with an answer. Grouping the wake phrase with the answering
-    /// language puts both language decisions in one place, which is where somebody
-    /// looks when either of them is wrong.
+    /// THEY WERE SENTENCES - "What it is for", "How it speaks", "What it kept" -
+    /// which is the voice of the marketing screen, and at four across they wrapped
+    /// on a 344px phone. A person on a settings screen is looking for a noun they
+    /// already have in mind: the mode, the language, a document, the phone.
     /// </remarks>
-    static readonly string[] TabNames = ["What it is for", "How it speaks", "What it kept", "This phone"];
+    static readonly string[] TabNames = ["Mode", "Language", "Documents", "Phone"];
 
     int _tab;
+
+    /// <summary>Which fold is open, or -1 for none.</summary>
+    /// <remarks>
+    /// Reset when the tab changes, so each tab opens on its first section - see
+    /// the tab strip above.
+    /// </remarks>
+    int _open;
+
     AppSettings _s = new();
     IReadOnlyList<StoredDocument> _docs = [];
     IReadOnlyList<AbilityRow> _abilities = [];
+    IReadOnlyList<WakePhraseOption> _wake = [];
     PhoneFacts _phone = new([], []);
     string? _turning;
+
+    /// <summary>A phrase being typed, and what the listener made of it.</summary>
+    string _typed = "";
+    WakePhraseResult? _said;
+    bool _busy;
+
+    /// <summary>What the phone currently answers to, for the folded heading.</summary>
+    /// <remarks>
+    /// ON THE CLOSED HEADING, because the single most common reason to open Waking
+    /// is to find out what to say - and needing to open a section to learn that is
+    /// the same hiding this screen was rebuilt to stop.
+    /// </remarks>
+    string Chosen => _wake.FirstOrDefault(p => p.Chosen)?.Text
+                  ?? _wake.FirstOrDefault()?.Text
+                  ?? "None yet";
 
     /// <summary>
     /// The languages on offer, by name.
@@ -299,7 +422,84 @@ else
         _docs = await Store.DocumentsAsync();
         _abilities = await Facts.AbilitiesAsync();
         _phone = await Facts.PhoneAsync();
+        _wake = await Phrases.ForAsync(_s.Language);
     }
+
+    void Open(int index) => _open = _open == index ? -1 : index;
+
+    /// <summary>
+    /// Change the language the app works in, and everything that reads off it.
+    /// </summary>
+    /// <remarks>
+    /// THE PHRASE LIST IS RELOADED, not left stale. Changing the language changes
+    /// what the phone can be woken with; a screen still showing the old language's
+    /// phrases would be making exactly the claim this tab was rebuilt to stop.
+    /// </remarks>
+    async Task ChangeLanguage(string tag)
+    {
+        await Set(_s with { Language = tag });
+        _said = null;
+        _typed = "";
+        _wake = await Phrases.ForAsync(tag);
+    }
+
+    /// <summary>
+    /// Drop the last verdict the moment the text stops matching it.
+    /// </summary>
+    /// <remarks>
+    /// Does NOT re-judge - that is what change is for. This only takes down a
+    /// warning that has stopped being about what is in the box.
+    /// </remarks>
+    void Typing(ChangeEventArgs e)
+    {
+        _typed = e.Value?.ToString() ?? "";
+        _said = null;
+    }
+
+    /// <summary>Judge a typed phrase without committing to it.</summary>
+    /// <remarks>
+    /// On change rather than on every keystroke: judging loads the wake model's
+    /// tokenizer, which is not something to do per character.
+    /// </remarks>
+    async Task TypedAsync(string value)
+    {
+        _typed = value;
+        _said = _typed.Trim().Length == 0
+            ? null
+            : await Phrases.CheckAsync(_s.Language, _typed);
+    }
+
+    async Task Add()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            _said = await Phrases.AddAsync(_s.Language, _typed);
+            if (_said.Added)
+            {
+                _typed = "";
+                _wake = await Phrases.ForAsync(_s.Language);
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    async Task Choose(WakePhraseOption phrase)
+    {
+        await Phrases.ChooseAsync(_s.Language, phrase.Text);
+        _wake = await Phrases.ForAsync(_s.Language);
+    }
+
+    async Task Remove(WakePhraseOption phrase)
+    {
+        await Phrases.RemoveAsync(_s.Language, phrase.Text);
+        _wake = await Phrases.ForAsync(_s.Language);
+    }
+
+    /// <summary>A language's name, falling back to its tag.</summary>
+    static string Name(string tag)
+        => SampleLanguages.All.TryGetValue(tag, out var l) ? l.Name : tag;
 
     /// <summary>
     /// What an ability costs, or what is stopping it.
@@ -340,8 +540,6 @@ else
         _s = next;
         await Store.SaveAsync(next);
     }
-
-    static string Tag(ChangeEventArgs e) => e.Value?.ToString() ?? "en";
 
     static string Size(long bytes)
         => bytes >= 1_000_000

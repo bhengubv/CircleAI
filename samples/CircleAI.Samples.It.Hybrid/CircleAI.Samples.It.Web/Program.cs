@@ -26,6 +26,7 @@ builder.Services.AddSingleton<IBrain, BrowserBrain>();
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
 builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
 builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
+builder.Services.AddSingleton<IWakePhrases, BrowserWakePhrases>();
 builder.Services.AddSingleton<ISettings, BrowserSettings>();
 builder.Services.AddSingleton<ISetup, BrowserSetup>();
 builder.Services.AddSingleton<IConversation, BrowserConversation>();

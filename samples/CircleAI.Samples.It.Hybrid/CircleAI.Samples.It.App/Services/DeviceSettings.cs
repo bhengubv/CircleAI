@@ -21,9 +21,9 @@ public sealed class DeviceSettings : ISettings
     }
 
     private const string ModeKey = "app.mode";
+    private const string LanguageKey = "app.language";
     private const string PolicyKey = "app.language.policy";
     private const string FixedKey = "app.language.fixed";
-    private const string WakeLangKey = "app.wake.language";
     private const string WakeOnKey = "app.wake.enabled";
 
     private static string DocumentsDir => FileSystem.AppDataDirectory;
@@ -33,22 +33,23 @@ public sealed class DeviceSettings : ISettings
         => Task.FromResult(new AppSettings(
             Enum.TryParse<AppMode>(_store.Get(ModeKey, nameof(AppMode.Assistant))!, out var m)
                 ? m : AppMode.Assistant,
+            // THE LANGUAGE THE APP WORKS IN. Set first, because everything below
+            // reads off it: the wake phrase is whichever one this language has,
+            // and answering either follows the speaker or pins a language of its
+            // own. English by default because the setup wizard runs in it.
+            _store.Get(LanguageKey, "en")!,
             Enum.TryParse<LanguagePolicy>(
                 _store.Get(PolicyKey, nameof(LanguagePolicy.FollowTheSpeaker))!, out var p)
                 ? p : LanguagePolicy.FollowTheSpeaker,
             _store.Get(FixedKey),
-            // ENGLISH BY DEFAULT, AND SEPARATELY FROM THE ANSWERING LANGUAGE.
-            // "Hey B" is an English phrase; defaulting this to whatever language
-            // somebody last spoke is how the wake word silently changed under them.
-            _store.Get(WakeLangKey, "en")!,
             _store.GetBool(WakeOnKey, true)));
 
     /// <inheritdoc />
     public Task SaveAsync(AppSettings settings, CancellationToken ct = default)
     {
         _store.Set(ModeKey, settings.Mode.ToString());
+        _store.Set(LanguageKey, settings.Language);
         _store.Set(PolicyKey, settings.Policy.ToString());
-        _store.Set(WakeLangKey, settings.WakeLanguage);
         _store.SetBool(WakeOnKey, settings.WakeEnabled);
 
         if (settings.FixedLanguage is null) _store.Set(FixedKey, null);
@@ -62,6 +63,19 @@ public sealed class DeviceSettings : ISettings
         // exactly what ClearChoice does and what nothing in the UI called until
         // now. Storing the radio button without doing this would leave a screen
         // saying one thing and the app doing another.
+        //
+        // THE APP LANGUAGE GOES DOWN FIRST, AND THE POLICY ON TOP OF IT. Choose()
+        // writes two things - the language in use, and a flag saying a person
+        // decided it - and only the first belongs to the app language. So the app
+        // language is written as a choice and then, under "follow the speaker",
+        // the flag is cleared again: the language it starts in is the one you set,
+        // and detection is still free to move off it on the next turn.
+        //
+        // Without the first call, a phone set to Japanese and left on "follow the
+        // speaker" opens in English and stays there until somebody says something
+        // it recognises - which reads as the language setting being ignored.
+        _spoken.Choose(settings.Language);
+
         if (settings.Policy == LanguagePolicy.Fixed && settings.FixedLanguage is { } tag)
             _spoken.Choose(tag);
         else if (settings.Policy == LanguagePolicy.FollowTheSpeaker)

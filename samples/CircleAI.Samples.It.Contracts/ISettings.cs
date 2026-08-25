@@ -51,20 +51,41 @@ public enum LanguagePolicy
 
 /// <summary>Everything the app remembers about how it should behave.</summary>
 /// <param name="Mode">Assistant or interpreter.</param>
+/// <param name="Language">
+/// THE LANGUAGE THE APP WORKS IN - what you speak or type to it.
+/// </param>
 /// <param name="Policy">How the answering language is decided.</param>
 /// <param name="FixedLanguage">
 /// The language to answer in when <see cref="LanguagePolicy.Fixed"/>.
 /// </param>
-/// <param name="WakeLanguage">
-/// The language of the WAKE PHRASE, which is not the same property as the
-/// conversation language and must not be welded to it.
-/// </param>
 /// <param name="WakeEnabled">Whether to listen for the wake phrase at all.</param>
+/// <remarks>
+/// THERE IS NO WakeLanguage, AND THERE MUST NOT BE ONE.
+/// <para>
+/// There was. The wake phrase had its own language setting, on the reasoning that
+/// it is a different property from the answering language - which was true, and
+/// produced a control that let somebody run the app in English and wake it with
+/// ビーさん. Nobody wants that. The phrase you say to wake a phone is the language
+/// you are already speaking to it in; it is not a choice, it is a consequence of
+/// <paramref name="Language"/>.
+/// </para>
+/// <para>
+/// What IS a choice is WHICH phrase, because a language can have several -
+/// Japanese has ビーさん, ビーさま and Bee san - and whether there is one at all,
+/// because most languages have none yet and the honest answer is to let somebody
+/// add theirs. That lives in <see cref="IWakePhrases"/>, keyed by language.
+/// </para>
+/// <para>
+/// The bug this replaced is still real and still guarded: picking a language used
+/// to silently change the wake phrase with nothing on screen saying so. The fix
+/// is to SHOW the phrase that the language implies, not to detach the two.
+/// </para>
+/// </remarks>
 public sealed record AppSettings(
     AppMode Mode = AppMode.Assistant,
+    string Language = "en",
     LanguagePolicy Policy = LanguagePolicy.FollowTheSpeaker,
     string? FixedLanguage = null,
-    string WakeLanguage = "en",
     bool WakeEnabled = true);
 
 /// <summary>One document the app has produced.</summary>

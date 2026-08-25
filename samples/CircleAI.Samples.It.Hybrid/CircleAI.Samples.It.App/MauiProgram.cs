@@ -37,6 +37,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IBrain, DeviceBrain>();
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
+        builder.Services.AddSingleton<IWakePhrases, DeviceWakePhrases>();
         builder.Services.AddSingleton<IWakeWord, DeviceWakeWord>();
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
         builder.Services.AddSingleton<ISetup, DeviceSetup>();

@@ -1,50 +1,100 @@
 /*
-    NOTHING SCROLLS. The chips wrap onto as many lines as they need and the tiles
-    below fill what is left - eight tiles, two rows, whole on a 344px screen.
+    NINE HEADINGS ON ONE SCREEN, plus whichever one is open.
 
-    Stacking all seven sections would have been a scroll nobody finishes, and a
-    capability below the fold is a capability that does not exist.
+    The version before this was a row of chips and one group's tiles, which put
+    five of fifty-eight things in front of a person and read as though the rest had
+    been deleted. Panels cost one row each and buy the whole list: somebody sees
+    nine subjects and a count without moving a thumb.
+
+    The arithmetic that keeps it honest on the smallest phone we support - 344px
+    wide, about 560px of body: nine heads at 36px is 324, the intro is 18, and the
+    largest group opens to two rows of tiles at about 170. It fits, with the panels
+    below the open one pushed down but still on screen.
 */
 .services {
     display: flex;
     flex-direction: column;
     height: 100%;
-    gap: 12px;
+    gap: 4px;
+    /* NOTHING SCROLLS. If a group ever grows past two rows this clips rather than
+       scrolls, and clipping is loud - somebody sees it immediately, where a
+       scrollbar quietly hides the bottom of the list forever. */
+    overflow: hidden;
 }
 
-.chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+.intro {
     flex: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    padding-bottom: 2px;
 }
 
-/*
-    TIGHT, because there are nine of them. At 12.5px with 8/12 padding they took
-    five rows - most of the screen above the tiles, which is the wrong way round:
-    the chips are how you choose, the tiles are what you came for.
-*/
-.chip {
+.panel {
+    flex: none;
+    border-bottom: 1px solid var(--hairline);
+}
+
+/* The open one takes what is left, so its tiles sit in the space rather than
+   pushing the last heading off the bottom. */
+.panel-open {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-head {
     font: inherit;
-    font-size: 11.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 2px;
+    background: none;
+    border: 0;
+    text-align: left;
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.panel-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
     font-weight: 600;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* THE COUNT IS THE POINT. A heading says there is a subject; the number says how
+   much is behind it, which is the difference between "it does money" and "it does
+   eleven things with money". */
+.panel-count {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
     line-height: 1;
     color: var(--ink-soft);
     background: var(--surface);
     border: 1px solid var(--hairline);
     border-radius: 999px;
-    padding: 7px 10px;
-    cursor: pointer;
+    padding: 3px 7px;
 }
 
-/* Filled AND bolder, not just a different colour: colour alone fails for anyone
-   colour-blind and washes out in sunlight. */
-.chip-on {
-    color: #ffffff;
-    background: var(--brand-blue);
-    border-color: var(--brand-blue);
-    font-weight: 700;
+.panel-chevron {
+    flex: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--ink-soft);
+    transform: rotate(0deg);
+    transition: transform 120ms ease;
 }
+
+.panel-open .panel-chevron { transform: rotate(90deg); }
+
+.panel-open .panel-title { color: var(--brand-blue); }
 
 /*
     Four across on a phone, more where there is room. auto-fill with a floor
@@ -55,8 +105,11 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
     grid-auto-rows: min-content;
-    gap: 10px;
+    gap: 8px;
     align-content: start;
+    padding: 2px 0 10px;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .tile {
@@ -65,8 +118,8 @@
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 12px 4px;
-    min-height: 5.25rem;
+    padding: 10px 4px;
+    min-height: 4.9rem;
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--hairline);
@@ -76,10 +129,10 @@
 
 .tile:active { background: var(--raised); }
 
-.tile-icon { font-size: 22px; line-height: 1; }
+.tile-icon { font-size: 21px; line-height: 1; }
 
 .tile-label {
-    font-size: 11.5px;
+    font-size: 11px;
     line-height: 1.2;
     text-align: center;
     /* Two lines then clipped: one long label must not make its tile taller than

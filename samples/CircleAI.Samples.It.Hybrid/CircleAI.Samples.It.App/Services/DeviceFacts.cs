@@ -27,7 +27,13 @@ public sealed class DeviceFacts : IDeviceFacts
         // Listed now that this head can actually wake. The rule stands: an
         // ability is code that runs, not a model left on disk - the chat-only
         // build advertised "Waking ✓ On" on a phone that could not wake at all.
-        ("Waking",    "Hears you say \"Hey B\" without being touched",  ModelModality.WakeWord),
+        //
+        // NO PHRASE NAMED HERE. This said 'Hears you say "Hey B"' whatever the
+        // phone was set to, so a phone working in isiZulu told its owner to say
+        // an English phrase - the same lie as the old wake-language setting, in a
+        // different place. The phrase has exactly one home now, Settings ›
+        // Language › Waking, and it is the only screen that may name it.
+        ("Waking",    "Hears you without being touched",               ModelModality.WakeWord),
     ];
 
     /// <summary>The screen that demonstrates an ability, where one exists.</summary>

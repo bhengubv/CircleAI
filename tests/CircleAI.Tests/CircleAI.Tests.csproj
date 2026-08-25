@@ -84,6 +84,21 @@
     <ProjectReference Include="..\..\src\CircleAI.Search\CircleAI.Search.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!--
+      LINKED, NOT REFERENCED. The sample's contracts are net10.0 only and this
+      project builds a net9.0 leg as well, so a ProjectReference is refused
+      outright. Compiling the source in is the honest alternative to
+      multi-targeting a sample for a test's convenience - and unlike a copied
+      file it cannot drift, because it IS the file the app ships.
+    -->
+    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\BuiltInWakePhrases.cs"
+             Link="Contracts\BuiltInWakePhrases.cs" />
+    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\SampleLanguages.cs"
+             Link="Contracts\SampleLanguages.cs" />
+    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\ISettings.cs"
+             Link="Contracts\ISettings.cs" />
+    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\IWakePhrases.cs"
+             Link="Contracts\IWakePhrases.cs" />
     <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />

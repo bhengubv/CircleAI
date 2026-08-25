@@ -16,15 +16,30 @@ namespace CircleAI.Samples.It.App.Services;
 public sealed class DeviceWakeWord : IWakeWord
 {
     private readonly ISettings _settings;
+    private readonly IWakePhrases _phrases;
 
-    /// <summary>Takes settings, because the wake phrase is configured there.</summary>
+    /// <summary>
+    /// Takes settings for the language, and the phrase book for what to listen for.
+    /// </summary>
     /// <remarks>
-    /// NOT FROM ISpokenLanguage. The wake phrase and the answering language are
-    /// different properties: somebody can reasonably want it to wake to English
-    /// and reply in Japanese. Reading the conversation language here is what made
-    /// choosing a language silently change the phrase you had to say.
+    /// THE LANGUAGE IS THE APP'S, NOT THE WAKE WORD'S. There used to be a separate
+    /// wake language setting here, on the reasoning that the phrase and the
+    /// answering language are different properties - which is true, and produced a
+    /// control that let somebody run the app in English and wake it with ビーさん.
+    /// Nobody wants that. What you say to wake a phone is the language you are
+    /// already speaking to it in.
+    /// <para>
+    /// WHICH phrase is still a choice, because a language can have several and the
+    /// owner can add their own; that is what <see cref="IWakePhrases"/> answers.
+    /// The original bug - choosing a language silently changing the phrase - is
+    /// fixed by SHOWING the phrase on the settings screen, not by detaching it.
+    /// </para>
     /// </remarks>
-    public DeviceWakeWord(ISettings settings) => _settings = settings;
+    public DeviceWakeWord(ISettings settings, IWakePhrases phrases)
+    {
+        _settings = settings;
+        _phrases = phrases;
+    }
 
     private const string ModelName = "KWS-Zipformer-HeyB";
 
@@ -44,9 +59,19 @@ public sealed class DeviceWakeWord : IWakeWord
     /// <inheritdoc />
     public async Task ListenAsync(IProgress<WakeStatus> updates, CancellationToken ct)
     {
-        updates.Report(new WakeStatus(WakeState.Preparing, "Say “Hey B”", "Getting ready…"));
-
         var settings = await _settings.LoadAsync(ct).ConfigureAwait(false);
+
+        // WHAT TO SAY, RESOLVED BEFORE ANYTHING IS SHOWN.
+        //
+        // Every line on this screen used to read "Say “Hey B”" whatever language
+        // the phone was in, which is the same failure as the old wake language
+        // setting seen from the other side: a phone that has been told to work in
+        // Japanese telling its owner to say an English phrase.
+        var chosen = await ChosenPhraseAsync(settings.Language, ct).ConfigureAwait(false);
+        var say = $"Say “{chosen}”";
+
+        updates.Report(new WakeStatus(WakeState.Preparing, say, "Getting ready…"));
+
         if (!settings.WakeEnabled)
         {
             // Turned off deliberately. Said plainly rather than shown as a
@@ -62,15 +87,18 @@ public sealed class DeviceWakeWord : IWakeWord
         if (!await RequestMicrophoneAsync().ConfigureAwait(false))
         {
             updates.Report(new WakeStatus(WakeState.NeedsPermission,
-                "Say “Hey B”", "Needs permission to hear you"));
+                say, "Needs permission to hear you"));
             return;
         }
 
         var bundle = FindBundle();
         if (bundle is null)
         {
+            // NAMED FOR WHERE IT IS NOW. This said "under What it can do", which
+            // was a marketing screen carrying turn-on buttons; the buttons moved
+            // to Settings and this line did not follow them for a while.
             updates.Report(new WakeStatus(WakeState.NotInstalled,
-                "Not turned on yet", "Turn on Waking under “What it can do”"));
+                "Not turned on yet", "Turn on Waking under Settings › Phone"));
             return;
         }
 
@@ -80,11 +108,11 @@ public sealed class DeviceWakeWord : IWakeWord
             // TWO STAGES. Stage one is generous so the wake never misses; stage
             // two throws out the ones that were the word rather than the wake -
             // "let us circle back" - by checking the phrase STARTED what was said.
-            // The phrase follows settings.WakeLanguage, which is deliberately its
-            // own property - see the constructor. Null means the bundle's built-in
-            // English phrase, which is the right fallback: a phone that answers to
-            // the wrong name is workable, one that answers to nothing is not.
-            var keywords = KeywordsFor(bundle, settings.WakeLanguage);
+            // The phrase follows the app's language. Null means the bundle's
+            // built-in English phrase, which is the right last resort: a phone that
+            // answers to the wrong name is workable, one that answers to nothing
+            // is not - but the screen says which it is rather than hiding it.
+            var keywords = await KeywordsAsync(settings.Language, chosen, ct).ConfigureAwait(false);
             using var kws = new ConfirmedKeywordSpotter(new ZipformerKwsSpotter(bundle, keywords));
 
             kws.Woke += (_, d) =>
@@ -94,8 +122,7 @@ public sealed class DeviceWakeWord : IWakeWord
                     heard == 1 ? "Say it again to try once more" : $"{heard} times", heard));
             };
 
-            updates.Report(new WakeStatus(WakeState.Listening,
-                "Say “Hey B”", "Listening", heard));
+            updates.Report(new WakeStatus(WakeState.Listening, say, "Listening", heard));
 
             await using var mic = new AndroidAudioCapture();
             var pcm = new float[1600];
@@ -121,7 +148,7 @@ public sealed class DeviceWakeWord : IWakeWord
         catch (Exception ex)
         {
             updates.Report(new WakeStatus(WakeState.Failed,
-                "Say “Hey B”", $"Could not start listening ({ex.GetType().Name})", heard));
+                say, $"Could not start listening ({ex.GetType().Name})", heard));
         }
     }
 
@@ -142,40 +169,62 @@ public sealed class DeviceWakeWord : IWakeWord
     /// otherwise indistinguishable from a broken microphone.
     /// </para>
     /// </remarks>
-    private static string? KeywordsFor(string bundleDirectory, string? languageCode)
+    /// <summary>The phrase this language is currently listened for with.</summary>
+    /// <remarks>
+    /// FALLS BACK TO "Hey B" AND SAYS SO ELSEWHERE. A language with no phrase is
+    /// the common case - seventy of seventy-five - and the listener still has to
+    /// listen for something. The settings screen is where that is confessed and
+    /// where a phrase can be added; here it only has to name what the microphone
+    /// is actually waiting for.
+    /// </remarks>
+    private async Task<string> ChosenPhraseAsync(string language, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(languageCode)) return null;
-
         try
         {
-            var bpe = Directory
-                .EnumerateFiles(bundleDirectory, "bpe.model", SearchOption.AllDirectories)
-                .FirstOrDefault();
-            if (bpe is null) return null;
+            var options = await _phrases.ForAsync(language, ct).ConfigureAwait(false);
+            var chosen = options.FirstOrDefault(o => o.Chosen) ?? options.FirstOrDefault();
+            return chosen?.Text ?? "Hey B";
+        }
+        catch
+        {
+            return "Hey B";
+        }
+    }
 
-            var book = new WakePhraseBook(new SentencePieceTokenizer(bpe));
-            var best = book.BestFor(languageCode);
-            if (best is null)
-            {
-                VoiceTrace.Write($"kws: no wake phrase this model can hear for "
-                               + $"'{languageCode}' - staying on the English name");
-                return null;
-            }
+    /// <summary>
+    /// The keyword file the spotter should read, written to match the chosen phrase.
+    /// </summary>
+    /// <remarks>
+    /// ONE WRITER FOR THAT FILE, and it is <see cref="DeviceWakePhrases"/>. This
+    /// method used to derive the phrase itself and write the file too, which meant
+    /// two places deciding what the phone answers to - the settings screen and the
+    /// listener - with no rule about which won. They disagreed exactly as you would
+    /// expect: the screen showed the phrase somebody picked and the microphone
+    /// waited for the one the engine liked best.
+    /// <para>
+    /// Choosing is idempotent, so calling it here with the phrase already in force
+    /// simply rewrites the file - which is what makes a first run work, where
+    /// nobody has chosen anything yet.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> KeywordsAsync(string language, string phrase, CancellationToken ct)
+    {
+        try
+        {
+            await _phrases.ChooseAsync(language, phrase, ct).ConfigureAwait(false);
+            var path = DeviceWakePhrases.KeywordFile(language);
+            if (File.Exists(path)) return path;
 
-            if (!book.TryAdd(best.Text, out _)) return null;
-
-            var path = Path.Combine(FileSystem.AppDataDirectory, "CircleAI",
-                                    $"wake-{languageCode}.txt");
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            book.Save(path);
-
-            VoiceTrace.Write($"kws: wake phrase for '{languageCode}': \"{best.Text}\" "
-                           + $"({best.Tokens.Count} tokens, {best.Verdict})");
-            return path;
+            // Null means the bundle's own built-in English keywords. Traced rather
+            // than silent: this is the phone answering to a name its owner may not
+            // have been told, and the trace is how that gets diagnosed.
+            VoiceTrace.Write($"kws: no keyword file for '{language}' - "
+                           + "falling back to the bundle's English phrase");
+            return null;
         }
         catch (Exception ex)
         {
-            VoiceTrace.Write($"kws: could not build a wake phrase for '{languageCode}' - {ex.GetType().Name}");
+            VoiceTrace.Write($"kws: could not prepare keywords for '{language}' - {ex.GetType().Name}");
             return null;
         }
     }
