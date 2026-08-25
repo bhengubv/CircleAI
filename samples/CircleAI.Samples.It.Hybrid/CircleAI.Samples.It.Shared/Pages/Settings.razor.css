@@ -8,6 +8,37 @@
     understand is one they will not touch.
 */
 
+/*
+    The tabs, matching the abilities screen exactly - same sizes, same underline.
+    Two screens that both tab should not tab differently.
+*/
+.tabs {
+    display: flex;
+    background: var(--surface);
+    padding: 12px 20px 0;
+    /* Full-bleed, so the tab strip reads as part of the bar rather than as a
+       card floating under it. */
+    margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
+}
+
+.tab {
+    flex: 1;
+    text-align: center;
+    font-size: 15px;
+    color: var(--ink-soft);
+    padding: 12px 0;
+    cursor: pointer;
+    user-select: none;
+    /* Transparent border of the same weight, so selecting does not shift the row. */
+    border-bottom: 3px solid transparent;
+}
+
+.tab-on {
+    color: var(--brand-blue);
+    font-weight: 700;
+    border-bottom-color: var(--brand-blue);
+}
+
 .group {
     background: var(--surface);
     border-radius: 14px;
@@ -21,10 +52,39 @@
     color: var(--brand-blue);
 }
 
-.group-why {
+/*
+    Closed by default. The setting is what somebody came for; the reasoning is for
+    the one time they wonder what it means.
+*/
+.why { padding: 4px 0 2px; }
+
+.why > summary {
+    font-size: 12.5px;
+    color: var(--brand-blue);
+    cursor: pointer;
+    /* A 44px target without a 44px-tall row: the padding is the target. */
+    padding: 8px 0;
+    list-style: none;
+    user-select: none;
+}
+
+/* Safari and Chrome draw their own marker; this replaces it with one that
+   matches the rest of the app rather than the browser. */
+.why > summary::-webkit-details-marker { display: none; }
+
+.why > summary::after {
+    content: " ›";
+    display: inline-block;
+    transition: transform 120ms ease;
+}
+
+.why[open] > summary::after { transform: rotate(90deg); }
+
+.why > p {
     font-size: 12.5px;
     color: var(--ink-soft);
-    padding: 6px 0 4px;
+    padding: 2px 0 6px;
+    margin: 0;
 }
 
 .row {
@@ -87,6 +147,16 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
     gap: 12px;
+}
+
+/*
+    THE ONE LIST THAT GROWS. Documents are unbounded, so this tab scrolls where
+    the other two do not - and it is capped rather than left to run, so the page
+    itself never becomes the scrollbar.
+*/
+.docs {
+    max-height: 60dvh;
+    overflow-y: auto;
 }
 
 .empty {

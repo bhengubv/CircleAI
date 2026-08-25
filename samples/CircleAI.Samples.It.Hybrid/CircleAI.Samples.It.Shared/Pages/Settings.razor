@@ -9,17 +9,53 @@
     language deliberately is not one - a household here moves through two or three
     languages inside a single exchange - which is why the policy below defaults to
     following the speaker rather than pinning a language.
+
+    TABBED, AND NOTHING BELOW THE FOLD. The first version of this screen was five
+    sections stacked, which is exactly what the abilities screen warns against: a
+    settings screen that scrolls forever makes a person hunt, and hunting is what
+    makes somebody decide an app is complicated - they never say the layout was
+    wrong, they say they could not find it.
+
+    Three tabs, split by the question being asked rather than by which service
+    answers it: what it is FOR, how it SPEAKS, and what it has KEPT. Each fits on
+    one screen. The documents list is the one thing that can grow without bound, so
+    it has a tab to itself where scrolling is expected rather than a surprise.
+
+    AND THE REASONS ARE FOLDED AWAY. Half of these settings only make sense once
+    you know why they exist - that the wake phrase and the answering language are
+    different properties, or that following the speaker is the default because a
+    household changes language mid-exchange. But a paragraph under every heading is
+    a wall of text on a screen somebody opened to flip one switch. The explanation
+    is one tap away for whoever wants it and invisible to whoever does not.
+
+    Native <details>, deliberately: it collapses with no script, it is keyboard
+    reachable, and a screen reader announces it as expandable. A hand-rolled
+    toggle would be three of those worse.
 *@
 @page "/settings"
 @inject ISettings Store
 @inject IVoiceHost Voice
 
+<div class="tabs" role="tablist">
+    @for (var i = 0; i < TabNames.Length; i++)
+    {
+        var index = i;
+        @* Underlined, not just coloured: colour alone fails for anyone
+           colour-blind and washes out in sunlight. Same reasoning as Abilities. *@
+        <div class="tab @(i == _tab ? "tab-on" : null)" role="tab" tabindex="0"
+             @onclick="() => _tab = index">@TabNames[i]</div>
+    }
+</div>
+
+@if (_tab == 0)
+{
 <section class="group">
     <h2 class="group-title">What it is for</h2>
-    <p class="group-why">
-        The same phone can answer you, or stand between two people who do not share
-        a language.
-    </p>
+    <details class="why">
+        <summary>Why this matters</summary>
+        <p>The same phone can answer you, or stand between two people who do not share
+        a language.</p>
+    </details>
 
     <label class="row">
         <span class="row-text">
@@ -66,13 +102,17 @@
     }
 </section>
 
+}
+else if (_tab == 1)
+{
 <section class="group">
     <h2 class="group-title">What it answers in</h2>
-    <p class="group-why">
-        A clan moves through two or three languages inside one exchange, so a
+    <details class="why">
+        <summary>Why this matters</summary>
+        <p>A clan moves through two or three languages inside one exchange, so a
         language fixed on the first turn is wrong by the third. Following the
-        speaker is the default for that reason.
-    </p>
+        speaker is the default for that reason.</p>
+    </details>
 
     <label class="row">
         <span class="row-text">
@@ -110,12 +150,13 @@
 
 <section class="group">
     <h2 class="group-title">Waking</h2>
-    <p class="group-why">
-        The wake phrase is a SEPARATE property from the language it answers in. You
+    <details class="why">
+        <summary>Why this matters</summary>
+        <p>The wake phrase is a SEPARATE property from the language it answers in. You
         can have it wake to English and reply in Japanese; before this screen those
         two were welded together, so choosing a language silently changed what you
-        had to say to wake it.
-    </p>
+        had to say to wake it.</p>
+    </details>
 
     <label class="row">
         <span class="row-text">
@@ -141,13 +182,17 @@
     }
 </section>
 
+}
+else
+{
 <section class="group">
     <h2 class="group-title">Your documents</h2>
-    <p class="group-why">
-        Everything it has written for you, kept on this phone. Being able to see
+    <details class="why">
+        <summary>Why this matters</summary>
+        <p>Everything it has written for you, kept on this phone. Being able to see
         what was kept and remove it is the other half of a promise that nothing
-        leaves the device.
-    </p>
+        leaves the device.</p>
+    </details>
 
     @if (_docs.Count == 0)
     {
@@ -155,6 +200,7 @@
     }
     else
     {
+        <div class="docs">
         @foreach (var doc in _docs)
         {
             <div class="row" @key="doc.Path">
@@ -165,15 +211,33 @@
                 <button class="delete" @onclick="() => Delete(doc)">Delete</button>
             </div>
         }
+        </div>
     }
 </section>
 
 <section class="group">
     <h2 class="group-title">Where the work happens</h2>
-    <p class="group-why">@Voice.Provenance</p>
+    <details class="why">
+        <summary>Why this matters</summary>
+        <p>@Voice.Provenance</p>
+    </details>
 </section>
+}
 
 @code {
+    /// <summary>
+    /// Split by the QUESTION being asked, not by which service answers it.
+    /// </summary>
+    /// <remarks>
+    /// "What it is for" and "How it speaks" are two different decisions made at
+    /// two different moments - one when somebody sets the phone up, the other when
+    /// they are unhappy with an answer. Grouping the wake phrase with the answering
+    /// language puts both language decisions in one place, which is where somebody
+    /// looks when either of them is wrong.
+    /// </remarks>
+    static readonly string[] TabNames = ["What it is for", "How it speaks", "What it kept"];
+
+    int _tab;
     AppSettings _s = new();
     IReadOnlyList<StoredDocument> _docs = [];
 
