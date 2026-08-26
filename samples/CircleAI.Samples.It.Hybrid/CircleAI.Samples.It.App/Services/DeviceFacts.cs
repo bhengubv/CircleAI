@@ -58,25 +58,25 @@ public sealed class DeviceFacts : IDeviceFacts
             var rows = new List<AbilityRow>(Catalogue.Length);
             foreach (var (title, blurb, modality) in Catalogue)
             {
-                var candidates = registry.AllModels.Where(m => m.Modality == modality).ToList();
-                var installed = candidates.FirstOrDefault(m => loader.ModelExists(m.Name));
+                // THE SAME CHOICE THE CHAT SCREEN MAKES. The rule used to live
+                // here in full and in a different form in DeviceBrain, so this
+                // screen offered Answering at 547 MB while the chat screen said
+                // it needed 22797 MB. One rule, one answer.
+                var chosen = ModelChoice.For(modality, registry, loader, probe);
 
-                if (installed is not null)
+                if (chosen is not null && loader.ModelExists(chosen.Name))
                 {
                     rows.Add(new AbilityRow(title, blurb, AbilityState.On,
                         TryRoute: RouteFor(modality)));
                     continue;
                 }
 
-                var best = candidates.Where(m => Fits(m, probe))
-                                     .OrderByDescending(m => m.QualityRank)
-                                     .ThenBy(m => m.MinRamGb)
-                                     .FirstOrDefault();
-
-                rows.Add(best is not null
-                    ? new AbilityRow(title, blurb, AbilityState.Available, best.TotalBytes)
+                rows.Add(chosen is not null
+                    ? new AbilityRow(title, blurb, AbilityState.Available, chosen.TotalBytes)
                     : new AbilityRow(title, blurb,
-                        candidates.Count == 0 ? AbilityState.NotCatalogued : AbilityState.TooBig));
+                        ModelChoice.AnyCatalogued(modality, registry)
+                            ? AbilityState.TooBig
+                            : AbilityState.NotCatalogued));
             }
             return rows;
         }, ct);
@@ -104,11 +104,10 @@ public sealed class DeviceFacts : IDeviceFacts
             var technical = new List<string>();
             foreach (var (title, _, modality) in Catalogue)
             {
-                var m = registry.AllModels
-                    .Where(x => x.Modality == modality)
-                    .OrderByDescending(x => loader.ModelExists(x.Name))
-                    .ThenByDescending(x => x.QualityRank)
-                    .FirstOrDefault();
+                // THE FOURTH PLACE, and a readout that named a different model
+                // from the one the row above it offered is a diagnostics screen
+                // actively misleading whoever came to it to diagnose something.
+                var m = ModelChoice.For(modality, registry, loader, probe);
                 if (m is null) continue;
                 technical.Add($"{title}: {m.Name}\n{Size(m.TotalBytes)} · needs "
                             + $"{m.MinRamGb:0.#} GB · {m.Repo}");
@@ -128,11 +127,10 @@ public sealed class DeviceFacts : IDeviceFacts
         using var loader = new BundleModelLoader(StorageDir, registry);
         var probe = DeviceProbe.Snapshot();
 
-        var best = registry.AllModels
-            .Where(m => m.Modality == entry.Modality && Fits(m, probe))
-            .OrderByDescending(m => m.QualityRank)
-            .ThenBy(m => m.MinRamGb)
-            .FirstOrDefault();
+        // THE THIRD PLACE THIS CHOICE WAS MADE, and the one that actually spends
+        // somebody's data. A download that picked a different model from the one
+        // the row advertised would be the worst of the three to get wrong.
+        var best = ModelChoice.For(entry.Modality, registry, loader, probe);
         if (best is null) return "Nothing that fits this phone.";
 
         try
@@ -156,12 +154,9 @@ public sealed class DeviceFacts : IDeviceFacts
         }
     }
 
-    private static bool Fits(ModelEntry m, DeviceProbe probe)
-        => m.MinRamGb <= probe.UsableRamGb + 0.0001
-        && (probe.StorageFreeGb <= 0 || m.MinStorageGb <= probe.StorageFreeGb + 0.0001);
-
-    private static string Size(long bytes)
-        => bytes >= 1_000_000_000
-            ? $"{bytes / 1_000_000_000.0:0.#} GB"
-            : $"{bytes / 1_000_000.0:0} MB";
+    // Fits and Size moved to ModelChoice, which is now the one place that
+    // decides which model this phone should use for a job. Four copies of that
+    // decision lived here and in DeviceBrain, and two of them disagreed by a
+    // factor of forty on the same handset.
+    private static string Size(long bytes) => ModelChoice.Size(bytes);
 }

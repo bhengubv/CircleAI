@@ -173,10 +173,17 @@ def outputs():
 
         # MauiSplashScreen: the svg carries the mark, the csproj Color= carries the
         # background. Both are stated, so the file also reads correctly on its own.
+        # 0.95, not 0.52. A splash has no launcher mask to survive and no
+        # foreground to sit inside - it is one mark on a full-bleed colour - so
+        # the safe zone the icons need was costing it half its size for nothing.
+        # At 0.52 on a 128dp BaseSize the mark drew at about 66dp: a small logo
+        # adrift in the middle of a dark screen. The 5% left over is optical
+        # margin, so the arcs do not touch the edge of the image itself.
         hyb / "Resources" / "Splash" / "splash.svg":
-            svg(456, 0.52, BLUE, PAGE,
+            svg(456, 0.95, BLUE, PAGE,
                 "Splash - blue mark on the app's own page colour, so there is no "
-                "white flash and no colour jump into Home."),
+                "white flash and no colour jump into Home. Near full-bleed: "
+                "nothing crops a splash, so nothing needs a safe zone."),
     }
 
 

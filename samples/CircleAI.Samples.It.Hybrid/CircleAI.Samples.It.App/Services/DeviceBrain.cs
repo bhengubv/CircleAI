@@ -30,23 +30,34 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
 
             using var registry = new ModelRegistryService();
             using var loader = new BundleModelLoader(StorageDir, registry);
+            var probe = DeviceProbe.Snapshot();
 
-            var chat = registry.AllModels
-                .Where(m => m.Modality == ModelModality.Chat)
-                .OrderByDescending(m => loader.ModelExists(m.Name))
-                .ThenByDescending(m => m.QualityRank)
-                .FirstOrDefault();
+            // THE SAME CHOICE THE SETTINGS SCREEN MAKES. This used to take the
+            // highest-quality chat model in the catalogue without asking whether
+            // the phone could run it, so Settings offered Answering at 547 MB
+            // while this screen said it needed 22797 MB - forty times apart, on
+            // the same handset, at the same moment.
+            var chat = ModelChoice.For(ModelModality.Chat, registry, loader, probe);
 
             if (chat is null)
-                return new BrainState(false, "No answering model is catalogued.");
+                return new BrainState(false,
+                    ModelChoice.AnyCatalogued(ModelModality.Chat, registry)
+                        // ABOUT THEIR PHONE, not about our catalogue. There are
+                        // answering models; none of them will run here.
+                        ? "Answering needs more memory than this phone has."
+                        : "No answering model is catalogued yet.");
 
             // The SIZE, not just "not installed". It is the number that decides
             // whether somebody on a metered connection taps.
+            //
+            // AND NOT THE MODEL'S NAME. "Qwen3.6-35B-A3B-MNN" is our word for it;
+            // nobody outside this project can act on it, and printing it turns a
+            // sentence about their phone into one about our build.
             return loader.ModelExists(chat.Name)
                 ? new BrainState(true, "Ready")
                 : new BrainState(false,
-                    $"Answering needs {chat.Name} — {chat.TotalBytes / 1_000_000} MB. "
-                  + "Turn it on under \"What it can do\".");
+                    $"Answering needs a {ModelChoice.Size(chat.TotalBytes)} download. "
+                  + "Turn it on under Settings › Phone.");
         }, ct);
 
     /// <inheritdoc />

@@ -60,7 +60,10 @@
                 <button class="tabbar-item tabbar-voice" @onclick="Listen"
                         aria-label="@(_state == MarkState.Idle ? "Talk to it" : "Listening")">
                     <span class="voice-ring @(_state != MarkState.Idle ? "voice-on" : null)">
-                        <BrandMark Size="38" State="_state" Level="_level" />
+                        @* 52 in a 72px ring: the same proportion the mark had at
+                           38 in 56, so the button grew without the logo starting
+                           to crowd its own edge. *@
+                        <BrandMark Size="52" State="_state" Level="_level" />
                     </span>
                 </button>
             }

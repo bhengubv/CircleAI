@@ -76,7 +76,7 @@
         Home is the ONE screen that puts a link on its very last row, and that link
         was sitting half behind the circle.
     */
-    padding: 0 0 calc(1.15rem + env(safe-area-inset-bottom, 0px));
+    padding: 0 0 calc(1.25rem + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
 }
 
@@ -108,8 +108,14 @@
     flex-direction: column;
     align-items: center;
     gap: 2px;
-    /* 56px: a bottom bar is hit with a thumb, at arm's length, often moving. */
-    min-height: 56px;
+    /*
+        64px, up from 56. A bottom bar is hit with a thumb, at arm's length,
+        often moving - and the bar now has to be deep enough to HOLD the voice
+        button rather than have it hang out of the bottom. At 56 the 72px circle
+        cleared the bar's lower edge by two pixels in a browser and by less on a
+        phone reporting a gesture inset, which is not clearance, it is luck.
+    */
+    min-height: 64px;
     padding: 7px 2px;
     color: var(--ink-soft);
     text-decoration: none;
@@ -162,27 +168,49 @@
 .tabbar-voice {
     /* Its own width, so the four labelled items keep equal thirds of what is
        left rather than being squeezed by the circle. */
-    flex: 0 0 4.75rem;
+    flex: 0 0 5.5rem;
     padding: 0;
     align-self: flex-start;
 }
 
+/*
+    72px, up from 56 - the one control a thumb aims for without looking, and it
+    was the smallest it could have been while still clearing the 44px minimum.
+
+    A RING YOU CAN SEE.
+
+    It wore a 1px hairline, which at 56px was already quiet and at 72px had
+    disappeared entirely - a mark floating over the bar with no edge, so the one
+    control a thumb aims for did not read as a control at all. Two pixels of
+    brand blue says button.
+
+    The maths, so the next person changing a number can check it: lifted 20px, so
+    the circle's top sits 20px above the bar and its bottom 52px below that, well
+    inside the 64px the bar is now tall. The body pays the same 20px of clearance
+    above, which is why that figure appears in app.css too.
+*/
 .voice-ring {
     display: grid;
     place-items: center;
-    width: 3.5rem;
-    height: 3.5rem;
+    width: 4.5rem;
+    height: 4.5rem;
     /* Lifted out of the bar and back over the content above it. */
-    margin-top: -1.15rem;
+    margin-top: -1.25rem;
     border-radius: 50%;
     background: var(--surface);
-    border: 1px solid var(--hairline);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    border: 2px solid var(--brand-blue);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 
-/* Listening is said by the mark's own animation; the ring only warms up so the
-   button reads as active from the corner of an eye. */
+/*
+    Listening is said by the mark's own animation; the ring only warms up so the
+    button reads as active from the corner of an eye.
+
+    A GLOW, NOT A COLOUR SWAP. The idle ring is already brand blue, so recolouring
+    the border says nothing; and filling it blue would hide the blue mark inside
+    it. A halo changes the shape's weight without touching either.
+*/
 .voice-on {
-    border-color: var(--brand-blue);
     background: var(--raised);
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.22), 0 2px 12px rgba(0, 0, 0, 0.45);
 }

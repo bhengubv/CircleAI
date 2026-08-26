@@ -59,9 +59,13 @@
     <!-- The splash. Color is Ui.Bg - Shade(#2c3e50, 0.42) - which a screenshot of
          the running app measures as #121A21. Matching it is the point: the splash
          is the bridge into Home, so it wears Home's background. -->
+    <!-- 256dp, not 128. BaseSize is the size the mark is DRAWN at, centred on the
+         colour above; at 128 it was a small logo adrift in a dark screen, and on
+         a 360dp phone it used barely a third of the width. 256 fills the space a
+         splash is for while still clearing the narrowest handset we support. -->
     <MauiSplashScreen Include="Resources\Splash\splash.svg"
                       Color="#121A21"
-                      BaseSize="128,128" />
+                      BaseSize="256,256" />
 
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>

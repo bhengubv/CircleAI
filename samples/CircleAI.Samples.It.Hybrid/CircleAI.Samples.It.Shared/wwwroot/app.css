@@ -109,7 +109,7 @@ a { color: var(--brand-blue); text-decoration: none; }
     /*
         Room for a home gesture bar, AND for the voice button.
 
-        The bar's middle button is lifted 1.15rem out of the bar and sits OVER the
+        The bar's middle button is lifted 1.25rem out of the bar and sits OVER the
         content - which is what makes it read as the one round control on the
         screen, and also means anything a page puts on its own last row lands
         underneath it. Home's "What it can do" did exactly that: the single link
@@ -118,7 +118,7 @@ a { color: var(--brand-blue); text-decoration: none; }
         Paid once here rather than per screen, because it is the layout's button
         and any page's last row would hit it.
     */
-    padding-bottom: calc(var(--gutter) + 1.15rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--gutter) + 1.25rem + env(safe-area-inset-bottom, 0px));
 }
 
 .stack { display: grid; gap: var(--gutter); }

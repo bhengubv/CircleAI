@@ -25,6 +25,8 @@
 }
 
 .turns {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
@@ -33,11 +35,47 @@
     scroll-behavior: smooth;
 }
 
-.welcome {
-    font-size: 13px;
-    color: var(--ink-soft);
+/*
+    THE MIDDLE OF THE PAGE, which nothing occupied before.
+
+    margin: auto inside a flex column centres it in whatever the turns area has,
+    so an empty conversation has a centre of gravity instead of a line of grey
+    text at the top and fourteen hundred pixels of nothing under it.
+*/
+.empty {
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
     text-align: center;
-    padding-top: 24px;
+}
+
+.empty-line {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.empty-sub {
+    font-size: 13.5px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    max-width: 22rem;
+}
+
+/* The instruction, pressable. It knew where to send somebody and made them walk
+   there themselves. */
+.empty-go {
+    margin-top: 4px;
+    padding: 12px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #ffffff;
+    background: var(--brand-blue);
+    border-radius: 999px;
+    text-decoration: none;
 }
 
 .row {
@@ -78,25 +116,52 @@
     border: 1px solid var(--brand-blue);
 }
 
+/*
+    NO SAFE-AREA PADDING HERE. The body already pays it, and the gesture bar is
+    below the tab bar rather than below this - so adding it again put a second
+    inset inside the app and left the composer floating above its own rule.
+*/
 .composer {
     display: flex;
-    gap: 10px;
     padding: 10px 12px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     background: var(--page);
     border-top: 1px solid var(--hairline);
 }
 
+/*
+    ONE FIELD, WITH THE BUTTONS INSIDE IT.
+
+    A grey rounded box, a grey square holding a microphone and a blue rectangle
+    stood side by side as three different shapes doing one job - three radii,
+    three fills, three heights - which is most of what dated this page. The
+    container is the control now and the buttons live in it.
+*/
+.composer-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    background: var(--raised);
+    border: 1px solid var(--hairline);
+    /* Fully round, so the pill inside it reads as nested rather than as a second
+       rectangle sharing an edge. */
+    border-radius: 999px;
+    padding: 5px 5px 5px 6px;
+}
+
+/* Transparent: the field around it is what somebody sees, and a box inside a box
+   is the shape being fixed. */
 .input {
     font: inherit;
     font-size: 16px;
     flex: 1;
     min-width: 0;
-    padding: 12px 14px;
+    padding: 10px 8px;
     color: var(--ink);
-    background: var(--raised);
+    background: transparent;
     border: 0;
-    border-radius: 10px;
+    outline: none;
 }
 
 .input::placeholder { color: var(--ink-soft); }
@@ -104,22 +169,30 @@
 
 .send {
     font: inherit;
+    font-size: 14.5px;
     font-weight: 600;
-    color: var(--ink);
+    color: #ffffff;
     background: var(--brand-blue);
     border: 0;
-    border-radius: 12px;
-    padding: 0 1.1rem;
-    min-height: 2.75rem;
+    border-radius: 999px;
+    padding: 0 1.05rem;
+    /* 2.375rem inside a field whose own padding makes the whole thing 2.75 - so
+       the row is still a 44px target without the pill touching its edges. */
+    min-height: 2.375rem;
     cursor: pointer;
+    flex: none;
 }
 
 .send:disabled { opacity: 0.45; cursor: default; }
 
 /*
-    The probe row and the hero, above the composer. Their own lines so the button
-    strip never crowds the text box off the screen - voice builds used to push
-    Send and TTS off the right edge.
+    The probe row above the composer. Its own line so the button strip never
+    crowds the text box off the screen - voice builds used to push Send and TTS
+    off the right edge.
+
+    TWO BUTTONS, NOT FOUR. The other two were destinations that the bottom bar
+    already carries, and the full-width blue one among them outranked Send on a
+    screen whose job is Send.
 */
 .probes {
     display: flex;
@@ -137,8 +210,10 @@
     color: var(--brand-blue);
     background: transparent;
     border: 1px solid var(--hairline);
-    border-radius: 10px;
-    padding: 10px 6px;
+    /* Round, like the field below and the button in the middle. Three radii on
+       one screen is the other half of what dated this page. */
+    border-radius: 999px;
+    padding: 11px 6px;
     cursor: pointer;
 }
 
@@ -147,31 +222,32 @@
 /* The file input inside the label is the control; the label is what is seen. */
 .probe input[type="file"] { display: none; }
 
-.hero-btn {
-    font: inherit;
-    font-size: 15px;
-    font-weight: 600;
-    display: block;
-    width: calc(100% - 24px);
-    margin: 0 12px 8px;
-    min-height: 2.75rem;
-    color: var(--ink);
-    background: var(--brand-blue);
-    border: 0;
-    border-radius: 12px;
-    cursor: pointer;
-}
+/* .hero-btn is gone with the language shortcut it was: the bottom bar and a
+   Services tile both reach the language list, and this screen does not need a
+   third door to it. */
 
+/*
+    Round and inside the field, matching Send.
+
+    IT STAYS despite the bar carrying a bigger microphone 33px below: that button
+    takes a spoken turn wherever you are, and this one puts what was heard and
+    what was answered into the transcript above it. They are different jobs that
+    happen to share an icon.
+*/
 .mic {
-    font-size: 18px;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
+    font-size: 17px;
+    display: grid;
+    place-items: center;
+    width: 2.375rem;
+    height: 2.375rem;
     color: var(--brand-blue);
-    background: var(--raised);
-    border: 1px solid var(--hairline);
-    border-radius: 12px;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
     cursor: pointer;
     flex: none;
 }
+
+.mic:active { background: var(--surface); }
 
 .mic:disabled { opacity: 0.45; cursor: default; }
