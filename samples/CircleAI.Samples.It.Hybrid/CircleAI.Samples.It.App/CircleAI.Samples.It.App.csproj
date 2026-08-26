@@ -143,4 +143,51 @@
              Link="Shared\VoiceTurn.cs" />
   </ItemGroup>
 
+  <!--
+    ============================================================================
+    InstallKeepingData - deploy WITHOUT throwing away the 817 MB of models.
+
+    WHY THIS EXISTS. "dotnet build -t:Install" wipes this app's data on every
+    deploy. AndroidPreserveUserData defaults to True and is passed to the
+    FastDeploy task, but fast deployment is off here - EmbedAssembliesIntoApk is
+    true, because that is what makes a Release build load its assemblies from
+    inside the APK - so the task falls back to a plain install, which cannot
+    replace an installed package and uninstalls it first. Every build log in this
+    repo carries the evidence: "warning XAAADB0000: Failure
+    [DELETE_FAILED_INTERNAL_ERROR]" is that uninstall being attempted.
+
+    What gets thrown away is not a preference. Setup fetches 817 MB - two voices,
+    the ears, the wake word and a 548 MB answering model - onto a phone where
+    that is most of ten minutes, and it lives in app-private storage because it
+    has to: this app must not assume the phone has an SD card, and a model the
+    app cannot function without is not optional media. So a one-line UI change
+    cost a full re-download, three times in one afternoon, and no behaviour that
+    needs an installed model could be tested twice in a row.
+
+    "adb install -r" replaces the package in place and keeps the data directory.
+    It is deliberately NOT the default: -r also retains the old permission
+    grants, so it is the wrong tool for verifying a first run, which is exactly
+    what "-t:Install" is right for. Two targets, two jobs, and the choice is
+    made on purpose rather than by whichever one somebody typed.
+
+        dotnet build -t:InstallKeepingData -p:AdbTarget="-s SERIAL"    iterate
+        dotnet build -t:Install            -p:AdbTarget="-s SERIAL"    first run
+    ============================================================================
+  -->
+  <Target Name="InstallKeepingData" DependsOnTargets="SignAndroidPackage">
+    <PropertyGroup>
+      <_Adb Condition=" '$(_Adb)' == '' ">$(_AndroidPlatformToolsDirectory)adb</_Adb>
+    </PropertyGroup>
+
+    <Message Importance="high"
+             Text="Installing over the existing package, keeping its data: $(ApkFileSigned)" />
+
+    <Exec Command="&quot;$(_Adb)&quot; $(AdbTarget) install -r &quot;$(ApkFileSigned)&quot;" />
+
+    <!-- lastUpdateTime is the only proof an install actually happened: this
+         toolchain can report success without having installed anything. -->
+    <Exec Command="&quot;$(_Adb)&quot; $(AdbTarget) shell dumpsys package $(_AndroidPackage) | findstr lastUpdateTime"
+          ContinueOnError="true" />
+  </Target>
+
 </Project>
