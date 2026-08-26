@@ -6,20 +6,21 @@
     been deleted. Panels cost one row each and buy the whole list: somebody sees
     nine subjects and a count without moving a thumb.
 
-    The arithmetic that keeps it honest on the smallest phone we support - 344px
-    wide, about 560px of body: nine heads at 36px is 324, the intro is 18, and the
-    largest group opens to two rows of tiles at about 170. It fits, with the panels
-    below the open one pushed down but still on screen.
+    Nine heads at 36px and the intro fit the smallest phone we support - 344px
+    wide, about 560px of body - so the whole shape is visible before anybody taps.
+
+    AN OPEN GROUP IS NEVER CUT. It was: the grid clipped whatever did not fit the
+    space left over, so Health - which its own heading advertises as 8 - showed
+    four tiles and the top half of four more. A count that promises more than the
+    screen delivers is worse than no count at all. The group grows to its full
+    height and the page scrolls, which is what app.css says this app does with
+    overflow: the bars are hidden, not the content.
 */
 .services {
     display: flex;
     flex-direction: column;
-    height: 100%;
+    min-height: 100%;
     gap: 4px;
-    /* NOTHING SCROLLS. If a group ever grows past two rows this clips rather than
-       scrolls, and clipping is loud - somebody sees it immediately, where a
-       scrollbar quietly hides the bottom of the list forever. */
-    overflow: hidden;
 }
 
 .intro {
@@ -35,10 +36,14 @@
     border-bottom: 1px solid var(--hairline);
 }
 
-/* The open one takes what is left, so its tiles sit in the space rather than
-   pushing the last heading off the bottom. */
+/*
+    The open one takes what is left, so its tiles sit in the space rather than
+    pushing the last heading off the bottom - but it is allowed to be TALLER than
+    what is left, because a group of eight is two rows and the space is often one.
+    It grew to fit and the page scrolls; it does not get cut.
+*/
 .panel-open {
-    flex: 1 1 auto;
+    flex: 1 0 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -109,7 +114,6 @@
     align-content: start;
     padding: 2px 0 10px;
     min-height: 0;
-    overflow: hidden;
 }
 
 .tile {

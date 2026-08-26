@@ -183,8 +183,14 @@
         Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         Resolve();
-        // Navigating closes the menu. A sheet left open over the screen somebody
-        // just asked for is the app arguing with them.
+
+        // AND IT CLEARS WHAT THE VOICE BUTTON SAID. That line is about one turn,
+        // taken on one screen - it was living in the layout and following
+        // somebody everywhere until the next turn, so "answering needs a 548 MB
+        // download" sat under the services list long after it stopped being the
+        // thing they were doing, and eventually long after it stopped being true.
+        _says = null;
+
         StateHasChanged();
     }
 

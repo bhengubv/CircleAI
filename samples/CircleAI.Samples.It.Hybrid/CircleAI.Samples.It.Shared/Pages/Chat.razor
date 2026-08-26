@@ -53,6 +53,28 @@
                     <div class="empty-sub">@_status</div>
 
                     @*
+                        THE QUESTION SURVIVES THE WAIT.
+
+                        A tile in Services exists to get somebody past the blank
+                        page - it arrives carrying a first sentence, which the
+                        composer holds ready to send. With no answering model the
+                        composer is not drawn, so that sentence was silently
+                        dropped: somebody tapped "How I feel", landed on "not
+                        ready yet", and nothing on the screen remembered what they
+                        had come to ask. After a 548 MB download they would have
+                        to remember it themselves.
+
+                        It is still in the box the moment there is a box.
+                    *@
+                    @if (_draft.Length > 0)
+                    {
+                        <div class="kept">
+                            <span class="kept-label">You wanted to ask</span>
+                            <span class="kept-text">@_draft</span>
+                        </div>
+                    }
+
+                    @*
                         THE INSTRUCTION, MADE PRESSABLE - but only where pressing
                         it does something. On the phone this is a download waiting
                         to be started; in a browser the message is "install the

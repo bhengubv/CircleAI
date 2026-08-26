@@ -71,6 +71,34 @@
     max-width: 20rem;
 }
 
+/*
+    What the tile was carrying, kept visible while it cannot be sent. Quiet, and
+    it does not look like a turn in the conversation - there is no conversation.
+*/
+.kept {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+    padding: 10px 14px;
+    max-width: 20rem;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+}
+
+.kept-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.kept-text {
+    font-size: 14.5px;
+    line-height: 1.35;
+    color: var(--ink);
+}
+
 /* The instruction, pressable. It knew where to send somebody and made them walk
    there themselves. */
 .empty-go {
