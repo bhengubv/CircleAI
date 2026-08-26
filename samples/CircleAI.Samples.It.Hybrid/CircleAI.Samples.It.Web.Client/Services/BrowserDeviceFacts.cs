@@ -18,7 +18,8 @@ public sealed class BrowserDeviceFacts : IDeviceFacts
 {
     private static readonly (string Title, string Blurb)[] Catalogue =
     [
-        ("Talking",   $"Reads things out loud, in {SampleLanguages.All.Count} languages"),
+        // Filled in at read time, not in this initialiser - see DeviceFacts.
+        ("Talking",   "Reads things out loud, in {n} languages"),
         ("Listening", "Understands you when you speak"),
         ("Answering", "Answers questions and helps you write"),
         ("Seeing",    "Looks at a photo and tells you what is in it"),
@@ -27,7 +28,10 @@ public sealed class BrowserDeviceFacts : IDeviceFacts
     /// <inheritdoc />
     public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<AbilityRow>>(
-            Catalogue.Select(a => new AbilityRow(a.Title, a.Blurb, AbilityState.NotCatalogued))
+            Catalogue.Select(a => new AbilityRow(
+                a.Title,
+                a.Blurb.Replace("{n}", SampleLanguages.All.Count.ToString()),
+                AbilityState.NotCatalogued))
                      .ToList());
 
     /// <inheritdoc />

@@ -20,10 +20,14 @@ public sealed class DeviceFacts : IDeviceFacts
     /// </remarks>
     private static readonly (string Title, string Blurb, ModelModality Modality)[] Catalogue =
     [
-        // COUNTED, NOT HEDGED. "10 plus" disagreed with the abilities pitch and
-        // the language list, which both say 75.
-        ("Talking",   $"Reads things out loud, in {SampleLanguages.All.Count} languages",
-                                                       ModelModality.Tts),
+        // "{n}" is filled in at read time by Blurb below, NOT here: a static
+        // field initialiser that reaches into another assembly's static makes
+        // this whole type fail to initialise if that one is not ready, and a
+        // type-initialiser failure takes every member with it. It did exactly
+        // that - the abilities list came back empty and the settings screen went
+        // blank behind it, with nothing in logcat, because managed logging does
+        // not reach it.
+        ("Talking",   "Reads things out loud, in {n} languages",      ModelModality.Tts),
         ("Listening", "Understands you when you speak",                ModelModality.Asr),
         ("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         ("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
@@ -50,6 +54,15 @@ public sealed class DeviceFacts : IDeviceFacts
 
     private static string StorageDir => ModelStore.Path;
 
+    /// <summary>The blurb, with the language count filled in.</summary>
+    /// <remarks>
+    /// COUNTED, NOT HEDGED - "10 plus" disagreed with the abilities pitch and the
+    /// language list, which both say 75 - but counted HERE rather than in the
+    /// table above, where it would run during type initialisation.
+    /// </remarks>
+    private static string Blurb(string template)
+        => template.Replace("{n}", SampleLanguages.All.Count.ToString());
+
     /// <inheritdoc />
     public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)
         => Task.Run<IReadOnlyList<AbilityRow>>(() =>
@@ -69,14 +82,14 @@ public sealed class DeviceFacts : IDeviceFacts
 
                 if (chosen is not null && loader.ModelExists(chosen.Name))
                 {
-                    rows.Add(new AbilityRow(title, blurb, AbilityState.On,
+                    rows.Add(new AbilityRow(title, Blurb(blurb), AbilityState.On,
                         TryRoute: RouteFor(modality)));
                     continue;
                 }
 
                 rows.Add(chosen is not null
-                    ? new AbilityRow(title, blurb, AbilityState.Available, chosen.TotalBytes)
-                    : new AbilityRow(title, blurb,
+                    ? new AbilityRow(title, Blurb(blurb), AbilityState.Available, chosen.TotalBytes)
+                    : new AbilityRow(title, Blurb(blurb),
                         ModelChoice.AnyCatalogued(modality, registry)
                             ? AbilityState.TooBig
                             : AbilityState.NotCatalogued));

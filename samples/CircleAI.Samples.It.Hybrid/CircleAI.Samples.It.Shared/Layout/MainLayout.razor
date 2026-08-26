@@ -199,9 +199,33 @@
     /// is also the progress indicator, and there is nowhere else to look.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// One spoken turn, from wherever you are.
+    /// </summary>
+    /// <remarks>
+    /// A TAP THAT DOES NOTHING IS INDISTINGUISHABLE FROM BROKEN, which is a rule
+    /// Home's circle already follows and this button did not. It called straight
+    /// into a turn with no readiness check and no catch: on a phone with no
+    /// answering model the turn ended immediately, the mark never left Idle so it
+    /// never animated, and nothing appeared anywhere to say why. The one control
+    /// the whole product is arranged around was silently inert.
+    /// <para>
+    /// A layout has nowhere to show a message, so when it cannot take a turn it
+    /// goes to the screen that explains itself - Chat prints what is missing and
+    /// carries the button that fixes it. Failures land there too rather than
+    /// vanishing into an empty catch.
+    /// </para>
+    /// </remarks>
     async Task Listen()
     {
         if (_state != MarkState.Idle) return;
+
+        var brain = await Talk.StateAsync();
+        if (!brain.Ready)
+        {
+            Nav.NavigateTo("chat");
+            return;
+        }
 
         var updates = new Progress<TurnState>(t =>
         {
@@ -217,6 +241,7 @@
         });
 
         try { await Talk.TurnAsync(updates); }
+        catch { Nav.NavigateTo("chat"); }
         finally { _state = MarkState.Idle; _level = 0; StateHasChanged(); }
     }
 
