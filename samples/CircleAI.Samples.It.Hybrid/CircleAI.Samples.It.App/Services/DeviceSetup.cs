@@ -158,6 +158,81 @@ public sealed class DeviceSetup : ISetup
     }
 
     /// <inheritdoc />
+    public async Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
+    {
+        var status = await Permissions.CheckStatusAsync<Permissions.Microphone>()
+            .ConfigureAwait(false);
+        if (status != PermissionStatus.Granted)
+            status = await Permissions.RequestAsync<Permissions.Microphone>()
+                .ConfigureAwait(false);
+        return status == PermissionStatus.Granted;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// PORTED FROM HomeActivity.AskToKeepRunning, vendor list and all. Huawei,
+    /// Xiaomi, Oppo and Vivo each kill foreground services on their own schedule
+    /// whatever Android says, and only the owner can exempt an app - so the
+    /// standard intent is tried first, and the vendor's own screen after it.
+    /// Every one of them is wrapped: these components move between firmwares,
+    /// and an assistant that crashes asking permission to keep running is worse
+    /// than one that quietly cannot.
+    /// </remarks>
+    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
+        => MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var context = Android.App.Application.Context;
+            var package = context.PackageName!;
+
+            // The standard one first. On phones that honour it, this is the whole fix.
+            try
+            {
+                var pm = (Android.OS.PowerManager?)context.GetSystemService(
+                    Android.Content.Context.PowerService);
+                if (pm is not null && !pm.IsIgnoringBatteryOptimizations(package))
+                {
+                    var intent = new Android.Content.Intent(
+                        Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations,
+                        Android.Net.Uri.Parse("package:" + package));
+                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return true;
+                }
+
+                // Already exempt. Nothing to open, and nothing wrong.
+                if (pm is not null) return true;
+            }
+            catch (Exception ex)
+            {
+                CircleAI.Voice.VoiceTrace.Write("battery exemption unavailable: " + ex.Message);
+            }
+
+            // Then the vendor's own list. Huawei first - it is the phone this was
+            // built and measured on, and the one most likely to kill the service.
+            foreach (var (pkg, cls) in new[]
+            {
+                ("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+                ("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"),
+                ("com.miui.securitycenter",  "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+                ("com.coloros.safecenter",   "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
+                ("com.vivo.permissionmanager","com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
+            })
+            {
+                try
+                {
+                    var intent = new Android.Content.Intent();
+                    intent.SetComponent(new Android.Content.ComponentName(pkg, cls));
+                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return true;
+                }
+                catch { /* not this vendor, or not this firmware */ }
+            }
+
+            return false;
+        });
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<TourStep>> TourAsync(
         TimeSpan remaining, CancellationToken ct = default)
         => Task.Run<IReadOnlyList<TourStep>>(() =>
@@ -187,9 +262,11 @@ public sealed class DeviceSetup : ISetup
                       "Hear it speak, and pick the one you want to be answered in.",
                       "Choose a language", "languages", 90);
 
+            // "#microphone", not "wake". A label that says "allow" has to allow,
+            // not travel somewhere that happens to ask on arrival.
             Offer("Let it hear you",
                   "The microphone is only used when you talk to it. Nothing is recorded.",
-                  "Allow the microphone", "wake", 20);
+                  "Allow the microphone", "#microphone", 20);
 
             if (Has(ModelModality.WakeWord))
                 Offer("Say “Hey B”",
@@ -204,7 +281,7 @@ public sealed class DeviceSetup : ISetup
             Offer("Keep it awake",
                   "This phone stops apps in the background. Allowing it to run means "
                 + "it can still hear you later.",
-                  "Allow it to run", "settings", 40);
+                  "Allow it to run", "#background", 40);
 
             Offer("Build your CV while you wait",
                   "Answer a few questions and it writes one for you.",

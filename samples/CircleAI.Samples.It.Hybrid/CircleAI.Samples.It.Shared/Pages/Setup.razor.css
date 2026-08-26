@@ -102,14 +102,34 @@
     padding-top: 6px;
 }
 
+/*
+    AN ANCHOR OR A BUTTON, and it must look the same either way - two of these
+    steps DO something rather than going somewhere, and a <button> that inherits
+    the platform's grey slab beside an identical-looking link reads as disabled.
+    font and background are the two the UA sets on its own.
+*/
 .tour-action {
+    font: inherit;
     display: block;
+    width: 100%;
     margin-top: 12px;
     padding: 12px;
     text-align: center;
     font-weight: 600;
     color: var(--brand-blue);
+    background: transparent;
     border: 1px solid var(--hairline);
     border-radius: 12px;
     text-decoration: none;
+    cursor: pointer;
+}
+
+.tour-action:disabled { opacity: 0.5; cursor: default; }
+
+/* What a grant did, said where the button was pressed. */
+.granted {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    padding-top: 12px;
 }

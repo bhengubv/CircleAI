@@ -112,4 +112,27 @@ public interface ISetup
 
     /// <summary>What to offer while the wait runs.</summary>
     Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default);
+
+    /// <summary>Ask for the microphone, here, without going anywhere.</summary>
+    /// <remarks>
+    /// THE BUTTON SAID "ALLOW THE MICROPHONE" AND WAS A LINK. It routed to the
+    /// wake screen, which asked on arrival - so pressing it moved somebody to a
+    /// different page mid-setup and the prompt appeared over that instead. A
+    /// control whose label is a verb has to do the verb.
+    /// </remarks>
+    Task<bool> AllowMicrophoneAsync(CancellationToken ct = default);
+
+    /// <summary>Ask to be exempt from battery killing, here.</summary>
+    /// <remarks>
+    /// "ALLOW IT TO RUN" WENT TO THIS APP'S OWN SETTINGS SCREEN, which has never
+    /// had a battery control on it - so the one step that decides whether the
+    /// assistant is still alive in an hour did nothing at all.
+    /// <para>
+    /// Returns false when nothing could be opened, which is a real outcome:
+    /// vendors move these screens between firmwares, and a phone that has none
+    /// should be told what to look for rather than shown a button that failed
+    /// silently.
+    /// </para>
+    /// </remarks>
+    Task<bool> AllowBackgroundAsync(CancellationToken ct = default);
 }

@@ -64,12 +64,39 @@
             <div class="tour">
                 <div class="tour-title">@step.Title</div>
                 <div class="tour-body">@step.Body</div>
-                @if (step.Action is not null && step.Route is not null)
+                @*
+                    A "#" ROUTE ACTS HERE; anything else is a place to go.
+
+                    Two of these steps had verbs for labels and routes for
+                    behaviour: "Allow the microphone" went to the wake screen,
+                    which asked on arrival, so pressing it moved somebody off
+                    setup and the system prompt appeared over a page they had not
+                    chosen. "Allow it to run" went to this app's own settings,
+                    which has never had a battery control on it at all.
+
+                    The same sentinel the bottom bar uses for its voice button,
+                    and for the same reason: some controls are things you do, not
+                    places you go.
+                *@
+                @if (step.Action is not null && step.Route is { Length: > 0 } route)
                 {
-                    <a class="tour-action" href="@step.Route">@step.Action</a>
+                    @if (route.StartsWith('#'))
+                    {
+                        <button class="tour-action" disabled="@_asking"
+                                @onclick="() => Grant(route)">@step.Action</button>
+                    }
+                    else
+                    {
+                        <a class="tour-action" href="@route">@step.Action</a>
+                    }
                 }
             </div>
         }
+    }
+
+    @if (_granted is { Length: > 0 })
+    {
+        <p class="granted">@_granted</p>
     }
 
     @if (_done)
@@ -122,6 +149,41 @@
             _tour = await Wizard.TourAsync(TimeSpan.FromMinutes(2));
             await Attach();
         }
+    }
+
+    /// <summary>Whether a permission prompt is open, so it cannot be asked twice.</summary>
+    bool _asking;
+
+    /// <summary>What the last grant did, in the person's words.</summary>
+    string? _granted;
+
+    /// <summary>
+    /// Do the thing the button says, here.
+    /// </summary>
+    /// <remarks>
+    /// A phone that has no screen for the vendor exemption gets told what to look
+    /// for rather than a button that failed in silence - these components move
+    /// between firmwares and there is no list that stays right.
+    /// </remarks>
+    async Task Grant(string what)
+    {
+        if (_asking) return;
+        _asking = true;
+        try
+        {
+            _granted = what switch
+            {
+                "#microphone" => await Wizard.AllowMicrophoneAsync()
+                    ? "It can hear you now."
+                    : "Not allowed. It can still be typed to.",
+                "#background" => await Wizard.AllowBackgroundAsync()
+                    ? null
+                    : "This phone has no screen for that. Find Circle AI in your "
+                    + "battery settings and allow it to run in the background.",
+                _ => null,
+            };
+        }
+        finally { _asking = false; }
     }
 
     /// <summary>Follow the run in flight, whether this page started it or not.</summary>
