@@ -36,39 +36,45 @@
 }
 
 /*
-    THE MIDDLE OF THE PAGE, which nothing occupied before.
+    IT FILLS THE ROOM RATHER THAN FLOATING IN IT.
 
-    margin: auto inside a flex column centres it in whatever the turns area has,
-    so an empty conversation has a centre of gravity instead of a line of grey
-    text at the top and fourteen hundred pixels of nothing under it.
+    Centring a small block in a tall empty column is what made this read as
+    weightless: a 64px mark and two small lines adrift with three hundred pixels
+    of nothing above and below, then a dead toolbar, then the composer. Same
+    amount of content, four gaps.
+
+    The gaps are proportional now, so the block grows into whatever space there
+    is instead of leaving it at the edges - and with the toolbar gone until there
+    is a conversation, an empty screen is one column with one rhythm.
 */
 .empty {
     margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 16px;
+    /* Between the mark and the words: enough to separate, not enough to drift. */
+    gap: clamp(10px, 2.2vh, 20px);
+    padding: clamp(12px, 3vh, 32px) 16px;
     text-align: center;
 }
 
 .empty-line {
-    font-size: 18px;
+    font-size: 22px;
     font-weight: 700;
     color: var(--ink);
 }
 
 .empty-sub {
-    font-size: 13.5px;
-    line-height: 1.4;
+    font-size: 14.5px;
+    line-height: 1.45;
     color: var(--ink-soft);
-    max-width: 22rem;
+    max-width: 20rem;
 }
 
 /* The instruction, pressable. It knew where to send somebody and made them walk
    there themselves. */
 .empty-go {
-    margin-top: 4px;
+    margin-top: clamp(2px, 1.5vh, 12px);
     padding: 12px 22px;
     font-size: 15px;
     font-weight: 600;

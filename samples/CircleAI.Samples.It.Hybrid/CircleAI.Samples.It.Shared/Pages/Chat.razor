@@ -11,6 +11,7 @@
 *@
 @page "/chat"
 @inject IBrain Brain
+@inject IFormFactor Host
 @inject IConversation Talk
 @inject NavigationManager Nav
 
@@ -35,20 +36,33 @@
         @if (_turns.Count == 0)
         {
             <div class="empty">
-                <BrandMark Size="64" Ring="true" />
+                <BrandMark Size="96" Ring="true" />
 
                 @if (_ready)
                 {
                     <div class="empty-line">Ask it something</div>
-                    <div class="empty-sub">Type below, or hold the button to talk.</div>
+                    @* TAP, NOT HOLD. It said "hold the button to talk", and the
+                       button takes one turn on a single press - describing a
+                       gesture the app does not have is how somebody decides the
+                       microphone is broken. *@
+                    <div class="empty-sub">Type below, or tap the circle to talk.</div>
                 }
                 else
                 {
                     <div class="empty-line">Not ready yet</div>
                     <div class="empty-sub">@_status</div>
-                    @* THE INSTRUCTION, MADE PRESSABLE. It knew where to send
-                       somebody and made them walk there themselves. *@
-                    <a class="empty-go" href="settings">Turn it on</a>
+
+                    @*
+                        THE INSTRUCTION, MADE PRESSABLE - but only where pressing
+                        it does something. On the phone this is a download waiting
+                        to be started; in a browser the message is "install the
+                        app to have a conversation", and a button offering to turn
+                        that on would be a button that cannot.
+                    *@
+                    @if (Host.IsOnDevice)
+                    {
+                        <a class="empty-go" href="settings">Turn it on</a>
+                    }
                 }
             </div>
         }
@@ -78,6 +92,17 @@
         picture into it, and read the last answer out loud. Both belong to the
         turns above them and exist nowhere else.
     *@
+    @*
+        ONLY WITH A CONVERSATION TO ACT ON.
+
+        Both of these act on turns that exist: one reads a picture INTO the
+        transcript, the other reads the last answer out of it - and with no
+        answer yet, "Read it out" is a disabled button taking up a row. Empty,
+        the screen was three strips with voids between them: a small block adrift
+        in the middle, a dead toolbar, then the composer.
+    *@
+    @if (_turns.Count > 0)
+    {
     <div class="probes">
         <label class="probe">
             Read an image
@@ -87,6 +112,7 @@
             Read it out
         </button>
     </div>
+    }
 
     @*
         ONE FIELD, NOT THREE CONTROLS IN A ROW.
@@ -102,6 +128,24 @@
         transcript above it. Losing that would be losing the only way a spoken
         turn joins the conversation you are reading.
     *@
+    @*
+        NO BOX TO TYPE IN WHEN NOTHING CAN READ IT.
+
+        The composer was rendered disabled: a field you cannot type in, a mic that
+        does nothing and a greyed Send, sitting under a message explaining that the
+        answering model has not been downloaded. Three dead controls and the gap
+        under them, on a screen with one thing to say and one button to press.
+
+        With it gone the not-ready screen is a single column with one thing in it,
+        which is what "use the space" means here - not spreading three strips out
+        to fill the height.
+
+        Kept when turns exist even if the brain has since gone away, because a
+        conversation you can read and not continue still needs its box in place
+        rather than vanishing under you.
+    *@
+    @if (_ready || _turns.Count > 0)
+    {
     <div class="composer">
         <div class="composer-field">
             <input class="input" placeholder="Type a message"
@@ -116,6 +160,7 @@
             <button class="send" @onclick="Send" disabled="@(!_ready || _busy)">Send</button>
         </div>
     </div>
+    }
 </div>
 
 @code {
