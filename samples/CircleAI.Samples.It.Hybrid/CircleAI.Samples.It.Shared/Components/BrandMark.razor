@@ -38,6 +38,23 @@
         <circle class="bm-halo" cx="50" cy="50" r="49" />
     }
 
+    @*
+        THE RING AROUND IT, drawn here so every logo wears the same one.
+
+        It started as a CSS border on the wrapper the voice button happens to
+        have, which meant only that one logo had an edge - the mark in the top
+        bar, on Home and on the empty chat screen had none, and the same object
+        read as three different things depending on where you met it.
+
+        non-scaling-stroke, so the edge is 2 CSS pixels whether the mark is 30px
+        in a bar or 200px on Home. Scaling it would make the bar's ring a hairline
+        and Home's a band.
+    *@
+    @if (Ring)
+    {
+        <circle class="bm-edge" cx="50" cy="50" r="48" vector-effect="non-scaling-stroke" />
+    }
+
     @* The ring, open at the TOP: -50 sweeping 280 clockwise leaves 230..310 open. *@
     <path class="bm-ring" d="@RingPath" />
 
@@ -71,6 +88,14 @@
 
     /// <summary>The faint plate behind the mark. Off in a header, on for the hero.</summary>
     [Parameter] public bool Halo { get; set; }
+
+    /// <summary>Draw the brand edge around the mark.</summary>
+    /// <remarks>
+    /// THE SAME EDGE EVERYWHERE. One logo had a border because the voice button's
+    /// wrapper happened to carry one; the rest had none. A mark that looks like a
+    /// button in one place and a decoration in another is two objects to learn.
+    /// </remarks>
+    [Parameter] public bool Ring { get; set; }
 
     /// <summary>How loud the microphone is hearing you, 0 to 1. Drives Listening.</summary>
     /// <remarks>

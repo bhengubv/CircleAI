@@ -31,7 +31,7 @@
     {
         <header class="app-bar" role="banner">
             <div class="bar-home" role="button" tabindex="0" @onclick="GoHome">
-                <BrandMark Size="30" />
+                <BrandMark Size="30" Ring="true" />
                 <span class="app-name">Circle AI</span>
             </div>
             <span class="app-where">@ScreenName</span>
@@ -63,7 +63,7 @@
                         @* 52 in a 72px ring: the same proportion the mark had at
                            38 in 56, so the button grew without the logo starting
                            to crowd its own edge. *@
-                        <BrandMark Size="52" State="_state" Level="_level" />
+                        <BrandMark Size="52" State="_state" Level="_level" Ring="true" />
                     </span>
                 </button>
             }

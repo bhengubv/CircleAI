@@ -41,7 +41,7 @@
     @* THE THING YOU PRESS, and the only large control on the screen. *@
     <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
             aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">
-        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" />
+        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" Ring="true" />
     </button>
 
     <div class="prompt">@Prompt</div>
@@ -159,9 +159,23 @@
     protected override async Task OnInitializedAsync()
         => _ready = await Setup.ReadinessAsync();
 
+    /// <summary>How many languages the app knows, counted rather than claimed.</summary>
+    /// <remarks>
+    /// "10 PLUS" WAS A HEDGE, and it disagreed with the two screens that count:
+    /// the abilities pitch says 75 and the language list prints "75 languages" at
+    /// the top. Three places, one fact, and the marketing screen was the one
+    /// underselling it.
+    /// <para>
+    /// Read off the shared table so it cannot drift again. It is the number of
+    /// languages the app KNOWS - names, greetings, and a voice to try - which is
+    /// what a list of 75 rows on the language screen is also counting.
+    /// </para>
+    /// </remarks>
+    static int Known => SampleLanguages.All.Count;
+
     static readonly string[] OnDeviceClaims =
     [
-        "10 plus languages, spoken out loud",
+        $"{SampleLanguages.All.Count} languages, spoken out loud",
         "Runs on the phone — works with no signal",
         "Free, no account — only searches leave the phone",
     ];

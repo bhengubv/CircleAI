@@ -31,6 +31,22 @@
     --bar-height: 3.5rem;
     --gutter: 1rem;
     --radius: 0.75rem;
+
+    /*
+        THE APP IS DARK, AND THE BROWSER HAS TO BE TOLD.
+
+        Every colour here is stated, so the page itself renders the same whatever
+        the phone is set to - but the controls the platform draws ITSELF do not
+        read this stylesheet. On a handset in light mode the select dropdown, the
+        text caret, the autofill background and the spell-check underline all came
+        back light, and this app paints white text on them: a language picker whose
+        75 options were white on white, and a wake-phrase box you could not read
+        what you had typed into.
+
+        color-scheme is the one line that fixes all of them at once, because it is
+        the property the platform actually consults.
+    */
+    color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

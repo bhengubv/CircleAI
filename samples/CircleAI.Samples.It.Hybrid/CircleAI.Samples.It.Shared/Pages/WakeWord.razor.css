@@ -12,10 +12,24 @@
     padding: 0 24px;
 }
 
+/*
+    CAPPED BY HEIGHT AS WELL AS WIDTH.
+
+    The 200dp ear, its 44dp of margin and the 30dp above the status are read off
+    WakeWordActivity, and together they need 466px of a 436px column at 344x616 -
+    so the claims at the bottom ran 13px underneath the voice button. Nothing was
+    designed to do that; the numbers are simply from a phone screen and this is
+    not always one.
+
+    The vh caps only bite on a SHORT viewport. On the P30 the column is over two
+    thousand pixels tall, every cap resolves far above its px value, and the
+    layout is exactly the native one - which is the point: parity where it is a
+    phone, and a screen that still fits where it is not.
+*/
 .ear {
-    width: min(200px, 62vw);
+    width: min(200px, 62vw, 30vh);
     aspect-ratio: 1;
-    margin-top: 44px;
+    margin-top: min(44px, 5vh);
     flex: none;
 }
 
@@ -24,7 +38,7 @@
     font-weight: 700;
     color: var(--ink);
     text-align: center;
-    padding-top: 30px;
+    padding-top: min(30px, 4vh);
 }
 
 .hint {

@@ -10,12 +10,13 @@
 @inject ISpokenLanguage Spoken
 @inject NavigationManager Nav
 
+<div class="languages">
 <div class="head">
     <div class="title">Pick a language</div>
     <div class="status">@Status</div>
 
     @* Search sits inside the header block, below the status, top margin 14. *@
-    <input class="search" type="search" placeholder="Search 10 plus languages"
+    <input class="search" type="search" placeholder="@($"Search {SampleLanguages.All.Count} languages")"
            aria-label="Search languages"
            value="@_query" @oninput="OnQuery" />
 </div>
@@ -60,6 +61,7 @@
                  @onclick:stopPropagation="true">Hear it</div>
         </div>
     }
+</div>
 </div>
 
 @code {

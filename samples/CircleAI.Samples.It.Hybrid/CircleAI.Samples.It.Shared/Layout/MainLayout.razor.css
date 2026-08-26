@@ -198,7 +198,9 @@
     margin-top: -1.25rem;
     border-radius: 50%;
     background: var(--surface);
-    border: 2px solid var(--brand-blue);
+    /* NO BORDER HERE. The edge is drawn by the mark itself now, so every logo in
+       the app wears the same one instead of only the one that happened to sit in
+       a bordered wrapper. */
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 

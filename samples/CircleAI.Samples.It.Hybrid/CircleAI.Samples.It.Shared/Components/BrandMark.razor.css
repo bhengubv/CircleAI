@@ -22,6 +22,17 @@
     opacity: 0.11;              /* 28/255, the native mark's halo alpha */
 }
 
+/*
+    The brand edge. 2px at every size, because vector-effect keeps the stroke out
+    of the viewBox transform - the alternative is a hairline in the bar and a band
+    on Home, from one number.
+*/
+.bm-edge {
+    fill: none;
+    stroke: var(--brand-blue);
+    stroke-width: 2;
+}
+
 .bm-ring,
 .bm-arc {
     fill: none;

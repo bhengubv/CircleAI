@@ -15,7 +15,24 @@
     screen does not have - so the two did not line up even though every size
     inside matched.
 */
+/*
+    THE SEARCH BOX MUST NOT SCROLL AWAY WITH THE LIST.
+
+    Seventy-five languages made a 6,500px page and the whole thing moved
+    together, so somebody who scrolled to Sesotho and then wanted to search had
+    to scroll all the way back up to find the box. The header is pinned and the
+    list is the only thing that moves - the same shape the documents tab uses,
+    and for the same reason: this is the one list here that grows without bound.
+*/
+.languages {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
 .head {
+    flex: none;
     background: var(--surface);
     padding: 16px 20px;
     margin: calc(-1 * var(--gutter)) calc(-1 * var(--gutter)) 0;
@@ -47,7 +64,12 @@
 
 .search::placeholder { color: var(--ink-soft); }
 
-.list { padding-top: 16px; }
+.list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 16px;
+}
 
 .card {
     display: flex;

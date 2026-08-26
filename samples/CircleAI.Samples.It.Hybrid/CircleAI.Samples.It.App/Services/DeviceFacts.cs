@@ -20,7 +20,10 @@ public sealed class DeviceFacts : IDeviceFacts
     /// </remarks>
     private static readonly (string Title, string Blurb, ModelModality Modality)[] Catalogue =
     [
-        ("Talking",   "Reads things out loud, in 10 plus languages",   ModelModality.Tts),
+        // COUNTED, NOT HEDGED. "10 plus" disagreed with the abilities pitch and
+        // the language list, which both say 75.
+        ("Talking",   $"Reads things out loud, in {SampleLanguages.All.Count} languages",
+                                                       ModelModality.Tts),
         ("Listening", "Understands you when you speak",                ModelModality.Asr),
         ("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         ("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
