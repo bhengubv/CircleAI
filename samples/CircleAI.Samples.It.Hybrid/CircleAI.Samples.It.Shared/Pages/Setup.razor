@@ -16,7 +16,15 @@
 
 <div class="setup">
 
-    <h1 class="lead">@(_running ? "Getting it ready" : "Let's set it up")</h1>
+    @*
+        THREE STATES, NOT TWO. Finished was being drawn as still-running: the
+        headline said "getting it ready" under a full bar, and the line under it
+        said "working out how long this will take" - because the estimate goes to
+        zero when there is nothing left to estimate. A screen that has finished
+        saying it is still working is the same lie as one that says it is getting
+        ready when nothing is downloading.
+    *@
+    <h1 class="lead">@(_done ? "It is ready" : _running ? "Getting it ready" : "Let's set it up")</h1>
     <p class="sub">@Sub</p>
 
     @if (!_running)
@@ -114,7 +122,9 @@
     string? _error;
 
     string Sub => _error
-        ?? (_running
+        ?? (_done
+            ? "Everything it needs is on this phone."
+            : _running
             ? Remaining
             : _plan.Count == 0
                 ? "Everything it needs is already here."
