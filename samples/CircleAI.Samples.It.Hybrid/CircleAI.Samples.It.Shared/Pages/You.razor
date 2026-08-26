@@ -19,7 +19,10 @@
     six headings and their counts fit on a 344px screen, and a section below the
     fold is a section nobody checks.
 
-    NOTHING SCROLLS.
+    CLOSED AT REST, AND IT MAY SCROLL ONCE OPENED. It opened on the identity
+    fields and clipped what would not fit, which lost "Forget me" off the bottom
+    edge - a right somebody could not reach. Six headings fit; five text boxes on
+    top of them do not, and that is a thing to scroll rather than a thing to cut.
 *@
 @page "/you"
 @inject IProfile Store
@@ -161,10 +164,13 @@
 
     /// <summary>Which section is open, or -1 for none.</summary>
     /// <remarks>
-    /// Starts on the identity fields: they are the ones somebody types, and the
-    /// lists below are read far more often than they are changed.
+    /// ALL CLOSED TO BEGIN WITH. It opened on the identity fields, and five text
+    /// boxes plus six headings plus the buttons is more than a 344px phone has -
+    /// so the screen arrived already overflowing, with "Forget me" cut off the
+    /// bottom. Closed, the whole shape of what the app knows fits at once, which
+    /// is what this screen is for; opening one is a tap somebody chose to make.
     /// </remarks>
-    int _open;
+    int _open = -1;
 
     bool _confirming;
     string? _said;
