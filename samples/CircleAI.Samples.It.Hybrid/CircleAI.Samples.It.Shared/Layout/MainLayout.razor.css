@@ -240,6 +240,13 @@
     color: var(--ink);
     background: var(--raised);
     border-top: 1px solid var(--hairline);
-    padding: 10px 3.5rem;
+    /*
+        THE BOTTOM PADDING CLEARS THE CIRCLE. The voice button is lifted 1.25rem
+        out of the bar and over whatever sits above it - which is now this line,
+        so a two-line message had its second line cut in half by the very control
+        it was explaining. Side padding alone does not help: the circle is
+        centred, and the middle is where the text is.
+    */
+    padding: 10px 3.5rem 1.75rem;
     cursor: pointer;
 }

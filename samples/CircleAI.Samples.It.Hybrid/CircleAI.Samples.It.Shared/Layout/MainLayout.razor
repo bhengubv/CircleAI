@@ -238,7 +238,14 @@
     /// </remarks>
     async Task Listen()
     {
-        if (_state != MarkState.Idle) return;
+        // EVEN THIS SAYS SO. A guard that returns in silence is the same dead
+        // button from the other side: the mark is mid-turn, the press is correct,
+        // and nothing acknowledges it.
+        if (_state != MarkState.Idle)
+        {
+            _says = "It is still on the last one.";
+            return;
+        }
 
         _says = null;
 

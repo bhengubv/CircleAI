@@ -41,7 +41,15 @@ public sealed class DeviceConversation : IConversation
     public async Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
     {
         if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+        {
+            // SAY SO. This returned in silence, which is indistinguishable from a
+            // button that does nothing - and it is the ONE path in this method
+            // that reported nothing at all, so it is what a dead-looking
+            // microphone button turns out to be every time.
+            updates.Report(new TurnState(TurnPhase.Idle,
+                Detail: "Still listening to the last one."));
             return;
+        }
 
         try
         {
@@ -133,9 +141,35 @@ public sealed class DeviceConversation : IConversation
         var turn = new global::CircleAI.Samples.It.Mobile.VoiceTurn();
         turn.Level += (_, level) => updates.Report(new TurnState(TurnPhase.Listening, level));
 
+        // A HARD CEILING ON THE WHOLE LISTEN.
+        //
+        // VoiceTurn ends on silence and has its own no-speech and maximum-length
+        // timeouts - but it evaluates both INSIDE the loop that reads microphone
+        // chunks, so a microphone that yields nothing at all never reaches them.
+        // That is not hypothetical: without RECORD_AUDIO, AudioRecord does not
+        // throw, and a capture that never produces a frame leaves the turn waiting
+        // for a speaker who is not being recorded.
+        //
+        // A turn stuck there holds the one-turn semaphore for the life of the
+        // process, so every later press of the button returns instantly and
+        // silently. One hang and the microphone is dead until the app restarts.
         ReadOnlyMemory<byte> audio;
-        await using (var mic = new AndroidAudioCapture())
-            audio = await turn.ListenAsync(mic, ct).ConfigureAwait(false);
+        using var cap = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cap.CancelAfter(TimeSpan.FromSeconds(30));
+
+        try
+        {
+            await using var mic = new AndroidAudioCapture();
+            audio = await turn.ListenAsync(mic, cap.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The ceiling, not the caller. Said as a fact about the microphone
+            // rather than as an error, because that is what it is.
+            updates.Report(new TurnState(TurnPhase.Idle,
+                Detail: "The microphone did not send anything."));
+            return null;
+        }
 
         // Nobody spoke. Empty, not an error.
         if (audio.Length == 0) return null;
