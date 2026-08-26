@@ -108,23 +108,25 @@
             : $"About {Math.Max(5, _progress.Remaining.TotalSeconds):0} seconds left";
 
     protected override async Task OnInitializedAsync()
-        => _plan = await Wizard.PlanAsync();
-
-    static string Size(long bytes)
-        => bytes >= 1_000_000_000
-            ? $"{bytes / 1_000_000_000.0:0.#} GB"
-            : $"{bytes / 1_000_000.0:0} MB";
-
-    async Task Start()
     {
-        _running = true;
-        _error = null;
+        _plan = await Wizard.PlanAsync();
 
-        // The tour is chosen against the estimate, so it can only be picked once
-        // there is one. Rough is fine: it decides how much to offer, not what.
-        var estimate = TimeSpan.FromMinutes(Math.Max(2, _plan.Sum(p => p.Bytes) / 6_000_000.0 / 60));
-        _tour = await Wizard.TourAsync(estimate);
+        // ALREADY GOING. Tapping Home on the bar during an 817 MB download kills
+        // this component; coming back built a fresh one that knew nothing, showed
+        // the plan again and offered Start - which began a SECOND concurrent
+        // download of the same files. Now it re-attaches to the run in flight and
+        // shows where it has got to.
+        if (Wizard.IsRunning)
+        {
+            _running = true;
+            _tour = await Wizard.TourAsync(TimeSpan.FromMinutes(2));
+            await Attach();
+        }
+    }
 
+    /// <summary>Follow the run in flight, whether this page started it or not.</summary>
+    async Task Attach()
+    {
         var progress = new Progress<SetupProgressReport>(p =>
         {
             _progress = p;
@@ -146,5 +148,23 @@
             _running = false;
             _plan = await Wizard.PlanAsync();
         }
+    }
+
+    static string Size(long bytes)
+        => bytes >= 1_000_000_000
+            ? $"{bytes / 1_000_000_000.0:0.#} GB"
+            : $"{bytes / 1_000_000.0:0} MB";
+
+    async Task Start()
+    {
+        _running = true;
+        _error = null;
+
+        // The tour is chosen against the estimate, so it can only be picked once
+        // there is one. Rough is fine: it decides how much to offer, not what.
+        var estimate = TimeSpan.FromMinutes(Math.Max(2, _plan.Sum(p => p.Bytes) / 6_000_000.0 / 60));
+        _tour = await Wizard.TourAsync(estimate);
+
+        await Attach();
     }
 }

@@ -89,7 +89,25 @@ public interface ISetup
     /// </remarks>
     Task<IReadOnlyList<SetupItem>> PlanAsync(CancellationToken ct = default);
 
-    /// <summary>Fetch everything in the plan, reporting progress across all of it.</summary>
+    /// <summary>Whether a run is already in flight.</summary>
+    /// <remarks>
+    /// THE PAGE CANNOT KNOW THIS ON ITS OWN. Setup keeps "am I running" in the
+    /// component, and a component dies the moment somebody taps Home on the bar
+    /// while 817 MB is coming down. Coming back built a fresh one that knew
+    /// nothing, showed the plan again and offered Start - which started a SECOND
+    /// concurrent download of the same files, over the same connection, onto a
+    /// phone that was already struggling with the first.
+    /// </remarks>
+    bool IsRunning { get; }
+
+    /// <summary>
+    /// Fetch everything in the plan, reporting progress across all of it.
+    /// </summary>
+    /// <remarks>
+    /// IDEMPOTENT. Calling it while a run is in flight ATTACHES to that run
+    /// rather than starting another, so a page that comes back mid-download picks
+    /// the progress up where it is instead of duplicating the work.
+    /// </remarks>
     Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default);
 
     /// <summary>What to offer while the wait runs.</summary>

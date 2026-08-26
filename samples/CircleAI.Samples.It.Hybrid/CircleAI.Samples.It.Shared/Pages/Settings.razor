@@ -300,6 +300,11 @@ else
     *@
     <section class="group">
 
+        @if (_trouble is not null)
+        {
+            <p class="warn">@_trouble</p>
+        }
+
         <button class="fold @(_open == 0 ? "fold-on" : null)" @onclick="() => Open(0)"
                 aria-expanded="@(_open == 0)">
             <span class="fold-title">Turned on</span>
@@ -416,13 +421,39 @@ else
 
     protected override async Task OnInitializedAsync() => await Reload();
 
+    /// <summary>What went wrong loading this screen, if anything.</summary>
+    /// <remarks>
+    /// A SCREEN THAT FAILS SILENTLY IS THE WORST KIND. When AbilitiesAsync threw,
+    /// this method stopped there and the tab rendered around the hole: "Turned
+    /// on" open with nothing under it, and the wake list - set two lines later -
+    /// empty behind it. Nothing on screen, nothing in logcat, because managed
+    /// logging does not reach a Blazor WebView on Android.
+    /// <para>
+    /// Each step is now separate and says so when it fails, which turns an
+    /// invisible fault into a legible one.
+    /// </para>
+    /// </remarks>
+    string? _trouble;
+
     async Task Reload()
     {
-        _s = await Store.LoadAsync();
-        _docs = await Store.DocumentsAsync();
-        _abilities = await Facts.AbilitiesAsync();
-        _phone = await Facts.PhoneAsync();
-        _wake = await Phrases.ForAsync(_s.Language);
+        _trouble = null;
+        try
+        {
+            _s = await Store.LoadAsync();
+            _docs = await Store.DocumentsAsync();
+            _wake = await Phrases.ForAsync(_s.Language);
+        }
+        catch (Exception ex) { _trouble = $"Settings: {ex.GetType().Name}: {ex.Message}"; }
+
+        // ITS OWN try, so a fault reading the model registry cannot take the
+        // language and document tabs down with it - which is exactly what it did.
+        try
+        {
+            _abilities = await Facts.AbilitiesAsync();
+            _phone = await Facts.PhoneAsync();
+        }
+        catch (Exception ex) { _trouble = $"Reading what is installed: {ex.GetType().Name}: {ex.Message}"; }
     }
 
     void Open(int index) => _open = _open == index ? -1 : index;

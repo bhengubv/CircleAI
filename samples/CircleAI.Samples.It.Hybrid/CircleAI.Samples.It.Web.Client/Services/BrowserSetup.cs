@@ -24,6 +24,10 @@ public sealed class BrowserSetup : ISetup
         => Task.FromResult<IReadOnlyList<SetupItem>>([]);
 
     /// <inheritdoc />
+    /// <remarks>Nothing is ever fetched here, so nothing is ever running.</remarks>
+    public bool IsRunning => false;
+
+    /// <inheritdoc />
     public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
         => Task.CompletedTask;
 

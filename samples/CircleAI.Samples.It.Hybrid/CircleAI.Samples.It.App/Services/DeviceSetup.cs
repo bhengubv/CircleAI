@@ -20,6 +20,24 @@ public sealed class DeviceSetup : ISetup
 {
     private static string StorageDir => ModelStore.Path;
 
+    /// <summary>The run in flight, if there is one.</summary>
+    /// <remarks>
+    /// This service is a singleton, which is what makes one shared run possible:
+    /// the page comes and goes, the download does not.
+    /// </remarks>
+    private Task? _run;
+
+    /// <summary>Who wants to hear about it. The page re-subscribes when it returns.</summary>
+    private readonly List<IProgress<SetupProgressReport>> _listeners = [];
+
+    private readonly object _gate = new();
+
+    /// <inheritdoc />
+    public bool IsRunning
+    {
+        get { lock (_gate) return _run is { IsCompleted: false }; }
+    }
+
     /// <inheritdoc />
     public Task<Readiness> ReadinessAsync(CancellationToken ct = default)
         => Task.Run(() =>
@@ -37,27 +55,46 @@ public sealed class DeviceSetup : ISetup
 
             // The same wording the native screen uses, kept here rather than in
             // the page: it is a description of a device, not of a layout.
-            if (!anything)
-                return new Readiness(ReadyStage.NeedsSetup, "Let's set it up",
-                    "It needs a few things first. Tap to start.", CanTalk: false);
-
             const string lead = "Tap and talk";
-
-            // CAN TALK BEFORE IT CAN THINK. As soon as it can hear and speak,
-            // pressing the circle does something useful even while the brain is
-            // still arriving.
-            if (voice && ears && !brain)
-                return new Readiness(ReadyStage.CanListen, lead,
-                    "Still waking up — the first answer may take a moment.", CanTalk: true);
 
             if (voice && ears && brain)
                 return new Readiness(ReadyStage.Ready, lead, "", CanTalk: true);
 
-            if (voice && !ears)
+            // "GETTING READY" IS ONLY TRUE WHILE SOMETHING IS ACTUALLY COMING.
+            //
+            // This used to be the resting state for half the permutations - ears
+            // but no voice, a brain but neither, anything that was not one of the
+            // three cases spelled out below - and it told the owner of the phone
+            // "you can talk to it in a moment" when nothing was downloading and
+            // nothing ever would. There is no background fetcher in this app;
+            // the only thing that fetches is the wizard, and Home only offers the
+            // wizard when the stage is NeedsSetup. So every one of those states
+            // was a dead end that claimed to be progress: wait for a moment that
+            // never comes, with no way from that screen to make it come.
+            //
+            // IsRunning is what makes the sentence checkable rather than hopeful.
+            if (IsRunning)
                 return new Readiness(ReadyStage.Waking, "Getting ready",
-                    "You can talk to it in a moment.", CanTalk: false);
+                    "You can talk to it in a moment.", CanTalk: voice && ears);
 
-            return new Readiness(ReadyStage.Waking, "Getting ready", "", CanTalk: false);
+            // CAN TALK BEFORE IT CAN THINK. As soon as it can hear and speak,
+            // pressing the circle does something useful even though the brain is
+            // not here - Home's tap greets you in a catalogued language.
+            if (voice && ears)
+                return new Readiness(ReadyStage.CanListen, lead,
+                    "Answering still needs a download.", CanTalk: true);
+
+            // ANYTHING ELSE IS MISSING SOMETHING AND NOTHING IS COMING FOR IT, so
+            // it says so and the tap goes where that can be fixed. Two wordings,
+            // because arriving at a fresh phone and coming back to a half-finished
+            // one are different moments: one is an invitation, the other is a job
+            // left undone, and the second must not read as though nothing has been
+            // done at all.
+            return anything
+                ? new Readiness(ReadyStage.NeedsSetup, "Finish setting it up",
+                    "Some of it is still missing. Tap to get the rest.", CanTalk: false)
+                : new Readiness(ReadyStage.NeedsSetup, "Let's set it up",
+                    "It needs a few things first. Tap to start.", CanTalk: false);
         }, ct);
 
     /// <inheritdoc />
@@ -77,17 +114,48 @@ public sealed class DeviceSetup : ISetup
 
     /// <inheritdoc />
     public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
-        => Task.Run(async () =>
+    {
+        lock (_gate)
         {
-            using var registry = new ModelRegistryService();
-            using var loader = new BundleModelLoader(StorageDir, registry);
-            var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true);
+            // ATTACH, DO NOT DUPLICATE. Whoever asks second is a page that came
+            // back to a download already in progress, not a second download.
+            _listeners.Add(progress);
+            if (_run is { IsCompleted: false }) return _run;
 
-            var inner = new Progress<SetupProgress>(p => progress.Report(
-                new SetupProgressReport(p.Index, p.Count, p.Title, p.Fraction, p.Remaining)));
+            _run = Task.Run(async () =>
+            {
+                using var registry = new ModelRegistryService();
+                using var loader = new BundleModelLoader(StorageDir, registry);
+                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true);
 
-            await FirstRun.RunAsync(loader, steps, inner, ct).ConfigureAwait(false);
-        }, ct);
+                var inner = new Progress<SetupProgress>(p =>
+                {
+                    var report = new SetupProgressReport(
+                        p.Index, p.Count, p.Title, p.Fraction, p.Remaining);
+
+                    // Copied under the lock: a page attaching mid-report would
+                    // otherwise mutate the list being walked.
+                    IProgress<SetupProgressReport>[] listeners;
+                    lock (_gate) listeners = _listeners.ToArray();
+                    foreach (var l in listeners) l.Report(report);
+                });
+
+                try
+                {
+                    await FirstRun.RunAsync(loader, steps, inner, ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    // A finished run holds nothing: the next Start is a real
+                    // start, and a page that never came back is not kept alive
+                    // by a list this class owns.
+                    lock (_gate) _listeners.Clear();
+                }
+            }, ct);
+
+            return _run;
+        }
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<TourStep>> TourAsync(

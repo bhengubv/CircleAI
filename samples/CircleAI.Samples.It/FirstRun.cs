@@ -147,7 +147,12 @@ public static class FirstRun
         {
             wanted.Add(("the English voice", ModelModality.Tts,
                         CircleAI.Samples.It.Voice.ItSpeaker.EnglishVoice));
-            wanted.Add(("the local voice",   ModelModality.Tts,
+            // "the local voice" said nothing: local to where, and in what? These
+            // titles exist to say what the download GIVES somebody - "the voice",
+            // not "MMS TTS" - and this one is the reason to want the app at all.
+            // Vits-11ZA is multi-speaker across eleven South African languages;
+            // naming that is both more honest and a better argument than "local".
+            wanted.Add(("the South African voices", ModelModality.Tts,
                         CircleAI.Samples.It.Voice.ItSpeaker.PreferredVoice));
             wanted.Add(("the ears",          ModelModality.Asr,      null));
             wanted.Add(("the wake word",     ModelModality.WakeWord, null));

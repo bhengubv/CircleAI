@@ -49,6 +49,18 @@
         ones that are: what it can do from the circle, the wake screen from what it
         can do, aiming at a job from the CV.
     *@
+    @*
+        WHAT THE VOICE BUTTON HAS TO SAY, above the bar it belongs to.
+
+        A layout has no page to put a message on, which is why this button used to
+        answer by navigating somewhere that did - and taking somebody off the
+        screen they were on, mid-permission-prompt, to read one sentence.
+    *@
+    @if (_says is { Length: > 0 })
+    {
+        <div class="says" role="status" @onclick="() => _says = null">@_says</div>
+    }
+
     <nav class="tabbar" role="navigation">
         @foreach (var item in Bottom)
         {
@@ -81,6 +93,13 @@
 
 @code {
     sealed record BottomItem(string Route, string Title, string Icon);
+
+    /// <summary>What the last turn had to say, or null.</summary>
+    /// <remarks>
+    /// Cleared when the next turn starts and dismissible by tapping it: it is a
+    /// reason, not a state, and a reason that will not go away becomes furniture.
+    /// </remarks>
+    string? _says;
 
 
 
@@ -203,29 +222,25 @@
     /// One spoken turn, from wherever you are.
     /// </summary>
     /// <remarks>
-    /// A TAP THAT DOES NOTHING IS INDISTINGUISHABLE FROM BROKEN, which is a rule
-    /// Home's circle already follows and this button did not. It called straight
-    /// into a turn with no readiness check and no catch: on a phone with no
-    /// answering model the turn ended immediately, the mark never left Idle so it
-    /// never animated, and nothing appeared anywhere to say why. The one control
-    /// the whole product is arranged around was silently inert.
+    /// IT NEVER NAVIGATES. It used to: I made it jump to Chat when it could not
+    /// take a turn, to fix a tap that did nothing - and a turn asks for the
+    /// microphone, so granting permission dropped somebody onto a different
+    /// screen than the one they pressed the button on. Curing silence with a
+    /// teleport is worse than the silence.
     /// <para>
-    /// A layout has nowhere to show a message, so when it cannot take a turn it
-    /// goes to the screen that explains itself - Chat prints what is missing and
-    /// carries the button that fixes it. Failures land there too rather than
-    /// vanishing into an empty catch.
+    /// This is the one control that works from wherever you already are, so it
+    /// has to answer where you already are. It says what happened in a line above
+    /// the bar instead: "it needs permission to hear you", "answering needs a
+    /// download", "I did not catch that". The reasons already existed - TurnAsync
+    /// reports every one of them as a Detail - and this button was throwing them
+    /// away, which is why it looked broken rather than blocked.
     /// </para>
     /// </remarks>
     async Task Listen()
     {
         if (_state != MarkState.Idle) return;
 
-        var brain = await Talk.StateAsync();
-        if (!brain.Ready)
-        {
-            Nav.NavigateTo("chat");
-            return;
-        }
+        _says = null;
 
         var updates = new Progress<TurnState>(t =>
         {
@@ -237,11 +252,17 @@
                 _ => MarkState.Idle,
             };
             _level = t.Level;
+
+            // THE REASON, WHEREVER IT COMES FROM. Every early return in a turn -
+            // no model, no permission, nothing heard - arrives as a Detail on an
+            // Idle report, and this button used to ignore all of them.
+            if (t.Detail is { Length: > 0 } detail) _says = detail;
+
             InvokeAsync(StateHasChanged);
         });
 
         try { await Talk.TurnAsync(updates); }
-        catch { Nav.NavigateTo("chat"); }
+        catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
         finally { _state = MarkState.Idle; _level = 0; StateHasChanged(); }
     }
 

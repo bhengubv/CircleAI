@@ -18,8 +18,15 @@
         so the bar rendered UNDER the clock and the wordmark was sliced in half.
         max() keeps a real inset where a device reports one and falls back to the
         status bar height everywhere else.
+
+        AND THEN THE PADDING, on top of the clearance rather than instead of it.
+        24px is almost exactly the status bar on this phone, so the clearance and
+        the padding were the same pixels: the mark started precisely where the
+        clock ended, flush against it, with 0.5rem of air underneath. Adding the
+        same 0.5rem here makes the gap above the wordmark match the gap below and
+        leaves the inset doing only the job it is for.
     */
-    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+    padding-top: calc(max(env(safe-area-inset-top, 0px), 24px) + 0.5rem);
     background: var(--surface);
     border-bottom: 1px solid var(--hairline);
     flex: none;
@@ -215,4 +222,24 @@
 .voice-on {
     background: var(--raised);
     box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.22), 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+
+/*
+    THE VOICE BUTTON'S ANSWER, above the bar.
+
+    It sits over the content rather than pushing it, because a line appearing
+    between a screen and its menu would shove everything up by its own height the
+    moment somebody pressed the one control that is meant to change nothing about
+    where they are.
+*/
+.says {
+    flex: none;
+    font-size: 13px;
+    line-height: 1.35;
+    text-align: center;
+    color: var(--ink);
+    background: var(--raised);
+    border-top: 1px solid var(--hairline);
+    padding: 10px 3.5rem;
+    cursor: pointer;
 }
