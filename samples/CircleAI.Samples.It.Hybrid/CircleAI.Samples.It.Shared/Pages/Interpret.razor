@@ -16,13 +16,18 @@
 @inject ISettings Settings
 @inject IBrain Brain
 @inject IConversation Talk
+@inject IFormFactor Host
+@inject NavigationManager Nav
 
 <div class="interpret">
 
     <div class="pair">
         <label class="side">
             <span class="side-label">From</span>
-            <select class="select" value="@_from" @onchange="e => SetFrom(Tag(e))">
+            @* @bind:get/@bind:set, not value= with @onchange: a re-applied value
+               attribute is what made the settings picker snap back to its old
+               choice while the new one was still being saved. *@
+            <select class="select" @bind:get="_from" @bind:set="SetFrom">
                 @foreach (var l in Languages)
                 {
                     <option value="@l.Tag">@l.Name</option>
@@ -34,7 +39,7 @@
 
         <label class="side">
             <span class="side-label">To</span>
-            <select class="select" value="@_to" @onchange="e => SetTo(Tag(e))">
+            <select class="select" @bind:get="_to" @bind:set="SetTo">
                 @foreach (var l in Languages)
                 {
                     <option value="@l.Tag">@l.Name</option>
@@ -50,9 +55,23 @@
               aria-label="What to interpret"
               @bind="_input" @bind:event="oninput"></textarea>
 
+    @*
+        A WAY IN THAT IS NOT THE KEYBOARD.
+
+        This screen argues in its own opening that a conversation changes
+        direction every few seconds and that making somebody re-pick each time
+        "makes the phone the slowest person in the room" - and then offered a
+        keyboard as the only input. Typing out what the person in front of you
+        just said IS the phone being the slowest thing in the room, and it asks
+        the one thing this app exists to stop assuming: that they can type.
+    *@
     <div class="actions">
+        @if (Host.IsOnDevice)
+        {
+            <button class="soft" @onclick="Hear" disabled="@_busy">Say it</button>
+        }
         <button class="soft" @onclick="Speak" disabled="@_busy">Read it out</button>
-        <button class="primary" @onclick="Run" disabled="@_busy">Interpret</button>
+        <button class="primary" @onclick="Run" disabled="@(_busy || _input.Trim().Length == 0)">Interpret</button>
     </div>
 
     @if (_out.Length > 0)
@@ -63,6 +82,13 @@
     @if (_note is not null)
     {
         <p class="note">@_note</p>
+
+        @* The instruction, pressable - the same fix the chat screen offers, and
+           only where pressing it does something. *@
+        @if (Host.IsOnDevice && _note.Contains("Settings", StringComparison.Ordinal))
+        {
+            <button class="soft" @onclick='() => Nav.NavigateTo("settings")'>Turn it on</button>
+        }
     }
 
 </div>
@@ -86,8 +112,6 @@
         _from = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
         _to = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
     }
-
-    static string Tag(ChangeEventArgs e) => e.Value?.ToString() ?? "en";
 
     async Task SetFrom(string tag)
     {
@@ -113,11 +137,46 @@
         await Settings.SetServiceSettingAsync(Service, "to", _to);
     }
 
+    /// <summary>Take what the other person said, without typing it.</summary>
+    /// <remarks>
+    /// DICTATION, NOT A TURN: it writes down what was heard and stops. A
+    /// conversational turn would answer them.
+    /// </remarks>
+    async Task Hear()
+    {
+        if (_busy) return;
+        _busy = true;
+        _note = null;
+
+        var updates = new Progress<TurnState>(t =>
+        {
+            if (t.Heard is { Length: > 0 } heard) _input = heard;
+            if (t.Detail is { Length: > 0 } detail) _note = detail;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Talk.DictateAsync(updates); }
+        catch (Exception ex) { _note = Plain(ex); }
+        finally { _busy = false; }
+    }
+
     async Task Run()
     {
         if (_busy || _input.Trim().Length == 0) return;
         _busy = true;
         _note = null;
+
+        // WHAT IS MISSING, NOT AN EXCEPTION TYPE. Without the answering model
+        // this threw and printed something like "InvalidOperationException" at
+        // somebody standing in front of a nurse. It is the same fact the chat
+        // screen states plainly, and the same button that fixes it.
+        var brain = await Brain.StateAsync();
+        if (!brain.Ready)
+        {
+            _note = brain.Detail;
+            _busy = false;
+            return;
+        }
 
         var fromName = SampleLanguages.Find(_from)?.Name ?? _from;
         var toName = SampleLanguages.Find(_to)?.Name ?? _to;
@@ -134,13 +193,29 @@
         }
         catch (Exception ex)
         {
-            _note = $"{ex.GetType().Name}: {ex.Message}";
+            _note = Plain(ex);
         }
         finally
         {
             _busy = false;
         }
     }
+
+    /// <summary>
+    /// A failure said in words, not in the name of a .NET type.
+    /// </summary>
+    /// <remarks>
+    /// "InvalidOperationException: Sequence contains no elements" is a sentence
+    /// for whoever wrote this, handed to somebody interpreting for a nurse. The
+    /// type name goes where it belongs - the trace - and the person gets
+    /// something they can act on.
+    /// </remarks>
+    static string Plain(Exception ex) => ex switch
+    {
+        HttpRequestException => "Could not reach the internet.",
+        IOException => "Not enough space on the phone.",
+        _ => "That did not work. Try again, or type it instead.",
+    };
 
     /// <summary>Read the translation out, in the language it is written in.</summary>
     /// <remarks>
@@ -153,7 +228,7 @@
         if (_out.Length == 0) { _note = "Interpret something first."; return; }
         _busy = true;
         try { await Talk.SayAsync(_out, _to); }
-        catch (Exception ex) { _note = $"{ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _note = Plain(ex); }
         finally { _busy = false; }
     }
 }
