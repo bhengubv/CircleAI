@@ -264,6 +264,26 @@ public class MemorySyncTests : IDisposable
     }
 
     [Fact]
+    public async Task A_memory_in_isiZulu_is_still_readable_in_the_log()
+    {
+        // The catalogue is 21 African languages and a Japanese voice. A log
+        // that turns all of them into runs of \u-escapes is still valid JSON
+        // and is no longer something a person can open and read, which was half
+        // the reason for choosing text.
+        var folder = Folder("windows-desk");
+        var sync = new MemorySync(folder);
+
+        using (var store = new SqliteAtomStore("Data Source=:memory:"))
+            await sync.RecordAsync(store, Decision(
+                "Ubuchwepheshe abusebenzi", "Sisebenzisa isiZulu kuqala", "language:zu"));
+
+        var line = File.ReadAllText(folder.OwnLog);
+
+        Assert.Contains("Sisebenzisa isiZulu kuqala", line, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"\u", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_correction_points_backwards_because_a_log_cannot_be_edited()
     {
         // The structural consequence of append-only: the new line names what it
@@ -283,6 +303,53 @@ public class MemorySyncTests : IDisposable
         Assert.Equal(2, lines.Length);
         Assert.DoesNotContain("supersedes", lines[0], StringComparison.Ordinal);
         Assert.Contains($"\"supersedes\":\"{first.Id:N}\"", lines[1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_atom_says_which_machine_remembered_it()
+    {
+        // Where a decision was made is part of the decision. "-t:InstallKeepingData"
+        // is true on the box that deploys to the phone and meaningless on the
+        // one that builds Swift.
+        var sync = new MemorySync(Folder("mac-build"));
+        using var store = new SqliteAtomStore("Data Source=:memory:");
+
+        await sync.RecordAsync(store, Decision("q", "an answer", "s"));
+
+        var current = await store.MatchAsync(new Situation("s"));
+        Assert.Equal("mac-build", current[0].Machine);
+    }
+
+    [Fact]
+    public async Task What_the_index_holds_now_is_what_a_rebuild_would_hold()
+    {
+        // The property that keeps the two write paths honest: recording goes
+        // through the log and back, so "what you see immediately" and "what you
+        // see after a pull" cannot drift apart.
+        var sync = new MemorySync(Folder("windows-desk"));
+        var first = Decision("-t:Install wiped the models", "Use -t:Install", "deploy:android");
+
+        using var live = new SqliteAtomStore("Data Source=:memory:");
+        await sync.RecordAsync(live, first);
+        await sync.RecordAsync(live, Decision(
+            "-t:Install wiped the models", "Use -t:InstallKeepingData", "deploy:android"),
+            supersedes: first.Id);
+
+        using var replayed = new SqliteAtomStore("Data Source=:memory:");
+        await sync.RebuildAsync(replayed);
+
+        var a = (await live.MatchAsync(new Situation("deploy", "android"))).Single();
+        var b = (await replayed.MatchAsync(new Situation("deploy", "android"))).Single();
+
+        Assert.Equal(a.Id, b.Id);
+        Assert.Equal(a.Text, b.Text);
+        Assert.Equal(a.Kind, b.Kind);
+        Assert.Equal(a.Subject, b.Subject);
+        Assert.Equal(a.Challenge, b.Challenge);
+        Assert.Equal(a.Outcome, b.Outcome);
+        Assert.Equal(a.Machine, b.Machine);
+        Assert.Equal(a.Corrections, b.Corrections);
+        Assert.Equal(a.RecordedAtUtc, b.RecordedAtUtc);
     }
 
     [Fact]

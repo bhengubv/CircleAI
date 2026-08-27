@@ -100,6 +100,16 @@ public sealed class MemoryAtom
     /// <summary>When it was first recorded.</summary>
     public DateTimeOffset RecordedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 
+    /// <summary>Which machine remembered it.</summary>
+    /// <remarks>
+    /// WHERE A DECISION WAS MADE IS PART OF THE DECISION when the memory spans
+    /// a Linux box, a Windows box and a Mac. "Use -t:InstallKeepingData" is
+    /// true on the machine that deploys to the phone and meaningless on the one
+    /// that builds Swift; showing which box said it lets a person weigh that
+    /// instead of guessing. Empty for an atom that was never through a log.
+    /// </remarks>
+    public string? Machine { get; init; }
+
     /// <summary>
     /// How many times this had to be corrected into place.
     /// </summary>

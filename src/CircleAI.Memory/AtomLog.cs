@@ -25,6 +25,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -66,6 +67,16 @@ public sealed class AtomLog
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false,
+
+        // WRITE THE CHARACTERS SOMEBODY ACTUALLY TYPED. The default encoder
+        // escapes anything outside a conservative ASCII set, so isiZulu,
+        // Amharic or Japanese would land in the log as runs of \u-escapes -
+        // and half the reason this is text is that a person can open it and
+        // read it. Even a timestamp came out with a backslash-u escape for its plus sign.
+        //
+        // "Unsafe" here means unsafe to drop into HTML without encoding. This
+        // is a local file that is never injected into a page.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     private readonly MemoryFolder _folder;
@@ -76,7 +87,12 @@ public sealed class AtomLog
     /// <summary>Append one atom to this machine's log.</summary>
     /// <param name="atom">What to remember.</param>
     /// <param name="supersedes">The atom being corrected, if this is a correction.</param>
-    public void Append(MemoryAtom atom, Guid? supersedes = null)
+    /// <returns>
+    /// The line as written. Index THIS rather than the atom passed in: what the
+    /// caller sees immediately is then the same thing a rebuild would produce,
+    /// by construction rather than by two pieces of code agreeing.
+    /// </returns>
+    public AtomRecord Append(MemoryAtom atom, Guid? supersedes = null)
     {
         ArgumentNullException.ThrowIfNull(atom);
 
@@ -99,9 +115,42 @@ public sealed class AtomLog
         // one - a half-written line from an interrupted session would
         // otherwise swallow the next record into itself.
         var line = JsonSerializer.Serialize(record, Json);
-        using var stream = new FileStream(_folder.OwnLog, FileMode.Append, FileAccess.Write, FileShare.Read);
-        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-        writer.WriteLine(line);
+        using (var stream = new FileStream(_folder.OwnLog, FileMode.Append, FileAccess.Write, FileShare.Read))
+        using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            writer.WriteLine(line);
+
+        return record;
+    }
+
+    /// <summary>
+    /// A log line back into an atom.
+    /// </summary>
+    /// <remarks>
+    /// UNKNOWN KINDS AND OUTCOMES FALL BACK RATHER THAN THROW. A newer machine
+    /// may have written a kind this build has never heard of, and the right
+    /// response is to keep the text - the part a person wrote - not to refuse
+    /// the whole line and lose it.
+    ///
+    /// This does not restore Corrections or SupersededBy: neither lives on a
+    /// line, both are worked out by replaying the whole stream.
+    /// </remarks>
+    public static MemoryAtom Rehydrate(AtomRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+
+        return new MemoryAtom
+        {
+            Id            = Guid.TryParseExact(record.Id, "N", out var id) ? id : Guid.NewGuid(),
+            Kind          = Enum.TryParse<AtomKind>(record.Kind, ignoreCase: true, out var kind) ? kind : AtomKind.Decision,
+            Text          = record.Text,
+            Subject       = record.Subject,
+            Challenge     = record.Challenge,
+            Outcome       = Enum.TryParse<DecisionOutcome>(record.Outcome, ignoreCase: true, out var o) ? o : null,
+            SourceEpisode = Guid.TryParseExact(record.SourceEpisode ?? "", "N", out var src) ? src : null,
+            RecordedAtUtc = Time(record.Recorded),
+            Machine       = record.Machine,
+            Verify        = record.Verify,
+        };
     }
 
     /// <summary>

@@ -54,6 +54,20 @@ public interface IAtomStore
         int limit = 50,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Every atom, newest first.
+    /// </summary>
+    /// <remarks>
+    /// For reading the memory rather than querying it - listing it for a
+    /// person, or finding an atom from the front of its id. Superseded ones are
+    /// off by default because they are not answers; they are still here, and a
+    /// caller auditing a decision needs them.
+    /// </remarks>
+    Task<IReadOnlyList<MemoryAtom>> AllAsync(
+        bool includeSuperseded = false,
+        int limit = 500,
+        CancellationToken ct = default);
+
     /// <summary>One atom by id, superseded or not.</summary>
     Task<MemoryAtom?> GetAsync(Guid id, CancellationToken ct = default);
 

@@ -57,12 +57,16 @@ public sealed class MemorySync
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(atom);
 
-        _log.Append(atom, supersedes);
+        // Index what the LOG says, not what the caller passed. The line is
+        // stamped with this machine and normalised on the way out, and reading
+        // it back is what makes "the index now" and "the index after a rebuild"
+        // the same thing without two pieces of code having to agree.
+        var stored = AtomLog.Rehydrate(_log.Append(atom, supersedes));
 
         if (supersedes is { } old)
-            await store.SupersedeAsync(old, atom, ct).ConfigureAwait(false);
+            await store.SupersedeAsync(old, stored, ct).ConfigureAwait(false);
         else
-            await store.AddAsync(atom, ct).ConfigureAwait(false);
+            await store.AddAsync(stored, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -89,11 +93,10 @@ public sealed class MemorySync
 
         foreach (var record in records)
         {
-            var when = AtomLog.Time(record.Recorded);
-
             if (record.Supersedes is { Length: > 0 } old)
             {
                 supersededBy[old] = record.Id;
+                var when = AtomLog.Time(record.Recorded);
 
                 // The count carries down the chain, so an atom corrected on
                 // three different machines reads as corrected three times
@@ -102,7 +105,7 @@ public sealed class MemorySync
                 correctedAt[record.Id] = when;
             }
 
-            atoms[record.Id] = Rehydrate(record, when);
+            atoms[record.Id] = AtomLog.Rehydrate(record);
         }
 
         ct.ThrowIfCancellationRequested();
@@ -120,6 +123,7 @@ public sealed class MemorySync
                 Outcome          = atom.Outcome,
                 SourceEpisode    = atom.SourceEpisode,
                 RecordedAtUtc    = atom.RecordedAtUtc,
+                Machine          = atom.Machine,
                 Verify           = atom.Verify,
                 Corrections      = corrections.GetValueOrDefault(id),
                 LastCorrectedUtc = correctedAt.TryGetValue(id, out var c) ? c : null,
@@ -138,30 +142,4 @@ public sealed class MemorySync
             Current: atoms.Keys.Count(id => !supersededBy.ContainsKey(id)),
             Machines: records.Select(r => r.Machine).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
-
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    /// <summary>
-    /// A log line back into an atom.
-    /// </summary>
-    /// <remarks>
-    /// Unknown kinds and outcomes fall back rather than throw: a newer machine
-    /// may have written a kind this build has never heard of, and the right
-    /// response is to keep the text - which is the part a person wrote - not to
-    /// refuse the whole line.
-    /// </remarks>
-    private static MemoryAtom Rehydrate(AtomRecord record, DateTimeOffset when) => new()
-    {
-        Id            = Guid.TryParseExact(record.Id, "N", out var id) ? id : Guid.NewGuid(),
-        Kind          = Enum.TryParse<AtomKind>(record.Kind, ignoreCase: true, out var kind) ? kind : AtomKind.Decision,
-        Text          = record.Text,
-        Subject       = record.Subject,
-        Challenge     = record.Challenge,
-        Outcome       = Enum.TryParse<DecisionOutcome>(record.Outcome, ignoreCase: true, out var o) ? o : null,
-        SourceEpisode = Guid.TryParseExact(record.SourceEpisode ?? "", "N", out var src) ? src : null,
-        RecordedAtUtc = when,
-        Verify        = record.Verify,
-    };
 }

@@ -77,6 +77,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 subject            TEXT,
                 source_episode     TEXT,
                 recorded_at_utc    TEXT NOT NULL,
+                machine            TEXT,
                 corrections        INTEGER NOT NULL DEFAULT 0,
                 last_corrected_utc TEXT,
                 superseded_by      TEXT,
@@ -164,6 +165,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             // correction usually restates the same sort of thing, and silently
             // demoting a ruling to a preference because a caller left the
             // default in place would lose the reason it ranked first.
+            Machine   = replacement.Machine ?? previous?.Machine,
             Kind      = previous?.Kind ?? replacement.Kind,
             Subject   = replacement.Subject ?? previous?.Subject,
             Challenge = replacement.Challenge ?? previous?.Challenge,
@@ -273,6 +275,27 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             LIMIT  $limit;
             """;
         cmd.Parameters.AddWithValue("$kind",  kind.ToString());
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        return Task.FromResult<IReadOnlyList<MemoryAtom>>(ReadAtoms(cmd));
+    }
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<MemoryAtom>> AllAsync(
+        bool includeSuperseded = false, int limit = 500, CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        ct.ThrowIfCancellationRequested();
+
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT {Columns}
+            FROM   atoms
+            WHERE  ($all = 1 OR superseded_by IS NULL)
+            ORDER  BY recorded_at_utc DESC
+            LIMIT  $limit;
+            """;
+        cmd.Parameters.AddWithValue("$all",   includeSuperseded ? 1 : 0);
         cmd.Parameters.AddWithValue("$limit", limit);
 
         return Task.FromResult<IReadOnlyList<MemoryAtom>>(ReadAtoms(cmd));
@@ -431,7 +454,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
     private const string Columns =
         "id, kind, text, subject, source_episode, recorded_at_utc, corrections, " +
         "last_corrected_utc, superseded_by, challenge, outcome, verify, " +
-        "verified_at_utc, verified_ok";
+        "verified_at_utc, verified_ok, machine";
 
     // Qualified, for the FTS join: atoms_fts also has "text" and "subject", so
     // the bare list is ambiguous there and SQLite is entitled to pick either.
@@ -439,7 +462,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
         "atoms.id, atoms.kind, atoms.text, atoms.subject, atoms.source_episode, " +
         "atoms.recorded_at_utc, atoms.corrections, atoms.last_corrected_utc, " +
         "atoms.superseded_by, atoms.challenge, atoms.outcome, atoms.verify, " +
-        "atoms.verified_at_utc, atoms.verified_ok";
+        "atoms.verified_at_utc, atoms.verified_ok, atoms.machine";
 
     private void Insert(MemoryAtom atom, SqliteTransaction? tx = null)
     {
@@ -450,11 +473,13 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 INSERT OR REPLACE INTO atoms
                     (id, kind, text, subject, source_episode, recorded_at_utc,
                      corrections, last_corrected_utc, superseded_by,
-                     challenge, outcome, verify, verified_at_utc, verified_ok)
+                     challenge, outcome, verify, verified_at_utc, verified_ok,
+                     machine)
                 VALUES
                     ($id, $kind, $text, $subject, $source, $recorded,
                      $corrections, $lastCorrected, $superseded,
-                     $challenge, $outcome, $verify, $verifiedAt, $verifiedOk);
+                     $challenge, $outcome, $verify, $verifiedAt, $verifiedOk,
+                     $machine);
                 """;
             cmd.Parameters.AddWithValue("$id",            atom.Id.ToString("N"));
             cmd.Parameters.AddWithValue("$kind",          atom.Kind.ToString());
@@ -470,6 +495,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.Parameters.AddWithValue("$verify",        (object?)atom.Verify ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verifiedAt",    (object?)atom.VerifiedAtUtc?.ToString("O") ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verifiedOk",    atom.VerifiedOk is null ? DBNull.Value : atom.VerifiedOk.Value ? 1 : 0);
+            cmd.Parameters.AddWithValue("$machine",       (object?)atom.Machine ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
@@ -524,6 +550,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 Verify           = reader.IsDBNull(11) ? null : reader.GetString(11),
                 VerifiedAtUtc    = reader.IsDBNull(12) ? null : ParseTime(reader.GetString(12)),
                 VerifiedOk       = reader.IsDBNull(13) ? null : reader.GetInt32(13) == 1,
+                Machine          = reader.IsDBNull(14) ? null : reader.GetString(14),
             });
         }
         return results;
