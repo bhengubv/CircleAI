@@ -117,8 +117,14 @@ static async Task<int> RecallCmd(string[] argv)
     // empty memory as a failure will stop asking, which is the one outcome
     // that makes the whole thing pointless. The tone still comes back: how
     // somebody wants to be worked with does not depend on the subject.
-    if (opts.ContainsKey("brief")) Brief(situation, result);
-    else                           Full(situation, result);
+    // TONE IS RIGHT ONCE AND NOISE AFTER THAT. How somebody wants to be worked
+    // with does not depend on the subject, so it comes back every time - which
+    // is what a session's first ask needs and what its tenth does not. The
+    // command cannot tell which this is; the caller can.
+    var tone = !opts.ContainsKey("no-tone") && !opts.ContainsKey("without-tone");
+
+    if (opts.ContainsKey("brief")) Brief(situation, result, tone);
+    else                           Full(situation, result, tone);
 
     return 0;
 }
@@ -349,7 +355,7 @@ static int Where()
 // Printing
 // ----------------------------------------------------------------------
 
-static void Full(Situation situation, RecallResult result)
+static void Full(Situation situation, RecallResult result, bool tone = true)
 {
     Console.WriteLine(result.Any
         ? $"{situation.Key} - {result.Atoms.Count} of {result.Considered} remembered"
@@ -358,12 +364,12 @@ static void Full(Situation situation, RecallResult result)
 
     foreach (var atom in result.Atoms) Block(atom);
 
-    if (result.Tone.Count == 0) return;
+    if (!tone || result.Tone.Count == 0) return;
     Console.WriteLine("how they like to be worked with");
-    foreach (var tone in result.Tone) Console.WriteLine($"  - {tone.Text}");
+    foreach (var line in result.Tone) Console.WriteLine($"  - {line.Text}");
 }
 
-static void Brief(Situation situation, RecallResult result)
+static void Brief(Situation situation, RecallResult result, bool tone = true)
 {
     // The prompt-sized form: one line each, inside the budget, marked so the
     // thing that failed reads as a warning rather than as advice.
@@ -374,7 +380,8 @@ static void Brief(Situation situation, RecallResult result)
         var tally = atom.Corrections > 0 ? $" ({atom.Corrections}x)" : "";
         Console.WriteLine($"{mark} {atom.Kind.ToString().ToLowerInvariant()} {Short(atom.Id)}{tally}: {atom.Text}");
     }
-    foreach (var tone in result.Tone) Console.WriteLine($"~ {tone.Text}");
+    if (!tone) return;
+    foreach (var line in result.Tone) Console.WriteLine($"~ {line.Text}");
 }
 
 static void Block(MemoryAtom atom, bool full = false, string indent = "  ")
@@ -560,6 +567,7 @@ static void Usage() => Console.WriteLine("""
         --doing <verb> --to <target> --with <tool>   the situation
         <free text>                anything else about it
         --brief                    one line each, for a prompt
+        --no-tone                  skip how they like to be worked with (right once a session)
         --limit <n> --chars <n>    the budget (5 atoms, 600 characters)
 
       learn                      read what was said and keep what is worth keeping

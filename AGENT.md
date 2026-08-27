@@ -130,7 +130,7 @@ remove it.
 ## Using it
 
 ```bash
-memory recall --doing deploy --to android [--with dotnet] [free text] [--brief]
+memory recall --doing deploy --to android [--with dotnet] [free text] [--brief] [--no-tone]
 memory remember "<what>" --about <subject> --challenge "<what came up>" \
                 [--kind ruling|decision|fact|preference|relationship] \
                 [--outcome resolved|open|failed] [--verify "<command>"]
@@ -148,6 +148,11 @@ Ids are any unique prefix — eight characters is plenty.
 `--brief` is the prompt-sized form: one line per atom, `!` for a road that
 failed, `?` for a fact that did not verify, `~` for tone. It respects the
 budget (5 atoms, 600 characters by default).
+
+Tone — how somebody wants to be worked with — comes back on every recall,
+because it does not depend on the subject. That is right for a session's first
+ask and noise by its tenth, and only the caller knows which it is: `--no-tone`
+drops it.
 
 **Correcting never deletes.** A correction is a new atom that supersedes the
 old one; the old one stops being an answer and stays readable. `memory failed`
