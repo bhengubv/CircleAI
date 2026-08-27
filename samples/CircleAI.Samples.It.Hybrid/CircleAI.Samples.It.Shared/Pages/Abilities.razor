@@ -18,6 +18,7 @@
 *@
 @page "/abilities"
 @inject IFormFactor Host
+@inject IVoiceHost Voice
 
 <div class="pitch">
 
@@ -28,8 +29,17 @@
             <span class="claim-icon" aria-hidden="true">🗣</span>
             <span class="claim-text">
                 <span class="claim-title">It talks, in your language</span>
-                <span class="claim-sub">75 languages, spoken out loud - including the ones
-                    the big assistants never learned.</span>
+                @*
+                    COUNTED, LIKE THE OTHER THREE PLACES. This said 75 - the
+                    shared name table - while the phone's catalogue offers 78 and
+                    the language screen printed both numbers on itself. A pitch
+                    that undersells by three is still a pitch that disagrees with
+                    the screen it sends people to.
+                *@
+                <span class="claim-sub">
+                    @(_known > 0 ? $"{_known} languages" : "Your language"), spoken out
+                    loud - including the ones the big assistants never learned.
+                </span>
             </span>
         </div>
 
@@ -73,4 +83,18 @@
 
 </div>
 
+@code {
+    /// <summary>How many languages this host can actually speak.</summary>
+    /// <remarks>
+    /// Asked of the host rather than read off a constant, for the same reason as
+    /// Home and the language list: it is a fact about a device, and a browser is
+    /// a different device with a different and equally true answer.
+    /// </remarks>
+    int _known;
 
+    protected override async Task OnInitializedAsync()
+    {
+        try { _known = (await Voice.CatalogueAsync()).Count; }
+        catch { _known = 0; }
+    }
+}

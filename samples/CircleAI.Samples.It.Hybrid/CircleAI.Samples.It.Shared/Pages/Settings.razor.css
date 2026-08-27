@@ -313,6 +313,12 @@
 
 .on { font-size: 17px; color: var(--brand-blue); flex: none; }
 
+/*
+    A button or an anchor, and it must look the same either way - "Turn on" is a
+    button and "Try it" is a link to the screen that demonstrates the ability, and
+    an anchor inheriting the page's link colour beside an identical-looking button
+    reads as a different kind of thing.
+*/
 .compact {
     font: inherit;
     font-size: 13px;
@@ -325,6 +331,14 @@
     cursor: pointer;
     flex: none;
     white-space: nowrap;
+    text-decoration: none;
+}
+
+/* The tick already says it is on, so going to try it is the quieter of the two. */
+a.compact {
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
 }
 
 .compact:disabled { opacity: 0.45; cursor: default; }

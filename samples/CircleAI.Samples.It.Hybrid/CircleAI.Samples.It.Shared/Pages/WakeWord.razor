@@ -11,6 +11,7 @@
 @page "/wake"
 @implements IAsyncDisposable
 @inject IWakeWord Wake
+@inject NavigationManager Nav
 
 <div class="wake">
 
@@ -32,6 +33,16 @@
     {
         <button class="allow" @onclick="Start">Allow the microphone</button>
     }
+    else if (_status.State == WakeState.NotInstalled)
+    {
+        @*
+            THE INSTRUCTION, PRESSABLE. This state prints "turn on Waking under
+            Settings › Phone" and left somebody to walk there - on the one screen
+            in the app with nothing else to press, which makes a dead end look
+            like a broken feature.
+        *@
+        <button class="allow" @onclick='() => Nav.NavigateTo("settings")'>Turn it on</button>
+    }
 
     <div class="claims">
         <div class="claim">Listening happens on this phone</div>
@@ -41,7 +52,16 @@
 </div>
 
 @code {
-    WakeStatus _status = new(WakeState.Preparing, "Say “Hey B”", "Getting ready…");
+    /// <summary>
+    /// What is on screen before the listener has said anything.
+    /// </summary>
+    /// <remarks>
+    /// NO PHRASE UNTIL THE LISTENER NAMES ONE. This started as 'Say "Hey B"',
+    /// hardcoded - so a phone set to Japanese opened this screen telling its
+    /// owner to say an English phrase, until the first report replaced it. The
+    /// wake phrase has one source and it is not a literal in a component.
+    /// </remarks>
+    WakeStatus _status = new(WakeState.Preparing, "Getting ready", "One moment…");
     CancellationTokenSource? _cts;
 
     /// <summary>
@@ -63,13 +83,31 @@
         var updates = new Progress<WakeStatus>(s =>
         {
             _status = s;
-            _flash = s.State == WakeState.Heard ? 1 : 0;
+
+            // A PULSE THAT ENDS. This set the level to 1 on Heard and only reset
+            // it on the NEXT report - and the listener does not report again after
+            // waking, it goes straight back to capturing. So the mark stayed fully
+            // scaled from the first detection onwards, which reads as a microphone
+            // stuck open rather than as an acknowledgement.
+            if (s.State == WakeState.Heard) Flash();
+            else _flash = 0;
+
             InvokeAsync(StateHasChanged);
         });
 
         // Not awaited: ListenAsync runs until cancelled, and awaiting it here
         // would block the component's initialisation for the life of the screen.
         _ = Wake.ListenAsync(updates, _cts.Token);
+    }
+
+    /// <summary>Light the mark up, then let it settle.</summary>
+    async void Flash()
+    {
+        _flash = 1;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(600);
+        _flash = 0;
+        await InvokeAsync(StateHasChanged);
     }
 
     async Task StopAsync()

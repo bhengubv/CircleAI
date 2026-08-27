@@ -330,6 +330,21 @@ else
                     }
                     else if (row.State == AbilityState.On)
                     {
+                        @*
+                            SOMEWHERE TO GO, not just a tick. IDeviceFacts has
+                            carried TryRoute and the reason for it since it was
+                            written - "an ability that is ON should be somewhere
+                            you can GO rather than just a tick" - and nothing ever
+                            read the property. The wake screen was the only thing
+                            it points at, which made that screen reachable solely
+                            from a setup tour step that shows once, during a
+                            download, and only when the estimate is over two
+                            minutes. After setup it could not be opened at all.
+                        *@
+                        @if (row.TryRoute is { Length: > 0 } route)
+                        {
+                            <a class="compact" href="@route">Try it</a>
+                        }
                         <span class="on">&#10003;</span>
                     }
                 </div>
