@@ -81,6 +81,7 @@
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Memory.Sql\CircleAI.Memory.Sql.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Search\CircleAI.Search.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />

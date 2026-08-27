@@ -197,10 +197,37 @@ the machine name if two boxes would otherwise collide.
 
 SQLite is the default and the only one that matters first: no server, ships
 inside the app, and the only option on a phone. PostgreSQL, SQL Server, MySQL
-and Oracle are the shared case — a team or a machine somebody already runs —
-and they sit behind `IAtomStore` as a dialect problem, not a second design.
-Nothing above changes: the log is still the durable half, and any engine is
-still an index over it.
+and Oracle are the shared case — a team, or a machine somebody already runs.
+
+`CircleAI.Memory.Sql` is that store, and it **references no driver**. The caller
+hands in an open `DbConnection`, which keeps Oracle's client out of a phone
+build, keeps Npgsql out of a SQL Server deployment, and makes an engine nobody
+here anticipated a `SqlDialect` rather than a package we have to ship.
+
+```csharp
+await using var conn = new NpgsqlConnection(connectionString);
+var store = new AdoAtomStore(conn, SqlDialect.PostgreSql);
+```
+
+| Engine | Keyword search |
+|---|---|
+| PostgreSQL | a generated `tsvector` column and a GIN index, both in the schema |
+| MySQL / MariaDB | a `FULLTEXT` index on InnoDB |
+| SQL Server | `LIKE` — `CONTAINS` needs the Full-Text feature installed on the instance |
+| Oracle | `LIKE` — Oracle Text needs a CTXSYS index and a privilege a memory should not ask for |
+
+`LIKE` is the floor, not an excuse: it is worse at ranking and perfectly capable
+of finding things. A store that refused to start because an optional index
+would not build would be the worse outcome. `AdoAtomStore.FullTextAvailable`
+says which one ran.
+
+**Status, plainly.** The shared implementation is run end to end against a real
+engine — SQLite through the same ADO path, the same `DbConnection`,
+`DbCommand` and `DbDataReader` the other four use. What each dialect emits is
+checked as SQL. Neither is a live PostgreSQL, SQL Server, MySQL or Oracle
+server: until one of those has been pointed at a real instance, treat the four
+as **written and unproven**. Nothing else changes when they are — the log is
+still the durable half, and any engine is still an index over it.
 
 ---
 

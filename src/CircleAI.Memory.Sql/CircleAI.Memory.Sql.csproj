@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Memory.Sql</PackageId>
+    <Version>1.0.0</Version>
+    <Description>The atom store on any ADO.NET engine - PostgreSQL, SQL Server, MySQL, Oracle - for the shared case, where SqliteAtomStore serves the phone.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- NO DRIVER PACKAGES. The caller hands in an open DbConnection, so this
+       pulls Oracle's client into nothing and Npgsql into nothing, and an engine
+       nobody here has heard of is a SqlDialect rather than a package we ship. -->
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+  </ItemGroup>
+</Project>
