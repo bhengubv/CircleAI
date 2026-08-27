@@ -19,6 +19,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 @inject IConversation Talk
+@inject IShareTarget Share
 
 <div class="app">
     @*
@@ -176,6 +177,15 @@
     {
         Nav.LocationChanged += OnLocationChanged;
         Resolve();
+
+        // AN ADVERT SHARED FROM WHATSAPP LANDS ON THE SCREEN THAT WANTS IT.
+        //
+        // The activity parks the text and this decides where it goes, because
+        // routing belongs here - an activity navigating the web view would be a
+        // second router able to disagree with this one. Peeked, not taken: the
+        // job screen consumes it, and taking it here would swallow the advert on
+        // its way to the only thing that can use it.
+        if (Share.HasPending && Path() != "job-spec") Nav.NavigateTo("job-spec");
     }
 
     void OnLocationChanged(

@@ -11,10 +11,22 @@
 *@
 @page "/job-spec"
 @inject IJobSpecTailor Tailor
+@inject IShareTarget Share
+@inject IFormFactor Host
 
+@*
+    THE WHATSAPP SENTENCE ONLY WHERE IT IS TRUE. This screen promised "share it
+    here from WhatsApp" on both hosts, and the hybrid had no intent filter at all
+    - Circle AI never appeared in the share sheet, so only the pasting half was
+    ever true. The filter exists now; a browser tab still has no share sheet, and
+    says the half it can keep.
+*@
 <p class="lead">
-    Paste the advert, or share it here from WhatsApp. Your CV will be rearranged to
-    put the parts that match it first — using only what you already told me.
+    @(Host.IsOnDevice
+        ? "Paste the advert, or share it here from WhatsApp."
+        : "Paste the advert here.")
+    Your CV will be rearranged to put the parts that match it first — using only
+    what you already told me.
 </p>
 
 @* Same as the CV answer box: a controlled value re-applied per keystroke
@@ -23,7 +35,12 @@
           aria-label="The job advert"
           @bind="_advert" @bind:event="oninput"></textarea>
 
-<button class="go" @onclick="Run" disabled="@_busy">@_action</button>
+@*
+    DISABLED UNTIL THERE IS AN ADVERT. It ran on an empty box - pressing it with
+    nothing pasted spent the model on nothing and came back with nothing, which
+    reads as the feature being broken rather than as the box being empty.
+*@
+<button class="go" @onclick="Run" disabled="@(_busy || _advert.Trim().Length == 0)">@_action</button>
 
 @if (_out.Length > 0)
 {
@@ -36,6 +53,21 @@
     string _out = "";
     string _action = "Aim my CV at this job";
     bool _busy;
+
+    /// <summary>Take an advert somebody shared in from another app.</summary>
+    /// <remarks>
+    /// The whole point of the share target: arriving this way must require no
+    /// typing at all, so the advert is already in the box and the only thing
+    /// left to do is press the button.
+    /// </remarks>
+    protected override void OnInitialized()
+    {
+        if (Share.Take() is { Length: > 0 } shared)
+        {
+            _advert = shared;
+            _out = "Advert received. Tap to aim your CV at it.";
+        }
+    }
 
     async Task Run()
     {
