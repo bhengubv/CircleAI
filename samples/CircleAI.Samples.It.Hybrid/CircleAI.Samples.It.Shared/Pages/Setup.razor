@@ -24,7 +24,7 @@
         saying it is still working is the same lie as one that says it is getting
         ready when nothing is downloading.
     *@
-    <h1 class="lead">@(_done ? "It is ready" : _running ? "Getting it ready" : "Let's set it up")</h1>
+    <h1 class="lead">@(_done ? "It is ready" : _running ? "Getting it ready" : _lead)</h1>
     <p class="sub">@Sub</p>
 
     @if (!_running)
@@ -144,8 +144,21 @@
             ? $"About {_progress.Remaining.TotalMinutes:0} minutes left"
             : $"About {Math.Max(5, _progress.Remaining.TotalSeconds):0} seconds left";
 
+    /// <summary>
+    /// The headline before anything starts, taken from readiness.
+    /// </summary>
+    /// <remarks>
+    /// ONE SOURCE FOR THE WORDING. This was the literal "Let's set it up", while
+    /// Home - which decides the same thing from the same readiness - says "Finish
+    /// setting it up" once part of it is already on the phone. So a half-installed
+    /// phone was invited to begin something it was in the middle of, by the screen
+    /// that was doing the resuming.
+    /// </remarks>
+    string _lead = "Let's set it up";
+
     protected override async Task OnInitializedAsync()
     {
+        _lead = (await Wizard.ReadinessAsync()).Headline;
         _plan = await Wizard.PlanAsync();
 
         // ALREADY GOING. Tapping Home on the bar during an 817 MB download kills

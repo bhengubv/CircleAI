@@ -135,10 +135,17 @@ public sealed class Recall : IRecall
         var score = atom.Kind switch
         {
             AtomKind.Ruling     => 1.00,
+            AtomKind.Decision   => 0.90,
             AtomKind.Fact       => 0.80,
             AtomKind.Preference => 0.55,
             _                   => 0.00,
         };
+
+        // A ROAD ALREADY TRIED AND FOUND CLOSED goes near the top. Knowing what
+        // failed is worth as much as knowing what worked, and it arrives too
+        // late by default: the whole cost of a repeated mistake is paid before
+        // anybody remembers making it the first time.
+        if (atom.Failed) score += 0.25;
 
         // Capped: after about four corrections the point is made, and without a
         // cap one much-corrected atom would crowd out everything else forever.

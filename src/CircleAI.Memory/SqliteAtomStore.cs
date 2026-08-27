@@ -80,6 +80,8 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 corrections        INTEGER NOT NULL DEFAULT 0,
                 last_corrected_utc TEXT,
                 superseded_by      TEXT,
+                challenge          TEXT,
+                outcome            TEXT,
                 verify             TEXT,
                 verified_at_utc    TEXT,
                 verified_ok        INTEGER
@@ -105,6 +107,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                     atom_id UNINDEXED,
                     text,
                     subject,
+                    challenge,
                     tokenize = 'porter'
                 );
                 """;
@@ -161,8 +164,10 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             // correction usually restates the same sort of thing, and silently
             // demoting a ruling to a preference because a caller left the
             // default in place would lose the reason it ranked first.
-            Kind    = previous?.Kind ?? replacement.Kind,
-            Subject = replacement.Subject ?? previous?.Subject,
+            Kind      = previous?.Kind ?? replacement.Kind,
+            Subject   = replacement.Subject ?? previous?.Subject,
+            Challenge = replacement.Challenge ?? previous?.Challenge,
+            Outcome   = replacement.Outcome ?? previous?.Outcome,
 
             Corrections      = Math.Max(replacement.Corrections, (previous?.Corrections ?? 0) + 1),
             LastCorrectedUtc = replacement.LastCorrectedUtc ?? DateTimeOffset.UtcNow,
@@ -379,7 +384,8 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
         if (terms.Count == 0) return new List<MemoryAtom>();
 
         using var cmd = _conn.CreateCommand();
-        var clauses = string.Join(" OR ", terms.Select((_, i) => $"text LIKE $t{i} OR subject LIKE $t{i}"));
+        var clauses = string.Join(" OR ", terms.Select((_, i) =>
+            $"text LIKE $t{i} OR subject LIKE $t{i} OR IFNULL(challenge, '') LIKE $t{i}"));
         cmd.CommandText = $"""
             SELECT {Columns}
             FROM   atoms
@@ -424,14 +430,16 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
 
     private const string Columns =
         "id, kind, text, subject, source_episode, recorded_at_utc, corrections, " +
-        "last_corrected_utc, superseded_by, verify, verified_at_utc, verified_ok";
+        "last_corrected_utc, superseded_by, challenge, outcome, verify, " +
+        "verified_at_utc, verified_ok";
 
     // Qualified, for the FTS join: atoms_fts also has "text" and "subject", so
     // the bare list is ambiguous there and SQLite is entitled to pick either.
     private const string QualifiedColumns =
         "atoms.id, atoms.kind, atoms.text, atoms.subject, atoms.source_episode, " +
         "atoms.recorded_at_utc, atoms.corrections, atoms.last_corrected_utc, " +
-        "atoms.superseded_by, atoms.verify, atoms.verified_at_utc, atoms.verified_ok";
+        "atoms.superseded_by, atoms.challenge, atoms.outcome, atoms.verify, " +
+        "atoms.verified_at_utc, atoms.verified_ok";
 
     private void Insert(MemoryAtom atom, SqliteTransaction? tx = null)
     {
@@ -442,11 +450,11 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 INSERT OR REPLACE INTO atoms
                     (id, kind, text, subject, source_episode, recorded_at_utc,
                      corrections, last_corrected_utc, superseded_by,
-                     verify, verified_at_utc, verified_ok)
+                     challenge, outcome, verify, verified_at_utc, verified_ok)
                 VALUES
                     ($id, $kind, $text, $subject, $source, $recorded,
                      $corrections, $lastCorrected, $superseded,
-                     $verify, $verifiedAt, $verifiedOk);
+                     $challenge, $outcome, $verify, $verifiedAt, $verifiedOk);
                 """;
             cmd.Parameters.AddWithValue("$id",            atom.Id.ToString("N"));
             cmd.Parameters.AddWithValue("$kind",          atom.Kind.ToString());
@@ -457,6 +465,8 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.Parameters.AddWithValue("$corrections",   atom.Corrections);
             cmd.Parameters.AddWithValue("$lastCorrected", (object?)atom.LastCorrectedUtc?.ToString("O") ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$superseded",    (object?)atom.SupersededBy?.ToString("N") ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$challenge",     (object?)atom.Challenge ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$outcome",       (object?)atom.Outcome?.ToString() ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verify",        (object?)atom.Verify ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verifiedAt",    (object?)atom.VerifiedAtUtc?.ToString("O") ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verifiedOk",    atom.VerifiedOk is null ? DBNull.Value : atom.VerifiedOk.Value ? 1 : 0);
@@ -470,11 +480,15 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.Transaction = tx;
             cmd.CommandText = """
                 DELETE FROM atoms_fts WHERE atom_id = $id;
-                INSERT INTO atoms_fts (atom_id, text, subject) VALUES ($id, $text, $subject);
+                INSERT INTO atoms_fts (atom_id, text, subject, challenge)
+                VALUES ($id, $text, $subject, $challenge);
                 """;
-            cmd.Parameters.AddWithValue("$id",      atom.Id.ToString("N"));
-            cmd.Parameters.AddWithValue("$text",    atom.Text);
-            cmd.Parameters.AddWithValue("$subject", (object?)atom.Subject ?? string.Empty);
+            cmd.Parameters.AddWithValue("$id",        atom.Id.ToString("N"));
+            cmd.Parameters.AddWithValue("$text",      atom.Text);
+            cmd.Parameters.AddWithValue("$subject",   (object?)atom.Subject ?? string.Empty);
+            // THE CHALLENGE IS THE SEARCHABLE HALF. "Have we been here before"
+            // is asked against what came up, not against what was decided.
+            cmd.Parameters.AddWithValue("$challenge", (object?)atom.Challenge ?? string.Empty);
             cmd.ExecuteNonQuery();
         }
     }
@@ -504,9 +518,12 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 Corrections      = reader.GetInt32(6),
                 LastCorrectedUtc = reader.IsDBNull(7) ? null : ParseTime(reader.GetString(7)),
                 SupersededBy     = reader.IsDBNull(8) ? null : Guid.Parse(reader.GetString(8)),
-                Verify           = reader.IsDBNull(9) ? null : reader.GetString(9),
-                VerifiedAtUtc    = reader.IsDBNull(10) ? null : ParseTime(reader.GetString(10)),
-                VerifiedOk       = reader.IsDBNull(11) ? null : reader.GetInt32(11) == 1,
+                Challenge        = reader.IsDBNull(9) ? null : reader.GetString(9),
+                Outcome          = reader.IsDBNull(10) ? null
+                                     : Enum.TryParse<DecisionOutcome>(reader.GetString(10), out var o) ? o : null,
+                Verify           = reader.IsDBNull(11) ? null : reader.GetString(11),
+                VerifiedAtUtc    = reader.IsDBNull(12) ? null : ParseTime(reader.GetString(12)),
+                VerifiedOk       = reader.IsDBNull(13) ? null : reader.GetInt32(13) == 1,
             });
         }
         return results;
