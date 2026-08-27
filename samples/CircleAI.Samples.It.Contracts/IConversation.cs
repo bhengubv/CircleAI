@@ -66,6 +66,28 @@ public interface IConversation
     /// </remarks>
     Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default);
 
+    /// <summary>
+    /// Open the microphone and write down what was said. Nothing else.
+    /// </summary>
+    /// <remarks>
+    /// DICTATION IS NOT A CONVERSATION, and the CV screen was using one to do it.
+    /// Its "Say it" button called TurnAsync - listen, think, answer aloud - so
+    /// speaking your own name into your own CV required the 548 MB answering
+    /// model, and the screen reported the ANSWERING model as the thing missing.
+    /// Somebody would have downloaded half a gigabyte and found the button still
+    /// did not work, because what it actually needs is the ears.
+    /// <para>
+    /// Worse than the message: a full turn would have taken the name as a
+    /// question, thought about it, and said something back - when the only thing
+    /// wanted was the words.
+    /// </para>
+    /// <para>
+    /// Returns what was heard, or null when nothing was. The reason lands on
+    /// <see cref="TurnState.Detail"/> like every other refusal.
+    /// </para>
+    /// </remarks>
+    Task<string?> DictateAsync(IProgress<TurnState> updates, CancellationToken ct = default);
+
     /// <summary>Say something aloud, without listening first.</summary>
     /// <remarks>
     /// What the chat screen's speaker control uses, and the greeting the circle

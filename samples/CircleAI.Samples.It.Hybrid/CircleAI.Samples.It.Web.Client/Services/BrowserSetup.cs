@@ -34,4 +34,17 @@ public sealed class BrowserSetup : ISetup
     /// <inheritdoc />
     public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<TourStep>>([]);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A browser tab has no microphone to grant on this app's behalf and no
+    /// battery policy to be exempt from. Both say no rather than pretending,
+    /// which is why they return a result instead of being no-ops.
+    /// </remarks>
+    public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    /// <inheritdoc />
+    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
 }

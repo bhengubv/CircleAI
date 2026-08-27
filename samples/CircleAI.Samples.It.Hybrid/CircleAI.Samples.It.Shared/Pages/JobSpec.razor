@@ -17,10 +17,11 @@
     put the parts that match it first — using only what you already told me.
 </p>
 
+@* Same as the CV answer box: a controlled value re-applied per keystroke
+   drops characters out of what somebody typed. *@
 <textarea class="spec" rows="6" placeholder="Paste the job advert here"
           aria-label="The job advert"
-          value="@_advert"
-          @oninput="e => _advert = e.Value?.ToString() ?? string.Empty"></textarea>
+          @bind="_advert" @bind:event="oninput"></textarea>
 
 <button class="go" @onclick="Run" disabled="@_busy">@_action</button>
 

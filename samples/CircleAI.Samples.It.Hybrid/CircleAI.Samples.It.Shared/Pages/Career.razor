@@ -39,9 +39,25 @@
 
     @if (!_step.Done)
     {
+@*
+            @bind:event="oninput", NOT value= with @oninput.
+
+            TYPING DROPPED CHARACTERS. "Thabo Mokoena" was stored as "Thbo
+            Mooena": a controlled value attribute is re-applied on every render,
+            the handler re-renders on every keystroke, and a character arriving
+            while that round trip is in flight is overwritten by the value Blazor
+            already had. It is the same fault as the settings select snapping
+            back, except a select shows you it happened and a text box quietly
+            keeps the wrong string - and this one writes the wrong string onto
+            somebody's CV, where a mangled surname is the whole point of the
+            field.
+
+            @bind owns the element, so the framework does not fight the keystrokes
+            it is receiving.
+        *@
         <input class="answer" placeholder="Say it or type it"
                aria-label="Your answer"
-               value="@_answer" @oninput="e => _answer = e.Value?.ToString() ?? string.Empty"
+               @bind="_answer" @bind:event="oninput"
                @onkeydown="OnKey" />
     }
 
@@ -196,7 +212,13 @@
             InvokeAsync(StateHasChanged);
         });
 
-        try { await Talk.TurnAsync(updates); }
+        // DICTATE, NOT CONVERSE. This called TurnAsync - listen, think, answer
+        // aloud - so speaking your own name into your own CV needed the 548 MB
+        // answering model, and the screen said ANSWERING was what was missing.
+        // Downloading it would not have helped: what this needs is the ears. And
+        // a full turn would have taken the name as a question and said something
+        // back, when all that was wanted was the words written down.
+        try { await Talk.DictateAsync(updates); }
         catch (Exception ex) { _saved = $"{ex.GetType().Name}: {ex.Message}"; }
         finally { _busy = false; }
     }

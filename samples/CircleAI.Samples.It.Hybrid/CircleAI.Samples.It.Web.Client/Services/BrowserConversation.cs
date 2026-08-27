@@ -28,6 +28,17 @@ public sealed class BrowserConversation : IConversation
     }
 
     /// <inheritdoc />
+    /// <remarks>No microphone here, and it says which part is missing rather
+    /// than borrowing the conversation's excuse.</remarks>
+    public Task<string?> DictateAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default)
+    {
+        updates.Report(new TurnState(TurnPhase.Idle,
+            Detail: "Listening runs on the phone. Install the app to speak to it."));
+        return Task.FromResult<string?>(null);
+    }
+
+    /// <inheritdoc />
     public Task SayAsync(string text, string? languageTag = null, CancellationToken ct = default)
         => Task.CompletedTask;
 

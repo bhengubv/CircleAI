@@ -43,10 +43,12 @@
         </label>
     </div>
 
+    @* Same as the CV answer box: a controlled value re-applied per keystroke
+       drops characters, and here it would be words put into somebody else's
+       mouth. *@
     <textarea class="say" rows="3" placeholder="Type what they said"
               aria-label="What to interpret"
-              value="@_input"
-              @oninput="e => _input = e.Value?.ToString() ?? string.Empty"></textarea>
+              @bind="_input" @bind:event="oninput"></textarea>
 
     <div class="actions">
         <button class="soft" @onclick="Speak" disabled="@_busy">Read it out</button>

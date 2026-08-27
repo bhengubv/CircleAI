@@ -127,6 +127,80 @@ public sealed class DeviceConversation : IConversation
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string?> DictateAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default)
+    {
+        if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+        {
+            updates.Report(new TurnState(TurnPhase.Idle,
+                Detail: "Still listening to the last one."));
+            return null;
+        }
+
+        try
+        {
+            // NO BRAIN CHECK. This is the whole point of the method: writing down
+            // what somebody said needs the ears, not the answering model, and the
+            // screen that uses it was demanding - and naming - the wrong one.
+            var mic = await Permissions.CheckStatusAsync<Permissions.Microphone>()
+                .ConfigureAwait(false);
+            if (mic != PermissionStatus.Granted)
+                mic = await Permissions.RequestAsync<Permissions.Microphone>()
+                    .ConfigureAwait(false);
+
+            if (mic != PermissionStatus.Granted)
+            {
+                updates.Report(new TurnState(TurnPhase.Idle,
+                    Detail: "It needs permission to hear you."));
+                return null;
+            }
+
+            updates.Report(new TurnState(TurnPhase.Listening));
+
+            var heard = Speech(await ListenAsync(updates, ct).ConfigureAwait(false));
+
+            updates.Report(heard is null
+                ? new TurnState(TurnPhase.Idle, Detail: "I did not catch that.")
+                : new TurnState(TurnPhase.Idle, Heard: heard));
+
+            return heard;
+        }
+        finally
+        {
+            _one.Release();
+        }
+    }
+
+    /// <summary>
+    /// What was actually SAID, or null when the transcriber only heard noise.
+    /// </summary>
+    /// <remarks>
+    /// WHISPER LABELS NON-SPEECH RATHER THAN RETURNING NOTHING. A quiet room
+    /// comes back as "[BLANK_AUDIO]", a radio in the background as "[Music]", and
+    /// those are not empty strings - so they sailed through an
+    /// IsNullOrWhiteSpace check and straight into whatever asked for the text.
+    /// Pressing "Say it" next to a television would have written [Music] onto
+    /// somebody's CV as the kind of work they are looking for.
+    /// <para>
+    /// Only WHOLE bracketed tokens go. Somebody saying "forklift (code 14)" keeps
+    /// their brackets; what is removed is the transcriber talking about the audio
+    /// instead of transcribing it. If nothing survives, nothing was said.
+    /// </para>
+    /// </remarks>
+    private static string? Speech(string? heard)
+    {
+        if (string.IsNullOrWhiteSpace(heard)) return null;
+
+        var stripped = System.Text.RegularExpressions.Regex.Replace(
+            heard, @"[\[(][^\])]*[\])]", " ").Trim();
+
+        // Punctuation on its own is not speech either: silence often comes back
+        // as a lone full stop once the tag is gone.
+        var hasWords = stripped.Any(char.IsLetterOrDigit);
+        return hasWords ? System.Text.RegularExpressions.Regex.Replace(stripped, @"\s+", " ") : null;
+    }
+
     /// <summary>
     /// Open the microphone until the speaker stops, and transcribe what they said.
     /// </summary>

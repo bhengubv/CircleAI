@@ -170,11 +170,12 @@
     {
     <div class="composer">
         <div class="composer-field">
+            @* Same as the CV answer box: a controlled value re-applied on
+               every render drops characters while somebody is typing. *@
             <input class="input" placeholder="Type a message"
                    aria-label="Your message"
                    disabled="@(!_ready)"
-                   value="@_draft"
-                   @oninput="e => _draft = e.Value?.ToString() ?? string.Empty"
+                   @bind="_draft" @bind:event="oninput"
                    @onkeydown="OnKey" />
 
             <button class="mic" @onclick="Listen" disabled="@(!_ready || _busy)"
