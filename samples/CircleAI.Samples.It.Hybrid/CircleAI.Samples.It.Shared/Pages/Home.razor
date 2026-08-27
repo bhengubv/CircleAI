@@ -157,25 +157,36 @@
                 : Voice.Provenance);
 
     protected override async Task OnInitializedAsync()
-        => _ready = await Setup.ReadinessAsync();
+    {
+        _ready = await Setup.ReadinessAsync();
 
-    /// <summary>How many languages the app knows, counted rather than claimed.</summary>
+        // Counted, not claimed - and counted where the count is true. Guarded
+        // because a host that cannot enumerate voices should print no number
+        // rather than a zero.
+        try { _known = (await Voice.CatalogueAsync()).Count; }
+        catch { _known = 0; }
+    }
+
+    /// <summary>
+    /// How many languages this phone can actually speak.
+    /// </summary>
     /// <remarks>
-    /// "10 PLUS" WAS A HEDGE, and it disagreed with the two screens that count:
-    /// the abilities pitch says 75 and the language list prints "75 languages" at
-    /// the top. Three places, one fact, and the marketing screen was the one
-    /// underselling it.
+    /// FROM THE VOICE CATALOGUE, WHICH IS THE ONLY HONEST SOURCE. "10 plus" was
+    /// a hedge; replacing it with SampleLanguages.All.Count was a different wrong
+    /// number - that table holds 75 NAMES, while the phone's catalogue offers 78
+    /// voices, and the language screen printed both on itself, two lines apart.
     /// <para>
-    /// Read off the shared table so it cannot drift again. It is the number of
-    /// languages the app KNOWS - names, greetings, and a voice to try - which is
-    /// what a list of 75 rows on the language screen is also counting.
+    /// The catalogue is per host and per device: it is the distinct languages of
+    /// the TTS models this handset can actually run. A browser reports its own
+    /// smaller number and is equally right about itself, which is the point of
+    /// asking the host rather than a constant.
     /// </para>
     /// </remarks>
-    static int Known => SampleLanguages.All.Count;
+    int _known;
 
-    static readonly string[] OnDeviceClaims =
+    string[] OnDeviceClaims =>
     [
-        $"{SampleLanguages.All.Count} languages, spoken out loud",
+        _known > 0 ? $"{_known} languages, spoken out loud" : "Spoken out loud, in your language",
         "Runs on the phone — works with no signal",
         "Free, no account — only searches leave the phone",
     ];

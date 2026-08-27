@@ -7,7 +7,7 @@
 *@
 @page "/languages"
 @inject IVoiceHost Voice
-@inject ISpokenLanguage Spoken
+@inject ISettings Settings
 @inject NavigationManager Nav
 
 <div class="languages">
@@ -15,8 +15,15 @@
     <div class="title">Pick a language</div>
     <div class="status">@Status</div>
 
-    @* Search sits inside the header block, below the status, top margin 14. *@
-    <input class="search" type="search" placeholder="@($"Search {SampleLanguages.All.Count} languages")"
+    @*
+        Search sits inside the header block, below the status, top margin 14.
+
+        THE PLACEHOLDER COUNTS THE SAME LIST THE STATUS LINE COUNTS. It said 75 -
+        the shared name table - two lines beneath a status reading 78, which is
+        this device's actual voice catalogue. One screen, one fact, two numbers.
+    *@
+    <input class="search" type="search"
+           placeholder="@($"Search {_all.Count} languages")"
            aria-label="Search languages"
            value="@_query" @oninput="OnQuery" />
 </div>
@@ -30,7 +37,14 @@
             "Hear it" keeps its own control rather than stealing the tap that
             everybody will read as "choose this one".
         *@
-        <div class="card @(Spoken.Chosen == lang.Tag ? "card-on" : null)"
+        @*
+            MARKED FROM THE APP'S LANGUAGE, not from ISpokenLanguage.Chosen.
+            Chosen means "a person pinned the ANSWERING language", and
+            DeviceSettings CLEARS it under the default policy of following the
+            speaker - so with stock settings no row was ever marked, and the list
+            gave no sign of what the phone was already set to.
+        *@
+        <div class="card @(_language == lang.Tag ? "card-on" : null)"
              role="button" tabindex="0"
              @key="lang.Tag" @onclick="() => Choose(lang)">
             <div class="card-text">
@@ -94,8 +108,13 @@
         ? "runs on this phone · nothing leaves the device"
         : "voices run on the phone app";
 
+    /// <summary>The language the app works in, for marking the row.</summary>
+    string _language = "en";
+
     protected override async Task OnInitializedAsync()
     {
+        _language = (await Settings.LoadAsync()).Language;
+
         var catalogue = await Voice.CatalogueAsync();
         _all = catalogue
             .Select(v =>
@@ -146,17 +165,31 @@
             : row.Bytes is long b ? $"{b / 1_000_000} MB" : "";
 
     /// <summary>
-    /// Answers in this language from now on, and goes back to the circle.
+    /// Works in this language from now on, and goes back to the circle.
     /// </summary>
     /// <remarks>
+    /// THROUGH SETTINGS, NOT STRAIGHT AT THE LANGUAGE STORE.
+    /// <para>
+    /// This called ISpokenLanguage.Choose directly, which set the language the
+    /// voice speaks and left AppSettings.Language alone - so picking isiZulu here
+    /// left Settings › Language still reading English, and the wake phrase still
+    /// following English. Worse, DeviceSettings.SaveAsync applies
+    /// _spoken.Choose(settings.Language) every time it writes, so the next time
+    /// anybody changed ANY setting, the choice made here was silently reverted to
+    /// whatever that screen still believed. Two places owning one fact, one of
+    /// them quietly winning.
+    /// </para>
+    /// <para>
     /// PERSISTED, THEN LEFT. Storing it without leaving would be the same defect
     /// in a quieter form: the person would still be looking at a list, with no
     /// signal that their choice took. Returning to the circle is where the choice
     /// becomes visible.
+    /// </para>
     /// </remarks>
-    void Choose(Row row)
+    async Task Choose(Row row)
     {
-        Spoken.Choose(row.Tag);
+        var settings = await Settings.LoadAsync();
+        await Settings.SaveAsync(settings with { Language = row.Tag });
         Nav.NavigateTo("");
     }
 

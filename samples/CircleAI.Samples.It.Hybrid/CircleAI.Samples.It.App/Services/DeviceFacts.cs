@@ -61,7 +61,28 @@ public sealed class DeviceFacts : IDeviceFacts
     /// table above, where it would run during type initialisation.
     /// </remarks>
     private static string Blurb(string template)
-        => template.Replace("{n}", SampleLanguages.All.Count.ToString());
+    {
+        if (!template.Contains("{n}", StringComparison.Ordinal)) return template;
+
+        // THE VOICE CATALOGUE, like Home and the language list. Counting
+        // SampleLanguages here would put a third number on a third screen for
+        // one fact - the table holds 75 names, this phone offers 78 voices.
+        var languages = 0;
+        try
+        {
+            using var registry = new ModelRegistryService();
+            var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var m in registry.AllModels.Where(m => m.Modality == ModelModality.Tts))
+                foreach (var raw in (m.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    if (raw.Trim().Length > 0) tags.Add(raw.Trim());
+            languages = tags.Count;
+        }
+        catch { /* a blurb is not worth failing the screen for */ }
+
+        return languages > 0
+            ? template.Replace("{n}", languages.ToString())
+            : "Reads things out loud, in your language";
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)
