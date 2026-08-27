@@ -1,4 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -7,11 +8,20 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>memory</AssemblyName>
     <RootNamespace>CircleAI.Tools.Memory</RootNamespace>
-    <IsPackable>false</IsPackable>
-    <!-- A shell is the one interface every model already has. Packing this as
-         a dotnet tool is what lets a session on any of the three machines call
-         it without knowing anything about the build. -->
-    <PackAsTool>false</PackAsTool>
+  </PropertyGroup>
+
+  <!-- ========== A REAL COMMAND ON ALL THREE MACHINES ==========
+       A shell is the one interface every model already has, so the memory is
+       only universal once "memory" is actually on PATH. A dotnet tool is the
+       .NET-native way to put it there, and it is the same two lines on Linux,
+       Windows and the Mac. See AGENT.md for them.
+  -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>memory</ToolCommandName>
+    <PackageId>CircleAI.Tools.Memory</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Universal local long-term memory: recall what this machine and the others already worked out.</Description>
   </PropertyGroup>
 
   <ItemGroup>
