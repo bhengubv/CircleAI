@@ -50,6 +50,7 @@ static async Task<int> Run(string[] argv)
             "recall" or "ask"      => await RecallCmd(rest),
             "correct"              => await Correct(rest, failed: false),
             "failed"               => await Correct(rest, failed: true),
+            "learn"                => await Learn(rest),
             "list"                 => await List(rest),
             "show"                 => await Show(rest),
             "sync"                 => await Sync(rest),
@@ -164,6 +165,73 @@ static async Task<int> Correct(string[] argv, bool failed)
 
     var verb = failed ? "marked failed" : "corrected";
     Console.WriteLine($"{verb}  {Short(old.Id)} -> {Short(replacement.Id)}  {replacement.Text}");
+    return 0;
+}
+
+static async Task<int> Learn(string[] argv)
+{
+    var (inline, opts) = Parse(argv);
+
+    // Stdin is the point: a session pipes in what the person said and the
+    // memory fills itself. A file or an argument works the same way for
+    // anything that cannot pipe.
+    var text = opts.GetValueOrDefault("file") is { Length: > 0 } file
+        ? await File.ReadAllTextAsync(file)
+        : !string.IsNullOrWhiteSpace(inline)
+            ? inline
+            : await Console.In.ReadToEndAsync();
+
+    if (string.IsNullOrWhiteSpace(text))
+        return Complain("Nothing to read. Pipe what was said, or memory learn --file <path>");
+
+    // WHAT THE PERSON SAID, not what was answered. The extractor reads the
+    // user side only - see CueExtractor - so the whole input is that side.
+    var episode = new EpisodicMemoryEntry
+    {
+        UserText = text,
+        AppContext = opts.GetValueOrDefault("about"),
+    };
+
+    var (_, sync) = Open();
+    using var store = new SqliteAtomStore("Data Source=:memory:");
+    await sync.RebuildAsync(store);
+
+    var learner = new AtomLearner();
+    var dry = opts.ContainsKey("dry");
+    var subject = opts.GetValueOrDefault("about");
+
+    var report = await learner.LearnAsync(
+        new[] { episode },
+        (atom, ct) => dry ? Task.CompletedTask : sync.RecordAsync(store, atom, ct: ct),
+        await store.AllAsync(limit: 5000),
+        subject);
+
+    Console.WriteLine(
+        $"{report.Considered} spotted, {report.Recorded.Count} {(dry ? "would be kept" : "kept")}, " +
+        $"{report.AlreadyKnown.Count} already known, {report.Offered.Count} not sure enough");
+    Console.WriteLine();
+
+    foreach (var candidate in report.Recorded)
+    {
+        Console.WriteLine($"  kept  {Short(candidate.Atom.Id)}  {candidate.Atom.Kind.ToString().ToLowerInvariant()}" +
+                          $"  ({candidate.Cue})");
+        Console.WriteLine($"    {candidate.Atom.Text}");
+        Console.WriteLine();
+    }
+
+    if (report.Offered.Count == 0) return 0;
+
+    // NOT SURE ENOUGH IS A QUESTION, NOT A DISCARD. The cost of a missed atom
+    // is that somebody says it again; the cost of a wrong one is that the
+    // memory hands back something untrue at the moment it is most trusted.
+    Console.WriteLine("not sure enough to keep - remember one with the line above it:");
+    foreach (var candidate in report.Offered)
+        Console.WriteLine(
+            // Invariant: this machine's locale writes 0,66 and the next thing
+            // to read this output would not know that was a decimal point.
+            $"  ({candidate.Cue}, " +
+            $"{candidate.Confidence.ToString("0.00", CultureInfo.InvariantCulture)})  {candidate.Atom.Text}");
+
     return 0;
 }
 
@@ -493,6 +561,11 @@ static void Usage() => Console.WriteLine("""
         <free text>                anything else about it
         --brief                    one line each, for a prompt
         --limit <n> --chars <n>    the budget (5 atoms, 600 characters)
+
+      learn                      read what was said and keep what is worth keeping
+        <text> | --file <path>     or pipe it on stdin
+        --about <subject>          file everything found under this situation key
+        --dry                      show what it would keep without keeping it
 
       correct <id> <what>        supersede an atom; the original stays readable
       failed  <id> [why]         record that a decision did not hold

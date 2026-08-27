@@ -20,6 +20,12 @@ memory correct <id> "<what it should have said>"
 memory failed  <id> "<what went wrong>"
 ```
 
+**Or let it read the conversation and keep what is worth keeping.**
+
+```bash
+memory learn --about deploy:android          # reads stdin: what the person said
+```
+
 That is the whole of it. `memory help` has the rest; [AGENT.md](AGENT.md) has
 the reasoning.
 

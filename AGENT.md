@@ -136,6 +136,7 @@ memory remember "<what>" --about <subject> --challenge "<what came up>" \
                 [--outcome resolved|open|failed] [--verify "<command>"]
 memory correct <id> "<what it should have said>"
 memory failed  <id> "<what went wrong>"
+memory learn [<text> | --file <path>] [--about <subject>] [--dry]   # or pipe stdin
 memory list [--kind k] [--about s] [--all]
 memory show <id>          # everything about one atom, and what replaced it
 memory sync               # rebuild the on-disk index the app reads
@@ -152,6 +153,54 @@ budget (5 atoms, 600 characters by default).
 old one; the old one stops being an answer and stays readable. `memory failed`
 keeps what was decided and records why it did not hold — marking a rule
 breached must not erase the rule.
+
+---
+
+## It fills itself
+
+`memory learn` reads what was said and keeps what is worth keeping. Pipe a
+session's own words at it and the memory grows without anybody typing an atom:
+
+```bash
+$ printf 'Never restart a device without asking.
+The adb push approach did not work.
+'     | memory learn --about deploy:android
+2 spotted, 2 kept, 0 already known, 0 not sure enough
+
+  kept  b308c540  ruling  (never)
+    Never restart a device without asking
+  kept  e7c8667f  decision  (did not work)
+    The adb push approach did not work
+```
+
+**It reads the person, not the assistant.** What an assistant said it would do
+is a plan; what the person said is the requirement. Reading both would let the
+thing that was corrected file its own version of events beside the correction —
+which is how a memory ends up agreeing with whoever spoke last.
+
+**It keeps the words that were used.** Every atom is a sentence somebody
+actually said, lifted whole. Paraphrasing is where extraction starts inventing,
+and an invented memory is handed back with the same confidence as a true one.
+
+**It proposes; it does not decide.** Above 0.80 confidence a candidate is kept.
+Below it, it is *offered* rather than discarded — an uncertain reading is still
+a question worth asking. The bar is not in the middle because the costs are not
+symmetrical: a missed atom means somebody says it again, a wrong one means the
+memory hands back something untrue at the moment it is most trusted.
+
+**It never supersedes on its own.** Correcting rewrites an atom's history and
+climbs its rank; doing that because two sentences looked similar would let a
+misreading quietly replace something a person actually said. Only an explicit
+`memory correct` supersedes.
+
+**Twice does not mean two.** Learning the same conversation again — after a
+crash, a pull, or a second pass — keeps one of each. A duplicate is not
+harmless: it doubles a thing's weight in recall.
+
+**No model needed.** `CueExtractor` works from phrases, so it fills a memory on
+a phone with the radios off. That makes it the mechanism, not the fallback —
+the same call this design makes about FTS5 and about embeddings. `IAtomExtractor`
+is the seam for a model to do it better when one is loaded.
 
 ---
 
@@ -240,9 +289,14 @@ still the durable half, and any engine is still an index over it.
 | `src/CircleAI.Memory/IAtomStore.cs` | the seam every engine implements |
 | `src/CircleAI.Memory/SqliteAtomStore.cs` | FTS5, with a LIKE fallback that is not an excuse |
 | `src/CircleAI.Memory/Recall.cs` | what ranks, and why |
+| `src/CircleAI.Memory/IAtomExtractor.cs` | the seam between what was said and what is kept |
+| `src/CircleAI.Memory/CueExtractor.cs` | reading a conversation with no model |
+| `src/CircleAI.Memory/AtomLearner.cs` | what gets kept out of what was spotted |
 | `src/CircleAI.Memory/MemoryFolder.cs` | paths, machine identity, gitignore |
 | `src/CircleAI.Memory/AtomLog.cs` | the line format — this outlives the code |
 | `src/CircleAI.Memory/MemorySync.cs` | log-then-index, and replay |
 | `tools/memory/` | the command |
 | `tests/CircleAI.Tests/RecallTests.cs` | what recall owes |
 | `tests/CircleAI.Tests/MemorySyncTests.cs` | what three machines owe |
+| `tests/CircleAI.Tests/AtomExtractionTests.cs` | real lines from real sessions |
+| `tests/CircleAI.Tests/AdoAtomStoreTests.cs` | the other four engines |
