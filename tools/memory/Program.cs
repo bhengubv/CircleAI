@@ -23,6 +23,7 @@
 // first at a directory inside a git repository and three machines share it.
 
 using System.Globalization;
+using System.Text.Json;
 using CircleAI.Memory;
 
 return await Run(args);
@@ -178,6 +179,28 @@ static async Task<int> Learn(string[] argv)
 {
     var (inline, opts) = Parse(argv);
 
+    // --hook is an editor calling this on every prompt, and it has two hard
+    // rules. IT MUST EXIT ZERO: a UserPromptSubmit hook that exits 2 blocks the
+    // turn and ERASES what the person typed, which is a memory destroying the
+    // thing it exists to remember. AND IT MUST PRINT NOTHING: stdout from that
+    // hook is injected into the conversation as context, so a chatty capture
+    // would narrate itself into every single turn.
+    var hook = opts.ContainsKey("hook");
+
+    try
+    {
+        return await LearnCore(inline, opts, hook);
+    }
+    catch (Exception ex) when (hook)
+    {
+        // Nothing that happens here is worth costing somebody their prompt.
+        Console.Error.WriteLine($"memory: {ex.Message}");
+        return 0;
+    }
+}
+
+static async Task<int> LearnCore(string inline, Dictionary<string, string> opts, bool hook)
+{
     // Stdin is the point: a session pipes in what the person said and the
     // memory fills itself. A file or an argument works the same way for
     // anything that cannot pipe.
@@ -186,6 +209,12 @@ static async Task<int> Learn(string[] argv)
         : !string.IsNullOrWhiteSpace(inline)
             ? inline
             : await Console.In.ReadToEndAsync();
+
+    if (hook)
+    {
+        text = Prompt(text);
+        if (string.IsNullOrWhiteSpace(text)) return 0;
+    }
 
     if (string.IsNullOrWhiteSpace(text))
         return Complain("Nothing to read. Pipe what was said, or memory learn --file <path>");
@@ -199,18 +228,23 @@ static async Task<int> Learn(string[] argv)
     };
 
     var (_, sync) = Open();
-    using var store = new SqliteAtomStore("Data Source=:memory:");
-    await sync.RebuildAsync(store);
 
+    // NO INDEX ON THE WRITING PATH. Learning needs to know what is already
+    // remembered and then append; neither of those is a query. Building a
+    // SQLite database first cost 250 ms on every prompt through the hook, and
+    // that cost grows with the log - paid on the path that runs most often, for
+    // a lookup that never happens.
     var learner = new AtomLearner();
     var dry = opts.ContainsKey("dry");
     var subject = opts.GetValueOrDefault("about");
 
     var report = await learner.LearnAsync(
         new[] { episode },
-        (atom, ct) => dry ? Task.CompletedTask : sync.RecordAsync(store, atom, ct: ct),
-        await store.AllAsync(limit: 5000),
+        (atom, _) => { if (!dry) sync.Log.Append(atom); return Task.CompletedTask; },
+        sync.Current(),
         subject);
+
+    if (hook) return 0;
 
     Console.WriteLine(
         $"{report.Considered} spotted, {report.Recorded.Count} {(dry ? "would be kept" : "kept")}, " +
@@ -468,6 +502,33 @@ static DecisionOutcome? OutcomeOf(Dictionary<string, string> opts) =>
         ? outcome
         : null;
 
+// What the person actually typed, out of whatever an editor sent.
+//
+// FORGIVING BY DESIGN. A hook payload is JSON with a "prompt" field, but the
+// shape belongs to somebody else and can change. Anything that is not that JSON
+// is treated as the words themselves, and JSON without a prompt is treated as
+// nothing at all - reading the envelope as if it were the message would file
+// field names as things somebody said.
+static string Prompt(string raw)
+{
+    var trimmed = raw.TrimStart();
+    if (!trimmed.StartsWith('{')) return raw;
+
+    try
+    {
+        using var json = JsonDocument.Parse(trimmed);
+        foreach (var property in json.RootElement.EnumerateObject())
+            if (property.NameEquals("prompt") && property.Value.ValueKind == JsonValueKind.String)
+                return property.Value.GetString() ?? "";
+
+        return "";
+    }
+    catch (JsonException)
+    {
+        return raw;
+    }
+}
+
 // An atom from the front of its id.
 //
 // NOBODY TYPES A GUID, and a model that has to echo one back spends thirty
@@ -574,6 +635,7 @@ static void Usage() => Console.WriteLine("""
         <text> | --file <path>     or pipe it on stdin
         --about <subject>          file everything found under this situation key
         --dry                      show what it would keep without keeping it
+        --hook                     read an editor's JSON payload; silent, always exits 0
 
       correct <id> <what>        supersede an atom; the original stays readable
       failed  <id> [why]         record that a decision did not hold

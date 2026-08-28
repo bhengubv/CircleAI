@@ -207,6 +207,43 @@ a phone with the radios off. That makes it the mechanism, not the fallback —
 the same call this design makes about FTS5 and about embeddings. `IAtomExtractor`
 is the seam for a model to do it better when one is loaded.
 
+**No index either.** Learning needs to know what is already remembered and then
+append; neither is a query. `MemorySync.Current()` replays the logs straight
+into atoms, so the path that runs most often never builds a database for a
+lookup it will not make.
+
+### Capturing without being asked
+
+`memory learn --hook` reads an editor's JSON payload on stdin and takes the
+`prompt` out of it. Wire it to Claude Code's `UserPromptSubmit` in
+`~/.claude/settings.json` and every rule stated in conversation is remembered
+without anybody running a command:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "memory learn --hook", "timeout": 15 } ] }
+    ]
+  }
+}
+```
+
+About 190 ms per prompt, nearly all of it process start.
+
+**Two rules that hook has to obey**, both of which would do real damage:
+
+- **Exit zero, always.** A `UserPromptSubmit` hook that exits 2 blocks the turn
+  and *erases what the person typed* — a memory destroying the thing it exists
+  to remember. Every failure inside `--hook` is swallowed.
+- **Print nothing.** Stdout from that hook is injected into the conversation as
+  context, so a chatty capture would narrate itself into every single turn.
+
+It is forgiving about the payload, because the shape belongs to somebody else:
+anything that is not that JSON is treated as the words themselves, and JSON
+*without* a prompt is treated as nothing at all — reading the envelope as the
+message would file field names as things somebody said.
+
 ---
 
 ## Three machines, one memory

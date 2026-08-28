@@ -353,6 +353,58 @@ public class MemorySyncTests : IDisposable
     }
 
     [Fact]
+    public async Task The_memory_can_be_read_without_building_an_index()
+    {
+        // Writing to the memory never needed one - only reading it back does -
+        // and the capture path runs on every prompt. Building a database to
+        // find out what it already knows pays for a query it never makes, and
+        // that cost grows with the log.
+        var sync = new MemorySync(Folder("windows-desk"));
+        var first = Decision("q", "the original", "s");
+
+        using (var store = new SqliteAtomStore("Data Source=:memory:"))
+        {
+            await sync.RecordAsync(store, first);
+            await sync.RecordAsync(store, Decision("q", "the correction", "s"), supersedes: first.Id);
+            await sync.RecordAsync(store, Decision("other", "unrelated", "t"));
+        }
+
+        var current = sync.Current();
+
+        Assert.Equal(2, current.Count);
+        Assert.DoesNotContain(current, a => a.Text == "the original");
+        Assert.Contains(current, a => a.Text == "the correction" && a.Corrections == 1);
+    }
+
+    [Fact]
+    public async Task Reading_without_an_index_agrees_with_reading_through_one()
+    {
+        // Two ways of replaying the same log that disagreed would be a memory
+        // that answers differently depending on which door you came in.
+        var sync = new MemorySync(Folder("windows-desk"));
+        var first = Decision("q", "the original", "deploy:android");
+
+        using var store = new SqliteAtomStore("Data Source=:memory:");
+        await sync.RecordAsync(store, first);
+        await sync.RecordAsync(store, Decision("q", "the correction", "deploy:android"), supersedes: first.Id);
+
+        using var rebuilt = new SqliteAtomStore("Data Source=:memory:");
+        await sync.RebuildAsync(rebuilt);
+
+        var indexed = (await rebuilt.AllAsync()).OrderBy(a => a.Id).ToList();
+        var direct = sync.Current().OrderBy(a => a.Id).ToList();
+
+        Assert.Equal(indexed.Count, direct.Count);
+        for (var i = 0; i < indexed.Count; i++)
+        {
+            Assert.Equal(indexed[i].Id, direct[i].Id);
+            Assert.Equal(indexed[i].Text, direct[i].Text);
+            Assert.Equal(indexed[i].Corrections, direct[i].Corrections);
+            Assert.Equal(indexed[i].Machine, direct[i].Machine);
+        }
+    }
+
+    [Fact]
     public void A_machine_name_is_safe_in_a_filename_on_all_three()
     {
         var folder = new MemoryFolder(_dir, "Windows / Dev Box (main)");

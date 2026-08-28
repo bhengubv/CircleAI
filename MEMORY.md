@@ -26,6 +26,11 @@ memory failed  <id> "<what went wrong>"
 memory learn --about deploy:android          # reads stdin: what the person said
 ```
 
+On this machine a `UserPromptSubmit` hook already runs `memory learn --hook` on
+every prompt, so rules stated in conversation are captured without anybody
+running anything. It never blocks and never prints. Recall is still yours to ask
+for.
+
 That is the whole of it. `memory help` has the rest; [AGENT.md](AGENT.md) has
 the reasoning.
 

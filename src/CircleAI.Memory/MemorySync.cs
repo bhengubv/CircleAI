@@ -81,11 +81,56 @@ public sealed class MemorySync
     {
         ArgumentNullException.ThrowIfNull(store);
 
-        var records = _log.ReadAll();
-        if (records.Count == 0) return new SyncReport(0, 0, 0, 0);
+        var replay = Replay();
+        if (replay.Records == 0) return new SyncReport(0, 0, 0, 0);
 
-        // Walk in time order, so a correction always arrives after the thing it
-        // corrects however the files were concatenated.
+        ct.ThrowIfCancellationRequested();
+
+        var stored = 0;
+        foreach (var atom in replay.Atoms)
+        {
+            await store.AddAsync(atom, ct).ConfigureAwait(false);
+            stored++;
+        }
+
+        return new SyncReport(
+            Records: replay.Records,
+            Atoms: stored,
+            Current: replay.Atoms.Count(a => a.IsCurrent),
+            Machines: replay.Machines);
+    }
+
+    /// <summary>
+    /// Every atom that is still an answer, from the logs alone.
+    /// </summary>
+    /// <remarks>
+    /// NO INDEX INVOLVED. Writing to the memory never needed one - only reading
+    /// it back does - and a capture that builds a whole database to find out
+    /// what it already knows pays for a query it is not going to make. That
+    /// cost grows with the log, on the path that runs most often.
+    /// </remarks>
+    public IReadOnlyList<MemoryAtom> Current() =>
+        Replay().Atoms.Where(a => a.IsCurrent).ToList();
+
+    // ------------------------------------------------------------------
+    // Replay
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Every machine's log, walked in time order into finished atoms.
+    /// </summary>
+    /// <remarks>
+    /// TIME ORDER IS THE WHOLE TRICK. A correction always arrives after the
+    /// thing it corrects however the files happened to be concatenated, which
+    /// is what makes a correction made on the Mac apply to a decision made on
+    /// Windows: two lines in one ordered stream, not two databases arguing.
+    /// </remarks>
+    private (int Records, int Machines, IReadOnlyList<MemoryAtom> Atoms) Replay()
+    {
+        var records = _log.ReadAll();
+        if (records.Count == 0)
+            return (0, 0, Array.Empty<MemoryAtom>());
+
         var atoms = new Dictionary<string, MemoryAtom>(StringComparer.OrdinalIgnoreCase);
         var supersededBy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var corrections = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -96,50 +141,37 @@ public sealed class MemorySync
             if (record.Supersedes is { Length: > 0 } old)
             {
                 supersededBy[old] = record.Id;
-                var when = AtomLog.Time(record.Recorded);
 
                 // The count carries down the chain, so an atom corrected on
                 // three different machines reads as corrected three times
                 // rather than once each.
                 corrections[record.Id] = corrections.GetValueOrDefault(old) + 1;
-                correctedAt[record.Id] = when;
+                correctedAt[record.Id] = AtomLog.Time(record.Recorded);
             }
 
             atoms[record.Id] = AtomLog.Rehydrate(record);
         }
 
-        ct.ThrowIfCancellationRequested();
-
-        var stored = 0;
-        foreach (var (id, atom) in atoms)
+        var finished = atoms.Select(pair => new MemoryAtom
         {
-            var final = new MemoryAtom
-            {
-                Id               = atom.Id,
-                Kind             = atom.Kind,
-                Text             = atom.Text,
-                Subject          = atom.Subject,
-                Challenge        = atom.Challenge,
-                Outcome          = atom.Outcome,
-                SourceEpisode    = atom.SourceEpisode,
-                RecordedAtUtc    = atom.RecordedAtUtc,
-                Machine          = atom.Machine,
-                Verify           = atom.Verify,
-                Corrections      = corrections.GetValueOrDefault(id),
-                LastCorrectedUtc = correctedAt.TryGetValue(id, out var c) ? c : null,
-                SupersededBy     = supersededBy.TryGetValue(id, out var next) && Guid.TryParseExact(next, "N", out var g)
-                                     ? g
-                                     : null,
-            };
+            Id               = pair.Value.Id,
+            Kind             = pair.Value.Kind,
+            Text             = pair.Value.Text,
+            Subject          = pair.Value.Subject,
+            Challenge        = pair.Value.Challenge,
+            Outcome          = pair.Value.Outcome,
+            SourceEpisode    = pair.Value.SourceEpisode,
+            RecordedAtUtc    = pair.Value.RecordedAtUtc,
+            Machine          = pair.Value.Machine,
+            Verify           = pair.Value.Verify,
+            Corrections      = corrections.GetValueOrDefault(pair.Key),
+            LastCorrectedUtc = correctedAt.TryGetValue(pair.Key, out var c) ? c : null,
+            SupersededBy     = supersededBy.TryGetValue(pair.Key, out var next) &&
+                               Guid.TryParseExact(next, "N", out var g) ? g : null,
+        }).ToList();
 
-            await store.AddAsync(final, ct).ConfigureAwait(false);
-            stored++;
-        }
-
-        return new SyncReport(
-            Records: records.Count,
-            Atoms: stored,
-            Current: atoms.Keys.Count(id => !supersededBy.ContainsKey(id)),
-            Machines: records.Select(r => r.Machine).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        return (records.Count,
+                records.Select(r => r.Machine).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                finished);
     }
 }
