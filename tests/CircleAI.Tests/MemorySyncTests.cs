@@ -362,6 +362,52 @@ public class MemorySyncTests : IDisposable
     }
 
     [Fact]
+    public void Two_phones_do_not_end_up_writing_to_one_log()
+    {
+        // FOUND ON A P30. Every Android device answers "localhost" for
+        // Environment.MachineName, so both phones called themselves
+        // android-localhost and appended to the same file - which is the merge
+        // problem this whole layout exists to avoid, arriving through the
+        // front door.
+        // A host name that identifies nothing is refused outright...
+        Assert.EndsWith("-unnamed", MemoryFolder.DefaultMachineName("localhost"), StringComparison.Ordinal);
+        Assert.EndsWith("-unnamed", MemoryFolder.DefaultMachineName(""), StringComparison.Ordinal);
+        Assert.DoesNotContain("localhost", MemoryFolder.DefaultMachineName("localhost"), StringComparison.Ordinal);
+
+        // ...and the two phones settle it between themselves.
+        var first = new MemoryFolder(Path.Combine(_dir, "phone"), "android-unnamed");
+        var second = new MemoryFolder(Path.Combine(_dir, "other"), "android-unnamed");
+
+        Assert.NotEqual(first.Machine, second.Machine);
+        Assert.NotEqual(Path.GetFileName(first.OwnLog), Path.GetFileName(second.OwnLog));
+        Assert.StartsWith("android-", first.Machine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_machine_keeps_the_name_it_gave_itself()
+    {
+        // Minted once and kept: a name that changed per run would scatter one
+        // machine's memory across a new file every time.
+        var path = Path.Combine(_dir, "phone");
+
+        var first = new MemoryFolder(path, "android-unnamed").Machine;
+        var second = new MemoryFolder(path, "android-unnamed").Machine;
+
+        Assert.Equal(first, second);
+    }
+
+    [Fact]
+    public void The_name_a_machine_gave_itself_is_not_shared()
+    {
+        // Sharing it would put two machines back in one log.
+        var folder = new MemoryFolder(Path.Combine(_dir, "phone"));
+        folder.EnsureGitIgnore();
+
+        Assert.Contains(".machine-id",
+            File.ReadAllText(Path.Combine(folder.Path, ".gitignore")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_default_machine_name_says_which_platform_it_is()
     {
         // A Windows box and a Mac that happen to share a hostname would

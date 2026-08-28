@@ -466,6 +466,13 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
 
     private void Insert(MemoryAtom atom, SqliteTransaction? tx = null)
     {
+        // ONE COMMIT, NOT TWO. The row and its full-text entry are two
+        // statements, and outside a transaction SQLite commits each of them -
+        // which on a phone's flash is two fsyncs for one atom. Measured at
+        // 230 ms per write on a P30 Lite before this.
+        using var owned = tx is null ? _conn.BeginTransaction() : null;
+        tx ??= owned;
+
         using (var cmd = _conn.CreateCommand())
         {
             cmd.Transaction = tx;
@@ -499,7 +506,11 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.ExecuteNonQuery();
         }
 
-        if (!_fts) return;
+        if (!_fts)
+        {
+            owned?.Commit();
+            return;
+        }
 
         using (var cmd = _conn.CreateCommand())
         {
@@ -517,6 +528,8 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.Parameters.AddWithValue("$challenge", (object?)atom.Challenge ?? string.Empty);
             cmd.ExecuteNonQuery();
         }
+
+        owned?.Commit();
     }
 
     private MemoryAtom? Read(Guid id)

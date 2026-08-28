@@ -44,6 +44,15 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
         Park(Intent);
+
+#if DEBUG
+        // DEBUG ONLY, AND OFF THE UI THREAD. Everything about the memory's
+        // design assumes a handset - SQLite because it is the only option on a
+        // phone, FTS5 with a LIKE floor because a build flag is not something
+        // to assume here - and none of it had ever run on one. This says what
+        // is actually true on this device. `adb logcat -s CircleMemory`.
+        MemoryProbe.Start(FilesDir?.AbsolutePath ?? CacheDir!.AbsolutePath);
+#endif
     }
 
     /// <summary>A share that arrived while the app was already open.</summary>

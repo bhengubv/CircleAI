@@ -37,8 +37,19 @@ public sealed class MemoryFolder
             throw new ArgumentException("A memory folder path is required.", nameof(path));
 
         Path = System.IO.Path.GetFullPath(path);
-        Machine = Sanitise(machine ?? DefaultMachineName());
         Directory.CreateDirectory(Path);
+        Machine = Sanitise(machine ?? DefaultMachineName());
+
+        // A HOST NAME THAT IDENTIFIES NOTHING IS WORSE THAN NO HOST NAME. Every
+        // Android device reports "localhost" for Environment.MachineName, so two
+        // phones would both call themselves android-localhost and append to one
+        // log - which is the merge problem this whole layout exists to avoid,
+        // arriving through the front door. Found by running it on a P30.
+        // The condition is the NAME, not where it came from: a caller that
+        // passes "android-unnamed" is saying the same thing the environment
+        // said, and deserves the same answer.
+        if (Machine.EndsWith(Anonymous, StringComparison.Ordinal))
+            Machine = Machine[..^Anonymous.Length] + "-" + Installed();
     }
 
     /// <summary>The directory itself.</summary>
@@ -90,6 +101,10 @@ public sealed class MemoryFolder
         index.*.db
         index.*.db-wal
         index.*.db-shm
+
+        # This machine's name for itself. Per-machine by definition - sharing it
+        # would put two machines back in one log.
+        .machine-id
         """;
 
     /// <summary>Write the .gitignore if it is not already there.</summary>
@@ -112,7 +127,11 @@ public sealed class MemoryFolder
     /// does not corrupt anything - both machines simply append to one file,
     /// which is the merge problem back again - so it is worth the prefix.
     /// </remarks>
-    public static string DefaultMachineName()
+    /// <param name="host">
+    /// What this machine calls itself, or null to ask the environment. Passed
+    /// in by tests, which cannot make Windows answer "localhost".
+    /// </param>
+    public static string DefaultMachineName(string? host = null)
     {
         var platform =
             OperatingSystem.IsWindows() ? "windows" :
@@ -120,11 +139,54 @@ public sealed class MemoryFolder
             OperatingSystem.IsLinux()   ? "linux"   :
             OperatingSystem.IsAndroid() ? "android" : "other";
 
-        string host;
-        try { host = Environment.MachineName; }
-        catch { host = "unknown"; }
+        if (host is null)
+        {
+            try { host = Environment.MachineName; }
+            catch { host = ""; }
+        }
+
+        // "localhost" is what every Android device answers, and an empty or
+        // unknown name is no better. Say so plainly and let the caller settle it.
+        if (string.IsNullOrWhiteSpace(host) ||
+            host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            host.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            return platform + Anonymous;
 
         return $"{platform}-{host}";
+    }
+
+    /// <summary>The marker a name carries when the host could not identify it.</summary>
+    private const string Anonymous = "-unnamed";
+
+    /// <summary>
+    /// A short id for this install, made once and kept.
+    /// </summary>
+    /// <remarks>
+    /// NOT SHARED, and gitignored for the same reason the index is: two machines
+    /// that agreed on their id would be two writers on one file. A phone that
+    /// pulls the folder fresh mints its own.
+    /// </remarks>
+    private string Installed()
+    {
+        var file = System.IO.Path.Combine(Path, ".machine-id");
+
+        try
+        {
+            if (File.Exists(file) &&
+                File.ReadAllText(file).Trim() is { Length: > 0 } existing)
+                return Sanitise(existing);
+
+            var minted = Guid.NewGuid().ToString("N")[..8];
+            File.WriteAllText(file, minted);
+            return minted;
+        }
+        catch (IOException)
+        {
+            // A read-only folder still has to work. It will not be stable
+            // across runs, which is worse than a file and better than a
+            // collision with every other device.
+            return Guid.NewGuid().ToString("N")[..8];
+        }
     }
 
     /// <summary>Safe for a filename on all three operating systems.</summary>

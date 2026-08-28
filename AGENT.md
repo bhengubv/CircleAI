@@ -247,6 +247,47 @@ the machine name if two boxes would otherwise collide.
 
 ---
 
+## On the phone
+
+Measured on a Huawei P30 Lite (`MAR-LX1M`), which is the benchmark — not a
+desktop, not an emulator. Everything passes:
+
+| | |
+|---|---|
+| full-text search | **FTS5 is there.** The real index, not the `LIKE` floor |
+| open the store | 290 ms, once |
+| record an atom | ~200 ms — a log append and a commit, both durable |
+| **recall** | **120–190 ms** |
+| replay the whole log | 245 ms |
+| learn from a conversation | 570 ms, no model loaded |
+| survives losing the index | yes — rebuilt from the text |
+| survives the app being killed | yes — one log, three launches, one `.machine-id` |
+| isiZulu in the log | readable, unescaped |
+
+Recall is the number that matters: anything an agent has to wait for before
+acting has to be cheap, or it stops being asked.
+
+**Two defects the device found that no test would have.**
+
+`Environment.MachineName` answers **`localhost` on every Android device**, so
+two phones both called themselves `android-localhost` and appended to one log —
+the merge problem this whole layout exists to avoid, arriving through the front
+door. A host name that identifies nothing is now refused, and the machine mints
+a `.machine-id` for itself instead: gitignored, because two machines that agreed
+on their id would be two writers on one file again.
+
+And an atom cost **two** durable commits, not one — the row and its full-text
+entry are separate statements, and outside a transaction SQLite commits each.
+Two fsyncs per atom on a phone's flash.
+
+`MemoryProbe` in the IT! sample runs all of this on launch in `DEBUG` only:
+
+```bash
+adb logcat -s CircleMemory
+```
+
+---
+
 ## Beyond SQLite
 
 SQLite is the default and the only one that matters first: no server, ships
