@@ -365,7 +365,21 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
     {
         if (limit <= 0 || string.IsNullOrWhiteSpace(query)) return new List<MemoryAtom>();
 
-        return _fts ? ByFts(query, limit) : ByLike(query, limit);
+        if (!_fts) return ByLike(query, limit);
+
+        var found = ByFts(query, limit);
+        if (found.Count > 0) return found;
+
+        // FTS FINDING NOTHING IS NOT THE SAME AS THERE BEING NOTHING. Its
+        // tokeniser splits on spaces, so a language that does not use them -
+        // Japanese, Chinese - is one token per sentence and no fragment of it
+        // will ever match. A Japanese rule was stored perfectly and could not
+        // be found by three characters out of its own middle.
+        //
+        // LIKE has no such opinion. It is slower and it does not rank, and it
+        // is the difference between a memory that works in somebody's language
+        // and one that does not.
+        return ByLike(query, limit);
     }
 
     private List<MemoryAtom> ByFts(string query, int limit)

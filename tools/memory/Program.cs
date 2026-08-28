@@ -23,7 +23,6 @@
 // first at a directory inside a git repository and three machines share it.
 
 using System.Globalization;
-using System.Text.Json;
 using CircleAI.Memory;
 
 return await Run(args);
@@ -212,7 +211,7 @@ static async Task<int> LearnCore(string inline, Dictionary<string, string> opts,
 
     if (hook)
     {
-        text = Prompt(text);
+        text = HookPayload.PromptFrom(text);
         if (string.IsNullOrWhiteSpace(text)) return 0;
     }
 
@@ -501,33 +500,6 @@ static DecisionOutcome? OutcomeOf(Dictionary<string, string> opts) =>
     Enum.TryParse<DecisionOutcome>(o, ignoreCase: true, out var outcome)
         ? outcome
         : null;
-
-// What the person actually typed, out of whatever an editor sent.
-//
-// FORGIVING BY DESIGN. A hook payload is JSON with a "prompt" field, but the
-// shape belongs to somebody else and can change. Anything that is not that JSON
-// is treated as the words themselves, and JSON without a prompt is treated as
-// nothing at all - reading the envelope as if it were the message would file
-// field names as things somebody said.
-static string Prompt(string raw)
-{
-    var trimmed = raw.TrimStart();
-    if (!trimmed.StartsWith('{')) return raw;
-
-    try
-    {
-        using var json = JsonDocument.Parse(trimmed);
-        foreach (var property in json.RootElement.EnumerateObject())
-            if (property.NameEquals("prompt") && property.Value.ValueKind == JsonValueKind.String)
-                return property.Value.GetString() ?? "";
-
-        return "";
-    }
-    catch (JsonException)
-    {
-        return raw;
-    }
-}
 
 // An atom from the front of its id.
 //
