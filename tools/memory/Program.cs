@@ -107,11 +107,18 @@ static async Task<int> RecallCmd(string[] argv)
         MaxAtoms:      Number(opts, "limit", 5),
         MaxCharacters: Number(opts, "chars", 600));
 
-    var (_, sync) = Open();
+    var (folder, sync) = Open();
     using var store = new SqliteAtomStore("Data Source=:memory:");
     await sync.RebuildAsync(store);
 
-    var result = await new Recall(store).ForAsync(situation, budget);
+    // WHAT IS NOT USED FADES, AND ASKING FOR SOMETHING KEEPS IT. Passing the
+    // wear in is what makes this a memory rather than a list: it decides what
+    // has gone quiet, and it records that these particular atoms were brought
+    // to mind. --everything asks the same question of a store with no sense of
+    // use, which is how you see what has faded without disturbing it.
+    var wear = opts.ContainsKey("everything") ? null : WearOf(folder);
+    var result = await new Recall(store, wear).ForAsync(situation, budget);
+    wear?.Flush();
 
     // NOTHING KNOWN IS AN ANSWER, and it exits zero. A caller that treats an
     // empty memory as a failure will stop asking, which is the one outcome
@@ -315,13 +322,18 @@ static async Task<int> Show(string[] argv)
 {
     if (argv.Length == 0) return Complain("memory show <id>");
 
-    var (_, sync) = Open();
+    var (folder, sync) = Open();
     using var store = new SqliteAtomStore("Data Source=:memory:");
     await sync.RebuildAsync(store);
 
     if (await Resolve(store, argv[0]) is not { } atom) return 1;
 
-    Block(atom, full: true);
+    // Shown here and nowhere else: how reachable this is, so somebody can see
+    // that a thing which stopped coming up is faded rather than gone.
+    var wear = WearOf(folder);
+    var now = DateTimeOffset.UtcNow;
+
+    Block(atom, full: true, reach: wear.Reach(atom, now));
 
     // The chain forward, so a superseded decision can be walked to what
     // replaced it. This is what "auditable" means in practice.
@@ -329,7 +341,7 @@ static async Task<int> Show(string[] argv)
     while (next is { } id && await store.GetAsync(id) is { } later)
     {
         Console.WriteLine("  replaced by");
-        Block(later, full: true, indent: "    ");
+        Block(later, full: true, indent: "    ", reach: wear.Reach(later, now));
         next = later.SupersededBy;
     }
 
@@ -374,6 +386,9 @@ static int Where()
         return 0;
     }
 
+    var wear = WearOf(folder);
+    if (wear.Count > 0) Console.WriteLine($"  used     {wear.Count} of them have been reached for here");
+
     foreach (var log in logs)
     {
         var lines = File.ReadLines(log).Count(l => !string.IsNullOrWhiteSpace(l));
@@ -417,7 +432,7 @@ static void Brief(Situation situation, RecallResult result, bool tone = true)
     foreach (var line in result.Tone) Console.WriteLine($"~ {line.Text}");
 }
 
-static void Block(MemoryAtom atom, bool full = false, string indent = "  ")
+static void Block(MemoryAtom atom, bool full = false, string indent = "  ", double? reach = null)
 {
     var flags = new List<string>();
     if (atom.Failed) flags.Add("FAILED");
@@ -438,6 +453,10 @@ static void Block(MemoryAtom atom, bool full = false, string indent = "  ")
     var where = atom.Machine is { Length: > 0 } m ? $" on {m}" : "";
     Console.WriteLine($"{indent}  {Ago(atom.RecordedAtUtc)}{where}");
 
+    if (reach is { } r)
+        Console.WriteLine(r < Forgetting.Threshold
+            ? $"{indent}  faded - still here, no longer volunteered"
+            : $"{indent}  reach {r.ToString("0.00", CultureInfo.InvariantCulture)}");
     if (full && atom.Verify is { Length: > 0 } verify)
         Console.WriteLine($"{indent}  check: {verify}");
     if (full)
@@ -451,8 +470,10 @@ static string Ago(DateTimeOffset when)
     var span = DateTimeOffset.UtcNow - when;
     if (span < TimeSpan.FromMinutes(2)) return "just now";
     if (span < TimeSpan.FromHours(1))   return $"{(int)span.TotalMinutes} minutes ago";
+    if (span < TimeSpan.FromHours(2))   return "an hour ago";
     if (span < TimeSpan.FromDays(1))    return $"{(int)span.TotalHours} hours ago";
-    if (span < TimeSpan.FromDays(14))   return $"{(int)span.TotalDays} days ago";
+    if (span < TimeSpan.FromDays(14))
+        return (int)span.TotalDays == 1 ? "yesterday" : $"{(int)span.TotalDays} days ago";
     if (span < TimeSpan.FromDays(60))   return $"{(int)(span.TotalDays / 7)} weeks ago";
     return when.ToString("d MMM yyyy", CultureInfo.InvariantCulture);
 }
@@ -478,6 +499,10 @@ static (MemoryFolder Folder, MemorySync Sync) Open()
     var folder = Folder();
     return (folder, new MemorySync(folder));
 }
+
+// How worn the paths are on this machine. Loaded per command, written once at
+// the end of it - recall is the hot path and must not pay for a file write.
+static MemoryWear WearOf(MemoryFolder folder) => new(folder);
 
 static MemoryAtom Build(string text, Dictionary<string, string> opts) => new()
 {
@@ -601,6 +626,7 @@ static void Usage() => Console.WriteLine("""
         <free text>                anything else about it
         --brief                    one line each, for a prompt
         --no-tone                  skip how they like to be worked with (right once a session)
+        --everything               include what has faded, without touching it
         --limit <n> --chars <n>    the budget (5 atoms, 600 characters)
 
       learn                      read what was said and keep what is worth keeping

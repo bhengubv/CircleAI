@@ -37,9 +37,21 @@ public interface IRecall
 public sealed class Recall : IRecall
 {
     private readonly IAtomStore _atoms;
+    private readonly MemoryWear? _wear;
 
-    public Recall(IAtomStore atoms) =>
+    /// <param name="atoms">What is known.</param>
+    /// <param name="wear">
+    /// How worn the paths are on this machine, or null for a memory with no
+    /// sense of use - everything equally reachable, nothing ever fading.
+    /// </param>
+    public Recall(IAtomStore atoms, MemoryWear? wear = null)
+    {
         _atoms = atoms ?? throw new ArgumentNullException(nameof(atoms));
+        _wear = wear;
+    }
+
+    /// <summary>What this recall has strengthened, if it is keeping track.</summary>
+    public MemoryWear? Wear => _wear;
 
     /// <inheritdoc />
     public async Task<RecallResult> ForAsync(
@@ -82,8 +94,13 @@ public sealed class Recall : IRecall
                 ? RecallResult.Empty
                 : new RecallResult(Array.Empty<MemoryAtom>(), tone, 0);
 
+        // WHAT HAS FADED IS NOT OFFERED. It is not gone - the log still has
+        // every line and the atom is still there by id - it simply stops being
+        // volunteered, which is the difference between "I cannot bring it to
+        // mind" and "it never happened".
         var ranked = candidates
             .Where(a => a.Kind != AtomKind.Relationship)
+            .Where(a => _wear is null || !_wear.Faded(a, now))
             .Select(a => (Atom: a, Score: Score(a, situation, now)))
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Atom.RecordedAtUtc)
@@ -104,6 +121,11 @@ public sealed class Recall : IRecall
             chosen.Add(atom);
             characters += cost;
         }
+
+        // BRINGING SOMETHING TO MIND IS WHAT MAKES IT STICK. Only what was
+        // actually handed back counts: an atom that matched and lost on
+        // ranking was not remembered, it was passed over.
+        _wear?.Retrieved(chosen, now);
 
         return new RecallResult(chosen, tone, candidates.Count);
     }
@@ -130,7 +152,7 @@ public sealed class Recall : IRecall
     /// A stale fact is penalised but not removed: it still knows more than
     /// nothing, and it arrives labelled.
     /// </remarks>
-    private static double Score(MemoryAtom atom, Situation situation, DateTimeOffset now)
+    private double Score(MemoryAtom atom, Situation situation, DateTimeOffset now)
     {
         var score = atom.Kind switch
         {
@@ -159,8 +181,14 @@ public sealed class Recall : IRecall
             score += depth == 0 ? 0.50 : 0.30;
         }
 
-        var days = Math.Max((now - atom.RecordedAtUtc).TotalDays, 0);
-        score += 0.15 / (1 + days / 30);
+        // HOW REACHABLE IT IS, which replaced a plain recency term. Recency
+        // said "newer is better" and nothing else; this says "what you have
+        // been using is easier to bring to mind, and what you have not is
+        // fading" - and it is the same arithmetic that decides what has faded
+        // out altogether, rather than a second opinion about the same thing.
+        score += 0.30 * (_wear is not null
+            ? _wear.Reach(atom, now)
+            : Forgetting.Reach(atom, null, now));
 
         if (atom.IsStale) score -= 0.35;
 

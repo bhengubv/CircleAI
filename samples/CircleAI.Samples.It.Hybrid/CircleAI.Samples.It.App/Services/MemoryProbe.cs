@@ -181,7 +181,12 @@ public static class MemoryProbe
         Write($"learn    {learned.Considered} spotted, {kept} kept in {reading.ElapsedMilliseconds} ms");
         Write(kept == 2 ? "  OK  it fills itself with no model" : $"  BAD expected 2, kept {kept}");
 
-        // 8. DOES IT SURVIVE THE APP BEING KILLED? Everything above happens
+        // 8. DOES IT FORGET? A working set that only grows is the thing a phone
+        //    cannot afford, and this is where the cost is real: every atom that
+        //    never fades is one more the ranking has to consider on every recall.
+        await ForgetsAsync(folder);
+
+        // 9. DOES IT SURVIVE THE APP BEING KILLED? Everything above happens
         //    inside one launch, and a store that only holds while the process
         //    does is not a memory. This folder is deliberately never deleted:
         //    each launch reads what the last one left, then adds to it.
@@ -191,6 +196,58 @@ public static class MemoryProbe
 
         // Leave nothing behind: this is a diagnostic, not the app's memory.
         try { Directory.Delete(root, recursive: true); } catch { /* next run deletes it */ }
+    }
+
+    /// <summary>Whether what goes unused actually goes quiet here.</summary>
+    private static async Task ForgetsAsync(MemoryFolder folder)
+    {
+        var wear = new MemoryWear(folder);
+        var now = DateTimeOffset.UtcNow;
+
+        var stale = new MemoryAtom
+        {
+            Kind = AtomKind.Decision,
+            Text = "Something decided one afternoon four months ago",
+            Subject = "deploy:android",
+            RecordedAtUtc = now.AddDays(-120),
+        };
+        var rule = new MemoryAtom
+        {
+            Kind = AtomKind.Ruling,
+            Text = "Never restart a device without asking",
+            Subject = "device:state",
+            RecordedAtUtc = now.AddDays(-400),
+        };
+
+        // Invariant: the phone's locale writes 0,400 for four tenths, and a
+        // number in a report that could be read as four hundred is worse than
+        // no number. Third time this has bitten - the log, the command, here.
+        Write($"forget   stale decision reach {Number(wear.Reach(stale, now))}, " +
+              $"standing rule reach {Number(wear.Reach(rule, now))}");
+
+        Write(wear.Faded(stale, now)
+            ? "  OK  what went unused has gone quiet"
+            : "  BAD a four-month-old decision is still being volunteered");
+
+        Write(!wear.Faded(rule, now)
+            ? "  OK  the standing rule did not go quiet after a year"
+            : "  BAD a rule faded, which is the failure this store exists to prevent");
+
+        // Reaching for it puts it back - recognition restoring access.
+        wear.Retrieved(stale, now);
+        Write(!wear.Faded(stale, now)
+            ? "  OK  asking for it brought it back"
+            : "  BAD it stayed gone after being asked for");
+
+        // And the wear survives the app dying, which is the whole reason it is
+        // a file rather than something held in the store.
+        wear.Flush();
+        var reopened = new MemoryWear(folder);
+        Write(reopened.For(stale.Id) is not null
+            ? $"  OK  wear persisted ({reopened.Count} atoms worn)"
+            : "  BAD the wear did not survive being written down");
+
+        await Task.CompletedTask;
     }
 
     /// <summary>What the previous launches left behind.</summary>
@@ -222,6 +279,10 @@ public static class MemoryProbe
             Subject = "app:launch",
         });
     }
+
+    /// <summary>A number that reads the same on every phone.</summary>
+    private static string Number(double value) =>
+        value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
 
     private static void Write(string line)
     {

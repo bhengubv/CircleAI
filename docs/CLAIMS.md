@@ -54,6 +54,32 @@ That is the point of it. A README can say anything; a row here cannot.
 | A person's markdown is read the same way whoever wrote it | tested | A_persons_markdown_is_read_the_same_way_whoever_wrote_it |
 | Any rule is readable in the log that carries it | tested | Any_rule_is_readable_in_the_log_that_carries_it |
 
+## Forgetting
+
+A store that keeps everything at full volume forever is a filing cabinet. Two
+strengths, following Bjork: **stability** (how deeply learned, only ever grows)
+and **retrievability** (how reachable now, decays with time, restored by use).
+
+| Claim | Status | Evidence |
+|---|---|---|
+| What goes unused fades out of what recall offers | tested | A_decision_about_one_afternoon_is_allowed_to_fade |
+| Fading is not deleting - it is still in the log and still there by id | tested | What_faded_is_still_there_when_you_go_looking |
+| Something faded comes back when it is needed again | tested | Something_faded_comes_back_when_it_is_needed_again |
+| Reaching for something makes it easier to reach next time | tested | Reaching_for_something_makes_it_easier_to_reach_next_time |
+| Rescuing something at the edge is worth more than touching it twice | tested | Rescuing_something_at_the_edge_is_worth_more_than_touching_it_twice |
+| Asking the same thing twice in a minute barely counts | tested | Asking_the_same_thing_twice_in_a_minute_barely_counts |
+| How deeply a thing is learned never goes down | tested | How_deeply_a_thing_is_learned_never_goes_down |
+| Being corrected makes a thing stick | tested | Being_corrected_makes_a_thing_stick |
+| A standing rule does not go quiet because a year passed | tested | A_standing_rule_does_not_go_quiet_because_a_year_passed |
+| Recall strengthens only what it actually handed back | tested | Recall_strengthens_only_what_it_actually_handed_back |
+| What has been used arrives before what has not | tested | What_has_been_used_arrives_before_what_has_not |
+| Wear is local and never travels between machines | tested | Wear_does_not_travel_between_machines |
+| Wear survives the index being thrown away | tested | Wear_survives_the_index_being_thrown_away |
+| A broken wear file costs familiarity and nothing else | tested | A_wear_file_somebody_broke_costs_familiarity_and_nothing_else |
+| A store with no sense of use still works unchanged | tested | Without_wear_nothing_fades_and_nothing_breaks |
+| The forgetting curve is calibrated for a memory, not for one human exposure | unproven | 14 days initial stability was reasoned, not fitted to anything |
+| Decay behaves well over a real year of use | unproven | no fixture spans more than a simulated year |
+
 ## Three machines
 
 | Claim | Status | Evidence |
@@ -110,7 +136,6 @@ Named here so nobody has to find out by looking.
 
 | Claim | Status | Evidence |
 |---|---|---|
-| The memory forgets what goes unused | unproven | there is no decay model; every atom is equally loud forever |
 | Recall stays fast at thousands of atoms | unproven | no fixture is larger than a few dozen |
 | The device numbers are a gate | unproven | MemoryProbe reports; nothing fails if they regress |
 | Three machines actually share one folder | unproven | only one machine has it installed |

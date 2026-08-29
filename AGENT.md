@@ -246,6 +246,67 @@ message would file field names as things somebody said.
 
 ---
 
+## It forgets
+
+A store that keeps everything at full volume forever is a filing cabinet. Ask it
+about deploying after a year and it hands back the same fifty things with the
+same confidence, and the one that matters is somewhere among them. **Forgetting
+is not a defect of human memory being worked around — it is the mechanism that
+makes recall useful**, and a phone needs it more than a server does because the
+working set has to stay small.
+
+**Two strengths, not one** (Bjork's two-factor account), because a single score
+that goes up with use and down without gets the important case backwards:
+
+- **Stability** — how deeply the thing is learned. It *only ever grows*.
+- **Retrievability** — how reachable it is right now. Decays with time, restored
+  by being retrieved.
+
+```
+retrievability = e^(-elapsed / stability)
+```
+
+**The part that makes it feel like memory:** retrieving something you had nearly
+forgotten strengthens it far *more* than retrieving something fresh. The gain is
+scaled by `(1 - retrievability)`, so the spacing effect falls out of the
+arithmetic rather than being bolted on — an atom rescued at the edge of fading
+gains most, and one asked about twice in a minute gains almost nothing. Without
+that, anything asked about often enough becomes permanent whether or not it was
+ever in doubt.
+
+**Fading is not deleting.** What fades stops being *volunteered*. The log still
+has every line, the id still finds it, `memory show` still prints it, and
+reaching for it deliberately brings it back within reach. That is the difference
+between "I cannot bring it to mind" and "it never happened", and only the first
+one is memory.
+
+**Some things never fade.** A standing rule stops being a thing you remember
+happening and becomes a thing you know, and people do not forget how they work
+because a month went by. `Ruling` and `Relationship` sit on a floor of 0.40;
+`Preference` on 0.20; a decision about one afternoon, and a fact that can go
+stale, are episodes and are allowed to go quiet. *"Never restart a device" going
+quiet because nobody deployed in August is exactly what this store exists to
+prevent.*
+
+Being corrected makes a thing stick — four corrections put an atom about a year
+out on its own — because being told the same thing again carries the weight of
+having got it wrong.
+
+**Wear is local and it is not memory.** What was decided is shared and travels
+by git; how often somebody reached for it *here* is a different thing entirely.
+My use of a memory strengthens my access to it, not yours. So it lives in
+`wear.{machine}.json`, gitignored, and losing it costs familiarity rather than
+knowledge — everything still recalls, it just recalls the way it did in the
+first week. It is buffered and flushed once, because recall is the hot path.
+
+```bash
+memory recall --doing deploy --to android          # fades, and strengthens what it returns
+memory recall --doing deploy --to android --everything   # includes what has faded, untouched
+memory show <id>                                   # prints reach, or says "faded"
+```
+
+---
+
 ## Three machines, one memory
 
 Linux, Windows and a Mac all see the same store, and it travels by git. That
@@ -294,11 +355,13 @@ desktop, not an emulator. Everything passes:
 | full-text search | **FTS5 is there.** The real index, not the `LIKE` floor |
 | open the store | 290 ms, once |
 | record an atom | ~200 ms — a log append and a commit, both durable |
-| **recall** | **120–190 ms** |
+| **recall** | **87–190 ms** |
 | replay the whole log | 245 ms |
 | learn from a conversation | 570 ms, no model loaded |
 | survives losing the index | yes — rebuilt from the text |
 | survives the app being killed | yes — one log, three launches, one `.machine-id` |
+| forgetting | a four-month-old decision reads 0.000 and goes quiet; a standing rule holds 0.400 after 400 days |
+| asking for a faded atom | brings it back |
 | isiZulu in the log | readable, unescaped |
 
 Recall is the number that matters: anything an agent has to wait for before
