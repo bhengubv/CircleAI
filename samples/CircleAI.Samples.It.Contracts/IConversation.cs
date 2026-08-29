@@ -96,6 +96,24 @@ public interface IConversation
     /// </remarks>
     Task SayAsync(string text, string? languageTag = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// The person said this - whether they spoke it or typed it.
+    /// </summary>
+    /// <remarks>
+    /// THERE ARE TWO DOORS AND THE MEMORY HAS TO SIT ACROSS BOTH. Speaking goes
+    /// through TurnAsync and typing goes straight to the brain, so a memory
+    /// wired to one of them remembers half a person. It was wired to the voice
+    /// path first, which meant anybody who typed was talking to something that
+    /// forgot them.
+    ///
+    /// Not at the brain either: the job-spec tailor and the interpreter ask the
+    /// brain constructed prompts, and those are not anybody's words.
+    ///
+    /// It never throws and never keeps the caller waiting. Nothing about
+    /// remembering is worth delaying an answer.
+    /// </remarks>
+    Task HeardAsync(string said, CancellationToken ct = default);
+
     /// <summary>Answer a question about an image.</summary>
     Task<string> SeeAsync(
         string question, byte[] image, Action<string>? token = null, CancellationToken ct = default);

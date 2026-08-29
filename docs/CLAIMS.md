@@ -88,6 +88,30 @@ and **retrievability** (how reachable now, decays with time, restored by use).
 | The two requirements that pin the number are the right requirements | unproven | 230 days to survive and 355 to fade are stated and arguable, not observed |
 | Decay behaves this way for a real person over a real year | unproven | the year is simulated; nobody has used it for one |
 
+## A service every module consumes
+
+Memory is not a feature one app has. There is one memory per device and
+everything that wants continuity takes it - including the modules that must not
+retain anything, because "never keep this" is itself something that has to be
+remembered.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| An app holds one memory that survives being killed | tested | What_was_remembered_survives_the_app_being_killed |
+| Wear survives being killed, not just being closed | tested | The_wear_survives_the_app_being_killed |
+| Nothing is held back waiting for a lifecycle callback | tested | Nothing_is_held_back_waiting_for_a_callback |
+| Closing it lets go of the database file | tested | Closing_it_lets_go_of_the_file |
+| Several threads can ask and remember at once | tested | An_app_can_ask_and_remember_from_several_threads_at_once |
+| A device gets one memory however many times it is registered | tested | Registering_it_twice_does_not_give_a_device_two_memories |
+| An interpreter remembers that it must not remember | tested | An_interpreter_remembers_that_it_must_not_remember |
+| A module that may keep only rules keeps none of what passed through it | tested | An_interpreter_does_not_keep_what_passed_through_it |
+| A gate never remembers that something was allowed | tested | A_gate_never_remembers_that_something_was_allowed |
+| Retention never restricts reading | tested | Reading_is_never_restricted_by_retention |
+| What a module may keep is declared in code, not read from the memory | tested | What_a_module_may_keep_is_declared_in_code_not_read_from_the_memory |
+| What a module recorded can be told apart from what another did | tested | Two_modules_recording_the_same_words_stay_apart |
+| Every CircleAI module consumes it | unproven | two heads consume it; roughly 150 modules do not |
+| It is ready to be ported to another language | unproven | the curve has no generated fixtures, the cue table is English and in code |
+
 ## Three machines
 
 | Claim | Status | Evidence |
@@ -119,8 +143,11 @@ Measured on a Huawei P30 Lite (`MAR-LX1M`, `UTKDU19919000815`), not an emulator.
 | Claim | Status | Evidence |
 |---|---|---|
 | FTS5 is available on Android, not the LIKE floor | measured | P30 Lite MAR-LX1M, 2026-08-28 |
-| Recall completes in 120-190 ms | measured | P30 Lite MAR-LX1M, 2026-08-28 |
-| Recording an atom costs about 200 ms | measured | P30 Lite MAR-LX1M, 2026-08-28 |
+| Recall completes in 87-190 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| The app's own memory opens in 60-136 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| Reading what was said costs 18 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| The memory carries over a force-stop | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| WAL takes a write from 346 ms to 1.4 ms | measured | desktop SSD, 2026-08-29 |
 | Replaying the whole log costs 245 ms | measured | P30 Lite MAR-LX1M, 2026-08-28 |
 | Learning from a conversation costs 571 ms, no model | measured | P30 Lite MAR-LX1M, 2026-08-28 |
 | The memory survives the app being killed | measured | P30 Lite MAR-LX1M, 2026-08-28 |

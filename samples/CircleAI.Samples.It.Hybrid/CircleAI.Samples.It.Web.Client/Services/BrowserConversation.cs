@@ -39,6 +39,14 @@ public sealed class BrowserConversation : IConversation
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The browser has nowhere to keep this. The memory is on the device, and
+    /// a web page that quietly kept a copy somewhere else would be the one
+    /// thing this whole design refuses to do.
+    /// </remarks>
+    public Task HeardAsync(string said, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc />
     public Task SayAsync(string text, string? languageTag = null, CancellationToken ct = default)
         => Task.CompletedTask;
 

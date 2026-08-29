@@ -6,6 +6,7 @@
 using CircleAI.Samples.It;
 using CircleAI.Samples.It.App.Services;
 using Microsoft.Extensions.Logging;
+using CircleAI.Memory;
 
 namespace CircleAI.Samples.It.App;
 
@@ -27,6 +28,16 @@ public static class MauiProgram
         // reinstall - which is why setting up again means setting up everything.
         builder.Services.AddSingleton(_ => new SqliteAppStore(
             System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "app.db")));
+
+        // THE MEMORY THE APP HOLDS. One for the life of the process, on the
+        // app's own storage, beside everything else it keeps. It is not a
+        // feature of a screen - it is what the app knows, and anything that
+        // wants to ask or tell it takes IMemoryService.
+        //
+        // Nothing here is held back for a lifecycle callback: a force-stop
+        // never calls one, and on a phone that is how an app usually ends.
+        builder.Services.AddSingleton<IMemoryService>(_ => new MemoryService(
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "memory")));
 
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();

@@ -9,6 +9,7 @@ using CircleAI.Samples.It.Voice;
 // CircleAI.Samples.It.App the unqualified path binds against the enclosing
 // namespace and does not resolve.
 using AndroidAudioCapture = global::CircleAI.Samples.It.Mobile.AndroidAudioCapture;
+using CircleAI.Memory;
 
 namespace CircleAI.Samples.It.App.Services;
 
@@ -19,15 +20,18 @@ public sealed class DeviceConversation : IConversation
     private readonly IVoiceHost _voice;
     private readonly ISpokenLanguage _spoken;
     private readonly ISettings _settings;
+    private readonly IMemoryService _memory;
 
-    /// <summary>Composed from the app's one brain and one voice host.</summary>
+    /// <summary>Composed from the app's one brain, one voice host and one memory.</summary>
     public DeviceConversation(
-        IBrain brain, IVoiceHost voice, ISpokenLanguage spoken, ISettings settings)
+        IBrain brain, IVoiceHost voice, ISpokenLanguage spoken, ISettings settings,
+        IMemoryService memory)
     {
         _brain = brain;
         _voice = voice;
         _spoken = spoken;
         _settings = settings;
+        _memory = memory;
     }
 
     // One turn at a time. Two overlapping turns share a microphone and a speaker,
@@ -36,6 +40,24 @@ public sealed class DeviceConversation : IConversation
 
     /// <inheritdoc />
     public Task<BrainState> StateAsync(CancellationToken ct = default) => _brain.StateAsync(ct);
+
+    /// <inheritdoc />
+    public Task HeardAsync(string said, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(said)) return Task.CompletedTask;
+
+        // NOT AWAITED. Reading what was said takes about twenty milliseconds on
+        // a P30 and an answer should not wait for any of it. It cannot throw
+        // out of here either - a memory that could take a conversation down
+        // with it would deserve to be turned off.
+        _ = Task.Run(async () =>
+        {
+            try { await _memory.LearnAsync(said, ct: CancellationToken.None).ConfigureAwait(false); }
+            catch { /* a memory is never worth an answer */ }
+        }, CancellationToken.None);
+
+        return Task.CompletedTask;
+    }
 
     /// <inheritdoc />
     public async Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
@@ -92,6 +114,9 @@ public sealed class DeviceConversation : IConversation
             var tag = settings.Policy == LanguagePolicy.Fixed && settings.FixedLanguage is { } fixedTag
                 ? fixedTag
                 : LanguageGuess.Detect(heard) ?? _spoken.Current;
+
+            // Spoken words go the same way typed ones do. See HeardAsync.
+            await HeardAsync(heard, ct).ConfigureAwait(false);
 
             updates.Report(new TurnState(TurnPhase.Thinking, Heard: heard, Language: tag));
 

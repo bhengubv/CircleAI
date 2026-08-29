@@ -181,7 +181,12 @@ public static class MemoryProbe
         Write($"learn    {learned.Considered} spotted, {kept} kept in {reading.ElapsedMilliseconds} ms");
         Write(kept == 2 ? "  OK  it fills itself with no model" : $"  BAD expected 2, kept {kept}");
 
-        // 8. DOES IT FORGET? A working set that only grows is the thing a phone
+        // 8. AND THE ONE THE APP ACTUALLY HOLDS - not a folder this made up,
+        //    the memory the conversation writes to and reads from. Everything
+        //    above proves the pieces; this is the product.
+        await TheAppsOwnMemoryAsync(dataDirectory);
+
+        // 9. DOES IT FORGET? A working set that only grows is the thing a phone
         //    cannot afford, and this is where the cost is real: every atom that
         //    never fades is one more the ranking has to consider on every recall.
         await ForgetsAsync(folder);
@@ -196,6 +201,38 @@ public static class MemoryProbe
 
         // Leave nothing behind: this is a diagnostic, not the app's memory.
         try { Directory.Delete(root, recursive: true); } catch { /* next run deletes it */ }
+    }
+
+    /// <summary>What the memory the app is actually holding costs and contains.</summary>
+    private static async Task TheAppsOwnMemoryAsync(string dataDirectory)
+    {
+        // The same path MauiProgram registers, so this reports on the real
+        // thing rather than on a copy that behaves like it.
+        var path = Path.Combine(dataDirectory, "CircleAI", "memory");
+
+        var opening = Stopwatch.StartNew();
+        using var memory = new MemoryService(path);
+        opening.Stop();
+
+        var held = await memory.CountAsync();
+
+        var writing = Stopwatch.StartNew();
+        await memory.LearnAsync(
+            "Never deploy with -t:Install on this phone, it wipes the models every time.");
+        writing.Stop();
+
+        var asking = Stopwatch.StartNew();
+        var result = await memory.RecallAsync(new Situation("deploy", "android"));
+        asking.Stop();
+
+        Write($"app      open {opening.ElapsedMilliseconds} ms, {held} atoms held, " +
+              $"machine {memory.Machine}");
+        Write($"         learn {writing.ElapsedMilliseconds} ms, recall {asking.ElapsedMilliseconds} ms, " +
+              $"{result.Atoms.Count} back");
+
+        Write(held > 0
+            ? $"  OK  the app is carrying {held} things from earlier launches"
+            : "  --  first launch, nothing carried over yet");
     }
 
     /// <summary>Whether what goes unused actually goes quiet here.</summary>

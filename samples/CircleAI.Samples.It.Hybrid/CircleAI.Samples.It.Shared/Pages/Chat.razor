@@ -243,6 +243,10 @@
 
         try
         {
+            // Typed words are the person's words. Same door as spoken ones -
+            // a memory wired only to the microphone remembers half a person.
+            await Talk.HeardAsync(text);
+
             await Brain.AskAsync(text, fragment =>
             {
                 _turns[at] = _turns[at] with { Text = Strip(_turns[at].Text + fragment) };
