@@ -45,12 +45,29 @@ public static class Forgetting
     /// How long a newly recorded atom stays reachable without being touched.
     /// </summary>
     /// <remarks>
-    /// Fourteen days, so a decision recorded once and never returned to is
-    /// still there a fortnight later and has faded by about six weeks. A single
-    /// human exposure decays far faster than this; a memory somebody is relying
-    /// on to not repeat a mistake should not.
+    /// SOLVED FOR, NOT CHOSEN. Two requirements about work pin it from either
+    /// side, and MemoryYearTests derives the window from them:
+    ///
+    ///   A thing that comes round twice a year must survive the gap. The deploy
+    ///   that wiped the models bit once and would bite again the next time
+    ///   somebody deployed - maybe eight months later.      -> S above 77 days
+    ///
+    ///   A thing nobody has returned to in most of a year has gone quiet. A
+    ///   finished project's decisions crowding today's recall is how a store
+    ///   becomes a filing cabinet.                          -> S below 118 days
+    ///
+    /// Ninety sits in the middle: a quarter untouched and still there, most of a
+    /// year untouched and gone.
+    ///
+    /// THE FIRST ATTEMPT WAS FOURTEEN DAYS, reasoned from how fast a single
+    /// human exposure decays, and it was wrong by a factor of six. It missed
+    /// that THE VALUE OF A MEMORY IS INVERSELY RELATED TO HOW OFTEN THE
+    /// SITUATION COMES UP - what happens daily gets learned anyway, and what
+    /// happens twice a year is exactly what nobody remembers and exactly what is
+    /// worth writing down. At fourteen days, the thing written down in January
+    /// had gone quiet by March.
     /// </remarks>
-    public const double InitialStabilityDays = 14.0;
+    public const double InitialStabilityDays = 90.0;
 
     /// <summary>Below this it has faded out of what recall offers.</summary>
     /// <remarks>

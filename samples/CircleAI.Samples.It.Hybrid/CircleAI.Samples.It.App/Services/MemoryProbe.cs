@@ -204,26 +204,32 @@ public static class MemoryProbe
         var wear = new MemoryWear(folder);
         var now = DateTimeOffset.UtcNow;
 
+        // Said against the constant rather than in literal days: this asserted
+        // four months when the initial stability was fourteen days, and the
+        // moment that was derived properly - ninety days - four months was no
+        // longer long enough to have faded.
+        var longGone = Forgetting.InitialStabilityDays * 4.5;
+
         var stale = new MemoryAtom
         {
             Kind = AtomKind.Decision,
-            Text = "Something decided one afternoon four months ago",
+            Text = "Something decided one afternoon a long time ago",
             Subject = "deploy:android",
-            RecordedAtUtc = now.AddDays(-120),
+            RecordedAtUtc = now.AddDays(-longGone),
         };
         var rule = new MemoryAtom
         {
             Kind = AtomKind.Ruling,
             Text = "Never restart a device without asking",
             Subject = "device:state",
-            RecordedAtUtc = now.AddDays(-400),
+            RecordedAtUtc = now.AddDays(-longGone * 2),
         };
 
         // Invariant: the phone's locale writes 0,400 for four tenths, and a
         // number in a report that could be read as four hundred is worse than
         // no number. Third time this has bitten - the log, the command, here.
-        Write($"forget   stale decision reach {Number(wear.Reach(stale, now))}, " +
-              $"standing rule reach {Number(wear.Reach(rule, now))}");
+        Write($"forget   after {longGone:0} days untouched: decision {Number(wear.Reach(stale, now))}, " +
+              $"standing rule {Number(wear.Reach(rule, now))}");
 
         Write(wear.Faded(stale, now)
             ? "  OK  what went unused has gone quiet"

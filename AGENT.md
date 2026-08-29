@@ -266,6 +266,25 @@ that goes up with use and down without gets the important case backwards:
 retrievability = e^(-elapsed / stability)
 ```
 
+**The initial stability is 90 days, and it was solved for rather than chosen.**
+Two requirements about work pin it from either side:
+
+| | |
+|---|---|
+| A thing that comes round twice a year must survive the gap | → above 77 days |
+| A thing nobody has returned to in most of a year has gone quiet | → below 118 days |
+
+Every other value considered fails one of them — 7, 14, 30 and 60 days let go of
+the thing you needed; 120, 180 and 365 never let go of anything.
+
+The first attempt was **14 days**, reasoned from how fast a single human
+exposure decays, and it was wrong by a factor of six. It missed that **the value
+of a memory is inversely related to how often the situation comes up** — what
+happens daily gets learned anyway, and what happens twice a year is exactly what
+nobody remembers and exactly what is worth writing down. At 14 days the thing
+written down in January had gone quiet by March, which is the only failure that
+actually costs anybody anything.
+
 **The part that makes it feel like memory:** retrieving something you had nearly
 forgotten strengthens it far *more* than retrieving something fresh. The gain is
 scaled by `(1 - retrievability)`, so the spacing effect falls out of the
@@ -287,6 +306,17 @@ because a month went by. `Ruling` and `Relationship` sit on a floor of 0.40;
 stale, are episodes and are allowed to go quiet. *"Never restart a device" going
 quiet because nobody deployed in August is exactly what this store exists to
 prevent.*
+
+**The working set stops growing even though the memory does not.** Simulating
+three years of somebody writing down two things a day:
+
+```
+kept:     732 / 1462 / 2190 atoms
+offered:  540 /  540 /  538 after one, two, three years
+```
+
+Three times the memory, the same working set — and nothing was thrown away to
+get it. That is the whole mobile argument, measured.
 
 Being corrected makes a thing stick — four corrections put an atom about a year
 out on its own — because being told the same thing again carries the weight of
@@ -360,7 +390,7 @@ desktop, not an emulator. Everything passes:
 | learn from a conversation | 570 ms, no model loaded |
 | survives losing the index | yes — rebuilt from the text |
 | survives the app being killed | yes — one log, three launches, one `.machine-id` |
-| forgetting | a four-month-old decision reads 0.000 and goes quiet; a standing rule holds 0.400 after 400 days |
+| forgetting | after 405 days untouched a decision reads 0.011 and goes quiet; a standing rule holds 0.400 |
 | asking for a faded atom | brings it back |
 | isiZulu in the log | readable, unescaped |
 

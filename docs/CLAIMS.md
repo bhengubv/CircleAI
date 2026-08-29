@@ -77,8 +77,16 @@ and **retrievability** (how reachable now, decays with time, restored by use).
 | Wear survives the index being thrown away | tested | Wear_survives_the_index_being_thrown_away |
 | A broken wear file costs familiarity and nothing else | tested | A_wear_file_somebody_broke_costs_familiarity_and_nothing_else |
 | A store with no sense of use still works unchanged | tested | Without_wear_nothing_fades_and_nothing_breaks |
-| The forgetting curve is calibrated for a memory, not for one human exposure | unproven | 14 days initial stability was reasoned, not fitted to anything |
-| Decay behaves well over a real year of use | unproven | no fixture spans more than a simulated year |
+| The initial stability is solved for, not chosen | tested | The_number_is_solved_for_not_chosen |
+| No other value considered satisfies both requirements | tested | Every_other_value_that_was_considered_fails_one_of_them |
+| A thing needed twice a year is there the second time | tested | The_thing_that_comes_round_twice_a_year_is_there_when_it_does |
+| The same attention spread out is worth more than crammed | tested | The_same_attention_spread_out_is_worth_more_than_crammed |
+| Coming back after months makes a rare thing durable | tested | Coming_back_after_months_is_what_makes_a_rare_thing_durable |
+| After a simulated year the right things are still in reach | tested | After_a_year_the_right_things_are_still_within_reach |
+| The working set stops growing even though the memory does not | tested | The_working_set_stops_growing_even_though_the_memory_does_not |
+| Nothing that faded over the year was lost | tested | Nothing_that_faded_was_lost |
+| The two requirements that pin the number are the right requirements | unproven | 230 days to survive and 355 to fade are stated and arguable, not observed |
+| Decay behaves this way for a real person over a real year | unproven | the year is simulated; nobody has used it for one |
 
 ## Three machines
 

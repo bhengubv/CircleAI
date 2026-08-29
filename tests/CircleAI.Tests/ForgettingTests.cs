@@ -40,6 +40,29 @@ public class ForgettingTests : IDisposable
     private static readonly DateTimeOffset Day0 =
         new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>
+    /// A span, said in what it means rather than in days.
+    /// </summary>
+    /// <remarks>
+    /// EXPRESSED AGAINST THE CONSTANT, NOT IN LITERAL DAYS. These tests were
+    /// written with 14-day numbers baked in and every one of them rotted the
+    /// moment the constant was derived properly. What they are actually about
+    /// is "a while", "long enough to be at the edge", "long gone" - so that is
+    /// what they say.
+    /// </remarks>
+    private static TimeSpan Lives(double stabilities) =>
+        TimeSpan.FromDays(Forgetting.InitialStabilityDays * stabilities);
+
+    /// <summary>Where it has just about faded: three stabilities out.</summary>
+    private static readonly double AtTheEdge = 3.0;
+
+    /// <summary>Where it is long gone.</summary>
+    private static readonly double LongGone = 4.5;
+
+    /// <summary>A number that reads the same on any machine.</summary>
+    private static string N(double value) =>
+        value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+
     private static MemoryAtom Decision(string text = "Use -t:InstallKeepingData",
                                        string subject = "deploy:android",
                                        DateTimeOffset? recorded = null) => new()
@@ -62,11 +85,13 @@ public class ForgettingTests : IDisposable
         var atom = Decision();
 
         Assert.True(Forgetting.Retrievability(Forgetting.InitialStabilityDays, TimeSpan.Zero) > 0.99);
+
+        // One stability out is 1/e by definition of the curve.
         Assert.InRange(
-            Forgetting.Retrievability(Forgetting.InitialStabilityDays, TimeSpan.FromDays(14)),
-            0.35, 0.40);
+            Forgetting.Retrievability(Forgetting.InitialStabilityDays, Lives(1)), 0.35, 0.40);
+
         Assert.True(
-            Forgetting.Retrievability(Forgetting.InitialStabilityDays, TimeSpan.FromDays(60))
+            Forgetting.Retrievability(Forgetting.InitialStabilityDays, Lives(LongGone))
             < Forgetting.Threshold);
     }
 
@@ -76,9 +101,9 @@ public class ForgettingTests : IDisposable
         var wear = new MemoryWear();
         var atom = Decision();
 
-        var before = wear.Reach(atom, Day0.AddDays(20));
-        wear.Retrieved(atom, Day0.AddDays(20));
-        var after = wear.Reach(atom, Day0.AddDays(20));
+        var before = wear.Reach(atom, Day0 + Lives(1));
+        wear.Retrieved(atom, Day0 + Lives(1));
+        var after = wear.Reach(atom, Day0 + Lives(1));
 
         Assert.True(after > before);
         Assert.Equal(1, wear.For(atom.Id)!.Retrievals);
@@ -100,14 +125,14 @@ public class ForgettingTests : IDisposable
         var a = Decision();
         var b = Decision();
 
-        fresh.Retrieved(a, Day0);                    // reached for immediately
-        nearlyLost.Retrieved(b, Day0.AddDays(40));   // reached for at the edge
+        fresh.Retrieved(a, Day0);                       // reached for immediately
+        nearlyLost.Retrieved(b, Day0 + Lives(AtTheEdge)); // reached for at the edge
 
         var afterFresh = fresh.For(a.Id)!.StabilityDays;
         var afterRescue = nearlyLost.For(b.Id)!.StabilityDays;
 
         Assert.True(afterRescue > afterFresh * 2,
-            $"rescue gained {afterRescue:0.0} days, a fresh touch gained {afterFresh:0.0}");
+            $"rescue gained {N(afterRescue)} days, a fresh touch gained {N(afterFresh)}");
     }
 
     [Fact]
@@ -126,7 +151,7 @@ public class ForgettingTests : IDisposable
         var twentyTimes = wear.For(atom.Id)!.StabilityDays;
 
         Assert.True(twentyTimes < once * 1.5,
-            $"twenty rapid retrievals took stability from {once:0.0} to {twentyTimes:0.0} days");
+            $"twenty rapid retrievals took stability from {N(once)} to {N(twentyTimes)} days");
     }
 
     [Fact]
@@ -153,14 +178,13 @@ public class ForgettingTests : IDisposable
         var wear = new MemoryWear();
         var atom = Decision();
 
-        var days = new[] { 1, 5, 30, 90, 365 };
         var previous = 0.0;
 
-        foreach (var day in days)
+        foreach (var stabilities in new[] { 0.01, 0.05, 0.3, 1.0, 4.0 })
         {
-            wear.Retrieved(atom, Day0.AddDays(day));
+            wear.Retrieved(atom, Day0 + Lives(stabilities));
             var stability = wear.For(atom.Id)!.StabilityDays;
-            Assert.True(stability >= previous, $"stability fell at day {day}");
+            Assert.True(stability >= previous, $"stability fell at {N(stabilities)} stabilities out");
             previous = stability;
         }
     }
@@ -189,7 +213,7 @@ public class ForgettingTests : IDisposable
     public void A_decision_about_one_afternoon_is_allowed_to_fade()
     {
         var wear = new MemoryWear();
-        Assert.True(wear.Faded(Decision(), Day0.AddDays(90)));
+        Assert.True(wear.Faded(Decision(), Day0 + Lives(LongGone)));
     }
 
     // ==================================================================
@@ -200,7 +224,7 @@ public class ForgettingTests : IDisposable
     public async Task What_faded_is_no_longer_offered()
     {
         using var store = new SqliteAtomStore("Data Source=:memory:");
-        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow.AddDays(-120));
+        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow - Lives(LongGone));
         await store.AddAsync(old);
 
         var result = await new Recall(store, new MemoryWear())
@@ -219,7 +243,7 @@ public class ForgettingTests : IDisposable
         var sync = new MemorySync(folder);
 
         using var store = new SqliteAtomStore("Data Source=:memory:");
-        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow.AddDays(-120));
+        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow - Lives(LongGone));
         await sync.RecordAsync(store, old);
 
         var wear = new MemoryWear();
@@ -243,7 +267,7 @@ public class ForgettingTests : IDisposable
         // Recognition restores access. Somebody bringing the subject up again
         // is exactly the cue that should return it.
         using var store = new SqliteAtomStore("Data Source=:memory:");
-        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow.AddDays(-120));
+        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow - Lives(LongGone));
         await store.AddAsync(old);
 
         var wear = new MemoryWear();
@@ -292,9 +316,9 @@ public class ForgettingTests : IDisposable
         using var store = new SqliteAtomStore("Data Source=:memory:");
 
         var used = Decision("The one that gets asked about", "deploy:android",
-                            recorded: DateTimeOffset.UtcNow.AddDays(-30));
+                            recorded: DateTimeOffset.UtcNow - Lives(1));
         var ignored = Decision("The one nobody returns to", "deploy:android",
-                               recorded: DateTimeOffset.UtcNow.AddDays(-30));
+                               recorded: DateTimeOffset.UtcNow - Lives(1));
         await store.AddAsync(used);
         await store.AddAsync(ignored);
 
@@ -401,7 +425,7 @@ public class ForgettingTests : IDisposable
         // The store on a machine that has never tracked use - a fresh clone, a
         // test, a read-only mount - must behave as it always did.
         using var store = new SqliteAtomStore("Data Source=:memory:");
-        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow.AddDays(-400));
+        var old = Decision("Something from a long time ago", recorded: DateTimeOffset.UtcNow - Lives(LongGone * 2));
         await store.AddAsync(old);
 
         var result = await new Recall(store).ForAsync(new Situation("deploy", "android"));
