@@ -15,6 +15,22 @@
     display: block;
     overflow: visible;          /* the halo reaches r=49 of a 50 viewBox */
     flex: none;
+
+    /*
+        A DRAWING IS NOT A CONTROL.
+
+        Without this, whether a tap lands depends on which pixels of the SVG
+        happen to be painted - SVG hit-testing is per-shape, not per-box - so a
+        button whose only child is this mark has a hit area shaped like a logo
+        rather than like a button. On Home, taps at the dead centre of the
+        circle did nothing while a tap seventy pixels to the left worked.
+
+        The button underneath owns the whole of its box now, which is what a
+        button is for. The bar's voice control never had the problem because it
+        wraps the mark in a span with a painted background - it was being
+        rescued by a detail of its styling.
+    */
+    pointer-events: none;
 }
 
 .bm-halo {
