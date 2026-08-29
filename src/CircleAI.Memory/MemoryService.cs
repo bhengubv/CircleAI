@@ -86,7 +86,12 @@ public sealed class MemoryService : IMemoryService, IDisposable
         // goes through the log and the index together, so they cannot drift.
         var fresh = !System.IO.File.Exists(_folder.IndexPath);
         _store = new SqliteAtomStore(_folder.IndexConnectionString);
-        if (fresh) _sync.RebuildAsync(_store).GetAwaiter().GetResult();
+
+        // Rebuilt when there was no index, and when there was one this build no
+        // longer understands - an update that changes the schema leaves every
+        // existing device holding the old shape, and the log is what it gets
+        // rebuilt from.
+        if (fresh || _store.Stale) _sync.RebuildAsync(_store).GetAwaiter().GetResult();
 
         _recall = new Recall(_store, _wear);
         _learner = new AtomLearner();
@@ -167,10 +172,12 @@ public sealed class MemoryService : IMemoryService, IDisposable
 
             var episode = new EpisodicMemoryEntry { UserText = wasSaid, AppContext = subject };
 
+            // Asked with an index rather than handed the whole memory: this
+            // runs on every turn of a conversation.
             return await _learner.LearnAsync(
                 new[] { episode },
                 (candidate, token) => _sync.RecordAsync(_store, candidate, ct: token),
-                await _store.AllAsync(limit: 5000, ct: ct).ConfigureAwait(false),
+                (text, token) => _store.KnowsAsync(text, token),
                 subject,
                 ct).ConfigureAwait(false);
         }

@@ -109,6 +109,8 @@ remembered.
 | Retention never restricts reading | tested | Reading_is_never_restricted_by_retention |
 | What a module may keep is declared in code, not read from the memory | tested | What_a_module_may_keep_is_declared_in_code_not_read_from_the_memory |
 | What a module recorded can be told apart from what another did | tested | Two_modules_recording_the_same_words_stay_apart |
+| Learning does not get slower as the memory fills | tested | Learning_does_not_get_slower_as_the_memory_fills |
+| An update that changes the schema does not break the memory | tested | An_update_that_changes_the_schema_does_not_break_the_memory |
 | Every CircleAI module consumes it | unproven | two heads consume it; roughly 150 modules do not |
 | It is ready to be ported to another language | unproven | the curve has no generated fixtures, the cue table is English and in code |
 
@@ -147,6 +149,8 @@ Measured on a Huawei P30 Lite (`MAR-LX1M`, `UTKDU19919000815`), not an emulator.
 | The app's own memory opens in 60-136 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
 | Reading what was said costs 18 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
 | The memory carries over a force-stop | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| At 247 real atoms: open 85 ms, recall 39-88 ms, learn 3-6 ms | measured | P30 Lite MAR-LX1M, 2026-08-29 |
+| An app update that changes the schema rebuilds in 3.1 s and loses nothing | measured | P30 Lite MAR-LX1M, 2026-08-29 |
 | WAL takes a write from 346 ms to 1.4 ms | measured | desktop SSD, 2026-08-29 |
 | Replaying the whole log costs 245 ms | measured | P30 Lite MAR-LX1M, 2026-08-28 |
 | Learning from a conversation costs 571 ms, no model | measured | P30 Lite MAR-LX1M, 2026-08-28 |
@@ -171,7 +175,7 @@ Named here so nobody has to find out by looking.
 
 | Claim | Status | Evidence |
 |---|---|---|
-| Recall stays fast at thousands of atoms | unproven | no fixture is larger than a few dozen |
+| Recall stays fast at thousands of atoms | unproven | measured at 247 real atoms, not at thousands |
 | The device numbers are a gate | unproven | MemoryProbe reports; nothing fails if they regress |
 | Three machines actually share one folder | unproven | only one machine has it installed |
 | A model reads conversations better than the cues do | unproven | IAtomExtractor has one implementation |

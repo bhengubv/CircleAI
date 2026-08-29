@@ -55,9 +55,30 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
         _conn = new SqliteConnection(connectionString);
         _conn.Open();
         Tune();
+        Stale = DiscardIfStale();
         EnsureSchema();
         _fts = TryEnableFts();
     }
+
+    /// <summary>
+    /// What shape this build expects the index to be in.
+    /// </summary>
+    /// <remarks>
+    /// BUMP THIS WHENEVER THE SCHEMA CHANGES. Not to write a migration - to
+    /// avoid needing one. The index is derived from the log, so an old one is
+    /// thrown away and rebuilt rather than patched, and that is the whole
+    /// benefit of the log being the durable half.
+    /// </remarks>
+    private const int SchemaVersion = 2;
+
+    /// <summary>
+    /// Whether the index was discarded on open because it was an old shape.
+    /// </summary>
+    /// <remarks>
+    /// The caller has to replay the log if this is true. Said out loud rather
+    /// than done here, because this class does not know where the log is.
+    /// </remarks>
+    public bool Stale { get; }
 
     /// <summary>Whether full-text search is available, or LIKE is standing in.</summary>
     /// <remarks>
@@ -105,6 +126,44 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
         }
     }
 
+    /// <summary>
+    /// Throw away an index this build no longer understands.
+    /// </summary>
+    /// <remarks>
+    /// FOUND ON A PHONE, WHICH IS WHERE IT WOULD HAVE HAPPENED. Adding a column
+    /// and shipping an update left every existing device with an index that
+    /// CREATE TABLE IF NOT EXISTS quietly declined to change, and the first
+    /// write failed with "no such column" - in the app, in front of somebody.
+    ///
+    /// The answer is not a migration. The index is a cache of a text log, so an
+    /// old one is dropped and rebuilt, which costs a second and cannot leave a
+    /// half-migrated database behind.
+    /// </remarks>
+    private bool DiscardIfStale()
+    {
+        using (var read = _conn.CreateCommand())
+        {
+            read.CommandText = "PRAGMA user_version;";
+            var version = Convert.ToInt32(read.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
+            if (version == SchemaVersion) return false;
+
+            // A brand new database reads zero and has no tables. That is not
+            // stale, it is empty - and the caller must not be told to replay
+            // something it has already been asked to build.
+            read.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'atoms';";
+            var existed = Convert.ToInt32(read.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture) > 0;
+
+            using var drop = _conn.CreateCommand();
+            drop.CommandText =
+                "DROP TABLE IF EXISTS atoms_fts; " +
+                "DROP TABLE IF EXISTS atoms; " +
+                $"PRAGMA user_version = {SchemaVersion};";
+            drop.ExecuteNonQuery();
+
+            return existed;
+        }
+    }
+
     private void EnsureSchema()
     {
         using var cmd = _conn.CreateCommand();
@@ -117,6 +176,10 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 source_episode     TEXT,
                 recorded_at_utc    TEXT NOT NULL,
                 machine            TEXT,
+
+                -- What "the same thing said twice" means, so learning can ask
+                -- with an index instead of reading the whole memory.
+                text_key           TEXT,
                 corrections        INTEGER NOT NULL DEFAULT 0,
                 last_corrected_utc TEXT,
                 superseded_by      TEXT,
@@ -133,6 +196,8 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                 ON atoms (subject, superseded_by);
             CREATE INDEX IF NOT EXISTS ix_atoms_kind
                 ON atoms (kind, superseded_by, recorded_at_utc DESC);
+            CREATE INDEX IF NOT EXISTS ix_atoms_text_key
+                ON atoms (text_key, superseded_by);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -341,6 +406,22 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
     }
 
     /// <inheritdoc />
+    public Task<bool> KnowsAsync(string text, CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        ct.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult(false);
+
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT 1 FROM atoms WHERE text_key = $key AND superseded_by IS NULL LIMIT 1;";
+        cmd.Parameters.AddWithValue("$key", CueExtractor.Normalise(text));
+
+        return Task.FromResult(cmd.ExecuteScalar() is not null);
+    }
+
+    /// <inheritdoc />
     public Task<MemoryAtom?> GetAsync(Guid id, CancellationToken ct = default)
     {
         ThrowIfDisposed();
@@ -546,12 +627,12 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
                     (id, kind, text, subject, source_episode, recorded_at_utc,
                      corrections, last_corrected_utc, superseded_by,
                      challenge, outcome, verify, verified_at_utc, verified_ok,
-                     machine)
+                     machine, text_key)
                 VALUES
                     ($id, $kind, $text, $subject, $source, $recorded,
                      $corrections, $lastCorrected, $superseded,
                      $challenge, $outcome, $verify, $verifiedAt, $verifiedOk,
-                     $machine);
+                     $machine, $textKey);
                 """;
             cmd.Parameters.AddWithValue("$id",            atom.Id.ToString("N"));
             cmd.Parameters.AddWithValue("$kind",          atom.Kind.ToString());
@@ -568,6 +649,7 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
             cmd.Parameters.AddWithValue("$verifiedAt",    (object?)atom.VerifiedAtUtc?.ToString("O") ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$verifiedOk",    atom.VerifiedOk is null ? DBNull.Value : atom.VerifiedOk.Value ? 1 : 0);
             cmd.Parameters.AddWithValue("$machine",       (object?)atom.Machine ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$textKey",       CueExtractor.Normalise(atom.Text));
             cmd.ExecuteNonQuery();
         }
 

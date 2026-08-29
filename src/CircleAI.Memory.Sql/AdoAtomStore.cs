@@ -268,6 +268,24 @@ public sealed class AdoAtomStore : IAtomStore
     }
 
     /// <inheritdoc />
+    public Task<bool> KnowsAsync(string text, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(text)) return Task.FromResult(false);
+
+        // Indexed, because learning asks this of every sentence it spots and
+        // learning runs on every turn of a conversation.
+        using var cmd = Command(
+            $"SELECT {_sql.Quote("id")} FROM {_sql.Quote(Table)} " +
+            $"WHERE {_sql.Quote("text_key")} = {_sql.Parameter("key")} " +
+            $"  AND {_sql.Quote("superseded_by")} IS NULL " +
+            _sql.Limit(1));
+
+        Bind(cmd, "key", CueExtractor.Normalise(text));
+        return Task.FromResult(cmd.ExecuteScalar() is not null);
+    }
+
+    /// <inheritdoc />
     public Task<MemoryAtom?> GetAsync(Guid id, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
@@ -306,7 +324,7 @@ public sealed class AdoAtomStore : IAtomStore
         {
             "id", "kind", "text", "subject", "source_episode", "recorded_at_utc",
             "corrections", "last_corrected_utc", "superseded_by", "challenge",
-            "outcome", "verify", "verified_at_utc", "verified_ok", "machine",
+            "outcome", "verify", "verified_at_utc", "verified_ok", "machine", "text_key",
         };
 
         using (var cmd = Command(
@@ -328,6 +346,7 @@ public sealed class AdoAtomStore : IAtomStore
             Bind(cmd, "verified_at_utc",    atom.VerifiedAtUtc?.ToString("O", CultureInfo.InvariantCulture));
             Bind(cmd, "verified_ok",        atom.VerifiedOk is null ? null : atom.VerifiedOk.Value ? 1 : 0);
             Bind(cmd, "machine",            atom.Machine);
+            Bind(cmd, "text_key",           CueExtractor.Normalise(atom.Text));
             cmd.ExecuteNonQuery();
         }
     }

@@ -190,6 +190,40 @@ public class MemoryServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task An_update_that_changes_the_schema_does_not_break_the_memory()
+    {
+        // FOUND ON A PHONE, BY USING THE APP. Adding a column and shipping an
+        // update left the existing index in the old shape - CREATE TABLE IF NOT
+        // EXISTS quietly declines to change it - and the first write failed
+        // with "no such column", in front of somebody.
+        //
+        // No migration. The index is a cache of a text log, so an old one is
+        // dropped and rebuilt.
+        var first = Launch();
+        await first.RememberAsync(Decision("Use -t:InstallKeepingData when iterating"));
+        first.Dispose();
+
+        var folder = new MemoryFolder(_dir, "test-device");
+
+        // An index written by some other build of this app.
+        using (var older = new Microsoft.Data.Sqlite.SqliteConnection(folder.IndexConnectionString))
+        {
+            older.Open();
+            using var cmd = older.CreateCommand();
+            cmd.CommandText = "PRAGMA user_version = 1;";
+            cmd.ExecuteNonQuery();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearPool(older);
+        }
+
+        using var upgraded = Launch();
+
+        // Everything is there, and writing works.
+        Assert.Equal(1, await upgraded.CountAsync());
+        await upgraded.LearnAsync("Never restart a device without asking me first.");
+        Assert.Equal(2, await upgraded.CountAsync());
+    }
+
+    [Fact]
     public void The_first_ever_launch_works_on_an_empty_folder()
     {
         var empty = Path.Combine(_dir, "never-used");
@@ -250,6 +284,39 @@ public class MemoryServiceTests : IDisposable
     // ==================================================================
     // Being a memory
     // ==================================================================
+
+    [Fact]
+    public async Task Learning_does_not_get_slower_as_the_memory_fills()
+    {
+        // FOUND BY FILLING IT WITH REAL ATOMS. Learning asked "do I already know
+        // this" by loading every atom in the store, which cost 229 ms at 247
+        // atoms on a P30 and grows from there - on the path that runs on every
+        // turn of a conversation. It is an indexed lookup now.
+        //
+        // Timing in a test is a blunt instrument, so this asserts the shape
+        // rather than a number: a memory twenty times the size must not take
+        // anything like twenty times as long to learn into.
+        using var service = Launch();
+
+        var small = await Cost(service);
+
+        for (var i = 0; i < 400; i++)
+            await service.RememberAsync(Decision($"Something decided on day {i}", $"work:area{i % 20}"));
+
+        var large = await Cost(service);
+
+        Assert.True(large < small * 4 + 50,
+            $"learning cost {small} ms at 0 atoms and {large} ms at 400");
+
+        static async Task<long> Cost(MemoryService service)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            for (var i = 0; i < 10; i++)
+                await service.LearnAsync($"Never do the thing numbered {i} without asking first.");
+            clock.Stop();
+            return clock.ElapsedMilliseconds;
+        }
+    }
 
     [Fact]
     public async Task Asking_it_something_it_has_never_heard_of_is_not_an_error()

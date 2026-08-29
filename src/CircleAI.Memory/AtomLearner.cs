@@ -66,20 +66,54 @@ public sealed class AtomLearner
     /// corrected away can be learned again if it comes back.
     /// </param>
     /// <param name="subject">The situation key to file under, if the caller has one.</param>
-    public async Task<LearnReport> LearnAsync(
+    public Task<LearnReport> LearnAsync(
         IEnumerable<EpisodicMemoryEntry> episodes,
         Func<MemoryAtom, CancellationToken, Task> record,
         IReadOnlyList<MemoryAtom> known,
         string? subject = null,
         CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(episodes);
-        ArgumentNullException.ThrowIfNull(record);
         ArgumentNullException.ThrowIfNull(known);
 
-        var seen = new HashSet<string>(
+        var already = new HashSet<string>(
             known.Select(a => CueExtractor.Normalise(a.Text)),
             StringComparer.OrdinalIgnoreCase);
+
+        return LearnAsync(episodes, record,
+            (text, _) => Task.FromResult(already.Contains(CueExtractor.Normalise(text))),
+            subject, ct);
+    }
+
+    /// <summary>
+    /// Read a conversation and keep what is worth keeping.
+    /// </summary>
+    /// <param name="episodes">The exchanges, in any order.</param>
+    /// <param name="record">Where a kept atom goes.</param>
+    /// <param name="knows">
+    /// Whether something is already remembered.
+    /// </param>
+    /// <param name="subject">The situation key to file under, if the caller has one.</param>
+    /// <remarks>
+    /// ASKED, NOT HANDED THE WHOLE MEMORY. Learning runs on every turn of a
+    /// conversation and asks this of every sentence it spots. Being given a
+    /// list means loading everything first, which cost 229 ms at 247 atoms on a
+    /// P30 and grows from there - on the one path that must never make anybody
+    /// wait. A store answers it with an index.
+    /// </remarks>
+    public async Task<LearnReport> LearnAsync(
+        IEnumerable<EpisodicMemoryEntry> episodes,
+        Func<MemoryAtom, CancellationToken, Task> record,
+        Func<string, CancellationToken, Task<bool>> knows,
+        string? subject = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(episodes);
+        ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(knows);
+
+        // Still a set as well, because two identical sentences in ONE pass are
+        // not yet in any store and would otherwise both be kept.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var considered = 0;
         var recorded = new List<AtomCandidate>();
@@ -101,7 +135,9 @@ public sealed class AtomLearner
                 // already remembered is not a question for anybody, however
                 // faintly it was spotted, and offering it would ask somebody to
                 // confirm what they already told us.
-                if (!seen.Add(CueExtractor.Normalise(candidate.Atom.Text)))
+                var normalised = CueExtractor.Normalise(candidate.Atom.Text);
+                if (!seen.Add(normalised) ||
+                    await knows(candidate.Atom.Text, ct).ConfigureAwait(false))
                 {
                     alreadyKnown.Add(candidate);
                     continue;

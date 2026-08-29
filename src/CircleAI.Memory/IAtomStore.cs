@@ -68,6 +68,17 @@ public interface IAtomStore
         int limit = 500,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether this is already remembered, word for word.
+    /// </summary>
+    /// <remarks>
+    /// AN INDEXED LOOKUP, NOT A SCAN. Learning asks this of every sentence it
+    /// spots, and learning runs on every turn of a conversation. Loading the
+    /// whole memory to answer it cost 229 ms at 247 atoms on a P30 and grows
+    /// from there - on the one path that must never make somebody wait.
+    /// </remarks>
+    Task<bool> KnowsAsync(string text, CancellationToken ct = default);
+
     /// <summary>One atom by id, superseded or not.</summary>
     Task<MemoryAtom?> GetAsync(Guid id, CancellationToken ct = default);
 

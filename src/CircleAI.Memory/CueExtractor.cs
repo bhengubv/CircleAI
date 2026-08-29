@@ -232,7 +232,12 @@ public sealed class CueExtractor : IAtomExtractor
     }
 
     /// <summary>A form two ways of typing the same thing agree on.</summary>
-    internal static string Normalise(string text) =>
+    /// <remarks>
+    /// Public because it is the definition of "already remembered", and the
+    /// store indexes on it. Two places deciding that separately would mean a
+    /// duplicate that only one of them can see.
+    /// </remarks>
+    public static string Normalise(string text) =>
         string.Join(" ", text
             .ToLowerInvariant()
             .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))

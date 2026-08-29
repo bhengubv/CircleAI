@@ -116,6 +116,7 @@ public abstract class SqlDialect
     {
         $"CREATE INDEX ix_atoms_subject ON {Quote(table)} ({Quote("subject")}, {Quote("superseded_by")})",
         $"CREATE INDEX ix_atoms_kind ON {Quote(table)} ({Quote("kind")}, {Quote("superseded_by")})",
+        $"CREATE INDEX ix_atoms_text_key ON {Quote(table)} ({Quote("text_key")}, {Quote("superseded_by")})",
     };
 
     /// <summary>The table, as this engine spells it.</summary>
@@ -135,7 +136,8 @@ public abstract class SqlDialect
             {Quote("verify")}             {TextType},
             {Quote("verified_at_utc")}    {TagType(40)},
             {Quote("verified_ok")}        {IntType},
-            {Quote("machine")}            {TagType(120)}
+            {Quote("machine")}            {TagType(120)},
+            {Quote("text_key")}           {TagType(400)}
         )
         """;
 
@@ -173,6 +175,7 @@ file sealed class PostgreSqlDialect : SqlDialect
         $"CREATE INDEX ix_atoms_search ON {Quote(table)} USING GIN ({Quote("search")})",
         $"CREATE INDEX ix_atoms_subject ON {Quote(table)} ({Quote("subject")}, {Quote("superseded_by")})",
         $"CREATE INDEX ix_atoms_kind ON {Quote(table)} ({Quote("kind")}, {Quote("superseded_by")})",
+        $"CREATE INDEX ix_atoms_text_key ON {Quote(table)} ({Quote("text_key")}, {Quote("superseded_by")})",
     };
 
     public override (string, IReadOnlyList<(string, object)>) Search(IReadOnlyList<string> terms)
@@ -237,6 +240,7 @@ file sealed class MySqlDialect : SqlDialect
 
         $"CREATE INDEX ix_atoms_subject ON {Quote(table)} ({Quote("subject")}, {Quote("superseded_by")})",
         $"CREATE INDEX ix_atoms_kind ON {Quote(table)} ({Quote("kind")}, {Quote("superseded_by")})",
+        $"CREATE INDEX ix_atoms_text_key ON {Quote(table)} ({Quote("text_key")}, {Quote("superseded_by")})",
     };
 
     public override (string, IReadOnlyList<(string, object)>) Search(IReadOnlyList<string> terms)
