@@ -99,7 +99,13 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Listening));
 
-            var heard = await ListenAsync(updates, ct).ConfigureAwait(false);
+            // ONE FILTER, AND THIS PATH WAS NOT USING IT. Speech() existed and
+            // only DictateAsync called it, so the microphone button - the main
+            // way into this app - passed whatever the transcriber said straight
+            // through. A quiet room came back as "[Sexy, so-so]" on the screen,
+            // was answered as though somebody had said it, and was handed to the
+            // memory to read for things worth remembering.
+            var heard = Speech(await ListenAsync(updates, ct).ConfigureAwait(false));
             if (string.IsNullOrWhiteSpace(heard))
             {
                 updates.Report(new TurnState(TurnPhase.Idle,
