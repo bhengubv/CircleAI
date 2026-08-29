@@ -171,6 +171,24 @@
 }
 
 /* Quiet. The circle is the product; this is for the person still deciding. */
+/*
+    TYPING IS THE FALLBACK, so it is a link and not the loudest control here.
+    As a full-width button it made the text box the headline act, and the thing
+    this screen is for is the circle above it.
+
+    Quieter than the pitch link below: that one is an invitation, this one is a
+    way out for somebody who cannot speak right now.
+*/
+.type-link {
+    display: block;
+    width: 100%;
+    padding: 12px 0 2px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--ink-soft);
+    text-decoration: none;
+}
+
 .pitch-link {
     display: block;
     width: 100%;

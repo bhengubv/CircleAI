@@ -86,17 +86,21 @@
         }
     </div>
 
+    @*
+        THE OTHER WAY IN, and the only one.
+
+        This was removed on the way past in a commit about the services grid,
+        with a note saying it had become an item on the bottom bar or a tile in
+        Services. It had not. Nothing anywhere navigated to /chat afterwards,
+        so the only way to say anything to this app was to speak - and somebody
+        on a bus, or in a room where speaking out loud is not on, had no way in
+        at all.
+    *@
+    <a class="type-link" href="chat">Or type instead</a>
+
     @* MARKETING BELONGS HERE. "What it can do" is a pitch rather than a screen
        of controls, and Home is where somebody is deciding whether to bother. *@
     <a class="pitch-link" href="abilities">What it can do</a>
-
-    @*
-        NO OTHER LINKS. "Or type instead", "10 plus languages" and "What it
-        can do" all became items on the bottom bar or tiles in Services, and a
-        screen that offers the same three destinations twice is a screen arguing
-        with its own navigation. Home is the circle, what it is doing, and what it
-        promises.
-    *@
 </div>
 
 @code {
@@ -285,5 +289,4 @@
     /// The typing screen. The native "Or type instead" opens MainActivity, which
     /// is the conversation - not the language list.
     /// </summary>
-    void Type() => Nav.NavigateTo("chat");
 }
