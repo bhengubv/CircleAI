@@ -48,4 +48,28 @@ stale after a `git pull`, and `--brief` fits inside a prompt.
 paid before anybody remembers making it the first time. That is what this is
 for.
 
+## This repo carries its own
+
+Clone it and you inherit what it knows — including sixty-nine skills that live
+outside it:
+
+```bash
+export CIRCLEAI_MEMORY=./memory
+memory recall "accessibility screen reader touch targets" --brief
+```
+```
+- fact: Skill 'accessibility-inclusive-design' — WCAG, keyboard/screen-reader
+  usability, reduced motion, contrast, assistive technology...
+```
+
+That is the point of it being here rather than in a README. A pointer in a
+document is read once at the top of a session and forgotten by the time it
+matters; an atom filed under the situation arrives when somebody is about to do
+the thing. Every one of those skills was on this machine all week and none of
+them was opened, while the mistakes they describe were made instead.
+
+Two memories, two scopes. `./memory` travels with the code and holds what is
+true about the project. `~/.circleai/memory` is yours and follows you across
+machines. Neither is a copy of the other.
+
 Run `memory where` to see which folder and machine you are on.

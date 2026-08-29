@@ -12,6 +12,20 @@ memory recall --doing deploy --to android --brief
 ```
 
 It answers in about 180 ms, it never blocks, and an empty answer exits zero.
+
+**This repo carries its own memory in `./memory`, and it holds the skills.**
+There is a curated skills library on this machine — mobile, UI, accessibility,
+testing, security and sixty-odd more — and asking the memory is how you find the
+one that applies:
+
+```bash
+CIRCLEAI_MEMORY=./memory memory recall "mobile android offline permissions" --brief
+```
+
+Read the skill it names before starting. Every one of them was sitting on disk
+during the week this app was built and none was opened; the QA axis that would
+have caught the same locale bug five times was in one of them.
+
 [MEMORY.md](MEMORY.md) is the short version; [AGENT.md](AGENT.md) is the
 contract. If `memory` is not on PATH, the two install lines are in AGENT.md.
 

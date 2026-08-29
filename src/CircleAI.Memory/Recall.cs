@@ -101,7 +101,7 @@ public sealed class Recall : IRecall
         var ranked = candidates
             .Where(a => a.Kind != AtomKind.Relationship)
             .Where(a => _wear is null || !_wear.Faded(a, now))
-            .Select(a => (Atom: a, Score: Score(a, situation, now)))
+            .Select((a, position) => (Atom: a, Score: Score(a, situation, now) + Found(position, candidates.Count)))
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Atom.RecordedAtUtc)
             .Select(x => x.Atom);
@@ -133,6 +133,26 @@ public sealed class Recall : IRecall
     // ------------------------------------------------------------------
     // Ranking
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// How well the store thought this answered the question.
+    /// </summary>
+    /// <remarks>
+    /// THE STORE ALREADY RANKED THESE AND THIS WAS THROWING IT AWAY. MatchAsync
+    /// returns subject matches first, then keyword matches in the order the
+    /// search engine put them - bm25 on SQLite, which knows which text actually
+    /// answered the query. Re-sorting purely on kind and corrections discarded
+    /// that: sixty-nine skill atoms are all facts with no corrections and no
+    /// subject match, so every one scored identically and the tie-break became
+    /// whichever happened to be newest. Asking about screen readers and asking
+    /// about Android returned the same first answer, and it was about neither.
+    ///
+    /// Small on purpose. It orders what this scorer has no opinion about, and
+    /// must never outweigh a road that failed or something somebody has had to
+    /// say four times - the search engine knows about neither of those.
+    /// </remarks>
+    private static double Found(int position, int total) =>
+        total <= 1 ? 0 : 0.12 * (1.0 - position / (double)(total - 1));
 
     /// <summary>How much this atom deserves the space, for this situation.</summary>
     /// <remarks>

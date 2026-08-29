@@ -113,6 +113,27 @@ public sealed class DeviceSetup : ISetup
         }, ct);
 
     /// <inheritdoc />
+    public Task<Census> CensusAsync(CancellationToken ct = default)
+        => Task.Run(() =>
+        {
+            using var registry = new ModelRegistryService();
+            using var loader = new BundleModelLoader(StorageDir, registry);
+
+            // speech: true for the same reason PlanAsync passes it - this head
+            // compiles the voice stack in, and a census that counted a voice a
+            // chat-only build cannot open would be describing a different app.
+            var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(), speech: true);
+
+            return new Census(
+                census.Rows
+                    .Select(r => new CensusRow(r.Title, r.Present, r.Bytes, r.Detail))
+                    .ToList(),
+                census.Present,
+                census.Total,
+                $"{census.Present} of {census.Total} on this phone");
+        }, ct);
+
+    /// <inheritdoc />
     public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
     {
         lock (_gate)

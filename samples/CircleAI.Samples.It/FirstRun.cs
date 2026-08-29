@@ -57,6 +57,23 @@ namespace CircleAI.Samples.It;
 /// <param name="Model">The chosen model. Picked for this device, not by the user.</param>
 public readonly record struct SetupStep(string Title, ModelModality Modality, ModelEntry Model);
 
+/// <summary>One thing this device either has or does not.</summary>
+/// <param name="Title">What it gives the person - "the ears", not "Whisper-tiny".</param>
+/// <param name="Present">Whether the bytes are on this phone.</param>
+/// <param name="Bytes">How big it is, or would be.</param>
+/// <param name="Detail">
+/// What it means here - "eleven languages", "not on this phone". The honest
+/// answer for this handset rather than what the catalogue could offer.
+/// </param>
+public readonly record struct CapabilityRow(string Title, bool Present, long Bytes, string Detail);
+
+/// <summary>What this phone can do, and what it is still missing.</summary>
+/// <param name="Rows">Every capability, present or not, in a fixed order.</param>
+/// <param name="Present">How many are here.</param>
+/// <param name="Total">How many there are.</param>
+public readonly record struct Capabilities(
+    IReadOnlyList<CapabilityRow> Rows, int Present, int Total);
+
 /// <summary>How far setup has got, for showing on the home screen.</summary>
 /// <param name="Index">Zero-based step being fetched.</param>
 /// <param name="Count">How many steps in total.</param>
@@ -142,22 +159,7 @@ public static class FirstRun
         // 95 MB once the quantised SA voice is published — next to a 22 GB brain,
         // the English voice is rounding error and it is the difference between an
         // assistant you can act on and one you cannot.
-        var wanted = new List<(string Title, ModelModality Modality, string? Named)>();
-        if (speech)
-        {
-            wanted.Add(("the English voice", ModelModality.Tts,
-                        CircleAI.Samples.It.Voice.ItSpeaker.EnglishVoice));
-            // "the local voice" said nothing: local to where, and in what? These
-            // titles exist to say what the download GIVES somebody - "the voice",
-            // not "MMS TTS" - and this one is the reason to want the app at all.
-            // Vits-11ZA is multi-speaker across eleven South African languages;
-            // naming that is both more honest and a better argument than "local".
-            wanted.Add(("the South African voices", ModelModality.Tts,
-                        CircleAI.Samples.It.Voice.ItSpeaker.PreferredVoice));
-            wanted.Add(("the ears",          ModelModality.Asr,      null));
-            wanted.Add(("the wake word",     ModelModality.WakeWord, null));
-        }
-        wanted.Add(("the brain", ModelModality.Chat, null));
+        var wanted = Wanted(speech);
 
         var steps = new List<SetupStep>();
         foreach (var (title, modality, named) in wanted)
@@ -202,6 +204,120 @@ public static class FirstRun
         }
 
         return steps;
+    }
+
+    /// <summary>
+    /// Everything this build wants on a device, in the order that makes it
+    /// useful soonest.
+    /// </summary>
+    /// <remarks>
+    /// ONE LIST, TWO READINGS. Plan filters it down to what still has to be
+    /// fetched; Census reports all of it with what is present. Written twice
+    /// they would drift, and a setup screen that names a capability the census
+    /// does not is the same failure as the language count and the model choice
+    /// before it.
+    /// </remarks>
+    private static List<(string Title, ModelModality Modality, string? Named)> Wanted(bool speech)
+    {
+        var wanted = new List<(string Title, ModelModality Modality, string? Named)>();
+        if (speech)
+        {
+            wanted.Add(("the English voice", ModelModality.Tts,
+                        CircleAI.Samples.It.Voice.ItSpeaker.EnglishVoice));
+            // "the local voice" said nothing: local to where, and in what? These
+            // titles exist to say what the download GIVES somebody - "the voice",
+            // not "MMS TTS" - and this one is the reason to want the app at all.
+            // Vits-11ZA is multi-speaker across eleven South African languages;
+            // naming that is both more honest and a better argument than "local".
+            wanted.Add(("the South African voices", ModelModality.Tts,
+                        CircleAI.Samples.It.Voice.ItSpeaker.PreferredVoice));
+            wanted.Add(("the ears",          ModelModality.Asr,      null));
+            wanted.Add(("the wake word",     ModelModality.WakeWord, null));
+        }
+        wanted.Add(("the brain", ModelModality.Chat, null));
+
+        return wanted;
+    }
+
+    /// <summary>
+    /// What this phone can do, and what it is still missing.
+    /// </summary>
+    /// <remarks>
+    /// THE SAME LIST PLAN WALKS, unfiltered. Plan answers "what still has to be
+    /// fetched"; this answers "what is here" - and they are two readings of one
+    /// list rather than two lists that could disagree. A census that named a
+    /// capability setup did not know about, or missed one it was fetching, would
+    /// be the same failure this app has had four times over: one fact, two owners.
+    ///
+    /// It is what somebody sees while waiting. Aether opens by telling you which
+    /// radios your phone has and which it does not, and the seconds you were
+    /// going to spend anyway become the only moment you would ever read it. The
+    /// point is the same here: on a cheap phone more is missing, and the people
+    /// most likely to be missing something are exactly who this is for.
+    /// </remarks>
+    public static Capabilities Census(
+        ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
+        bool speech, Func<string, bool>? declined = null)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(loader);
+
+        var missing = Plan(registry, loader, probe, speech, declined)
+            .ToDictionary(s => s.Title, s => s.Model, StringComparer.OrdinalIgnoreCase);
+
+        var rows = new List<CapabilityRow>();
+        foreach (var (title, modality, named) in Wanted(speech))
+        {
+            if (missing.TryGetValue(title, out var wanted))
+            {
+                rows.Add(new CapabilityRow(title, false, wanted.TotalBytes, "not on this phone yet"));
+                continue;
+            }
+
+            // Present. The size is what is actually on disk for it, and the
+            // detail is what it means HERE rather than what the catalogue says
+            // it could mean somewhere else.
+            var entry = named is not null
+                ? registry.AllModels.FirstOrDefault(m =>
+                      string.Equals(m.Name, named, StringComparison.OrdinalIgnoreCase))
+                : registry.AllModels.FirstOrDefault(m =>
+                      m.Modality == modality && loader.ModelExists(m.Name));
+
+            rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0, Detail(entry, modality)));
+        }
+
+        return new Capabilities(rows, rows.Count(r => r.Present), rows.Count);
+    }
+
+    /// <summary>What being present actually gets somebody.</summary>
+    /// <remarks>
+    /// A COUNT OF LANGUAGES THAT SPEAK, not of languages catalogued. Home has
+    /// claimed 78 - what the registry says this handset could plan for - while
+    /// the two voices actually installed cover about twelve. A screen whose whole
+    /// job is being checkable cannot repeat that.
+    /// </remarks>
+    private static string Detail(ModelEntry? entry, ModelModality modality)
+    {
+        if (entry is null) return "here";
+
+        if (modality == ModelModality.Tts)
+        {
+            var tags = (entry.Language ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+            return tags switch
+            {
+                0 => "here",
+                1 => "one language",
+                _ => $"{tags} languages",
+            };
+        }
+
+        return "here";
     }
 
     /// <summary>Fetches the plan, reporting progress across the whole of it.</summary>

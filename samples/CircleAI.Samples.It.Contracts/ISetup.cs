@@ -39,6 +39,21 @@ public enum ReadyStage
 public readonly record struct Readiness(
     ReadyStage Stage, string Headline, string Caption, bool CanTalk);
 
+/// <summary>One thing this device either has or does not.</summary>
+/// <param name="Title">What it gives the person - "the ears", not "Whisper-tiny".</param>
+/// <param name="Present">Whether the bytes are on this device.</param>
+/// <param name="Bytes">How big it is, or would be.</param>
+/// <param name="Detail">What it means here - "eleven languages", "not on this phone yet".</param>
+public sealed record CensusRow(string Title, bool Present, long Bytes, string Detail);
+
+/// <summary>What this device can do, and what it is still missing.</summary>
+/// <param name="Rows">Every capability, present or not, in a fixed order.</param>
+/// <param name="Present">How many are here.</param>
+/// <param name="Total">How many there are.</param>
+/// <param name="Summary">"3 of 5 on this phone", said once so a screen need not.</param>
+public sealed record Census(
+    IReadOnlyList<CensusRow> Rows, int Present, int Total, string Summary);
+
 /// <summary>One thing setup will fetch.</summary>
 /// <param name="Title">What it gives the person - "the voice", not "MMS TTS".</param>
 /// <param name="Bytes">How big it is.</param>
@@ -88,6 +103,21 @@ public interface ISetup
     /// brain rather than starting again from the voice.
     /// </remarks>
     Task<IReadOnlyList<SetupItem>> PlanAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// What this device can already do, and what it cannot yet.
+    /// </summary>
+    /// <remarks>
+    /// THE SAME LIST THE PLAN COMES FROM, read the other way. The plan says what
+    /// is still to fetch; this says what is here - and a screen showing both is
+    /// showing one fact twice rather than two facts that could disagree.
+    ///
+    /// It exists because the seconds somebody spends waiting are the only
+    /// seconds they will ever spend reading about what their phone can do. On a
+    /// cheap handset more is missing, and the people most likely to be missing
+    /// something are exactly who this is for.
+    /// </remarks>
+    Task<Census> CensusAsync(CancellationToken ct = default);
 
     /// <summary>Whether a run is already in flight.</summary>
     /// <remarks>

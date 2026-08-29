@@ -133,3 +133,75 @@
     color: var(--ink-soft);
     padding-top: 12px;
 }
+
+
+/*
+    THE CENSUS: what this phone can already do.
+
+    Quieter than the plan below it. The plan is a decision somebody has to make -
+    how much data this will cost - and this is context for making it. Sized and
+    spaced to be read once, not scanned repeatedly.
+*/
+.census {
+    margin: 4px 0 20px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.census-head {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding-bottom: 10px;
+}
+
+.census-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 15px;
+    color: var(--ink);
+}
+
+/*
+    Absent is stated, not hidden. A list of only what is present reads as a
+    complete phone, and the whole reason for this screen is that it is not.
+*/
+.census-missing { color: var(--ink-soft); }
+
+.census-mark {
+    width: 14px;
+    flex: none;
+    color: var(--brand-blue);
+}
+
+.census-missing .census-mark { color: var(--ink-soft); }
+
+.census-title { flex: 1; }
+
+.census-detail {
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: right;
+}
+
+/*
+    The number somebody on a metered connection is actually deciding on, so it
+    is separated from the rows above rather than being another line in them.
+*/
+.census-total {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-weight: 700;
+}
+
+.census-total .census-detail {
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 700;
+}

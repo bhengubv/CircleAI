@@ -43,6 +43,13 @@ public class MainActivity : MauiAppCompatActivity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+
+        // BEFORE ANYTHING ASKS WHAT THIS PHONE CAN RUN. Without it DeviceProbe
+        // reports the managed heap limit - about a hundred megabytes in an
+        // Android sandbox - as though it were the hardware, and the model
+        // selector plans against that. A 4 GB phone reads as a wearable.
+        CircleAI.Device.DeviceMemoryProbe.Install();
+
         Park(Intent);
 
 #if DEBUG

@@ -280,6 +280,68 @@ public class RecallTests
     // ------------------------------------------------------------------
 
     [Fact]
+    public async Task When_nothing_else_separates_them_the_better_match_wins()
+    {
+        // THE STORE ALREADY RANKED THESE AND RECALL WAS THROWING IT AWAY.
+        // Sixty-nine skill atoms went into a memory - all facts, none corrected,
+        // none filed under the situation being asked about - so every one scored
+        // identically here and the tie-break became whichever was newest. Asking
+        // about screen readers and asking about Android returned the same first
+        // answer, and it was about neither.
+        using var store = new SqliteAtomStore("Data Source=:memory:");
+
+        // The wrong one is newest, so recency alone would put it on top.
+        await store.AddAsync(new MemoryAtom
+        {
+            Kind = AtomKind.Fact,
+            Text = "Something about deployment pipelines and containers",
+            RecordedAtUtc = DateTimeOffset.UtcNow,
+        });
+        await store.AddAsync(new MemoryAtom
+        {
+            Kind = AtomKind.Fact,
+            Text = "Accessibility: screen readers, contrast and touch targets",
+            RecordedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+        });
+
+        var result = await new Recall(store)
+            .ForAsync(new Situation(Text: "accessibility screen readers touch targets"));
+
+        Assert.NotEmpty(result.Atoms);
+        Assert.StartsWith("Accessibility", result.Atoms[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_road_that_failed_still_beats_a_better_worded_match()
+    {
+        // The relevance nudge orders what the scorer has no opinion about. It
+        // must never outrank the signals the search engine knows nothing about,
+        // and a road already tried and closed is the whole reason for this store.
+        using var store = new SqliteAtomStore("Data Source=:memory:");
+
+        await store.AddAsync(new MemoryAtom
+        {
+            Kind = AtomKind.Decision,
+            Text = "Deploying with -t:Install wipes the models",
+            Subject = "deploy:android",
+            Outcome = DecisionOutcome.Failed,
+            RecordedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-5),
+        });
+        await store.AddAsync(new MemoryAtom
+        {
+            Kind = AtomKind.Decision,
+            Text = "Deploying deploying deploying to android android android",
+            Subject = "deploy:android",
+            RecordedAtUtc = DateTimeOffset.UtcNow,
+        });
+
+        var result = await new Recall(store).ForAsync(new Situation("deploy", "android"));
+
+        Assert.True(result.Atoms[0].Failed,
+            "a keyword-stuffed match displaced the road that already failed");
+    }
+
+    [Fact]
     public void Full_text_search_is_available_in_this_build()
     {
         // A guard on the fallback, not on FTS5. If this ever goes false the

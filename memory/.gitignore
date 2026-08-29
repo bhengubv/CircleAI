@@ -1,0 +1,15 @@
+# Derived, not memory. Rebuilt from the logs on demand.
+index.*.db
+index.*.db-wal
+index.*.db-shm
+
+# This machine's name for itself. Per-machine by definition - sharing it
+# would put two machines back in one log.
+.machine-id
+
+# How worn the paths are HERE. What was decided is shared; how often
+# somebody reached for it on this machine is not, and syncing it would
+# put one machine's habits in charge of what another finds easy to
+# bring to mind.
+wear.*.json
+wear.*.json.tmp

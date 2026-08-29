@@ -58,6 +58,15 @@ public static class MemoryProbe
         var total = Stopwatch.StartNew();
 
         Write("---- memory on this device ----");
+
+        // WHAT THIS PHONE ACTUALLY HAS, now that something bothered to ask it.
+        // Until DeviceMemoryProbe was installed this read the managed heap
+        // limit and Core said so in MeasurementWarning, which nothing printed.
+        var device = CircleAI.Core.DeviceProbe.Snapshot();
+        Write($"device   {Gb(device.RamAvailableBytes)} GB free of {Gb(device.RamTotalBytes)} GB, " +
+              $"source {device.RamSource}");
+        if (device.MeasurementWarning is { Length: > 0 } warning) Write($"  BAD {warning}");
+
         Write($"machine  {folder.Machine}");
         Write($"folder   {folder.Path}");
 
@@ -327,6 +336,10 @@ public static class MemoryProbe
             Subject = "app:launch",
         });
     }
+
+    /// <summary>Gigabytes, invariant. Fifth place a comma decimal has bitten.</summary>
+    private static string Gb(long bytes) =>
+        (bytes / (1024.0 * 1024 * 1024)).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>A number that reads the same on every phone.</summary>
     private static string Number(double value) =>

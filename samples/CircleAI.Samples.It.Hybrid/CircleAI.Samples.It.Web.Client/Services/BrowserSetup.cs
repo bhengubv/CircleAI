@@ -24,6 +24,18 @@ public sealed class BrowserSetup : ISetup
         => Task.FromResult<IReadOnlyList<SetupItem>>([]);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A BROWSER HAS NO MODELS AND SHOULD NOT PRETEND OTHERWISE. The census is
+    /// about what is on a device; here the honest answer is one row saying where
+    /// the work actually happens, rather than a list of absent things that were
+    /// never going to be present.
+    /// </remarks>
+    public Task<Census> CensusAsync(CancellationToken ct = default)
+        => Task.FromResult(new Census(
+            [new CensusRow("the phone app", false, 0, "everything runs there, not here")],
+            Present: 0, Total: 1, Summary: "nothing runs in a browser"));
+
+    /// <inheritdoc />
     /// <remarks>Nothing is ever fetched here, so nothing is ever running.</remarks>
     public bool IsRunning => false;
 
