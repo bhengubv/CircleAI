@@ -41,7 +41,11 @@
     @* THE THING YOU PRESS, and the only large control on the screen. *@
     <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
             aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">
-        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" Ring="true" />
+        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" Ring="true"
+                   Decorative="true" />
+        @* The mark is the whole of this button, and a logo is not a name.
+           See .sr-only. *@
+        <span class="sr-only">@(_state == MarkState.Idle ? "Tap to talk" : "Working")</span>
     </button>
 
     <div class="prompt">@Prompt</div>

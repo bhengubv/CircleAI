@@ -32,7 +32,7 @@
     {
         <header class="app-bar" role="banner">
             <div class="bar-home" role="button" tabindex="0" @onclick="GoHome">
-                <BrandMark Size="30" Ring="true" />
+                <BrandMark Size="30" Ring="true" Decorative="true" />
                 <span class="app-name">Circle AI</span>
             </div>
             <span class="app-where">@ScreenName</span>
@@ -76,8 +76,12 @@
                         @* 52 in a 72px ring: the same proportion the mark had at
                            38 in 56, so the button grew without the logo starting
                            to crowd its own edge. *@
-                        <BrandMark Size="52" State="_state" Level="_level" Ring="true" />
+                        <BrandMark Size="52" State="_state" Level="_level" Ring="true"
+                                   Decorative="true" />
                     </span>
+                    @* The mark is the whole of this button, and a logo is not a
+                       name. See .sr-only. *@
+                    <span class="sr-only">@(_state == MarkState.Idle ? "Talk to it" : "Listening")</span>
                 </button>
             }
             else

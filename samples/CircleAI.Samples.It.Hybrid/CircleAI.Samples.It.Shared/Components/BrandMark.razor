@@ -28,8 +28,9 @@
      viewBox="0 0 100 100"
      width="@(Fluid ? null : Size.ToString())"
      height="@(Fluid ? null : Size.ToString())"
-     role="img"
-     aria-label="@AriaLabel"
+     role="@(Decorative ? null : "img")"
+     aria-label="@(Decorative ? null : AriaLabel)"
+     aria-hidden="@(Decorative ? "true" : null)"
      xmlns="http://www.w3.org/2000/svg">
 
     @* The halo: the same 28/255 plate the native mark sits on. *@
@@ -120,6 +121,20 @@
         MarkState.Speaking  => "bm-speaking",
         _                   => "bm-idle",
     };
+
+    /// <summary>
+    /// Whether this mark is decoration rather than something to announce.
+    /// </summary>
+    /// <remarks>
+    /// TRUE WHENEVER IT SITS INSIDE SOMETHING THAT ALREADY HAS A NAME. A button
+    /// labelled "Tap to talk" containing an image labelled "Circle AI" is two
+    /// competing names for one control, and on the P30 the result was that the
+    /// hero and the voice button did not appear in the accessibility tree at
+    /// all - the four tab items beside them did, because they carry real text.
+    ///
+    /// Somebody using TalkBack could not reach the main control of the app.
+    /// </remarks>
+    [Parameter] public bool Decorative { get; set; }
 
     string AriaLabel => State switch
     {
