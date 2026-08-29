@@ -78,8 +78,11 @@ public sealed class ModelScopeCatalogOptions
 
     private static string DefaultCachePath()
     {
-        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(string.IsNullOrEmpty(roaming) ? "." : roaming, "CircleAI", "catalog");
+        // Beside the models, for the reason in ModelPaths: on Android the old
+        // SpecialFolder.ApplicationData is a subdirectory of the app's own
+        // storage, so this cache landed somewhere nothing else looked.
+        var root = ModelPaths.Root;
+        return Path.Combine(string.IsNullOrEmpty(root) ? "." : root, "CircleAI", "catalog");
     }
 }
 

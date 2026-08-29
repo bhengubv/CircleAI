@@ -26,12 +26,9 @@ namespace CircleAI.Core
 
         public LocalModelLoader(string? modelDirectory = null)
         {
-            _modelDir = modelDirectory ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CircleAI",
-                "Models");
-
-            Directory.CreateDirectory(_modelDir);
+            // See ModelPaths: this used SpecialFolder.ApplicationData, which on
+            // Android is a subdirectory of the folder the app actually uses.
+            _modelDir = ModelPaths.Resolve(modelDirectory);
             _modelRegistry = LoadEmbeddedRegistry();
         }
 

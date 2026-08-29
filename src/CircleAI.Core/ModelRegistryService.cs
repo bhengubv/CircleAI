@@ -47,11 +47,9 @@ namespace CircleAI.Core.Models
         public ModelRegistryService(ModelScopeCatalogClient? catalogClient, string? registryUrl = null)
         {
             _httpClient = new HttpClient();
-            _registryPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CircleAI",
-                "Models",
-                "remote_registry.json");
+            // See ModelPaths. The registry is small, but it has to sit beside
+            // the models it describes or there are two of those as well.
+            _registryPath = Path.Combine(ModelPaths.Default, "remote_registry.json");
 
             _catalogClient = catalogClient;
 

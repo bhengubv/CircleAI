@@ -82,12 +82,10 @@ public sealed class BundleModelLoader : IModelLoader
         IModelDownloadGate? gate = null)
     {
         _gate = gate;
-        _storageRoot = string.IsNullOrWhiteSpace(modelDirectory)
-            ? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CircleAI",
-                "Models")
-            : modelDirectory!;
+        // See ModelPaths: this used SpecialFolder.ApplicationData, which on
+        // Android is a subdirectory of the folder the app actually uses, so a
+        // caller that passed nothing downloaded a second copy of every model.
+        _storageRoot = CircleAI.Core.ModelPaths.Resolve(modelDirectory);
 
         Directory.CreateDirectory(_storageRoot);
 

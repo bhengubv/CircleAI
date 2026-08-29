@@ -233,6 +233,11 @@ public static class MemoryProbe
         Write(held > 0
             ? $"  OK  the app is carrying {held} things from earlier launches"
             : "  --  first launch, nothing carried over yet");
+
+        // WHAT IT ACTUALLY HANDS BACK, not how many. A count says the query ran;
+        // the words say whether the right thing arrived.
+        foreach (var atom in result.Atoms)
+            Write($"  <- {atom.Kind.ToString().ToLowerInvariant()}: {atom.Text}");
     }
 
     /// <summary>Whether what goes unused actually goes quiet here.</summary>
