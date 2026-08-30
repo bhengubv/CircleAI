@@ -34,27 +34,34 @@
     --page: #080B0E;        /* near-black, Shade(slate, 0.18); mirror in theme.js (DARK) */
     --surface: #1B2631;     /* Shade(slate, 0.62) - lifts off the black */
     --chrome: #1B2631;      /* header and tab bar - see light, where they part company */
-    --card: #1B2631;        /* a content block - blue in daylight, see below */
+    --card: #1B2631;        /* a content block, lifted off the page */
+    --card-strong: #2196F3; /* a BLUE fill - tiles, count pills, the selected thing */
+    --blue-press: #1976D2;   /* pressed state of any blue fill */
+    --press: #22303E;        /* pressed state of a neutral surface */
+
+    /* On black the page is already the darkest thing, so elevation is carried by
+       the card being lighter than the page. The shadow only has to seat it. */
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 
     /*
-        TEXT ON A CARD IS WHITE IN BOTH THEMES, which is what makes the light
-        theme's blue cards cost nothing here: the card is dark slate on black and
-        blue on white, and white reads on either. A card sets these rather than
-        --ink, because --ink is the colour for text on the PAGE and the page is
-        the one surface a card is not.
+        TWO KINDS OF SURFACE, AND THEY TAKE DIFFERENT INK.
+
+        --on-surface* is text on a normal CARD: white on the dark card here,
+        deep blue on the white card in daylight. --on-strong is text on a solid
+        BLUE fill - a tile, a count pill, a primary button - and that is white in
+        both themes, because the fill does not flip.
+
+        A card sets these rather than --ink, because --ink is the colour for text
+        on the PAGE, and the page is the one surface a card is not.
     */
     --on-surface: #ffffff;
     --on-surface-soft: rgba(255, 255, 255, 0.78);
     --on-surface-line: rgba(255, 255, 255, 0.22);
+    --on-strong: #ffffff;
 
-    /*
-        A BUTTON ON A CARD IS THE CARD INVERTED. On the dark card it is a blue
-        fill with white text; on the light theme's blue card it is a white fill
-        with blue text - the same relationship, read from the other side.
-    */
-    --card-btn-fill: #2196F3;
+    --card-btn-fill: #2196F3;   /* a button on a card is solid blue in both themes */
     --card-btn-ink: #ffffff;
-    --card-accent: #2196F3;  /* radios and checkboxes on a card */
+    --card-accent: #2196F3;     /* radios and checkboxes on a card */
     --raised: #22303E;      /* Shade(slate, 0.78) */
     --hairline: #293A4C;    /* Shade(slate, 0.95) */
 
@@ -118,48 +125,61 @@
 */
 :root[data-theme="light"] {
     /*
-        THE CARDS ARE BLUE, and this is where the light theme stops being a
-        document. White page, white cards and coloured type is a printed page
-        with a logo on it - the thing this theme kept coming out as. Blue is a
-        SURFACE here, not just ink: a card is a blue block with white text, and
-        the controls on it invert to a white fill with blue text.
+        DEPTH COMES FROM ELEVATION, NOT FROM FILL.
 
-        The chrome does not join in. Header and tab bar stay white, so the blue
-        blocks read as content sitting on a page rather than the whole app being
-        painted in - and so the selected tab still has somewhere to be blue.
+        Every card was a saturated blue block for a while. On the Services grid
+        that reads well - the tiles are small, repeated and shape-like, and the
+        blue is doing work. On a settings group it was a slab: a third of the
+        screen of flat #2196F3 holding two lines of text. The house design
+        system (tgn-design-system-v2.1.css) builds depth the other way - white
+        surfaces, a soft blue-tinted shadow, a hairline - and reserves the solid
+        blue for buttons and the selected thing.
+
+        So blue fill is kept for what earns it: the tiles, the count pills, the
+        selected state, the primary button. Big containers lift off the page
+        instead. --card-strong is the fill; --card is the lifted surface.
+
+        The page is white with a whisper of blue rather than dead white, so a
+        white card has something to lift OFF. It is the brand blue at 4%, not a
+        grey.
     */
-    --page: #ffffff;        /* mirror in theme.js (LIGHT) */
-    --card: #2196F3;        /* CONTENT BLOCKS ARE BLUE */
-    --surface: #ffffff;     /* NOT the card: text inputs and the like stay white */
-    --chrome: #ffffff;      /* bars stay white */
-    --raised: #ffffff;      /* controls ON a blue card: white fill, blue text */
+    --page: #F5FAFE;        /* mirror in theme.js (LIGHT) */
+    --card: #ffffff;        /* lifted by shadow, not painted in */
+    --card-strong: #2196F3; /* the fill, for what earns it */
+    --blue-press: #1976D2;
+    --press: rgba(33, 150, 243, 0.10);  /* a faint blue tint: white on white shows nothing */
+    --surface: #ffffff;     /* text inputs and the like */
+    --chrome: #ffffff;      /* bars */
+    --raised: #ffffff;
 
-    --card-btn-fill: #ffffff;   /* the reverse, as promised */
-    --card-btn-ink: #2196F3;
-    --card-accent: #ffffff;     /* white on the blue card, or it vanishes */
-    --hairline: rgba(33, 150, 243, 0.22);  /* blue at alpha - no slate lines on white either */
+    --shadow: 0 1px 2px rgba(13, 71, 161, 0.06), 0 4px 16px rgba(33, 150, 243, 0.13);
+
+    --hairline: rgba(33, 150, 243, 0.18);
+
+    /* Text on a white card is the deep blue; text on a solid blue fill is white. */
+    --on-surface: #0D47A1;
+    --on-surface-soft: #1976D2;
+    --on-surface-line: rgba(33, 150, 243, 0.18);
+    --on-strong: #ffffff;
 
     /*
-        BLUE IS THE INK IN DAYLIGHT, and with three colours there is no other
-        option: white is the ground here and black type on white is a newspaper.
-        The blue that carries the dark theme carries this one too, so the app
-        still looks like itself with the lights on.
+        THREE DEPTHS OF BLUE, WHICH IS HOW DAYLIGHT GETS A HIERARCHY WITHOUT A
+        GREY. Slate on white is still black on white, so the supporting colour
+        cannot be slate; a second grey is not a colour this brand has. Blue has
+        depth of its own, and the design system already names it:
 
-        SLATE ON WHITE IS STILL BLACK ON WHITE. Secondary text was slate for a
-        while, to stop an all-blue screen reading as a flat wash - and it put
-        dark type back on the white page in the tab strip, the header and the
-        tab bar labels, which is the exact thing this theme is not allowed to
-        be. The flatness was never a text problem: the page had no STRUCTURE
-        because every surface was white. The blue cards fix that, so text can
-        be blue throughout and still have somewhere to sit.
+          #0D47A1  --tgn-primary-darker   content        8.6:1 on white
+          #1976D2  (the pressed blue)     supporting     4.6:1 on white
+          #2196F3  --tgn-primary          accent, fill, selected
 
-        Slate keeps its place in the palette - it is the whole dark theme - it
-        just does not put ink on white paper.
+        That also fixes the thing I could not defend to a client: body copy was
+        #2196F3 on white at 3.1:1, under the 4.5:1 floor, on a phone that gets
+        used in the sun.
     */
-    --ink: #2196F3;
-    --ink-soft: #2196F3;
+    --ink: #0D47A1;
+    --ink-soft: #1976D2;
 
-    --track: rgba(33, 150, 243, 0.22);
+    --track: rgba(33, 150, 243, 0.20);
 
     color-scheme: light;
 }
@@ -262,6 +282,7 @@ a { color: var(--brand-blue); text-decoration: none; }
     border: 1px solid var(--on-surface-line);
     border-radius: var(--radius);
     padding: var(--gutter);
+    box-shadow: var(--shadow);   /* elevation, not fill - see the light block */
 }
 
 .btn {
@@ -283,7 +304,7 @@ a { color: var(--brand-blue); text-decoration: none; }
     The stock button in a dark theme renders as a grey slab with no visible
     pressed state, which reads as "did that work?" - so pressed is explicit.
 */
-.btn:active:not(:disabled) { background: #1976D2; }
+.btn:active:not(:disabled) { background: var(--blue-press); }
 
 .btn-quiet {
     background: transparent;

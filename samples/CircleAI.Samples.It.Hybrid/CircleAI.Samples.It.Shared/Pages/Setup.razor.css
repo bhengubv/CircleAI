@@ -9,7 +9,8 @@
 }
 
 .plan {
-    background: var(--surface);
+    background: var(--card);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 4px 16px;
     margin-top: 16px;
@@ -88,7 +89,8 @@
 }
 
 .tour {
-    background: var(--surface);
+    background: var(--card);
+    box-shadow: var(--shadow);
     border-radius: 14px;
     padding: 16px 18px;
     margin-top: 12px;

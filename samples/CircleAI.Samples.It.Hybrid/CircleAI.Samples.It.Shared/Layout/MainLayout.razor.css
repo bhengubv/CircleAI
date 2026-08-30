@@ -128,7 +128,7 @@
     text-decoration: none;
 }
 
-.tabbar-item:active { background: var(--raised); }
+.tabbar-item:active { background: var(--press); }
 
 .tabbar-icon { line-height: 0; }
 

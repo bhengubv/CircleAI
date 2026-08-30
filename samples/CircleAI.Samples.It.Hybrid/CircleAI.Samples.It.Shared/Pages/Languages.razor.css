@@ -74,7 +74,8 @@
 .card {
     display: flex;
     align-items: center;
-    background: var(--surface);
+    background: var(--card);
+    box-shadow: var(--shadow);
     border-radius: 12px;
     padding: 14px 16px;
     margin-bottom: 10px;
@@ -119,7 +120,7 @@
 /* The row is a control now, so it says so when pressed. */
 .card { cursor: pointer; }
 
-.card:active { background: var(--raised); }
+.card:active { background: var(--press); }
 
 /* The one already chosen, marked so returning to this screen shows the choice
    took rather than leaving the person to remember. */

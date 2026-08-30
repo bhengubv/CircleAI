@@ -20,7 +20,7 @@
 */
 (function () {
     var KEY = 'circleai.theme';                 // 'light', or absent for dark
-    var DARK = '#080B0E', LIGHT = '#ffffff';     // mirror --page in app.css
+    var DARK = '#080B0E', LIGHT = '#F5FAFE';     // mirror --page in app.css
 
     function paint(light) {
         var root = document.documentElement;
