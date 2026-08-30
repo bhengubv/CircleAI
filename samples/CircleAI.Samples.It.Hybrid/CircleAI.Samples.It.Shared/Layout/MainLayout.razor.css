@@ -130,7 +130,16 @@
 
 .tabbar-item:active { background: var(--raised); }
 
-.tabbar-icon { font-size: 19px; line-height: 1; }
+.tabbar-icon { line-height: 0; }
+
+/*
+    Line icons, tinted by currentColor. Presentation (size, stroke, join)
+    lives on the <svg> tag itself in MainLayout - a MarkupString-injected
+    svg does not carry this component's scope attribute, so a scoped
+    `.tabbar-icon svg` rule would never match it. An active tab sets color
+    to the brand blue and the stroke inherits it, so the icon turns blue
+    with its label instead of staying grey the way a colour emoji did.
+*/
 
 .tabbar-label {
     font-size: 11px;
