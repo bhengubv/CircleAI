@@ -45,11 +45,13 @@
         carrying real content (Home's three value-prop lines) in a caption's
         colour.
 
-        Secondary text is now the SAME ink. The hierarchy is already in the type
-        - the captions are 13-15px against a 20px bold prompt - so it does not
-        need a colour of its own, and inventing one cost the palette its third
-        colour. Where something must genuinely recede it uses the ink at alpha,
-        which is still the ink, never a new hue.
+        Secondary text on the black page is the SAME white ink, and the type
+        carries the hierarchy - the captions are 13-15px against a 20px bold
+        prompt. Slate cannot do the supporting job HERE the way it does in
+        daylight: on a near-black page it measures about 1.5:1 and would be a
+        caption nobody can read. So the two themes are not symmetric, and they
+        should not be - white leads on black, blue leads on white, and only the
+        light side has a third colour dark enough to support with.
     */
     --ink: #ffffff;
     --ink-soft: #ffffff;
@@ -109,18 +111,26 @@
     --page: #ffffff;        /* mirror in theme.js (LIGHT) */
     --surface: #ffffff;
     --raised: #ffffff;
-    --hairline: rgba(33, 150, 243, 0.28);  /* blue at alpha - the edge that does the work */
+    --hairline: rgba(44, 62, 80, 0.18);  /* slate at alpha: structure, not interaction */
 
     /*
         BLUE IS THE INK IN DAYLIGHT, and with three colours there is no other
         option: white is the ground here and black type on white is a newspaper.
         The blue that carries the dark theme carries this one too, so the app
         still looks like itself with the lights on.
-    */
-    --ink: #2196F3;
-    --ink-soft: #2196F3;    /* same ink; the type carries the hierarchy */
 
-    --track: rgba(33, 150, 243, 0.24);  /* the ink at alpha */
+        AND SLATE IS WHY BLUE STILL MEANS SOMETHING. With blue as the ink AND
+        the accent, the Services screen came out a flat blue wash - header,
+        every category, every count, every chevron and both tab labels one
+        colour, so nothing led and the active tab was told apart by weight
+        alone. Slate is the third colour and it takes the supporting work:
+        captions, counts, inactive tabs. Blue leads, slate supports, and the
+        selected thing is the only blue in a row of slate.
+    */
+    --ink: #2196F3;         /* what you came to read, and what you can act on */
+    --ink-soft: #2c3e50;    /* THE slate - supporting text and inactive chrome */
+
+    --track: rgba(44, 62, 80, 0.18);
 
     color-scheme: light;
 }
