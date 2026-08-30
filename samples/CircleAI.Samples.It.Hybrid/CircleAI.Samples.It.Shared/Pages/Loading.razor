@@ -125,6 +125,18 @@
         await FetchAsync(shownAt);
     }
 
+    /// <summary>Re-read the census and repaint, so a just-completed row turns green.</summary>
+    async Task RefreshCensusAsync()
+    {
+        try
+        {
+            var fresh = await Wizard.CensusAsync();
+            _census = fresh;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* keep the last census; a failed re-read is not worth a blank screen */ }
+    }
+
     /// <summary>Hold the screen until at least this many ms have passed since it showed.</summary>
     static async Task HoldAtLeast(DateTimeOffset shownAt, int ms)
     {
@@ -134,9 +146,24 @@
 
     async Task FetchAsync(DateTimeOffset shownAt)
     {
+        // THE ROWS TURN GREEN AS THEY LAND, not all at once at the end. The
+        // report's Index says which item is downloading, so everything before it
+        // is done - and when the index moves on, a row just completed and the
+        // census is worth re-reading so its tick flips. Without this the screen
+        // showed 0 OF 5 with a moving bar the whole way through, and the "watch
+        // it fill in" that is the point of the screen never happened.
+        var lastIndex = -1;
         var progress = new Progress<SetupProgressReport>(report =>
         {
             _progress = report;
+
+            if (report.Index != lastIndex)
+            {
+                lastIndex = report.Index;
+                // An item finished; re-census off the UI thread, then repaint.
+                _ = RefreshCensusAsync();
+            }
+
             InvokeAsync(StateHasChanged);
         });
 
@@ -144,9 +171,8 @@
         catch { /* a failed fetch leaves the census truthful: it is still missing */ }
 
         // The download is done, whatever it managed to get. Re-read the census
-        // so the ticks are current, then go.
-        try { _census = await Wizard.CensusAsync(); } catch { }
-        await InvokeAsync(StateHasChanged);
+        // so the last tick is current, then go.
+        await RefreshCensusAsync();
 
         // Let the finished census sit a moment - the ticks turning green is the
         // last thing worth seeing before Home.
