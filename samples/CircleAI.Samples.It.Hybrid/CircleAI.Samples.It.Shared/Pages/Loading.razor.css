@@ -1,0 +1,119 @@
+/*
+    The loading screen.
+
+    Full height, its own world, no bottom bar. The mark up top, what this phone
+    can do in the middle, the work along the bottom when there is work. It reads
+    top to bottom once and then it is gone.
+*/
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100dvh;
+    padding: 0 28px 40px;
+    box-sizing: border-box;
+}
+
+.loading-mark {
+    width: min(160px, 46vw);
+    margin-top: 12dvh;
+    flex: none;
+}
+
+.loading-lead {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+    text-wrap: balance;
+    margin: 24px 0 4px;
+}
+
+/*
+    THE HONESTY. One row per capability, present or not, every one named - which
+    is the whole point and the one thing Aether's version gets wrong when it
+    counts "10" of a list of seven.
+*/
+.loading-census {
+    width: 100%;
+    max-width: 420px;
+    margin-top: 20px;
+}
+
+.loading-summary {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding-bottom: 12px;
+}
+
+.loading-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 7px 0;
+    font-size: 16px;
+}
+
+.loading-mark-cell {
+    width: 16px;
+    flex: none;
+    text-align: center;
+}
+
+.loading-title { flex: 1; }
+
+.loading-detail {
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: right;
+}
+
+/* Here: a tick in the brand blue, full-strength text. */
+.loading-here { color: var(--ink); }
+.loading-here .loading-mark-cell { color: var(--brand-blue); }
+
+/*
+    Coming: dimmer, with a down-arrow rather than a cross. Missing is not a
+    failure here - it is being fetched right now, behind this screen - so it
+    reads as in-progress, not absent.
+*/
+.loading-coming { color: var(--ink-soft); }
+.loading-coming .loading-mark-cell { color: var(--ink-soft); }
+
+/*
+    THE WORK. A thin bar, shown only while something is actually downloading, so
+    a phone that already has everything shows a clean census and no bar rather
+    than a full one that reads as stuck.
+*/
+.loading-bar {
+    width: 100%;
+    max-width: 420px;
+    height: 4px;
+    margin-top: 28px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.loading-bar span {
+    display: block;
+    height: 100%;
+    background: var(--brand-blue);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+
+.loading-step {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: var(--ink-soft);
+    margin-top: 10px;
+}
+
+.loading-of { flex: none; }

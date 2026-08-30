@@ -1,0 +1,180 @@
+@*
+    The loading screen — the honesty screen.
+
+    NOT SETUP. Setup is the one-time "do you want to spend 800 MB" decision.
+    This is what somebody meets on EVERY launch, and its job is the one Aether's
+    opening screen does: while the phone gets itself ready, tell the person
+    exactly what this handset can and cannot do, in plain words, so that every
+    limitation they hit later was disclosed at the door rather than discovered
+    as a fault.
+
+    THREE THINGS AT ONCE.
+      - What this phone can already do, and what it is still missing. Named, every
+        row, because a count of something the screen does not show is Aether's one
+        mistake - "10 of 10 ready" over a list of seven.
+      - Work started behind it. Anything missing begins downloading here; the
+        person does not press a button to make their phone useful.
+      - It gets OUT OF THE WAY. On the fifth launch everything is present, the
+        census is all ticks, and this is a half-second receipt on the way to Home.
+        On the first it is doing real work and takes as long as the work takes.
+*@
+@page "/"
+@inject ISetup Wizard
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="loading">
+
+    <div class="loading-mark">
+        <BrandMark Fluid="true" State="MarkState.Thinking" Halo="true" Ring="true" Decorative="true" />
+    </div>
+
+    <h1 class="loading-lead">@_lead</h1>
+
+    @if (_census is { Rows.Count: > 0 })
+    {
+        <div class="loading-census">
+            <div class="loading-summary">@_census.Summary</div>
+
+            @foreach (var row in _census.Rows)
+            {
+                <div class="loading-row @(row.Present ? "loading-here" : "loading-coming")">
+                    <span class="loading-mark-cell">@(row.Present ? "✓" : "↓")</span>
+                    <span class="loading-title">@row.Title</span>
+                    <span class="loading-detail">
+                        @(row.Present ? row.Detail : Size(row.Bytes))
+                    </span>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_progress is { } p && p.Count > 0)
+    {
+        @* THE WORK, HAPPENING. A bar only while something is actually being
+           fetched, so a phone that has everything shows a clean census and no
+           bar rather than a full one that reads as stuck. *@
+        <div class="loading-bar"><span style="width:@($"{p.Fraction * 100:0}%")"></span></div>
+        <p class="loading-step">
+            @p.Title
+            <span class="loading-of">@Remaining(p.Remaining)</span>
+        </p>
+    }
+</div>
+
+@code {
+    Census? _census;
+    SetupProgressReport? _progress;
+    string _lead = "Waking up";
+    bool _left;
+    bool _started;
+
+    // HOW LONG THE CENSUS IS ON SCREEN, from first paint. Long enough to read a
+    // short list and take it in - Aether's honesty screen is meant to be sat on,
+    // not glimpsed. The download path overrides this: it stays until the fetch
+    // is done however long that is.
+    const int ReadableMs = 2600;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // OFFLINE, AND FAST. The census reads an embedded catalogue and checks
+        // which anchor files are on disk by size - no network, no hashing. It
+        // used to hash 470 MB of chat model on every launch, which is where the
+        // four seconds went; it is milliseconds now. So no ceiling, no fallback
+        // to a blank "Waking up": the census is the screen, and it shows.
+        // The census is offline and fast - read it now so it is on screen the
+        // instant the WebView paints, rather than popping in after.
+        try { _lead = (await Wizard.ReadinessAsync()).Headline; }
+        catch { /* keep "Waking up" */ }
+
+        try { _census = await Wizard.CensusAsync(); }
+        catch { _census = null; }
+
+        // The census is ready. Show it, then release the paint handler that is
+        // waiting to time the readable hold.
+        await InvokeAsync(StateHasChanged);
+        _censusReady.TrySetResult();
+    }
+
+    readonly TaskCompletionSource _censusReady = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _started) return;
+        _started = true;
+
+        // WAIT FOR THE CENSUS, THEN START THE CLOCK. This fires the instant the
+        // first frame paints, which is before OnInitializedAsync's awaits
+        // resolve - so timing the hold from here read _census while it was still
+        // null. The hold only means anything once there is something to hold.
+        await _censusReady.Task;
+
+        var shownAt = DateTimeOffset.UtcNow;
+
+        // Nothing missing: a receipt. Hold it long enough to read, then Home.
+        if (_census is null || _census is { Total: > 0 } c && c.Present >= c.Total)
+        {
+            await HoldAtLeast(shownAt, ReadableMs);
+            Leave();
+            return;
+        }
+
+        // Something missing: fetch it behind the screen, census showing what is
+        // here and what is coming.
+        await FetchAsync(shownAt);
+    }
+
+    /// <summary>Hold the screen until at least this many ms have passed since it showed.</summary>
+    static async Task HoldAtLeast(DateTimeOffset shownAt, int ms)
+    {
+        var left = ms - (int)(DateTimeOffset.UtcNow - shownAt).TotalMilliseconds;
+        if (left > 0) await Task.Delay(left);
+    }
+
+    async Task FetchAsync(DateTimeOffset shownAt)
+    {
+        var progress = new Progress<SetupProgressReport>(report =>
+        {
+            _progress = report;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Wizard.RunAsync(progress); }
+        catch { /* a failed fetch leaves the census truthful: it is still missing */ }
+
+        // The download is done, whatever it managed to get. Re-read the census
+        // so the ticks are current, then go.
+        try { _census = await Wizard.CensusAsync(); } catch { }
+        await InvokeAsync(StateHasChanged);
+
+        // Let the finished census sit a moment - the ticks turning green is the
+        // last thing worth seeing before Home.
+        await HoldAtLeast(shownAt, ReadableMs);
+        Leave();
+    }
+
+    void Leave()
+    {
+        if (_left) return;
+        _left = true;
+        Nav.NavigateTo("home");
+    }
+
+    static string Size(long bytes) => bytes switch
+    {
+        <= 0 => "",
+        < 1024L * 1024 => $"{bytes / 1024.0:0} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.0} GB",
+    };
+
+    static string Remaining(TimeSpan left) => left switch
+    {
+        { TotalSeconds: < 1 } => "almost there",
+        { TotalMinutes: >= 1 } => $"about {left.TotalMinutes:0} min left",
+        _ => $"about {left.TotalSeconds:0} sec left",
+    };
+
+    public void Dispose() => _left = true;
+}

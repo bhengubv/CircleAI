@@ -171,7 +171,7 @@ public static class FirstRun
                 // asked "is there any model of this modality on disk", which for
                 // two voices would have seen the first one land and skipped the
                 // second — fetching one voice and reporting both as done.
-                if (loader.ModelExists(named)) continue;
+                if (loader.ModelPresent(named)) continue;
                 if (declined is not null && declined(named)) continue;
 
                 pick = registry.AllModels.FirstOrDefault(
@@ -182,7 +182,7 @@ public static class FirstRun
             {
                 // Already there is already done. Note this asks the loader, not the
                 // registry: what matters is bytes on disk, not what we know about.
-                if (registry.AllModels.Any(m => m.Modality == modality && loader.ModelExists(m.Name)))
+                if (registry.AllModels.Any(m => m.Modality == modality && loader.ModelPresent(m.Name)))
                     continue;
 
                 // The same choice the abilities screen makes, deliberately: best that
@@ -281,7 +281,7 @@ public static class FirstRun
                 ? registry.AllModels.FirstOrDefault(m =>
                       string.Equals(m.Name, named, StringComparison.OrdinalIgnoreCase))
                 : registry.AllModels.FirstOrDefault(m =>
-                      m.Modality == modality && loader.ModelExists(m.Name));
+                      m.Modality == modality && loader.ModelPresent(m.Name));
 
             rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0, Detail(entry, modality)));
         }

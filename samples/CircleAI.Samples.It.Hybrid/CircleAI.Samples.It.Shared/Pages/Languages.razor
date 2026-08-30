@@ -190,7 +190,7 @@
     {
         var settings = await Settings.LoadAsync();
         await Settings.SaveAsync(settings with { Language = row.Tag });
-        Nav.NavigateTo("");
+        Nav.NavigateTo("home");
     }
 
     async Task Speak(Row row)

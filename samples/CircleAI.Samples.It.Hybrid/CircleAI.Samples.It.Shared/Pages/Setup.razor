@@ -27,56 +27,28 @@
     <h1 class="lead">@(_done ? "It is ready" : _running ? "Getting it ready" : _lead)</h1>
     <p class="sub">@Sub</p>
 
-    @*
-        ONE LIST, NOT TWO.
-
-        This screen exists to make one decision easier: whether to spend this
-        much of somebody's data right now. So every capability is on one line -
-        what it gives you if it is here, what it costs if it is not - and the
-        total underneath is the number that decides it.
-
-        It was briefly two lists, a census of what is present and a plan of what
-        is missing, which named the same things twice. That is the fault this app
-        has had four times over, committed while writing the screen that reports
-        it.
-
-        Shown while waiting as well as before starting, because these seconds are
-        the only ones anybody will spend learning what their phone can do. On a
-        cheap handset more is missing, which makes the people most likely to be
-        missing something exactly who this is for.
-    *@
-    @if (_census is { Rows.Count: > 0 })
+    @if (!_running)
     {
-        <div class="census">
-            <div class="census-head">@_census.Summary</div>
-            @foreach (var row in _census.Rows)
+        <div class="plan">
+            @foreach (var item in _plan)
             {
-                <div class="census-row @(row.Present ? null : "census-missing")">
-                    <span class="census-mark">@(row.Present ? "✓" : "—")</span>
-                    <span class="census-title">@row.Title</span>
-                    <span class="census-detail">
-                        @(row.Present ? row.Detail : Size(row.Bytes))
-                    </span>
+                <div class="plan-row">
+                    <span class="plan-title">@item.Title</span>
+                    <span class="plan-size">@Size(item.Bytes)</span>
                 </div>
             }
-
-            @* THE NUMBER THAT DECIDES IT, for anybody on a metered connection.
-               Stated before starting rather than discovered halfway through. *@
-            @if (_census.Total > _census.Present)
+            @if (_plan.Count > 0)
             {
-                <div class="census-row census-total">
-                    <span class="census-mark"></span>
-                    <span class="census-title">Still to fetch</span>
-                    <span class="census-detail">
-                        @Size(_census.Rows.Where(r => !r.Present).Sum(r => r.Bytes))
-                    </span>
+                @* The total is the number that decides whether somebody on a
+                   metered connection starts at all, so it is stated up front
+                   rather than discovered halfway through. *@
+                <div class="plan-row plan-total">
+                    <span class="plan-title">Altogether</span>
+                    <span class="plan-size">@Size(_plan.Sum(p => p.Bytes))</span>
                 </div>
             }
         </div>
-    }
 
-    @if (!_running)
-    {
         <button class="start" @onclick="Start" disabled="@(_plan.Count == 0)">
             @(_plan.Count == 0 ? "Nothing to fetch" : "Start")
         </button>
@@ -184,19 +156,9 @@
     /// </remarks>
     string _lead = "Let's set it up";
 
-    /// <summary>What this device can already do, or null if it could not say.</summary>
-    Census? _census;
-
     protected override async Task OnInitializedAsync()
     {
         _lead = (await Wizard.ReadinessAsync()).Headline;
-
-        // BEFORE THE PLAN, because it is what fills the wait. Its own try, so a
-        // head that cannot answer it still gets a working setup screen - the
-        // census is what makes this informative, not what makes it function.
-        try { _census = await Wizard.CensusAsync(); }
-        catch { _census = null; }
-
         _plan = await Wizard.PlanAsync();
 
         // ALREADY GOING. Tapping Home on the bar during an 817 MB download kills

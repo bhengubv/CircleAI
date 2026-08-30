@@ -46,7 +46,7 @@ public sealed class DeviceSetup : ISetup
             using var loader = new BundleModelLoader(StorageDir, registry);
 
             bool Has(ModelModality m) => registry.AllModels
-                .Any(e => e.Modality == m && loader.ModelExists(e.Name));
+                .Any(e => e.Modality == m && loader.ModelPresent(e.Name));
 
             var voice = Has(ModelModality.Tts);
             var ears = Has(ModelModality.Asr);
@@ -266,7 +266,7 @@ public sealed class DeviceSetup : ISetup
             using var loader = new BundleModelLoader(StorageDir, registry);
 
             bool Has(ModelModality m) => registry.AllModels
-                .Any(e => e.Modality == m && loader.ModelExists(e.Name));
+                .Any(e => e.Modality == m && loader.ModelPresent(e.Name));
 
             var steps = new List<TourStep>();
             var budget = remaining.TotalSeconds;

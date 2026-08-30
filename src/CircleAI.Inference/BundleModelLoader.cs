@@ -238,6 +238,56 @@ public sealed class BundleModelLoader : IModelLoader
     /// True when the model is cached AND passes its integrity check — the
     /// weight file's pinned SHA-256 for bundles, the file checksum otherwise.
     /// </summary>
+    /// <summary>
+    /// Is this model present, without hashing it?
+    /// </summary>
+    /// <remarks>
+    /// THE HASH IS FOR LOADING, NOT FOR ASKING. ModelExists verifies the anchor
+    /// file's SHA-256, which for the chat model means hashing 470 MB - fine
+    /// before you load a model into an inference engine, ruinous on a loading
+    /// screen that asks about every model on every launch. That was the four
+    /// seconds a census took on a P30.
+    ///
+    /// "Is it here" is a different question from "is it intact", and a census
+    /// asks the first: the anchor file exists at its full catalogued size. A
+    /// truncated download fails the size check; a bit-flip it will not catch,
+    /// and does not need to - the load path still hashes.
+    /// </remarks>
+    public bool ModelPresent(string modelName)
+    {
+        try
+        {
+            ThrowIfDisposed();
+            var entry = _registry.GetLatestModel(modelName);
+            if (entry is null) return false;
+
+            if (entry.IsBundle)
+            {
+                var modelDir = Path.Combine(_storageRoot, modelName);
+                if (!Directory.Exists(modelDir)) return false;
+
+                if (entry.Modality == ModelModality.Chat &&
+                    !File.Exists(Path.Combine(modelDir, ConfigFileName)))
+                    return false;
+
+                var anchor = entry.BundleFiles!
+                    .FirstOrDefault(f => string.Equals(f.Name, AnchorFileName, StringComparison.OrdinalIgnoreCase))
+                    ?? entry.BundleFiles!.OrderByDescending(f => f.SizeBytes).FirstOrDefault();
+                if (anchor is null) return false;
+
+                var info = new FileInfo(Path.Combine(modelDir, anchor.Name));
+                return info.Exists && info.Length >= anchor.SizeBytes;
+            }
+
+            var filePath = Path.Combine(_storageRoot, modelName + ".gguf");
+            return File.Exists(filePath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public bool ModelExists(string modelName)
     {
         try

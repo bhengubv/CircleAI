@@ -62,6 +62,13 @@
         <div class="says" role="status" @onclick="() => _says = null">@_says</div>
     }
 
+    @*
+        NO BAR ON THE FULL-SCREEN STAGES. Loading and setup each own the whole
+        screen - a bar under them offers somewhere to go before there is anywhere
+        worth going, and the loading screen leaves for Home on its own.
+    *@
+    @if (!IsFullScreen)
+    {
     <nav class="tabbar" role="navigation">
         @foreach (var item in Bottom)
         {
@@ -94,6 +101,7 @@
             }
         }
     </nav>
+    }
 </div>
 
 @code {
@@ -135,7 +143,7 @@
     /// </remarks>
     static readonly BottomItem[] Bottom =
     [
-        new("", "Home", "⌂"),
+        new("home", "Home", "⌂"),
         new("services", "Services", "🔧"),
         new(VoiceRoute, "Voice", "🎙"),
         new("you", "You", "👤"),
@@ -222,7 +230,10 @@
     bool IsHere(string route)
         => string.Equals(Path(), route.Trim('/'), StringComparison.OrdinalIgnoreCase);
 
-    void GoHome() => Nav.NavigateTo("");
+    /// <summary>The stages that own the whole screen and carry no bottom bar.</summary>
+    bool IsFullScreen => Path() is "" or "setup";
+
+    void GoHome() => Nav.NavigateTo("home");
 
     MarkState _state = MarkState.Idle;
     double _level;
