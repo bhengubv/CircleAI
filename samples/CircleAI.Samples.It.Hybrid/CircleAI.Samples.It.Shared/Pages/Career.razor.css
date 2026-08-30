@@ -41,7 +41,7 @@
     border-radius: 10px;
 }
 
-.answer::placeholder { color: var(--ink-soft); }
+.answer::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .buttons {
     display: flex;
@@ -67,7 +67,7 @@
 }
 
 .btn-primary {
-    color: var(--ink);
+    color: var(--on-brand);
     background: var(--brand-blue);
     border: 0;
 }
@@ -92,7 +92,7 @@
     background: #ffffff;
     border-radius: 8px;
     padding: 20px;
-    color: #111111;
+    color: #000000;   /* a printed page: black on white */
 }
 
 .cv-name { font-size: 20px; font-weight: 700; }

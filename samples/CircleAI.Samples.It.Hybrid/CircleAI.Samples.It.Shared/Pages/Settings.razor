@@ -21,6 +21,7 @@
 @inject IWakePhrases Phrases
 @inject IVoiceHost Voice
 @inject IDeviceFacts Facts
+@inject IJSRuntime JS
 
 <div class="tabs" role="tablist">
     @for (var i = 0; i < TabNames.Length; i++)
@@ -300,6 +301,21 @@ else
     *@
     <section class="group">
 
+        @*
+            APPEARANCE sits on the Phone tab because it is a setting of this
+            phone's display, and the four tabs are fixed - a fifth "Look" tab
+            would wrap the strip on a 344px screen. Off is the app's dark theme,
+            on is the light one; it applies the instant you tap it and theme.js
+            remembers it for next launch.
+        *@
+        <label class="row">
+            <span class="row-text">
+                <span class="row-title">Light appearance</span>
+                <span class="row-sub">A light background instead of the dark one.</span>
+            </span>
+            <input type="checkbox" checked="@_light" @onchange="ToggleTheme" />
+        </label>
+
         @if (_trouble is not null)
         {
             <p class="warn">@_trouble</p>
@@ -407,6 +423,9 @@ else
     PhoneFacts _phone = new([], []);
     string? _turning;
 
+    /// <summary>Whether the light appearance is on, read from theme.js after render.</summary>
+    bool _light;
+
     /// <summary>A phrase being typed, and what the listener made of it.</summary>
     string _typed = "";
     WakePhraseResult? _said;
@@ -435,6 +454,19 @@ else
         .ToList();
 
     protected override async Task OnInitializedAsync() => await Reload();
+
+    /// <summary>Read the current appearance once the page can call JS.</summary>
+    /// <remarks>
+    /// AFTER RENDER, NOT IN INIT. theme.js lives in the browser, and JS interop
+    /// on a Blazor WebView is only safe once the first frame has painted - the
+    /// same reason the loading screen times its hold from there and not from init.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { _light = await JS.InvokeAsync<bool>("circleaiTheme.isLight"); StateHasChanged(); }
+        catch { /* JS not ready or storage off: the toggle simply reads as dark */ }
+    }
 
     /// <summary>What went wrong loading this screen, if anything.</summary>
     /// <remarks>
@@ -585,6 +617,18 @@ else
     {
         _s = next;
         await Store.SaveAsync(next);
+    }
+
+    /// <summary>Flip the whole app between dark and light, now and for next launch.</summary>
+    /// <remarks>
+    /// The work is in theme.js: it flips data-theme on the document so every
+    /// token re-resolves at once, and remembers the choice. No reload, and
+    /// nothing to keep in sync here - the page is already showing the live theme.
+    /// </remarks>
+    async Task ToggleTheme(ChangeEventArgs e)
+    {
+        _light = (bool)(e.Value ?? false);
+        await JS.InvokeVoidAsync("circleaiTheme.set", _light);
     }
 
     static string Size(long bytes)

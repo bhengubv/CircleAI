@@ -94,7 +94,7 @@
     height: 4px;
     margin-top: 28px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--track);   /* themed: a light groove on dark, a dark one on light */
     overflow: hidden;
 }
 

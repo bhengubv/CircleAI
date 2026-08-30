@@ -323,7 +323,7 @@
     font: inherit;
     font-size: 13px;
     font-weight: 700;
-    color: var(--ink);
+    color: var(--on-brand);
     background: var(--brand-blue);
     border: 0;
     border-radius: 10px;

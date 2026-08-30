@@ -24,7 +24,7 @@
     resize: vertical;
 }
 
-.spec::placeholder { color: var(--ink-soft); }
+.spec::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .go {
     font: inherit;
@@ -32,7 +32,7 @@
     width: 100%;
     margin-top: 14px;
     min-height: 2.75rem;
-    color: var(--ink);
+    color: var(--on-brand);
     background: var(--brand-blue);
     border: 0;
     border-radius: 12px;

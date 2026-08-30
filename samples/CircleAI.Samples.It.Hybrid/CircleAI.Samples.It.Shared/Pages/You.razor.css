@@ -146,7 +146,7 @@
     border-radius: 8px;
 }
 
-.line-input::placeholder { color: var(--ink-soft); }
+.line-input::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .line-text { flex: 1; min-width: 0; }
 
@@ -209,7 +209,7 @@
 
 /* Being asked is the primary way things get onto this screen, so it wears the
    brand colour and the CV - one document made from it - does not. */
-.soft { color: #ffffff; background: var(--brand-blue); border: 0; }
+.soft { color: var(--on-brand); background: var(--brand-blue); border: 0; }
 
 .soft-2 {
     color: var(--ink);

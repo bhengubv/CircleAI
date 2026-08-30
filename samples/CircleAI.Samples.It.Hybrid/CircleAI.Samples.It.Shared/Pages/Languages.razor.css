@@ -62,7 +62,7 @@
     border-radius: 10px;
 }
 
-.search::placeholder { color: var(--ink-soft); }
+.search::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .list {
     flex: 1 1 auto;

@@ -10,7 +10,10 @@
     <!-- Set on the document as well as in the stylesheet: the web view paints
          before the stylesheet is applied, and for that frame a dark app would
          render on white - the same flash the splash exists to remove. -->
-    <style>html,body{background:#121A21;margin:0}</style>
+    <style>html,body{background:#080B0E;margin:0}</style>
+    <!-- Before the stylesheet: sets data-theme, and repaints the guard above for
+         a light choice, so the very first frame is already the right theme. -->
+    <script src="_content/CircleAI.Samples.It.Shared/theme.js"></script>
     <link rel="stylesheet" href="_content/CircleAI.Samples.It.Shared/app.css" />
     <link rel="stylesheet" href="CircleAI.Samples.It.App.styles.css" />
     <link rel="icon" href="data:," />

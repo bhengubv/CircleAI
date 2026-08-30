@@ -4,8 +4,11 @@
     THREE COLOURS, and the shades are derived rather than picked. Blue #2196F3,
     slate #2c3e50, white - the same three the native head uses, and the greys are
     computed from slate exactly as Ui.Shade does (slate * factor), so the two
-    heads cannot end up almost-matching. #121A21 is Shade(slate, 0.42), and it is
-    the colour a screenshot of the running app actually measures.
+    heads cannot end up almost-matching. The dark PAGE is a near-black
+    Shade(slate, 0.18) - a deliberate step past the native's #121A21 charcoal,
+    with the cards and bars kept on the slate ladder above it so they lift off the
+    black. Not pure #000: white text halates on true black and elevation stops
+    reading, so it holds a whisper of slate.
 
     NO SCROLLBARS. Content still scrolls - the bars are hidden, not the overflow.
     A visible scrollbar on a phone is chrome nobody asked for, and on a dark page
@@ -20,13 +23,38 @@
     --brand-blue: #2196F3;
     --brand-slate: #2c3e50;
 
-    --page: #121A21;        /* Shade(slate, 0.42) */
-    --surface: #1B2631;     /* Shade(slate, 0.62) */
+    /*
+        TEXT ON A BRAND-BLUE FILL - white in BOTH themes, because the fill does
+        not flip. A button coloured with --ink went white-on-blue in dark but
+        DARK-on-blue in light, since --ink flips and --brand-blue does not. This
+        is the role, named once; every blue button reads from it.
+    */
+    --on-brand: #ffffff;
+
+    --page: #080B0E;        /* near-black, Shade(slate, 0.18); mirror in theme.js (DARK) */
+    --surface: #1B2631;     /* Shade(slate, 0.62) - lifts off the black */
     --raised: #22303E;      /* Shade(slate, 0.78) */
     --hairline: #293A4C;    /* Shade(slate, 0.95) */
 
+    /*
+        THREE COLOURS, AND GREY IS NOT ONE OF THEM.
+
+        --ink-soft used to be #A0A8B0 - a grey blended out of white and slate,
+        and a colour the brand does not have. On the black page it glowed just
+        enough to pass; in daylight it was washed-out and dead, and it was
+        carrying real content (Home's three value-prop lines) in a caption's
+        colour.
+
+        Secondary text is now the SAME ink. The hierarchy is already in the type
+        - the captions are 13-15px against a 20px bold prompt - so it does not
+        need a colour of its own, and inventing one cost the palette its third
+        colour. Where something must genuinely recede it uses the ink at alpha,
+        which is still the ink, never a new hue.
+    */
     --ink: #ffffff;
-    --ink-soft: #A0A8B0;    /* Blend(white, slate, 0.45) */
+    --ink-soft: #ffffff;
+
+    --track: rgba(255, 255, 255, 0.16);  /* the ink at alpha - a groove, not a grey */
 
     --bar-height: 3.5rem;
     --gutter: 1rem;
@@ -47,6 +75,54 @@
         the property the platform actually consults.
     */
     color-scheme: dark;
+}
+
+/*
+    LIGHT APPEARANCE - opt-in, from the toggle in Settings.
+
+    The app is dark by default and by identity; this is the second half of the
+    same three colours, not a different design. Slate becomes the ink where it
+    was the ground and white becomes the ground where it was the ink - the same
+    palette read from the other end. Nothing is blended into a grey to get here.
+
+    theme.js sets data-theme="light" on <html> before this stylesheet loads, so
+    the first paint is already light and there is no flash. color-scheme flips
+    WITH the theme, and that is the point of doing it here rather than forcing
+    one: the platform draws the select dropdown, the caret and autofill off
+    color-scheme, so a light app on color-scheme:dark is the white-on-white
+    language picker the dark app hit - just reversed. One switch moves both.
+*/
+:root[data-theme="light"] {
+    /*
+        THE SAME THREE COLOURS, INVERTED. White is the ground, SLATE is the ink,
+        and blue carries every selected and active state exactly as it does in
+        the dark - so daylight is this app in daylight, not a newspaper.
+
+        Slate rather than newsprint black is what keeps it off the front page:
+        #2c3e50 is one of the three, it is 10.9:1 on white, and it is the colour
+        the whole dark theme is shaded out of - the two themes are one palette
+        seen from either end.
+
+        Surfaces are white on white and separated by a slate hairline at alpha
+        rather than by a grey fill, because a grey fill would be a fourth colour.
+    */
+    --page: #ffffff;        /* mirror in theme.js (LIGHT) */
+    --surface: #ffffff;
+    --raised: #ffffff;
+    --hairline: rgba(33, 150, 243, 0.28);  /* blue at alpha - the edge that does the work */
+
+    /*
+        BLUE IS THE INK IN DAYLIGHT, and with three colours there is no other
+        option: white is the ground here and black type on white is a newspaper.
+        The blue that carries the dark theme carries this one too, so the app
+        still looks like itself with the lights on.
+    */
+    --ink: #2196F3;
+    --ink-soft: #2196F3;    /* same ink; the type carries the hierarchy */
+
+    --track: rgba(33, 150, 243, 0.24);  /* the ink at alpha */
+
+    color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -151,7 +227,7 @@ a { color: var(--brand-blue); text-decoration: none; }
 .btn {
     font: inherit;
     font-weight: 600;
-    color: var(--ink);
+    color: var(--on-brand);
     background: var(--brand-blue);
     border: 0;
     border-radius: var(--radius);
@@ -186,7 +262,9 @@ a { color: var(--brand-blue); text-decoration: none; }
     min-height: 2.75rem;
 }
 
-.field::placeholder { color: var(--ink-soft); }
+/* The ink at alpha, not a grey: a placeholder still has to read as "nothing
+   typed yet" now that secondary text is full-strength ink. */
+.field::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .muted { color: var(--ink-soft); font-size: 0.875rem; }
 

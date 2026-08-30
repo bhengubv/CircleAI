@@ -49,7 +49,7 @@
     resize: none;
 }
 
-.say::placeholder { color: var(--ink-soft); }
+.say::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
 .actions { display: flex; gap: 10px; }
 
@@ -68,7 +68,7 @@
     border: 1px solid var(--hairline);
 }
 
-.primary { color: var(--ink); background: var(--brand-blue); border: 0; }
+.primary { color: var(--on-brand); background: var(--brand-blue); border: 0; }
 
 .soft:disabled, .primary:disabled { opacity: 0.45; cursor: default; }
 
