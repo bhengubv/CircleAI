@@ -140,7 +140,7 @@ remembered.
 
 ## On the phone
 
-Measured on a Huawei P30 Lite (`MAR-LX1M`, `UTKDU19919000815`), not an emulator.
+Measured on a Huawei P30 Lite (`MAR-LX1M`, `UTKDU19919000815`) across 2026-08-27 to 30, not an emulator.
 
 | Claim | Status | Evidence |
 |---|---|---|
@@ -156,6 +156,21 @@ Measured on a Huawei P30 Lite (`MAR-LX1M`, `UTKDU19919000815`), not an emulator.
 | Learning from a conversation costs 571 ms, no model | measured | P30 Lite MAR-LX1M, 2026-08-28 |
 | The memory survives the app being killed | measured | P30 Lite MAR-LX1M, 2026-08-28 |
 | isiZulu is readable in the log on the device | measured | P30 Lite MAR-LX1M, 2026-08-28 |
+
+## Setup and the loading screen
+
+The honesty screen: on every launch it says, in plain words, what this phone
+can and cannot do. Measured on the P30 Lite.
+
+| Claim | Status | Evidence |
+|---|---|---|
+| The census shows what is present and what is missing, every row named | measured | P30 Lite MAR-LX1M, 2026-08-30 |
+| On a clean phone it shows 0 OF 5 with real sizes and downloads on its own | measured | P30 Lite MAR-LX1M, 2026-08-30 (full uninstall + fresh install, ~800 MB) |
+| A partly-set-up phone shows "Finish setting it up", the present rows green | measured | P30 Lite MAR-LX1M, 2026-08-30 |
+| Rows turn green as each model lands, not all at once at the end | measured | P30 Lite MAR-LX1M, 2026-08-30 |
+| The census is offline: an embedded catalogue and on-disk size checks | measured | P30 Lite MAR-LX1M, 2026-08-30 (milliseconds, was 4 s while it hashed 470 MB) |
+| This phone's real RAM is measured, not the managed heap limit | measured | P30 Lite MAR-LX1M, 2026-08-30 (1.3 GB free of 3.6 GB, source PlatformMeasured) |
+| The language count is what is installed, not what is catalogued | measured | P30 Lite MAR-LX1M, 2026-08-30 (10 SA languages + English, not the marketing 78) |
 
 ## Other databases
 
