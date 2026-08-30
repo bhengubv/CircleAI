@@ -331,15 +331,32 @@ public class MemoryServiceTests : IDisposable
     [Fact]
     public async Task What_it_hands_back_gets_easier_to_reach()
     {
+        // AGED FIRST, OR THERE IS NOTHING TO OBSERVE. A brand-new atom is already
+        // at full reach, so recalling it cannot raise reach measurably -
+        // retrieval raises stability, which only shows once time has passed.
+        // Reading before and after on a fresh atom left both at ~1.0 and let
+        // sub-millisecond timing decide the order: it passed two runs in three.
+        //
+        // A faded atom has somewhere to climb back to. Recorded ten weeks ago it
+        // sits near half reach; reaching for it makes it reachable again, which
+        // is what "gets easier to reach" actually means.
         using var service = Launch();
-        var atom = Decision("Use -t:InstallKeepingData when iterating");
+        var atom = new MemoryAtom
+        {
+            Kind = AtomKind.Decision,
+            Text = "Use -t:InstallKeepingData when iterating",
+            Subject = "deploy:android",
+            Outcome = DecisionOutcome.Resolved,
+            RecordedAtUtc = DateTimeOffset.UtcNow.AddDays(-70),
+        };
         await service.RememberAsync(atom);
 
         var before = service.Reach(atom);
         await service.RecallAsync(new Situation("deploy", "android"));
         var after = service.Reach(atom);
 
-        Assert.True(after >= before);
+        Assert.True(before < 0.7, $"a ten-week-old atom should have faded; reach was {before:0.00}");
+        Assert.True(after > before, $"recall should restore reach: {before:0.00} -> {after:0.00}");
     }
 
     [Fact]

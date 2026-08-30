@@ -89,22 +89,43 @@ public sealed class HttpLoopbackEndpoint : IAIEndpoint
             : _options.LoopbackToken;
 
         var configuredPort = _options.LoopbackPort;
-        var port = configuredPort > 0 ? configuredPort : PickFreeLoopbackPort();
-        _boundPort = port;
 
-        var listener = new HttpListener();
-        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-        try
+        // AUTO-ASSIGNED PORTS RACE, so retry them. PickFreeLoopbackPort finds a
+        // free port, releases it, and HttpListener claims it a moment later -
+        // and in that window anything else on the host can take it first. On a
+        // busy machine (a full test run binding dozens of loopback endpoints)
+        // that window is hit often enough to fail one run in several. A fresh
+        // pick almost never collides twice.
+        //
+        // A CONFIGURED port is different: if the caller asked for 8080 and 8080
+        // is taken, that is a real error they need to see, not a race to paper
+        // over - so it is tried once and allowed to throw.
+        var autoAssigned = configuredPort <= 0;
+        var attempts = autoAssigned ? 5 : 1;
+        HttpListener? listener = null;
+
+        for (var attempt = 1; ; attempt++)
         {
-            listener.Start();
-        }
-        catch (HttpListenerException ex)
-        {
-            listener.Close();
-            throw new InvalidOperationException(
-                $"Failed to start loopback HTTP listener on port {port}. " +
-                "On Windows this may require URL ACL configuration; consider using port 0 to let the OS assign a port.",
-                ex);
+            var port = autoAssigned ? PickFreeLoopbackPort() : configuredPort;
+            var candidate = new HttpListener();
+            candidate.Prefixes.Add($"http://127.0.0.1:{port}/");
+            try
+            {
+                candidate.Start();
+                _boundPort = port;
+                listener = candidate;
+                break;
+            }
+            catch (HttpListenerException ex)
+            {
+                candidate.Close();
+                if (attempt >= attempts)
+                    throw new InvalidOperationException(
+                        $"Failed to start loopback HTTP listener on port {port}. " +
+                        "On Windows this may require URL ACL configuration; consider using port 0 to let the OS assign a port.",
+                        ex);
+                // Auto-assigned and lost the race: pick a different port and try again.
+            }
         }
 
         _listener = listener;
@@ -112,7 +133,7 @@ public sealed class HttpLoopbackEndpoint : IAIEndpoint
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_serverCts.Token));
         _started = true;
 
-        _logger.LogInformation("Butler HTTP loopback endpoint listening on http://127.0.0.1:{Port}", port);
+        _logger.LogInformation("Butler HTTP loopback endpoint listening on http://127.0.0.1:{Port}", _boundPort);
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
