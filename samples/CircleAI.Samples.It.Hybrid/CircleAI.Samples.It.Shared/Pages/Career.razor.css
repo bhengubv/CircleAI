@@ -94,6 +94,10 @@
     border-radius: 8px;
     padding: 20px;
     color: #000000;   /* a printed page: black on white */
+    /* A SHEET, so it still reads as one in daylight. On black it stood out by
+       being white; on the light theme's near-white page it had nothing to
+       separate it and stopped looking like paper at all. */
+    box-shadow: var(--shadow);
 }
 
 .cv-name { font-size: 20px; font-weight: 700; }
