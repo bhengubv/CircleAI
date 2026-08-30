@@ -27,7 +27,7 @@
         leaves the inset doing only the job it is for.
     */
     padding-top: calc(max(env(safe-area-inset-top, 0px), 24px) + 0.5rem);
-    background: var(--surface);
+    background: var(--chrome);
     border-bottom: 1px solid var(--hairline);
     flex: none;
 }
@@ -97,7 +97,7 @@
 .tabbar {
     display: flex;
     flex: none;
-    background: var(--surface);
+    background: var(--chrome);
     border-top: 1px solid var(--hairline);
     /* Clears the home gesture bar without hardcoding a phone. */
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -213,7 +213,7 @@
     /* Lifted out of the bar and back over the content above it. */
     margin-top: -1.25rem;
     border-radius: 50%;
-    background: var(--surface);
+    background: var(--chrome);
     /* NO BORDER HERE. The edge is drawn by the mark itself now, so every logo in
        the app wears the same one instead of only the one that happened to sit in
        a bordered wrapper. */

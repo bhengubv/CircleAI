@@ -28,7 +28,7 @@
     */
     justify-content: space-between;
     gap: 10px;
-    background: var(--surface);
+    background: var(--chrome);
     /*
         BOUNDED, so the row does not spread to the edges of a desktop.
 
@@ -76,7 +76,8 @@
 }
 
 .group {
-    background: var(--surface);
+    background: var(--card);
+    color: var(--on-surface);
     border-radius: 14px;
     padding: 16px 18px;
     margin-top: 16px;
@@ -85,7 +86,7 @@
 .group-title {
     font-size: 16px;
     font-weight: 700;
-    color: var(--brand-blue);
+    color: var(--on-surface);
 }
 
 /*
@@ -116,7 +117,7 @@
     flex: none;
     font-size: 16px;
     font-weight: 700;
-    color: var(--brand-blue);
+    color: var(--on-surface);
 }
 
 /*
@@ -132,7 +133,7 @@
     min-width: 0;
     text-align: right;
     font-size: 12.5px;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
@@ -142,7 +143,7 @@
     flex: none;
     font-size: 17px;
     line-height: 1;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     transition: transform 120ms ease;
 }
 
@@ -152,7 +153,7 @@
 .note {
     font-size: 12px;
     line-height: 1.4;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     padding-top: 10px;
 }
 
@@ -180,7 +181,7 @@
     display: block;
     font-size: 12px;
     line-height: 1.35;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     padding-top: 3px;
 }
 
@@ -199,7 +200,7 @@
     align-items: center;
     gap: 12px;
     padding: 12px 0;
-    border-top: 1px solid var(--hairline);
+    border-top: 1px solid var(--on-surface-line);
     cursor: pointer;
 }
 
@@ -214,13 +215,13 @@
 .row-title {
     display: block;
     font-size: 15px;
-    color: var(--ink);
+    color: var(--on-surface);
 }
 
 .row-sub {
     display: block;
     font-size: 12.5px;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     padding-top: 2px;
 }
 
@@ -230,14 +231,14 @@
 .row input[type="checkbox"] {
     width: 22px;
     height: 22px;
-    accent-color: var(--brand-blue);
+    accent-color: var(--card-accent);
     flex: none;
 }
 
 .field-label {
     display: block;
     font-size: 12.5px;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     padding-top: 12px;
 }
 
@@ -274,7 +275,7 @@
 
 .empty {
     font-size: 13px;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     padding: 10px 0 2px;
 }
 
@@ -286,7 +287,7 @@
     font: inherit;
     font-size: 13px;
     font-weight: 600;
-    color: var(--ink-soft);
+    color: var(--on-surface-soft);
     background: transparent;
     border: 1px solid var(--hairline);
     border-radius: 10px;
@@ -295,7 +296,7 @@
     flex: none;
 }
 
-.delete:active { color: var(--ink); border-color: var(--ink-soft); }
+.delete:active { color: var(--on-surface); border-color: var(--on-surface-soft); }
 
 /* A link out to a service's own settings, rather than a control for them. */
 .go {
@@ -304,14 +305,14 @@
     padding: 12px;
     text-align: center;
     font-weight: 600;
-    color: var(--brand-blue);
+    color: var(--on-surface);
     background: transparent;
     border: 1px solid var(--hairline);
     border-radius: 12px;
     text-decoration: none;
 }
 
-.on { font-size: 17px; color: var(--brand-blue); flex: none; }
+.on { font-size: 17px; color: var(--on-surface); flex: none; }
 
 /*
     A button or an anchor, and it must look the same either way - "Turn on" is a
@@ -323,8 +324,8 @@
     font: inherit;
     font-size: 13px;
     font-weight: 700;
-    color: var(--on-brand);
-    background: var(--brand-blue);
+    color: var(--card-btn-ink);
+    background: var(--card-btn-fill);
     border: 0;
     border-radius: 10px;
     padding: 8px 12px;

@@ -33,6 +33,28 @@
 
     --page: #080B0E;        /* near-black, Shade(slate, 0.18); mirror in theme.js (DARK) */
     --surface: #1B2631;     /* Shade(slate, 0.62) - lifts off the black */
+    --chrome: #1B2631;      /* header and tab bar - see light, where they part company */
+    --card: #1B2631;        /* a content block - blue in daylight, see below */
+
+    /*
+        TEXT ON A CARD IS WHITE IN BOTH THEMES, which is what makes the light
+        theme's blue cards cost nothing here: the card is dark slate on black and
+        blue on white, and white reads on either. A card sets these rather than
+        --ink, because --ink is the colour for text on the PAGE and the page is
+        the one surface a card is not.
+    */
+    --on-surface: #ffffff;
+    --on-surface-soft: rgba(255, 255, 255, 0.78);
+    --on-surface-line: rgba(255, 255, 255, 0.22);
+
+    /*
+        A BUTTON ON A CARD IS THE CARD INVERTED. On the dark card it is a blue
+        fill with white text; on the light theme's blue card it is a white fill
+        with blue text - the same relationship, read from the other side.
+    */
+    --card-btn-fill: #2196F3;
+    --card-btn-ink: #ffffff;
+    --card-accent: #2196F3;  /* radios and checkboxes on a card */
     --raised: #22303E;      /* Shade(slate, 0.78) */
     --hairline: #293A4C;    /* Shade(slate, 0.95) */
 
@@ -96,22 +118,26 @@
 */
 :root[data-theme="light"] {
     /*
-        THE SAME THREE COLOURS, INVERTED. White is the ground, SLATE is the ink,
-        and blue carries every selected and active state exactly as it does in
-        the dark - so daylight is this app in daylight, not a newspaper.
+        THE CARDS ARE BLUE, and this is where the light theme stops being a
+        document. White page, white cards and coloured type is a printed page
+        with a logo on it - the thing this theme kept coming out as. Blue is a
+        SURFACE here, not just ink: a card is a blue block with white text, and
+        the controls on it invert to a white fill with blue text.
 
-        Slate rather than newsprint black is what keeps it off the front page:
-        #2c3e50 is one of the three, it is 10.9:1 on white, and it is the colour
-        the whole dark theme is shaded out of - the two themes are one palette
-        seen from either end.
-
-        Surfaces are white on white and separated by a slate hairline at alpha
-        rather than by a grey fill, because a grey fill would be a fourth colour.
+        The chrome does not join in. Header and tab bar stay white, so the blue
+        blocks read as content sitting on a page rather than the whole app being
+        painted in - and so the selected tab still has somewhere to be blue.
     */
     --page: #ffffff;        /* mirror in theme.js (LIGHT) */
-    --surface: #ffffff;
-    --raised: #ffffff;
-    --hairline: rgba(44, 62, 80, 0.18);  /* slate at alpha: structure, not interaction */
+    --card: #2196F3;        /* CONTENT BLOCKS ARE BLUE */
+    --surface: #ffffff;     /* NOT the card: text inputs and the like stay white */
+    --chrome: #ffffff;      /* bars stay white */
+    --raised: #ffffff;      /* controls ON a blue card: white fill, blue text */
+
+    --card-btn-fill: #ffffff;   /* the reverse, as promised */
+    --card-btn-ink: #2196F3;
+    --card-accent: #ffffff;     /* white on the blue card, or it vanishes */
+    --hairline: rgba(33, 150, 243, 0.22);  /* blue at alpha - no slate lines on white either */
 
     /*
         BLUE IS THE INK IN DAYLIGHT, and with three colours there is no other
@@ -119,18 +145,21 @@
         The blue that carries the dark theme carries this one too, so the app
         still looks like itself with the lights on.
 
-        AND SLATE IS WHY BLUE STILL MEANS SOMETHING. With blue as the ink AND
-        the accent, the Services screen came out a flat blue wash - header,
-        every category, every count, every chevron and both tab labels one
-        colour, so nothing led and the active tab was told apart by weight
-        alone. Slate is the third colour and it takes the supporting work:
-        captions, counts, inactive tabs. Blue leads, slate supports, and the
-        selected thing is the only blue in a row of slate.
-    */
-    --ink: #2196F3;         /* what you came to read, and what you can act on */
-    --ink-soft: #2c3e50;    /* THE slate - supporting text and inactive chrome */
+        SLATE ON WHITE IS STILL BLACK ON WHITE. Secondary text was slate for a
+        while, to stop an all-blue screen reading as a flat wash - and it put
+        dark type back on the white page in the tab strip, the header and the
+        tab bar labels, which is the exact thing this theme is not allowed to
+        be. The flatness was never a text problem: the page had no STRUCTURE
+        because every surface was white. The blue cards fix that, so text can
+        be blue throughout and still have somewhere to sit.
 
-    --track: rgba(44, 62, 80, 0.18);
+        Slate keeps its place in the palette - it is the whole dark theme - it
+        just does not put ink on white paper.
+    */
+    --ink: #2196F3;
+    --ink-soft: #2196F3;
+
+    --track: rgba(33, 150, 243, 0.22);
 
     color-scheme: light;
 }
@@ -228,8 +257,9 @@ a { color: var(--brand-blue); text-decoration: none; }
 /* -- cards and controls ------------------------------------------------- */
 
 .card {
-    background: var(--surface);
-    border: 1px solid var(--hairline);
+    background: var(--card);
+    color: var(--on-surface);
+    border: 1px solid var(--on-surface-line);
     border-radius: var(--radius);
     padding: var(--gutter);
 }
