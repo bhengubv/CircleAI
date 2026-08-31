@@ -163,21 +163,47 @@ final class VoiceWakeConfirmTests: XCTestCase {
 
     // MARK: - Either
 
-    // Deliberately OR, not AND: each catches a different false wake, and
-    // requiring both would mean the stricter one always decides.
-    func testEitherConfirmerNeedsOnlyOneToAgree() async {
+    // The name says either, but the C# requires BOTH. The cheap check runs
+    // first so the expensive one is not paid for on candidates it can reject
+    // outright.
+    func testEitherConfirmerRequiresBothToAgree() async {
         let strict = TranscriptConfirmer(transcribe: { _ in "nothing like it" })
-        let either = EitherConfirmer(strict, AlwaysConfirm())
-        let v9 = await either.confirm(candidate([0.1], phrase: "hey b"))
-        XCTAssertTrue(v9)
+        let either = EitherConfirmer(AlwaysConfirm(), strict)
+        let ok = await either.confirm(candidate([0.1], phrase: "circle wake"))
+        XCTAssertFalse(ok)
+        XCTAssertTrue(either.lastReason!.contains("not how it starts"))
     }
 
-    func testEitherConfirmerRejectsOnlyWhenBothDo() async {
-        let a = TranscriptConfirmer(transcribe: { _ in "nothing like it" })
-        let b = TranscriptConfirmer(transcribe: { _ in "also nothing" })
-        let either = EitherConfirmer(a, b)
-        let v10 = await either.confirm(candidate([0.1], phrase: "hey b"))
-        XCTAssertFalse(v10)
-        XCTAssertTrue(either.lastReason!.contains(";"), "both reasons must be reported")
+    func testEitherConfirmerConfirmsWhenBothDo() async {
+        let lenient = TranscriptConfirmer(transcribe: { _ in "circle wake now" })
+        let either = EitherConfirmer(AlwaysConfirm(), lenient)
+        let ok = await either.confirm(candidate([0.1], phrase: "circle wake"))
+        XCTAssertTrue(ok)
+        XCTAssertNil(either.lastReason)
+    }
+
+    // The CHEAP one short-circuits: when it rejects, the precise one is never
+    // reached, and the reason reported is the cheap one.
+    func testACheapRejectionShortCircuitsTheExpensiveCheck() async {
+        let expensive = CountingConfirmer()
+        let onset = UtteranceOnsetConfirmer()
+        let either = EitherConfirmer(onset, expensive)
+
+        // Silence: the onset confirmer rejects outright.
+        let ok = await either.confirm(candidate([Float](repeating: 0, count: rate)))
+        XCTAssertFalse(ok)
+        XCTAssertEqual(either.lastReason, "silence")
+        XCTAssertEqual(expensive.calls, 0, "the expensive confirmer must not be reached")
+    }
+
+    private final class CountingConfirmer: IWakeConfirmer, @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var calls: Int { lock.lock(); defer { lock.unlock() }; return count }
+        var lastReason: String? { nil }
+        func confirm(_ candidate: WakeCandidate) async -> Bool {
+            lock.lock(); count += 1; lock.unlock()
+            return true
+        }
     }
 }

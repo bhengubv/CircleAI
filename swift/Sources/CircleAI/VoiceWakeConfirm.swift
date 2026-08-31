@@ -208,27 +208,39 @@ public final class TranscriptConfirmer: IWakeConfirmer, @unchecked Sendable {
     }
 }
 
-/// Two confirmers, either of which is enough.
+/// Two confirmers in series: the CHEAP one first, then the PRECISE one.
 ///
-/// Deliberately OR, not AND: each catches a different false wake, and requiring
-/// both would mean the stricter one always decides.
+/// Both must agree. The name says either, but the C# requires both, and this
+/// port matches it - the cheap check exists to avoid paying for the expensive
+/// one on the many candidates it can reject outright.
 public final class EitherConfirmer: IWakeConfirmer, @unchecked Sendable {
-    private let first: any IWakeConfirmer
-    private let second: any IWakeConfirmer
+    private let cheap: any IWakeConfirmer
+    private let precise: any IWakeConfirmer
+    private let lock = NSLock()
+    private var reason: String?
 
-    public init(_ first: any IWakeConfirmer, _ second: any IWakeConfirmer) {
-        self.first = first
-        self.second = second
+    public init(_ cheap: any IWakeConfirmer, _ precise: any IWakeConfirmer) {
+        self.cheap = cheap
+        self.precise = precise
     }
 
     public var lastReason: String? {
-        // Both refused, so both reasons matter.
-        if let a = first.lastReason, let b = second.lastReason { return "\(a); \(b)" }
-        return first.lastReason ?? second.lastReason
+        lock.lock(); defer { lock.unlock() }
+        return reason
     }
 
+    private func setReason(_ r: String?) { lock.lock(); reason = r; lock.unlock() }
+
     public func confirm(_ candidate: WakeCandidate) async -> Bool {
-        if await first.confirm(candidate) { return true }
-        return await second.confirm(candidate)
+        if await !cheap.confirm(candidate) {
+            setReason(cheap.lastReason)
+            return false
+        }
+        if await !precise.confirm(candidate) {
+            setReason(precise.lastReason)
+            return false
+        }
+        setReason(nil)
+        return true
     }
 }
