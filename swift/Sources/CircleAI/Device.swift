@@ -182,3 +182,25 @@ public struct DefaultDeviceContext: IDeviceContext {
         )
     }
 }
+
+// MARK: - Fit arithmetic
+//
+// Ported from CircleAI.Core.DeviceProbe. NOTE the two different gigabytes: the
+// tier classifier above uses 2^30 ON PURPOSE, while the fit checks below use
+// 10^9, because that is the unit model bundles are advertised in.
+public extension DeviceProbe {
+    /// Fraction of free RAM a model is allowed to claim. The rest is the room
+    /// the rest of the phone still needs to be a phone.
+    static var ramFitHeadroom: Double { 0.85 }
+
+    /// Decimal gigabyte - the unit a downloaded model's size is quoted in.
+    static var bytesPerGb: Double { 1_000_000_000.0 }
+
+    /// Free RAM scaled by ``ramFitHeadroom``. Use this for MinRamGb fit checks.
+    var usableRamGb: Double {
+        Double(ramAvailableBytes) * DeviceProbe.ramFitHeadroom / DeviceProbe.bytesPerGb
+    }
+
+    /// Free storage in decimal gigabytes.
+    var storageFreeGb: Double { Double(storageFreeBytes) / DeviceProbe.bytesPerGb }
+}

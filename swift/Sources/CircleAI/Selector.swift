@@ -116,3 +116,41 @@ public func parseCapabilities(_ labels: [String]?) -> ChatCapability {
     }
     return result.isEmpty ? .defaultCap : result
 }
+
+// MARK: - Selection quality and modality plans
+//
+// Ported from CircleAI.Inference (IModelSelector.cs, SpeechModelSelector.cs).
+
+/// How well a selection actually matches what was asked for.
+public enum SelectionQuality: Int, Sendable, Equatable {
+    /// An entry satisfied the capability flags AND the device gates.
+    case good = 0
+    /// Fits the device, but below the caller's requested quality floor.
+    case belowFloor
+    /// Nothing in the catalogue clears this device.
+    case nothingFits
+    /// No model at all: a built-in heuristic is standing in.
+    case heuristicFallback
+    /// The feature is off by design on this device.
+    case unavailable
+}
+
+/// The outcome of planning one modality: a quality, an optional model, and the
+/// reason in words a person can read.
+public struct ModalityPlan: Sendable, Equatable {
+    public let quality: SelectionQuality
+    public let model: ModelSelection?
+    public let reason: String
+
+    public init(quality: SelectionQuality, model: ModelSelection?, reason: String) {
+        self.quality = quality
+        self.model = model
+        self.reason = reason
+    }
+
+    /// Anything other than `.unavailable` is something the caller can use.
+    public var isAvailable: Bool { quality != .unavailable }
+
+    /// True when no real model was chosen and a built-in heuristic answers.
+    public var usesBuiltIn: Bool { quality == .heuristicFallback }
+}
