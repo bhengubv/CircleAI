@@ -1,32 +1,38 @@
 @*
     Translating - standing between two people who do not share a language.
 
-    TWO HALVES, NOT A FORM. The old screen was a translation form: one From/To
-    row, one box, three buttons, and the answer as body text under them. Every
-    part of it faced whoever was holding the phone, so the person being
-    interpreted FOR had nothing to look at and nothing to touch - and the screen
-    could not be handed over, which is the entire act. Google Translate and
-    Papago both solved this years ago by splitting the screen in two.
+    TWO HALVES, NOT A FORM. Each person owns a half. The top half is rotated 180
+    degrees to face the person opposite, and the phone is meant to be put down on
+    the table between them rather than held.
 
-    So each person owns a half. The top half is rotated 180 degrees to face the
-    person opposite, and the phone is meant to be put down on the table between
-    them rather than held.
+    IT LISTENS UNTIL YOU STOP IT. Tapping a microphone used to capture ONE
+    utterance and stop, so a conversation was a sequence of taps and every turn
+    waited for the phone to finish the last one. A conversation does not work
+    like that. The mic now stays open: speech is cut on the lull that ends it,
+    each piece is queued, and translation drains that queue BEHIND the talking.
+    Somebody can say the next thing while the phone is still rendering the last.
 
-    THE DIRECTION IS THE SIDE YOU TAP. The old screen made a conversation that
-    turns over every few seconds wait for somebody to re-pick "from" and "to" -
-    the thing its own opening comment called "the phone being the slowest person
-    in the room", written directly above the picker that caused it. Tapping YOUR
-    half says you are speaking; the other half is who it is for. There is nothing
-    to set per turn.
+    A PIPELINE, NOT THREE THREADS. Running several models at once is what this
+    device cannot do - the answering model is serialised on purpose because two
+    overlapping turns interleave their tokens, and a second Whisper state on a
+    3.7 GB phone is how a rebuild turns into an out-of-memory kill. What makes it
+    feel simultaneous is that CAPTURE and RENDERING are separate: the queue
+    absorbs the difference, so the phone being slow stops being the same thing as
+    the conversation being slow.
 
-    THE ANSWER IS THE BIGGEST THING ON EACH HALF, because it is read at arm's
-    length by somebody who did not type it.
+    WHOSE TURN IT IS, ASSUMED AND CORRECTABLE. The recogniser has to be told
+    which language it is hearing - left to guess it writes Japanese down as
+    English. So the side you start on speaks first and then it alternates, which
+    is what two people taking turns actually do. When that assumption is wrong,
+    tapping the other side's microphone puts it right without losing what has
+    already been said.
 
     ITS OWN LANGUAGES, ITS OWN SCREEN. The pair belongs to this service, not to
     the app: somebody can run the app in English, keep their CV in Japanese, and
-    interpret between Korean and Mandarin.
+    translate between Korean and Mandarin.
 *@
 @page "/translate"
+@implements IDisposable
 @inject ISettings Settings
 @inject IBrain Brain
 @inject IConversation Talk
@@ -37,39 +43,40 @@
 <div class="talk">
 
     @* THEIRS. Rotated, so it reads the right way up from across the table. *@
-    <section class="half half-top @(_active == Side.Top ? "half-live" : null)">
+    <section class="half half-top @(_listening && _expecting == Side.Top ? "half-live" : null)">
         @RenderHalf(Side.Top)
     </section>
 
     @*
         THE SEAM. A conversation has two ends and this is the table between them;
-        it also carries the one control that belongs to neither side - swapping
-        who sits where, for when the phone changes hands.
+        it carries what belongs to neither side - swapping who sits where, what
+        went wrong, what is still waiting, and what the last piece cost.
     *@
     <div class="seam">
         <button class="seam-swap" @onclick="Swap" aria-label="Swap the two sides">&#8646;</button>
-        @if (_note is not null)
+
+        @if (_note is { } n)
         {
-            <span class="seam-note">@_note</span>
+            <span class="seam-note">@n</span>
         }
         else if (_fetch is { } f)
         {
-            @* A voice arriving for a language somebody just chose. It outranks the
-               timing line: one is what the phone is doing now, the other is what
-               it did last. *@
             <span class="seam-note">@f</span>
+        }
+        else if (_queued > 0)
+        {
+            @* The queue is the point, so it is visible: somebody who has said
+               three things needs to see that all three are coming. *@
+            <span class="seam-note">@_queued waiting</span>
         }
         else if (_timing is { } t)
         {
-            @* MEASURED, NOT GUESSED. Four stages with very different costs, and
-               until this line existed nobody could say which one the wait was.
-               It sits in the seam because it belongs to the turn, not a person. *@
             <span class="seam-timing">@t</span>
         }
     </div>
 
     @* YOURS. *@
-    <section class="half half-bottom @(_active == Side.Bottom ? "half-live" : null)">
+    <section class="half half-bottom @(_listening && _expecting == Side.Bottom ? "half-live" : null)">
         @RenderHalf(Side.Bottom)
     </section>
 
@@ -83,6 +90,16 @@
 
     enum Side { Top, Bottom }
 
+    /// <summary>One thing somebody said, on the half it belongs to.</summary>
+    /// <param name="Side">Whose half it shows on.</param>
+    /// <param name="Text">The words, in that half's language.</param>
+    /// <param name="Mine">
+    /// True when this is what that person SAID, false when it is the other
+    /// person's words rendered for them. Both belong on their half; only one of
+    /// them came out of their mouth.
+    /// </param>
+    sealed record Line(Side Side, string Text, bool Mine);
+
     static IReadOnlyList<SampleLanguage> Languages { get; } = SampleLanguages.All.Values
         .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
         .ToList();
@@ -90,36 +107,30 @@
     string _topLang = "zu";
     string _bottomLang = "en";
 
-    /// <summary>What each half is currently showing, in that half's own language.</summary>
-    string _topText = "";
-    string _bottomText = "";
+    /// <summary>The conversation so far, oldest first.</summary>
+    readonly List<Line> _lines = new();
 
-    /// <summary>Which half is mid-turn, so only that one shows it is working.</summary>
-    Side? _active;
+    /// <summary>Heard but not yet rendered - the queue that absorbs the wait.</summary>
+    readonly Queue<(Side Side, string Text)> _pending = new();
+    int _queued;
 
-    /// <summary>The half whose keyboard is open, if any.</summary>
+    /// <summary>Which side the microphone is listening for.</summary>
+    Side _expecting = Side.Bottom;
+
+    bool _listening;
+    bool _draining;
+
+    /// <summary>True while the phone is talking, so it does not record itself.</summary>
+    bool _speaking;
+
+    CancellationTokenSource? _capture;
+
     Side? _typing;
     string _draft = "";
 
     string? _note;
-    bool _busy;
-
-    /// <summary>What the last turn cost, leg by leg.</summary>
-    /// <remarks>
-    /// WHERE THE WAIT ACTUALLY IS. A turn is four stages - capture, transcribe,
-    /// translate, speak - and they are nothing like each other in cost: the
-    /// first translation on a P30 also pays for loading a 535 MB model, which
-    /// is why it can be minutes while a later one is seconds. Optimising any of
-    /// this without measuring it first is guessing.
-    /// </remarks>
+    string? _fetch;
     string? _timing;
-
-    /// <summary>True until the model has been loaded once this session.</summary>
-    /// <remarks>
-    /// The first translate carries the model load and every one after it does
-    /// not, so a single number averaged over both describes neither. Marked, not
-    /// hidden.
-    /// </remarks>
     bool _cold = true;
 
     /// <summary>A duration, in the shortest honest unit.</summary>
@@ -132,28 +143,17 @@
         ? (ms / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s"
         : ms.ToString(System.Globalization.CultureInfo.InvariantCulture) + "ms";
 
-    /// <summary>Capture + transcribe from the last spoken turn; 0 when typed.</summary>
-    long _heardMs;
-
-    /// <summary>What is being fetched for a language just picked, if anything.</summary>
-    string? _fetch;
-
     protected override async Task OnInitializedAsync()
     {
-        // "from"/"to" are the keys the old screen wrote, and somebody who set a
-        // pair before this redesign should not find it forgotten.
         _bottomLang = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
         _topLang = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
     }
 
     string LangOf(Side s) => s == Side.Top ? _topLang : _bottomLang;
-    string TextOf(Side s) => s == Side.Top ? _topText : _bottomText;
     static Side Other(Side s) => s == Side.Top ? Side.Bottom : Side.Top;
+    static string Name(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
 
-    void SetText(Side s, string v)
-    {
-        if (s == Side.Top) _topText = v; else _bottomText = v;
-    }
+    IEnumerable<Line> LinesFor(Side s) => _lines.Where(l => l.Side == s);
 
     async Task SetLang(Side s, string tag)
     {
@@ -162,19 +162,10 @@
 
         // AND FETCH THE VOICE, because choosing a language the phone cannot speak
         // is not a choice - it is a silence somebody discovers mid-conversation.
-        // Japanese could be picked here while no Japanese voice existed on the
-        // device at all: synthesis spent 2.6 s and produced no audio, and nothing
-        // anywhere said why. Not awaited: a voice can be 250 MB and the other
-        // half of the screen still works while it arrives.
         _ = EnsureVoiceAsync(tag);
     }
 
     /// <summary>Put this language's voice on the phone if it is not already.</summary>
-    /// <remarks>
-    /// SpeakAsync downloads the voice if needed and then says that language's
-    /// checked greeting, so the confirmation is the language itself - and the
-    /// engine is warm for the first real turn rather than cold.
-    /// </remarks>
     async Task EnsureVoiceAsync(string tag)
     {
         try
@@ -187,7 +178,7 @@
             if (row?.Bytes is not long bytes) return;
 
             var name = Name(tag);
-            _fetch = $"Getting the {name} voice · {bytes / 1_000_000} MB";
+            _fetch = $"Getting the {name} voice - {bytes / 1_000_000} MB";
             await InvokeAsync(StateHasChanged);
 
             var progress = new Progress<string>(line =>
@@ -199,55 +190,127 @@
             var outcome = await Voice.SpeakAsync(tag, progress);
             _fetch = outcome.Spoke ? null : $"No {name} voice: {outcome.Detail}";
         }
-        catch (Exception ex)
-        {
-            _fetch = Plain(ex);
-        }
-        finally
-        {
-            await InvokeAsync(StateHasChanged);
-        }
+        catch (Exception ex) { _fetch = Plain(ex); }
+        finally { await InvokeAsync(StateHasChanged); }
     }
 
-    /// <summary>Turn the phone around: the pair swap seats, and so do their words.</summary>
+    /// <summary>Turn the phone around: the pair swap seats, and so does the talk.</summary>
     async Task Swap()
     {
         (_topLang, _bottomLang) = (_bottomLang, _topLang);
-        (_topText, _bottomText) = (_bottomText, _topText);
+        for (var i = 0; i < _lines.Count; i++)
+            _lines[i] = _lines[i] with { Side = Other(_lines[i].Side) };
+        _expecting = Other(_expecting);
         await Settings.SetServiceSettingAsync(Service, "to", _topLang);
         await Settings.SetServiceSettingAsync(Service, "from", _bottomLang);
     }
 
-    /// <summary>
-    /// One turn: what this side said, rendered onto the other side.
-    /// </summary>
+    /// <summary>Start listening for this side, hand the turn over, or stop.</summary>
     /// <remarks>
-    /// The speaker's own words land on the speaker's half straight away, before
-    /// the model is asked anything. Somebody who has just spoken needs to see
-    /// that the phone heard them; making them wait on a translation to find out
-    /// is how you get a sentence said twice.
+    /// The side you tap speaks FIRST, and the same button is how a wrong guess is
+    /// corrected mid-conversation: tapping the other microphone says "my turn"
+    /// without discarding anything already said.
     /// </remarks>
-    async Task Turn(Side speaker, string said)
+    void Listen(Side speaker)
     {
-        said = said.Trim();
-        if (_busy || said.Length == 0) return;
+        if (_listening && _expecting == speaker) { Stop(); return; }
 
-        _busy = true;
-        _active = speaker;
+        _expecting = speaker;
         _note = null;
-        _typing = null;
-        _draft = "";
 
-        SetText(speaker, said);
-        SetText(Other(speaker), "");
-        await InvokeAsync(StateHasChanged);
+        if (_listening) return;          // already running; only the turn moved
 
-        // TIMED SEPARATELY, because it is not free and it is not obvious. On the
-        // FIRST turn of a session StateAsync verifies the model by hashing the
-        // 470 MB weight file - measured at 9.4 s on the P30 - and every turn
-        // after it short-circuits on the live session and costs 21 ms. Folding
-        // that into the translation would have hidden nine seconds inside a
-        // number people were already blaming the model for.
+        _listening = true;
+        _capture = new CancellationTokenSource();
+        _ = CaptureLoopAsync(_capture.Token);
+    }
+
+    void Stop()
+    {
+        _listening = false;
+        _capture?.Cancel();
+    }
+
+    /// <summary>Keep the microphone open, cutting on each lull, until stopped.</summary>
+    /// <remarks>
+    /// DictateAsync already ends a capture on silence, so the segmenting was
+    /// free - what was missing was going round again. Nothing here waits for a
+    /// translation: the piece is queued and the loop returns to listening, which
+    /// is the whole reason the conversation can run ahead of the phone.
+    /// </remarks>
+    async Task CaptureLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (_listening && !ct.IsCancellationRequested)
+            {
+                // NOT WHILE IT IS TALKING. An open microphone during playback
+                // records the phone's own voice and translates it straight back.
+                while (_speaking && !ct.IsCancellationRequested)
+                    await Task.Delay(120, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) break;
+
+                var side = _expecting;
+                var heard = "";
+                var updates = new Progress<TurnState>(t =>
+                {
+                    if (t.Heard is { Length: > 0 } h) heard = h;
+                });
+
+                try
+                {
+                    await Talk.DictateAsync(updates, ct, LangOf(side));
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    _note = Plain(ex);
+                    await InvokeAsync(StateHasChanged);
+                    break;
+                }
+
+                var said = heard.Trim();
+                if (said.Length == 0) continue;      // a lull with nothing in it
+
+                _lines.Add(new Line(side, said, Mine: true));
+                _pending.Enqueue((side, said));
+                _queued = _pending.Count;
+
+                // TURN-TAKING, ASSUMED. Two people alternate; when they do not,
+                // the other microphone is one tap away.
+                _expecting = Other(side);
+                await InvokeAsync(StateHasChanged);
+
+                _ = DrainAsync();
+            }
+        }
+        finally
+        {
+            _listening = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Render everything waiting, one at a time, behind the talking.</summary>
+    async Task DrainAsync()
+    {
+        if (_draining) return;
+        _draining = true;
+        try
+        {
+            while (_pending.Count > 0)
+            {
+                var (side, text) = _pending.Dequeue();
+                _queued = _pending.Count;
+                await RenderAsync(side, text);
+            }
+        }
+        finally { _draining = false; }
+    }
+
+    /// <summary>One piece: translate it, put it on the other half, say it.</summary>
+    async Task RenderAsync(Side speaker, string said)
+    {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var brain = await Brain.StateAsync();
         var checkMs = clock.ElapsedMilliseconds;
@@ -255,13 +318,12 @@
         if (!brain.Ready)
         {
             _note = brain.Detail;
-            _busy = false;
-            _active = null;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
-        var fromName = SampleLanguages.Find(LangOf(speaker))?.Name ?? LangOf(speaker);
-        var toName = SampleLanguages.Find(LangOf(Other(speaker)))?.Name ?? LangOf(Other(speaker));
+        var fromName = Name(LangOf(speaker));
+        var toName = Name(LangOf(Other(speaker)));
 
         try
         {
@@ -269,89 +331,57 @@
             // the translation" the model ANSWERS the sentence, which is a very
             // different thing to put in front of somebody at a hospital desk.
             clock.Restart();
-            var rendered = await Brain.AskAsync(
+            var rendered = (await Brain.AskAsync(
                 $"Translate this from {fromName} to {toName}. "
-              + $"Give only the translation, nothing else:\n\n{said}");
-
+              + $"Give only the translation, nothing else:\n\n{said}")).Trim();
             var translateMs = clock.ElapsedMilliseconds;
 
-            SetText(Other(speaker), rendered);
+            _lines.Add(new Line(Other(speaker), rendered, Mine: false));
             await InvokeAsync(StateHasChanged);
 
             // SPOKEN, NOT JUST SHOWN. The other person may not read, which is the
             // assumption this whole app exists to stop making.
-            // SPOKEN THROUGH THE VOICE HOST, not the conversation wrapper, purely
-            // so the outcome comes back: it carries synthesis time and the LENGTH
-            // OF THE AUDIO separately, and lumping those together is what made
-            // this leg look like 2.8 s of cost. Most of it is the sentence being
-            // said out loud, which is the product working, not overhead.
-            clock.Restart();
+            _speaking = true;
             SpeakOutcome? spoke = null;
             try { spoke = await Voice.SayAsync(LangOf(Other(speaker)), rendered); }
             catch { /* a mute phone still shows the words */ }
-            var speakMs = clock.ElapsedMilliseconds;
+            finally { _speaking = false; }
 
-            // The legs, in the order they happened. The first translation also
-            // pays for loading the model, so it says so rather than being
-            // averaged in with the ones that do not.
-            var legs = new List<string>(4);
-            if (_heardMs > 0) legs.Add($"heard {Secs(_heardMs)}");
-            legs.Add($"check {Secs(checkMs)}");
-            legs.Add($"render {Secs(translateMs)}{(_cold ? " (cold)" : "")}");
-            // Synthesis is the part worth optimising; audio is the part worth
-            // having. Shown apart so nobody tunes the wrong one.
+            var legs = new List<string>(4)
+            {
+                $"check {Secs(checkMs)}",
+                $"render {Secs(translateMs)}{(_cold ? " (cold)" : "")}",
+            };
             if (spoke?.Milliseconds is { } synth)
             {
                 legs.Add($"synth {Secs(synth)}");
-                if (spoke.AudioMilliseconds is { } heardMs) legs.Add($"audio {Secs(heardMs)}");
+                if (spoke.AudioMilliseconds is { } audio) legs.Add($"audio {Secs(audio)}");
             }
-            else
-            {
-                legs.Add($"speak {Secs(speakMs)}");
-            }
-            _timing = string.Join(" · ", legs);
+            _timing = string.Join(" - ", legs);
             _cold = false;
-            _heardMs = 0;
         }
-        catch (Exception ex)
-        {
-            _note = Plain(ex);
-        }
-        finally
-        {
-            _busy = false;
-            _active = null;
-        }
+        catch (Exception ex) { _note = Plain(ex); }
+        finally { await InvokeAsync(StateHasChanged); }
     }
 
-    /// <summary>Take a turn by voice.</summary>
+    /// <summary>Put a typed line into the same queue the microphone feeds.</summary>
     /// <remarks>
-    /// DICTATION, NOT A CONVERSATIONAL TURN: it writes down what was heard and
-    /// stops, rather than answering the person.
+    /// ONE PIPELINE, TWO WAYS IN. A typed line that skipped the queue could
+    /// overtake spoken ones and land out of order in the transcript.
     /// </remarks>
-    async Task Listen(Side speaker)
+    async Task Send(Side speaker)
     {
-        if (_busy) return;
-        _busy = true;
-        _active = speaker;
-        _note = null;
+        var said = _draft.Trim();
+        if (said.Length == 0) return;
 
-        var heard = "";
-        var updates = new Progress<TurnState>(t =>
-        {
-            if (t.Heard is { Length: > 0 } h) { heard = h; SetText(speaker, h); }
-            if (t.Detail is { Length: > 0 } d) _note = d;
-            InvokeAsync(StateHasChanged);
-        });
-
-        // THE HALF KNOWS, SO THE HALF SAYS SO. This is the fix for Japanese
-        // spoken into the Japanese side coming back written in English.
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        try { await Talk.DictateAsync(updates, default, LangOf(speaker)); }
-        catch (Exception ex) { _note = Plain(ex); }
-        finally { _busy = false; _active = null; _heardMs = clock.ElapsedMilliseconds; }
-
-        if (heard.Trim().Length > 0) await Turn(speaker, heard);
+        _draft = "";
+        _typing = null;
+        _lines.Add(new Line(speaker, said, Mine: true));
+        _pending.Enqueue((speaker, said));
+        _queued = _pending.Count;
+        _expecting = Other(speaker);
+        await InvokeAsync(StateHasChanged);
+        _ = DrainAsync();
     }
 
     void OpenKeyboard(Side s)
@@ -360,44 +390,35 @@
         _draft = "";
     }
 
-    /// <summary>
-    /// One person's half: what they are being shown, and the two ways in.
-    /// </summary>
+    /// <summary>One person's half: their side of the conversation, and the ways in.</summary>
     /// <remarks>
     /// Both halves are the SAME markup - the top one is only rotated by CSS.
     /// Writing them separately would let them drift, and the whole point is that
-    /// neither person is the second-class one holding a smaller set of controls.
+    /// neither person is the second-class one with a smaller set of controls.
     /// </remarks>
     RenderFragment RenderHalf(Side s) => @<div class="half-inner">
 
-        @* The line, and it is the biggest thing here on purpose: it is read
-           across a table by somebody who did not type it. *@
-        <div class="half-line @(TextOf(s).Length == 0 ? "half-line-empty" : null)" dir="auto">
-            @if (TextOf(s).Length > 0)
+        @* THE CONVERSATION, not just the latest line. Newest last; the CSS keeps
+           the newest against the seam, which is where each person is looking. *@
+        <div class="half-lines">
+            @foreach (var line in LinesFor(s))
             {
-                @TextOf(s)
+                <div class="line @(line.Mine ? "line-mine" : "line-theirs")" dir="auto">@line.Text</div>
             }
-            else if (_active == s)
+            @if (_draining && !LinesFor(s).Any())
             {
-                <span class="half-hint">Listening…</span>
-            }
-            else if (_busy)
-            {
-                <span class="half-hint">…</span>
+                <div class="line line-waiting">...</div>
             }
         </div>
 
         @if (_typing == s)
         {
             <div class="half-compose">
-                @* Same reason as the CV answer box: a controlled value re-applied
-                   per keystroke drops characters, and here it would be words put
-                   into somebody else's mouth. *@
                 <textarea class="half-type" rows="2" placeholder="Type it"
                           aria-label="What to translate"
                           @bind="_draft" @bind:event="oninput"></textarea>
-                <button class="half-go" disabled="@(_busy || _draft.Trim().Length == 0)"
-                        @onclick="() => Turn(s, _draft)">Send</button>
+                <button class="half-go" disabled="@(_draft.Trim().Length == 0)"
+                        @onclick="() => Send(s)">Send</button>
             </div>
         }
         else
@@ -405,12 +426,12 @@
             <div class="half-controls">
                 @if (Host.IsOnDevice)
                 {
-                    @* THE MIC IS THE HERO. Translating aloud is spoken; on the old
-                       screen the microphone was a small outlined button, third in
-                       a row of three, while the loudest control was a step the
-                       person should never have had to think about. *@
-                    <button class="mic" disabled="@_busy" @onclick="() => Listen(s)"
-                            aria-label="@($"Speak {Name(LangOf(s))}")">
+                    @* ONE TAP STARTS THE CONVERSATION, not one utterance. While it
+                       is listening this side's mic stops it; the other side's says
+                       "my turn" and corrects a wrong guess. *@
+                    <button class="mic @(_listening && _expecting == s ? "mic-live" : null)"
+                            @onclick="() => Listen(s)"
+                            aria-label="@(_listening && _expecting == s ? "Stop listening" : "Speak " + Name(LangOf(s)))">
                         <svg viewBox="0 0 24 24" width="30" height="30" fill="none"
                              stroke="currentColor" stroke-width="1.8"
                              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -420,12 +441,10 @@
                         </svg>
                     </button>
                 }
-                <button class="keys" disabled="@_busy" @onclick="() => OpenKeyboard(s)">Type</button>
+                <button class="keys" @onclick="() => OpenKeyboard(s)">Type</button>
             </div>
         }
 
-        @* Set once, at the start, and then left alone - it is who this side IS,
-           not a per-turn decision. *@
         <select class="lang" aria-label="This side's language"
                 @bind:get="LangOf(s)" @bind:set="v => SetLang(s, v)">
             @foreach (var l in Languages)
@@ -435,21 +454,24 @@
         </select>
     </div>;
 
-    static string Name(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
-
-    /// <summary>
-    /// A failure said in words, not in the name of a .NET type.
-    /// </summary>
-    /// <remarks>
-    /// The old catch-all said "Try again, or type it instead" on EVERY failure -
-    /// including the ones that happened while somebody was typing, which is the
-    /// screen telling a person to do the thing they are already doing. What is
-    /// left is true whatever the input was.
-    /// </remarks>
+    /// <summary>A failure said in words, not in the name of a .NET type.</summary>
     static string Plain(Exception ex) => ex switch
     {
         HttpRequestException => "Could not reach the internet.",
         IOException => "Not enough space on the phone.",
         _ => "That did not work. Try it again.",
     };
+
+    /// <summary>Leaving the screen stops the microphone.</summary>
+    /// <remarks>
+    /// An open capture that outlives its page holds the one-turn semaphore for
+    /// the life of the process, and every later press of a microphone anywhere in
+    /// the app then returns instantly and silently.
+    /// </remarks>
+    public void Dispose()
+    {
+        _listening = false;
+        _capture?.Cancel();
+        _capture?.Dispose();
+    }
 }

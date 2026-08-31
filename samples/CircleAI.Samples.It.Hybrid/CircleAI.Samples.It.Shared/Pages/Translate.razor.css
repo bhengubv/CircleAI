@@ -64,26 +64,56 @@
     short phrase be large and a long one shrink rather than overflow, because
     nothing here scrolls.
 */
-.half-line {
+/*
+    THE CONVERSATION, not one line.
+
+    It used to show only the latest utterance, which threw the thread away: two
+    people mid-exchange could not see what had just been said, and there was no
+    record afterwards of a conversation the whole app exists to have.
+
+    justify-content: flex-end keeps the NEWEST against the seam, which is the
+    edge each person is leaning over. Older lines run away toward their own side
+    and scroll off the far edge, so the thing that matters is never the thing
+    that moves.
+*/
+.half-lines {
     flex: 1;
     min-height: 0;
     width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column-reverse;   /* newest nearest the seam */
+    justify-content: flex-start;
+    gap: 8px;
+    overflow-y: auto;
+    padding: 2px 0;
+}
+
+.line {
+    flex: none;
     text-align: center;
-    font-size: clamp(17px, 5.2vw, 30px);
-    font-weight: 600;
     line-height: 1.25;
-    color: var(--on-surface);
     overflow-wrap: anywhere;
 }
 
-.half-line-empty { color: var(--on-surface-soft); }
+/*
+    THEIRS IS THE BIG ONE. On each half the line that person needs to READ is the
+    other person's words rendered for them; their own words are there to confirm
+    the phone heard right. Sizing them the same made a screen you had to search.
+*/
+.line-theirs {
+    font-size: clamp(17px, 5vw, 28px);
+    font-weight: 600;
+    color: var(--on-surface);
+}
 
-.half-hint {
-    font-size: 15px;
+.line-mine {
+    font-size: 14px;
     font-weight: 400;
+    color: var(--on-surface-soft);
+}
+
+.line-waiting {
+    font-size: 15px;
     color: var(--on-surface-soft);
 }
 
@@ -113,6 +143,28 @@
 }
 
 .mic:active:not(:disabled) { background: var(--blue-press); }
+
+/*
+    LISTENING, AND SAYING SO. The microphone is open until it is stopped, which
+    is a state somebody has to be able to see on a phone lying on a table - a
+    button that looks identical whether or not it is recording is the one thing
+    a live mic must never be.
+*/
+.mic-live {
+    box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.28);
+    animation: mic-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.28); }
+    50%      { box-shadow: 0 0 0 9px rgba(33, 150, 243, 0.12); }
+}
+
+/* Somebody who has asked for less motion still gets the ring, just not the
+   breathing. */
+@media (prefers-reduced-motion: reduce) {
+    .mic-live { animation: none; }
+}
 .mic:disabled { opacity: 0.45; cursor: default; }
 
 /* The way in for somebody who cannot speak right now, or whose language the
