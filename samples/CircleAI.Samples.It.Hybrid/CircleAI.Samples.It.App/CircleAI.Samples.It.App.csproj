@@ -5,7 +5,7 @@
   mechanism, and it is why the native Android head has none: a splash is a MAUI
   concept, and that head is plain .NET Android with no theme declared at all, so
   Android drew its default preview window - a #FAFAFA rectangle - which flashed
-  white before a #121A21 app.
+  white before a #080B0E app.
 
   One svg feeds it, MAUI generates every density, and the Color below is the app's
   own page colour, so there is no flash and no colour jump into Home.
@@ -56,15 +56,28 @@
               ForegroundFile="Resources\AppIcon\appiconfg.svg"
               Color="#2196F3" />
 
-    <!-- The splash. Color is Ui.Bg - Shade(#2c3e50, 0.42) - which a screenshot of
-         the running app measures as #121A21. Matching it is the point: the splash
-         is the bridge into Home, so it wears Home's background. -->
+    <!-- The splash. Color is the page colour from app.css - Shade(#2c3e50, 0.18), the
+         near-black the dark theme moved to. Matching it is the point: the splash
+         is the bridge into Home, so it wears Home's background, and when the page
+         went from #121A21 to near-black and this did not, the launch ended in a
+         visible step onto a darker screen.
+
+         ONE COLOUR, FIVE OWNERS: this, splash.svg's rect, App.xaml's
+         PageBackgroundColor, index.html's flash guard, and the page token itself
+         in app.css. tools/brand-mark/gen_mark.py regenerates the svg, so its PAGE
+         constant is the source for that one - change it there or the next run
+         puts the old charcoal back.
+
+         DARK ONLY, and it cannot be otherwise: a splash is a static Android
+         drawable chosen before any code runs, while Light appearance is an in-app
+         choice living in the WebView. A light-mode launch therefore still opens
+         on this dark plate. -->
     <!-- 256dp, not 128. BaseSize is the size the mark is DRAWN at, centred on the
          colour above; at 128 it was a small logo adrift in a dark screen, and on
          a 360dp phone it used barely a third of the width. 256 fills the space a
          splash is for while still clearing the narrowest handset we support. -->
     <MauiSplashScreen Include="Resources\Splash\splash.svg"
-                      Color="#121A21"
+                      Color="#080B0E"
                       BaseSize="256,256" />
 
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />

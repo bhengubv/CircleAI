@@ -23,7 +23,7 @@ fails the build instead of shipping a second logo.
 
 THE COLOURS ARE NOT INTERCHANGEABLE, and which goes where is a decision:
 
-  splash    blue mark on #121A21, the colour Home's page actually measures. The
+  splash    blue mark on #080B0E, the colour Home's page actually measures. The
             splash exists to be the bridge INTO the app, so it wears the app's
             own background. A white default flashing into a dark app is the
             defect this replaces.
@@ -45,7 +45,7 @@ ARC_START,  ARC_SWEEP  = -34.0, 68.0
 
 BLUE  = "#2196F3"
 WHITE = "#ffffff"
-PAGE  = "#121A21"                    # Ui.Bg = Shade(Slate, 0.42f), measured on device
+PAGE  = "#080B0E"                    # Ui.Bg = Shade(Slate, 0.18f) - near-black, matches --page in app.css
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 

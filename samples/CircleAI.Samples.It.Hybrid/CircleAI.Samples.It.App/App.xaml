@@ -5,10 +5,14 @@
              x:Class="CircleAI.Samples.It.App.App">
     <Application.Resources>
         <ResourceDictionary>
-            <!-- The page colour, matching Ui.Bg on the native head and the splash
-                 Color in the csproj. Declared here so the window behind the web
-                 view is never a lighter shade for a frame. -->
-            <Color x:Key="PageBackgroundColor">#121A21</Color>
+            <!-- The page colour, matching the page token in app.css and the splash
+                 Color in the csproj. Declared here so the window behind the web view is
+                 never a lighter shade for a frame - which is exactly what it
+                 became when the dark theme moved to near-black and this did not.
+                 This is the surface that shows in the gap between the splash
+                 going and the WebView painting, so it is the easiest of the five
+                 owners of this colour to leave behind and the hardest to catch. -->
+            <Color x:Key="PageBackgroundColor">#080B0E</Color>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
