@@ -507,3 +507,34 @@ public final class NullRealtimeSession: IRealtimeSession, @unchecked Sendable {
 
     public func dispose() async {}
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// RealtimePackageMarker.cs
+// ─────────────────────────────────────────────────────────────────────────
+
+/// What this package is, and which vendors it knows how to talk to.
+///
+/// This package carries CONTRACTS ONLY. The concrete sessions live in vendor
+/// packages, so a build that ships none of them still compiles and still
+/// answers honestly about what it cannot do.
+public enum RealtimePackageMarker {
+    public static let packageId = "CircleAI.Realtime"
+
+    public static let description =
+        "Contracts + marker for realtime AI services. Concrete sessions are in vendor packages "
+        + "(OpenAI, Gemini, AWS Nova Sonic, ElevenLabs, Ultravox)."
+
+    public static let version = "3.3.0"
+
+    /// The vendor ids this contract set was written against.
+    public static let knownVendors: Set<String> = [
+        "openai-realtime", "gemini-live", "aws-nova-sonic", "elevenlabs-conv", "ultravox",
+    ]
+
+    /// Exact match, and blank is not a vendor. Case is NOT folded: these are
+    /// wire identifiers, not display names.
+    public static func isKnownVendor(_ providerId: String) -> Bool {
+        guard !providerId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return knownVendors.contains(providerId)
+    }
+}
