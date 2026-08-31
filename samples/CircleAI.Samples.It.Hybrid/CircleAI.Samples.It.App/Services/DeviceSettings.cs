@@ -31,8 +31,7 @@ public sealed class DeviceSettings : ISettings
     /// <inheritdoc />
     public Task<AppSettings> LoadAsync(CancellationToken ct = default)
         => Task.FromResult(new AppSettings(
-            Enum.TryParse<AppMode>(_store.Get(ModeKey, nameof(AppMode.Assistant))!, out var m)
-                ? m : AppMode.Assistant,
+            ReadMode(_store.Get(ModeKey, nameof(AppMode.Assistant))!),
             // THE LANGUAGE THE APP WORKS IN. Set first, because everything below
             // reads off it: the wake phrase is whichever one this language has,
             // and answering either follows the speaker or pins a language of its
@@ -45,6 +44,18 @@ public sealed class DeviceSettings : ISettings
             _store.GetBool(WakeOnKey, true)));
 
     /// <inheritdoc />
+    /// <summary>The stored mode, including the name it used to be saved under.</summary>
+    /// <remarks>
+    /// THE MODE IS PERSISTED BY NAME, so renaming the enum silently resets every
+    /// phone that had it set - the parse fails and falls back to Assistant. The
+    /// product calls it translating now; the value on disk may still say
+    /// "Interpreter", and that person chose it deliberately.
+    /// </remarks>
+    private static AppMode ReadMode(string stored) =>
+        string.Equals(stored, "Interpreter", StringComparison.OrdinalIgnoreCase)
+            ? AppMode.Translator
+            : Enum.TryParse<AppMode>(stored, out var m) ? m : AppMode.Assistant;
+
     public Task SaveAsync(AppSettings settings, CancellationToken ct = default)
     {
         _store.Set(ModeKey, settings.Mode.ToString());

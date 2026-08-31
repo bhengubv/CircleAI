@@ -53,20 +53,20 @@
 
     <label class="row">
         <span class="row-text">
-            <span class="row-title">Interpreter</span>
+            <span class="row-title">Translator</span>
             <span class="row-sub">It renders what one person says for the other.</span>
         </span>
-        <input type="radio" name="mode" checked="@(_s.Mode == AppMode.Interpreter)"
-               @onchange="() => Set(_s with { Mode = AppMode.Interpreter })" />
+        <input type="radio" name="mode" checked="@(_s.Mode == AppMode.Translator)"
+               @onchange="() => Set(_s with { Mode = AppMode.Translator })" />
     </label>
 
-    @if (_s.Mode == AppMode.Interpreter)
+    @if (_s.Mode == AppMode.Translator)
     {
-        @* WHICH LANGUAGES is not set here. It belongs to the interpreter itself:
-           somebody can run the app in English and interpret between Korean and
+        @* WHICH LANGUAGES is not set here. It belongs to the translator itself:
+           somebody can run the app in English and translate between Korean and
            Mandarin, and a pair stored next to the app's own language invites the
            two to be confused for each other. *@
-        <a class="go" href="interpret">Set the languages it interprets</a>
+        <a class="go" href="translate">Set the languages it translates</a>
     }
 </section>
 

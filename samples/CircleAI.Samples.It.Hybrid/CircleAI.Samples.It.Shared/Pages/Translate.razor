@@ -1,5 +1,5 @@
 @*
-    Interpreting - standing between two people who do not share a language.
+    Translating - standing between two people who do not share a language.
 
     TWO HALVES, NOT A FORM. The old screen was a translation form: one From/To
     row, one box, three buttons, and the answer as body text under them. Every
@@ -26,10 +26,11 @@
     the app: somebody can run the app in English, keep their CV in Japanese, and
     interpret between Korean and Mandarin.
 *@
-@page "/interpret"
+@page "/translate"
 @inject ISettings Settings
 @inject IBrain Brain
 @inject IConversation Talk
+@inject IVoiceHost Voice
 @inject IFormFactor Host
 @inject NavigationManager Nav
 
@@ -51,6 +52,13 @@
         {
             <span class="seam-note">@_note</span>
         }
+        else if (_fetch is { } f)
+        {
+            @* A voice arriving for a language somebody just chose. It outranks the
+               timing line: one is what the phone is doing now, the other is what
+               it did last. *@
+            <span class="seam-note">@f</span>
+        }
         else if (_timing is { } t)
         {
             @* MEASURED, NOT GUESSED. Four stages with very different costs, and
@@ -68,6 +76,9 @@
 </div>
 
 @code {
+    // THE STORAGE KEY STAYS "interpret" though the product now says translate.
+    // It is the key somebody's chosen pair is already saved under, and renaming
+    // it would quietly forget the languages they set.
     const string Service = "interpret";
 
     enum Side { Top, Bottom }
@@ -124,6 +135,9 @@
     /// <summary>Capture + transcribe from the last spoken turn; 0 when typed.</summary>
     long _heardMs;
 
+    /// <summary>What is being fetched for a language just picked, if anything.</summary>
+    string? _fetch;
+
     protected override async Task OnInitializedAsync()
     {
         // "from"/"to" are the keys the old screen wrote, and somebody who set a
@@ -145,6 +159,54 @@
     {
         if (s == Side.Top) _topLang = tag; else _bottomLang = tag;
         await Settings.SetServiceSettingAsync(Service, s == Side.Top ? "to" : "from", tag);
+
+        // AND FETCH THE VOICE, because choosing a language the phone cannot speak
+        // is not a choice - it is a silence somebody discovers mid-conversation.
+        // Japanese could be picked here while no Japanese voice existed on the
+        // device at all: synthesis spent 2.6 s and produced no audio, and nothing
+        // anywhere said why. Not awaited: a voice can be 250 MB and the other
+        // half of the screen still works while it arrives.
+        _ = EnsureVoiceAsync(tag);
+    }
+
+    /// <summary>Put this language's voice on the phone if it is not already.</summary>
+    /// <remarks>
+    /// SpeakAsync downloads the voice if needed and then says that language's
+    /// checked greeting, so the confirmation is the language itself - and the
+    /// engine is warm for the first real turn rather than cold.
+    /// </remarks>
+    async Task EnsureVoiceAsync(string tag)
+    {
+        try
+        {
+            // Bytes is the size of the download this language WOULD need, so a
+            // null means it is already here and there is nothing to fetch.
+            var rows = await Voice.CatalogueAsync();
+            var row = rows.FirstOrDefault(r =>
+                string.Equals(r.Tag, tag, StringComparison.OrdinalIgnoreCase));
+            if (row?.Bytes is not long bytes) return;
+
+            var name = Name(tag);
+            _fetch = $"Getting the {name} voice · {bytes / 1_000_000} MB";
+            await InvokeAsync(StateHasChanged);
+
+            var progress = new Progress<string>(line =>
+            {
+                _fetch = $"{name}: {line}";
+                InvokeAsync(StateHasChanged);
+            });
+
+            var outcome = await Voice.SpeakAsync(tag, progress);
+            _fetch = outcome.Spoke ? null : $"No {name} voice: {outcome.Detail}";
+        }
+        catch (Exception ex)
+        {
+            _fetch = Plain(ex);
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     /// <summary>Turn the phone around: the pair swap seats, and so do their words.</summary>
@@ -218,8 +280,14 @@
 
             // SPOKEN, NOT JUST SHOWN. The other person may not read, which is the
             // assumption this whole app exists to stop making.
+            // SPOKEN THROUGH THE VOICE HOST, not the conversation wrapper, purely
+            // so the outcome comes back: it carries synthesis time and the LENGTH
+            // OF THE AUDIO separately, and lumping those together is what made
+            // this leg look like 2.8 s of cost. Most of it is the sentence being
+            // said out loud, which is the product working, not overhead.
             clock.Restart();
-            try { await Talk.SayAsync(rendered, LangOf(Other(speaker))); }
+            SpeakOutcome? spoke = null;
+            try { spoke = await Voice.SayAsync(LangOf(Other(speaker)), rendered); }
             catch { /* a mute phone still shows the words */ }
             var speakMs = clock.ElapsedMilliseconds;
 
@@ -230,7 +298,17 @@
             if (_heardMs > 0) legs.Add($"heard {Secs(_heardMs)}");
             legs.Add($"check {Secs(checkMs)}");
             legs.Add($"render {Secs(translateMs)}{(_cold ? " (cold)" : "")}");
-            legs.Add($"speak {Secs(speakMs)}");
+            // Synthesis is the part worth optimising; audio is the part worth
+            // having. Shown apart so nobody tunes the wrong one.
+            if (spoke?.Milliseconds is { } synth)
+            {
+                legs.Add($"synth {Secs(synth)}");
+                if (spoke.AudioMilliseconds is { } heardMs) legs.Add($"audio {Secs(heardMs)}");
+            }
+            else
+            {
+                legs.Add($"speak {Secs(speakMs)}");
+            }
             _timing = string.Join(" · ", legs);
             _cold = false;
             _heardMs = 0;
@@ -316,7 +394,7 @@
                    per keystroke drops characters, and here it would be words put
                    into somebody else's mouth. *@
                 <textarea class="half-type" rows="2" placeholder="Type it"
-                          aria-label="What to interpret"
+                          aria-label="What to translate"
                           @bind="_draft" @bind:event="oninput"></textarea>
                 <button class="half-go" disabled="@(_busy || _draft.Trim().Length == 0)"
                         @onclick="() => Turn(s, _draft)">Send</button>
@@ -327,7 +405,7 @@
             <div class="half-controls">
                 @if (Host.IsOnDevice)
                 {
-                    @* THE MIC IS THE HERO. Interpreting is spoken; on the old
+                    @* THE MIC IS THE HERO. Translating aloud is spoken; on the old
                        screen the microphone was a small outlined button, third in
                        a row of three, while the loudest control was a step the
                        person should never have had to think about. *@

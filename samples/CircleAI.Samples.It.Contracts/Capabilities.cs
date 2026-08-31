@@ -144,7 +144,7 @@ public static class Capabilities
             // src/CircleAI.Languages
             new("Languages", "🌐", "Help me with a language", "languages"),
             // src/CircleAI.Languages.Translation
-            new("Interpret", "🔤", "Interpret between two languages", "interpret"),
+            new("Translate", "🔤", "Translate between two languages", "translate"),
             // src/CircleAI.Research
             new("Research", "🔎", "Help me research something"),
             // src/CircleAI.CodeAgent

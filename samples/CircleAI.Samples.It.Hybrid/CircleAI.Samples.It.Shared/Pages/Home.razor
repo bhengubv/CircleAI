@@ -104,7 +104,7 @@
     @* The fallback has to lead to the SAME app the circle does. Pointing at the
        assistant while the circle opens the interpreter would make the quiet way
        in a different product from the loud one. *@
-    <a class="type-link" href="@(Interpreting ? "interpret" : "chat")">Or type instead</a>
+    <a class="type-link" href="@(Translating ? "translate" : "chat")">Or type instead</a>
 
     @* MARKETING BELONGS HERE. "What it can do" is a pitch rather than a screen
        of controls, and Home is where somebody is deciding whether to bother. *@
@@ -176,7 +176,7 @@
     /// installed the tap still belongs to setup, because an interpreter with no
     /// model is a screen that cannot do the thing it just offered.
     /// </remarks>
-    bool Interpreting => _mode == AppMode.Interpreter
+    bool Translating => _mode == AppMode.Translator
                       && _ready.Stage != ReadyStage.NeedsSetup
                       && Voice.Availability == VoiceAvailability.OnDevice;
 
@@ -184,7 +184,7 @@
     {
         MarkState.Thinking => "Getting it ready",
         MarkState.Speaking => "Speaking",
-        _ when Interpreting => "Tap to interpret",
+        _ when Translating => "Tap to translate",
         _ => Voice.Availability == VoiceAvailability.OnDevice
                 ? _ready.Headline
                 : "Pick a language to hear",
@@ -197,7 +197,7 @@
     /// </summary>
     string Caption => _detail
         ?? _progress
-        ?? (Interpreting
+        ?? (Translating
                 ? $"{LanguageName(_pairFrom)} and {LanguageName(_pairTo)}, spoken both ways"
                 : Voice.Availability == VoiceAvailability.OnDevice
                     ? _ready.Caption
@@ -272,9 +272,9 @@
         // THE MODE DECIDES WHAT THE CIRCLE IS. Checked before anything that
         // starts a conversation, because in Interpreter mode there is no
         // conversation to start - there are two people and a table.
-        if (Interpreting)
+        if (Translating)
         {
-            Nav.NavigateTo("interpret");
+            Nav.NavigateTo("translate");
             return;
         }
 

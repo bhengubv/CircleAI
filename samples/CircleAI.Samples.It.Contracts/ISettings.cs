@@ -27,9 +27,9 @@ public enum AppMode
     Assistant,
 
     /// <summary>
-    /// Interpret between two languages, rather than answering in one.
+    /// Translate between two languages, rather than answering in one.
     /// </summary>
-    Interpreter,
+    Translator,
 }
 
 /// <summary>How the conversation language is decided.</summary>
