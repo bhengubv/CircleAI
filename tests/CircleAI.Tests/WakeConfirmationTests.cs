@@ -152,7 +152,8 @@ public class WakeConfirmationTests
         private readonly string _text;
         public FakeTranscriber(string text) => _text = text;
         public Task<TranscriptionResult> TranscribeAsync(
-            ReadOnlyMemory<byte> pcm, System.Threading.CancellationToken ct = default) =>
+            ReadOnlyMemory<byte> pcm, System.Threading.CancellationToken ct = default,
+            string? language = null) =>
             Task.FromResult(new TranscriptionResult(_text, 0.9f, "en"));
         public IAsyncEnumerable<PartialTranscription> StreamTranscribeAsync(
             IAsyncEnumerable<ReadOnlyMemory<byte>> chunks, System.Threading.CancellationToken ct = default) =>
@@ -163,7 +164,8 @@ public class WakeConfirmationTests
     private sealed class ThrowingTranscriber : IVoiceTranscriber
     {
         public Task<TranscriptionResult> TranscribeAsync(
-            ReadOnlyMemory<byte> pcm, System.Threading.CancellationToken ct = default) =>
+            ReadOnlyMemory<byte> pcm, System.Threading.CancellationToken ct = default,
+            string? language = null) =>
             throw new InvalidOperationException("model not loaded");
         public IAsyncEnumerable<PartialTranscription> StreamTranscribeAsync(
             IAsyncEnumerable<ReadOnlyMemory<byte>> chunks, System.Threading.CancellationToken ct = default) =>

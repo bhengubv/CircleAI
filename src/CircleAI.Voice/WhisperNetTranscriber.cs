@@ -35,6 +35,9 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     private readonly WhisperFactory _factory;
     private readonly string _language;
 
+    /// <summary>Which language the cached processor was built for.</summary>
+    private string? _processorLanguage;
+
     /// <summary>
     /// One processor, kept between calls, and the window it was built for.
     /// </summary>
@@ -135,11 +138,33 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         _language = string.IsNullOrWhiteSpace(language) ? "auto" : language;
     }
 
+    /// <summary>
+    /// The primary subtag Whisper wants: "ja" from "ja", "ja-JP" or "  ja  ".
+    /// </summary>
+    /// <remarks>
+    /// Returns null for null, blank or "auto", so the caller's value falls back
+    /// to the constructor's rather than pinning the engine to nonsense.
+    /// </remarks>
+    private static string? Primary(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+        var t = tag.Trim();
+        var dash = t.IndexOf('-');
+        if (dash > 0) t = t[..dash];
+        return t.Equals("auto", StringComparison.OrdinalIgnoreCase) ? null : t.ToLowerInvariant();
+    }
+
     /// <inheritdoc />
     public async Task<TranscriptionResult> TranscribeAsync(
-        ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default)
+        ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default, string? language = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // THE CALLER'S LANGUAGE BEATS THE CONSTRUCTOR'S, and the constructor's
+        // default is "auto". Detection is a guess from a few seconds of audio,
+        // and tiny makes a poor one that leans to English - so an interpreter
+        // that knows which half is speaking should never be made to rely on it.
+        var effective = Primary(language) ?? _language;
 
         var samples = Pcm16ToFloat(pcmAudio.Span);
         if (samples.Length == 0)
@@ -152,13 +177,13 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         try
         {
             var total = System.Diagnostics.Stopwatch.StartNew();
-            var processor = Rent(window, out var built);
+            var processor = Rent(window, effective, out var built);
             var buildMs = total.ElapsedMilliseconds;
 
             var text = new System.Text.StringBuilder();
             double probSum = 0;
             int segCount = 0;
-            string lang = _language == "auto" ? "und" : _language;
+            string lang = effective == "auto" ? "und" : effective;
 
             await foreach (var seg in processor.ProcessAsync(samples, ct).ConfigureAwait(false))
             {
@@ -198,9 +223,12 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     /// <remarks>
     /// Caller must hold <see cref="_gate"/>.
     /// </remarks>
-    private WhisperProcessor Rent(int window, out bool built)
+    private WhisperProcessor Rent(int window, string language, out bool built)
     {
-        if (_processor is not null && _processorContext == window)
+        // Keyed on the language as well as the window: a cached processor built
+        // for English will keep transcribing Japanese as English, which is
+        // exactly the bug this parameter exists to fix.
+        if (_processor is not null && _processorContext == window && _processorLanguage == language)
         {
             built = false;
             return _processor;
@@ -213,8 +241,9 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         _processor?.Dispose();
         _processor = null;
 
+        _processorLanguage = language;
         _processor = _factory.CreateBuilder()
-            .WithLanguage(_language)
+            .WithLanguage(language)
             .WithThreads(Threads)
             .WithAudioContextSize(window)
             // NOTHING CARRIES OVER FROM THE LAST QUESTION. Whisper will feed a

@@ -86,7 +86,15 @@ public interface IConversation
     /// <see cref="TurnState.Detail"/> like every other refusal.
     /// </para>
     /// </remarks>
-    Task<string?> DictateAsync(IProgress<TurnState> updates, CancellationToken ct = default);
+    /// <param name="language">
+    /// What the speaker is speaking, when the caller knows - the interpreter
+    /// does, because each half of that screen owns a language and prints it on
+    /// its own microphone button. Left null the engine guesses, and a small
+    /// model guesses English: Japanese spoken into the Japanese half came back
+    /// written down as English.
+    /// </param>
+    Task<string?> DictateAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default, string? language = null);
 
     /// <summary>Say something aloud, without listening first.</summary>
     /// <remarks>

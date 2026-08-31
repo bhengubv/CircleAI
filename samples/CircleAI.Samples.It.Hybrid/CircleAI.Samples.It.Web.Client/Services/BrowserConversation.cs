@@ -31,7 +31,7 @@ public sealed class BrowserConversation : IConversation
     /// <remarks>No microphone here, and it says which part is missing rather
     /// than borrowing the conversation's excuse.</remarks>
     public Task<string?> DictateAsync(
-        IProgress<TurnState> updates, CancellationToken ct = default)
+        IProgress<TurnState> updates, CancellationToken ct = default, string? language = null)
     {
         updates.Report(new TurnState(TurnPhase.Idle,
             Detail: "Listening runs on the phone. Install the app to speak to it."));

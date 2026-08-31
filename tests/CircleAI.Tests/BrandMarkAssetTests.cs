@@ -168,14 +168,29 @@ public class BrandMarkAssetTests
     [Fact]
     public void The_splash_wears_the_apps_own_page_colour()
     {
-        // #121A21 is Shade(#2c3e50, 0.42) - Ui.Bg on the native head - and it is
-        // what a screenshot of the running app measures. The splash exists to be
-        // the bridge INTO the app: a splash in any other colour is a visible jump,
-        // and the default it replaced was #FAFAFA flashing white into a dark app.
+        // THE EXPECTED COLOUR IS READ, NOT TYPED. This test used to assert the
+        // literal #121A21 in two places, which made it a THIRD owner of a fact
+        // that already had four - and when the dark page moved to near-black the
+        // app, the splash and this test disagreed three ways. Deriving it from
+        // app.css means the test cannot go stale: it enforces that every owner
+        // agrees, rather than that they all equal one number somebody typed here.
+        var css = File.ReadAllText(
+            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.Shared",
+                  "wwwroot", "app.css"));
+
+        // The FIRST --page is the one on bare :root - the dark theme. The light
+        // block below it declares its own and must not be picked up here.
+        var page = Regex.Match(css, @"--page:\s*(#[0-9A-Fa-f]{6})");
+        Assert.True(page.Success, "app.css declares no --page");
+        var expected = page.Groups[1].Value;
+
+        // The splash exists to be the bridge INTO the app: a splash in any other
+        // colour is a visible jump, and the default it replaced was #FAFAFA
+        // flashing white into a dark app.
         var splash = File.ReadAllText(
             Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
                   "Resources", "Splash", "splash.svg"));
-        Assert.Contains("#121A21", splash, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expected, splash, StringComparison.OrdinalIgnoreCase);
 
         var csproj = File.ReadAllText(
             Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
@@ -185,7 +200,17 @@ public class BrandMarkAssetTests
         var declared = Regex.Match(csproj,
             @"MauiSplashScreen[^>]*Color=""(#[0-9A-Fa-f]{6})""", RegexOptions.Singleline);
         Assert.True(declared.Success, "MauiSplashScreen declares no Color");
-        Assert.Equal("#121A21", declared.Groups[1].Value, ignoreCase: true);
+        Assert.Equal(expected, declared.Groups[1].Value, ignoreCase: true);
+
+        // And the MAUI window behind the web view - the surface that shows in the
+        // gap after the splash goes and before the page paints. It was the owner
+        // most easily forgotten, so it is the one most worth asserting.
+        var appXaml = File.ReadAllText(
+            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App", "App.xaml"));
+        var window = Regex.Match(appXaml,
+            @"PageBackgroundColor""\s*>\s*(#[0-9A-Fa-f]{6})");
+        Assert.True(window.Success, "App.xaml declares no PageBackgroundColor");
+        Assert.Equal(expected, window.Groups[1].Value, ignoreCase: true);
     }
 
     [Fact]

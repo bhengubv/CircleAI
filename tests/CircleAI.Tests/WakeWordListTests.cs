@@ -132,7 +132,7 @@ public sealed class WakeWordListTests
 
     private sealed class NullTranscriber : IVoiceTranscriber
     {
-        public Task<TranscriptionResult> TranscribeAsync(ReadOnlyMemory<byte> pcm, CancellationToken ct = default)
+        public Task<TranscriptionResult> TranscribeAsync(ReadOnlyMemory<byte> pcm, CancellationToken ct = default, string? language = null)
             => Task.FromResult(new TranscriptionResult(string.Empty, 0f, "und"));
 
         public async IAsyncEnumerable<PartialTranscription> StreamTranscribeAsync(

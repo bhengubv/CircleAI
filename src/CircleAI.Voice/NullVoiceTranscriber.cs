@@ -12,7 +12,7 @@ public sealed class NullVoiceTranscriber : IVoiceTranscriber
     private bool _disposed;
 
     /// <inheritdoc />
-    public Task<TranscriptionResult> TranscribeAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default)
+    public Task<TranscriptionResult> TranscribeAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default, string? language = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ct.ThrowIfCancellationRequested();

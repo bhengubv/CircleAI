@@ -313,7 +313,7 @@ internal sealed class FakeVoiceTranscriber : IVoiceTranscriber
 
     public Task<TranscriptionResult> TranscribeAsync(
         ReadOnlyMemory<byte> pcmAudio,
-        CancellationToken ct = default)
+        CancellationToken ct = default, string? language = null)
         => Task.FromResult(_result);
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

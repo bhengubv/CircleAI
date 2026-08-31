@@ -75,7 +75,7 @@ public sealed class WhisperTranscriber : IVoiceTranscriber
     /// and returned as a BCP-47 code.
     /// </remarks>
     public Task<TranscriptionResult> TranscribeAsync(
-        ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default)
+        ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default, string? language = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ct.ThrowIfCancellationRequested();

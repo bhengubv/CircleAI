@@ -160,7 +160,7 @@ public sealed class DeviceConversation : IConversation
 
     /// <inheritdoc />
     public async Task<string?> DictateAsync(
-        IProgress<TurnState> updates, CancellationToken ct = default)
+        IProgress<TurnState> updates, CancellationToken ct = default, string? language = null)
     {
         if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
         {
@@ -189,7 +189,7 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Listening));
 
-            var heard = Speech(await ListenAsync(updates, ct).ConfigureAwait(false));
+            var heard = Speech(await ListenAsync(updates, ct, language).ConfigureAwait(false));
 
             updates.Report(heard is null
                 ? new TurnState(TurnPhase.Idle, Detail: "I did not catch that.")
@@ -241,7 +241,8 @@ public sealed class DeviceConversation : IConversation
     /// people this is most for. The thresholds are VoiceTurn's own: speech is 3x
     /// the noise floor or an absolute 0.02, and 1.4 seconds of quiet ends the turn.
     /// </remarks>
-    private async Task<string?> ListenAsync(IProgress<TurnState> updates, CancellationToken ct)
+    private async Task<string?> ListenAsync(
+        IProgress<TurnState> updates, CancellationToken ct, string? language = null)
     {
         var turn = new global::CircleAI.Samples.It.Mobile.VoiceTurn();
         turn.Level += (_, level) => updates.Report(new TurnState(TurnPhase.Listening, level));
@@ -285,7 +286,7 @@ public sealed class DeviceConversation : IConversation
         var listener = _listener ??= (await ItListener.TryCreateAsync(StorageDir).ConfigureAwait(false)).listener;
         if (listener is null) return null;
 
-        var result = await listener.Transcriber.TranscribeAsync(audio, ct).ConfigureAwait(false);
+        var result = await listener.Transcriber.TranscribeAsync(audio, ct, language).ConfigureAwait(false);
         return result.Text;
     }
 

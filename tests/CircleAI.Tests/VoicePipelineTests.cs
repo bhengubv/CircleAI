@@ -371,7 +371,7 @@ public sealed class VoicePipelineTests
 
         public Task<TranscriptionResult> TranscribeAsync(
             ReadOnlyMemory<byte> pcmAudio,
-            CancellationToken ct = default)
+            CancellationToken ct = default, string? language = null)
             => Task.FromResult(new TranscriptionResult(_text, 0.6f, "und"));
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

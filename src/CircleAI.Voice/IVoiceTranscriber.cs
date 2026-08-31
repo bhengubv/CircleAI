@@ -15,8 +15,20 @@ public interface IVoiceTranscriber : IAsyncDisposable
     /// signed 16-bit PCM samples, mono, sampled at 16 kHz.
     /// </param>
     /// <param name="ct">Cancellation token used to abort transcription.</param>
+    /// <param name="language">
+    /// BCP-47 / ISO 639 code of the language being spoken, when the caller
+    /// already knows it; <c>null</c> or <c>"auto"</c> to let the engine detect.
+    /// <para>
+    /// WORTH PASSING WHENEVER IT IS KNOWN. Detection is a guess made from a few
+    /// seconds of audio, and on a small model it is a bad one that leans towards
+    /// English: an interpreter screen that had the language printed on its own
+    /// microphone button still got Japanese speech written down as English,
+    /// because nothing carried the answer down to here.
+    /// </para>
+    /// </param>
     /// <returns>The recognised text, confidence, and detected language.</returns>
-    Task<TranscriptionResult> TranscribeAsync(ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default);
+    Task<TranscriptionResult> TranscribeAsync(
+        ReadOnlyMemory<byte> pcmAudio, CancellationToken ct = default, string? language = null);
 
     /// <summary>
     /// Stream audio chunks and receive partial transcriptions as the

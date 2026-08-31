@@ -201,7 +201,9 @@
             InvokeAsync(StateHasChanged);
         });
 
-        try { await Talk.DictateAsync(updates); }
+        // THE HALF KNOWS, SO THE HALF SAYS SO. This is the fix for Japanese
+        // spoken into the Japanese side coming back written in English.
+        try { await Talk.DictateAsync(updates, default, LangOf(speaker)); }
         catch (Exception ex) { _note = Plain(ex); }
         finally { _busy = false; _active = null; }
 
