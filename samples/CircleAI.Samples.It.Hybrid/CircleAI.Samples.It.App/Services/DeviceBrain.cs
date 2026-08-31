@@ -53,7 +53,10 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
             // AND NOT THE MODEL'S NAME. "Qwen3.6-35B-A3B-MNN" is our word for it;
             // nobody outside this project can act on it, and printing it turns a
             // sentence about their phone into one about our build.
-            return loader.ModelExists(chat.Name)
+            // Size, not SHA-256 - see ModelChoice.For. This is the readiness
+            // gate every turn passes through, and hashing 470 MB to answer it put
+            // 9.4 s in front of the first thing anybody says.
+            return loader.ModelPresent(chat.Name)
                 ? new BrainState(true, "Ready")
                 : new BrainState(false,
                     $"Answering needs a {ModelChoice.Size(chat.TotalBytes)} download. "

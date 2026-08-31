@@ -101,7 +101,10 @@ public sealed class DeviceFacts : IDeviceFacts
                 // it needed 22797 MB. One rule, one answer.
                 var chosen = ModelChoice.For(modality, registry, loader, probe);
 
-                if (chosen is not null && loader.ModelExists(chosen.Name))
+                // Size, not SHA-256 - see ModelChoice.For. This runs once per
+                // modality to draw the "Turned on" list, so the hash was paid for
+                // every installed model each time Settings opened.
+                if (chosen is not null && loader.ModelPresent(chosen.Name))
                 {
                     rows.Add(new AbilityRow(title, Blurb(blurb), AbilityState.On,
                         TryRoute: RouteFor(modality)));

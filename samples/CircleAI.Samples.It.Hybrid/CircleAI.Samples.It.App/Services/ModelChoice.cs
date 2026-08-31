@@ -56,7 +56,21 @@ internal static class ModelChoice
     {
         var candidates = registry.AllModels.Where(m => m.Modality == modality).ToList();
 
-        var installed = candidates.FirstOrDefault(m => loader.ModelExists(m.Name));
+        // PRESENT, NOT VERIFIED - and the difference is nine seconds.
+        //
+        // ModelExists proves every byte by hashing the anchor file, which for the
+        // chat bundle is a 470 MB weight: 9.4 s on the P30, MEASURED, and this
+        // loop pays it once per candidate before the answer is even chosen. The
+        // question being asked here is "which model is on the phone", and a
+        // size check answers that.
+        //
+        // It also still catches the failure the hash was added for. A download
+        // interrupted after the first few KB leaves the anchor short, and
+        // ModelPresent requires it to be at least its catalogued length - so a
+        // half-fetched bundle is rejected here exactly as before. What is given
+        // up is detecting a file of the right length with wrong bytes, and that
+        // is a job for install and repair, not for every question somebody asks.
+        var installed = candidates.FirstOrDefault(m => loader.ModelPresent(m.Name));
         if (installed is not null) return installed;
 
         return candidates
