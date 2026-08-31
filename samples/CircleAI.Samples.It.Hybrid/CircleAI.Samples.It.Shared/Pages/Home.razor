@@ -14,6 +14,7 @@
 @page "/home"
 @inject IVoiceHost Voice
 @inject ISetup Setup
+@inject ISettings Settings
 @inject IConversation Talk
 @inject NavigationManager Nav
 
@@ -100,7 +101,10 @@
         on a bus, or in a room where speaking out loud is not on, had no way in
         at all.
     *@
-    <a class="type-link" href="chat">Or type instead</a>
+    @* The fallback has to lead to the SAME app the circle does. Pointing at the
+       assistant while the circle opens the interpreter would make the quiet way
+       in a different product from the loud one. *@
+    <a class="type-link" href="@(Interpreting ? "interpret" : "chat")">Or type instead</a>
 
     @* MARKETING BELONGS HERE. "What it can do" is a pitch rather than a screen
        of controls, and Home is where somebody is deciding whether to bother. *@
@@ -149,24 +153,69 @@
     */
     Readiness _ready = new(ReadyStage.Waking, "Getting ready", "", false);
 
+    /*
+        HOME HAS TO KNOW WHICH APP THIS IS.
+
+        Mode was a global setting that this screen did not read. Somebody could
+        set the app to Interpreter, come back here, tap the circle - and get the
+        assistant, because Home only ever knew one thing to do. The interpreter
+        was reachable from exactly ONE place in the whole app: a link inside
+        Settings > Mode worded as "Set the languages it interprets", which reads
+        as configuration rather than as the way in. Four taps through a settings
+        screen, and nothing on Home, in Services or on the bar said it existed.
+
+        A mode that changes nothing on the screen it is a mode OF is not a mode.
+    */
+    AppMode _mode = AppMode.Assistant;
+    string _pairFrom = "en";
+    string _pairTo = "zu";
+
+    /// <summary>Whether the circle should open the interpreter rather than talk.</summary>
+    /// <remarks>
+    /// Guarded by readiness for the same reason the headline is: with nothing
+    /// installed the tap still belongs to setup, because an interpreter with no
+    /// model is a screen that cannot do the thing it just offered.
+    /// </remarks>
+    bool Interpreting => _mode == AppMode.Interpreter
+                      && _ready.Stage != ReadyStage.NeedsSetup
+                      && Voice.Availability == VoiceAvailability.OnDevice;
+
     string Prompt => _state switch
     {
         MarkState.Thinking => "Getting it ready",
         MarkState.Speaking => "Speaking",
+        _ when Interpreting => "Tap to interpret",
         _ => Voice.Availability == VoiceAvailability.OnDevice
                 ? _ready.Headline
                 : "Pick a language to hear",
     };
 
+    /// <summary>
+    /// In Interpreter mode the caption NAMES THE PAIR, because that is the one
+    /// fact somebody needs before they put the phone down on a table between two
+    /// people - and it is the fact the old flow buried behind a settings link.
+    /// </summary>
     string Caption => _detail
         ?? _progress
-        ?? (Voice.Availability == VoiceAvailability.OnDevice
-                ? _ready.Caption
-                : Voice.Provenance);
+        ?? (Interpreting
+                ? $"{LanguageName(_pairFrom)} and {LanguageName(_pairTo)}, spoken both ways"
+                : Voice.Availability == VoiceAvailability.OnDevice
+                    ? _ready.Caption
+                    : Voice.Provenance);
 
     protected override async Task OnInitializedAsync()
     {
         _ready = await Setup.ReadinessAsync();
+
+        // Which app this is, and - if it is the interpreter - between whom.
+        // Guarded: a settings read that fails must not take Home down with it.
+        try
+        {
+            _mode = (await Settings.LoadAsync()).Mode;
+            _pairFrom = await Settings.ServiceSettingAsync("interpret", "from", "en") ?? "en";
+            _pairTo = await Settings.ServiceSettingAsync("interpret", "to", "zu") ?? "zu";
+        }
+        catch { /* stay the assistant rather than show a broken Home */ }
 
         // Counted, not claimed - and counted where the count is true. Guarded
         // because a host that cannot enumerate voices should print no number
@@ -217,6 +266,15 @@
         if (_ready.Stage == ReadyStage.NeedsSetup)
         {
             Nav.NavigateTo("setup");
+            return;
+        }
+
+        // THE MODE DECIDES WHAT THE CIRCLE IS. Checked before anything that
+        // starts a conversation, because in Interpreter mode there is no
+        // conversation to start - there are two people and a table.
+        if (Interpreting)
+        {
+            Nav.NavigateTo("interpret");
             return;
         }
 

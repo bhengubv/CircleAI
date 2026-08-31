@@ -1,16 +1,30 @@
 @*
     Interpreting - standing between two people who do not share a language.
 
+    TWO HALVES, NOT A FORM. The old screen was a translation form: one From/To
+    row, one box, three buttons, and the answer as body text under them. Every
+    part of it faced whoever was holding the phone, so the person being
+    interpreted FOR had nothing to look at and nothing to touch - and the screen
+    could not be handed over, which is the entire act. Google Translate and
+    Papago both solved this years ago by splitting the screen in two.
+
+    So each person owns a half. The top half is rotated 180 degrees to face the
+    person opposite, and the phone is meant to be put down on the table between
+    them rather than held.
+
+    THE DIRECTION IS THE SIDE YOU TAP. The old screen made a conversation that
+    turns over every few seconds wait for somebody to re-pick "from" and "to" -
+    the thing its own opening comment called "the phone being the slowest person
+    in the room", written directly above the picker that caused it. Tapping YOUR
+    half says you are speaking; the other half is who it is for. There is nothing
+    to set per turn.
+
+    THE ANSWER IS THE BIGGEST THING ON EACH HALF, because it is read at arm's
+    length by somebody who did not type it.
+
     ITS OWN LANGUAGES, ITS OWN SCREEN. The pair belongs to this service, not to
     the app: somebody can run the app in English, keep their CV in Japanese, and
-    interpret between Korean and Mandarin. A single global "language" forces all
-    three to agree, which is wrong for everybody who needs more than one.
-
-    TWO DIRECTIONS, ONE TAP. A conversation between two people changes direction
-    every few seconds, and asking somebody to re-pick "from" and "to" each time
-    makes the phone the slowest person in the room.
-
-    NOTHING SCROLLS: two pickers, a box, two buttons, and the answer.
+    interpret between Korean and Mandarin.
 *@
 @page "/interpret"
 @inject ISettings Settings
@@ -19,177 +33,142 @@
 @inject IFormFactor Host
 @inject NavigationManager Nav
 
-<div class="interpret">
+<div class="talk">
 
-    <div class="pair">
-        <label class="side">
-            <span class="side-label">From</span>
-            @* @bind:get/@bind:set, not value= with @onchange: a re-applied value
-               attribute is what made the settings picker snap back to its old
-               choice while the new one was still being saved. *@
-            <select class="select" @bind:get="_from" @bind:set="SetFrom">
-                @foreach (var l in Languages)
-                {
-                    <option value="@l.Tag">@l.Name</option>
-                }
-            </select>
-        </label>
-
-        <button class="swap" @onclick="Swap" aria-label="Swap the languages">&#8646;</button>
-
-        <label class="side">
-            <span class="side-label">To</span>
-            <select class="select" @bind:get="_to" @bind:set="SetTo">
-                @foreach (var l in Languages)
-                {
-                    <option value="@l.Tag">@l.Name</option>
-                }
-            </select>
-        </label>
-    </div>
-
-    @* Same as the CV answer box: a controlled value re-applied per keystroke
-       drops characters, and here it would be words put into somebody else's
-       mouth. *@
-    <textarea class="say" rows="3" placeholder="Type what they said"
-              aria-label="What to interpret"
-              @bind="_input" @bind:event="oninput"></textarea>
+    @* THEIRS. Rotated, so it reads the right way up from across the table. *@
+    <section class="half half-top @(_active == Side.Top ? "half-live" : null)">
+        @RenderHalf(Side.Top)
+    </section>
 
     @*
-        A WAY IN THAT IS NOT THE KEYBOARD.
-
-        This screen argues in its own opening that a conversation changes
-        direction every few seconds and that making somebody re-pick each time
-        "makes the phone the slowest person in the room" - and then offered a
-        keyboard as the only input. Typing out what the person in front of you
-        just said IS the phone being the slowest thing in the room, and it asks
-        the one thing this app exists to stop assuming: that they can type.
+        THE SEAM. A conversation has two ends and this is the table between them;
+        it also carries the one control that belongs to neither side - swapping
+        who sits where, for when the phone changes hands.
     *@
-    <div class="actions">
-        @if (Host.IsOnDevice)
+    <div class="seam">
+        <button class="seam-swap" @onclick="Swap" aria-label="Swap the two sides">&#8646;</button>
+        @if (_note is not null)
         {
-            <button class="soft" @onclick="Hear" disabled="@_busy">Say it</button>
+            <span class="seam-note">@_note</span>
         }
-        <button class="soft" @onclick="Speak" disabled="@_busy">Read it out</button>
-        <button class="primary" @onclick="Run" disabled="@(_busy || _input.Trim().Length == 0)">Interpret</button>
     </div>
 
-    @if (_out.Length > 0)
-    {
-        <div class="out" dir="auto">@_out</div>
-    }
-
-    @if (_note is not null)
-    {
-        <p class="note">@_note</p>
-
-        @* The instruction, pressable - the same fix the chat screen offers, and
-           only where pressing it does something. *@
-        @if (Host.IsOnDevice && _note.Contains("Settings", StringComparison.Ordinal))
-        {
-            <button class="soft" @onclick='() => Nav.NavigateTo("settings")'>Turn it on</button>
-        }
-    }
+    @* YOURS. *@
+    <section class="half half-bottom @(_active == Side.Bottom ? "half-live" : null)">
+        @RenderHalf(Side.Bottom)
+    </section>
 
 </div>
 
 @code {
     const string Service = "interpret";
 
+    enum Side { Top, Bottom }
+
     static IReadOnlyList<SampleLanguage> Languages { get; } = SampleLanguages.All.Values
         .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    string _from = "en";
-    string _to = "zu";
-    string _input = "";
-    string _out = "";
+    string _topLang = "zu";
+    string _bottomLang = "en";
+
+    /// <summary>What each half is currently showing, in that half's own language.</summary>
+    string _topText = "";
+    string _bottomText = "";
+
+    /// <summary>Which half is mid-turn, so only that one shows it is working.</summary>
+    Side? _active;
+
+    /// <summary>The half whose keyboard is open, if any.</summary>
+    Side? _typing;
+    string _draft = "";
+
     string? _note;
     bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
-        _from = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
-        _to = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
+        // "from"/"to" are the keys the old screen wrote, and somebody who set a
+        // pair before this redesign should not find it forgotten.
+        _bottomLang = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
+        _topLang = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
     }
 
-    async Task SetFrom(string tag)
+    string LangOf(Side s) => s == Side.Top ? _topLang : _bottomLang;
+    string TextOf(Side s) => s == Side.Top ? _topText : _bottomText;
+    static Side Other(Side s) => s == Side.Top ? Side.Bottom : Side.Top;
+
+    void SetText(Side s, string v)
     {
-        _from = tag;
-        await Settings.SetServiceSettingAsync(Service, "from", tag);
+        if (s == Side.Top) _topText = v; else _bottomText = v;
     }
 
-    async Task SetTo(string tag)
+    async Task SetLang(Side s, string tag)
     {
-        _to = tag;
-        await Settings.SetServiceSettingAsync(Service, "to", tag);
+        if (s == Side.Top) _topLang = tag; else _bottomLang = tag;
+        await Settings.SetServiceSettingAsync(Service, s == Side.Top ? "to" : "from", tag);
     }
 
-    /// <summary>Turn the pair around.</summary>
-    /// <remarks>
-    /// A conversation changes direction every few seconds. Without this the phone
-    /// is the slowest person in the room.
-    /// </remarks>
+    /// <summary>Turn the phone around: the pair swap seats, and so do their words.</summary>
     async Task Swap()
     {
-        (_from, _to) = (_to, _from);
-        await Settings.SetServiceSettingAsync(Service, "from", _from);
-        await Settings.SetServiceSettingAsync(Service, "to", _to);
+        (_topLang, _bottomLang) = (_bottomLang, _topLang);
+        (_topText, _bottomText) = (_bottomText, _topText);
+        await Settings.SetServiceSettingAsync(Service, "to", _topLang);
+        await Settings.SetServiceSettingAsync(Service, "from", _bottomLang);
     }
 
-    /// <summary>Take what the other person said, without typing it.</summary>
+    /// <summary>
+    /// One turn: what this side said, rendered onto the other side.
+    /// </summary>
     /// <remarks>
-    /// DICTATION, NOT A TURN: it writes down what was heard and stops. A
-    /// conversational turn would answer them.
+    /// The speaker's own words land on the speaker's half straight away, before
+    /// the model is asked anything. Somebody who has just spoken needs to see
+    /// that the phone heard them; making them wait on a translation to find out
+    /// is how you get a sentence said twice.
     /// </remarks>
-    async Task Hear()
+    async Task Turn(Side speaker, string said)
     {
-        if (_busy) return;
+        said = said.Trim();
+        if (_busy || said.Length == 0) return;
+
         _busy = true;
+        _active = speaker;
         _note = null;
+        _typing = null;
+        _draft = "";
 
-        var updates = new Progress<TurnState>(t =>
-        {
-            if (t.Heard is { Length: > 0 } heard) _input = heard;
-            if (t.Detail is { Length: > 0 } detail) _note = detail;
-            InvokeAsync(StateHasChanged);
-        });
+        SetText(speaker, said);
+        SetText(Other(speaker), "");
+        await InvokeAsync(StateHasChanged);
 
-        try { await Talk.DictateAsync(updates); }
-        catch (Exception ex) { _note = Plain(ex); }
-        finally { _busy = false; }
-    }
-
-    async Task Run()
-    {
-        if (_busy || _input.Trim().Length == 0) return;
-        _busy = true;
-        _note = null;
-
-        // WHAT IS MISSING, NOT AN EXCEPTION TYPE. Without the answering model
-        // this threw and printed something like "InvalidOperationException" at
-        // somebody standing in front of a nurse. It is the same fact the chat
-        // screen states plainly, and the same button that fixes it.
         var brain = await Brain.StateAsync();
         if (!brain.Ready)
         {
             _note = brain.Detail;
             _busy = false;
+            _active = null;
             return;
         }
 
-        var fromName = SampleLanguages.Find(_from)?.Name ?? _from;
-        var toName = SampleLanguages.Find(_to)?.Name ?? _to;
+        var fromName = SampleLanguages.Find(LangOf(speaker))?.Name ?? LangOf(speaker);
+        var toName = SampleLanguages.Find(LangOf(Other(speaker)))?.Name ?? LangOf(Other(speaker));
 
         try
         {
-            // ASKED AS A TRANSLATION, NOT AS A CONVERSATION. Without "give only the
-            // translation" the model answers the sentence rather than rendering it,
-            // which is a different and much worse thing to hand somebody standing
-            // in front of a nurse.
-            _out = await Brain.AskAsync(
+            // Asked as a translation, not as a conversation: without "give only
+            // the translation" the model ANSWERS the sentence, which is a very
+            // different thing to put in front of somebody at a hospital desk.
+            var rendered = await Brain.AskAsync(
                 $"Translate this from {fromName} to {toName}. "
-              + $"Give only the translation, nothing else:\n\n{_input.Trim()}");
+              + $"Give only the translation, nothing else:\n\n{said}");
+
+            SetText(Other(speaker), rendered);
+
+            // SPOKEN, NOT JUST SHOWN. The other person may not read, which is the
+            // assumption this whole app exists to stop making.
+            try { await Talk.SayAsync(rendered, LangOf(Other(speaker))); }
+            catch { /* a mute phone still shows the words */ }
         }
         catch (Exception ex)
         {
@@ -198,37 +177,133 @@
         finally
         {
             _busy = false;
+            _active = null;
         }
     }
+
+    /// <summary>Take a turn by voice.</summary>
+    /// <remarks>
+    /// DICTATION, NOT A CONVERSATIONAL TURN: it writes down what was heard and
+    /// stops, rather than answering the person.
+    /// </remarks>
+    async Task Listen(Side speaker)
+    {
+        if (_busy) return;
+        _busy = true;
+        _active = speaker;
+        _note = null;
+
+        var heard = "";
+        var updates = new Progress<TurnState>(t =>
+        {
+            if (t.Heard is { Length: > 0 } h) { heard = h; SetText(speaker, h); }
+            if (t.Detail is { Length: > 0 } d) _note = d;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Talk.DictateAsync(updates); }
+        catch (Exception ex) { _note = Plain(ex); }
+        finally { _busy = false; _active = null; }
+
+        if (heard.Trim().Length > 0) await Turn(speaker, heard);
+    }
+
+    void OpenKeyboard(Side s)
+    {
+        _typing = s;
+        _draft = "";
+    }
+
+    /// <summary>
+    /// One person's half: what they are being shown, and the two ways in.
+    /// </summary>
+    /// <remarks>
+    /// Both halves are the SAME markup - the top one is only rotated by CSS.
+    /// Writing them separately would let them drift, and the whole point is that
+    /// neither person is the second-class one holding a smaller set of controls.
+    /// </remarks>
+    RenderFragment RenderHalf(Side s) => @<div class="half-inner">
+
+        @* The line, and it is the biggest thing here on purpose: it is read
+           across a table by somebody who did not type it. *@
+        <div class="half-line @(TextOf(s).Length == 0 ? "half-line-empty" : null)" dir="auto">
+            @if (TextOf(s).Length > 0)
+            {
+                @TextOf(s)
+            }
+            else if (_active == s)
+            {
+                <span class="half-hint">Listening…</span>
+            }
+            else if (_busy)
+            {
+                <span class="half-hint">…</span>
+            }
+        </div>
+
+        @if (_typing == s)
+        {
+            <div class="half-compose">
+                @* Same reason as the CV answer box: a controlled value re-applied
+                   per keystroke drops characters, and here it would be words put
+                   into somebody else's mouth. *@
+                <textarea class="half-type" rows="2" placeholder="Type it"
+                          aria-label="What to interpret"
+                          @bind="_draft" @bind:event="oninput"></textarea>
+                <button class="half-go" disabled="@(_busy || _draft.Trim().Length == 0)"
+                        @onclick="() => Turn(s, _draft)">Send</button>
+            </div>
+        }
+        else
+        {
+            <div class="half-controls">
+                @if (Host.IsOnDevice)
+                {
+                    @* THE MIC IS THE HERO. Interpreting is spoken; on the old
+                       screen the microphone was a small outlined button, third in
+                       a row of three, while the loudest control was a step the
+                       person should never have had to think about. *@
+                    <button class="mic" disabled="@_busy" @onclick="() => Listen(s)"
+                            aria-label="@($"Speak {Name(LangOf(s))}")">
+                        <svg viewBox="0 0 24 24" width="30" height="30" fill="none"
+                             stroke="currentColor" stroke-width="1.8"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="9" y="2" width="6" height="11" rx="3" />
+                            <path d="M5 11a7 7 0 0 0 14 0" />
+                            <path d="M12 18v4" />
+                        </svg>
+                    </button>
+                }
+                <button class="keys" disabled="@_busy" @onclick="() => OpenKeyboard(s)">Type</button>
+            </div>
+        }
+
+        @* Set once, at the start, and then left alone - it is who this side IS,
+           not a per-turn decision. *@
+        <select class="lang" aria-label="This side's language"
+                @bind:get="LangOf(s)" @bind:set="v => SetLang(s, v)">
+            @foreach (var l in Languages)
+            {
+                <option value="@l.Tag">@l.Name</option>
+            }
+        </select>
+    </div>;
+
+    static string Name(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
 
     /// <summary>
     /// A failure said in words, not in the name of a .NET type.
     /// </summary>
     /// <remarks>
-    /// "InvalidOperationException: Sequence contains no elements" is a sentence
-    /// for whoever wrote this, handed to somebody interpreting for a nurse. The
-    /// type name goes where it belongs - the trace - and the person gets
-    /// something they can act on.
+    /// The old catch-all said "Try again, or type it instead" on EVERY failure -
+    /// including the ones that happened while somebody was typing, which is the
+    /// screen telling a person to do the thing they are already doing. What is
+    /// left is true whatever the input was.
     /// </remarks>
     static string Plain(Exception ex) => ex switch
     {
         HttpRequestException => "Could not reach the internet.",
         IOException => "Not enough space on the phone.",
-        _ => "That did not work. Try again, or type it instead.",
+        _ => "That did not work. Try it again.",
     };
-
-    /// <summary>Read the translation out, in the language it is written in.</summary>
-    /// <remarks>
-    /// The point of interpreting on a phone is that the other person HEARS it.
-    /// Handing them a screen to read assumes they can, which is the assumption
-    /// this app exists to stop making.
-    /// </remarks>
-    async Task Speak()
-    {
-        if (_out.Length == 0) { _note = "Interpret something first."; return; }
-        _busy = true;
-        try { await Talk.SayAsync(_out, _to); }
-        catch (Exception ex) { _note = Plain(ex); }
-        finally { _busy = false; }
-    }
 }

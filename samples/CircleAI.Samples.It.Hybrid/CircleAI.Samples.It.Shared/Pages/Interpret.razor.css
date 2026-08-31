@@ -1,90 +1,258 @@
-.interpret { display: grid; gap: 12px; align-content: start; }
+/*
+    Interpreting, as a table between two people rather than a form.
+
+    The phone is meant to be PUT DOWN. Two equal halves, the far one rotated so
+    it reads the right way up from the other side, and a seam between them. Every
+    size below is picked for reading at arm's length across that table, not for
+    reading in your own hand.
+
+    NOTHING SCROLLS. Two halves and a seam, each half sized off the space it is
+    given, so a long line shrinks rather than pushing the controls off-screen.
+*/
+.talk {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    gap: 0;
+}
 
 /*
-    From, swap, To on one line. The swap sits BETWEEN them, where the control is
-    in the same place as the thing it does.
+    Equal halves. Neither person gets the bigger one - the phone is on the table
+    between them and it is not "your screen with a guest area".
 */
-.pair {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    gap: 8px;
-    align-items: end;
+.half {
+    flex: 1 1 50%;
+    min-height: 0;
+    display: flex;
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow);
+    overflow: hidden;
 }
 
-.side { display: grid; gap: 4px; min-width: 0; }
+/*
+    THE FAR HALF IS UPSIDE DOWN, which is the whole design in one line: it faces
+    the person across the table, so they read their own language the right way up
+    and reach their own microphone without taking the phone off you.
+*/
+.half-top { transform: rotate(180deg); }
 
-.side-label { font-size: 12.5px; color: var(--ink-soft); }
+/* The one mid-turn glows, so each person can tell whose turn the phone thinks
+   it is without being told. */
+.half-live { outline: 2px solid var(--brand-blue); outline-offset: -2px; }
 
-.select {
-    font: inherit;
-    font-size: 15px;
+.half-inner {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 14px 16px;
+    box-sizing: border-box;
+}
+
+/*
+    THE LINE, and it is the biggest thing on the half.
+
+    On the old screen the translation rendered as body text under a row of
+    buttons - the same size as everything else on a screen whose entire job is to
+    be read by somebody standing on the other side of a counter. clamp() lets a
+    short phrase be large and a long one shrink rather than overflow, because
+    nothing here scrolls.
+*/
+.half-line {
+    flex: 1;
+    min-height: 0;
     width: 100%;
-    padding: 10px 8px;
-    color: var(--ink);
-    background: var(--raised);
-    border: 1px solid var(--hairline);
-    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: clamp(17px, 5.2vw, 30px);
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--on-surface);
+    overflow-wrap: anywhere;
 }
 
-.swap {
-    font-size: 18px;
-    width: 2.75rem;
-    height: 2.75rem;
-    color: var(--brand-blue);
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    border-radius: 12px;
+.half-line-empty { color: var(--on-surface-soft); }
+
+.half-hint {
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--on-surface-soft);
+}
+
+.half-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: none;
+}
+
+/*
+    THE MICROPHONE IS THE HERO CONTROL. Interpreting is a spoken act; the old
+    screen had the mic as a small outlined button, third in a row of three.
+*/
+.mic {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    border: 0;
+    color: var(--card-btn-ink);
+    background: var(--card-btn-fill);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex: none;
+}
+
+.mic:active:not(:disabled) { background: var(--blue-press); }
+.mic:disabled { opacity: 0.45; cursor: default; }
+
+/* The way in for somebody who cannot speak right now, or whose language the
+   listener does not have. Quiet, because it is the fallback. */
+.keys {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--on-surface);
+    background: transparent;
+    border: 1px solid var(--on-surface-line);
+    border-radius: 999px;
+    padding: 9px 16px;
+    min-height: 2.75rem;
     cursor: pointer;
 }
 
-.say {
+.keys:active { background: var(--press); }
+.keys:disabled { opacity: 0.45; cursor: default; }
+
+.half-compose {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.half-type {
     font: inherit;
     font-size: 16px;
-    width: 100%;
-    padding: 12px 14px;
+    flex: 1;
+    min-width: 0;
+    resize: none;
     color: var(--ink);
     background: var(--surface);
     border: 1px solid var(--hairline);
-    border-radius: 12px;
-    resize: none;
+    border-radius: 10px;
+    padding: 8px 10px;
 }
 
-.say::placeholder { color: var(--ink-soft); opacity: 0.5; }
+.half-type::placeholder { color: var(--ink-soft); opacity: 0.5; }
 
-.actions { display: flex; gap: 10px; }
-
-.soft, .primary {
+.half-go {
     font: inherit;
+    font-size: 14px;
     font-weight: 600;
-    flex: 1;
+    flex: none;
+    color: var(--card-btn-ink);
+    background: var(--card-btn-fill);
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 16px;
     min-height: 2.75rem;
-    border-radius: 12px;
     cursor: pointer;
 }
 
-.soft {
-    color: var(--brand-blue);
-    background: transparent;
-    border: 1px solid var(--hairline);
-}
-
-.primary { color: var(--on-brand); background: var(--brand-blue); border: 0; }
-
-.soft:disabled, .primary:disabled { opacity: 0.45; cursor: default; }
+.half-go:active:not(:disabled) { background: var(--blue-press); }
+.half-go:disabled { opacity: 0.45; cursor: default; }
 
 /*
-    BIG. The person reading this is usually not the person holding the phone -
-    they are being shown it at arm's length, in a queue, once.
+    Whose side this is. A select rather than a chip because 78 languages is a
+    list, not a toggle - but it sits at the outer edge and stays small, because
+    it is set once at the start of a conversation and then left alone. The old
+    screen put this pair at the top in full size and made it part of every turn.
 */
-.out {
-    font-size: 19px;
-    line-height: 1.35;
-    color: var(--ink);
-    background: var(--surface);
-    border: 1px solid var(--brand-blue);
-    border-radius: 12px;
-    padding: 14px;
-    white-space: pre-wrap;
+.lang {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    flex: none;
+
+    /*
+        A PILL, NOT A FORM CONTROL.
+
+        A bare <select> sizes itself to its WIDEST OPTION, and this list is 78
+        languages - so "English" sat hard left with its chevron stranded at the
+        far right of an invisible box most of the screen wide. appearance:none
+        drops the native box and arrow, the width is clamped so the widest
+        language name cannot set it, and text-align-last centres the value that
+        is actually showing.
+    */
+    -webkit-appearance: none;
+    appearance: none;
+    width: auto;
+    max-width: 60%;
+    text-align: center;
+    text-align-last: center;
+    text-overflow: ellipsis;
+
+    color: var(--on-surface-soft);
+    background: transparent;
+    border: 1px solid var(--on-surface-line);
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
 }
 
-.note { font-size: 13px; color: var(--ink-soft); }
+.lang:active { background: var(--press); }
+
+/* -- the seam ----------------------------------------------------------- */
+
+/*
+    The table between them. Thin, and it carries only what belongs to neither
+    side: swapping seats, and whatever went wrong.
+*/
+.seam {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 6px 8px;
+    min-height: 44px;
+}
+
+.seam-swap {
+    font: inherit;
+    font-size: 18px;
+    line-height: 1;
+    flex: none;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+}
+
+.seam-swap:active { background: var(--press); }
+
+/*
+    The trouble line lives HERE, in the middle, rather than under one half -
+    a failure belongs to the conversation, not to one of the two people.
+*/
+.seam-note {
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--ink-soft);
+    text-align: center;
+    overflow-wrap: anywhere;
+}
