@@ -8,6 +8,7 @@
 // Run:   dotnet run --project samples/CircleAI.Samples.It
 //        dotnet run --project samples/CircleAI.Samples.It -- --demo   (scripted, no input)
 
+using CircleAI.Core;
 using CircleAI.Samples.It;
 using CircleAI.Samples.It.Voice;
 
@@ -35,8 +36,7 @@ var wavDir = Path.Combine(Path.GetTempPath(), "circleai-it-voice");
 if (args.Contains("--speak"))
 {
     Console.WriteLine("  --speak: setting up voice…");
-    var voiceStore = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+    var voiceStore = ModelPaths.Default;   // see ItSession
     var (sp, status) = await ItSpeaker.TryCreateAsync(voiceStore, Console.WriteLine);
     speaker = sp;
     Console.WriteLine(speaker is null ? $"  voice OFF: {status}" : $"  voice ON: WAVs → {wavDir}");
@@ -63,8 +63,7 @@ var hearWav = hearIdx >= 0 && hearIdx + 1 < args.Length ? args[hearIdx + 1] : nu
 if (hearWav is not null)
 {
     Console.WriteLine("  --hear: setting up ears…");
-    var earStore = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+    var earStore = ModelPaths.Default;   // see ItSession
     var (listener, lstatus) = await ItListener.TryCreateAsync(earStore, Console.WriteLine);
     if (listener is null)
     {

@@ -224,8 +224,7 @@ public static class CapabilitySweep
         var entry = registry.AllModels.First(e => e.Name == pick.ModelId);
         log($"[vision] selected {entry.Name} (~{entry.TotalBytes / 1_000_000} MB, {pick.Quality})");
 
-        var storageDir = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+        var storageDir = ModelPaths.Default;   // see ItSession
         using var dl = new ModelDownloadService(storageDir);
         var specs = entry.BundleFiles!.Select(b => new BundleFileSpec(b.Name, b.Sha256, b.SizeBytes)).ToList();
         log($"[vision] ensuring {specs.Count} files on device…");

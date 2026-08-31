@@ -138,9 +138,8 @@ public sealed class ItListener : IAsyncDisposable
             var entry = registry.GetLatestModel(plan.Model.ModelId);
             if (entry?.BundleFiles is not null && !string.IsNullOrWhiteSpace(entry.Repo))
             {
-                var dir = storageDir ?? Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "CircleAI", "Models");
+                // Same directory as everything else - see ItSession.
+                var dir = storageDir ?? ModelPaths.Default;
 
                 var specs = entry.BundleFiles
                     .Select(f => new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes))

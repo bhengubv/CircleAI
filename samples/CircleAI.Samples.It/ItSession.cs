@@ -208,9 +208,17 @@ public sealed class ItSession : IAsyncDisposable
         }
         else
         {
-            var modelDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            // ModelPaths, NOT SpecialFolder.ApplicationData. On Android those
+            // are different directories - files/ versus files/.config/ - and
+            // this line is why a phone holding a complete 535 MB Qwen bundle
+            // could not answer a question: the session looked in .config, found
+            // an empty directory, and went to huggingface.co for a config.json
+            // it already had. With no DNS that threw, and the catch-all turned
+            // it into "That did not work."
+            //
+            // ModelPaths exists precisely for this and says so in its header;
+            // the library loaders were fixed and this sample was not.
+            var modelDir = ModelPaths.Default;
 
             _registry = new ModelRegistryService();
             _loader   = new BundleModelLoader(modelDir, _registry);
