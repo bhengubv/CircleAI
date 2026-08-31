@@ -23,7 +23,23 @@
 	    data an app NEEDS and cannot cheaply refetch. No storage permission is
 	    asked for: the models are app data and stay in private storage.
 	-->
+	<!--
+	    android:icon HAS TO BE HERE, and its absence is invisible in every build
+	    log. MauiIcon generates every density - res/mipmap-*/appicon*.png and the
+	    adaptive appicon.xml were all sitting in the APK - but declaring
+	    <application> in this file with explicit attributes means NOTHING pointed
+	    at them: `aapt2 dump badging` read back `icon=''`, so Android had no icon
+	    to draw and fell back to its own generic tile. The launcher showed a white
+	    jigsaw piece on a blue square, sharp-cornered next to every other app's
+	    rounded icon, for as long as this line was missing.
+
+	    The label is not the same story - that one MAUI injects from
+	    ApplicationTitle, which is why the name read correctly all along and made
+	    the icon look like a rendering quirk rather than a missing attribute.
+	-->
 	<application android:allowBackup="true"
 	             android:supportsRtl="true"
+	             android:icon="@mipmap/appicon"
+	             android:roundIcon="@mipmap/appicon_round"
 	             android:hasFragileUserData="true"></application>
 </manifest>
