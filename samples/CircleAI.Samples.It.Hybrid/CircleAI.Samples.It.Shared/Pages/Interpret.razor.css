@@ -256,3 +256,19 @@
     text-align: center;
     overflow-wrap: anywhere;
 }
+
+/*
+    THE LEGS OF THE LAST TURN. Quiet and small - it is for whoever is tuning
+    this, not for the two people talking - but on screen rather than in a log,
+    because managed logging does not reach logcat on this head and a number
+    nobody can see is a number nobody acts on.
+*/
+.seam-timing {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

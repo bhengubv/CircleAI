@@ -51,6 +51,13 @@
         {
             <span class="seam-note">@_note</span>
         }
+        else if (_timing is { } t)
+        {
+            @* MEASURED, NOT GUESSED. Four stages with very different costs, and
+               until this line existed nobody could say which one the wait was.
+               It sits in the seam because it belongs to the turn, not a person. *@
+            <span class="seam-timing">@t</span>
+        }
     </div>
 
     @* YOURS. *@
@@ -85,6 +92,37 @@
 
     string? _note;
     bool _busy;
+
+    /// <summary>What the last turn cost, leg by leg.</summary>
+    /// <remarks>
+    /// WHERE THE WAIT ACTUALLY IS. A turn is four stages - capture, transcribe,
+    /// translate, speak - and they are nothing like each other in cost: the
+    /// first translation on a P30 also pays for loading a 535 MB model, which
+    /// is why it can be minutes while a later one is seconds. Optimising any of
+    /// this without measuring it first is guessing.
+    /// </remarks>
+    string? _timing;
+
+    /// <summary>True until the model has been loaded once this session.</summary>
+    /// <remarks>
+    /// The first translate carries the model load and every one after it does
+    /// not, so a single number averaged over both describes neither. Marked, not
+    /// hidden.
+    /// </remarks>
+    bool _cold = true;
+
+    /// <summary>A duration, in the shortest honest unit.</summary>
+    /// <remarks>
+    /// INVARIANT, because this phone is set to a comma-decimal locale and the
+    /// first run of this line printed "9,4s". A measurement is compared, pasted
+    /// and searched for; it should read the same wherever it is taken.
+    /// </remarks>
+    static string Secs(long ms) => ms >= 1000
+        ? (ms / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s"
+        : ms.ToString(System.Globalization.CultureInfo.InvariantCulture) + "ms";
+
+    /// <summary>Capture + transcribe from the last spoken turn; 0 when typed.</summary>
+    long _heardMs;
 
     protected override async Task OnInitializedAsync()
     {
@@ -142,7 +180,16 @@
         SetText(Other(speaker), "");
         await InvokeAsync(StateHasChanged);
 
+        // TIMED SEPARATELY, because it is not free and it is not obvious. On the
+        // FIRST turn of a session StateAsync verifies the model by hashing the
+        // 470 MB weight file - measured at 9.4 s on the P30 - and every turn
+        // after it short-circuits on the live session and costs 21 ms. Folding
+        // that into the translation would have hidden nine seconds inside a
+        // number people were already blaming the model for.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var brain = await Brain.StateAsync();
+        var checkMs = clock.ElapsedMilliseconds;
+
         if (!brain.Ready)
         {
             _note = brain.Detail;
@@ -159,16 +206,34 @@
             // Asked as a translation, not as a conversation: without "give only
             // the translation" the model ANSWERS the sentence, which is a very
             // different thing to put in front of somebody at a hospital desk.
+            clock.Restart();
             var rendered = await Brain.AskAsync(
                 $"Translate this from {fromName} to {toName}. "
               + $"Give only the translation, nothing else:\n\n{said}");
 
+            var translateMs = clock.ElapsedMilliseconds;
+
             SetText(Other(speaker), rendered);
+            await InvokeAsync(StateHasChanged);
 
             // SPOKEN, NOT JUST SHOWN. The other person may not read, which is the
             // assumption this whole app exists to stop making.
+            clock.Restart();
             try { await Talk.SayAsync(rendered, LangOf(Other(speaker))); }
             catch { /* a mute phone still shows the words */ }
+            var speakMs = clock.ElapsedMilliseconds;
+
+            // The legs, in the order they happened. The first translation also
+            // pays for loading the model, so it says so rather than being
+            // averaged in with the ones that do not.
+            var legs = new List<string>(4);
+            if (_heardMs > 0) legs.Add($"heard {Secs(_heardMs)}");
+            legs.Add($"check {Secs(checkMs)}");
+            legs.Add($"render {Secs(translateMs)}{(_cold ? " (cold)" : "")}");
+            legs.Add($"speak {Secs(speakMs)}");
+            _timing = string.Join(" · ", legs);
+            _cold = false;
+            _heardMs = 0;
         }
         catch (Exception ex)
         {
@@ -203,9 +268,10 @@
 
         // THE HALF KNOWS, SO THE HALF SAYS SO. This is the fix for Japanese
         // spoken into the Japanese side coming back written in English.
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         try { await Talk.DictateAsync(updates, default, LangOf(speaker)); }
         catch (Exception ex) { _note = Plain(ex); }
-        finally { _busy = false; _active = null; }
+        finally { _busy = false; _active = null; _heardMs = clock.ElapsedMilliseconds; }
 
         if (heard.Trim().Length > 0) await Turn(speaker, heard);
     }
