@@ -119,6 +119,54 @@ double ca_sentence_piece_unigram_byte_fallback_cost(const ca_sentence_piece_unig
 int *ca_sentence_piece_unigram_encode(const ca_sentence_piece_unigram_t *unigram,
                                       const char *text, size_t *out_count);
 
+/*
+ * One Piper voice's configuration.
+ *
+ * THE PAD RULE lives here and it has cost more time than anything else in this
+ * module: a blank pad token means the MODEL's blank, not the literal "_". Piper
+ * pads with id 3 and MMS with id 0, and getting it wrong produces audio that is
+ * silent or a burst of noise — never an error, and never anything a log
+ * mentions.
+ */
+typedef struct {
+    char *voice_id;
+    char *model_path;
+    char *config_path;
+    int sample_rate_hz;
+    /* Negative means the model did not declare one, which is not the same as
+     * zero — zero is MMS's actual pad id. */
+    int pad_id;
+    char *language;
+    char **phoneme_ids;
+    size_t phoneme_count;
+    double length_scale;
+    double noise_scale;
+} ca_piper_voice_config_t;
+
+void ca_piper_voice_config_free(ca_piper_voice_config_t *config);
+
+/* Reads the .onnx.json beside the model. NULL when the file is absent or does
+ * not declare a phoneme map — a voice that cannot be phonemised is a voice that
+ * will produce noise, and failing here is the only place it can be said. */
+ca_piper_voice_config_t *ca_piper_voice_config_load(const char *config_path);
+
+/* One completed turn: what was heard, what was said, and how long it took.
+ * The C# carries this as VoiceExchangeEventArgs; C has no EventArgs, so it is
+ * the payload of the callback. */
+typedef struct {
+    char *heard;
+    char *said;
+    char *language;
+    int64_t started_unix_ms;
+    int64_t duration_ms;
+    /* Whether the person interrupted. Recorded because a turn that was cut off
+     * and one that completed are different events, and a transcript that treats
+     * them alike reads as though the assistant finished. */
+    bool interrupted;
+} ca_voice_exchange_t;
+
+void ca_voice_exchange_free(ca_voice_exchange_t *exchange);
+
 /* -- splitting text into what gets spoken --------------------------------- */
 
 typedef struct {

@@ -45,12 +45,24 @@ carries the same thing.
 
 ```renames
 Telephony.TranscriptFinalEvent_v2 = ca_transcript_final_event_v2_t
+Voice.OpenJTalkProsodyTokeniser  = ca_open_jtalk_prosody_tokeniser_t
+Spatial.I3DSceneRenderer         = ca_scene3_d_renderer_t
+Spatial.Null3DSceneRenderer      = ca_null_scene3_d_renderer_new
 ```
 
 `TranscriptFinalEvent_v2` splits into `transcript` / `final` / `event_v2`, and
 `event_v2` is not a word any C identifier can contain — an underscore is the
-word separator on this side. The type is genuinely there; only the matcher
-needed telling.
+word separator on this side.
+
+`OpenJTalkProsodyTokeniser` splits `JTalk` into `j` + `talk`, but the library is
+called Open JTalk and the C symbol spells it `jtalk` as one word, the way
+everybody writes it.
+
+`I3DSceneRenderer` begins with a digit after the `I`, so the interface-prefix
+rule does not fire, and `3D` then splits into `3` + `d` — neither of which any
+C identifier can carry as a word on its own.
+
+All four types are genuinely there; only the matcher needed telling.
 
 ---
 
