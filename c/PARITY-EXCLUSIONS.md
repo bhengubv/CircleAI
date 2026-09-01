@@ -36,6 +36,24 @@ consequences show up throughout:
 
 ---
 
+## Renames the measure has to be told about
+
+The measure matches on word sets, which handles the ordinary renames on its own.
+A handful of C# names cannot be decomposed into words at all, so they are
+recorded here explicitly — one line each, pointing at the C identifier that
+carries the same thing.
+
+```renames
+Telephony.TranscriptFinalEvent_v2 = ca_transcript_final_event_v2_t
+```
+
+`TranscriptFinalEvent_v2` splits into `transcript` / `final` / `event_v2`, and
+`event_v2` is not a word any C identifier can contain — an underscore is the
+word separator on this side. The type is genuinely there; only the matcher
+needed telling.
+
+---
+
 ## Platform heads and managed runtimes
 
 C cannot be the platform head for a .NET or Android surface, and it cannot host
