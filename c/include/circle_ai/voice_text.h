@@ -1,227 +1,509 @@
-/*
- * voice_text.h — the five text-side voice modules.
- *
- * C ports of src/CircleAI.Voice/SentenceSplitter.cs, LanguageSpanSplitter.cs,
- * GeezRomanizer.cs, ToneShaper.cs and NchltPhonemizer.cs.
- *
- * Parity is asserted against fixtures/voice_sentence_splitter.json,
- * voice_language_spans.json, voice_geez_romanizer.json, voice_tone_shaper.json
- * and voice_nchlt_phonemizer.json.
- *
- * All strings in and out are UTF-8. Where the reference indexes UTF-16 code
- * units, this port converts and indexes units too, so the two agree on where a
- * length-driven cut lands.
- */
-
 #ifndef CIRCLE_AI_VOICE_TEXT_H
 #define CIRCLE_AI_VOICE_TEXT_H
 
+/*
+ * voice_text.h - CircleAI.Voice (C11): text into pieces, audio into and out of
+ * files, and everything about choosing a wake phrase.
+ *
+ * voice_frontend.h next door is the signal half - filterbanks, VAD, the
+ * confirmers. This is the half that deals in TEXT and in FILES: the
+ * sentencepiece vocabulary a keyword spotter matches against, the WAV reader,
+ * the tone shaper that runs over synthesised speech before it becomes PCM, and
+ * the machinery that decides whether "hey" is a wake phrase somebody can
+ * actually live with.
+ *
+ * WHY SO MUCH OF THIS IS ABOUT CHOOSING THE PHRASE. A wake word is the only
+ * part of an assistant that runs constantly, and a bad one fails in the two
+ * worst ways at once: it misses when you want it and fires when you do not.
+ * Neither is fixable later by tuning - a one-syllable phrase has too little
+ * signal, and a phrase made of common words is in every third sentence. So the
+ * phrase book judges the phrase BEFORE anybody lives with it.
+ *
+ * Conventions: ca_ prefix, _t types, opaque handles, strdup-owning fields with
+ * matching *_free, errors via NULL / false. Pure C11 + libc.
+ */
+
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ── SentenceSplitter ────────────────────────────────────────────────────── */
+/* -- sentencepiece -------------------------------------------------------- */
 
-/**
- * One unit of speech, plus the silence that should follow it.
- *
- * The voices here were trained on text with the punctuation stripped out, so
- * their vocabularies hold no '.', ',', '?' or ':' at all. A paragraph fed in one
- * pass therefore comes back as one unbroken run of speech — there is no token
- * that could encode a pause. THE PAUSE HAS TO COME FROM OUTSIDE THE MODEL.
- */
+/* How a piece is used, mirroring sentencepiece's own enum. The values are the
+ * on-disk ones: a vocabulary file names them by number. */
+typedef enum {
+    CA_SENTENCE_PIECE_NORMAL = 1,
+    CA_SENTENCE_PIECE_UNKNOWN = 2,
+    CA_SENTENCE_PIECE_CONTROL = 3,
+    CA_SENTENCE_PIECE_USER_DEFINED = 4,
+    CA_SENTENCE_PIECE_BYTE = 6,
+    CA_SENTENCE_PIECE_UNUSED = 5
+} ca_sentence_piece_kind_t;
+
+const char *ca_sentence_piece_kind_name(ca_sentence_piece_kind_t kind);
+
 typedef struct {
-    /** UTF-8 text to synthesise. Never empty or whitespace. Owned. */
+    char *piece;
+    float score;
+    ca_sentence_piece_kind_t kind;
+    int id;
+} ca_sentence_piece_t;
+
+void ca_sentence_piece_free(ca_sentence_piece_t *piece);
+
+/*
+ * THE WORD-BOUNDARY MARKER IS U+2581, NOT AN UNDERSCORE.
+ *
+ * It looks like one in a terminal and it is not one. A tokenizer that
+ * substitutes "_" produces pieces that are absent from every real vocabulary,
+ * so every word falls back to bytes, and the only symptom is a spotter that
+ * quietly never matches anything.
+ *
+ * Returned as the UTF-8 bytes, borrowed.
+ */
+const char *ca_sentence_piece_word_marker(void);
+
+typedef struct ca_sentence_piece_tokenizer ca_sentence_piece_tokenizer_t;
+
+/* Takes ownership of neither; copies what it needs. */
+ca_sentence_piece_tokenizer_t *ca_sentence_piece_tokenizer_new(
+    const ca_sentence_piece_t *pieces, size_t count);
+
+void ca_sentence_piece_tokenizer_free(ca_sentence_piece_tokenizer_t *tokenizer);
+
+size_t ca_sentence_piece_tokenizer_count(const ca_sentence_piece_tokenizer_t *tokenizer);
+const ca_sentence_piece_t *ca_sentence_piece_tokenizer_at(
+    const ca_sentence_piece_tokenizer_t *tokenizer, int id);
+
+/* sentencepiece's normalisation: spaces become the marker AND one is prefixed.
+ * The prefix is not optional - without it the first word of a sentence
+ * tokenises differently from the same word anywhere else. Caller frees. */
+char *ca_sentence_piece_normalise(const char *text);
+
+/* Best-scoring segmentation. Returns a heap array of *out_count piece ids. */
+int *ca_sentence_piece_tokenizer_encode(const ca_sentence_piece_tokenizer_t *tokenizer,
+                                        const char *text, size_t *out_count);
+
+/* Whether every piece of the text is in the vocabulary. The question a phrase
+ * book asks before promising a keyword will ever be matched. */
+bool ca_sentence_piece_tokenizer_covers(const ca_sentence_piece_tokenizer_t *tokenizer,
+                                        const char *text);
+
+typedef struct ca_sentence_piece_unigram ca_sentence_piece_unigram_t;
+
+/*
+ * The unigram language model: Viterbi over every segmentation, choosing the one
+ * with the best summed log-probability.
+ *
+ * Not greedy longest-match. Greedy is faster and gets ordinary words right, but
+ * it splits exactly the words that matter here - names, loanwords, anything the
+ * vocabulary only half covers - and it splits them differently depending on
+ * what preceded them.
+ */
+ca_sentence_piece_unigram_t *ca_sentence_piece_unigram_load(const char *vocab_json_path,
+                                                            const char *scores_json_path);
+
+void ca_sentence_piece_unigram_free(ca_sentence_piece_unigram_t *unigram);
+
+size_t ca_sentence_piece_unigram_count(const ca_sentence_piece_unigram_t *unigram);
+
+/* The penalty for falling back to raw bytes. Finite and large rather than
+ * infinite: byte fallback must be the last resort and must still be REACHABLE,
+ * or a single unknown character makes the whole string untokenisable. */
+double ca_sentence_piece_unigram_byte_fallback_cost(const ca_sentence_piece_unigram_t *unigram);
+
+int *ca_sentence_piece_unigram_encode(const ca_sentence_piece_unigram_t *unigram,
+                                      const char *text, size_t *out_count);
+
+/* -- splitting text into what gets spoken --------------------------------- */
+
+typedef struct {
     char *text;
-    /**
-     * Silence to append after this segment, in milliseconds. 0 for the final
-     * segment — trailing silence at the end of a passage serves nothing.
-     */
-    int trailing_pause_ms;
-} circle_speech_segment;
+    /* Which language this run is in, when the splitter could tell. NULL means
+     * it could not, which is not the same as the document's language. */
+    char *language;
+    size_t start_offset;
+    size_t length;
+} ca_speech_segment_t;
 
-/**
- * Beyond this many UTF-16 units a segment is cut even without punctuation. A
- * single unbroken clause of this size is already several seconds of audio, and
- * on a phone the whole segment must render before ANY of it can play.
+void ca_speech_segment_free(ca_speech_segment_t *segment);
+
+/*
+ * Splits into sentences for synthesis. Returns a heap array of *out_count.
+ *
+ * Different from the telephony chunker, which is streaming and optimises for
+ * time-to-first-audio. This one sees the whole text and optimises for PROSODY:
+ * a synthesiser handed a sentence in two halves puts a full stop in the middle
+ * of it, and no amount of joining the audio afterwards takes that back.
  */
-#define CIRCLE_MAX_CHARS_PER_SEGMENT 220
+ca_speech_segment_t *ca_sentence_splitter_split(const char *text, size_t *out_count);
 
-/**
- * Split text into sentence-sized units.
+/* -- respelling and tone -------------------------------------------------- */
+
+typedef struct ca_respelling_tts_engine ca_respelling_tts_engine_t;
+
+/* Wraps an engine so a word goes through the respellers before synthesis.
+ * Composed rather than built in, because whether respelling helps depends on
+ * the voice: a model trained on the same accent needs none of it. */
+ca_respelling_tts_engine_t *ca_respelling_tts_engine_new(void *inner_engine);
+void ca_respelling_tts_engine_free(ca_respelling_tts_engine_t *engine);
+
+typedef struct ca_phrased_tts_engine ca_phrased_tts_engine_t;
+
+/* Splits into phrases and synthesises each, so a long passage does not drift.
+ * Long-form synthesis loses pitch and pace over tens of seconds; phrase-sized
+ * chunks re-anchor it without an audible seam. */
+ca_phrased_tts_engine_t *ca_phrased_tts_engine_new(void *inner_engine,
+                                                   int max_phrase_chars);
+
+void ca_phrased_tts_engine_free(ca_phrased_tts_engine_t *engine);
+
+/* X-SAMPA in, IPA out. Caller frees.
  *
- * Splits at SENTENCE boundaries only, never at commas: a VITS model ends every
- * utterance with falling, sentence-final prosody, so cutting at a comma makes
- * each clause land like a finished sentence — worse than the run-on it was
- * meant to fix.
+ * Needed because lexicons in this space are published in X-SAMPA - it is ASCII
+ * and survives a spreadsheet - while every model consumes IPA. */
+char *ca_xsampa_to_ipa(const char *xsampa);
+
+/*
+ * Two RBJ biquads in series over the float waveform, before it becomes PCM: a
+ * low shelf that lifts the bottom and a peaking dip that takes out the harsh
+ * band.
  *
- * Writes at most out_capacity segments and returns how many it WOULD have
- * written. Release with circle_speech_segments_free.
- */
-size_t circle_split_sentences(const char *text,
-                              circle_speech_segment *out, size_t out_capacity);
-
-void circle_speech_segments_free(circle_speech_segment *segments, size_t count);
-
-/* ── LanguageSpanSplitter ────────────────────────────────────────────────── */
-
-/**
- * A run of text to be spoken in one language.
+ * The defaults are measured, not chosen by ear on one machine: +4 dB shelf from
+ * 320 Hz, -4 dB dip at 3200 Hz with Q 0.8. Warmer, with no cost to
+ * intelligibility - which is the constraint, since a warmer voice nobody can
+ * make out is a worse voice.
  *
- * A multi-lingual model takes ONE language id per utterance, so mixed text has
- * to be cut where the language changes: read wholly in isiZulu, an embedded
- * English name comes out mangled, and the listener hears the machine fail at a
- * word they know perfectly well.
+ * Two multiply-accumulates per sample, against a vocoder that just spent
+ * seconds producing the waveform. The cost does not register.
  */
 typedef struct {
-    /** UTF-8 words, with their spacing preserved. Owned. */
+    double low_shelf_hz;   /* 320 */
+    double low_shelf_db;   /* +4.0 */
+    double presence_hz;    /* 3200 */
+    double presence_db;    /* -4.0, negative cuts */
+    double presence_q;     /* 0.8, lower is wider */
+} ca_tone_shaper_t;
+
+/* The measured setting. */
+ca_tone_shaper_t ca_tone_shaper_warm(void);
+
+/* Filters in place. */
+void ca_tone_shaper_apply(const ca_tone_shaper_t *shaper, float *waveform,
+                          size_t count, int sample_rate_hz);
+
+/* One direct-form-I biquad in place. Exposed because the shaper is two of them
+ * and a caller building a different chain should not reimplement it. */
+void ca_biquad_apply(float *waveform, size_t count,
+                     double b0, double b1, double b2, double a1, double a2);
+
+/* -- learning how one person says a word ---------------------------------- */
+
+typedef enum {
+    /* Still listening. Nothing has changed how the word is spoken. */
+    CA_LEARNING_LISTENING = 0,
+    /* Five hearings agreed; the new spelling is in use and awaiting its check. */
+    CA_LEARNING_ADOPTED,
+    /* The check passed. This is how the word is said for this person. */
+    CA_LEARNING_CONFIRMED
+} ca_learning_state_t;
+
+const char *ca_learning_state_name(ca_learning_state_t state);
+
+typedef struct {
+    char *word;
+    /* NULL while still listening. */
+    char *spelling;
+    ca_learning_state_t state;
+    /* Each candidate and how many hearings agreed on it. Kept after adoption:
+     * a word can be re-learned when somebody's pronunciation shifts, and
+     * throwing the tallies away makes that restart from nothing. */
+    char **candidates;
+    int *candidate_counts;
+    size_t candidate_count;
+} ca_learned_word_t;
+
+void ca_learned_word_free(ca_learned_word_t *word);
+
+typedef struct ca_personal_respellings ca_personal_respellings_t;
+
+/*
+ * Learns how this person says borrowed words, from ordinary use - nothing to
+ * set up and nothing to correct by hand.
+ *
+ * FIVE AGREEING HEARINGS before a spelling is adopted. One is a mis-hearing;
+ * five in agreement is a habit. Adopting on the first would make the assistant
+ * mispronounce a word confidently on the strength of one bad frame, and the
+ * person would have no idea why it changed.
+ */
+ca_personal_respellings_t *ca_personal_respellings_new(void);
+void ca_personal_respellings_free(ca_personal_respellings_t *respellings);
+
+void ca_personal_respellings_hear(ca_personal_respellings_t *respellings,
+                                  const char *word, const char *heard_spelling);
+
+/* Borrowed; NULL when nothing has been learned for that word. */
+const ca_learned_word_t *ca_personal_respellings_lookup(
+    const ca_personal_respellings_t *respellings, const char *word);
+
+/* Marks the adopted spelling as having survived its check. */
+bool ca_personal_respellings_confirm(ca_personal_respellings_t *respellings,
+                                     const char *word);
+
+/* -- wake -------------------------------------------------------------- */
+
+typedef enum {
+    /* Three-graph streaming transducer; keywords are text, so a phrase can be
+     * changed without training anything. */
+    CA_WAKE_ENGINE_ZIPFORMER_TRANSDUCER = 0,
+    /* Single-graph classifier; one trained phrase and no other. */
+    CA_WAKE_ENGINE_SINGLE_GRAPH_CLASSIFIER
+} ca_wake_engine_t;
+
+const char *ca_wake_engine_name(ca_wake_engine_t engine);
+
+/* Which engine a bundle on disk actually is, from what is in it. Detected
+ * rather than configured: a bundle and a setting that disagree fail at the
+ * first utterance, with a shape error nobody can read. */
+ca_wake_engine_t ca_wake_word_factory_engine_for(const char *bundle_directory);
+
+/*
+ * Per-device wake tuning that survives a restart.
+ *
+ * The thresholds were compile-time constants, which is a claim that every
+ * phone, room and voice behaves like the ones they were measured on. They do
+ * not: the same phrase read 0.42 on one synthetic voice and 0.94 on another.
+ * Persisting per device lets a phone that consistently under-scores be nudged
+ * ONCE, instead of the default being loosened for everybody - which is how a
+ * wake word starts firing on the television.
+ *
+ * Negative means "not set": use the phrase or engine default.
+ */
+typedef struct {
+    double threshold;
+    double max_lead_in_ms;
+    int wakes;
+} ca_wake_calibration_t;
+
+ca_wake_calibration_t ca_wake_calibration_unset(void);
+bool ca_wake_calibration_load(const char *path, ca_wake_calibration_t *out_calibration);
+bool ca_wake_calibration_save(const char *path, const ca_wake_calibration_t *calibration);
+
+/* What the device running this can actually do. Both fields decide which engine
+ * and which confirmer are viable, and a wrong RAM figure here picks an engine
+ * the phone cannot load. */
+typedef struct {
+    int64_t total_ram_bytes;
+    bool transcriber_available;
+} ca_wake_host_capabilities_t;
+
+/* The model to use for a language, whether it is that language's own, and a
+ * note for the person. `model_name` NULL means no model at all. */
+typedef struct {
+    char *model_name;
+    bool is_native;
+    /* Plain language, and EMPTY when native. A note on every choice trains
+     * people to ignore notes. */
+    char *note;
+} ca_wake_language_choice_t;
+
+void ca_wake_language_choice_free(ca_wake_language_choice_t *choice);
+
+bool ca_wake_languages_for(const char *iso_language,
+                           ca_wake_language_choice_t *out_choice);
+
+size_t ca_wake_languages_count(void);
+const char *ca_wake_languages_at(size_t index);
+
+/* -- judging a wake phrase before somebody lives with it ------------------ */
+
+typedef enum {
+    /* Nothing to say against it. */
+    CA_WAKE_PHRASE_GOOD = 0,
+    /* Usable, with a caveat the owner should hear. */
+    CA_WAKE_PHRASE_CAUTION,
+    /* Cannot work at all; the reason says why. */
+    CA_WAKE_PHRASE_UNUSABLE
+} ca_wake_phrase_verdict_t;
+
+const char *ca_wake_phrase_verdict_name(ca_wake_phrase_verdict_t verdict);
+
+typedef struct {
     char *text;
-    /** 1 when this run is the embedded language (English), 0 for the host one. */
-    int is_foreign;
-} circle_language_span;
+    /* The pieces the spotter will actually match. Out-of-vocabulary pieces are
+     * the usual reason a phrase can never fire. */
+    char **tokens;
+    size_t token_count;
+    ca_wake_phrase_verdict_t verdict;
+    /* Plain language, shown to the person choosing. Empty when good. */
+    char *advice;
+    /* Negative for the default. */
+    double threshold;
+    double boost;
+} ca_wake_phrase_t;
 
-/**
- * Split text into language runs. Returns 1 span for single-language text, which
- * is the overwhelmingly common case.
+void ca_wake_phrase_free(ca_wake_phrase_t *phrase);
+
+typedef struct ca_wake_phrase_book ca_wake_phrase_book_t;
+
+ca_wake_phrase_book_t *ca_wake_phrase_book_new(
+    const ca_sentence_piece_tokenizer_t *tokenizer);
+
+void ca_wake_phrase_book_free(ca_wake_phrase_book_t *book);
+
+/*
+ * Judges a phrase and says why, in words the person choosing can act on.
  *
- * Writes at most out_capacity spans and returns how many it WOULD have written.
- * Release with circle_language_spans_free.
+ * The three that matter, in order of how often they bite:
+ *   - too short. One syllable has too little signal; it will fire on coughs.
+ *   - too common. A phrase built from frequent words is inside ordinary
+ *     sentences, so it fires while somebody is talking to another person.
+ *   - not in the vocabulary. The spotter matches pieces, and a phrase whose
+ *     pieces are absent can never match ANYTHING - this is the one that looks
+ *     like a broken microphone.
  */
-size_t circle_split_language_spans(const char *text,
-                                   circle_language_span *out, size_t out_capacity);
+bool ca_wake_phrase_book_judge(ca_wake_phrase_book_t *book, const char *text,
+                               ca_wake_phrase_t *out_phrase);
 
-void circle_language_spans_free(circle_language_span *spans, size_t count);
+/* Phrases known to work, for somebody who does not want to choose. */
+size_t ca_wake_phrase_book_suggested_count(const ca_wake_phrase_book_t *book);
+const char *ca_wake_phrase_book_suggested_at(const ca_wake_phrase_book_t *book,
+                                             size_t index);
 
-/**
- * Is this token unmistakably foreign (English) inside African-language text?
- *
- * Two signals only, both chosen because native orthographies do not produce
- * them: internal capitals (CircleAI, WhatsApp) and short all-caps runs (GPS,
- * SMS). It does NOT guess at ordinary lowercase words — that needs a lexicon per
- * language pair, and mispronouncing a native word to "fix" a foreign one insults
- * the speaker in their own language.
- */
-int circle_is_foreign_word(const char *word);
-
-/**
- * Rewrite a run into the form a voice can actually pronounce, without changing
- * what is displayed: a compound is split at case boundaries and acronyms are
- * given full stops so they read as letters rather than as a word.
- *
- * Returns a heap-allocated UTF-8 string; release with free().
- */
-char *circle_to_spoken_form(const char *text);
-
-/* ── GeezRomanizer ───────────────────────────────────────────────────────── */
-
-/** True when text contains any Ethiopic character. */
-int circle_is_ethiopic(const char *text);
-
-/**
- * Ethiopic (Ge'ez) -> Latin, because the Amharic and Tigrinya voices are
- * is_uroman:true and hold 27-28 plain LATIN letters — they have never seen an
- * Ethiopic codepoint. Characters outside the script pass through untouched.
- *
- * Returns a heap-allocated UTF-8 string; release with free().
- */
-char *circle_geez_romanize(const char *text);
-
-/* ── ToneShaper ──────────────────────────────────────────────────────────── */
-
-/** Biquad coefficients, already normalised by a0. */
-typedef struct {
-    double b[3];
-    double a[3];
-} circle_biquad_coefficients;
+/* -- keyword spotting ----------------------------------------------------- */
 
 typedef struct {
-    double low_shelf_hz;   /**< where the low shelf starts lifting */
-    double low_shelf_db;   /**< how much to lift the bottom */
-    double presence_hz;    /**< centre of the harshness dip */
-    double presence_db;    /**< how much to cut there; negative cuts */
-    double presence_q;     /**< width of the dip; lower is wider */
-} circle_tone_shaper_settings;
+    char *text;
+    int *token_ids;
+    size_t token_count;
+    /* Negative for the spotter's default. */
+    double threshold;
+    double boost;
+} ca_kws_keyword_t;
 
-/** The measured setting: warmer, with no cost to intelligibility. */
-circle_tone_shaper_settings circle_tone_shaper_warm(void);
+void ca_kws_keyword_free(ca_kws_keyword_t *keyword);
 
-/** RBJ audio-cookbook low shelf, normalised by a0. */
-circle_biquad_coefficients circle_low_shelf_coefficients(
-    const circle_tone_shaper_settings *s, int rate);
+/* How far a model download has got. Separate from the generic download phase
+ * because a wake model is loaded during onboarding, where the person is waiting
+ * and the only honest thing to show is a real number. */
+typedef struct {
+    char *stage;
+    int64_t bytes_done;
+    int64_t bytes_total;   /* negative when the server did not say */
+    double fraction;       /* negative when it cannot be computed */
+} ca_kws_progress_t;
 
-/** RBJ audio-cookbook peaking EQ, normalised by a0. */
-circle_biquad_coefficients circle_peaking_coefficients(
-    const circle_tone_shaper_settings *s, int rate);
+void ca_kws_progress_free(ca_kws_progress_t *progress);
 
-/**
- * Direct-form-I biquad, in place.
+typedef struct {
+    char *bundle_directory;
+    /* Negative uses the calibration, then the engine default. */
+    double threshold;
+    double max_lead_in_ms;
+    int num_threads;
+    char *provider;
+} ca_zipformer_wake_config_t;
+
+void ca_zipformer_wake_config_free(ca_zipformer_wake_config_t *config);
+
+ca_zipformer_wake_config_t ca_zipformer_wake_config_default(const char *bundle_directory);
+
+/* -- Japanese prosody ----------------------------------------------------- */
+
+typedef struct ca_open_jtalk_prosody_tokeniser ca_open_jtalk_prosody_tokeniser_t;
+
+/*
+ * Open JTalk's prosody tokens: not phonemes, and not IPA.
  *
- * THE STATE IS DOUBLE AND THE STORED SAMPLE IS FLOAT, and both halves matter.
- * The filter memory never sees the float rounding, so the recursion is identical
- * everywhere; only what lands in the buffer is narrowed, which is what the next
- * stage then reads.
- */
-void circle_biquad(float *x, size_t n, const circle_biquad_coefficients *c);
-
-/**
- * Filter a waveform with a low shelf and a presence dip in series.
+ * Japanese is a fourth family here. The others hand a phonemiser's output
+ * straight to the model; this one emits accent-phrase markers - ^ $ _ # [ ] -
+ * alongside the moras, and the model was trained expecting them. Feeding it
+ * bare phonemes produces speech that is intelligible and completely flat, which
+ * reads as a broken voice rather than a missing feature.
  *
- * PEAK IS RESTORED AFTERWARDS. Lifting the low shelf adds energy, and a waveform
- * already near full scale would clip — heard as crackle and blamed on the
- * quantised model rather than on this.
+ * Needs the 103 MB dictionary; without it there is no drop-in substitute.
  */
-void circle_apply_tone_shaper(float *waveform, size_t n, int sample_rate,
-                              const circle_tone_shaper_settings *s);
+ca_open_jtalk_prosody_tokeniser_t *ca_open_jtalk_prosody_tokeniser_new(
+    const char *dictionary_directory);
 
-/* ── NchltPhonemizer ─────────────────────────────────────────────────────── */
+void ca_open_jtalk_prosody_tokeniser_free(ca_open_jtalk_prosody_tokeniser_t *tokeniser);
 
-typedef struct circle_nchlt_phonemizer circle_nchlt_phonemizer;
+/* Caller frees. */
+char *ca_open_jtalk_prosody_tokenise(ca_open_jtalk_prosody_tokeniser_t *tokeniser,
+                                     const char *japanese_text);
 
-/**
- * Build from the file CONTENTS rather than paths, so a caller can load from an
- * embedded resource with no filesystem in reach. graph_map_text and gnulls_text
- * may be NULL. Returns NULL when the dictionary or rules are unusable.
- */
-circle_nchlt_phonemizer *circle_nchlt_new(const char *dict_text,
-                                          const char *rules_text,
-                                          const char *phone_map_text,
-                                          const char *graph_map_text,
-                                          const char *gnulls_text);
+/* -- audio in and out ----------------------------------------------------- */
 
-void circle_nchlt_free(circle_nchlt_phonemizer *p);
-
-/**
- * Turn text into the model's X-SAMPA phones. A word is either in the dictionary
- * (exact) or synthesised by the rules — there is no OOV gap, which is what makes
- * agglutinative isiZulu tractable.
+/*
+ * Reads a WAV as mono float in [-1,1] at 24 kHz, resampling if needed.
  *
- * Writes at most out_capacity phones (borrowed, valid until the next call on
- * this phonemizer) and returns how many it WOULD have written.
- */
-size_t circle_nchlt_phonemize(circle_nchlt_phonemizer *p, const char *text,
-                              const char **out, size_t out_capacity);
-
-/**
- * Predict one word from the rules alone, bypassing the dictionary.
+ * `max_seconds` is a real guard, not politeness: this is fed by whatever file
+ * somebody points at, and a multi-hour recording read whole is an out-of-memory
+ * kill on a phone with no message attached to it.
  *
- * Does NOT clear the unknown-grapheme list, matching the reference: phonemize
- * owns the reset, so a direct call accumulates rather than hiding what an
- * earlier word already reported.
+ * Caller frees; *out_count is samples.
  */
-size_t circle_nchlt_predict_word(circle_nchlt_phonemizer *p, const char *word,
-                                 const char **out, size_t out_capacity);
+float *ca_wav_io_read_mono_24k(const char *path, int max_seconds, size_t *out_count);
 
-/**
- * Words in the last phonemize call synthesised by the rules rather than found in
- * the dictionary. A coverage diagnostic, never a failure.
+/* Float [-1,1] to little-endian signed 16-bit PCM. Caller frees. */
+uint8_t *ca_wav_io_to_pcm16(const float *samples, size_t count, size_t *out_len);
+
+/* PCM-16 with a RIFF header. Caller frees. */
+uint8_t *ca_wav_io_write(const float *samples, size_t count, int sample_rate_hz,
+                         size_t *out_len);
+
+/* Linear resample. Adequate HERE and stated so: the target is a speaker
+ * embedding, not playback. Anything reaching a speaker wants a real filter. */
+float *ca_wav_io_resample_linear(const float *samples, size_t count,
+                                 int from_hz, int to_hz, size_t *out_count);
+
+/* -- playback ------------------------------------------------------------- */
+
+typedef struct ca_audio_player {
+    void *state;
+    bool (*play)(void *state, const uint8_t *pcm, size_t len, int sample_rate_hz);
+    void (*stop)(void *state);
+    bool (*is_playing)(void *state);
+    void (*free_fn)(void *state);
+} ca_audio_player_t;
+
+void ca_audio_player_free(ca_audio_player_t *player);
+
+/* Plays nothing and reports success. The default: a host with no audio output
+ * gets a loop that completes rather than one that fails, and a test never opens
+ * a device. */
+ca_audio_player_t *ca_null_audio_player_new(void);
+
+/* -- tracing a turn ------------------------------------------------------- */
+
+typedef struct ca_voice_trace ca_voice_trace_t;
+
+/*
+ * One turn's timeline: when audio arrived, when the wake fired, what the
+ * transcriber returned, which voice spoke.
+ *
+ * It exists because voice failures are not reproducible. By the time somebody
+ * says "it did not hear me", the audio is gone; without a trace the only
+ * evidence is a description of a sound. The trace is what turns that into a
+ * bug.
+ *
+ * OFF BY DEFAULT and never written anywhere by itself - it holds what somebody
+ * said, and a diagnostic that quietly logs speech is a recorder.
  */
-size_t circle_nchlt_last_rule_predicted_words(const circle_nchlt_phonemizer *p);
+ca_voice_trace_t *ca_voice_trace_new(void);
+void ca_voice_trace_free(ca_voice_trace_t *trace);
 
-/** Graphemes no rule covered on the last call. Skipped, never guessed. Borrowed. */
-size_t circle_nchlt_last_unknown_graphemes(const circle_nchlt_phonemizer *p,
-                                           const char *const **out);
+void ca_voice_trace_mark(ca_voice_trace_t *trace, const char *stage,
+                         int64_t at_unix_ms, const char *detail);
+
+size_t ca_voice_trace_count(const ca_voice_trace_t *trace);
+
+/* JSON. Caller frees. */
+char *ca_voice_trace_to_json(const ca_voice_trace_t *trace);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,34 @@ for root, _, files in os.walk("c/include"):
 
 # A symbol is its set of words, so ca_commerce_board_add_line covers the words
 # {commerce, board, add, line} whatever order a C# name puts them in.
-sym_words = [set(s.split("_")[1:]) for s in symbols]
+# ─────────────────────────────────────────────────────────────────────────────
+# A C# class is a NOUN and a C function is a VERB, so the same thing is
+# GeezRomanizer on one side and ca_geez_romanize on the other. Matching raw
+# words calls that MISSING and sends somebody to write a file that already
+# exists — the exact failure this measure is here to prevent.
+#
+# C-only. The Swift and Kotlin rulers match real type names, because those
+# languages have classes to put the noun on; C is where a static class becomes
+# free functions and the name has to change word class to stay idiomatic.
+#
+# Applied to BOTH sides, so it can only ever merge words that share a stem — it
+# cannot invent a match between two unrelated ones. Deliberately small: plural,
+# agent noun, doubled consonant, silent e. A real stemmer starts collapsing
+# words that mean different things, and a measure that OVER-reports is worse
+# than one that under-reports: it claims work nobody did.
+def stem(w):
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        w = w[:-1]                       # languages -> language
+    if len(w) > 3 and w.endswith(("er", "or")):
+        w = w[:-2]                       # romanizer -> romaniz, detector -> detect
+    if len(w) > 2 and w[-1] == w[-2] and w[-1] not in "aeiou":
+        w = w[:-1]                       # splitt -> split, formatt -> format
+    if len(w) > 3 and w.endswith("e"):
+        w = w[:-1]                       # romanize -> romaniz
+    return w
+
+
+sym_words = [{stem(w) for w in s.split("_")[1:]} for s in symbols]
 
 # Prefixes the C port drops on purpose: there is one implementation and it is
 # named for the thing, not for how it stores it.
@@ -137,7 +164,7 @@ for d in sorted(glob.glob("src/CircleAI.*/")):
         if renamed and renamed in symbols:
             return True
         for cand in set(candidates(t)):
-            want = {w for w in words(cand) if w not in NOISE}
+            want = {stem(w) for w in words(cand) if w not in NOISE}
             if not want:
                 continue
             for sw in sym_words:
