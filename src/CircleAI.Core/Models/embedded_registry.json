@@ -1,3162 +1,3162 @@
 {
- "RegistryUrl": "https://modelscope.cn/api/v1/circle-ai/registry.json",
- "Notes": "Auto-populated by tools/recalibrate-registry-sha — see ../registry.json header.",
- "Models": [
-  {
-   "Name": "Qwen3-0.6B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-0.6B-MNN",
-   "Architecture": "qwen3",
-   "TotalBytes": 454470710,
-   "QualityRank": 6,
-   "MemoryHintBytes": 636000000,
-   "MinRamGb": 0.6,
-   "MinStorageGb": 0.5,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
-     "SizeBytes": 403
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "d426c65a5159c938ccc237cdfbd982137f276804f27b414ca0ecf3fc0a660f8c",
-     "SizeBytes": 461520
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "953afb7e0165818add34a7a6caf0af5d0ed9428da102eb22c9b98ee9da292e9f",
-     "SizeBytes": 450810338
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "63f9a2f67ec2ae98b4c2363b46355040c34ca5c87a740ab3c94e08288a53225a",
-     "SizeBytes": 4880
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3-1.7B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-1.7B-MNN",
-   "Architecture": "qwen3",
-   "TotalBytes": 1235520567,
-   "QualityRank": 8,
-   "FallbackModelId": "Qwen3-0.6B-MNN",
-   "MemoryHintBytes": 1730000000,
-   "MinRamGb": 1.7,
-   "MinStorageGb": 1.2,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
-     "SizeBytes": 403
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "a6352fda4a2063a73126d2b552e35603564545ae3ed9b1547f58736d00f880fc",
-     "SizeBytes": 461520
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "d53dfdb7b826e4103e58a30236312978ff98ee89a2e1b9d66dd6bf227afce823",
-     "SizeBytes": 1231860194
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "dea06be377d9be7f6617fd421153032aee5ae75b16f53ebc3ef84417c5206aaf",
-     "SizeBytes": 4881
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3-4B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-4B-MNN",
-   "Architecture": "qwen3",
-   "TotalBytes": 2713763864,
-   "QualityRank": 10,
-   "FallbackModelId": "Qwen3-1.7B-MNN",
-   "MemoryHintBytes": 3800000000,
-   "MinRamGb": 3.6,
-   "MinStorageGb": 2.6,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
-     "SizeBytes": 403
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "ade8ad33f1d06ce8a46b57fa85e0fc08f1d4df06e179e7f0f23e761ecfcb38a5",
-     "SizeBytes": 592352
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "42d1bd0f4379cbee62a3fb89cb48cac36f13c96cd0d236b89202f633d23f73c3",
-     "SizeBytes": 2709972658
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "5244f177522469d06e1282f6b2215a58fd1d2153d40337df8ca50f848f6c6a6c",
-     "SizeBytes": 4882
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3-8B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-8B-MNN",
-   "Architecture": "qwen3",
-   "TotalBytes": 5510447174,
-   "QualityRank": 12,
-   "FallbackModelId": "Qwen3-4B-MNN",
-   "MemoryHintBytes": 7700000000,
-   "MinRamGb": 7.2,
-   "MinStorageGb": 5.2,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
-     "SizeBytes": 417
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "458b4af1d22ed8d7d12235ed5249a4606c7606e35e775e7ea2244ba623b0312e",
-     "SizeBytes": 1244659712
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "a7071f720c2b28f50ac4fdd92f5ec7f81e245a8524a34f6cd5f76ac0d103ca16",
-     "SizeBytes": 592328
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "d0c680b2c2675b85a48fc37881bb9a085b74f45f6f312b09068e2929b3473400",
-     "SizeBytes": 2474653
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "ecab3e87c0ca98a6e34795ba6779c5979b156b705c09b6df4b3e59c938576d4b",
-     "SizeBytes": 4259526082
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "a101498dac1d672f5a93a059775e0d68b11734ce0bb2592841d1a772eab1be74",
-     "SizeBytes": 413
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3-14B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-14B-MNN",
-   "Architecture": "qwen3",
-   "TotalBytes": 9435188107,
-   "QualityRank": 14,
-   "FallbackModelId": "Qwen3-8B-MNN",
-   "MemoryHintBytes": 13200000000,
-   "MinRamGb": 12.3,
-   "MinStorageGb": 8.9,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
-     "SizeBytes": 417
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "720549f9f5bae3c8a6520d03f8f07ad79ff9a1885d639d6a9e09afc8550cc0f5",
-     "SizeBytes": 1555824640
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "ebdedbf22f01bc1297380243fc77fea0b71fd92d7e437b980a9f7f9c08902270",
-     "SizeBytes": 657896
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "b93f15bd144555687b5c8aac1fbc1c361921853d65ff20bd1aab909daeeb9107",
-     "SizeBytes": 2747226
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "93a9c589270b2f41e6c42e68be18512af88754802423b24fc9ca026b79129602",
-     "SizeBytes": 7872763946
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "f1057d81653f106bfd1ab4e991611ba16e8062d0a9abf7f2e2e458c1b82290f3",
-     "SizeBytes": 413
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen2.5-0.5B-Instruct-MNN",
-   "Version": "2.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen2.5-0.5B-Instruct-MNN",
-   "Architecture": "qwen2.5",
-   "TotalBytes": 556805914,
-   "QualityRank": 5,
-   "MemoryHintBytes": 780000000,
-   "MinRamGb": 0.8,
-   "MinStorageGb": 0.6,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
-     "SizeBytes": 159
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "4e96b0df6d274768cbb7e72404011853d23349999b658dc2f4dfb3c431ea223f",
-     "SizeBytes": 272269312
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "480da511e603bd82f8d4af4e1f778ad72baadf8307f3585465ad9a94daca1a88",
-     "SizeBytes": 566264
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "245ce4289f456dcb371a8f8deabf75c3c4ee75f34b19e0d9723ba09b2fbacf8c",
-     "SizeBytes": 2808932
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da",
-     "SizeBytes": 277967498
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "ec05709b4261d59b510a0b7a636c6dcb6c5635c08fee7eb3c4f04188b509694b",
-     "SizeBytes": 272
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
-     "SizeBytes": 3193477
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen2.5-1.5B-Instruct-MNN",
-   "Version": "2.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen2.5-1.5B-Instruct-MNN",
-   "Architecture": "qwen2.5",
-   "TotalBytes": 879481306,
-   "QualityRank": 7,
-   "FallbackModelId": "Qwen2.5-0.5B-Instruct-MNN",
-   "MemoryHintBytes": 1230000000,
-   "MinRamGb": 1.2,
-   "MinStorageGb": 0.9,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
-     "SizeBytes": 159
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "5a57a643ad6dbb38d36660e6ce0968d82725929311d455934768280b939863d5",
-     "SizeBytes": 1145128
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "3d34e0f4957cf408a59a1965ffeaa58bdcb456195ea0fe39e0bcd6aad5554ee4",
-     "SizeBytes": 6650652
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "94a73a713aed33d6356c2f050d431d94c14711a75e6b500869b21b3b720aa5fb",
-     "SizeBytes": 868491506
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "9c877345bb9a88a6ff81c31f28c9c8680898bb2593f00cff9fac9e85a2681554",
-     "SizeBytes": 384
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
-     "SizeBytes": 3193477
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen2.5-3B-Instruct-MNN",
-   "Version": "2.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen2.5-3B-Instruct-MNN",
-   "Architecture": "qwen2.5",
-   "TotalBytes": 2369481387,
-   "QualityRank": 9,
-   "FallbackModelId": "Qwen2.5-1.5B-Instruct-MNN",
-   "MemoryHintBytes": 3300000000,
-   "MinRamGb": 3.1,
-   "MinStorageGb": 2.3,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
-     "SizeBytes": 159
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "03bd8df1218b5bcb8439e6a0d10d49e2cbc55e002f6552401e3e0cc71291fe87",
-     "SizeBytes": 622329856
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "82c4a314480083d5b296406f041f29b288bc3c385cef43dc32cf0f6f04202625",
-     "SizeBytes": 1180432
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "71798f3a4c58df0c293a8cfb8d83b40203303d0fbf3db48b71f656aa058eef9e",
-     "SizeBytes": 6698403
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "c636ff0997d97535cea70f12331a4212fc0fa25fece6a9893944c2f7d1777a88",
-     "SizeBytes": 1736078786
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "2e2ee1d767ea84d0a2f5c549dac7413d0debf8a7ec6abd7ade4e77b8e294ada5",
-     "SizeBytes": 274
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
-     "SizeBytes": 3193477
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen2.5-7B-Instruct-MNN",
-   "Version": "2.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen2.5-7B-Instruct-MNN",
-   "Architecture": "qwen2.5",
-   "TotalBytes": 5079842672,
-   "QualityRank": 11,
-   "FallbackModelId": "Qwen2.5-3B-Instruct-MNN",
-   "MemoryHintBytes": 7100000000,
-   "MinRamGb": 6.7,
-   "MinStorageGb": 4.8,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
-     "SizeBytes": 159
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "78ae605b310cf526d54ba22b27796f44010fe28198cb6e3388efb62e09cc2ac4",
-     "SizeBytes": 1089994752
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "5d50196a5d0cd0d6f3c04c682184ce0e4a3d95d5bd9b36f9c97b68dc691b47c5",
-     "SizeBytes": 1271768
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "0cf4c26414be1cfcfc8a6e24be4bd28baca53f97c55db63f2da6f4c883e385a7",
-     "SizeBytes": 7826032
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "f0bb1d2cc3f91a0c38d6e6b82ab04c0bd5e5ed7831754841ffd9e14098b97cc4",
-     "SizeBytes": 3977556210
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "f7325a888aa0175749e8a4d9a5d7600109fd7b9dcb8da2d79d6ff63c1ac131d1",
-     "SizeBytes": 274
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
-     "SizeBytes": 3193477
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Piper-en_US-lessac-medium",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "en",
-   "Architecture": "vits",
-   "TotalBytes": 63206179,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.1,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx",
-     "Sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx.json",
-     "Sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
-     "SizeBytes": 4885
-    }
-   ]
-  },
-  {
-   "Name": "Whisper-tiny-ggml",
-   "Version": "1.0",
-   "Quantization": "ggml",
-   "Repo": "ggerganov/whisper.cpp",
-   "Source": "HuggingFace",
-   "Modality": "Asr",
-   "Language": "en",
-   "Architecture": "whisper",
-   "TotalBytes": 77691713,
-   "MinRamGb": 0.4,
-   "MinStorageGb": 0.1,
-   "QualityRank": 5,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "ggml-tiny.bin",
-     "Sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-     "SizeBytes": 77691713
-    }
-   ]
-  },
-  {
-   "Name": "Qwen2.5-VL-3B-Instruct-MNN",
-   "Version": "2.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen2.5-VL-3B-Instruct-MNN",
-   "Modality": "Vision",
-   "Architecture": "qwen2.5-vl",
-   "TotalBytes": 2736200899,
-   "QualityRank": 9,
-   "MemoryHintBytes": 4100000000,
-   "MinRamGb": 3.9,
-   "MinStorageGb": 2.6,
-   "Capabilities": [
-    "Default",
-    "Vision"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815",
-     "SizeBytes": 344
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "b84907567aa829c6f24cadbdeb68c3c44d25fc0a8be8e917fd603cb64f72810d",
-     "SizeBytes": 622329856
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "860ac54071174f8d2961c3258224fe315dcf2bae78344005cdddee21e7d80aa3",
-     "SizeBytes": 574000
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "04ae802933b4ff8e58c17b1246e8b64abd3267fb16c7b6642028771e87f88fcd",
-     "SizeBytes": 2407071
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "7326f768b816b5af71ad3a995dc1e321e07f85db487394e1430e5f07fd9627c6",
-     "SizeBytes": 1737291202
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "00492942d0603aa638ec263341359f33feeb400e36ca96d11fe1dde1b9f79e77",
-     "SizeBytes": 725
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
-     "SizeBytes": 3193477
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "1caaa38f5c8e0073f7bbf29e496ccfbeda1b32df332652a031100d0ea306dd7f",
-     "SizeBytes": 655328
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81",
-     "SizeBytes": 369748896
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "SmolVLM-256M-Instruct-MNN",
-   "Version": "1.0",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/SmolVLM-256M-Instruct-MNN",
-   "Modality": "Vision",
-   "Architecture": "smolvlm",
-   "TotalBytes": 311428914,
-   "QualityRank": 4,
-   "MemoryHintBytes": 450000000,
-   "MinRamGb": 0.5,
-   "MinStorageGb": 0.35,
-   "Capabilities": [
-    "Default",
-    "Vision"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4",
-     "SizeBytes": 291
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742",
-     "SizeBytes": 56770560
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47",
-     "SizeBytes": 475544
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506",
-     "SizeBytes": 999332
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691",
-     "SizeBytes": 150050290
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40",
-     "SizeBytes": 778
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95",
-     "SizeBytes": 888755
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37",
-     "SizeBytes": 228200
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06",
-     "SizeBytes": 102015164
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Piper-en_US-lessac-high",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "en",
-   "Architecture": "vits",
-   "TotalBytes": 113900084,
-   "MinRamGb": 0.5,
-   "MinStorageGb": 0.2,
-   "QualityRank": 9,
-   "FallbackModelId": "Piper-en_US-lessac-medium",
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx",
-     "Sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09",
-     "SizeBytes": 113895201
-    },
-    {
-     "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx.json",
-     "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f",
-     "SizeBytes": 4883
-    }
-   ]
-  },
-  {
-   "Name": "MMS-aka",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ak",
-   "Architecture": "vits",
-   "TotalBytes": 114012161,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-aka/model.onnx",
-     "Sha256": "f2794ba3bd6ea7d89148562fb111d0341a0584d3da72047e8eb91832963f2fdc",
-     "SizeBytes": 114010808
-    },
-    {
-     "Name": "mms-aka/tokens.txt",
-     "Sha256": "e45ba292dd337d7dd2a83bd81aed813c706412d6e6887c91329d943e02abd300",
-     "SizeBytes": 258
-    },
-    {
-     "Name": "mms-aka/model.onnx.json",
-     "Sha256": "90614b5f27b693b4e2c936bef80511f91cdb36b52bd6ca4107ce74dc4a2bdd0c",
-     "SizeBytes": 1614
-    }
-   ]
-  },
-  {
-   "Name": "MMS-ara",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ar",
-   "Architecture": "vits",
-   "TotalBytes": 114019342,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-ara/model.onnx",
-     "Sha256": "17b82dca9a87ba590c4b24701cb16c4f465972d3f02f309ed4ef1bfb8e8dca40",
-     "SizeBytes": 114017720
-    },
-    {
-     "Name": "mms-ara/tokens.txt",
-     "Sha256": "410e2609def202a337fb77e0ab50e866c77c0bdaf9d1cd748968fe4aa8b32eff",
-     "SizeBytes": 223
-    },
-    {
-     "Name": "mms-ara/model.onnx.json",
-     "Sha256": "c72d746076313a5fcc54d8aa4ff1f70ea4a4b5a7ecfd0f1a5f021d1436468251",
-     "SizeBytes": 1270
-    }
-   ]
-  },
-  {
-   "Name": "MMS-bam",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "bm",
-   "Architecture": "vits",
-   "TotalBytes": 114017009,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-bam/model.onnx",
-     "Sha256": "22309af4670d326196c3552cae33dcc9e77caa8737272b5930915c2cf0ad17be",
-     "SizeBytes": 114015416
-    },
-    {
-     "Name": "mms-bam/tokens.txt",
-     "Sha256": "1aac384d1a5f612b7c123066cb736bf661ae4a304a62667ca24af005cd36e962",
-     "SizeBytes": 316
-    },
-    {
-     "Name": "mms-bam/model.onnx.json",
-     "Sha256": "78caf43863231a10db3e4b1de1ce3a7a20a0b3bab8b7404b7258815d97ecbb46",
-     "SizeBytes": 1962
-    }
-   ]
-  },
-  {
-   "Name": "MMS-bem",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "bem",
-   "Architecture": "vits",
-   "TotalBytes": 114014601,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-bem/model.onnx",
-     "Sha256": "7bc37346a57008fe8b85ebd4e00199e54d728e6429c75c514e3b9d965b88ef40",
-     "SizeBytes": 114013112
-    },
-    {
-     "Name": "mms-bem/tokens.txt",
-     "Sha256": "3bd05cc9fb0fedaa994ada8d0e6a361b5bb0f01b9c4023800fb4b95b4faaa81e",
-     "SizeBytes": 300
-    },
-    {
-     "Name": "mms-bem/model.onnx.json",
-     "Sha256": "9688f1deffb4540befc25c96fb7f6cd58e47bb6b8e0dd710d44cf9cab0a62efd",
-     "SizeBytes": 1858
-    }
-   ]
-  },
-  {
-   "Name": "MMS-ewe",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ee",
-   "Architecture": "vits",
-   "TotalBytes": 114029185,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-ewe/model.onnx",
-     "Sha256": "e9baf897e7efd5619278173a8887b82ebeae3315b245956c14fda7e0ca0af600",
-     "SizeBytes": 114026936
-    },
-    {
-     "Name": "mms-ewe/tokens.txt",
-     "Sha256": "4991afa36af2598579b09c25cad441eea04d78a0dea47fd1f560b9cdf2687cdf",
-     "SizeBytes": 503
-    },
-    {
-     "Name": "mms-ewe/model.onnx.json",
-     "Sha256": "597601816facff60d55a0675d0028ced99c0d507203b0f37e54ed88ebd32f1c9",
-     "SizeBytes": 2782
-    }
-   ]
-  },
-  {
-   "Name": "MMS-fas",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "fa",
-   "Architecture": "vits",
-   "TotalBytes": 114023361,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-fas/model.onnx",
-     "Sha256": "35104189f5d0ad1d629c6688df2cfb3805579dc6809e8cc1698edf206320197c",
-     "SizeBytes": 114021560
-    },
-    {
-     "Name": "mms-fas/tokens.txt",
-     "Sha256": "3de1b505f31f18b107f08523b3d5c9ffb8db70c798c7c9d4b437762784640f98",
-     "SizeBytes": 250
-    },
-    {
-     "Name": "mms-fas/model.onnx.json",
-     "Sha256": "24a2af9be38d957fd3c2af5ace40f05096ef17b04ef3f6f6e1807011ebb6f3bd",
-     "SizeBytes": 1408
-    }
-   ]
-  },
-  {
-   "Name": "MMS-fon",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "fon",
-   "Architecture": "vits",
-   "TotalBytes": 114025132,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-fon/model.onnx",
-     "Sha256": "df3c906e14d3d205bf2f90b16885bc0105924cc5ca75c10acfe792606f118898",
-     "SizeBytes": 114023096
-    },
-    {
-     "Name": "mms-fon/tokens.txt",
-     "Sha256": "642ce204be8f71d47d6afb3aa7335cbaf0730a8891a670e2144f946558474c33",
-     "SizeBytes": 447
-    },
-    {
-     "Name": "mms-fon/model.onnx.json",
-     "Sha256": "213ff1066dddbbf24a98bc1cc3697fe9d2be40c6e46c922658e3d76a4dadea67",
-     "SizeBytes": 2529
-    }
-   ]
-  },
-  {
-   "Name": "MMS-ful",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ff",
-   "Architecture": "vits",
-   "TotalBytes": 114021013,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-ful/model.onnx",
-     "Sha256": "22ed9e41b444c1ebc489a2aaefa1022365e018bd2669c8b300ffb10fc8c6a750",
-     "SizeBytes": 114019256
-    },
-    {
-     "Name": "mms-ful/tokens.txt",
-     "Sha256": "b34fca4aa77eee1b64b709eed4b83252dc25ea9132fea1b1d6e938d6bf1d753e",
-     "SizeBytes": 328
-    },
-    {
-     "Name": "mms-ful/model.onnx.json",
-     "Sha256": "bd71a7fe708c79e836f7f8f8d93fcb0aadb853de525f67fa81fb52211f523ec5",
-     "SizeBytes": 2018
-    }
-   ]
-  },
-  {
-   "Name": "MMS-grn",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "gn",
-   "Architecture": "vits",
-   "TotalBytes": 114030740,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-grn/model.onnx",
-     "Sha256": "d25dba2dbb0cf23f6af37b69d1bd38e4227168c271faeb5596a69ab538d46b56",
-     "SizeBytes": 114028472
-    },
-    {
-     "Name": "mms-grn/tokens.txt",
-     "Sha256": "3a82f4a962da76b81e91428205d8b98a423b96a21960006c5794cef8d22cff97",
-     "SizeBytes": 470
-    },
-    {
-     "Name": "mms-grn/model.onnx.json",
-     "Sha256": "53fe41280afe947381225917b9e9a7a30c7dd827b177e20c0c1735ae43a943d5",
-     "SizeBytes": 2661
-    }
-   ]
-  },
-  {
-   "Name": "MMS-guj",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "gu",
-   "Architecture": "vits",
-   "TotalBytes": 114036353,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-guj/model.onnx",
-     "Sha256": "59f073b2e63771dd7d7972c17577e05a903ae6f4aa8c65a6dc1d9eb1a9812ed2",
-     "SizeBytes": 114033848
-    },
-    {
-     "Name": "mms-guj/tokens.txt",
-     "Sha256": "2d855f2affb7586cc6be095a4382eb0bee2a22242deda32c86aab6b1a810d8c4",
-     "SizeBytes": 402
-    },
-    {
-     "Name": "mms-guj/model.onnx.json",
-     "Sha256": "b8883029717d95ab9fd351d76e95c1b366ce7cefc9e5e507cb8a717318ef8320",
-     "SizeBytes": 1938
-    }
-   ]
-  },
-  {
-   "Name": "MMS-hat",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ht",
-   "Architecture": "vits",
-   "TotalBytes": 114013784,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-hat/model.onnx",
-     "Sha256": "347006bc40b8d5430e99fd8084fa054ae936ad616c4a95b3cf3e99f511fae06c",
-     "SizeBytes": 114012344
-    },
-    {
-     "Name": "mms-hat/tokens.txt",
-     "Sha256": "79e3717b32acb413d43cd28aa801222409fb3701f9515ff54eb7332372b1194c",
-     "SizeBytes": 284
-    },
-    {
-     "Name": "mms-hat/model.onnx.json",
-     "Sha256": "20ac9409a26d52f21615f9c6b2e775351085b3957e75ba591f7ee467fa38b67e",
-     "SizeBytes": 1798
-    }
-   ]
-  },
-  {
-   "Name": "MMS-hau",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ha",
-   "Architecture": "vits",
-   "TotalBytes": 114015402,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-hau/model.onnx",
-     "Sha256": "24e0f5b88b35e36975ed3b69c065e571e51fdf612c72a26bc5048bfecc1d532c",
-     "SizeBytes": 114013880
-    },
-    {
-     "Name": "mms-hau/tokens.txt",
-     "Sha256": "78b39313ddfc60be59cc12a957f11bf0f5dd4d1cdd3d5c16fe0bf3fae165d0c9",
-     "SizeBytes": 304
-    },
-    {
-     "Name": "mms-hau/model.onnx.json",
-     "Sha256": "9a4d61a77bda7c817bbfcbadd6fd2b0f3dca607f9bea4c40e33605573cd3d2db",
-     "SizeBytes": 1858
-    }
-   ]
-  },
-  {
-   "Name": "MMS-jav",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "jv",
-   "Architecture": "vits",
-   "TotalBytes": 114008933,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-jav/model.onnx",
-     "Sha256": "124f4e4ffda0fa0696d0128a95757d6293e69133d6d5fae2f68a2cb59afd9423",
-     "SizeBytes": 114007736
-    },
-    {
-     "Name": "mms-jav/tokens.txt",
-     "Sha256": "bb92676f9376fbb68d9b686e77cacfd060199608b6f0e056fac964353c743184",
-     "SizeBytes": 226
-    },
-    {
-     "Name": "mms-jav/model.onnx.json",
-     "Sha256": "0a3c54b9012473b900a012f2bd37179a7296e5c5d19a686b62ab7a2319211721",
-     "SizeBytes": 1520
-    }
-   ]
-  },
-  {
-   "Name": "MMS-kan",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "kn",
-   "Architecture": "vits",
-   "TotalBytes": 114048418,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-kan/model.onnx",
-     "Sha256": "8b6f313ebfdf423991ab6444a4520a72cc506a5b262a5d0c0c467ed7d8555834",
-     "SizeBytes": 114045368
-    },
-    {
-     "Name": "mms-kan/tokens.txt",
-     "Sha256": "a4a44037f7492c9e5b69a4483250e54af9a2d528bd4e19de95a21ff0c5e82a8a",
-     "SizeBytes": 487
-    },
-    {
-     "Name": "mms-kan/model.onnx.json",
-     "Sha256": "bfe40140cd2373ebaeaf6a88ac3c73e0934dbcfe5507d7aa4d52a4b207b5904a",
-     "SizeBytes": 2326
-    }
-   ]
-  },
-  {
-   "Name": "MMS-kby",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "kr",
-   "Architecture": "vits",
-   "TotalBytes": 114012155,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-kby/model.onnx",
-     "Sha256": "846e3090b7242a6a31b790f11bc59dcfc2452e9f8370d93de0bd82c90bf9a629",
-     "SizeBytes": 114010808
-    },
-    {
-     "Name": "mms-kby/tokens.txt",
-     "Sha256": "29f9b048000ff445f79ff350b107ada9f342a4144994feb313458c1c50eb4931",
-     "SizeBytes": 254
-    },
-    {
-     "Name": "mms-kby/model.onnx.json",
-     "Sha256": "746d3bfb0e97037b6f2fe8b1524a7a134a27c5b83460e9a08749acd88f69df6f",
-     "SizeBytes": 1631
-    }
-   ]
-  },
-  {
-   "Name": "MMS-kik",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ki",
-   "Architecture": "vits",
-   "TotalBytes": 114017796,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-kik/model.onnx",
-     "Sha256": "d146e40d1e14e8271df3b3be13d0d1136a999169c72c251338133e48094c9106",
-     "SizeBytes": 114016184
-    },
-    {
-     "Name": "mms-kik/tokens.txt",
-     "Sha256": "333d41d3ad489a23fc7826f71262c1ded4a07c4fb68ebf15e151e99907e89ff2",
-     "SizeBytes": 308
-    },
-    {
-     "Name": "mms-kik/model.onnx.json",
-     "Sha256": "4337dc31b6a4198444420d0ddc891cf79f7e4e533576385a820edabd193fe852",
-     "SizeBytes": 1905
-    }
-   ]
-  },
-  {
-   "Name": "MMS-kin",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "rw",
-   "Architecture": "vits",
-   "TotalBytes": 114023432,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-kin/model.onnx",
-     "Sha256": "c007efdbfa24ee8e97c83aa7cf4449dd88f7c26f411f63d7d80b14153f71ccfd",
-     "SizeBytes": 114021560
-    },
-    {
-     "Name": "mms-kin/tokens.txt",
-     "Sha256": "2ab58191eec47a2cf944503c11ce307a05b13bc9e908a3c29c1e06d2881b4ee4",
-     "SizeBytes": 356
-    },
-    {
-     "Name": "mms-kin/model.onnx.json",
-     "Sha256": "5d5aea4527c6c0c9550a905d3ba8df93a38e6fe62ea53b333a7002378ed2bd33",
-     "SizeBytes": 2178
-    }
-   ]
-  },
-  {
-   "Name": "MMS-lgg",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "lgg",
-   "Architecture": "vits",
-   "TotalBytes": 114015369,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-lgg/model.onnx",
-     "Sha256": "2508724808353de5ee60ec9e4a8a4b6d2742149bf8abee8a9335c1c44cecf131",
-     "SizeBytes": 114013880
-    },
-    {
-     "Name": "mms-lgg/tokens.txt",
-     "Sha256": "1a38e4ed80aa5539c2f32fd9ea8581e6b54f467d01b7859c71d094bf31ae0c2b",
-     "SizeBytes": 277
-    },
-    {
-     "Name": "mms-lgg/model.onnx.json",
-     "Sha256": "ed80a3427f63f7fae979c107a6027427bbed3d4dbf4d99ae01e33ba15492de06",
-     "SizeBytes": 1791
-    }
-   ]
-  },
-  {
-   "Name": "MMS-lug",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "lg",
-   "Architecture": "vits",
-   "TotalBytes": 114012158,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-lug/model.onnx",
-     "Sha256": "0d5bb8a21a1046029701c818a7037c3b3cd11d0f0e7f36c69bc7e3d9fb68be93",
-     "SizeBytes": 114010808
-    },
-    {
-     "Name": "mms-lug/tokens.txt",
-     "Sha256": "5a6a6c8aa49c1c44811a8aa5041cb8728b0d219024fee3901cb982b025538adf",
-     "SizeBytes": 258
-    },
-    {
-     "Name": "mms-lug/model.onnx.json",
-     "Sha256": "689c86cd6e6710839abdc98c68786e1976eb5302fdd823608ba28250ed27ef38",
-     "SizeBytes": 1657
-    }
-   ]
-  },
-  {
-   "Name": "MMS-mal",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ml",
-   "Architecture": "vits",
-   "TotalBytes": 114055698,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-mal/model.onnx",
-     "Sha256": "13965d4eeed2f5198c53689e192ce7095e167fb11dd0e72ae5cd8a3bf117374b",
-     "SizeBytes": 114052280
-    },
-    {
-     "Name": "mms-mal/tokens.txt",
-     "Sha256": "3a752c36593cc519193c8caa6c00371369b423366fa6ead8d91945a28b2c46a3",
-     "SizeBytes": 571
-    },
-    {
-     "Name": "mms-mal/model.onnx.json",
-     "Sha256": "41383033f9d77c9e8b056103dec42f5c6549fda44aa288d4fc9aa207b8bec44d",
-     "SizeBytes": 2718
-    }
-   ]
-  },
-  {
-   "Name": "MMS-mar",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "mr",
-   "Architecture": "vits",
-   "TotalBytes": 114046825,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-mar/model.onnx",
-     "Sha256": "03021bb722e8a19a44be6bb327a441c4061a0c75cbd565f3455e64c84713f03a",
-     "SizeBytes": 114043832
-    },
-    {
-     "Name": "mms-mar/tokens.txt",
-     "Sha256": "4d968029d0754b41633cb0871cce6796a5ab3d3bc2b9b91c5721cfdf85156083",
-     "SizeBytes": 490
-    },
-    {
-     "Name": "mms-mar/model.onnx.json",
-     "Sha256": "739dbbd5eaa0b03dc84e65dd5c8c4ed2723f3662d358f95235ef55784ae82dfe",
-     "SizeBytes": 2329
-    }
-   ]
-  },
-  {
-   "Name": "MMS-mlg",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "mg",
-   "Architecture": "vits",
-   "TotalBytes": 114012178,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-mlg/model.onnx",
-     "Sha256": "b1e0d538bd71f66c96a8b62ec879ec96ec3d620fa551f01c15f926749df3c3ce",
-     "SizeBytes": 114010808
-    },
-    {
-     "Name": "mms-mlg/tokens.txt",
-     "Sha256": "3820c57711dd3efd606524206de79451726b39e7c643179960e13d926c873321",
-     "SizeBytes": 273
-    },
-    {
-     "Name": "mms-mlg/model.onnx.json",
-     "Sha256": "827c915eedca02125b2461736b1ae8112a34124a9d3607e16d50de80f3c08417",
-     "SizeBytes": 1721
-    }
-   ]
-  },
-  {
-   "Name": "MMS-mos",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "mos",
-   "Architecture": "vits",
-   "TotalBytes": 114016221,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-mos/model.onnx",
-     "Sha256": "432e029d1c5481aaa39897d81d678aca6763d3be0bcc09d3f375653e8dcb413d",
-     "SizeBytes": 114014648
-    },
-    {
-     "Name": "mms-mos/tokens.txt",
-     "Sha256": "785218808f07e80b9007543b261c207d49ba0875bb1f95abd3c6d99f638eaf0e",
-     "SizeBytes": 321
-    },
-    {
-     "Name": "mms-mos/model.onnx.json",
-     "Sha256": "820b95f2736f25bacc5cb3b15ff0fd4a2ed611ad67ff3f5757d5c9c6f96490d7",
-     "SizeBytes": 1945
-    }
-   ]
-  },
-  {
-   "Name": "MMS-mya",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "my",
-   "Architecture": "vits",
-   "TotalBytes": 114033940,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-mya/model.onnx",
-     "Sha256": "9cc2be621aa70461da190cf9a050e8194a46257012ef7c421ae67d57742fb519",
-     "SizeBytes": 114031544
-    },
-    {
-     "Name": "mms-mya/tokens.txt",
-     "Sha256": "cd0a6ecfb0c91dde4d8ced1a6f8d18a7bc48086a438a179ae00230b86d5e76e3",
-     "SizeBytes": 385
-    },
-    {
-     "Name": "mms-mya/model.onnx.json",
-     "Sha256": "45e7c56de678bb32d67716d9ed6a7528c16537414fb348b4a3715e3988e31b8b",
-     "SizeBytes": 1855
-    }
-   ]
-  },
-  {
-   "Name": "MMS-nya",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ny",
-   "Architecture": "vits",
-   "TotalBytes": 114019385,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-nya/model.onnx",
-     "Sha256": "4f4e105e47f4edb3c341a1a5396be481040ac007cd6003770ecc4ecc931205cf",
-     "SizeBytes": 114017720
-    },
-    {
-     "Name": "mms-nya/tokens.txt",
-     "Sha256": "e6868455fdd5ee56329d9a51512f7a0902911cc36ecdcd6cf5c05498563b7e2c",
-     "SizeBytes": 303
-    },
-    {
-     "Name": "mms-nya/model.onnx.json",
-     "Sha256": "b4839de48055c0db24853c2fbeec052d49f5d91c6ae48849135f54961c0e1acd",
-     "SizeBytes": 1901
-    }
-   ]
-  },
-  {
-   "Name": "MMS-nyn",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "nyn",
-   "Architecture": "vits",
-   "TotalBytes": 114010544,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-nyn/model.onnx",
-     "Sha256": "7736f62d564338491b30a482bf230657ebb8815b9f8670282811efba11058231",
-     "SizeBytes": 114009272
-    },
-    {
-     "Name": "mms-nyn/tokens.txt",
-     "Sha256": "09a616648d5c62c5436013599c2620a64339e8c7d3765720f00c7273fb3034ec",
-     "SizeBytes": 241
-    },
-    {
-     "Name": "mms-nyn/model.onnx.json",
-     "Sha256": "c74744b878752bc59be4bae25bf683a9038a29f36044e879cd1926cd66eaae15",
-     "SizeBytes": 1601
-    }
-   ]
-  },
-  {
-   "Name": "MMS-orm",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "om",
-   "Architecture": "vits",
-   "TotalBytes": 114011353,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-orm/model.onnx",
-     "Sha256": "a7ef1b425a99cc647b1a2ef2634936372e8d04026a4ef1b47bcd667c5b882a2b",
-     "SizeBytes": 114010040
-    },
-    {
-     "Name": "mms-orm/tokens.txt",
-     "Sha256": "46e28b6027703c5c408615085599063f334236984519c299ea387716e458a4e1",
-     "SizeBytes": 252
-    },
-    {
-     "Name": "mms-orm/model.onnx.json",
-     "Sha256": "d89bc5b7d365a03b7c28d7c1e7b5c209585c4fab4606dcf5ea3bd5a39e94e374",
-     "SizeBytes": 1629
-    }
-   ]
-  },
-  {
-   "Name": "MMS-pan",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "pa",
-   "Architecture": "vits",
-   "TotalBytes": 114035546,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-pan/model.onnx",
-     "Sha256": "670104b5e7ea4b6505442304c3f3d5a4422b1d0edba8110e00c3fc1af6572860",
-     "SizeBytes": 114033080
-    },
-    {
-     "Name": "mms-pan/tokens.txt",
-     "Sha256": "91344d6f3d6287e8adc71e66c7e9ca83f5f6e9a7d0c24f043a219773d9dec163",
-     "SizeBytes": 397
-    },
-    {
-     "Name": "mms-pan/model.onnx.json",
-     "Sha256": "2cf8020f8eb33d2a954c7367b0b1e8fe1ee00f810a0c9074ec4e7d2c8cac20e8",
-     "SizeBytes": 1907
-    }
-   ]
-  },
-  {
-   "Name": "MMS-quy",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "qu",
-   "Architecture": "vits",
-   "TotalBytes": 114017030,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-quy/model.onnx",
-     "Sha256": "a1e7c4194ea2a8d13bd6d627d47469e8681eb937e1380dd66335003b1346f6b6",
-     "SizeBytes": 114015416
-    },
-    {
-     "Name": "mms-quy/tokens.txt",
-     "Sha256": "91d2d9049dc739ea4094ff7aa9067f9d152dbb5ef99372795fde841c35dab896",
-     "SizeBytes": 335
-    },
-    {
-     "Name": "mms-quy/model.onnx.json",
-     "Sha256": "460f531481a03a0606cbc6a6497e6b2ab47d7559d0937e05c48c4c7a8812d64b",
-     "SizeBytes": 2021
-    }
-   ]
-  },
-  {
-   "Name": "MMS-run",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "rn",
-   "Architecture": "vits",
-   "TotalBytes": 114011351,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-run/model.onnx",
-     "Sha256": "de9edce91f75744aaa8ca3db6c6d95c80510ccd4c3028b69d32a5b62f7bddf7d",
-     "SizeBytes": 114010040
-    },
-    {
-     "Name": "mms-run/tokens.txt",
-     "Sha256": "f8aef360a3fcd3b367721d8a1ad571ada76818d075dda2015302ac06609ae4ba",
-     "SizeBytes": 248
-    },
-    {
-     "Name": "mms-run/model.onnx.json",
-     "Sha256": "f07cd7378f8f1f8db64c11279ad8728345b898614f27dccda26ac921b64eb2b0",
-     "SizeBytes": 1630
-    }
-   ]
-  },
-  {
-   "Name": "MMS-sag",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "sg",
-   "Architecture": "vits",
-   "TotalBytes": 114020266,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-sag/model.onnx",
-     "Sha256": "2340006ebee959f12783b42d66637e790516f7b4c428ddcca89976d0fecebf80",
-     "SizeBytes": 114018488
-    },
-    {
-     "Name": "mms-sag/tokens.txt",
-     "Sha256": "79a6e4e39028178cfb281d4ef846ef56ee63902fae46f27d4acd6538e437eab4",
-     "SizeBytes": 376
-    },
-    {
-     "Name": "mms-sag/model.onnx.json",
-     "Sha256": "1cfd2ddc65638aaf74971c9528e3f82584cfeefdf96e4862978d2c405f9c98b2",
-     "SizeBytes": 2242
-    }
-   ]
-  },
-  {
-   "Name": "MMS-sna",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "sn",
-   "Architecture": "vits",
-   "TotalBytes": 114014566,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-sna/model.onnx",
-     "Sha256": "5fb5767d4c8ee2bd89f3add7e80a7188432c98e385a7ea254e6d9e5de22d9f65",
-     "SizeBytes": 114013112
-    },
-    {
-     "Name": "mms-sna/tokens.txt",
-     "Sha256": "98391f18dc3ba8db4876b75abe253a0053d49c02b85c4295f1db8c6af646f443",
-     "SizeBytes": 272
-    },
-    {
-     "Name": "mms-sna/model.onnx.json",
-     "Sha256": "ca989dc148b4e114ae5c464f9100a5e290d61a53b739bae07bf9b9ae060ed67b",
-     "SizeBytes": 1737
-    }
-   ]
-  },
-  {
-   "Name": "MMS-som",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "so",
-   "Architecture": "vits",
-   "TotalBytes": 114009737,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-som/model.onnx",
-     "Sha256": "fdf0e803ca83a3f76920f792cfece40ff28612db3043efe330cbccdc3cf24789",
-     "SizeBytes": 114008504
-    },
-    {
-     "Name": "mms-som/tokens.txt",
-     "Sha256": "7735b35bace882ce0116589b5243f4072d7ff26f76903353bf879e3501c9b088",
-     "SizeBytes": 232
-    },
-    {
-     "Name": "mms-som/model.onnx.json",
-     "Sha256": "a368ed0d4019a65efe01d8a34001f9530dbe2e1d1f6377ef7564bc83b3aa9272",
-     "SizeBytes": 1521
-    }
-   ]
-  },
-  {
-   "Name": "MMS-sun",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "su",
-   "Architecture": "vits",
-   "TotalBytes": 114017766,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-sun/model.onnx",
-     "Sha256": "0a6a0ab428d4ee117ac98c88ece778fd04231c7242c6f0e0b3343a31eb78b18a",
-     "SizeBytes": 114016184
-    },
-    {
-     "Name": "mms-sun/tokens.txt",
-     "Sha256": "b0803ad9a381188f7ecb9fcb6b677596b42550ef084d8533ae5540f546e8dde4",
-     "SizeBytes": 281
-    },
-    {
-     "Name": "mms-sun/model.onnx.json",
-     "Sha256": "dc95a2cff58d428bfb36942de37fe4d41a57f99f671cd0d4f12171302b7e973a",
-     "SizeBytes": 1817
-    }
-   ]
-  },
-  {
-   "Name": "MMS-swh",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "sw",
-   "Architecture": "vits",
-   "TotalBytes": 114019386,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-swh/model.onnx",
-     "Sha256": "2b156adeaec2bdafdf6e685ba40f78b5b5993d26c071de11e640fc85882ad269",
-     "SizeBytes": 114017720
-    },
-    {
-     "Name": "mms-swh/tokens.txt",
-     "Sha256": "783097de87c5fbd965298ffd8733986d6f4d2e7d14749965a2836f96f198a293",
-     "SizeBytes": 304
-    },
-    {
-     "Name": "mms-swh/model.onnx.json",
-     "Sha256": "a25debd0bdbb87efc34014521b8b99a0ac484879670d977248da383d784bc62b",
-     "SizeBytes": 1901
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tam",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ta",
-   "Architecture": "vits",
-   "TotalBytes": 114034708,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tam/model.onnx",
-     "Sha256": "c86cf0a0657d57577d937b806d7b63d638cff522b5687cb650dde24bc71c5c88",
-     "SizeBytes": 114032312
-    },
-    {
-     "Name": "mms-tam/tokens.txt",
-     "Sha256": "0b3f692319bb5fae8658e2f84bf252bca92450d0207bbba7273caa1a182d81b8",
-     "SizeBytes": 375
-    },
-    {
-     "Name": "mms-tam/model.onnx.json",
-     "Sha256": "dca6e789148e49c4c7af60a6abf82eb29d86b10bcf25c965860441798cc08452",
-     "SizeBytes": 1863
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tel",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "te",
-   "Architecture": "vits",
-   "TotalBytes": 114040384,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tel/model.onnx",
-     "Sha256": "e82525ab1e662ba96ef81346ff1943c5bb731853c1f96d02fbff2e7a0284824c",
-     "SizeBytes": 114037688
-    },
-    {
-     "Name": "mms-tel/tokens.txt",
-     "Sha256": "528152cb4121272e6e71f7a1d91c8d4922b92fae414ae599db608cb92a738bb7",
-     "SizeBytes": 435
-    },
-    {
-     "Name": "mms-tel/model.onnx.json",
-     "Sha256": "c7424feda2366bd55a3d4c512d0567d2ef7d37dd227d411367eb1e58c0c95486",
-     "SizeBytes": 2054
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tgl",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "tl",
-   "Architecture": "vits",
-   "TotalBytes": 114022614,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tgl/model.onnx",
-     "Sha256": "1217c7026d1c433a72976c6452967558722629ab8180f28005be59e15154ee62",
-     "SizeBytes": 114020792
-    },
-    {
-     "Name": "mms-tgl/tokens.txt",
-     "Sha256": "5f4883ec7ba2128b7467cda01aa875d02bee8d600dc5822843216d8a14224ab0",
-     "SizeBytes": 337
-    },
-    {
-     "Name": "mms-tgl/model.onnx.json",
-     "Sha256": "13b7757b3e381c1b47557180fe0422675ed9f2810078ff06ceb1039e2471e96c",
-     "SizeBytes": 2066
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tha",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "th",
-   "Architecture": "vits",
-   "TotalBytes": 114045218,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tha/model.onnx",
-     "Sha256": "0231a4919672699a75c862646236086519a2b7ed350f79212c69d816179aabb2",
-     "SizeBytes": 114042296
-    },
-    {
-     "Name": "mms-tha/tokens.txt",
-     "Sha256": "7e1f455df08c2bed0583f91b91921d6fc4d149bc232511a0ae11041cf489d798",
-     "SizeBytes": 473
-    },
-    {
-     "Name": "mms-tha/model.onnx.json",
-     "Sha256": "535a81bb6cde4604a4ce989a37703445aa95e7294c551bb5b5d75f23e657d2f9",
-     "SizeBytes": 2251
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tpi",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "tpi",
-   "Architecture": "vits",
-   "TotalBytes": 114017769,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tpi/model.onnx",
-     "Sha256": "b9fd8fb1ccbddb8803b674b6cad416a1c538cb15a1555bd7522ada50ecc0af61",
-     "SizeBytes": 114016184
-    },
-    {
-     "Name": "mms-tpi/tokens.txt",
-     "Sha256": "b8b5e19bcd0ecb08559454283b5fad293666b92620698b0c001f3e8cf888e56f",
-     "SizeBytes": 284
-    },
-    {
-     "Name": "mms-tpi/model.onnx.json",
-     "Sha256": "22c05012c7bb7d1e2a78f2fd5aee96a6c20d5ccf4976605dcc14558651bced11",
-     "SizeBytes": 1794
-    }
-   ]
-  },
-  {
-   "Name": "MMS-vie",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "vi",
-   "Architecture": "vits",
-   "TotalBytes": 114065009,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-vie/model.onnx",
-     "Sha256": "df38476c7d0afaa05167e096b2a09b2c2e804c839e30de7dc602e5eb27d2f19f",
-     "SizeBytes": 114060728
-    },
-    {
-     "Name": "mms-vie/tokens.txt",
-     "Sha256": "8a57eabd6f4c64caf8682f3464c44a07a5ca13bd68eb57e54f6c48d8ad89deb4",
-     "SizeBytes": 1126
-    },
-    {
-     "Name": "mms-vie/model.onnx.json",
-     "Sha256": "95be7bebd7c2e51637d3460f75ddfe59103df7af9ed7cb3829509d3de1c3a0c8",
-     "SizeBytes": 5363
-    }
-   ]
-  },
-  {
-   "Name": "MMS-yor",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "yo",
-   "Architecture": "vits",
-   "TotalBytes": 114022711,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-yor/model.onnx",
-     "Sha256": "3443efa50b32b5629448fde59b707fdc3e2e361f6b4e6211de7352cf3607143e",
-     "SizeBytes": 114020792
-    },
-    {
-     "Name": "mms-yor/tokens.txt",
-     "Sha256": "3fca3219266d24915a05e358f16fc57e7f748150cf25d1ffe5b8b6e530f915f0",
-     "SizeBytes": 416
-    },
-    {
-     "Name": "mms-yor/model.onnx.json",
-     "Sha256": "aac454a2fcb212a3e4ad104c3916961839e3d36d20371e466a736ebea90b071b",
-     "SizeBytes": 2370
-    }
-   ]
-  },
-  {
-   "Name": "Melo-zh",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "zh",
-   "Architecture": "vits",
-   "TotalBytes": 177267876,
-   "MinRamGb": 0.36,
-   "MinStorageGb": 0.215,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "melo-zh/model.onnx",
-     "Sha256": "bf30582eb1b012250a35b1a4a80e7dfbcf8485e7bb9de0d95efbbeef0e4ad86d",
-     "SizeBytes": 170429550
-    },
-    {
-     "Name": "melo-zh/lexicon.txt",
-     "Sha256": "7236884b02435ac5d10cf69b4be40a61b45aa676b5300f0e412f185748fee528",
-     "SizeBytes": 6837671
-    },
-    {
-     "Name": "melo-zh/tokens.txt",
-     "Sha256": "d18664a7e12bd7ea1022ddaf951e534e136815016c5a809d6b64156bffb4369d",
-     "SizeBytes": 655
-    }
-   ]
-  },
-  {
-   "Name": "Piper-bn_BD",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "bn",
-   "Architecture": "vits",
-   "TotalBytes": 76788009,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.093,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-bn_bd/bn_BD-google-medium.onnx",
-     "Sha256": "f2e7518ed5534a755024a48c71b80bf617efaf12570bbdf3ce255a9526a8afd3",
-     "SizeBytes": 76782515
-    },
-    {
-     "Name": "piper-bn_bd/bn_BD-google-medium.onnx.json",
-     "Sha256": "bc7e5e39e2a874bdad186620576ce18089b5a06c5645e258bcea3d56fdb11c0a",
-     "SizeBytes": 5494
-    }
-   ]
-  },
-  {
-   "Name": "Piper-si_LK",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "si",
-   "Architecture": "vits",
-   "TotalBytes": 63520919,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-si_lk/si_LK-sinhala-medium.onnx",
-     "Sha256": "64265b84e6ea227070b0eed61838dd03463a17cf0c34a2cc64297cdbbee9b5d3",
-     "SizeBytes": 63516050
-    },
-    {
-     "Name": "piper-si_lk/si_LK-sinhala-medium.onnx.json",
-     "Sha256": "ab55a924395e70c73819d20ea620860a08821a6f1776ccfbac4bbf9f42074598",
-     "SizeBytes": 4869
-    }
-   ]
-  },
-  {
-   "Name": "VITS-yue",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "yue",
-   "Architecture": "vits",
-   "TotalBytes": 114354545,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.138,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "vits-yue/vits-cantonese-hf-xiaomaiiwn.onnx",
-     "Sha256": "7d8d4f5550b607999417a99131b034c8cc2b8dca69f9e9fdefeff6655643c139",
-     "SizeBytes": 114059955
-    },
-    {
-     "Name": "vits-yue/lexicon.txt",
-     "Sha256": "337845cd7ea6221e69684329beda84198dc8678699a4936670a08a9449c84acb",
-     "SizeBytes": 294061
-    },
-    {
-     "Name": "vits-yue/tokens.txt",
-     "Sha256": "e6c853092480206c9611101c1eb82d930f07d79e1d399bf9ca5b6acfaf443af3",
-     "SizeBytes": 529
-    }
-   ]
-  },
-  {
-   "Name": "Piper-es_ES",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "es-ES,es",
-   "Architecture": "vits",
-   "TotalBytes": 63206111,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-es_es/es_ES-davefx-medium.onnx",
-     "Sha256": "6658b03b1a6c316ee4c265a9896abc1393353c2d9e1bca7d66c2c442e222a917",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-es_es/es_ES-davefx-medium.onnx.json",
-     "Sha256": "0e0dda87c732f6f38771ff274a6380d9252f327dca77aa2963d5fbdf9ec54842",
-     "SizeBytes": 4817
-    }
-   ]
-  },
-  {
-   "Name": "Piper-es_MX",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "es-MX,es",
-   "Architecture": "vits",
-   "TotalBytes": 63127272,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.076,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-es_mx/es_MX-claude-high.onnx",
-     "Sha256": "3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0",
-     "SizeBytes": 63122309
-    },
-    {
-     "Name": "piper-es_mx/es_MX-claude-high.onnx.json",
-     "Sha256": "1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d",
-     "SizeBytes": 4963
-    }
-   ]
-  },
-  {
-   "Name": "Piper-fr_FR",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "fr",
-   "Architecture": "vits",
-   "TotalBytes": 63206169,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-fr_fr/fr_FR-siwis-medium.onnx",
-     "Sha256": "641d1ab097da2b81128c076810edb052b385decc8be3381814802a64a73baf99",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-fr_fr/fr_FR-siwis-medium.onnx.json",
-     "Sha256": "39479916c2db192b5ac9764daddd0c744d83e023ad890c6976c0633ae4df8959",
-     "SizeBytes": 4875
-    }
-   ]
-  },
-  {
-   "Name": "Piper-hi_IN",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "hi",
-   "Architecture": "vits",
-   "TotalBytes": 63521020,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-hi_in/hi_IN-pratham-medium.onnx",
-     "Sha256": "169964b0871667f6793416d4b35e97357a68ba1ad01df8580c28048989ee7693",
-     "SizeBytes": 63516050
-    },
-    {
-     "Name": "piper-hi_in/hi_IN-pratham-medium.onnx.json",
-     "Sha256": "b68edd2cd7950dd436314013b7cd12e9699e5a3f6fe5af5af94294cf6aa7b9fd",
-     "SizeBytes": 4970
-    }
-   ]
-  },
-  {
-   "Name": "Piper-id_ID",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "id",
-   "Architecture": "vits",
-   "TotalBytes": 62955094,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.076,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-id_id/id_ID-news_tts-medium.onnx",
-     "Sha256": "ed8f02aa593f7af6b19acbdb8142e0da0dd72f46194eb33d38e0eb10a52597e8",
-     "SizeBytes": 62950044
-    },
-    {
-     "Name": "piper-id_id/id_ID-news_tts-medium.onnx.json",
-     "Sha256": "1ef677072668a5e172e0759b1d3871f129009d1167f093325a17607f7add5ad7",
-     "SizeBytes": 5050
-    }
-   ]
-  },
-  {
-   "Name": "Piper-nl_BE",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "nl-BE,nl",
-   "Architecture": "vits",
-   "TotalBytes": 63206173,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-nl_be/nl_BE-nathalie-medium.onnx",
-     "Sha256": "49cf48023861f9fd42e13a8632f068fee67d1ce244a6ee38f29595afbf0a6be4",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-nl_be/nl_BE-nathalie-medium.onnx.json",
-     "Sha256": "4704af2736022e910a3f32672480d5530dd39da5c2bcc079f315f604166ff0de",
-     "SizeBytes": 4879
-    }
-   ]
-  },
-  {
-   "Name": "Piper-nl_NL",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "nl-NL,nl",
-   "Architecture": "vits",
-   "TotalBytes": 63536441,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-nl_nl/nl_NL-alex-medium.onnx",
-     "Sha256": "22f0497c4d895a09fbc6a469459aa8954ea0955d3c6e19dbcc2e23acbb93e30b",
-     "SizeBytes": 63531476
-    },
-    {
-     "Name": "piper-nl_nl/nl_NL-alex-medium.onnx.json",
-     "Sha256": "9ea643871742c038511b6aaf20e6fc098a78a11968122d2f6ca3e50403423f95",
-     "SizeBytes": 4965
-    }
-   ]
-  },
-  {
-   "Name": "Piper-pt_BR",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "pt-BR,pt",
-   "Architecture": "vits",
-   "TotalBytes": 63206149,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-pt_br/pt_BR-faber-medium.onnx",
-     "Sha256": "858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-pt_br/pt_BR-faber-medium.onnx.json",
-     "Sha256": "7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f",
-     "SizeBytes": 4855
-    }
-   ]
-  },
-  {
-   "Name": "Piper-pt_PT",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "pt-PT,pt",
-   "Architecture": "vits",
-   "TotalBytes": 63206320,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-pt_pt/pt_PT-tugão-medium.onnx",
-     "Sha256": "223a7aaca69a155c61897e8ada7c3b13bc306e16c72dbb9c2fed733e2b0927d4",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-pt_pt/pt_PT-tugão-medium.onnx.json",
-     "Sha256": "fe0918dfc0f1a89264a6eea4afe8e95d8e9fed3cc6c81b5c2f87fcb2b50c7320",
-     "SizeBytes": 5026
-    }
-   ]
-  },
-  {
-   "Name": "Piper-ru_RU",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ru",
-   "Architecture": "vits",
-   "TotalBytes": 63206117,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-ru_ru/ru_RU-denis-medium.onnx",
-     "Sha256": "15fab56e11a097858ee115545d0f697fc2a316c41a291a5362349fb870411b0a",
-     "SizeBytes": 63201294
-    },
-    {
-     "Name": "piper-ru_ru/ru_RU-denis-medium.onnx.json",
-     "Sha256": "831c860dac0b5073eaa81610a0a638ec23d90a6cf8e5f871b4485c2cec3767c8",
-     "SizeBytes": 4823
-    }
-   ]
-  },
-  {
-   "Name": "Piper-ur_PK",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ur",
-   "Architecture": "vits",
-   "TotalBytes": 63535161,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.077,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "piper-ur_pk/ur_PK-fasih-medium.onnx",
-     "Sha256": "46d590b90fbb41e4d4f2c54ded44874917f8b11b6e0500de2a89e5d3731b5917",
-     "SizeBytes": 63532015
-    },
-    {
-     "Name": "piper-ur_pk/ur_PK-fasih-medium.onnx.json",
-     "Sha256": "cfcf484a50b4036cb55675b6bbcdb9ddb9061ac10a51cfb2b3ce8391213205ec",
-     "SizeBytes": 3146
-    }
-   ]
-  },
-  {
-   "Name": "Vits-11ZA",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
-   "Architecture": "vits",
-   "TotalBytes": 122139761,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.114,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "vits-11za/model.onnx",
-     "Sha256": "5a4d16f2534e478c64bc12512c89720b240a6326436452ac9a64d2a0a5d7f6a2",
-     "SizeBytes": 122137693
-    },
-    {
-     "Name": "vits-11za/model.onnx.json",
-     "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
-     "SizeBytes": 1911
-    },
-    {
-     "Name": "vits-11za/language_ids.json",
-     "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
-     "SizeBytes": 157
-    }
-   ]
-  },
-  {
-   "Name": "Vits-11ZA-int8",
-   "Version": "1.0",
-   "Quantization": "Int8",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
-   "Architecture": "vits",
-   "TotalBytes": 32432726,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.0324,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "vits-11za-int8/model.onnx",
-     "Sha256": "2bcc377d2fc080d869c5a5472a0d263dbc04b56a0475a46612a3cc546060e871",
-     "SizeBytes": 32430658
-    },
-    {
-     "Name": "vits-11za-int8/model.onnx.json",
-     "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
-     "SizeBytes": 1911
-    },
-    {
-     "Name": "vits-11za-int8/language_ids.json",
-     "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
-     "SizeBytes": 157
-    }
-   ]
-  },
-  {
-   "Name": "MMS-lin",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ln",
-   "Architecture": "vits",
-   "TotalBytes": 114220542,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.106,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-lin/model.onnx",
-     "Sha256": "787e25e9fe8ee66e1dcecd1aaf82a1e366dab6ccc28684821d5ff0a334671816",
-     "SizeBytes": 114219933
-    },
-    {
-     "Name": "mms-lin/model.onnx.json",
-     "Sha256": "8a96a531dbe3a4c99ff251b85a61c0b7e3ba7218981a0dcbb736a46d5dabdf69",
-     "SizeBytes": 609
-    }
-   ]
-  },
-  {
-   "Name": "MMS-amh",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "am",
-   "Architecture": "vits",
-   "TotalBytes": 114308580,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.106,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-amh/model.onnx",
-     "Sha256": "237e7418099ff67afceaa9afa68e4de1663d0577c91192a826ea30533c3530b9",
-     "SizeBytes": 114308116
-    },
-    {
-     "Name": "mms-amh/model.onnx.json",
-     "Sha256": "55d4c473f4f252d45c0770576e8df7c9b33089ba61739bf82939d4b172fca8e8",
-     "SizeBytes": 1033
-    }
-   ]
-  },
-  {
-   "Name": "MMS-tir",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "thegeekco/circleai-voices",
-   "Source": "HuggingFaceBucket",
-   "Modality": "Tts",
-   "Language": "ti",
-   "Architecture": "vits",
-   "TotalBytes": 114307801,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.106,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "mms-tir/model.onnx",
-     "Sha256": "8c64ff0de8ad66b75506fcea2c08a1299461e57f2258e32c74119de61a32bd10",
-     "SizeBytes": 114307348
-    },
-    {
-     "Name": "mms-tir/model.onnx.json",
-     "Sha256": "112c770c8f01faa8e47f4204a25c03518b2b01668447e047cb323021afe0ed41",
-     "SizeBytes": 1032
-    }
-   ]
-  },
-  {
-   "Name": "KWS-Zipformer-HeyB",
-   "Repo": "thegeekco/circleai-voices",
-   "Modality": "WakeWord",
-   "Architecture": "zipformer-transducer-kws",
-   "QuantizationType": "int8",
-   "Version": "2024-01-01",
-   "TotalBytes": 6762672,
-   "BundleFiles": [
-    {
-     "Name": "kws-hey-b/encoder.int8.onnx",
-     "Sha256": "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
-     "SizeBytes": 4807159
-    },
-    {
-     "Name": "kws-hey-b/decoder.onnx",
-     "Sha256": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
-     "SizeBytes": 1063189
-    },
-    {
-     "Name": "kws-hey-b/joiner.onnx",
-     "Sha256": "0d7a37e749d8055223029318d6ffae82db1dae2d315d0892a68ba5dad17c1d2d",
-     "SizeBytes": 642462
-    },
-    {
-     "Name": "kws-hey-b/tokens.txt",
-     "Sha256": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53",
-     "SizeBytes": 5006
-    },
-    {
-     "Name": "kws-hey-b/bpe.model",
-     "Sha256": "c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24",
-     "SizeBytes": 244837
-    },
-    {
-     "Name": "kws-hey-b/keywords.txt",
-     "Sha256": "832f936783910b6bf17568247a0bab0778e5867bc10f4a96ce02ff03c96f5707",
-     "SizeBytes": 13
-    },
-    {
-     "Name": "kws-hey-b/keywords_raw.txt",
-     "Sha256": "b5f0324faf4c719f100487035f2e0285e999247bcc94740312accdab9b6ca018",
-     "SizeBytes": 6
-    }
-   ],
-   "MinRamGb": 0.15,
-   "MinStorageGb": 0.02,
-   "MemoryHintBytes": 150000000,
-   "QualityRank": 10,
-   "Capabilities": [
-    "Default",
-    "WakeWord"
-   ],
-   "Language": "en",
-   "Source": "HuggingFaceBucket"
-  },
-  {
-   "Name": "Qwen3-30B-A3B-MNN",
-   "Version": "3",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3-30B-A3B-MNN",
-   "Architecture": "qwen3-moe",
-   "TotalBytes": 17748780498,
-   "QualityRank": 15,
-   "MemoryHintBytes": 2500000000,
-   "MinRamGb": 2.5,
-   "MinStorageGb": 18.0,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "791378c03830ae36dfee576ce114e16b9122b6bf7f1a3e5b27c70daba369d828",
-     "SizeBytes": 287
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "d3ccfd318f51241c1070388e15d85d9c20429f84bfba18cac7d83eb104fc5e2d",
-     "SizeBytes": 622329856
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "b561aedd47726b2de9832924499d73244cd462d95aa0c49b6e8f181e2594c249",
-     "SizeBytes": 19233432
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "b0e18b6f4819ba8cf1f80f9232aa007b918a35412578853510efcaf3e616f7ba",
-     "SizeBytes": 102738147
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "2b98fe76e5c70d0365c0776271ed2f531d7917f2ae7a9209113f1bfbe3348028",
-     "SizeBytes": 17001284794
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "f0acfdf31168f1ea161e584fb00ca12820f80022c1b201a3055e75f8b2deab58",
-     "SizeBytes": 413
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
-     "SizeBytes": 3193569
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3.5-0.8B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3.5-0.8B-MNN",
-   "Architecture": "qwen3.5",
-   "TotalBytes": 547645481,
-   "QualityRank": 7,
-   "MemoryHintBytes": 770000000,
-   "MinRamGb": 0.8,
-   "MinStorageGb": 0.7,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
-     "SizeBytes": 652
-    },
-    {
-     "Name": "export_args.json",
-     "Sha256": "5c82a104779d8840d84349e17ca1c1b97dd0754afd5dcfc73e95c47ac96b754a",
-     "SizeBytes": 1044
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "94e0459e10584487a3bda77dc3c3322c0c01cfc9d223a7284e8d07345bf877d5",
-     "SizeBytes": 2148136
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "fe58a15987b391b443ade62a92221956349e11628fa36b1bfb9503af32923a1a",
-     "SizeBytes": 5343877
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "4e25ef4cbfb49a33013d17300c2f68cd9c9ce8f2e3f7b947fd2c574ec297ca5e",
-     "SizeBytes": 470382614
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "33f2c15bda1911ed666418437f45900e78185b57b883545e5d02c14f92a0907b",
-     "SizeBytes": 8691
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
-     "SizeBytes": 6465727
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "05e92b95a1295ee747b0436061b7ae7b1d1d3c7903306fe99e4af13e5aca3de3",
-     "SizeBytes": 251528
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "4c03fcac0d164d014e5cd1a1d7ab4fc95babbec724a268f3ba486c5db3511161",
-     "SizeBytes": 63043212
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3.5-2B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3.5-2B-MNN",
-   "Architecture": "qwen3.5",
-   "TotalBytes": 1386691327,
-   "QualityRank": 9,
-   "MemoryHintBytes": 1950000000,
-   "MinRamGb": 1.9,
-   "MinStorageGb": 1.5,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
-     "SizeBytes": 652
-    },
-    {
-     "Name": "export_args.json",
-     "Sha256": "a5b3a7d2c45e53c887e539259696d5fcec793637c9a3e9fbc7cd0dd008af6a87",
-     "SizeBytes": 1040
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "23df98f8b341b277365e0bbca025c1d192939e3d32d7f79776352c6f32e77960",
-     "SizeBytes": 2148136
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "7131ff4f1a441add1039d371815ad94652ae6801f579591cb2f9ad90b5954025",
-     "SizeBytes": 5344018
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "c93f71a2dbecf9328782bd38861656d8faa82e95e7f99607350074768a482054",
-     "SizeBytes": 1176647702
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "a88234b36c2af0eff8e5c89667011badf71c15e30459eb0e21030a8f3f9ed240",
-     "SizeBytes": 8692
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
-     "SizeBytes": 6465727
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "88fc40a7b676e90eb2cb86d854db15cb90b9eb1f34087ab0f48c5e43572c8dac",
-     "SizeBytes": 488096
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "8f90e106f5b9ae9a939faed240305cfdd5c6740ae91d3fc418a990bee0cce36b",
-     "SizeBytes": 195587264
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3.5-4B-MNN",
-   "Version": "3.5",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3.5-4B-MNN",
-   "Architecture": "qwen3.5",
-   "TotalBytes": 2845944094,
-   "QualityRank": 11,
-   "MemoryHintBytes": 4000000000,
-   "MinRamGb": 3.8,
-   "MinStorageGb": 3.0,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
-     "SizeBytes": 652
-    },
-    {
-     "Name": "export_args.json",
-     "Sha256": "fb827952ef5e5b8133d931d19123171f3681132932d3d7682c0169da7d562b92",
-     "SizeBytes": 1040
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "45eebc9dc433a55f0388453250a05a728a206650294be92f48e4fdd1b0348e0f",
-     "SizeBytes": 3651096
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "d2e7f54aea01444ec1bd89edc0a3b9b5203cc00fdf909474c877a79a45147b1b",
-     "SizeBytes": 9172204
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "a31d50e5668ce6b22655ff4750cfd48b972790ae883f2c154ba34b9173b38de1",
-     "SizeBytes": 2629387626
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "8da9ee370f627577f95875a6bf915e2358d6a6d7a1eb3d16272987379dd9ceca",
-     "SizeBytes": 8693
-    },
-    {
-     "Name": "tokenizer.txt",
-     "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
-     "SizeBytes": 6465727
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "b9a865dee1ceffc83eeca8ee0a8e7d5b911960b18ac93003d1135ea903a2bc31",
-     "SizeBytes": 488096
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "cc51f3aa1e026c853bdd22e9188c51b121b7bdcfcef6030f4254ef297b615ab5",
-     "SizeBytes": 196768960
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "Qwen3.6-35B-A3B-MNN",
-   "Version": "3.6",
-   "Quantization": "MNN-Q4",
-   "Repo": "taobao-mnn/Qwen3.6-35B-A3B-MNN",
-   "Architecture": "qwen3-moe",
-   "TotalBytes": 22797996902,
-   "QualityRank": 16,
-   "MemoryHintBytes": 2500000000,
-   "MinRamGb": 2.5,
-   "MinStorageGb": 23.0,
-   "Capabilities": [
-    "Default",
-    "Tools",
-    "Reasoning",
-    "LongContext"
-   ],
-   "BundleFiles": [
-    {
-     "Name": "config.json",
-     "Sha256": "449c57466a1ff38be242a9eaab47d7cc9ec1d2d1bc5d0040edc5fa22214a8cdd",
-     "SizeBytes": 634
-    },
-    {
-     "Name": "embeddings_bf16.bin",
-     "Sha256": "fa0611f12cdb3827ce18c6e008645584fcd16156579011f6c63be499d2443b0f",
-     "SizeBytes": 1017118720
-    },
-    {
-     "Name": "export_args.json",
-     "Sha256": "f4cedc76d6d2026b64a650ea012ef8fef97262c783fb49d22555f738ce245e16",
-     "SizeBytes": 1051
-    },
-    {
-     "Name": "llm.mnn",
-     "Sha256": "72062a0b8cea7bc424b06b8ce4a41a028ed014bfeb24904784cdcdfa7a016af8",
-     "SizeBytes": 54337944
-    },
-    {
-     "Name": "llm.mnn.json",
-     "Sha256": "ecae51945a5920693e34602d96d56b71fb37fe175329b04a99b5a4a466525f3a",
-     "SizeBytes": 118970661
-    },
-    {
-     "Name": "llm.mnn.weight",
-     "Sha256": "5781e00b06d3d76d15ca22a065c0e8db8e9570c90eba80e5ae69d0ba924f10f9",
-     "SizeBytes": 21346165150
-    },
-    {
-     "Name": "llm_config.json",
-     "Sha256": "6bb3e38e04e2ac21221baf4deb1d7567392d9875dc1e3f5d6f430e11335fb09c",
-     "SizeBytes": 8641
-    },
-    {
-     "Name": "tokenizer.mtok",
-     "Sha256": "f93ba7a3d636a251dfd841a12d86684c71f8b2a3ed4750d9cbbca4c2a8948c08",
-     "SizeBytes": 7331641
-    },
-    {
-     "Name": "visual.mnn",
-     "Sha256": "0a1cf274946ebbf6c939b29dc4e84fe6346d60c2e325342b5ab40e157fa9338b",
-     "SizeBytes": 547824
-    },
-    {
-     "Name": "visual.mnn.weight",
-     "Sha256": "99e8601398bef904623c39e0361ec5a2c20eb3182bd392637767ba7174b35d72",
-     "SizeBytes": 253514636
-    }
-   ],
-   "Source": "HuggingFace"
-  },
-  {
-   "Name": "JSUT-VITS",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Tts",
-   "Language": "ja",
-   "Architecture": "vits-espnet",
-   "TotalBytes": 144280383,
-   "MinRamGb": 0.35,
-   "MinStorageGb": 0.135,
-   "QualityRank": 6,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "jsut_vits_prosody.onnx",
-     "Sha256": "78672bceed1f62389a8b0604cba978d7f4af934ddf43f71190b4870b14ef2f57",
-     "SizeBytes": 144280383
-    }
-   ]
-  },
-  {
-   "Name": "OpenJTalk-Dic-ja",
-   "Version": "1.11",
-   "Quantization": "None",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Phonemizer",
-   "Language": "ja",
-   "Architecture": "open-jtalk-naist-jdic",
-   "TotalBytes": 107304813,
-   "MinRamGb": 0.05,
-   "MinStorageGb": 0.11,
-   "QualityRank": 0,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "open-jtalk-dic/sys.dic",
-     "Sha256": "ca57d9029691a70a5dfb99afc2844180256161d7130da65b1a867510e129b9a6",
-     "SizeBytes": 103073776
-    },
-    {
-     "Name": "open-jtalk-dic/matrix.bin",
-     "Sha256": "62fd16b4f64c851d5dc352ef0d5740c5fc83ddc7c203b2b0b1fc5271969a14ce",
-     "SizeBytes": 3792262
-    },
-    {
-     "Name": "open-jtalk-dic/char.bin",
-     "Sha256": "888ee94c5a8a7a26d24ab3f1b7155441351954fd51ea06b4a2f78bd742492b2f",
-     "SizeBytes": 262496
-    },
-    {
-     "Name": "open-jtalk-dic/unk.dic",
-     "Sha256": "ce97851ecda075914fa3ffe7294a1ab34ee4f6d56ba6bf9197d74143b5dffbfe",
-     "SizeBytes": 5690
-    },
-    {
-     "Name": "open-jtalk-dic/left-id.def",
-     "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
-     "SizeBytes": 77672
-    },
-    {
-     "Name": "open-jtalk-dic/right-id.def",
-     "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
-     "SizeBytes": 77672
-    },
-    {
-     "Name": "open-jtalk-dic/pos-id.def",
-     "Sha256": "3460aa742053085af47cdfc889a1e0e6f557e89b406e501ba81c9ccc286de0c7",
-     "SizeBytes": 1923
-    },
-    {
-     "Name": "open-jtalk-dic/rewrite.def",
-     "Sha256": "7f7c8dfbfe24092e8a149a9b6e0a3a7f1c2cf37d6c3dc29d1cccc6c004da9c1c",
-     "SizeBytes": 7457
-    },
-    {
-     "Name": "open-jtalk-dic/COPYING",
-     "Sha256": "f4eca42ebd930e2c6e57fca58319d989bebcd1510cb7714b149c50f5425135ea",
-     "SizeBytes": 5865
-    }
-   ]
-  },
-  {
-   "Name": "Piper-ne_NP",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Tts",
-   "Language": "ne",
-   "Architecture": "vits",
-   "TotalBytes": 76771550,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.0929,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "ne_NP-google-medium.onnx",
-     "Sha256": "e3ff3cbf97a7c01ebf29263c7fa1899ebed15e27a2d819b93dcfb86e10d39eaa",
-     "SizeBytes": 76766385
-    },
-    {
-     "Name": "ne_NP-google-medium.onnx.json",
-     "Sha256": "8c3c364bd2ab369850ae0b5d97b9c7a37ea15fb2eb5b91f8fd10e7ffd85ae4eb",
-     "SizeBytes": 5165
-    }
-   ]
-  },
-  {
-   "Name": "Piper-ko_KR-kss-medium",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Tts",
-   "Language": "ko",
-   "Architecture": "vits",
-   "TotalBytes": 63227216,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.0765,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "ko_KR-kss-medium.onnx",
-     "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
-     "SizeBytes": 63221984
-    },
-    {
-     "Name": "ko_KR-kss-medium.onnx.json",
-     "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
-     "SizeBytes": 5232
-    }
-   ]
-  },
-  {
-   "Name": "Vits-ig_IB-soro",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Tts",
-   "Language": "ig",
-   "Architecture": "vits",
-   "TotalBytes": 114339191,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.1384,
-   "QualityRank": 5,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "ig_IB-soro-medium.onnx",
-     "Sha256": "a39894c4807a1471ad0eaa1794a2d166f34d86ecf89043b279795a07ab510237",
-     "SizeBytes": 114334140
-    },
-    {
-     "Name": "ig_IB-soro-medium.onnx.json",
-     "Sha256": "0c86f3bea1bdbc91ff1b59ccb2796d905df518019a66ade975ffccacc4d1c8b4",
-     "SizeBytes": 5051
-    }
-   ]
-  },
-  {
-   "Name": "Vits-af_ZA-mimic3",
-   "Version": "1.0",
-   "Quantization": "ONNX",
-   "Repo": "bhengubv/circleai-voices@voices-v1",
-   "Source": "GitHubRelease",
-   "Modality": "Tts",
-   "Language": "af",
-   "Architecture": "vits",
-   "TotalBytes": 76353524,
-   "MinRamGb": 0.3,
-   "MinStorageGb": 0.0924,
-   "QualityRank": 7,
-   "Capabilities": [],
-   "BundleFiles": [
-    {
-     "Name": "af_ZA-google-nwu-low.onnx",
-     "Sha256": "9b0969ee195ed33503292b6a2cd7763c838e3ae41c37caf9196d3226c4c6afeb",
-     "SizeBytes": 76351459
-    },
-    {
-     "Name": "af_ZA-google-nwu-low.onnx.json",
-     "Sha256": "44b41d0df028b84609202b244bf638584f1d2ae44771d064a918e58cb1eee711",
-     "SizeBytes": 2065
-    }
-   ]
-  }
- ]
+  "RegistryUrl": "https://modelscope.cn/api/v1/circle-ai/registry.json",
+  "Notes": "Auto-populated by tools/recalibrate-registry-sha — see ../registry.json header.",
+  "Models": [
+    {
+      "Name": "Qwen3-0.6B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-0.6B-MNN",
+      "Architecture": "qwen3",
+      "TotalBytes": 454470710,
+      "QualityRank": 6,
+      "MemoryHintBytes": 636000000,
+      "MinRamGb": 0.6,
+      "MinStorageGb": 0.5,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+          "SizeBytes": 403
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "d426c65a5159c938ccc237cdfbd982137f276804f27b414ca0ecf3fc0a660f8c",
+          "SizeBytes": 461520
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "953afb7e0165818add34a7a6caf0af5d0ed9428da102eb22c9b98ee9da292e9f",
+          "SizeBytes": 450810338
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "63f9a2f67ec2ae98b4c2363b46355040c34ca5c87a740ab3c94e08288a53225a",
+          "SizeBytes": 4880
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3-1.7B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-1.7B-MNN",
+      "Architecture": "qwen3",
+      "TotalBytes": 1235520567,
+      "QualityRank": 8,
+      "FallbackModelId": "Qwen3-0.6B-MNN",
+      "MemoryHintBytes": 1730000000,
+      "MinRamGb": 1.7,
+      "MinStorageGb": 1.2,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+          "SizeBytes": 403
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "a6352fda4a2063a73126d2b552e35603564545ae3ed9b1547f58736d00f880fc",
+          "SizeBytes": 461520
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "d53dfdb7b826e4103e58a30236312978ff98ee89a2e1b9d66dd6bf227afce823",
+          "SizeBytes": 1231860194
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "dea06be377d9be7f6617fd421153032aee5ae75b16f53ebc3ef84417c5206aaf",
+          "SizeBytes": 4881
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3-4B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-4B-MNN",
+      "Architecture": "qwen3",
+      "TotalBytes": 2713763864,
+      "QualityRank": 10,
+      "FallbackModelId": "Qwen3-1.7B-MNN",
+      "MemoryHintBytes": 3800000000,
+      "MinRamGb": 3.6,
+      "MinStorageGb": 2.6,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "d74912484c7f0527494c9184d8d6806554be501e15ca559a1610370b80839ef7",
+          "SizeBytes": 403
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "ade8ad33f1d06ce8a46b57fa85e0fc08f1d4df06e179e7f0f23e761ecfcb38a5",
+          "SizeBytes": 592352
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "42d1bd0f4379cbee62a3fb89cb48cac36f13c96cd0d236b89202f633d23f73c3",
+          "SizeBytes": 2709972658
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "5244f177522469d06e1282f6b2215a58fd1d2153d40337df8ca50f848f6c6a6c",
+          "SizeBytes": 4882
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3-8B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-8B-MNN",
+      "Architecture": "qwen3",
+      "TotalBytes": 5510447174,
+      "QualityRank": 12,
+      "FallbackModelId": "Qwen3-4B-MNN",
+      "MemoryHintBytes": 7700000000,
+      "MinRamGb": 7.2,
+      "MinStorageGb": 5.2,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
+          "SizeBytes": 417
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "458b4af1d22ed8d7d12235ed5249a4606c7606e35e775e7ea2244ba623b0312e",
+          "SizeBytes": 1244659712
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "a7071f720c2b28f50ac4fdd92f5ec7f81e245a8524a34f6cd5f76ac0d103ca16",
+          "SizeBytes": 592328
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "d0c680b2c2675b85a48fc37881bb9a085b74f45f6f312b09068e2929b3473400",
+          "SizeBytes": 2474653
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "ecab3e87c0ca98a6e34795ba6779c5979b156b705c09b6df4b3e59c938576d4b",
+          "SizeBytes": 4259526082
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "a101498dac1d672f5a93a059775e0d68b11734ce0bb2592841d1a772eab1be74",
+          "SizeBytes": 413
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3-14B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-14B-MNN",
+      "Architecture": "qwen3",
+      "TotalBytes": 9435188107,
+      "QualityRank": 14,
+      "FallbackModelId": "Qwen3-8B-MNN",
+      "MemoryHintBytes": 13200000000,
+      "MinRamGb": 12.3,
+      "MinStorageGb": 8.9,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "c25d1ec51701ee01434b1e820c9de4aac3ec87e42b4de61f73ac3bf54fc0aacf",
+          "SizeBytes": 417
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "720549f9f5bae3c8a6520d03f8f07ad79ff9a1885d639d6a9e09afc8550cc0f5",
+          "SizeBytes": 1555824640
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "ebdedbf22f01bc1297380243fc77fea0b71fd92d7e437b980a9f7f9c08902270",
+          "SizeBytes": 657896
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "b93f15bd144555687b5c8aac1fbc1c361921853d65ff20bd1aab909daeeb9107",
+          "SizeBytes": 2747226
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "93a9c589270b2f41e6c42e68be18512af88754802423b24fc9ca026b79129602",
+          "SizeBytes": 7872763946
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "f1057d81653f106bfd1ab4e991611ba16e8062d0a9abf7f2e2e458c1b82290f3",
+          "SizeBytes": 413
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen2.5-0.5B-Instruct-MNN",
+      "Version": "2.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen2.5-0.5B-Instruct-MNN",
+      "Architecture": "qwen2.5",
+      "TotalBytes": 556805914,
+      "QualityRank": 5,
+      "MemoryHintBytes": 780000000,
+      "MinRamGb": 0.8,
+      "MinStorageGb": 0.6,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+          "SizeBytes": 159
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "4e96b0df6d274768cbb7e72404011853d23349999b658dc2f4dfb3c431ea223f",
+          "SizeBytes": 272269312
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "480da511e603bd82f8d4af4e1f778ad72baadf8307f3585465ad9a94daca1a88",
+          "SizeBytes": 566264
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "245ce4289f456dcb371a8f8deabf75c3c4ee75f34b19e0d9723ba09b2fbacf8c",
+          "SizeBytes": 2808932
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "7ed0f4dcdd31dca15fcb548d2fc8b63b0014031fbd5f627508435726f90c75da",
+          "SizeBytes": 277967498
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "ec05709b4261d59b510a0b7a636c6dcb6c5635c08fee7eb3c4f04188b509694b",
+          "SizeBytes": 272
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+          "SizeBytes": 3193477
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen2.5-1.5B-Instruct-MNN",
+      "Version": "2.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen2.5-1.5B-Instruct-MNN",
+      "Architecture": "qwen2.5",
+      "TotalBytes": 879481306,
+      "QualityRank": 7,
+      "FallbackModelId": "Qwen2.5-0.5B-Instruct-MNN",
+      "MemoryHintBytes": 1230000000,
+      "MinRamGb": 1.2,
+      "MinStorageGb": 0.9,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+          "SizeBytes": 159
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "5a57a643ad6dbb38d36660e6ce0968d82725929311d455934768280b939863d5",
+          "SizeBytes": 1145128
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "3d34e0f4957cf408a59a1965ffeaa58bdcb456195ea0fe39e0bcd6aad5554ee4",
+          "SizeBytes": 6650652
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "94a73a713aed33d6356c2f050d431d94c14711a75e6b500869b21b3b720aa5fb",
+          "SizeBytes": 868491506
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "9c877345bb9a88a6ff81c31f28c9c8680898bb2593f00cff9fac9e85a2681554",
+          "SizeBytes": 384
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+          "SizeBytes": 3193477
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen2.5-3B-Instruct-MNN",
+      "Version": "2.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen2.5-3B-Instruct-MNN",
+      "Architecture": "qwen2.5",
+      "TotalBytes": 2369481387,
+      "QualityRank": 9,
+      "FallbackModelId": "Qwen2.5-1.5B-Instruct-MNN",
+      "MemoryHintBytes": 3300000000,
+      "MinRamGb": 3.1,
+      "MinStorageGb": 2.3,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+          "SizeBytes": 159
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "03bd8df1218b5bcb8439e6a0d10d49e2cbc55e002f6552401e3e0cc71291fe87",
+          "SizeBytes": 622329856
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "82c4a314480083d5b296406f041f29b288bc3c385cef43dc32cf0f6f04202625",
+          "SizeBytes": 1180432
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "71798f3a4c58df0c293a8cfb8d83b40203303d0fbf3db48b71f656aa058eef9e",
+          "SizeBytes": 6698403
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "c636ff0997d97535cea70f12331a4212fc0fa25fece6a9893944c2f7d1777a88",
+          "SizeBytes": 1736078786
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "2e2ee1d767ea84d0a2f5c549dac7413d0debf8a7ec6abd7ade4e77b8e294ada5",
+          "SizeBytes": 274
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+          "SizeBytes": 3193477
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen2.5-7B-Instruct-MNN",
+      "Version": "2.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen2.5-7B-Instruct-MNN",
+      "Architecture": "qwen2.5",
+      "TotalBytes": 5079842672,
+      "QualityRank": 11,
+      "FallbackModelId": "Qwen2.5-3B-Instruct-MNN",
+      "MemoryHintBytes": 7100000000,
+      "MinRamGb": 6.7,
+      "MinStorageGb": 4.8,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "7636b063425bdbc0e2e429cb23af7f594b5ba145bab2045dfda852416d9285de",
+          "SizeBytes": 159
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "78ae605b310cf526d54ba22b27796f44010fe28198cb6e3388efb62e09cc2ac4",
+          "SizeBytes": 1089994752
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "5d50196a5d0cd0d6f3c04c682184ce0e4a3d95d5bd9b36f9c97b68dc691b47c5",
+          "SizeBytes": 1271768
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "0cf4c26414be1cfcfc8a6e24be4bd28baca53f97c55db63f2da6f4c883e385a7",
+          "SizeBytes": 7826032
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "f0bb1d2cc3f91a0c38d6e6b82ab04c0bd5e5ed7831754841ffd9e14098b97cc4",
+          "SizeBytes": 3977556210
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "f7325a888aa0175749e8a4d9a5d7600109fd7b9dcb8da2d79d6ff63c1ac131d1",
+          "SizeBytes": 274
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+          "SizeBytes": 3193477
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Piper-en_US-lessac-medium",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "en",
+      "Architecture": "vits",
+      "TotalBytes": 63206179,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.1,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx",
+          "Sha256": "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-en_us-lessac-medium/en_US-lessac-medium.onnx.json",
+          "Sha256": "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0",
+          "SizeBytes": 4885
+        }
+      ]
+    },
+    {
+      "Name": "Whisper-tiny-ggml",
+      "Version": "1.0",
+      "Quantization": "ggml",
+      "Repo": "ggerganov/whisper.cpp",
+      "Source": "HuggingFace",
+      "Modality": "Asr",
+      "Language": "en",
+      "Architecture": "whisper",
+      "TotalBytes": 77691713,
+      "MinRamGb": 0.4,
+      "MinStorageGb": 0.1,
+      "QualityRank": 5,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ggml-tiny.bin",
+          "Sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+          "SizeBytes": 77691713
+        }
+      ]
+    },
+    {
+      "Name": "Qwen2.5-VL-3B-Instruct-MNN",
+      "Version": "2.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen2.5-VL-3B-Instruct-MNN",
+      "Modality": "Vision",
+      "Architecture": "qwen2.5-vl",
+      "TotalBytes": 2736200899,
+      "QualityRank": 9,
+      "MemoryHintBytes": 4100000000,
+      "MinRamGb": 3.9,
+      "MinStorageGb": 2.6,
+      "Capabilities": [
+        "Default",
+        "Vision"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "8183da75c6c7bda69a3f637ec1254dc6b3b3e0b6bb3cb9f98b12f8a7b1298815",
+          "SizeBytes": 344
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "b84907567aa829c6f24cadbdeb68c3c44d25fc0a8be8e917fd603cb64f72810d",
+          "SizeBytes": 622329856
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "860ac54071174f8d2961c3258224fe315dcf2bae78344005cdddee21e7d80aa3",
+          "SizeBytes": 574000
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "04ae802933b4ff8e58c17b1246e8b64abd3267fb16c7b6642028771e87f88fcd",
+          "SizeBytes": 2407071
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "7326f768b816b5af71ad3a995dc1e321e07f85db487394e1430e5f07fd9627c6",
+          "SizeBytes": 1737291202
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "00492942d0603aa638ec263341359f33feeb400e36ca96d11fe1dde1b9f79e77",
+          "SizeBytes": 725
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "b86f1298a0d6a1b2f312946c2f674f883f1d134ccabc79c42dd4c6b5beadf37b",
+          "SizeBytes": 3193477
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "1caaa38f5c8e0073f7bbf29e496ccfbeda1b32df332652a031100d0ea306dd7f",
+          "SizeBytes": 655328
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "617b17ee3431529b4c7f75be2b8028e7ff21da32821e83c181139e8a8af25f81",
+          "SizeBytes": 369748896
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "SmolVLM-256M-Instruct-MNN",
+      "Version": "1.0",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/SmolVLM-256M-Instruct-MNN",
+      "Modality": "Vision",
+      "Architecture": "smolvlm",
+      "TotalBytes": 311428914,
+      "QualityRank": 4,
+      "MemoryHintBytes": 450000000,
+      "MinRamGb": 0.5,
+      "MinStorageGb": 0.35,
+      "Capabilities": [
+        "Default",
+        "Vision"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "6b9630bc968bcddae4ab2fa6eae65c61c4889fc31b0af66029442f724efe2ed4",
+          "SizeBytes": 291
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "6c14f96a1d5b2e68f1695c35d6f56154964fade326e93f739bae71b0adf18742",
+          "SizeBytes": 56770560
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "68dfefeb421bff5c8503bd7a381f6a21cf23578d55d1b199dbc254ebae699e47",
+          "SizeBytes": 475544
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "200557d1d36e52cbbd9602fd04d62e96d295a1698b1a8ea5e2a18017996c1506",
+          "SizeBytes": 999332
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "ee4098a6c42309bcdf0db0148491f7432daaf40acda1f6c4c9f11b6cb84b1691",
+          "SizeBytes": 150050290
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "5851f0fb2e9731def5c3582dbbd3517986edc1e69e4b4b2783b14c58fa171e40",
+          "SizeBytes": 778
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "8049f0c0f0a6434a961287bf67751eb765cc6a0346b55d62ea9c9ce24a72ba95",
+          "SizeBytes": 888755
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "0b8686f20ba944545e2e3eed7389f3f03fe931c1744c02e1d8696093f6016a37",
+          "SizeBytes": 228200
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "f0d4485b0b29d65d0e2d0ac80538db9db0a31922b566a6783d34b463cab63d06",
+          "SizeBytes": 102015164
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Piper-en_US-lessac-high",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "en",
+      "Architecture": "vits",
+      "TotalBytes": 113900084,
+      "MinRamGb": 0.5,
+      "MinStorageGb": 0.2,
+      "QualityRank": 9,
+      "FallbackModelId": "Piper-en_US-lessac-medium",
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx",
+          "Sha256": "4cabf7c3a638017137f34a1516522032d4fe3f38228a843cc9b764ddcbcd9e09",
+          "SizeBytes": 113895201
+        },
+        {
+          "Name": "piper-en_us-lessac-high/en_US-lessac-high.onnx.json",
+          "Sha256": "db42b97d9859f257bc1561b8ed980e7fb2398402050a74ddd6cbec931a92412f",
+          "SizeBytes": 4883
+        }
+      ]
+    },
+    {
+      "Name": "MMS-aka",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ak",
+      "Architecture": "vits",
+      "TotalBytes": 114012161,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-aka/model.onnx",
+          "Sha256": "f2794ba3bd6ea7d89148562fb111d0341a0584d3da72047e8eb91832963f2fdc",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "mms-aka/tokens.txt",
+          "Sha256": "e45ba292dd337d7dd2a83bd81aed813c706412d6e6887c91329d943e02abd300",
+          "SizeBytes": 258
+        },
+        {
+          "Name": "mms-aka/model.onnx.json",
+          "Sha256": "90614b5f27b693b4e2c936bef80511f91cdb36b52bd6ca4107ce74dc4a2bdd0c",
+          "SizeBytes": 1614
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ara",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ar",
+      "Architecture": "vits",
+      "TotalBytes": 114019342,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-ara/model.onnx",
+          "Sha256": "17b82dca9a87ba590c4b24701cb16c4f465972d3f02f309ed4ef1bfb8e8dca40",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "mms-ara/tokens.txt",
+          "Sha256": "410e2609def202a337fb77e0ab50e866c77c0bdaf9d1cd748968fe4aa8b32eff",
+          "SizeBytes": 223
+        },
+        {
+          "Name": "mms-ara/model.onnx.json",
+          "Sha256": "c72d746076313a5fcc54d8aa4ff1f70ea4a4b5a7ecfd0f1a5f021d1436468251",
+          "SizeBytes": 1270
+        }
+      ]
+    },
+    {
+      "Name": "MMS-bam",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "bm",
+      "Architecture": "vits",
+      "TotalBytes": 114017009,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-bam/model.onnx",
+          "Sha256": "22309af4670d326196c3552cae33dcc9e77caa8737272b5930915c2cf0ad17be",
+          "SizeBytes": 114015416
+        },
+        {
+          "Name": "mms-bam/tokens.txt",
+          "Sha256": "1aac384d1a5f612b7c123066cb736bf661ae4a304a62667ca24af005cd36e962",
+          "SizeBytes": 316
+        },
+        {
+          "Name": "mms-bam/model.onnx.json",
+          "Sha256": "78caf43863231a10db3e4b1de1ce3a7a20a0b3bab8b7404b7258815d97ecbb46",
+          "SizeBytes": 1962
+        }
+      ]
+    },
+    {
+      "Name": "MMS-bem",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "bem",
+      "Architecture": "vits",
+      "TotalBytes": 114014601,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-bem/model.onnx",
+          "Sha256": "7bc37346a57008fe8b85ebd4e00199e54d728e6429c75c514e3b9d965b88ef40",
+          "SizeBytes": 114013112
+        },
+        {
+          "Name": "mms-bem/tokens.txt",
+          "Sha256": "3bd05cc9fb0fedaa994ada8d0e6a361b5bb0f01b9c4023800fb4b95b4faaa81e",
+          "SizeBytes": 300
+        },
+        {
+          "Name": "mms-bem/model.onnx.json",
+          "Sha256": "9688f1deffb4540befc25c96fb7f6cd58e47bb6b8e0dd710d44cf9cab0a62efd",
+          "SizeBytes": 1858
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ewe",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ee",
+      "Architecture": "vits",
+      "TotalBytes": 114029185,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-ewe/model.onnx",
+          "Sha256": "e9baf897e7efd5619278173a8887b82ebeae3315b245956c14fda7e0ca0af600",
+          "SizeBytes": 114026936
+        },
+        {
+          "Name": "mms-ewe/tokens.txt",
+          "Sha256": "4991afa36af2598579b09c25cad441eea04d78a0dea47fd1f560b9cdf2687cdf",
+          "SizeBytes": 503
+        },
+        {
+          "Name": "mms-ewe/model.onnx.json",
+          "Sha256": "597601816facff60d55a0675d0028ced99c0d507203b0f37e54ed88ebd32f1c9",
+          "SizeBytes": 2782
+        }
+      ]
+    },
+    {
+      "Name": "MMS-fas",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "fa",
+      "Architecture": "vits",
+      "TotalBytes": 114023361,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-fas/model.onnx",
+          "Sha256": "35104189f5d0ad1d629c6688df2cfb3805579dc6809e8cc1698edf206320197c",
+          "SizeBytes": 114021560
+        },
+        {
+          "Name": "mms-fas/tokens.txt",
+          "Sha256": "3de1b505f31f18b107f08523b3d5c9ffb8db70c798c7c9d4b437762784640f98",
+          "SizeBytes": 250
+        },
+        {
+          "Name": "mms-fas/model.onnx.json",
+          "Sha256": "24a2af9be38d957fd3c2af5ace40f05096ef17b04ef3f6f6e1807011ebb6f3bd",
+          "SizeBytes": 1408
+        }
+      ]
+    },
+    {
+      "Name": "MMS-fon",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "fon",
+      "Architecture": "vits",
+      "TotalBytes": 114025132,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-fon/model.onnx",
+          "Sha256": "df3c906e14d3d205bf2f90b16885bc0105924cc5ca75c10acfe792606f118898",
+          "SizeBytes": 114023096
+        },
+        {
+          "Name": "mms-fon/tokens.txt",
+          "Sha256": "642ce204be8f71d47d6afb3aa7335cbaf0730a8891a670e2144f946558474c33",
+          "SizeBytes": 447
+        },
+        {
+          "Name": "mms-fon/model.onnx.json",
+          "Sha256": "213ff1066dddbbf24a98bc1cc3697fe9d2be40c6e46c922658e3d76a4dadea67",
+          "SizeBytes": 2529
+        }
+      ]
+    },
+    {
+      "Name": "MMS-ful",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ff",
+      "Architecture": "vits",
+      "TotalBytes": 114021013,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-ful/model.onnx",
+          "Sha256": "22ed9e41b444c1ebc489a2aaefa1022365e018bd2669c8b300ffb10fc8c6a750",
+          "SizeBytes": 114019256
+        },
+        {
+          "Name": "mms-ful/tokens.txt",
+          "Sha256": "b34fca4aa77eee1b64b709eed4b83252dc25ea9132fea1b1d6e938d6bf1d753e",
+          "SizeBytes": 328
+        },
+        {
+          "Name": "mms-ful/model.onnx.json",
+          "Sha256": "bd71a7fe708c79e836f7f8f8d93fcb0aadb853de525f67fa81fb52211f523ec5",
+          "SizeBytes": 2018
+        }
+      ]
+    },
+    {
+      "Name": "MMS-grn",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "gn",
+      "Architecture": "vits",
+      "TotalBytes": 114030740,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-grn/model.onnx",
+          "Sha256": "d25dba2dbb0cf23f6af37b69d1bd38e4227168c271faeb5596a69ab538d46b56",
+          "SizeBytes": 114028472
+        },
+        {
+          "Name": "mms-grn/tokens.txt",
+          "Sha256": "3a82f4a962da76b81e91428205d8b98a423b96a21960006c5794cef8d22cff97",
+          "SizeBytes": 470
+        },
+        {
+          "Name": "mms-grn/model.onnx.json",
+          "Sha256": "53fe41280afe947381225917b9e9a7a30c7dd827b177e20c0c1735ae43a943d5",
+          "SizeBytes": 2661
+        }
+      ]
+    },
+    {
+      "Name": "MMS-guj",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "gu",
+      "Architecture": "vits",
+      "TotalBytes": 114036353,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-guj/model.onnx",
+          "Sha256": "59f073b2e63771dd7d7972c17577e05a903ae6f4aa8c65a6dc1d9eb1a9812ed2",
+          "SizeBytes": 114033848
+        },
+        {
+          "Name": "mms-guj/tokens.txt",
+          "Sha256": "2d855f2affb7586cc6be095a4382eb0bee2a22242deda32c86aab6b1a810d8c4",
+          "SizeBytes": 402
+        },
+        {
+          "Name": "mms-guj/model.onnx.json",
+          "Sha256": "b8883029717d95ab9fd351d76e95c1b366ce7cefc9e5e507cb8a717318ef8320",
+          "SizeBytes": 1938
+        }
+      ]
+    },
+    {
+      "Name": "MMS-hat",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ht",
+      "Architecture": "vits",
+      "TotalBytes": 114013784,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-hat/model.onnx",
+          "Sha256": "347006bc40b8d5430e99fd8084fa054ae936ad616c4a95b3cf3e99f511fae06c",
+          "SizeBytes": 114012344
+        },
+        {
+          "Name": "mms-hat/tokens.txt",
+          "Sha256": "79e3717b32acb413d43cd28aa801222409fb3701f9515ff54eb7332372b1194c",
+          "SizeBytes": 284
+        },
+        {
+          "Name": "mms-hat/model.onnx.json",
+          "Sha256": "20ac9409a26d52f21615f9c6b2e775351085b3957e75ba591f7ee467fa38b67e",
+          "SizeBytes": 1798
+        }
+      ]
+    },
+    {
+      "Name": "MMS-hau",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ha",
+      "Architecture": "vits",
+      "TotalBytes": 114015402,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-hau/model.onnx",
+          "Sha256": "24e0f5b88b35e36975ed3b69c065e571e51fdf612c72a26bc5048bfecc1d532c",
+          "SizeBytes": 114013880
+        },
+        {
+          "Name": "mms-hau/tokens.txt",
+          "Sha256": "78b39313ddfc60be59cc12a957f11bf0f5dd4d1cdd3d5c16fe0bf3fae165d0c9",
+          "SizeBytes": 304
+        },
+        {
+          "Name": "mms-hau/model.onnx.json",
+          "Sha256": "9a4d61a77bda7c817bbfcbadd6fd2b0f3dca607f9bea4c40e33605573cd3d2db",
+          "SizeBytes": 1858
+        }
+      ]
+    },
+    {
+      "Name": "MMS-jav",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "jv",
+      "Architecture": "vits",
+      "TotalBytes": 114008933,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-jav/model.onnx",
+          "Sha256": "124f4e4ffda0fa0696d0128a95757d6293e69133d6d5fae2f68a2cb59afd9423",
+          "SizeBytes": 114007736
+        },
+        {
+          "Name": "mms-jav/tokens.txt",
+          "Sha256": "bb92676f9376fbb68d9b686e77cacfd060199608b6f0e056fac964353c743184",
+          "SizeBytes": 226
+        },
+        {
+          "Name": "mms-jav/model.onnx.json",
+          "Sha256": "0a3c54b9012473b900a012f2bd37179a7296e5c5d19a686b62ab7a2319211721",
+          "SizeBytes": 1520
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kan",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "kn",
+      "Architecture": "vits",
+      "TotalBytes": 114048418,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-kan/model.onnx",
+          "Sha256": "8b6f313ebfdf423991ab6444a4520a72cc506a5b262a5d0c0c467ed7d8555834",
+          "SizeBytes": 114045368
+        },
+        {
+          "Name": "mms-kan/tokens.txt",
+          "Sha256": "a4a44037f7492c9e5b69a4483250e54af9a2d528bd4e19de95a21ff0c5e82a8a",
+          "SizeBytes": 487
+        },
+        {
+          "Name": "mms-kan/model.onnx.json",
+          "Sha256": "bfe40140cd2373ebaeaf6a88ac3c73e0934dbcfe5507d7aa4d52a4b207b5904a",
+          "SizeBytes": 2326
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kby",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "kr",
+      "Architecture": "vits",
+      "TotalBytes": 114012155,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-kby/model.onnx",
+          "Sha256": "846e3090b7242a6a31b790f11bc59dcfc2452e9f8370d93de0bd82c90bf9a629",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "mms-kby/tokens.txt",
+          "Sha256": "29f9b048000ff445f79ff350b107ada9f342a4144994feb313458c1c50eb4931",
+          "SizeBytes": 254
+        },
+        {
+          "Name": "mms-kby/model.onnx.json",
+          "Sha256": "746d3bfb0e97037b6f2fe8b1524a7a134a27c5b83460e9a08749acd88f69df6f",
+          "SizeBytes": 1631
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kik",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ki",
+      "Architecture": "vits",
+      "TotalBytes": 114017796,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-kik/model.onnx",
+          "Sha256": "d146e40d1e14e8271df3b3be13d0d1136a999169c72c251338133e48094c9106",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "mms-kik/tokens.txt",
+          "Sha256": "333d41d3ad489a23fc7826f71262c1ded4a07c4fb68ebf15e151e99907e89ff2",
+          "SizeBytes": 308
+        },
+        {
+          "Name": "mms-kik/model.onnx.json",
+          "Sha256": "4337dc31b6a4198444420d0ddc891cf79f7e4e533576385a820edabd193fe852",
+          "SizeBytes": 1905
+        }
+      ]
+    },
+    {
+      "Name": "MMS-kin",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "rw",
+      "Architecture": "vits",
+      "TotalBytes": 114023432,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-kin/model.onnx",
+          "Sha256": "c007efdbfa24ee8e97c83aa7cf4449dd88f7c26f411f63d7d80b14153f71ccfd",
+          "SizeBytes": 114021560
+        },
+        {
+          "Name": "mms-kin/tokens.txt",
+          "Sha256": "2ab58191eec47a2cf944503c11ce307a05b13bc9e908a3c29c1e06d2881b4ee4",
+          "SizeBytes": 356
+        },
+        {
+          "Name": "mms-kin/model.onnx.json",
+          "Sha256": "5d5aea4527c6c0c9550a905d3ba8df93a38e6fe62ea53b333a7002378ed2bd33",
+          "SizeBytes": 2178
+        }
+      ]
+    },
+    {
+      "Name": "MMS-lgg",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "lgg",
+      "Architecture": "vits",
+      "TotalBytes": 114015369,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-lgg/model.onnx",
+          "Sha256": "2508724808353de5ee60ec9e4a8a4b6d2742149bf8abee8a9335c1c44cecf131",
+          "SizeBytes": 114013880
+        },
+        {
+          "Name": "mms-lgg/tokens.txt",
+          "Sha256": "1a38e4ed80aa5539c2f32fd9ea8581e6b54f467d01b7859c71d094bf31ae0c2b",
+          "SizeBytes": 277
+        },
+        {
+          "Name": "mms-lgg/model.onnx.json",
+          "Sha256": "ed80a3427f63f7fae979c107a6027427bbed3d4dbf4d99ae01e33ba15492de06",
+          "SizeBytes": 1791
+        }
+      ]
+    },
+    {
+      "Name": "MMS-lug",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "lg",
+      "Architecture": "vits",
+      "TotalBytes": 114012158,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-lug/model.onnx",
+          "Sha256": "0d5bb8a21a1046029701c818a7037c3b3cd11d0f0e7f36c69bc7e3d9fb68be93",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "mms-lug/tokens.txt",
+          "Sha256": "5a6a6c8aa49c1c44811a8aa5041cb8728b0d219024fee3901cb982b025538adf",
+          "SizeBytes": 258
+        },
+        {
+          "Name": "mms-lug/model.onnx.json",
+          "Sha256": "689c86cd6e6710839abdc98c68786e1976eb5302fdd823608ba28250ed27ef38",
+          "SizeBytes": 1657
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mal",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ml",
+      "Architecture": "vits",
+      "TotalBytes": 114055698,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-mal/model.onnx",
+          "Sha256": "13965d4eeed2f5198c53689e192ce7095e167fb11dd0e72ae5cd8a3bf117374b",
+          "SizeBytes": 114052280
+        },
+        {
+          "Name": "mms-mal/tokens.txt",
+          "Sha256": "3a752c36593cc519193c8caa6c00371369b423366fa6ead8d91945a28b2c46a3",
+          "SizeBytes": 571
+        },
+        {
+          "Name": "mms-mal/model.onnx.json",
+          "Sha256": "41383033f9d77c9e8b056103dec42f5c6549fda44aa288d4fc9aa207b8bec44d",
+          "SizeBytes": 2718
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mar",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "mr",
+      "Architecture": "vits",
+      "TotalBytes": 114046825,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-mar/model.onnx",
+          "Sha256": "03021bb722e8a19a44be6bb327a441c4061a0c75cbd565f3455e64c84713f03a",
+          "SizeBytes": 114043832
+        },
+        {
+          "Name": "mms-mar/tokens.txt",
+          "Sha256": "4d968029d0754b41633cb0871cce6796a5ab3d3bc2b9b91c5721cfdf85156083",
+          "SizeBytes": 490
+        },
+        {
+          "Name": "mms-mar/model.onnx.json",
+          "Sha256": "739dbbd5eaa0b03dc84e65dd5c8c4ed2723f3662d358f95235ef55784ae82dfe",
+          "SizeBytes": 2329
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mlg",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "mg",
+      "Architecture": "vits",
+      "TotalBytes": 114012178,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-mlg/model.onnx",
+          "Sha256": "b1e0d538bd71f66c96a8b62ec879ec96ec3d620fa551f01c15f926749df3c3ce",
+          "SizeBytes": 114010808
+        },
+        {
+          "Name": "mms-mlg/tokens.txt",
+          "Sha256": "3820c57711dd3efd606524206de79451726b39e7c643179960e13d926c873321",
+          "SizeBytes": 273
+        },
+        {
+          "Name": "mms-mlg/model.onnx.json",
+          "Sha256": "827c915eedca02125b2461736b1ae8112a34124a9d3607e16d50de80f3c08417",
+          "SizeBytes": 1721
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mos",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "mos",
+      "Architecture": "vits",
+      "TotalBytes": 114016221,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-mos/model.onnx",
+          "Sha256": "432e029d1c5481aaa39897d81d678aca6763d3be0bcc09d3f375653e8dcb413d",
+          "SizeBytes": 114014648
+        },
+        {
+          "Name": "mms-mos/tokens.txt",
+          "Sha256": "785218808f07e80b9007543b261c207d49ba0875bb1f95abd3c6d99f638eaf0e",
+          "SizeBytes": 321
+        },
+        {
+          "Name": "mms-mos/model.onnx.json",
+          "Sha256": "820b95f2736f25bacc5cb3b15ff0fd4a2ed611ad67ff3f5757d5c9c6f96490d7",
+          "SizeBytes": 1945
+        }
+      ]
+    },
+    {
+      "Name": "MMS-mya",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "my",
+      "Architecture": "vits",
+      "TotalBytes": 114033940,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-mya/model.onnx",
+          "Sha256": "9cc2be621aa70461da190cf9a050e8194a46257012ef7c421ae67d57742fb519",
+          "SizeBytes": 114031544
+        },
+        {
+          "Name": "mms-mya/tokens.txt",
+          "Sha256": "cd0a6ecfb0c91dde4d8ced1a6f8d18a7bc48086a438a179ae00230b86d5e76e3",
+          "SizeBytes": 385
+        },
+        {
+          "Name": "mms-mya/model.onnx.json",
+          "Sha256": "45e7c56de678bb32d67716d9ed6a7528c16537414fb348b4a3715e3988e31b8b",
+          "SizeBytes": 1855
+        }
+      ]
+    },
+    {
+      "Name": "MMS-nya",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ny",
+      "Architecture": "vits",
+      "TotalBytes": 114019385,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-nya/model.onnx",
+          "Sha256": "4f4e105e47f4edb3c341a1a5396be481040ac007cd6003770ecc4ecc931205cf",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "mms-nya/tokens.txt",
+          "Sha256": "e6868455fdd5ee56329d9a51512f7a0902911cc36ecdcd6cf5c05498563b7e2c",
+          "SizeBytes": 303
+        },
+        {
+          "Name": "mms-nya/model.onnx.json",
+          "Sha256": "b4839de48055c0db24853c2fbeec052d49f5d91c6ae48849135f54961c0e1acd",
+          "SizeBytes": 1901
+        }
+      ]
+    },
+    {
+      "Name": "MMS-nyn",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "nyn",
+      "Architecture": "vits",
+      "TotalBytes": 114010544,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-nyn/model.onnx",
+          "Sha256": "7736f62d564338491b30a482bf230657ebb8815b9f8670282811efba11058231",
+          "SizeBytes": 114009272
+        },
+        {
+          "Name": "mms-nyn/tokens.txt",
+          "Sha256": "09a616648d5c62c5436013599c2620a64339e8c7d3765720f00c7273fb3034ec",
+          "SizeBytes": 241
+        },
+        {
+          "Name": "mms-nyn/model.onnx.json",
+          "Sha256": "c74744b878752bc59be4bae25bf683a9038a29f36044e879cd1926cd66eaae15",
+          "SizeBytes": 1601
+        }
+      ]
+    },
+    {
+      "Name": "MMS-orm",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "om",
+      "Architecture": "vits",
+      "TotalBytes": 114011353,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-orm/model.onnx",
+          "Sha256": "a7ef1b425a99cc647b1a2ef2634936372e8d04026a4ef1b47bcd667c5b882a2b",
+          "SizeBytes": 114010040
+        },
+        {
+          "Name": "mms-orm/tokens.txt",
+          "Sha256": "46e28b6027703c5c408615085599063f334236984519c299ea387716e458a4e1",
+          "SizeBytes": 252
+        },
+        {
+          "Name": "mms-orm/model.onnx.json",
+          "Sha256": "d89bc5b7d365a03b7c28d7c1e7b5c209585c4fab4606dcf5ea3bd5a39e94e374",
+          "SizeBytes": 1629
+        }
+      ]
+    },
+    {
+      "Name": "MMS-pan",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "pa",
+      "Architecture": "vits",
+      "TotalBytes": 114035546,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-pan/model.onnx",
+          "Sha256": "670104b5e7ea4b6505442304c3f3d5a4422b1d0edba8110e00c3fc1af6572860",
+          "SizeBytes": 114033080
+        },
+        {
+          "Name": "mms-pan/tokens.txt",
+          "Sha256": "91344d6f3d6287e8adc71e66c7e9ca83f5f6e9a7d0c24f043a219773d9dec163",
+          "SizeBytes": 397
+        },
+        {
+          "Name": "mms-pan/model.onnx.json",
+          "Sha256": "2cf8020f8eb33d2a954c7367b0b1e8fe1ee00f810a0c9074ec4e7d2c8cac20e8",
+          "SizeBytes": 1907
+        }
+      ]
+    },
+    {
+      "Name": "MMS-quy",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "qu",
+      "Architecture": "vits",
+      "TotalBytes": 114017030,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-quy/model.onnx",
+          "Sha256": "a1e7c4194ea2a8d13bd6d627d47469e8681eb937e1380dd66335003b1346f6b6",
+          "SizeBytes": 114015416
+        },
+        {
+          "Name": "mms-quy/tokens.txt",
+          "Sha256": "91d2d9049dc739ea4094ff7aa9067f9d152dbb5ef99372795fde841c35dab896",
+          "SizeBytes": 335
+        },
+        {
+          "Name": "mms-quy/model.onnx.json",
+          "Sha256": "460f531481a03a0606cbc6a6497e6b2ab47d7559d0937e05c48c4c7a8812d64b",
+          "SizeBytes": 2021
+        }
+      ]
+    },
+    {
+      "Name": "MMS-run",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "rn",
+      "Architecture": "vits",
+      "TotalBytes": 114011351,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-run/model.onnx",
+          "Sha256": "de9edce91f75744aaa8ca3db6c6d95c80510ccd4c3028b69d32a5b62f7bddf7d",
+          "SizeBytes": 114010040
+        },
+        {
+          "Name": "mms-run/tokens.txt",
+          "Sha256": "f8aef360a3fcd3b367721d8a1ad571ada76818d075dda2015302ac06609ae4ba",
+          "SizeBytes": 248
+        },
+        {
+          "Name": "mms-run/model.onnx.json",
+          "Sha256": "f07cd7378f8f1f8db64c11279ad8728345b898614f27dccda26ac921b64eb2b0",
+          "SizeBytes": 1630
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sag",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "sg",
+      "Architecture": "vits",
+      "TotalBytes": 114020266,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-sag/model.onnx",
+          "Sha256": "2340006ebee959f12783b42d66637e790516f7b4c428ddcca89976d0fecebf80",
+          "SizeBytes": 114018488
+        },
+        {
+          "Name": "mms-sag/tokens.txt",
+          "Sha256": "79a6e4e39028178cfb281d4ef846ef56ee63902fae46f27d4acd6538e437eab4",
+          "SizeBytes": 376
+        },
+        {
+          "Name": "mms-sag/model.onnx.json",
+          "Sha256": "1cfd2ddc65638aaf74971c9528e3f82584cfeefdf96e4862978d2c405f9c98b2",
+          "SizeBytes": 2242
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sna",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "sn",
+      "Architecture": "vits",
+      "TotalBytes": 114014566,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-sna/model.onnx",
+          "Sha256": "5fb5767d4c8ee2bd89f3add7e80a7188432c98e385a7ea254e6d9e5de22d9f65",
+          "SizeBytes": 114013112
+        },
+        {
+          "Name": "mms-sna/tokens.txt",
+          "Sha256": "98391f18dc3ba8db4876b75abe253a0053d49c02b85c4295f1db8c6af646f443",
+          "SizeBytes": 272
+        },
+        {
+          "Name": "mms-sna/model.onnx.json",
+          "Sha256": "ca989dc148b4e114ae5c464f9100a5e290d61a53b739bae07bf9b9ae060ed67b",
+          "SizeBytes": 1737
+        }
+      ]
+    },
+    {
+      "Name": "MMS-som",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "so",
+      "Architecture": "vits",
+      "TotalBytes": 114009737,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-som/model.onnx",
+          "Sha256": "fdf0e803ca83a3f76920f792cfece40ff28612db3043efe330cbccdc3cf24789",
+          "SizeBytes": 114008504
+        },
+        {
+          "Name": "mms-som/tokens.txt",
+          "Sha256": "7735b35bace882ce0116589b5243f4072d7ff26f76903353bf879e3501c9b088",
+          "SizeBytes": 232
+        },
+        {
+          "Name": "mms-som/model.onnx.json",
+          "Sha256": "a368ed0d4019a65efe01d8a34001f9530dbe2e1d1f6377ef7564bc83b3aa9272",
+          "SizeBytes": 1521
+        }
+      ]
+    },
+    {
+      "Name": "MMS-sun",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "su",
+      "Architecture": "vits",
+      "TotalBytes": 114017766,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-sun/model.onnx",
+          "Sha256": "0a6a0ab428d4ee117ac98c88ece778fd04231c7242c6f0e0b3343a31eb78b18a",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "mms-sun/tokens.txt",
+          "Sha256": "b0803ad9a381188f7ecb9fcb6b677596b42550ef084d8533ae5540f546e8dde4",
+          "SizeBytes": 281
+        },
+        {
+          "Name": "mms-sun/model.onnx.json",
+          "Sha256": "dc95a2cff58d428bfb36942de37fe4d41a57f99f671cd0d4f12171302b7e973a",
+          "SizeBytes": 1817
+        }
+      ]
+    },
+    {
+      "Name": "MMS-swh",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "sw",
+      "Architecture": "vits",
+      "TotalBytes": 114019386,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-swh/model.onnx",
+          "Sha256": "2b156adeaec2bdafdf6e685ba40f78b5b5993d26c071de11e640fc85882ad269",
+          "SizeBytes": 114017720
+        },
+        {
+          "Name": "mms-swh/tokens.txt",
+          "Sha256": "783097de87c5fbd965298ffd8733986d6f4d2e7d14749965a2836f96f198a293",
+          "SizeBytes": 304
+        },
+        {
+          "Name": "mms-swh/model.onnx.json",
+          "Sha256": "a25debd0bdbb87efc34014521b8b99a0ac484879670d977248da383d784bc62b",
+          "SizeBytes": 1901
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tam",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ta",
+      "Architecture": "vits",
+      "TotalBytes": 114034708,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tam/model.onnx",
+          "Sha256": "c86cf0a0657d57577d937b806d7b63d638cff522b5687cb650dde24bc71c5c88",
+          "SizeBytes": 114032312
+        },
+        {
+          "Name": "mms-tam/tokens.txt",
+          "Sha256": "0b3f692319bb5fae8658e2f84bf252bca92450d0207bbba7273caa1a182d81b8",
+          "SizeBytes": 375
+        },
+        {
+          "Name": "mms-tam/model.onnx.json",
+          "Sha256": "dca6e789148e49c4c7af60a6abf82eb29d86b10bcf25c965860441798cc08452",
+          "SizeBytes": 1863
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tel",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "te",
+      "Architecture": "vits",
+      "TotalBytes": 114040384,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tel/model.onnx",
+          "Sha256": "e82525ab1e662ba96ef81346ff1943c5bb731853c1f96d02fbff2e7a0284824c",
+          "SizeBytes": 114037688
+        },
+        {
+          "Name": "mms-tel/tokens.txt",
+          "Sha256": "528152cb4121272e6e71f7a1d91c8d4922b92fae414ae599db608cb92a738bb7",
+          "SizeBytes": 435
+        },
+        {
+          "Name": "mms-tel/model.onnx.json",
+          "Sha256": "c7424feda2366bd55a3d4c512d0567d2ef7d37dd227d411367eb1e58c0c95486",
+          "SizeBytes": 2054
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tgl",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "tl",
+      "Architecture": "vits",
+      "TotalBytes": 114022614,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tgl/model.onnx",
+          "Sha256": "1217c7026d1c433a72976c6452967558722629ab8180f28005be59e15154ee62",
+          "SizeBytes": 114020792
+        },
+        {
+          "Name": "mms-tgl/tokens.txt",
+          "Sha256": "5f4883ec7ba2128b7467cda01aa875d02bee8d600dc5822843216d8a14224ab0",
+          "SizeBytes": 337
+        },
+        {
+          "Name": "mms-tgl/model.onnx.json",
+          "Sha256": "13b7757b3e381c1b47557180fe0422675ed9f2810078ff06ceb1039e2471e96c",
+          "SizeBytes": 2066
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tha",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "th",
+      "Architecture": "vits",
+      "TotalBytes": 114045218,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tha/model.onnx",
+          "Sha256": "0231a4919672699a75c862646236086519a2b7ed350f79212c69d816179aabb2",
+          "SizeBytes": 114042296
+        },
+        {
+          "Name": "mms-tha/tokens.txt",
+          "Sha256": "7e1f455df08c2bed0583f91b91921d6fc4d149bc232511a0ae11041cf489d798",
+          "SizeBytes": 473
+        },
+        {
+          "Name": "mms-tha/model.onnx.json",
+          "Sha256": "535a81bb6cde4604a4ce989a37703445aa95e7294c551bb5b5d75f23e657d2f9",
+          "SizeBytes": 2251
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tpi",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "tpi",
+      "Architecture": "vits",
+      "TotalBytes": 114017769,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tpi/model.onnx",
+          "Sha256": "b9fd8fb1ccbddb8803b674b6cad416a1c538cb15a1555bd7522ada50ecc0af61",
+          "SizeBytes": 114016184
+        },
+        {
+          "Name": "mms-tpi/tokens.txt",
+          "Sha256": "b8b5e19bcd0ecb08559454283b5fad293666b92620698b0c001f3e8cf888e56f",
+          "SizeBytes": 284
+        },
+        {
+          "Name": "mms-tpi/model.onnx.json",
+          "Sha256": "22c05012c7bb7d1e2a78f2fd5aee96a6c20d5ccf4976605dcc14558651bced11",
+          "SizeBytes": 1794
+        }
+      ]
+    },
+    {
+      "Name": "MMS-vie",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "vi",
+      "Architecture": "vits",
+      "TotalBytes": 114065009,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-vie/model.onnx",
+          "Sha256": "df38476c7d0afaa05167e096b2a09b2c2e804c839e30de7dc602e5eb27d2f19f",
+          "SizeBytes": 114060728
+        },
+        {
+          "Name": "mms-vie/tokens.txt",
+          "Sha256": "8a57eabd6f4c64caf8682f3464c44a07a5ca13bd68eb57e54f6c48d8ad89deb4",
+          "SizeBytes": 1126
+        },
+        {
+          "Name": "mms-vie/model.onnx.json",
+          "Sha256": "95be7bebd7c2e51637d3460f75ddfe59103df7af9ed7cb3829509d3de1c3a0c8",
+          "SizeBytes": 5363
+        }
+      ]
+    },
+    {
+      "Name": "MMS-yor",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "yo",
+      "Architecture": "vits",
+      "TotalBytes": 114022711,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-yor/model.onnx",
+          "Sha256": "3443efa50b32b5629448fde59b707fdc3e2e361f6b4e6211de7352cf3607143e",
+          "SizeBytes": 114020792
+        },
+        {
+          "Name": "mms-yor/tokens.txt",
+          "Sha256": "3fca3219266d24915a05e358f16fc57e7f748150cf25d1ffe5b8b6e530f915f0",
+          "SizeBytes": 416
+        },
+        {
+          "Name": "mms-yor/model.onnx.json",
+          "Sha256": "aac454a2fcb212a3e4ad104c3916961839e3d36d20371e466a736ebea90b071b",
+          "SizeBytes": 2370
+        }
+      ]
+    },
+    {
+      "Name": "Melo-zh",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "zh",
+      "Architecture": "vits",
+      "TotalBytes": 177267876,
+      "MinRamGb": 0.36,
+      "MinStorageGb": 0.215,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "melo-zh/model.onnx",
+          "Sha256": "bf30582eb1b012250a35b1a4a80e7dfbcf8485e7bb9de0d95efbbeef0e4ad86d",
+          "SizeBytes": 170429550
+        },
+        {
+          "Name": "melo-zh/lexicon.txt",
+          "Sha256": "7236884b02435ac5d10cf69b4be40a61b45aa676b5300f0e412f185748fee528",
+          "SizeBytes": 6837671
+        },
+        {
+          "Name": "melo-zh/tokens.txt",
+          "Sha256": "d18664a7e12bd7ea1022ddaf951e534e136815016c5a809d6b64156bffb4369d",
+          "SizeBytes": 655
+        }
+      ]
+    },
+    {
+      "Name": "Piper-bn_BD",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "bn",
+      "Architecture": "vits",
+      "TotalBytes": 76788009,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.093,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-bn_bd/bn_BD-google-medium.onnx",
+          "Sha256": "f2e7518ed5534a755024a48c71b80bf617efaf12570bbdf3ce255a9526a8afd3",
+          "SizeBytes": 76782515
+        },
+        {
+          "Name": "piper-bn_bd/bn_BD-google-medium.onnx.json",
+          "Sha256": "bc7e5e39e2a874bdad186620576ce18089b5a06c5645e258bcea3d56fdb11c0a",
+          "SizeBytes": 5494
+        }
+      ]
+    },
+    {
+      "Name": "Piper-si_LK",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "si",
+      "Architecture": "vits",
+      "TotalBytes": 63520919,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-si_lk/si_LK-sinhala-medium.onnx",
+          "Sha256": "64265b84e6ea227070b0eed61838dd03463a17cf0c34a2cc64297cdbbee9b5d3",
+          "SizeBytes": 63516050
+        },
+        {
+          "Name": "piper-si_lk/si_LK-sinhala-medium.onnx.json",
+          "Sha256": "ab55a924395e70c73819d20ea620860a08821a6f1776ccfbac4bbf9f42074598",
+          "SizeBytes": 4869
+        }
+      ]
+    },
+    {
+      "Name": "VITS-yue",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "yue",
+      "Architecture": "vits",
+      "TotalBytes": 114354545,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.138,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-yue/vits-cantonese-hf-xiaomaiiwn.onnx",
+          "Sha256": "7d8d4f5550b607999417a99131b034c8cc2b8dca69f9e9fdefeff6655643c139",
+          "SizeBytes": 114059955
+        },
+        {
+          "Name": "vits-yue/lexicon.txt",
+          "Sha256": "337845cd7ea6221e69684329beda84198dc8678699a4936670a08a9449c84acb",
+          "SizeBytes": 294061
+        },
+        {
+          "Name": "vits-yue/tokens.txt",
+          "Sha256": "e6c853092480206c9611101c1eb82d930f07d79e1d399bf9ca5b6acfaf443af3",
+          "SizeBytes": 529
+        }
+      ]
+    },
+    {
+      "Name": "Piper-es_ES",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "es-ES,es",
+      "Architecture": "vits",
+      "TotalBytes": 63206111,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-es_es/es_ES-davefx-medium.onnx",
+          "Sha256": "6658b03b1a6c316ee4c265a9896abc1393353c2d9e1bca7d66c2c442e222a917",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-es_es/es_ES-davefx-medium.onnx.json",
+          "Sha256": "0e0dda87c732f6f38771ff274a6380d9252f327dca77aa2963d5fbdf9ec54842",
+          "SizeBytes": 4817
+        }
+      ]
+    },
+    {
+      "Name": "Piper-es_MX",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "es-MX,es",
+      "Architecture": "vits",
+      "TotalBytes": 63127272,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.076,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-es_mx/es_MX-claude-high.onnx",
+          "Sha256": "3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0",
+          "SizeBytes": 63122309
+        },
+        {
+          "Name": "piper-es_mx/es_MX-claude-high.onnx.json",
+          "Sha256": "1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d",
+          "SizeBytes": 4963
+        }
+      ]
+    },
+    {
+      "Name": "Piper-fr_FR",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "fr",
+      "Architecture": "vits",
+      "TotalBytes": 63206169,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-fr_fr/fr_FR-siwis-medium.onnx",
+          "Sha256": "641d1ab097da2b81128c076810edb052b385decc8be3381814802a64a73baf99",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-fr_fr/fr_FR-siwis-medium.onnx.json",
+          "Sha256": "39479916c2db192b5ac9764daddd0c744d83e023ad890c6976c0633ae4df8959",
+          "SizeBytes": 4875
+        }
+      ]
+    },
+    {
+      "Name": "Piper-hi_IN",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "hi",
+      "Architecture": "vits",
+      "TotalBytes": 63521020,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-hi_in/hi_IN-pratham-medium.onnx",
+          "Sha256": "169964b0871667f6793416d4b35e97357a68ba1ad01df8580c28048989ee7693",
+          "SizeBytes": 63516050
+        },
+        {
+          "Name": "piper-hi_in/hi_IN-pratham-medium.onnx.json",
+          "Sha256": "b68edd2cd7950dd436314013b7cd12e9699e5a3f6fe5af5af94294cf6aa7b9fd",
+          "SizeBytes": 4970
+        }
+      ]
+    },
+    {
+      "Name": "Piper-id_ID",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "id",
+      "Architecture": "vits",
+      "TotalBytes": 62955094,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.076,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-id_id/id_ID-news_tts-medium.onnx",
+          "Sha256": "ed8f02aa593f7af6b19acbdb8142e0da0dd72f46194eb33d38e0eb10a52597e8",
+          "SizeBytes": 62950044
+        },
+        {
+          "Name": "piper-id_id/id_ID-news_tts-medium.onnx.json",
+          "Sha256": "1ef677072668a5e172e0759b1d3871f129009d1167f093325a17607f7add5ad7",
+          "SizeBytes": 5050
+        }
+      ]
+    },
+    {
+      "Name": "Piper-nl_BE",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "nl-BE,nl",
+      "Architecture": "vits",
+      "TotalBytes": 63206173,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-nl_be/nl_BE-nathalie-medium.onnx",
+          "Sha256": "49cf48023861f9fd42e13a8632f068fee67d1ce244a6ee38f29595afbf0a6be4",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-nl_be/nl_BE-nathalie-medium.onnx.json",
+          "Sha256": "4704af2736022e910a3f32672480d5530dd39da5c2bcc079f315f604166ff0de",
+          "SizeBytes": 4879
+        }
+      ]
+    },
+    {
+      "Name": "Piper-nl_NL",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "nl-NL,nl",
+      "Architecture": "vits",
+      "TotalBytes": 63536441,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-nl_nl/nl_NL-alex-medium.onnx",
+          "Sha256": "22f0497c4d895a09fbc6a469459aa8954ea0955d3c6e19dbcc2e23acbb93e30b",
+          "SizeBytes": 63531476
+        },
+        {
+          "Name": "piper-nl_nl/nl_NL-alex-medium.onnx.json",
+          "Sha256": "9ea643871742c038511b6aaf20e6fc098a78a11968122d2f6ca3e50403423f95",
+          "SizeBytes": 4965
+        }
+      ]
+    },
+    {
+      "Name": "Piper-pt_BR",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "pt-BR,pt",
+      "Architecture": "vits",
+      "TotalBytes": 63206149,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-pt_br/pt_BR-faber-medium.onnx",
+          "Sha256": "858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-pt_br/pt_BR-faber-medium.onnx.json",
+          "Sha256": "7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f",
+          "SizeBytes": 4855
+        }
+      ]
+    },
+    {
+      "Name": "Piper-pt_PT",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "pt-PT,pt",
+      "Architecture": "vits",
+      "TotalBytes": 63206320,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-pt_pt/pt_PT-tugão-medium.onnx",
+          "Sha256": "223a7aaca69a155c61897e8ada7c3b13bc306e16c72dbb9c2fed733e2b0927d4",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-pt_pt/pt_PT-tugão-medium.onnx.json",
+          "Sha256": "fe0918dfc0f1a89264a6eea4afe8e95d8e9fed3cc6c81b5c2f87fcb2b50c7320",
+          "SizeBytes": 5026
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ru_RU",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ru",
+      "Architecture": "vits",
+      "TotalBytes": 63206117,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-ru_ru/ru_RU-denis-medium.onnx",
+          "Sha256": "15fab56e11a097858ee115545d0f697fc2a316c41a291a5362349fb870411b0a",
+          "SizeBytes": 63201294
+        },
+        {
+          "Name": "piper-ru_ru/ru_RU-denis-medium.onnx.json",
+          "Sha256": "831c860dac0b5073eaa81610a0a638ec23d90a6cf8e5f871b4485c2cec3767c8",
+          "SizeBytes": 4823
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ur_PK",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ur",
+      "Architecture": "vits",
+      "TotalBytes": 63535161,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.077,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "piper-ur_pk/ur_PK-fasih-medium.onnx",
+          "Sha256": "46d590b90fbb41e4d4f2c54ded44874917f8b11b6e0500de2a89e5d3731b5917",
+          "SizeBytes": 63532015
+        },
+        {
+          "Name": "piper-ur_pk/ur_PK-fasih-medium.onnx.json",
+          "Sha256": "cfcf484a50b4036cb55675b6bbcdb9ddb9061ac10a51cfb2b3ce8391213205ec",
+          "SizeBytes": 3146
+        }
+      ]
+    },
+    {
+      "Name": "Vits-11ZA",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+      "Architecture": "vits",
+      "TotalBytes": 122139761,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.114,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-11za/model.onnx",
+          "Sha256": "5a4d16f2534e478c64bc12512c89720b240a6326436452ac9a64d2a0a5d7f6a2",
+          "SizeBytes": 122137693
+        },
+        {
+          "Name": "vits-11za/model.onnx.json",
+          "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+          "SizeBytes": 1911
+        },
+        {
+          "Name": "vits-11za/language_ids.json",
+          "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+          "SizeBytes": 157
+        }
+      ]
+    },
+    {
+      "Name": "Vits-11ZA-int8",
+      "Version": "1.0",
+      "Quantization": "Int8",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "en,nr,nso,st,ss,tn,ts,ve,xh,zu",
+      "Architecture": "vits",
+      "TotalBytes": 32432726,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0324,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "vits-11za-int8/model.onnx",
+          "Sha256": "2bcc377d2fc080d869c5a5472a0d263dbc04b56a0475a46612a3cc546060e871",
+          "SizeBytes": 32430658
+        },
+        {
+          "Name": "vits-11za-int8/model.onnx.json",
+          "Sha256": "3c7dba8f785993d9c05f444bc36bf6f6b689cde42c31055ce8d8b7e565d1e2b5",
+          "SizeBytes": 1911
+        },
+        {
+          "Name": "vits-11za-int8/language_ids.json",
+          "Sha256": "c7c1dcecfb0fb8ebb0e7f98590fcd2822c2320426adb086d4afaaadf2e44e296",
+          "SizeBytes": 157
+        }
+      ]
+    },
+    {
+      "Name": "MMS-lin",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ln",
+      "Architecture": "vits",
+      "TotalBytes": 114220542,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.106,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-lin/model.onnx",
+          "Sha256": "787e25e9fe8ee66e1dcecd1aaf82a1e366dab6ccc28684821d5ff0a334671816",
+          "SizeBytes": 114219933
+        },
+        {
+          "Name": "mms-lin/model.onnx.json",
+          "Sha256": "8a96a531dbe3a4c99ff251b85a61c0b7e3ba7218981a0dcbb736a46d5dabdf69",
+          "SizeBytes": 609
+        }
+      ]
+    },
+    {
+      "Name": "MMS-amh",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "am",
+      "Architecture": "vits",
+      "TotalBytes": 114308580,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.106,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-amh/model.onnx",
+          "Sha256": "237e7418099ff67afceaa9afa68e4de1663d0577c91192a826ea30533c3530b9",
+          "SizeBytes": 114308116
+        },
+        {
+          "Name": "mms-amh/model.onnx.json",
+          "Sha256": "0a0d8ff90a89844b2b731c7b5344db0e337d28cbda021849be81e4eeaf35ade1",
+          "SizeBytes": 936
+        }
+      ]
+    },
+    {
+      "Name": "MMS-tir",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "thegeekco/circleai-voices",
+      "Source": "HuggingFaceBucket",
+      "Modality": "Tts",
+      "Language": "ti",
+      "Architecture": "vits",
+      "TotalBytes": 114307801,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.106,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "mms-tir/model.onnx",
+          "Sha256": "8c64ff0de8ad66b75506fcea2c08a1299461e57f2258e32c74119de61a32bd10",
+          "SizeBytes": 114307348
+        },
+        {
+          "Name": "mms-tir/model.onnx.json",
+          "Sha256": "42b5e30e601f25975f9b01e2ab1c828c2b9a6997167a19ee7c349dc92e73f78e",
+          "SizeBytes": 935
+        }
+      ]
+    },
+    {
+      "Name": "KWS-Zipformer-HeyB",
+      "Repo": "thegeekco/circleai-voices",
+      "Modality": "WakeWord",
+      "Architecture": "zipformer-transducer-kws",
+      "QuantizationType": "int8",
+      "Version": "2024-01-01",
+      "TotalBytes": 6762672,
+      "BundleFiles": [
+        {
+          "Name": "kws-hey-b/encoder.int8.onnx",
+          "Sha256": "1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678",
+          "SizeBytes": 4807159
+        },
+        {
+          "Name": "kws-hey-b/decoder.onnx",
+          "Sha256": "f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3",
+          "SizeBytes": 1063189
+        },
+        {
+          "Name": "kws-hey-b/joiner.onnx",
+          "Sha256": "0d7a37e749d8055223029318d6ffae82db1dae2d315d0892a68ba5dad17c1d2d",
+          "SizeBytes": 642462
+        },
+        {
+          "Name": "kws-hey-b/tokens.txt",
+          "Sha256": "fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53",
+          "SizeBytes": 5006
+        },
+        {
+          "Name": "kws-hey-b/bpe.model",
+          "Sha256": "c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24",
+          "SizeBytes": 244837
+        },
+        {
+          "Name": "kws-hey-b/keywords.txt",
+          "Sha256": "832f936783910b6bf17568247a0bab0778e5867bc10f4a96ce02ff03c96f5707",
+          "SizeBytes": 13
+        },
+        {
+          "Name": "kws-hey-b/keywords_raw.txt",
+          "Sha256": "b5f0324faf4c719f100487035f2e0285e999247bcc94740312accdab9b6ca018",
+          "SizeBytes": 6
+        }
+      ],
+      "MinRamGb": 0.15,
+      "MinStorageGb": 0.02,
+      "MemoryHintBytes": 150000000,
+      "QualityRank": 10,
+      "Capabilities": [
+        "Default",
+        "WakeWord"
+      ],
+      "Language": "en",
+      "Source": "HuggingFaceBucket"
+    },
+    {
+      "Name": "Qwen3-30B-A3B-MNN",
+      "Version": "3",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3-30B-A3B-MNN",
+      "Architecture": "qwen3-moe",
+      "TotalBytes": 17748780498,
+      "QualityRank": 15,
+      "MemoryHintBytes": 2500000000,
+      "MinRamGb": 2.5,
+      "MinStorageGb": 18.0,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "791378c03830ae36dfee576ce114e16b9122b6bf7f1a3e5b27c70daba369d828",
+          "SizeBytes": 287
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "d3ccfd318f51241c1070388e15d85d9c20429f84bfba18cac7d83eb104fc5e2d",
+          "SizeBytes": 622329856
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "b561aedd47726b2de9832924499d73244cd462d95aa0c49b6e8f181e2594c249",
+          "SizeBytes": 19233432
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "b0e18b6f4819ba8cf1f80f9232aa007b918a35412578853510efcaf3e616f7ba",
+          "SizeBytes": 102738147
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "2b98fe76e5c70d0365c0776271ed2f531d7917f2ae7a9209113f1bfbe3348028",
+          "SizeBytes": 17001284794
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "f0acfdf31168f1ea161e584fb00ca12820f80022c1b201a3055e75f8b2deab58",
+          "SizeBytes": 413
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "77009625db0b18e74315dd89557c76feaab57e1d54e3240b442649a3c16ec4fb",
+          "SizeBytes": 3193569
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-0.8B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3.5-0.8B-MNN",
+      "Architecture": "qwen3.5",
+      "TotalBytes": 547645481,
+      "QualityRank": 7,
+      "MemoryHintBytes": 770000000,
+      "MinRamGb": 0.8,
+      "MinStorageGb": 0.7,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+          "SizeBytes": 652
+        },
+        {
+          "Name": "export_args.json",
+          "Sha256": "5c82a104779d8840d84349e17ca1c1b97dd0754afd5dcfc73e95c47ac96b754a",
+          "SizeBytes": 1044
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "94e0459e10584487a3bda77dc3c3322c0c01cfc9d223a7284e8d07345bf877d5",
+          "SizeBytes": 2148136
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "fe58a15987b391b443ade62a92221956349e11628fa36b1bfb9503af32923a1a",
+          "SizeBytes": 5343877
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "4e25ef4cbfb49a33013d17300c2f68cd9c9ce8f2e3f7b947fd2c574ec297ca5e",
+          "SizeBytes": 470382614
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "33f2c15bda1911ed666418437f45900e78185b57b883545e5d02c14f92a0907b",
+          "SizeBytes": 8691
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+          "SizeBytes": 6465727
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "05e92b95a1295ee747b0436061b7ae7b1d1d3c7903306fe99e4af13e5aca3de3",
+          "SizeBytes": 251528
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "4c03fcac0d164d014e5cd1a1d7ab4fc95babbec724a268f3ba486c5db3511161",
+          "SizeBytes": 63043212
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-2B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3.5-2B-MNN",
+      "Architecture": "qwen3.5",
+      "TotalBytes": 1386691327,
+      "QualityRank": 9,
+      "MemoryHintBytes": 1950000000,
+      "MinRamGb": 1.9,
+      "MinStorageGb": 1.5,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+          "SizeBytes": 652
+        },
+        {
+          "Name": "export_args.json",
+          "Sha256": "a5b3a7d2c45e53c887e539259696d5fcec793637c9a3e9fbc7cd0dd008af6a87",
+          "SizeBytes": 1040
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "23df98f8b341b277365e0bbca025c1d192939e3d32d7f79776352c6f32e77960",
+          "SizeBytes": 2148136
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "7131ff4f1a441add1039d371815ad94652ae6801f579591cb2f9ad90b5954025",
+          "SizeBytes": 5344018
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "c93f71a2dbecf9328782bd38861656d8faa82e95e7f99607350074768a482054",
+          "SizeBytes": 1176647702
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "a88234b36c2af0eff8e5c89667011badf71c15e30459eb0e21030a8f3f9ed240",
+          "SizeBytes": 8692
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+          "SizeBytes": 6465727
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "88fc40a7b676e90eb2cb86d854db15cb90b9eb1f34087ab0f48c5e43572c8dac",
+          "SizeBytes": 488096
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "8f90e106f5b9ae9a939faed240305cfdd5c6740ae91d3fc418a990bee0cce36b",
+          "SizeBytes": 195587264
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-4B-MNN",
+      "Version": "3.5",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3.5-4B-MNN",
+      "Architecture": "qwen3.5",
+      "TotalBytes": 2845944094,
+      "QualityRank": 11,
+      "MemoryHintBytes": 4000000000,
+      "MinRamGb": 3.8,
+      "MinStorageGb": 3.0,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "92853033efe602f95efca3e1c05cd8b108f973c8beed417843a9671f8147ed8d",
+          "SizeBytes": 652
+        },
+        {
+          "Name": "export_args.json",
+          "Sha256": "fb827952ef5e5b8133d931d19123171f3681132932d3d7682c0169da7d562b92",
+          "SizeBytes": 1040
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "45eebc9dc433a55f0388453250a05a728a206650294be92f48e4fdd1b0348e0f",
+          "SizeBytes": 3651096
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "d2e7f54aea01444ec1bd89edc0a3b9b5203cc00fdf909474c877a79a45147b1b",
+          "SizeBytes": 9172204
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "a31d50e5668ce6b22655ff4750cfd48b972790ae883f2c154ba34b9173b38de1",
+          "SizeBytes": 2629387626
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "8da9ee370f627577f95875a6bf915e2358d6a6d7a1eb3d16272987379dd9ceca",
+          "SizeBytes": 8693
+        },
+        {
+          "Name": "tokenizer.txt",
+          "Sha256": "7e75de1f279a10b65bd9dc1a5207205cb8993823861c4c42bbbd74e48e1c23a4",
+          "SizeBytes": 6465727
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "b9a865dee1ceffc83eeca8ee0a8e7d5b911960b18ac93003d1135ea903a2bc31",
+          "SizeBytes": 488096
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "cc51f3aa1e026c853bdd22e9188c51b121b7bdcfcef6030f4254ef297b615ab5",
+          "SizeBytes": 196768960
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.6-35B-A3B-MNN",
+      "Version": "3.6",
+      "Quantization": "MNN-Q4",
+      "Repo": "taobao-mnn/Qwen3.6-35B-A3B-MNN",
+      "Architecture": "qwen3-moe",
+      "TotalBytes": 22797996902,
+      "QualityRank": 16,
+      "MemoryHintBytes": 2500000000,
+      "MinRamGb": 2.5,
+      "MinStorageGb": 23.0,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "config.json",
+          "Sha256": "449c57466a1ff38be242a9eaab47d7cc9ec1d2d1bc5d0040edc5fa22214a8cdd",
+          "SizeBytes": 634
+        },
+        {
+          "Name": "embeddings_bf16.bin",
+          "Sha256": "fa0611f12cdb3827ce18c6e008645584fcd16156579011f6c63be499d2443b0f",
+          "SizeBytes": 1017118720
+        },
+        {
+          "Name": "export_args.json",
+          "Sha256": "f4cedc76d6d2026b64a650ea012ef8fef97262c783fb49d22555f738ce245e16",
+          "SizeBytes": 1051
+        },
+        {
+          "Name": "llm.mnn",
+          "Sha256": "72062a0b8cea7bc424b06b8ce4a41a028ed014bfeb24904784cdcdfa7a016af8",
+          "SizeBytes": 54337944
+        },
+        {
+          "Name": "llm.mnn.json",
+          "Sha256": "ecae51945a5920693e34602d96d56b71fb37fe175329b04a99b5a4a466525f3a",
+          "SizeBytes": 118970661
+        },
+        {
+          "Name": "llm.mnn.weight",
+          "Sha256": "5781e00b06d3d76d15ca22a065c0e8db8e9570c90eba80e5ae69d0ba924f10f9",
+          "SizeBytes": 21346165150
+        },
+        {
+          "Name": "llm_config.json",
+          "Sha256": "6bb3e38e04e2ac21221baf4deb1d7567392d9875dc1e3f5d6f430e11335fb09c",
+          "SizeBytes": 8641
+        },
+        {
+          "Name": "tokenizer.mtok",
+          "Sha256": "f93ba7a3d636a251dfd841a12d86684c71f8b2a3ed4750d9cbbca4c2a8948c08",
+          "SizeBytes": 7331641
+        },
+        {
+          "Name": "visual.mnn",
+          "Sha256": "0a1cf274946ebbf6c939b29dc4e84fe6346d60c2e325342b5ab40e157fa9338b",
+          "SizeBytes": 547824
+        },
+        {
+          "Name": "visual.mnn.weight",
+          "Sha256": "99e8601398bef904623c39e0361ec5a2c20eb3182bd392637767ba7174b35d72",
+          "SizeBytes": 253514636
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "JSUT-VITS",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Tts",
+      "Language": "ja",
+      "Architecture": "vits-espnet",
+      "TotalBytes": 144280383,
+      "MinRamGb": 0.35,
+      "MinStorageGb": 0.135,
+      "QualityRank": 6,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "jsut_vits_prosody.onnx",
+          "Sha256": "78672bceed1f62389a8b0604cba978d7f4af934ddf43f71190b4870b14ef2f57",
+          "SizeBytes": 144280383
+        }
+      ]
+    },
+    {
+      "Name": "OpenJTalk-Dic-ja",
+      "Version": "1.11",
+      "Quantization": "None",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Phonemizer",
+      "Language": "ja",
+      "Architecture": "open-jtalk-naist-jdic",
+      "TotalBytes": 107304813,
+      "MinRamGb": 0.05,
+      "MinStorageGb": 0.11,
+      "QualityRank": 0,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "open-jtalk-dic/sys.dic",
+          "Sha256": "ca57d9029691a70a5dfb99afc2844180256161d7130da65b1a867510e129b9a6",
+          "SizeBytes": 103073776
+        },
+        {
+          "Name": "open-jtalk-dic/matrix.bin",
+          "Sha256": "62fd16b4f64c851d5dc352ef0d5740c5fc83ddc7c203b2b0b1fc5271969a14ce",
+          "SizeBytes": 3792262
+        },
+        {
+          "Name": "open-jtalk-dic/char.bin",
+          "Sha256": "888ee94c5a8a7a26d24ab3f1b7155441351954fd51ea06b4a2f78bd742492b2f",
+          "SizeBytes": 262496
+        },
+        {
+          "Name": "open-jtalk-dic/unk.dic",
+          "Sha256": "ce97851ecda075914fa3ffe7294a1ab34ee4f6d56ba6bf9197d74143b5dffbfe",
+          "SizeBytes": 5690
+        },
+        {
+          "Name": "open-jtalk-dic/left-id.def",
+          "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
+          "SizeBytes": 77672
+        },
+        {
+          "Name": "open-jtalk-dic/right-id.def",
+          "Sha256": "db1adac8a7f9e5854cd82ea044c85115249206c8181b9d88cf92ae2ee5e87b84",
+          "SizeBytes": 77672
+        },
+        {
+          "Name": "open-jtalk-dic/pos-id.def",
+          "Sha256": "3460aa742053085af47cdfc889a1e0e6f557e89b406e501ba81c9ccc286de0c7",
+          "SizeBytes": 1923
+        },
+        {
+          "Name": "open-jtalk-dic/rewrite.def",
+          "Sha256": "7f7c8dfbfe24092e8a149a9b6e0a3a7f1c2cf37d6c3dc29d1cccc6c004da9c1c",
+          "SizeBytes": 7457
+        },
+        {
+          "Name": "open-jtalk-dic/COPYING",
+          "Sha256": "f4eca42ebd930e2c6e57fca58319d989bebcd1510cb7714b149c50f5425135ea",
+          "SizeBytes": 5865
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ne_NP",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Tts",
+      "Language": "ne",
+      "Architecture": "vits",
+      "TotalBytes": 76771550,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0929,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ne_NP-google-medium.onnx",
+          "Sha256": "e3ff3cbf97a7c01ebf29263c7fa1899ebed15e27a2d819b93dcfb86e10d39eaa",
+          "SizeBytes": 76766385
+        },
+        {
+          "Name": "ne_NP-google-medium.onnx.json",
+          "Sha256": "8c3c364bd2ab369850ae0b5d97b9c7a37ea15fb2eb5b91f8fd10e7ffd85ae4eb",
+          "SizeBytes": 5165
+        }
+      ]
+    },
+    {
+      "Name": "Piper-ko_KR-kss-medium",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Tts",
+      "Language": "ko",
+      "Architecture": "vits",
+      "TotalBytes": 63227216,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0765,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ko_KR-kss-medium.onnx",
+          "Sha256": "624fd774e26895f24bebae1bd9a3379e3394baeade4b584924f83e414096e2c9",
+          "SizeBytes": 63221984
+        },
+        {
+          "Name": "ko_KR-kss-medium.onnx.json",
+          "Sha256": "153b5619d0580f824a59108d83ca19434de410eb8e4fe80325b58684fdc8a1df",
+          "SizeBytes": 5232
+        }
+      ]
+    },
+    {
+      "Name": "Vits-ig_IB-soro",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Tts",
+      "Language": "ig",
+      "Architecture": "vits",
+      "TotalBytes": 114339191,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.1384,
+      "QualityRank": 5,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "ig_IB-soro-medium.onnx",
+          "Sha256": "a39894c4807a1471ad0eaa1794a2d166f34d86ecf89043b279795a07ab510237",
+          "SizeBytes": 114334140
+        },
+        {
+          "Name": "ig_IB-soro-medium.onnx.json",
+          "Sha256": "0c86f3bea1bdbc91ff1b59ccb2796d905df518019a66ade975ffccacc4d1c8b4",
+          "SizeBytes": 5051
+        }
+      ]
+    },
+    {
+      "Name": "Vits-af_ZA-mimic3",
+      "Version": "1.0",
+      "Quantization": "ONNX",
+      "Repo": "bhengubv/circleai-voices@voices-v1",
+      "Source": "GitHubRelease",
+      "Modality": "Tts",
+      "Language": "af",
+      "Architecture": "vits",
+      "TotalBytes": 76353524,
+      "MinRamGb": 0.3,
+      "MinStorageGb": 0.0924,
+      "QualityRank": 7,
+      "Capabilities": [],
+      "BundleFiles": [
+        {
+          "Name": "af_ZA-google-nwu-low.onnx",
+          "Sha256": "9b0969ee195ed33503292b6a2cd7763c838e3ae41c37caf9196d3226c4c6afeb",
+          "SizeBytes": 76351459
+        },
+        {
+          "Name": "af_ZA-google-nwu-low.onnx.json",
+          "Sha256": "44b41d0df028b84609202b244bf638584f1d2ae44771d064a918e58cb1eee711",
+          "SizeBytes": 2065
+        }
+      ]
+    }
+  ]
 }
