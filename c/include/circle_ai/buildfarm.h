@@ -2,31 +2,21 @@
 #define CIRCLE_AI_BUILDFARM_H
 
 /*
- * buildfarm.h — CircleAI.BuildFarm (C11 port of Contracts.cs +
- * InMemoryBuildFarm.cs + NullImplementations.cs).
+ * buildfarm.h - CircleAI.BuildFarm (C11).
  *
- *   Enums   : BuildAgentKind { Linux, Mac, Windows, Android, Ios };
- *             BuildJobPhase { Pending, Running, Succeeded, Failed }.
- *   Records : BuildAgent(AgentId, BuildAgentKind Kind, Os, string? Hardware);
- *             BuildJob(JobId, AgentId, Repo, Branch, BuildJobPhase Phase,
- *                      DateTimeOffset StartUtc);
- *             BuildArtifact(ArtifactId, JobId, Name, ReadOnlyMemory<byte> Payload).
- *   Pool    : IBuildAgentPool -> InMemoryBuildAgentPool — Register(agent),
- *               Acquire(kind) returns the first free agent of that kind and marks
- *               it busy (null when none free), Release(agentId), List(). BackendId
- *               "in-memory". Null pool -> Acquire null, List empty.
- *   Runner  : IBuildJobRunner -> InMemoryBuildJobRunner — Start(agentId, repo,
- *               branch) mints "job-{n}" in Running, Get(jobId) -> job?,
- *               Complete(jobId, success) -> Succeeded/Failed (unknown -> error).
- *               BackendId "in-memory". Null runner -> failed job.
- *   Store   : IBuildArtifactStore -> InMemoryBuildArtifactStore — Save(artifact)
- *               (keyed by ArtifactId), Get(artifactId) -> artifact?. BackendId
- *               "in-memory". Null store -> Save no-op, Get null.
+ * Jobs, the agents that run them, and where the artifacts land.
+ *
+ * WHY A POOL AND NOT A QUEUE. The agents are not interchangeable: a Swift build
+ * needs a Mac, an Android build needs the NDK, and a job handed to an agent that
+ * cannot run it does not fail fast — it fails ten minutes in, having downloaded
+ * a toolchain first. So an agent declares what it IS, and the pool matches.
+ *
+ * PHASES ARE REPORTED, not inferred from timing. "Queued for eleven minutes" and
+ * "compiling for eleven minutes" look identical from outside, and only one of
+ * them means somebody should go and look at the pool.
  *
  * Conventions: ca_ prefix, _t types, opaque handles, strdup-owning fields with
- * matching *_free, deep-copy getters, errors via NULL / count SIZE_MAX. Nullable
- * Hardware via has_*. Payload is an owned byte copy. StartUtc as int64 Unix ms
- * UTC. Linear arrays, no pthreads. Pure C11 + libc.
+ * matching *_free, errors via NULL / false / SIZE_MAX. Pure C11 + libc.
  */
 
 #include <stdbool.h>
@@ -37,119 +27,143 @@
 extern "C" {
 #endif
 
+/* What an agent can build. An agent is one kind, not a set: a machine that
+ * claims everything is a machine that is wrong about something. */
 typedef enum {
-    CA_BF_KIND_LINUX   = 0,
-    CA_BF_KIND_MAC     = 1,
-    CA_BF_KIND_WINDOWS = 2,
-    CA_BF_KIND_ANDROID = 3,
-    CA_BF_KIND_IOS     = 4
-} ca_bf_agent_kind_t;
+    CA_BUILD_AGENT_LINUX_X64 = 0,
+    CA_BUILD_AGENT_LINUX_ARM64,
+    CA_BUILD_AGENT_MACOS_ARM64,
+    CA_BUILD_AGENT_WINDOWS_X64,
+    CA_BUILD_AGENT_ANDROID,
+    CA_BUILD_AGENT_IOS
+} ca_build_agent_kind_t;
 
+/* Where a job has got to.
+ *
+ * FAILED and CANCELLED are separate terminal states, deliberately: one needs
+ * somebody to read a log, the other needs nothing at all, and a single "not
+ * succeeded" makes every cancelled job look like a problem. */
 typedef enum {
-    CA_BF_PHASE_PENDING   = 0,
-    CA_BF_PHASE_RUNNING   = 1,
-    CA_BF_PHASE_SUCCEEDED = 2,
-    CA_BF_PHASE_FAILED    = 3
-} ca_bf_job_phase_t;
+    CA_BUILD_PHASE_QUEUED = 0,
+    CA_BUILD_PHASE_FETCHING,
+    CA_BUILD_PHASE_BUILDING,
+    CA_BUILD_PHASE_TESTING,
+    CA_BUILD_PHASE_PUBLISHING,
+    CA_BUILD_PHASE_SUCCEEDED,
+    CA_BUILD_PHASE_FAILED,
+    CA_BUILD_PHASE_CANCELLED
+} ca_build_job_phase_t;
 
-/* BuildAgent(AgentId, Kind, Os, string? Hardware). */
+const char *ca_build_job_phase_name(ca_build_job_phase_t phase);
+
+/* True for succeeded, failed and cancelled. A caller polling a job needs one
+ * question to ask, not three. */
+bool ca_build_job_phase_is_terminal(ca_build_job_phase_t phase);
+
 typedef struct {
-    char              *agent_id;     /* owned, non-null */
-    ca_bf_agent_kind_t kind;
-    char              *os;           /* owned, non-null */
-    bool               has_hardware; /* false == C# null Hardware */
-    char              *hardware;     /* owned, valid only when has_* */
-} ca_bf_agent_t;
+    char *agent_id;
+    char *display_name;
+    ca_build_agent_kind_t kind;
+    /* False takes an agent out of rotation without deleting it — a machine down
+     * for maintenance should not be a config change somebody has to undo. */
+    bool available;
+    /* How many jobs it will take at once. */
+    size_t max_concurrent;
+} ca_build_agent_t;
 
-void ca_bf_agent_free(ca_bf_agent_t *a);
-void ca_bf_agent_free_array(ca_bf_agent_t *arr, size_t count);
+void ca_build_agent_free(ca_build_agent_t *agent);
 
-/* BuildJob(JobId, AgentId, Repo, Branch, Phase, StartUtc). */
 typedef struct {
-    char             *job_id;    /* owned, non-null */
-    char             *agent_id;  /* owned, non-null */
-    char             *repo;      /* owned, non-null */
-    char             *branch;    /* owned, non-null */
-    ca_bf_job_phase_t phase;
-    int64_t           start_utc_ms;
-} ca_bf_job_t;
+    char *job_id;
+    char *repository;
+    char *git_ref;
+    ca_build_agent_kind_t requires_kind;
+    ca_build_job_phase_t phase;
+    char *assigned_agent_id;
+    /* Why it ended, when it ended badly. Empty otherwise, never a placeholder:
+     * "unknown error" in a log is a message that has already wasted somebody's
+     * afternoon. */
+    char *failure_reason;
+    int64_t queued_unix;
+    int64_t started_unix;
+    int64_t finished_unix;
+} ca_build_job_t;
 
-void ca_bf_job_free(ca_bf_job_t *j);
+void ca_build_job_free(ca_build_job_t *job);
 
-/* BuildArtifact(ArtifactId, JobId, Name, ReadOnlyMemory<byte> Payload). */
 typedef struct {
-    char    *artifact_id; /* owned, non-null */
-    char    *job_id;      /* owned, non-null */
-    char    *name;        /* owned, non-null */
-    uint8_t *payload;     /* owned (may be NULL when len 0) */
-    size_t   payload_len;
-} ca_bf_artifact_t;
+    char *artifact_id;
+    char *job_id;
+    char *name;
+    uint8_t *bytes;
+    size_t byte_count;
+    /* Hex SHA-256 of the bytes, computed on store. An artifact whose hash is
+     * taken by the producer proves nothing about what the store holds. */
+    char *sha256;
+    int64_t stored_unix;
+} ca_build_artifact_t;
 
-void ca_bf_artifact_free(ca_bf_artifact_t *a);
+void ca_build_artifact_free(ca_build_artifact_t *artifact);
 
-/* ── IBuildAgentPool -> InMemoryBuildAgentPool ──────────────────────────── */
+/* ── the pool ─────────────────────────────────────────────────────────────── */
 
-typedef struct ca_bf_pool ca_bf_pool_t;
+typedef struct ca_build_agent_pool {
+    void *state;
+    bool (*add)(void *state, const ca_build_agent_t *agent);
+    /* An agent that can run `kind` and is not full, or NULL. Caller frees. */
+    ca_build_agent_t *(*acquire)(void *state, ca_build_agent_kind_t kind);
+    void (*release)(void *state, const char *agent_id);
+    ca_build_agent_t *(*list)(void *state, size_t *out_count);
+    void (*free_fn)(void *state);
+} ca_build_agent_pool_t;
 
-ca_bf_pool_t *ca_bf_pool_create(void); /* NULL on OOM */
-void ca_bf_pool_destroy(ca_bf_pool_t *p);
-const char *ca_bf_pool_backend_id(const ca_bf_pool_t *p); /* "in-memory" */
+void ca_build_agent_pool_free(ca_build_agent_pool_t *pool);
 
-/* Register(agent) — keyed by AgentId (replace). 0 / -1. */
-int ca_bf_pool_register(ca_bf_pool_t *p, const ca_bf_agent_t *agent);
-/* Acquire(kind) -> first free agent of that kind into *out (owned; free with
- * ca_bf_agent_free), marking it busy; true. false when none free / bad args. */
-bool ca_bf_pool_acquire(ca_bf_pool_t *p, ca_bf_agent_kind_t kind,
-                        ca_bf_agent_t *out);
-/* Release(agentId) — clears busy. 0 / -1 on bad args (null/empty). */
-int ca_bf_pool_release(ca_bf_pool_t *p, const char *agent_id);
-/* List() -> fresh owned array (*out_count) in registration order. NULL + 0
- * empty; NULL + SIZE_MAX on error. */
-ca_bf_agent_t *ca_bf_pool_list(const ca_bf_pool_t *p, size_t *out_count);
+ca_build_agent_pool_t *ca_in_memory_build_agent_pool_new(void);
 
-const char *ca_bf_null_pool_backend_id(void); /* "null" */
+/* Accepts agents and never hands one back. For a host with no farm wired: jobs
+ * queue honestly rather than appearing to run. */
+ca_build_agent_pool_t *ca_null_build_agent_pool_new(void);
 
-/* ── IBuildJobRunner -> InMemoryBuildJobRunner ──────────────────────────── */
+/* ── the runner ───────────────────────────────────────────────────────────── */
 
-typedef struct ca_bf_runner ca_bf_runner_t;
+typedef struct ca_build_job_runner {
+    void *state;
+    /* Returns the job id, or NULL. */
+    char *(*submit)(void *state, const ca_build_job_t *job);
+    ca_build_job_t *(*get)(void *state, const char *job_id);
+    ca_build_job_t *(*list)(void *state, size_t *out_count);
+    bool (*advance)(void *state, const char *job_id, ca_build_job_phase_t phase,
+                    const char *failure_reason);
+    bool (*cancel)(void *state, const char *job_id);
+    void (*free_fn)(void *state);
+} ca_build_job_runner_t;
 
-ca_bf_runner_t *ca_bf_runner_create(void); /* NULL on OOM */
-void ca_bf_runner_destroy(ca_bf_runner_t *r);
-const char *ca_bf_runner_backend_id(const ca_bf_runner_t *r); /* "in-memory" */
+void ca_build_job_runner_free(ca_build_job_runner_t *runner);
 
-/* Start(agentId, repo, branch, now_ms) -> fill *out (owned) with a Running job
- * "job-{n}". now_ms is the StartUtc clock. 0 on success, -1 on bad args
- * (null/empty) or OOM. */
-int ca_bf_runner_start(ca_bf_runner_t *r, const char *agent_id, const char *repo,
-                       const char *branch, int64_t now_ms, ca_bf_job_t *out);
-/* Get(jobId) -> fresh copy into *out, true; false on miss/bad args. */
-bool ca_bf_runner_get(const ca_bf_runner_t *r, const char *job_id,
-                      ca_bf_job_t *out);
-/* Complete(jobId, success) -> Phase Succeeded/Failed. 0 on success, -1 on
- * unknown job / bad args. */
-int ca_bf_runner_complete(ca_bf_runner_t *r, const char *job_id, bool success);
+ca_build_job_runner_t *ca_in_memory_build_job_runner_new(ca_build_agent_pool_t *pool);
 
-const char *ca_bf_null_runner_backend_id(void); /* "null" */
-/* Null runner Start -> failed job {JobId Guid.Empty, Phase Failed}. 0 / -1. */
-int ca_bf_null_runner_start(const char *agent_id, const char *repo,
-                            const char *branch, ca_bf_job_t *out);
+ca_build_job_runner_t *ca_null_build_job_runner_new(void);
 
-/* ── IBuildArtifactStore -> InMemoryBuildArtifactStore ──────────────────── */
+/* ── artifacts ────────────────────────────────────────────────────────────── */
 
-typedef struct ca_bf_store ca_bf_store_t;
+typedef struct ca_build_artifact_store {
+    void *state;
+    /* Returns the artifact id, or NULL. Hashes the bytes on the way in. */
+    char *(*store)(void *state, const char *job_id, const char *name,
+                   const uint8_t *bytes, size_t byte_count);
+    ca_build_artifact_t *(*get)(void *state, const char *artifact_id);
+    ca_build_artifact_t *(*for_job)(void *state, const char *job_id, size_t *out_count);
+    void (*free_fn)(void *state);
+} ca_build_artifact_store_t;
 
-ca_bf_store_t *ca_bf_store_create(void); /* NULL on OOM */
-void ca_bf_store_destroy(ca_bf_store_t *s);
-const char *ca_bf_store_backend_id(const ca_bf_store_t *s); /* "in-memory" */
+void ca_build_artifact_store_free(ca_build_artifact_store_t *store);
 
-/* Save(artifact) — keyed by ArtifactId (replace). 0 on success, -1 on bad args
- * (null / empty ArtifactId) or OOM. */
-int ca_bf_store_save(ca_bf_store_t *s, const ca_bf_artifact_t *artifact);
-/* Get(artifactId) -> fresh copy into *out, true; false on miss/bad args. */
-bool ca_bf_store_get(const ca_bf_store_t *s, const char *artifact_id,
-                     ca_bf_artifact_t *out);
+ca_build_artifact_store_t *ca_in_memory_build_artifact_store_new(void);
 
-const char *ca_bf_null_store_backend_id(void); /* "null" */
+/* Accepts and discards, and SAYS SO by returning NULL rather than a plausible
+ * id. An id that does not resolve is worse than no id. */
+ca_build_artifact_store_t *ca_null_build_artifact_store_new(void);
 
 #ifdef __cplusplus
 }
