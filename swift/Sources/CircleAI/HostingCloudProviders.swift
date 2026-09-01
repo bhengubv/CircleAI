@@ -402,3 +402,142 @@ public final class CloudChatGenerator: IConfigurableChatGenerator, @unchecked Se
     }
 }
 
+
+// MARK: - Named per-vendor entry points
+//
+// The C# has one class per vendor. Here the behaviour lives in
+// CloudChatGenerator, parameterised by CloudProvider, because the differences
+// are data - a path, a header convention and a delta shape - not logic.
+//
+// These named types exist so a host can still write AnthropicChatGenerator and
+// mean it, and so the per-vendor options are discoverable rather than hidden
+// behind an enum case.
+
+public struct OpenAiChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil, model: String = "gpt-4o-mini",
+                temperature: Float = 0.7, maxTokens: Int = 1024) {
+        var o = CloudChatOptions.openAi(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        self.options = o
+    }
+}
+
+public struct AnthropicChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil, model: String = "claude-3-5-sonnet-latest",
+                temperature: Float = 0.7, maxTokens: Int = 1024,
+                anthropicVersion: String = "2023-06-01") {
+        var o = CloudChatOptions.anthropic(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        o.anthropicVersion = anthropicVersion
+        self.options = o
+    }
+}
+
+public struct GeminiChatOptions: Sendable {
+    public var options: CloudChatOptions
+    /// Gemini calls it maxOutputTokens on the wire; the name is kept here so
+    /// a caller reading the vendor docs finds what they expect.
+    public init(apiKey: String? = nil, model: String = "gemini-2.0-flash",
+                temperature: Float = 0.7, maxOutputTokens: Int = 1024) {
+        var o = CloudChatOptions.gemini(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxOutputTokens
+        self.options = o
+    }
+}
+
+public struct GroqChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil, model: String = "llama-3.3-70b-versatile",
+                temperature: Float = 0.7, maxTokens: Int = 1024) {
+        var o = CloudChatOptions.groq(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        self.options = o
+    }
+}
+
+public struct CerebrasChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil, model: String = "llama3.3-70b",
+                temperature: Float = 0.7, maxTokens: Int = 1024) {
+        var o = CloudChatOptions.cerebras(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        self.options = o
+    }
+}
+
+public struct TogetherChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil,
+                model: String = "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                temperature: Float = 0.7, maxTokens: Int = 1024) {
+        var o = CloudChatOptions.together(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        self.options = o
+    }
+}
+
+public struct DeepSeekChatOptions: Sendable {
+    public var options: CloudChatOptions
+    public init(apiKey: String? = nil, model: String = "deepseek-chat",
+                temperature: Float = 0.7, maxTokens: Int = 1024) {
+        var o = CloudChatOptions.deepSeek(apiKey: apiKey)
+        o.model = model; o.temperature = temperature; o.maxTokens = maxTokens
+        self.options = o
+    }
+}
+
+public enum OpenAiChatGenerator {
+    public static func make(_ o: OpenAiChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .openAi, options: o.options, transport: transport)
+    }
+}
+
+public enum AnthropicChatGenerator {
+    public static func make(_ o: AnthropicChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .anthropic, options: o.options, transport: transport)
+    }
+}
+
+public enum GeminiChatGenerator {
+    public static func make(_ o: GeminiChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .gemini, options: o.options, transport: transport)
+    }
+}
+
+public enum GroqChatGenerator {
+    public static func make(_ o: GroqChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .groq, options: o.options, transport: transport)
+    }
+}
+
+public enum CerebrasChatGenerator {
+    public static func make(_ o: CerebrasChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .cerebras, options: o.options, transport: transport)
+    }
+}
+
+public enum TogetherChatGenerator {
+    public static func make(_ o: TogetherChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .together, options: o.options, transport: transport)
+    }
+}
+
+public enum DeepSeekChatGenerator {
+    public static func make(_ o: DeepSeekChatOptions,
+                            transport: (any ICloudChatTransport)? = nil) -> CloudChatGenerator {
+        CloudChatGenerator(provider: .deepSeek, options: o.options, transport: transport)
+    }
+}
+
+/// The OpenAI-compatible vendors share one request shape; this names that fact.
+public enum OpenAiCompatibleChatGeneratorBase {
+    public static let providers: [CloudProvider] = [.openAi, .groq, .cerebras, .together, .deepSeek]
+}
