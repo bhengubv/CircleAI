@@ -216,10 +216,30 @@ public final class DefaultAbusiveEnvironmentMode: IAbusiveEnvironmentMode, @unch
 /// Errors raised by the distribution / ubiquity rails.
 public enum DistributionError: Error, Equatable, CustomStringConvertible {
     case ownerIdRequired
+    case missingField(String)
+    case unknownPersonality(String)
+    case unsupportedSource(String)
+    case invalidPhone(String)
+    case weakPin
+    case unknownSession(String)
+    case designeeEqualsOwner
+    case invalidEvidenceUrl
+    case invalidRole(String)
+    case nonPositiveDuration
 
     public var description: String {
         switch self {
         case .ownerIdRequired: return "ownerId required"
+        case .missingField(let f): return "\(f) required"
+        case .unknownPersonality(let n): return "Unknown personality \(n)."
+        case .unsupportedSource(let s): return "Unsupported import source \(s)."
+        case .invalidPhone(let p): return "Invalid E.164 phone \(p)."
+        case .weakPin: return "PIN must be at least 4 digits"
+        case .unknownSession(let s): return "Unknown session \(s)"
+        case .designeeEqualsOwner: return "Designee cannot equal owner."
+        case .invalidEvidenceUrl: return "evidenceUrl must be absolute http/https"
+        case .invalidRole(let r): return "Invalid household role \(r)."
+        case .nonPositiveDuration: return "duration must be positive"
         }
     }
 }
