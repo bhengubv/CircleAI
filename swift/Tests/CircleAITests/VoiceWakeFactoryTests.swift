@@ -268,6 +268,37 @@ final class VoiceWakeFactoryTests: XCTestCase {
         XCTAssertFalse(c.isNative)
     }
 
+    // MARK: - Zipformer config
+
+    func testTheZipformerConfigDefaultsMatchTheEngine() {
+        let c = ZipformerWakeConfig(bundleDirectory: "/models/wake")
+        XCTAssertEqual(c.threshold, WakeWordFactory.defaultThreshold(for: .zipformerTransducer))
+        XCTAssertNil(c.keywordsFile)
+        XCTAssertNil(c.confirmer)
+    }
+
+    func testTheDebounceIsNotZero() {
+        // The decoder emits a detection per frame while the phrase is still
+        // under the microphone, so one spoken "Hey B" is several detections.
+        // At zero the loop starts three or four conversations from one wake.
+        XCTAssertGreaterThan(ZipformerWakeConfig(bundleDirectory: "/x").minIntervalBetweenFires, 0)
+        XCTAssertEqual(ZipformerWakeConfig(bundleDirectory: "/x").minIntervalBetweenFires, 1.2)
+    }
+
+    func testTheConfigCarriesEveryChoiceThroughUnchanged() {
+        let confirmer = AlwaysConfirm()
+        let c = ZipformerWakeConfig(bundleDirectory: "/models/wake",
+                                    keywordsFile: "/models/wake/keywords.txt",
+                                    threshold: 0.62,
+                                    confirmer: confirmer,
+                                    minIntervalBetweenFires: 2)
+        XCTAssertEqual(c.bundleDirectory, "/models/wake")
+        XCTAssertEqual(c.keywordsFile, "/models/wake/keywords.txt")
+        XCTAssertEqual(c.threshold, 0.62)
+        XCTAssertTrue(c.confirmer === confirmer)
+        XCTAssertEqual(c.minIntervalBetweenFires, 2)
+    }
+
     func testBlankLanguageCodeIsNotAMatchForEverything() {
         // An empty wanted code must not silently match the unlabelled models.
         let c = WakeLanguages.choose(from: models, languageCode: "")

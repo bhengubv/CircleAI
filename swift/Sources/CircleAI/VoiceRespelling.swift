@@ -554,12 +554,19 @@ public struct Respeller: Sendable {
     public var personal: PersonalRespellings?
     public var englishPhonemizer: (any IPhonemizer)?
 
+    /// Where this says what it changed. A respelling that fires silently is
+    /// indistinguishable from one that never ran, and both sound like a voice
+    /// that simply cannot say the word.
+    public var log: (@Sendable (String) -> Void)?
+
     public init(hostLanguage: String = "",
                 personal: PersonalRespellings? = nil,
-                englishPhonemizer: (any IPhonemizer)? = nil) {
+                englishPhonemizer: (any IPhonemizer)? = nil,
+                log: (@Sendable (String) -> Void)? = nil) {
         self.hostLanguage = hostLanguage
         self.personal = personal
         self.englishPhonemizer = englishPhonemizer
+        self.log = log
     }
 
     /// THREE SOURCES, IN THIS ORDER, and the order is the whole design:

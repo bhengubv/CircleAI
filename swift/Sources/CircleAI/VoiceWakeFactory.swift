@@ -237,3 +237,45 @@ public enum WakeLanguages {
         return String(head).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+/// Everything the zipformer wake detector needs to be built.
+///
+/// Separated from the detector so the CHOICES — which bundle, which phrases,
+/// how hard the second stage judges, how close together two wakes may fire —
+/// can be made, stored and tested on a host with no onnxruntime at all.
+public struct ZipformerWakeConfig: Sendable {
+
+    public let bundleDirectory: String
+
+    /// Phrases as TEXT, one per line. This is what the transducer engine can do
+    /// that the single-graph classifier cannot: any number of phrases, each
+    /// matched independently, so a household can give each permitted person
+    /// their own. nil uses whatever the bundle ships with.
+    public let keywordsFile: String?
+
+    public let threshold: Double
+
+    /// The second stage. nil is the onset check, which is what
+    /// `WakeWordFactory.confirmer` picks for a device that cannot pay for more.
+    public let confirmer: (any IWakeConfirmer)?
+
+    /// How close together two wakes may fire.
+    ///
+    /// The decoder emits a detection per frame while the phrase is still under
+    /// the microphone, so one spoken "Hey B" is several detections. Without this
+    /// the loop is woken three or four times by one utterance and starts three
+    /// or four conversations.
+    public let minIntervalBetweenFires: TimeInterval
+
+    public init(bundleDirectory: String,
+                keywordsFile: String? = nil,
+                threshold: Double = 0.5,
+                confirmer: (any IWakeConfirmer)? = nil,
+                minIntervalBetweenFires: TimeInterval = 1.2) {
+        self.bundleDirectory = bundleDirectory
+        self.keywordsFile = keywordsFile
+        self.threshold = threshold
+        self.confirmer = confirmer
+        self.minIntervalBetweenFires = minIntervalBetweenFires
+    }
+}
