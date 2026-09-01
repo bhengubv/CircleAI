@@ -36,6 +36,28 @@ open class AIObserverBase: IAIObserver, @unchecked Sendable {
 /// `@unchecked Sendable`: it holds reference-typed collaborators (tool bridge,
 /// stores) that aren't themselves `Sendable`; the options bag is treated as an
 /// immutable configuration snapshot, mirroring the C# init-only record.
+/// Whether context enrichment applies when the CALLER owns the system turn.
+///
+/// This defaults to `.always`, and the default is the whole point. Before it
+/// existed the behaviour was effectively `.onlyWhenAbsent` and undocumented: a
+/// host that set its own system prompt silently lost persona, device context,
+/// RAG recall and skill context. That presents as "the assistant forgot",
+/// which nobody debugs as a dropped feature — they debug it as a bad model.
+///
+/// Silently losing memory grounding is worse than receiving grounding you did
+/// not explicitly ask for, and either way the caller's own instructions still
+/// lead and are never rewritten.
+public enum SystemPromptEnrichment: Int, Sendable, Equatable, Codable, CaseIterable {
+    /// Persona, device context, RAG recall and skill context are appended AFTER
+    /// the caller's own system prompt.
+    case always = 0
+
+    /// Enrichment applies only when the caller supplies NO system turn. Choose
+    /// this for full control of the prompt, accepting that recall and persona
+    /// will not be injected.
+    case onlyWhenAbsent
+}
+
 public struct AIOptions: @unchecked Sendable {
     // Model
     public let modelId: String?
@@ -98,6 +120,11 @@ public struct AIOptions: @unchecked Sendable {
     // v3.0 — Goals
     public let goalStore: (any IGoalStore)?
 
+    /// Whether persona / device context / recall / skill context are applied
+    /// when the caller supplies its own system turn. See
+    /// ``SystemPromptEnrichment``.
+    public let systemPromptEnrichment: SystemPromptEnrichment
+
     public init(
         modelId: String? = nil,
         modelPath: String? = nil,
@@ -129,7 +156,8 @@ public struct AIOptions: @unchecked Sendable {
         cloudFallbackRamThresholdBytes: Int64 = 2 * 1024 * 1024 * 1024,
         scheduledTaskStore: (any IScheduledTaskStore)? = nil,
         affectStore: (any IAffectStore)? = nil,
-        goalStore: (any IGoalStore)? = nil
+        goalStore: (any IGoalStore)? = nil,
+        systemPromptEnrichment: SystemPromptEnrichment = .always
     ) {
         self.modelId = modelId
         self.modelPath = modelPath
@@ -164,6 +192,7 @@ public struct AIOptions: @unchecked Sendable {
         self.scheduledTaskStore = scheduledTaskStore
         self.affectStore = affectStore
         self.goalStore = goalStore
+        self.systemPromptEnrichment = systemPromptEnrichment
     }
 
     /// Generates a cryptographically random 32-byte token, base64-encoded. Used
