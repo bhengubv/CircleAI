@@ -125,6 +125,7 @@ pub mod speech_cloud;
 // CircleAI.Voice — on-device capture/VAD/transcribe/wake-word pipeline over injected seams.
 pub mod voice;
 pub mod voice_front_end;
+pub mod domain_seams;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
