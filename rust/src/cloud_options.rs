@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use crate::cloud_providers::{
     ChatTurn, CloudChatGenerator, CloudChatOptions, CloudChatResult,
-    OpenAiCompatibleChatGenerator, Secret,
+    CloudSpeechOptions, OpenAiCompatibleChatGenerator, Secret,
 };
 
 /// The post seam every generator here is handed: `(url, headers, body)`.
@@ -34,125 +34,7 @@ pub type PostFn =
 // Chat options, one per provider
 
 /// Writes a `Debug` that never prints the key, and a couple of shared accessors.
-macro_rules! chat_options {
-    ($name:ident, $host:expr, $model:expr, $doc:expr) => {
-        #[doc = $doc]
-        #[derive(Clone, Default)]
-        pub struct $name {
-            pub key: Secret,
-            /// Overridable, because a self-hosted or regional endpoint is a
-            /// legitimate deployment and hardcoding the vendor's host forbids
-            /// it.
-            pub base_url: String,
-            pub model: String,
-            pub timeout_ms: u64,
-            pub max_tokens: u32,
-            pub temperature: f32,
-        }
 
-        impl $name {
-            pub const DEFAULT_BASE_URL: &'static str = $host;
-            /// The vendor's own naming, kept as a STARTING POINT rather than a
-            /// constant the code depends on - model names change under you, and
-            /// a hardcoded one is a release to fix.
-            pub const SUGGESTED_MODEL: &'static str = $model;
-
-            pub fn is_configured(&self) -> bool {
-                self.key.is_set()
-            }
-
-            pub fn resolved_base_url(&self) -> &str {
-                if self.base_url.is_empty() {
-                    Self::DEFAULT_BASE_URL
-                } else {
-                    &self.base_url
-                }
-            }
-
-            pub fn resolved_model(&self) -> &str {
-                if self.model.is_empty() {
-                    Self::SUGGESTED_MODEL
-                } else {
-                    &self.model
-                }
-            }
-
-            /// Folds into the shared shape the generators actually take.
-            ///
-            /// `enabled` is set HERE, because a provider-specific options type
-            /// only exists once somebody has written its settings down - which
-            /// is the decision the shared flag records.
-            pub fn to_cloud(&self) -> CloudChatOptions {
-                CloudChatOptions {
-                    enabled: self.key.is_set(),
-                    api_key: self.key.clone(),
-                    base_url: self.resolved_base_url().to_string(),
-                    model: self.resolved_model().to_string(),
-                    max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
-                    temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
-                }
-            }
-        }
-
-        /// Prints everything EXCEPT the key.
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("key", &self.key)
-                    .field("base_url", &self.resolved_base_url())
-                    .field("model", &self.resolved_model())
-                    .finish()
-            }
-        }
-    };
-}
-
-chat_options!(
-    OpenAiChatOptions,
-    "https://api.openai.com/v1",
-    "gpt-4o-mini",
-    "OpenAI. The shape every other compatible provider copies."
-);
-chat_options!(
-    AnthropicChatOptions,
-    "https://api.anthropic.com/v1",
-    "claude-sonnet-4-5",
-    "Anthropic. NOT OpenAI-compatible: the system prompt is a top-level field \
-     rather than a message, and the request needs an `anthropic-version` header \
-     - omitting it is rejected outright."
-);
-chat_options!(
-    GeminiChatOptions,
-    "https://generativelanguage.googleapis.com/v1beta",
-    "gemini-2.0-flash",
-    "Gemini. The MODEL IS IN THE PATH rather than the body, so the endpoint \
-     cannot be built without knowing it."
-);
-chat_options!(
-    GroqChatOptions,
-    "https://api.groq.com/openai/v1",
-    "llama-3.3-70b-versatile",
-    "Groq. OpenAI-compatible and fast; the models it serves are open ones."
-);
-chat_options!(
-    CerebrasChatOptions,
-    "https://api.cerebras.ai/v1",
-    "llama3.1-8b",
-    "Cerebras. OpenAI-compatible."
-);
-chat_options!(
-    DeepSeekChatOptions,
-    "https://api.deepseek.com/v1",
-    "deepseek-chat",
-    "DeepSeek. OpenAI-compatible."
-);
-chat_options!(
-    TogetherChatOptions,
-    "https://api.together.xyz/v1",
-    "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-    "Together. OpenAI-compatible, and its model names carry the publisher \
-     prefix - stripping it produces a name the API does not know."
-);
 
 /// What every OpenAI-shaped generator shares.
 ///
@@ -196,89 +78,7 @@ impl CloudChatGenerator for OpenAiCompatibleChatGeneratorBase {
     }
 }
 
-/// Names each provider's generator and hands it its own options type.
-macro_rules! chat_generator {
-    ($name:ident, $options:ty, $id:expr, $doc:expr) => {
-        #[doc = $doc]
-        pub struct $name {
-            base: OpenAiCompatibleChatGeneratorBase,
-            options: $options,
-        }
 
-        impl $name {
-            pub const PROVIDER: &'static str = $id;
-
-            pub fn new(options: $options, post: Option<PostFn>) -> Self {
-                Self {
-                    base: OpenAiCompatibleChatGeneratorBase::new($id, options.to_cloud(), post),
-                    options,
-                }
-            }
-
-            pub fn options(&self) -> &$options {
-                &self.options
-            }
-        }
-
-        impl CloudChatGenerator for $name {
-            fn provider_id(&self) -> &str {
-                $id
-            }
-
-            /// Configured means a KEY IS PRESENT. Nothing here reaches out to
-            /// check, because checking is itself a request that tells a vendor
-            /// this device exists.
-            fn is_available(&self) -> bool {
-                self.options.is_configured() && self.base.is_available()
-            }
-
-            fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
-                if !self.options.is_configured() {
-                    // Names the PROVIDER and never the key, which is the whole
-                    // reason this check lives here rather than at the transport.
-                    return CloudChatResult {
-                        provider_id: $id.to_string(),
-                        model: self.options.resolved_model().to_string(),
-                        error: format!("{} has no key set on this device", $id),
-                        ..Default::default()
-                    };
-                }
-                self.base.generate(turns, system)
-            }
-        }
-    };
-}
-
-chat_generator!(
-    OpenAiChatGenerator,
-    OpenAiChatOptions,
-    "openai",
-    "OpenAI's own endpoint."
-);
-chat_generator!(
-    GroqChatGenerator,
-    GroqChatOptions,
-    "groq",
-    "Groq."
-);
-chat_generator!(
-    CerebrasChatGenerator,
-    CerebrasChatOptions,
-    "cerebras",
-    "Cerebras."
-);
-chat_generator!(
-    DeepSeekChatGenerator,
-    DeepSeekChatOptions,
-    "deepseek",
-    "DeepSeek."
-);
-chat_generator!(
-    TogetherChatGenerator,
-    TogetherChatOptions,
-    "together",
-    "Together."
-);
 
 /// Wires whichever chat providers have keys.
 ///
@@ -319,158 +119,7 @@ impl CloudFallbackOptionsRegistration {
 // ─────────────────────────────────────────────────────────────────────────────
 // Speech options, one per provider
 
-/// A speech provider's own settings, with a `Debug` that hides the key.
-macro_rules! speech_options {
-    ($name:ident, $host:expr, $model:expr, $rate:expr, $doc:expr) => {
-        #[doc = $doc]
-        #[derive(Clone, Default)]
-        pub struct $name {
-            pub key: Secret,
-            pub base_url: String,
-            pub model: String,
-            /// Empty means "let the service decide", which for transcription is
-            /// usually right and for synthesis is usually not - a voice picked
-            /// by a service is a voice that can change under you.
-            pub voice: String,
-            pub language: String,
-            pub timeout_ms: u64,
-        }
 
-        impl $name {
-            pub const DEFAULT_BASE_URL: &'static str = $host;
-            pub const SUGGESTED_MODEL: &'static str = $model;
-            /// What this service expects or returns. Feeding a transcriber the
-            /// wrong rate is never an error - it transcribes audio it believes
-            /// is at a different speed and returns confident nonsense.
-            pub const SAMPLE_RATE_HZ: u32 = $rate;
-
-            pub fn is_configured(&self) -> bool {
-                self.key.is_set()
-            }
-
-            pub fn resolved_base_url(&self) -> &str {
-                if self.base_url.is_empty() {
-                    Self::DEFAULT_BASE_URL
-                } else {
-                    &self.base_url
-                }
-            }
-
-            pub fn resolved_model(&self) -> &str {
-                if self.model.is_empty() {
-                    Self::SUGGESTED_MODEL
-                } else {
-                    &self.model
-                }
-            }
-        }
-
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("key", &self.key)
-                    .field("base_url", &self.resolved_base_url())
-                    .field("model", &self.resolved_model())
-                    .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
-                    .finish()
-            }
-        }
-    };
-}
-
-speech_options!(
-    OpenAiVoiceOptions,
-    "https://api.openai.com/v1",
-    "whisper-1",
-    16_000,
-    "OpenAI, for both directions - transcription and speech share a host and a \
-     key, which is why one options type covers both."
-);
-speech_options!(
-    DeepgramOptions,
-    "https://api.deepgram.com/v1",
-    "nova-2",
-    16_000,
-    "Deepgram transcription."
-);
-speech_options!(
-    DeepgramTtsOptions,
-    "https://api.deepgram.com/v1",
-    "aura-asteria-en",
-    24_000,
-    "Deepgram speech. A SEPARATE type from its transcription options because \
-     the model names share no namespace and mixing them is a request the API \
-     rejects for a reason nobody reads."
-);
-speech_options!(
-    AssemblyAiOptions,
-    "https://api.assemblyai.com/v2",
-    "best",
-    16_000,
-    "AssemblyAI. Upload-then-poll rather than one request, so its timeout \
-     covers a wait rather than a call."
-);
-speech_options!(
-    AzureSpeechOptions,
-    "https://REGION.stt.speech.microsoft.com",
-    "latest",
-    16_000,
-    "Azure transcription. THE REGION IS PART OF THE HOST - the placeholder in \
-     the default is deliberate, so an unconfigured region fails at the URL \
-     rather than reaching the wrong data centre."
-);
-speech_options!(
-    AzureTtsOptions,
-    "https://REGION.tts.speech.microsoft.com",
-    "en-ZA-LeahNeural",
-    24_000,
-    "Azure speech. A different subdomain from its transcription counterpart, \
-     which is exactly the difference a shared options bag would erase."
-);
-speech_options!(
-    GoogleSpeechOptions,
-    "https://speech.googleapis.com/v1",
-    "latest_long",
-    16_000,
-    "Google transcription."
-);
-speech_options!(
-    GoogleTtsOptions,
-    "https://texttospeech.googleapis.com/v1",
-    "en-ZA-Standard-A",
-    24_000,
-    "Google speech."
-);
-speech_options!(
-    ElevenLabsOptions,
-    "https://api.elevenlabs.io/v1",
-    "eleven_multilingual_v2",
-    44_100,
-    "ElevenLabs. 44.1 kHz out, which is higher than anything else here and \
-     needs resampling before it meets 16 kHz audio."
-);
-speech_options!(
-    CartesiaSttOptions,
-    "https://api.cartesia.ai",
-    "ink-whisper",
-    16_000,
-    "Cartesia transcription."
-);
-speech_options!(
-    CartesiaTtsOptions,
-    "https://api.cartesia.ai",
-    "sonic-2",
-    44_100,
-    "Cartesia speech."
-);
-speech_options!(
-    PlayHtOptions,
-    "https://api.play.ht/api/v2",
-    "PlayHT2.0",
-    24_000,
-    "PlayHT. Needs a user id ALONGSIDE the key, which is why a key alone being \
-     present is not enough to call it configured."
-);
 
 impl PlayHtOptions {
     /// The second credential, kept as a `Secret` for the same reason as the
@@ -532,196 +181,9 @@ impl SpeechCloudServiceRegistration {
 // ─────────────────────────────────────────────────────────────────────────────
 // Realtime options and services
 
-/// A realtime provider's settings.
-macro_rules! realtime_options {
-    ($name:ident, $host:expr, $model:expr, $rate:expr, $doc:expr) => {
-        #[doc = $doc]
-        #[derive(Clone, Default)]
-        pub struct $name {
-            pub key: Secret,
-            pub url: String,
-            pub model: String,
-            pub voice: String,
-            pub instructions: String,
-        }
 
-        impl $name {
-            pub const DEFAULT_URL: &'static str = $host;
-            pub const SUGGESTED_MODEL: &'static str = $model;
-            /// The rate the socket carries. A realtime session negotiates this
-            /// ONCE at the start; sending frames at a different rate afterwards
-            /// is heard as the caller talking at the wrong speed.
-            pub const SAMPLE_RATE_HZ: u32 = $rate;
 
-            pub fn is_configured(&self) -> bool {
-                self.key.is_set()
-            }
 
-            pub fn resolved_url(&self) -> &str {
-                if self.url.is_empty() {
-                    Self::DEFAULT_URL
-                } else {
-                    &self.url
-                }
-            }
-
-            pub fn resolved_model(&self) -> &str {
-                if self.model.is_empty() {
-                    Self::SUGGESTED_MODEL
-                } else {
-                    &self.model
-                }
-            }
-        }
-
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("key", &self.key)
-                    .field("url", &self.resolved_url())
-                    .field("model", &self.resolved_model())
-                    .finish()
-            }
-        }
-    };
-}
-
-realtime_options!(
-    OpenAiRealtimeOptions,
-    "wss://api.openai.com/v1/realtime",
-    "gpt-4o-realtime-preview",
-    24_000,
-    "OpenAI realtime. 24 kHz PCM in both directions."
-);
-realtime_options!(
-    GeminiLiveOptions,
-    "wss://generativelanguage.googleapis.com/ws",
-    "gemini-2.0-flash-exp",
-    16_000,
-    "Gemini Live. 16 kHz IN and 24 kHz OUT - the asymmetry is real, and a \
-     session that resamples both directions by the input rate returns speech \
-     that plays too slowly."
-);
-realtime_options!(
-    NovaSonicOptions,
-    "wss://bedrock-runtime.us-east-1.amazonaws.com",
-    "amazon.nova-sonic-v1:0",
-    16_000,
-    "Nova Sonic, through Bedrock. Signed requests rather than a bearer key, so \
-     the region in the host is part of what is signed and cannot be swapped \
-     freely."
-);
-realtime_options!(
-    ElevenLabsConvOptions,
-    "wss://api.elevenlabs.io/v1/convai/conversation",
-    "eleven_turbo_v2_5",
-    16_000,
-    "ElevenLabs conversational."
-);
-realtime_options!(
-    UltravoxOptions,
-    "wss://api.ultravox.ai",
-    "fixie-ai/ultravox",
-    16_000,
-    "Ultravox. Speech straight into the model with no transcription step, which \
-     is why there is no separate recogniser to configure."
-);
-
-/// A realtime service that dials one provider.
-///
-/// The connection itself is the host's job: a WebSocket is a platform
-/// dependency, and a Rust core that carried one would pull an async runtime and
-/// a TLS stack into every target including the small ones.
-macro_rules! realtime_service {
-    ($name:ident, $options:ty, $id:expr, $doc:expr) => {
-        #[doc = $doc]
-        pub struct $name {
-            options: $options,
-            #[allow(clippy::type_complexity)]
-            connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
-        }
-
-        impl $name {
-            pub const PROVIDER: &'static str = $id;
-
-            #[allow(clippy::type_complexity)]
-            pub fn new(
-                options: $options,
-                connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
-            ) -> Self {
-                Self { options, connect }
-            }
-
-            pub fn options(&self) -> &$options {
-                &self.options
-            }
-
-            /// Needs BOTH a key and a way to open a socket. Either alone is a
-            /// service that reports ready and fails on the first call, which is
-            /// the worst moment to find out - somebody is already on the line.
-            pub fn is_available(&self) -> bool {
-                self.options.is_configured() && self.connect.is_some()
-            }
-
-            pub fn sample_rate_hz(&self) -> u32 {
-                <$options>::SAMPLE_RATE_HZ
-            }
-
-            pub fn start(&self) -> Result<String, String> {
-                if !self.options.is_configured() {
-                    return Err(format!("{} has no key set on this device", $id));
-                }
-                let Some(connect) = &self.connect else {
-                    return Err(format!(
-                        "{} cannot be reached from this build - there is no socket transport",
-                        $id
-                    ));
-                };
-                connect(self.options.resolved_url(), self.options.resolved_model())
-            }
-        }
-
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("provider", &$id)
-                    .field("available", &self.is_available())
-                    .finish()
-            }
-        }
-    };
-}
-
-realtime_service!(
-    OpenAiRealtimeService,
-    OpenAiRealtimeOptions,
-    "openai-realtime",
-    "OpenAI realtime."
-);
-realtime_service!(
-    GeminiLiveService,
-    GeminiLiveOptions,
-    "gemini-live",
-    "Gemini Live."
-);
-realtime_service!(
-    NovaSonicService,
-    NovaSonicOptions,
-    "nova-sonic",
-    "Nova Sonic."
-);
-realtime_service!(
-    ElevenLabsConvService,
-    ElevenLabsConvOptions,
-    "elevenlabs-conv",
-    "ElevenLabs conversational."
-);
-realtime_service!(
-    UltravoxService,
-    UltravoxOptions,
-    "ultravox",
-    "Ultravox."
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mesh offload
@@ -1094,100 +556,7 @@ pub struct ConnectorEntry {
     pub region: String,
 }
 
-/// A named set of connectors.
-///
-/// A REGISTRY, NOT A DIRECTORY. It lists what this build knows how to talk to;
-/// it does not fetch a catalogue from anywhere, because a central list of who
-/// connects to what is exactly the thing that can be switched off.
-macro_rules! connector_registry {
-    ($trait_name:ident, $default_name:ident, $kind:expr, $doc:expr) => {
-        #[doc = $doc]
-        pub trait $trait_name {
-            fn kind(&self) -> &'static str {
-                $kind
-            }
-            fn all(&self) -> Vec<ConnectorEntry>;
-            fn get(&self, id: &str) -> Option<ConnectorEntry>;
-            fn offline_capable(&self) -> Vec<ConnectorEntry>;
-        }
 
-        #[doc = concat!("The built-in ", $kind, " connectors.")]
-        #[derive(Debug, Default, Clone)]
-        pub struct $default_name {
-            entries: Vec<ConnectorEntry>,
-        }
-
-        impl $default_name {
-            pub fn new(entries: Vec<ConnectorEntry>) -> Self {
-                Self { entries }
-            }
-
-            pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
-                if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
-                    self.entries.push(entry);
-                }
-                self
-            }
-        }
-
-        impl $trait_name for $default_name {
-            fn all(&self) -> Vec<ConnectorEntry> {
-                let mut out = self.entries.clone();
-                out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
-                out
-            }
-
-            fn get(&self, id: &str) -> Option<ConnectorEntry> {
-                self.entries.iter().find(|e| e.id == id).cloned()
-            }
-
-            /// What still works with no network. On a device built to work
-            /// offline this is the list that matters, and it is usually short -
-            /// which is worth seeing rather than hiding.
-            fn offline_capable(&self) -> Vec<ConnectorEntry> {
-                self.entries.iter().filter(|e| e.works_offline).cloned().collect()
-            }
-        }
-    };
-}
-
-connector_registry!(
-    EmailConnectorRegistry,
-    DefaultEmailConnectorRegistry,
-    "email",
-    "Mail connectors. SENDING IS THE CONSEQUENTIAL ONE - reading mail is \
-     recoverable, and a message sent as somebody is not."
-);
-connector_registry!(
-    CalendarConnectorRegistry,
-    DefaultCalendarConnectorRegistry,
-    "calendar",
-    "Calendar connectors. A calendar is a record of where somebody will \
-     physically be, which is why its read scope is not a small permission."
-);
-connector_registry!(
-    CrmConnectorRegistry,
-    DefaultCrmConnectorRegistry,
-    "crm",
-    "CRM connectors. The data is about OTHER people, who never agreed to \
-     anything here - so what leaves is narrower than what a user could \
-     authorise for their own data."
-);
-connector_registry!(
-    AccountingConnectorRegistry,
-    DefaultAccountingConnectorRegistry,
-    "accounting",
-    "Accounting connectors. Read-shaped by default: a ledger is a record, and a \
-     record that an assistant can rewrite is not one."
-);
-connector_registry!(
-    BankingConnectorRegistry,
-    DefaultBankingConnectorRegistry,
-    "banking",
-    "Banking connectors. READ ONLY, always. Nothing in this codebase moves \
-     money - a balance can be shown and a transaction categorised, and a \
-     transfer is the account holder's own action."
-);
 
 impl DefaultBankingConnectorRegistry {
     /// Anything that would move money is REFUSED here rather than lower down, so
@@ -1225,5 +594,2179 @@ impl ConnectorRegistrySet {
             ("accounting", self.accounting.all().len()),
             ("banking", self.banking.all().len()),
         ])
+    }
+}
+
+/// OpenAI. The shape every other compatible provider copies.
+#[derive(Clone, Default)]
+pub struct OpenAiChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl OpenAiChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.openai.com/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "gpt-4o-mini";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for OpenAiChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Anthropic. NOT OpenAI-compatible: the system prompt is a top-level field
+/// rather than a message, and the request needs an `anthropic-version`
+/// header - omitting it is rejected outright.
+#[derive(Clone, Default)]
+pub struct AnthropicChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl AnthropicChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.anthropic.com/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "claude-sonnet-4-5";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for AnthropicChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AnthropicChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Gemini. The MODEL IS IN THE PATH rather than the body, so the endpoint
+/// cannot be built without knowing it.
+#[derive(Clone, Default)]
+pub struct GeminiChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl GeminiChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://generativelanguage.googleapis.com/v1beta";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "gemini-2.0-flash";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for GeminiChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GeminiChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Groq. OpenAI-compatible and fast; the models it serves are open ones.
+#[derive(Clone, Default)]
+pub struct GroqChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl GroqChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.groq.com/openai/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "llama-3.3-70b-versatile";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for GroqChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GroqChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Cerebras. OpenAI-compatible.
+#[derive(Clone, Default)]
+pub struct CerebrasChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl CerebrasChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.cerebras.ai/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "llama3.1-8b";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for CerebrasChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CerebrasChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// DeepSeek. OpenAI-compatible.
+#[derive(Clone, Default)]
+pub struct DeepSeekChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl DeepSeekChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.deepseek.com/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "deepseek-chat";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for DeepSeekChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeepSeekChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Together. OpenAI-compatible, and its model names carry the publisher
+/// prefix - stripping it produces a name the API does not know.
+#[derive(Clone, Default)]
+pub struct TogetherChatOptions {
+    pub key: Secret,
+    /// Overridable, because a self-hosted or regional endpoint is a legitimate
+    /// deployment and hardcoding the vendor's host forbids it.
+    pub base_url: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    pub max_tokens: u32,
+    pub temperature: f32,
+}
+
+impl TogetherChatOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.together.xyz/v1";
+    /// The vendor's own naming, kept as a STARTING POINT rather than a constant
+    /// the code depends on - model names change under you, and a hardcoded one
+    /// is a release to fix.
+    pub const SUGGESTED_MODEL: &'static str = "meta-llama/Llama-3.3-70B-Instruct-Turbo";
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the generators actually take.
+    ///
+    /// `enabled` is set HERE, because a provider-specific options type only
+    /// exists once somebody has written its settings down - which is the
+    /// decision the shared flag records.
+    pub fn to_cloud(&self) -> CloudChatOptions {
+        CloudChatOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            max_output_tokens: if self.max_tokens == 0 { 1024 } else { self.max_tokens },
+            temperature: if self.temperature == 0.0 { 0.7 } else { self.temperature },
+        }
+    }
+}
+
+/// Prints everything EXCEPT the key.
+impl std::fmt::Debug for TogetherChatOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TogetherChatOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// OpenAI's own endpoint.
+pub struct OpenAiChatGenerator {
+    base: OpenAiCompatibleChatGeneratorBase,
+    options: OpenAiChatOptions,
+}
+
+impl OpenAiChatGenerator {
+    pub const PROVIDER: &'static str = "openai";
+
+    pub fn new(options: OpenAiChatOptions, post: Option<PostFn>) -> Self {
+        Self {
+            base: OpenAiCompatibleChatGeneratorBase::new(Self::PROVIDER, options.to_cloud(), post),
+            options,
+        }
+    }
+
+    pub fn options(&self) -> &OpenAiChatOptions {
+        &self.options
+    }
+}
+
+impl CloudChatGenerator for OpenAiChatGenerator {
+    fn provider_id(&self) -> &str {
+        Self::PROVIDER
+    }
+
+    /// Configured means a KEY IS PRESENT. Nothing here reaches out to check,
+    /// because checking is itself a request that tells a vendor this device
+    /// exists.
+    fn is_available(&self) -> bool {
+        self.options.is_configured() && self.base.is_available()
+    }
+
+    fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
+        if !self.options.is_configured() {
+            // Names the PROVIDER and never the key, which is the whole reason
+            // this check lives here rather than at the transport.
+            return CloudChatResult {
+                provider_id: Self::PROVIDER.to_string(),
+                model: self.options.resolved_model().to_string(),
+                error: format!("{} has no key set on this device", Self::PROVIDER),
+                ..Default::default()
+            };
+        }
+        self.base.generate(turns, system)
+    }
+}
+
+/// Groq.
+pub struct GroqChatGenerator {
+    base: OpenAiCompatibleChatGeneratorBase,
+    options: GroqChatOptions,
+}
+
+impl GroqChatGenerator {
+    pub const PROVIDER: &'static str = "groq";
+
+    pub fn new(options: GroqChatOptions, post: Option<PostFn>) -> Self {
+        Self {
+            base: OpenAiCompatibleChatGeneratorBase::new(Self::PROVIDER, options.to_cloud(), post),
+            options,
+        }
+    }
+
+    pub fn options(&self) -> &GroqChatOptions {
+        &self.options
+    }
+}
+
+impl CloudChatGenerator for GroqChatGenerator {
+    fn provider_id(&self) -> &str {
+        Self::PROVIDER
+    }
+
+    /// Configured means a KEY IS PRESENT. Nothing here reaches out to check,
+    /// because checking is itself a request that tells a vendor this device
+    /// exists.
+    fn is_available(&self) -> bool {
+        self.options.is_configured() && self.base.is_available()
+    }
+
+    fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
+        if !self.options.is_configured() {
+            // Names the PROVIDER and never the key, which is the whole reason
+            // this check lives here rather than at the transport.
+            return CloudChatResult {
+                provider_id: Self::PROVIDER.to_string(),
+                model: self.options.resolved_model().to_string(),
+                error: format!("{} has no key set on this device", Self::PROVIDER),
+                ..Default::default()
+            };
+        }
+        self.base.generate(turns, system)
+    }
+}
+
+/// Cerebras.
+pub struct CerebrasChatGenerator {
+    base: OpenAiCompatibleChatGeneratorBase,
+    options: CerebrasChatOptions,
+}
+
+impl CerebrasChatGenerator {
+    pub const PROVIDER: &'static str = "cerebras";
+
+    pub fn new(options: CerebrasChatOptions, post: Option<PostFn>) -> Self {
+        Self {
+            base: OpenAiCompatibleChatGeneratorBase::new(Self::PROVIDER, options.to_cloud(), post),
+            options,
+        }
+    }
+
+    pub fn options(&self) -> &CerebrasChatOptions {
+        &self.options
+    }
+}
+
+impl CloudChatGenerator for CerebrasChatGenerator {
+    fn provider_id(&self) -> &str {
+        Self::PROVIDER
+    }
+
+    /// Configured means a KEY IS PRESENT. Nothing here reaches out to check,
+    /// because checking is itself a request that tells a vendor this device
+    /// exists.
+    fn is_available(&self) -> bool {
+        self.options.is_configured() && self.base.is_available()
+    }
+
+    fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
+        if !self.options.is_configured() {
+            // Names the PROVIDER and never the key, which is the whole reason
+            // this check lives here rather than at the transport.
+            return CloudChatResult {
+                provider_id: Self::PROVIDER.to_string(),
+                model: self.options.resolved_model().to_string(),
+                error: format!("{} has no key set on this device", Self::PROVIDER),
+                ..Default::default()
+            };
+        }
+        self.base.generate(turns, system)
+    }
+}
+
+/// DeepSeek.
+pub struct DeepSeekChatGenerator {
+    base: OpenAiCompatibleChatGeneratorBase,
+    options: DeepSeekChatOptions,
+}
+
+impl DeepSeekChatGenerator {
+    pub const PROVIDER: &'static str = "deepseek";
+
+    pub fn new(options: DeepSeekChatOptions, post: Option<PostFn>) -> Self {
+        Self {
+            base: OpenAiCompatibleChatGeneratorBase::new(Self::PROVIDER, options.to_cloud(), post),
+            options,
+        }
+    }
+
+    pub fn options(&self) -> &DeepSeekChatOptions {
+        &self.options
+    }
+}
+
+impl CloudChatGenerator for DeepSeekChatGenerator {
+    fn provider_id(&self) -> &str {
+        Self::PROVIDER
+    }
+
+    /// Configured means a KEY IS PRESENT. Nothing here reaches out to check,
+    /// because checking is itself a request that tells a vendor this device
+    /// exists.
+    fn is_available(&self) -> bool {
+        self.options.is_configured() && self.base.is_available()
+    }
+
+    fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
+        if !self.options.is_configured() {
+            // Names the PROVIDER and never the key, which is the whole reason
+            // this check lives here rather than at the transport.
+            return CloudChatResult {
+                provider_id: Self::PROVIDER.to_string(),
+                model: self.options.resolved_model().to_string(),
+                error: format!("{} has no key set on this device", Self::PROVIDER),
+                ..Default::default()
+            };
+        }
+        self.base.generate(turns, system)
+    }
+}
+
+/// Together.
+pub struct TogetherChatGenerator {
+    base: OpenAiCompatibleChatGeneratorBase,
+    options: TogetherChatOptions,
+}
+
+impl TogetherChatGenerator {
+    pub const PROVIDER: &'static str = "together";
+
+    pub fn new(options: TogetherChatOptions, post: Option<PostFn>) -> Self {
+        Self {
+            base: OpenAiCompatibleChatGeneratorBase::new(Self::PROVIDER, options.to_cloud(), post),
+            options,
+        }
+    }
+
+    pub fn options(&self) -> &TogetherChatOptions {
+        &self.options
+    }
+}
+
+impl CloudChatGenerator for TogetherChatGenerator {
+    fn provider_id(&self) -> &str {
+        Self::PROVIDER
+    }
+
+    /// Configured means a KEY IS PRESENT. Nothing here reaches out to check,
+    /// because checking is itself a request that tells a vendor this device
+    /// exists.
+    fn is_available(&self) -> bool {
+        self.options.is_configured() && self.base.is_available()
+    }
+
+    fn generate(&self, turns: &[ChatTurn], system: &str) -> CloudChatResult {
+        if !self.options.is_configured() {
+            // Names the PROVIDER and never the key, which is the whole reason
+            // this check lives here rather than at the transport.
+            return CloudChatResult {
+                provider_id: Self::PROVIDER.to_string(),
+                model: self.options.resolved_model().to_string(),
+                error: format!("{} has no key set on this device", Self::PROVIDER),
+                ..Default::default()
+            };
+        }
+        self.base.generate(turns, system)
+    }
+}
+
+/// OpenAI, for both directions - transcription and speech share a host and
+/// a key, which is why one options type covers both.
+#[derive(Clone, Default)]
+pub struct OpenAiVoiceOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl OpenAiVoiceOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.openai.com/v1";
+    pub const SUGGESTED_MODEL: &'static str = "whisper-1";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for OpenAiVoiceOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiVoiceOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Deepgram transcription.
+#[derive(Clone, Default)]
+pub struct DeepgramOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl DeepgramOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.deepgram.com/v1";
+    pub const SUGGESTED_MODEL: &'static str = "nova-2";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for DeepgramOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeepgramOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Deepgram speech. A SEPARATE type from its transcription options because
+/// the model names share no namespace and mixing them is a request the API
+/// rejects for a reason nobody reads.
+#[derive(Clone, Default)]
+pub struct DeepgramTtsOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl DeepgramTtsOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.deepgram.com/v1";
+    pub const SUGGESTED_MODEL: &'static str = "aura-asteria-en";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 24_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for DeepgramTtsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeepgramTtsOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// AssemblyAI. Upload-then-poll rather than one request, so its timeout
+/// covers a wait rather than a call.
+#[derive(Clone, Default)]
+pub struct AssemblyAiOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl AssemblyAiOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.assemblyai.com/v2";
+    pub const SUGGESTED_MODEL: &'static str = "best";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for AssemblyAiOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AssemblyAiOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Azure transcription. THE REGION IS PART OF THE HOST - the placeholder in
+/// the default is deliberate, so an unconfigured region fails at the URL
+/// rather than reaching the wrong data centre.
+#[derive(Clone, Default)]
+pub struct AzureSpeechOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl AzureSpeechOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://REGION.stt.speech.microsoft.com";
+    pub const SUGGESTED_MODEL: &'static str = "latest";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for AzureSpeechOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AzureSpeechOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Azure speech. A different subdomain from its transcription counterpart,
+/// which is exactly the difference a shared options bag would erase.
+#[derive(Clone, Default)]
+pub struct AzureTtsOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl AzureTtsOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://REGION.tts.speech.microsoft.com";
+    pub const SUGGESTED_MODEL: &'static str = "en-ZA-LeahNeural";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 24_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for AzureTtsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AzureTtsOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Google transcription.
+#[derive(Clone, Default)]
+pub struct GoogleSpeechOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl GoogleSpeechOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://speech.googleapis.com/v1";
+    pub const SUGGESTED_MODEL: &'static str = "latest_long";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for GoogleSpeechOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleSpeechOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Google speech.
+#[derive(Clone, Default)]
+pub struct GoogleTtsOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl GoogleTtsOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://texttospeech.googleapis.com/v1";
+    pub const SUGGESTED_MODEL: &'static str = "en-ZA-Standard-A";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 24_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for GoogleTtsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleTtsOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// ElevenLabs. 44.1 kHz out, which is higher than anything else here and
+/// needs resampling before it meets 16 kHz audio.
+#[derive(Clone, Default)]
+pub struct ElevenLabsOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl ElevenLabsOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.elevenlabs.io/v1";
+    pub const SUGGESTED_MODEL: &'static str = "eleven_multilingual_v2";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 44_100;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ElevenLabsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ElevenLabsOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Cartesia transcription.
+#[derive(Clone, Default)]
+pub struct CartesiaSttOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl CartesiaSttOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.cartesia.ai";
+    pub const SUGGESTED_MODEL: &'static str = "ink-whisper";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for CartesiaSttOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CartesiaSttOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// Cartesia speech.
+#[derive(Clone, Default)]
+pub struct CartesiaTtsOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl CartesiaTtsOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.cartesia.ai";
+    pub const SUGGESTED_MODEL: &'static str = "sonic-2";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 44_100;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for CartesiaTtsOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CartesiaTtsOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// PlayHT. Needs a user id ALONGSIDE the key, which is why a key alone
+/// being present is not enough to call it configured.
+#[derive(Clone, Default)]
+pub struct PlayHtOptions {
+    pub key: Secret,
+    pub base_url: String,
+    pub model: String,
+    /// Empty means "let the service decide", which for transcription is usually
+    /// right and for synthesis is usually not - a voice picked by a service is a
+    /// voice that can change under you.
+    pub voice: String,
+    pub language: String,
+    pub timeout_ms: u64,
+}
+
+impl PlayHtOptions {
+    pub const DEFAULT_BASE_URL: &'static str = "https://api.play.ht/api/v2";
+    pub const SUGGESTED_MODEL: &'static str = "PlayHT2.0";
+    /// What this service expects or returns. Feeding a transcriber the wrong
+    /// rate is never an error - it transcribes audio it believes is at a
+    /// different speed and returns confident nonsense.
+    pub const SAMPLE_RATE_HZ: u32 = 24_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_base_url(&self) -> &str {
+        if self.base_url.is_empty() { Self::DEFAULT_BASE_URL } else { &self.base_url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+
+    /// Folds into the shared shape the recognisers and synthesisers take.
+    pub fn to_cloud(&self) -> CloudSpeechOptions {
+        CloudSpeechOptions {
+            enabled: self.key.is_set(),
+            api_key: self.key.clone(),
+            base_url: self.resolved_base_url().to_string(),
+            model: self.resolved_model().to_string(),
+            language: self.language.clone(),
+            // The voice goes into voice_id because ElevenLabs and Cartesia put
+            // it in the PATH - without one there is no endpoint to call.
+            voice_id: self.voice.clone(),
+            region: String::new(),
+            user_id: String::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for PlayHtOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PlayHtOptions")
+            .field("key", &self.key)
+            .field("base_url", &self.resolved_base_url())
+            .field("model", &self.resolved_model())
+            .field("sample_rate_hz", &Self::SAMPLE_RATE_HZ)
+            .finish()
+    }
+}
+
+/// OpenAI realtime. 24 kHz PCM in both directions.
+#[derive(Clone, Default)]
+pub struct OpenAiRealtimeOptions {
+    pub key: Secret,
+    pub url: String,
+    pub model: String,
+    pub voice: String,
+    pub instructions: String,
+}
+
+impl OpenAiRealtimeOptions {
+    pub const DEFAULT_URL: &'static str = "wss://api.openai.com/v1/realtime";
+    pub const SUGGESTED_MODEL: &'static str = "gpt-4o-realtime-preview";
+    /// The rate the socket carries. A realtime session negotiates this ONCE at
+    /// the start; sending frames at a different rate afterwards is heard as the
+    /// caller talking at the wrong speed.
+    pub const SAMPLE_RATE_HZ: u32 = 24_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        if self.url.is_empty() { Self::DEFAULT_URL } else { &self.url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+}
+
+impl std::fmt::Debug for OpenAiRealtimeOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiRealtimeOptions")
+            .field("key", &self.key)
+            .field("url", &self.resolved_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Gemini Live. 16 kHz IN and 24 kHz OUT - the asymmetry is real, and a
+/// session that resamples both directions by the input rate returns speech
+/// that plays too slowly.
+#[derive(Clone, Default)]
+pub struct GeminiLiveOptions {
+    pub key: Secret,
+    pub url: String,
+    pub model: String,
+    pub voice: String,
+    pub instructions: String,
+}
+
+impl GeminiLiveOptions {
+    pub const DEFAULT_URL: &'static str = "wss://generativelanguage.googleapis.com/ws";
+    pub const SUGGESTED_MODEL: &'static str = "gemini-2.0-flash-exp";
+    /// The rate the socket carries. A realtime session negotiates this ONCE at
+    /// the start; sending frames at a different rate afterwards is heard as the
+    /// caller talking at the wrong speed.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        if self.url.is_empty() { Self::DEFAULT_URL } else { &self.url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+}
+
+impl std::fmt::Debug for GeminiLiveOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GeminiLiveOptions")
+            .field("key", &self.key)
+            .field("url", &self.resolved_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Nova Sonic, through Bedrock. Signed requests rather than a bearer key,
+/// so the region in the host is part of what is signed and cannot be
+/// swapped freely.
+#[derive(Clone, Default)]
+pub struct NovaSonicOptions {
+    pub key: Secret,
+    pub url: String,
+    pub model: String,
+    pub voice: String,
+    pub instructions: String,
+}
+
+impl NovaSonicOptions {
+    pub const DEFAULT_URL: &'static str = "wss://bedrock-runtime.us-east-1.amazonaws.com";
+    pub const SUGGESTED_MODEL: &'static str = "amazon.nova-sonic-v1:0";
+    /// The rate the socket carries. A realtime session negotiates this ONCE at
+    /// the start; sending frames at a different rate afterwards is heard as the
+    /// caller talking at the wrong speed.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        if self.url.is_empty() { Self::DEFAULT_URL } else { &self.url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+}
+
+impl std::fmt::Debug for NovaSonicOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NovaSonicOptions")
+            .field("key", &self.key)
+            .field("url", &self.resolved_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// ElevenLabs conversational.
+#[derive(Clone, Default)]
+pub struct ElevenLabsConvOptions {
+    pub key: Secret,
+    pub url: String,
+    pub model: String,
+    pub voice: String,
+    pub instructions: String,
+}
+
+impl ElevenLabsConvOptions {
+    pub const DEFAULT_URL: &'static str = "wss://api.elevenlabs.io/v1/convai/conversation";
+    pub const SUGGESTED_MODEL: &'static str = "eleven_turbo_v2_5";
+    /// The rate the socket carries. A realtime session negotiates this ONCE at
+    /// the start; sending frames at a different rate afterwards is heard as the
+    /// caller talking at the wrong speed.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        if self.url.is_empty() { Self::DEFAULT_URL } else { &self.url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+}
+
+impl std::fmt::Debug for ElevenLabsConvOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ElevenLabsConvOptions")
+            .field("key", &self.key)
+            .field("url", &self.resolved_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// Ultravox. Speech straight into the model with no transcription step,
+/// which is why there is no separate recogniser to configure.
+#[derive(Clone, Default)]
+pub struct UltravoxOptions {
+    pub key: Secret,
+    pub url: String,
+    pub model: String,
+    pub voice: String,
+    pub instructions: String,
+}
+
+impl UltravoxOptions {
+    pub const DEFAULT_URL: &'static str = "wss://api.ultravox.ai";
+    pub const SUGGESTED_MODEL: &'static str = "fixie-ai/ultravox";
+    /// The rate the socket carries. A realtime session negotiates this ONCE at
+    /// the start; sending frames at a different rate afterwards is heard as the
+    /// caller talking at the wrong speed.
+    pub const SAMPLE_RATE_HZ: u32 = 16_000;
+
+    pub fn is_configured(&self) -> bool {
+        self.key.is_set()
+    }
+
+    pub fn resolved_url(&self) -> &str {
+        if self.url.is_empty() { Self::DEFAULT_URL } else { &self.url }
+    }
+
+    pub fn resolved_model(&self) -> &str {
+        if self.model.is_empty() { Self::SUGGESTED_MODEL } else { &self.model }
+    }
+}
+
+impl std::fmt::Debug for UltravoxOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UltravoxOptions")
+            .field("key", &self.key)
+            .field("url", &self.resolved_url())
+            .field("model", &self.resolved_model())
+            .finish()
+    }
+}
+
+/// OpenAI realtime.
+///
+/// The connection itself is the host's job: a WebSocket is a platform
+/// dependency, and a Rust core that carried one would pull an async runtime and
+/// a TLS stack into every target including the small ones.
+pub struct OpenAiRealtimeService {
+    options: OpenAiRealtimeOptions,
+    #[allow(clippy::type_complexity)]
+    connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+}
+
+impl OpenAiRealtimeService {
+    pub const PROVIDER: &'static str = "openai-realtime";
+
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        options: OpenAiRealtimeOptions,
+        connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+    ) -> Self {
+        Self { options, connect }
+    }
+
+    pub fn options(&self) -> &OpenAiRealtimeOptions {
+        &self.options
+    }
+
+    /// Needs BOTH a key and a way to open a socket. Either alone is a service
+    /// that reports ready and fails on the first call, which is the worst
+    /// moment to find out - somebody is already on the line.
+    pub fn is_available(&self) -> bool {
+        self.options.is_configured() && self.connect.is_some()
+    }
+
+    pub fn sample_rate_hz(&self) -> u32 {
+        OpenAiRealtimeOptions::SAMPLE_RATE_HZ
+    }
+
+    pub fn start(&self) -> Result<String, String> {
+        if !self.options.is_configured() {
+            return Err(format!("{} has no key set on this device", Self::PROVIDER));
+        }
+        let Some(connect) = &self.connect else {
+            return Err(format!(
+                "{} cannot be reached from this build - there is no socket transport",
+                Self::PROVIDER
+            ));
+        };
+        connect(self.options.resolved_url(), self.options.resolved_model())
+    }
+}
+
+impl std::fmt::Debug for OpenAiRealtimeService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiRealtimeService")
+            .field("provider", &Self::PROVIDER)
+            .field("available", &self.is_available())
+            .finish()
+    }
+}
+
+/// Gemini Live.
+///
+/// The connection itself is the host's job: a WebSocket is a platform
+/// dependency, and a Rust core that carried one would pull an async runtime and
+/// a TLS stack into every target including the small ones.
+pub struct GeminiLiveService {
+    options: GeminiLiveOptions,
+    #[allow(clippy::type_complexity)]
+    connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+}
+
+impl GeminiLiveService {
+    pub const PROVIDER: &'static str = "gemini-live";
+
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        options: GeminiLiveOptions,
+        connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+    ) -> Self {
+        Self { options, connect }
+    }
+
+    pub fn options(&self) -> &GeminiLiveOptions {
+        &self.options
+    }
+
+    /// Needs BOTH a key and a way to open a socket. Either alone is a service
+    /// that reports ready and fails on the first call, which is the worst
+    /// moment to find out - somebody is already on the line.
+    pub fn is_available(&self) -> bool {
+        self.options.is_configured() && self.connect.is_some()
+    }
+
+    pub fn sample_rate_hz(&self) -> u32 {
+        GeminiLiveOptions::SAMPLE_RATE_HZ
+    }
+
+    pub fn start(&self) -> Result<String, String> {
+        if !self.options.is_configured() {
+            return Err(format!("{} has no key set on this device", Self::PROVIDER));
+        }
+        let Some(connect) = &self.connect else {
+            return Err(format!(
+                "{} cannot be reached from this build - there is no socket transport",
+                Self::PROVIDER
+            ));
+        };
+        connect(self.options.resolved_url(), self.options.resolved_model())
+    }
+}
+
+impl std::fmt::Debug for GeminiLiveService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GeminiLiveService")
+            .field("provider", &Self::PROVIDER)
+            .field("available", &self.is_available())
+            .finish()
+    }
+}
+
+/// Nova Sonic.
+///
+/// The connection itself is the host's job: a WebSocket is a platform
+/// dependency, and a Rust core that carried one would pull an async runtime and
+/// a TLS stack into every target including the small ones.
+pub struct NovaSonicService {
+    options: NovaSonicOptions,
+    #[allow(clippy::type_complexity)]
+    connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+}
+
+impl NovaSonicService {
+    pub const PROVIDER: &'static str = "nova-sonic";
+
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        options: NovaSonicOptions,
+        connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+    ) -> Self {
+        Self { options, connect }
+    }
+
+    pub fn options(&self) -> &NovaSonicOptions {
+        &self.options
+    }
+
+    /// Needs BOTH a key and a way to open a socket. Either alone is a service
+    /// that reports ready and fails on the first call, which is the worst
+    /// moment to find out - somebody is already on the line.
+    pub fn is_available(&self) -> bool {
+        self.options.is_configured() && self.connect.is_some()
+    }
+
+    pub fn sample_rate_hz(&self) -> u32 {
+        NovaSonicOptions::SAMPLE_RATE_HZ
+    }
+
+    pub fn start(&self) -> Result<String, String> {
+        if !self.options.is_configured() {
+            return Err(format!("{} has no key set on this device", Self::PROVIDER));
+        }
+        let Some(connect) = &self.connect else {
+            return Err(format!(
+                "{} cannot be reached from this build - there is no socket transport",
+                Self::PROVIDER
+            ));
+        };
+        connect(self.options.resolved_url(), self.options.resolved_model())
+    }
+}
+
+impl std::fmt::Debug for NovaSonicService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NovaSonicService")
+            .field("provider", &Self::PROVIDER)
+            .field("available", &self.is_available())
+            .finish()
+    }
+}
+
+/// ElevenLabs conversational.
+///
+/// The connection itself is the host's job: a WebSocket is a platform
+/// dependency, and a Rust core that carried one would pull an async runtime and
+/// a TLS stack into every target including the small ones.
+pub struct ElevenLabsConvService {
+    options: ElevenLabsConvOptions,
+    #[allow(clippy::type_complexity)]
+    connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+}
+
+impl ElevenLabsConvService {
+    pub const PROVIDER: &'static str = "elevenlabs-conv";
+
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        options: ElevenLabsConvOptions,
+        connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+    ) -> Self {
+        Self { options, connect }
+    }
+
+    pub fn options(&self) -> &ElevenLabsConvOptions {
+        &self.options
+    }
+
+    /// Needs BOTH a key and a way to open a socket. Either alone is a service
+    /// that reports ready and fails on the first call, which is the worst
+    /// moment to find out - somebody is already on the line.
+    pub fn is_available(&self) -> bool {
+        self.options.is_configured() && self.connect.is_some()
+    }
+
+    pub fn sample_rate_hz(&self) -> u32 {
+        ElevenLabsConvOptions::SAMPLE_RATE_HZ
+    }
+
+    pub fn start(&self) -> Result<String, String> {
+        if !self.options.is_configured() {
+            return Err(format!("{} has no key set on this device", Self::PROVIDER));
+        }
+        let Some(connect) = &self.connect else {
+            return Err(format!(
+                "{} cannot be reached from this build - there is no socket transport",
+                Self::PROVIDER
+            ));
+        };
+        connect(self.options.resolved_url(), self.options.resolved_model())
+    }
+}
+
+impl std::fmt::Debug for ElevenLabsConvService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ElevenLabsConvService")
+            .field("provider", &Self::PROVIDER)
+            .field("available", &self.is_available())
+            .finish()
+    }
+}
+
+/// Ultravox.
+///
+/// The connection itself is the host's job: a WebSocket is a platform
+/// dependency, and a Rust core that carried one would pull an async runtime and
+/// a TLS stack into every target including the small ones.
+pub struct UltravoxService {
+    options: UltravoxOptions,
+    #[allow(clippy::type_complexity)]
+    connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+}
+
+impl UltravoxService {
+    pub const PROVIDER: &'static str = "ultravox";
+
+    #[allow(clippy::type_complexity)]
+    pub fn new(
+        options: UltravoxOptions,
+        connect: Option<Box<dyn Fn(&str, &str) -> Result<String, String> + Send + Sync>>,
+    ) -> Self {
+        Self { options, connect }
+    }
+
+    pub fn options(&self) -> &UltravoxOptions {
+        &self.options
+    }
+
+    /// Needs BOTH a key and a way to open a socket. Either alone is a service
+    /// that reports ready and fails on the first call, which is the worst
+    /// moment to find out - somebody is already on the line.
+    pub fn is_available(&self) -> bool {
+        self.options.is_configured() && self.connect.is_some()
+    }
+
+    pub fn sample_rate_hz(&self) -> u32 {
+        UltravoxOptions::SAMPLE_RATE_HZ
+    }
+
+    pub fn start(&self) -> Result<String, String> {
+        if !self.options.is_configured() {
+            return Err(format!("{} has no key set on this device", Self::PROVIDER));
+        }
+        let Some(connect) = &self.connect else {
+            return Err(format!(
+                "{} cannot be reached from this build - there is no socket transport",
+                Self::PROVIDER
+            ));
+        };
+        connect(self.options.resolved_url(), self.options.resolved_model())
+    }
+}
+
+impl std::fmt::Debug for UltravoxService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UltravoxService")
+            .field("provider", &Self::PROVIDER)
+            .field("available", &self.is_available())
+            .finish()
+    }
+}
+
+/// Mail connectors. SENDING IS THE CONSEQUENTIAL ONE - reading mail is
+/// recoverable, and a message sent as somebody is not.
+pub trait EmailConnectorRegistry {
+    fn kind(&self) -> &'static str {
+        "email"
+    }
+    fn all(&self) -> Vec<ConnectorEntry>;
+    fn get(&self, id: &str) -> Option<ConnectorEntry>;
+    fn offline_capable(&self) -> Vec<ConnectorEntry>;
+}
+
+/// The built-in email connectors.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultEmailConnectorRegistry {
+    entries: Vec<ConnectorEntry>,
+}
+
+impl DefaultEmailConnectorRegistry {
+    pub fn new(entries: Vec<ConnectorEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
+        if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
+            self.entries.push(entry);
+        }
+        self
+    }
+}
+
+impl EmailConnectorRegistry for DefaultEmailConnectorRegistry {
+    fn all(&self) -> Vec<ConnectorEntry> {
+        let mut out = self.entries.clone();
+        out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    fn get(&self, id: &str) -> Option<ConnectorEntry> {
+        self.entries.iter().find(|e| e.id == id).cloned()
+    }
+
+    /// What still works with no network. On a device built to work offline this
+    /// is the list that matters, and it is usually short - which is worth seeing
+    /// rather than hiding.
+    fn offline_capable(&self) -> Vec<ConnectorEntry> {
+        self.entries.iter().filter(|e| e.works_offline).cloned().collect()
+    }
+}
+
+/// Calendar connectors. A calendar is a record of where somebody will
+/// physically be, which is why its read scope is not a small permission.
+pub trait CalendarConnectorRegistry {
+    fn kind(&self) -> &'static str {
+        "calendar"
+    }
+    fn all(&self) -> Vec<ConnectorEntry>;
+    fn get(&self, id: &str) -> Option<ConnectorEntry>;
+    fn offline_capable(&self) -> Vec<ConnectorEntry>;
+}
+
+/// The built-in calendar connectors.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultCalendarConnectorRegistry {
+    entries: Vec<ConnectorEntry>,
+}
+
+impl DefaultCalendarConnectorRegistry {
+    pub fn new(entries: Vec<ConnectorEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
+        if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
+            self.entries.push(entry);
+        }
+        self
+    }
+}
+
+impl CalendarConnectorRegistry for DefaultCalendarConnectorRegistry {
+    fn all(&self) -> Vec<ConnectorEntry> {
+        let mut out = self.entries.clone();
+        out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    fn get(&self, id: &str) -> Option<ConnectorEntry> {
+        self.entries.iter().find(|e| e.id == id).cloned()
+    }
+
+    /// What still works with no network. On a device built to work offline this
+    /// is the list that matters, and it is usually short - which is worth seeing
+    /// rather than hiding.
+    fn offline_capable(&self) -> Vec<ConnectorEntry> {
+        self.entries.iter().filter(|e| e.works_offline).cloned().collect()
+    }
+}
+
+/// CRM connectors. The data is about OTHER people, who never agreed to
+/// anything here - so what leaves is narrower than what a user could
+/// authorise for their own data.
+pub trait CrmConnectorRegistry {
+    fn kind(&self) -> &'static str {
+        "crm"
+    }
+    fn all(&self) -> Vec<ConnectorEntry>;
+    fn get(&self, id: &str) -> Option<ConnectorEntry>;
+    fn offline_capable(&self) -> Vec<ConnectorEntry>;
+}
+
+/// The built-in crm connectors.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultCrmConnectorRegistry {
+    entries: Vec<ConnectorEntry>,
+}
+
+impl DefaultCrmConnectorRegistry {
+    pub fn new(entries: Vec<ConnectorEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
+        if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
+            self.entries.push(entry);
+        }
+        self
+    }
+}
+
+impl CrmConnectorRegistry for DefaultCrmConnectorRegistry {
+    fn all(&self) -> Vec<ConnectorEntry> {
+        let mut out = self.entries.clone();
+        out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    fn get(&self, id: &str) -> Option<ConnectorEntry> {
+        self.entries.iter().find(|e| e.id == id).cloned()
+    }
+
+    /// What still works with no network. On a device built to work offline this
+    /// is the list that matters, and it is usually short - which is worth seeing
+    /// rather than hiding.
+    fn offline_capable(&self) -> Vec<ConnectorEntry> {
+        self.entries.iter().filter(|e| e.works_offline).cloned().collect()
+    }
+}
+
+/// Accounting connectors. Read-shaped by default: a ledger is a record, and
+/// a record that an assistant can rewrite is not one.
+pub trait AccountingConnectorRegistry {
+    fn kind(&self) -> &'static str {
+        "accounting"
+    }
+    fn all(&self) -> Vec<ConnectorEntry>;
+    fn get(&self, id: &str) -> Option<ConnectorEntry>;
+    fn offline_capable(&self) -> Vec<ConnectorEntry>;
+}
+
+/// The built-in accounting connectors.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultAccountingConnectorRegistry {
+    entries: Vec<ConnectorEntry>,
+}
+
+impl DefaultAccountingConnectorRegistry {
+    pub fn new(entries: Vec<ConnectorEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
+        if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
+            self.entries.push(entry);
+        }
+        self
+    }
+}
+
+impl AccountingConnectorRegistry for DefaultAccountingConnectorRegistry {
+    fn all(&self) -> Vec<ConnectorEntry> {
+        let mut out = self.entries.clone();
+        out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    fn get(&self, id: &str) -> Option<ConnectorEntry> {
+        self.entries.iter().find(|e| e.id == id).cloned()
+    }
+
+    /// What still works with no network. On a device built to work offline this
+    /// is the list that matters, and it is usually short - which is worth seeing
+    /// rather than hiding.
+    fn offline_capable(&self) -> Vec<ConnectorEntry> {
+        self.entries.iter().filter(|e| e.works_offline).cloned().collect()
+    }
+}
+
+/// Banking connectors. READ ONLY, always. Nothing in this codebase moves
+/// money - a balance can be shown and a transaction categorised, and a
+/// transfer is the account holder's own action.
+pub trait BankingConnectorRegistry {
+    fn kind(&self) -> &'static str {
+        "banking"
+    }
+    fn all(&self) -> Vec<ConnectorEntry>;
+    fn get(&self, id: &str) -> Option<ConnectorEntry>;
+    fn offline_capable(&self) -> Vec<ConnectorEntry>;
+}
+
+/// The built-in banking connectors.
+#[derive(Debug, Default, Clone)]
+pub struct DefaultBankingConnectorRegistry {
+    entries: Vec<ConnectorEntry>,
+}
+
+impl DefaultBankingConnectorRegistry {
+    pub fn new(entries: Vec<ConnectorEntry>) -> Self {
+        Self { entries }
+    }
+
+    pub fn add(&mut self, entry: ConnectorEntry) -> &mut Self {
+        if !entry.id.is_empty() && !self.entries.iter().any(|e| e.id == entry.id) {
+            self.entries.push(entry);
+        }
+        self
+    }
+}
+
+impl BankingConnectorRegistry for DefaultBankingConnectorRegistry {
+    fn all(&self) -> Vec<ConnectorEntry> {
+        let mut out = self.entries.clone();
+        out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    fn get(&self, id: &str) -> Option<ConnectorEntry> {
+        self.entries.iter().find(|e| e.id == id).cloned()
+    }
+
+    /// What still works with no network. On a device built to work offline this
+    /// is the list that matters, and it is usually short - which is worth seeing
+    /// rather than hiding.
+    fn offline_capable(&self) -> Vec<ConnectorEntry> {
+        self.entries.iter().filter(|e| e.works_offline).cloned().collect()
     }
 }
