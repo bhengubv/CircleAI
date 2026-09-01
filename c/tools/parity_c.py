@@ -73,6 +73,13 @@ def candidates(t):
     yield t
     if t.startswith("I") and len(t) > 1 and t[1].isupper():
         yield t[1:]
+    # `ca_` IS the CircleAI prefix. C has no namespaces, so the product name is
+    # carried by the symbol prefix rather than repeated inside every identifier:
+    # CircleAIAuditLog is ca_audit_log_t, not ca_circle_ai_audit_log_t. Same
+    # class of rule as dropping the I from an interface.
+    for b in (t, t[1:] if t.startswith("I") and len(t) > 1 and t[1].isupper() else t):
+        if b.startswith("CircleAI") and len(b) > len("CircleAI"):
+            yield b[len("CircleAI"):]
     for p in IMPL:
         if t.startswith(p) and len(t) > len(p):
             yield t[len(p):]
