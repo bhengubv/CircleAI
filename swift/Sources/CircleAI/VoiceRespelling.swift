@@ -234,51 +234,315 @@ public enum NguniRespeller {
 
 // MARK: - Learned respellings
 
-public struct LearnedWord: Sendable, Equatable {
+/// Where a word has got to in the learning process.
+public enum LearningState: Int, Sendable, Equatable, Codable, CaseIterable {
+    /// Still listening. Nothing has changed how the word is spoken.
+    case listening = 0
+    /// Five hearings agreed; the new spelling is in use and awaiting its check.
+    case adopted
+    /// The check passed. This is how the word is said for this person.
+    case confirmed
+}
+
+/// What has been learned about one word.
+public struct LearnedWord: Sendable, Equatable, Codable {
     public let word: String
-    public let respelling: String
-    public let learnedAt: Date
-    public init(word: String, respelling: String, learnedAt: Date) {
+    /// The spelling in use, or nil while still listening.
+    public let spelling: String?
+    public let state: LearningState
+    /// Each candidate spelling and how many hearings agreed on it.
+    public let candidates: [String: Int]
+
+    public init(word: String, spelling: String?, state: LearningState,
+                candidates: [String: Int] = [:]) {
         self.word = word
-        self.respelling = respelling
-        self.learnedAt = learnedAt
+        self.spelling = spelling
+        self.state = state
+        self.candidates = candidates
     }
 }
 
-/// What THIS person has corrected. A respelling somebody typed themselves
-/// outranks both the shipped table and anything derived, because they know how
-/// their own name is said and this code does not.
+/// What THIS person has corrected, and what listening to them has taught.
+///
+/// A respelling somebody typed themselves outranks both the shipped table and
+/// anything derived, because they know how their own name is said and this code
+/// does not. Below that sits what repeated hearings agree on.
+///
+/// THE FIVE-HEARINGS RULE AND THE CHECK AFTER IT. One hearing is a mishearing;
+/// five that agree is a pattern. But agreeing five times only proves the ASR is
+/// consistent, not that the new spelling is right — so an adopted word is put
+/// INTO USE and the next hearing is read as the test of it. If they say it our
+/// new way, it is confirmed; if they do not, we were wrong, the candidate is
+/// struck out, and the evidence rebuilds from scratch.
+///
+/// Ported from src/CircleAI.Voice/PersonalRespellings.cs.
 public final class PersonalRespellings: @unchecked Sendable {
+
+    /// Hearings that must agree before a spelling goes into use.
+    public static let adoptAfter = 5
+
+    /// How far a hearing may sit from the word and still be that word, as a
+    /// fraction of the longer of the two. Beyond this the speaker was saying
+    /// something else and the hearing is not evidence about anything.
+    public static let maxDifference = 0.40
+
+    private final class Entry {
+        var candidates: [String: Int] = [:]
+        var spelling: String?
+        var state: LearningState = .listening
+    }
+
     private let lock = NSLock()
-    private var learned: [String: LearnedWord] = [:]
+    private var words: [String: Entry] = [:]     // keyed lowercased
+    private var originalCase: [String: String] = [:]
+    private var dirty = false
 
     public init() {}
 
+    /// Whether there is learning that has not reached disk. A year of learning
+    /// that vanishes on restart is not learning.
+    public var hasUnsavedChanges: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return dirty
+    }
+
+    /// The spelling in use for a word, or nil while it is still being learned.
+    public func respell(_ word: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        guard let e = words[word.lowercased()],
+              e.state == .adopted || e.state == .confirmed else { return nil }
+        return e.spelling
+    }
+
+    public var all: [LearnedWord] {
+        lock.lock(); defer { lock.unlock() }
+        return words.map { key, e in
+            LearnedWord(word: originalCase[key] ?? key, spelling: e.spelling,
+                        state: e.state, candidates: e.candidates)
+        }.sorted { $0.word < $1.word }
+    }
+
+    /// Somebody typed this in themselves.
+    ///
+    /// Straight to confirmed, skipping the evidence entirely: a person stating
+    /// how their own name is said is stronger than any number of hearings, and
+    /// putting it through the five-hearing rule would ignore them four times
+    /// first.
     @discardableResult
-    public func learn(word: String, respelling: String, at: Date = Date()) -> Bool {
+    public func learn(word: String, respelling: String) -> Bool {
         let w = word.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = respelling.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !w.isEmpty, !r.isEmpty else { return false }
+
         lock.lock()
-        learned[w.lowercased()] = LearnedWord(word: w, respelling: r, learnedAt: at)
+        let key = w.lowercased()
+        let e = words[key] ?? Entry()
+        e.spelling = r
+        e.state = .confirmed
+        words[key] = e
+        originalCase[key] = w
+        dirty = true
         lock.unlock()
         return true
     }
 
-    public func respell(_ word: String) -> String? {
+    /// One hearing of a word. Returns true only when this hearing CHANGED how
+    /// the word is spoken.
+    @discardableResult
+    public func observe(word: String, heard: String, currentSpelling: String? = nil) -> Bool {
+        let w = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        let h = heard.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !w.isEmpty, !h.isEmpty else { return false }
+
         lock.lock(); defer { lock.unlock() }
-        return learned[word.lowercased()]?.respelling
+        return observeLocked(word: w, heard: h, currentSpelling: currentSpelling)
+    }
+
+    private func observeLocked(word: String, heard: String, currentSpelling: String?) -> Bool {
+        let key = word.lowercased()
+        let existing = words[key]
+        let reference = existing?.spelling ?? currentSpelling ?? word
+
+        // Too far from the word to BE that word. Checked BEFORE the entry is
+        // created, so a rejected hearing leaves no trace — otherwise every
+        // unrelated word in earshot would litter the table with empty entries
+        // and show up in a "words your CircleAI knows" view.
+        guard Self.isSameWord(reference, heard) else { return false }
+
+        let entry: Entry
+        if let existing {
+            entry = existing
+        } else {
+            entry = Entry()
+            words[key] = entry
+            originalCase[key] = word
+        }
+
+        // THE CHECK. A word adopted last time is now being said our new way;
+        // this hearing is the test of whether we got it right.
+        if entry.state == .adopted, let adopted = entry.spelling {
+            if Self.agrees(adopted, heard) {
+                entry.state = .confirmed
+                dirty = true
+                return false                        // confirmed, but nothing changed
+            }
+            // We were wrong. Undo it and let the evidence rebuild — including
+            // this hearing, which is evidence for something else.
+            entry.candidates.removeValue(forKey: adopted)
+            entry.spelling = nil
+            entry.state = .listening
+            dirty = true
+        }
+
+        // They said it the way we already say it. That is agreement, not a
+        // lesson — and counting it would build a personal entry that overrides
+        // the shipped spelling with an identical one, for no reason.
+        if Self.agrees(entry.spelling ?? currentSpelling, heard) { return false }
+
+        let count = (entry.candidates[heard] ?? 0) + 1
+        entry.candidates[heard] = count
+        dirty = true
+
+        guard count >= Self.adoptAfter else { return false }
+
+        entry.spelling = heard
+        entry.state = .adopted
+        return true
+    }
+
+    /// Reads a whole transcript against the spellings currently in use and
+    /// returns the words whose pronunciation this changed.
+    @discardableResult
+    public func learnFrom(transcript: String?, currentSpellings: [String: String]) -> [String] {
+        guard let transcript,
+              !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !currentSpellings.isEmpty
+        else { return [] }
+
+        let separators = CharacterSet(charactersIn: " \t\n\r,.?!;:\"")
+        let tokens = transcript
+            .components(separatedBy: separators)
+            .map { t -> String in
+                // A hyphenated form is the tail: "e-mail" is heard as "mail".
+                if let i = t.lastIndex(of: "-") { return String(t[t.index(after: i)...]) }
+                return t
+            }
+            .filter { $0.count > 1 }
+        guard !tokens.isEmpty else { return [] }
+
+        var changed: [String] = []
+        for (word, spelling) in currentSpellings.sorted(by: { $0.key < $1.key }) {
+            // The NEAREST token to how we say it today. Nearest, not merely
+            // close: a sentence can hold two similar words and picking the wrong
+            // one would teach the wrong lesson.
+            let reference = respell(word) ?? spelling
+            let scored = tokens
+                .map { ($0, Self.editDistance($0.lowercased(), reference.lowercased())) }
+                .min { $0.1 < $1.1 }!
+
+            let allowed = Double(max(reference.count, scored.0.count)) * Self.maxDifference
+            if Double(scored.1) > allowed { continue }      // that word was not said
+
+            if observe(word: word, heard: scored.0, currentSpelling: spelling) {
+                changed.append(word)
+            }
+        }
+        return changed
     }
 
     @discardableResult
     public func forget(_ word: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return learned.removeValue(forKey: word.lowercased()) != nil
+        let key = word.lowercased()
+        let removed = words.removeValue(forKey: key) != nil
+        originalCase.removeValue(forKey: key)
+        if removed { dirty = true }
+        return removed
     }
 
-    public var all: [LearnedWord] {
-        lock.lock(); defer { lock.unlock() }
-        return Array(learned.values).sorted { $0.word < $1.word }
+    // MARK: - Keeping it between sessions
+    //
+    // This is the person's own file, on their own device: never uploaded, never
+    // shared, never merged with anybody else's. Two people's files will disagree
+    // about the same word, and that is the whole point.
+
+    public func save(to path: String) throws {
+        let snapshot = all
+        let data = try JSONEncoder().encode(snapshot)
+
+        let dir = (path as NSString).deletingLastPathComponent
+        if !dir.isEmpty {
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        }
+
+        // Written beside and moved into place, so an interrupted save leaves the
+        // previous table intact rather than a half-written one.
+        let temp = path + ".tmp"
+        try data.write(to: URL(fileURLWithPath: temp))
+        _ = try? FileManager.default.removeItem(atPath: path)
+        try FileManager.default.moveItem(atPath: temp, toPath: path)
+
+        // Only once the bytes are actually in place. Clearing it before the move
+        // would mean a failed write leaves the table looking saved.
+        lock.lock(); dirty = false; lock.unlock()
+    }
+
+    /// An unreadable file starts over rather than refusing to start. Losing the
+    /// table costs tuning; refusing to start costs the whole voice.
+    public static func load(from path: String) -> PersonalRespellings {
+        let table = PersonalRespellings()
+        guard FileManager.default.fileExists(atPath: path),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let snapshot = try? JSONDecoder().decode([LearnedWord].self, from: data)
+        else { return table }
+
+        for s in snapshot {
+            let e = Entry()
+            e.spelling = s.spelling
+            e.state = s.state
+            e.candidates = s.candidates
+            let key = s.word.lowercased()
+            table.words[key] = e
+            table.originalCase[key] = s.word
+        }
+        return table
+    }
+
+    // MARK: - Comparing what was heard to what was meant
+
+    static func agrees(_ a: String?, _ b: String) -> Bool {
+        guard let a else { return false }
+        return a.caseInsensitiveCompare(b) == .orderedSame
+    }
+
+    static func isSameWord(_ a: String, _ b: String) -> Bool {
+        if agrees(a, b) { return true }
+        let longest = max(a.count, b.count)
+        guard longest > 0 else { return false }
+        return Double(editDistance(a.lowercased(), b.lowercased())) / Double(longest)
+            <= maxDifference
+    }
+
+    /// Levenshtein over two rolling rows rather than a full matrix — the table
+    /// is never inspected, only its last row, and a phone has better uses for
+    /// the memory.
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let x = Array(a), y = Array(b)
+        if x.isEmpty { return y.count }
+        if y.isEmpty { return x.count }
+
+        var prev = Array(0...y.count)
+        var cur = [Int](repeating: 0, count: y.count + 1)
+
+        for i in 1...x.count {
+            cur[0] = i
+            for j in 1...y.count {
+                let cost = x[i - 1] == y[j - 1] ? 0 : 1
+                cur[j] = min(min(cur[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost)
+            }
+            swap(&prev, &cur)
+        }
+        return prev[y.count]
     }
 }
 

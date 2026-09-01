@@ -344,6 +344,10 @@ public final class NullWakeWordDetector: IWakeWordDetector, @unchecked Sendable 
 /// Errors from the Voice module. Mirrors the C# `ObjectDisposedException` guards.
 public enum VoiceError: Error, Equatable {
     case disposed
+    /// A model or data file the engine needs is not where it was told to look.
+    /// Carries the path, because "model not found" without one sends somebody
+    /// hunting through three candidate directories.
+    case fileNotFound(String)
 }
 
 // =====================================================================
