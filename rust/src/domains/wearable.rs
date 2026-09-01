@@ -22,17 +22,17 @@ pub struct WearableDomainContext {
 
 impl WearableDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'what a worn device notices';
+    pub const PURPOSE: &'static str = "what a worn device notices";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['steps', 'heart rate', 'sleep', 'reminders'];
+    pub const TOPICS: &'static [&'static str] = &["steps", "heart rate", "sleep", "reminders"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'diagnose from a sensor';
+    pub const REFUSES: &'static str = "diagnose from a sensor";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'a wrist is not a clinic';
+    pub const REFUSAL: &'static str = "a wrist is not a clinic";
 
     pub fn new() -> Self {
         Self::default()

@@ -22,17 +22,17 @@ pub struct FaithDomainContext {
 
 impl FaithDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'religious life';
+    pub const PURPOSE: &'static str = "religious life";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['readings', 'times', 'calendars', 'community'];
+    pub const TOPICS: &'static [&'static str] = &["readings", "times", "calendars", "community"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'tell you what to believe';
+    pub const REFUSES: &'static str = "tell you what to believe";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I can find the text and the times; the rest is not mine';
+    pub const REFUSAL: &'static str = "I can find the text and the times; the rest is not mine";
 
     pub fn new() -> Self {
         Self::default()

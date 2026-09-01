@@ -22,17 +22,17 @@ pub struct AgricultureDomainContext {
 
 impl AgricultureDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'growing things';
+    pub const PURPOSE: &'static str = "growing things";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['planting windows', 'soil', 'rainfall', 'pests', 'market days'];
+    pub const TOPICS: &'static [&'static str] = &["planting windows", "soil", "rainfall", "pests", "market days"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'recommend a pesticide dose';
+    pub const REFUSES: &'static str = "recommend a pesticide dose";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'the label and your extension officer have the dose for your crop and your soil';
+    pub const REFUSAL: &'static str = "the label and your extension officer have the dose for your crop and your soil";
 
     pub fn new() -> Self {
         Self::default()

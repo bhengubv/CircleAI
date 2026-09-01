@@ -22,17 +22,17 @@ pub struct SportsDomainContext {
 
 impl SportsDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'playing and following';
+    pub const PURPOSE: &'static str = "playing and following";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['fixtures', 'results', 'training', 'teams'];
+    pub const TOPICS: &'static [&'static str] = &["fixtures", "results", "training", "teams"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'place a bet';
+    pub const REFUSES: &'static str = "place a bet";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'not something I do';
+    pub const REFUSAL: &'static str = "not something I do";
 
     pub fn new() -> Self {
         Self::default()

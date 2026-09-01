@@ -22,14 +22,14 @@ pub struct EnergyDomainContext {
 
 impl EnergyDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'power and its cost';
+    pub const PURPOSE: &'static str = "power and its cost";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['load shedding', 'tariffs', 'usage', 'solar'];
+    pub const TOPICS: &'static [&'static str] = &["load shedding", "tariffs", "usage", "solar"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'work on a live board';
+    pub const REFUSES: &'static str = "work on a live board";
 
     /// Why - in words for the person asking, not a policy identifier.
     pub const REFUSAL: &'static str = "the numbers I can do; the wiring is an electrician's";

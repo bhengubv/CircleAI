@@ -189,7 +189,7 @@ pub struct StyleScriptRequest {
 }
 
 /// A script, as shots.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StyleScriptResult {
     /// `(seconds, description, spoken line)`.
     pub shots: Vec<(f32, String, String)>,
@@ -249,7 +249,7 @@ pub struct AudioTrack {
 }
 
 /// What came back.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct VideoGenerationResult {
     pub path: String,
     pub resolution: VideoResolution,
@@ -688,7 +688,7 @@ impl TreasurySnapshot {
 /// EVERY FIELD IS FOR THE REVIEW AFTERWARDS. A decision log that records what
 /// happened but not why, or why but not what was rejected, cannot answer the
 /// only question anybody asks it: how did it come to that.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AutonomousDecision {
     pub decision_id: String,
     pub action: String,

@@ -22,17 +22,17 @@ pub struct CommerceIntegrationXeroDomainContext {
 
 impl CommerceIntegrationXeroDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'Xero bookkeeping';
+    pub const PURPOSE: &'static str = "Xero bookkeeping";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['invoices', 'contacts', 'bank feeds'];
+    pub const TOPICS: &'static [&'static str] = &["invoices", "contacts", "bank feeds"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'change your books without asking';
+    pub const REFUSES: &'static str = "change your books without asking";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I will draft it and show you before anything is posted';
+    pub const REFUSAL: &'static str = "I will draft it and show you before anything is posted";
 
     pub fn new() -> Self {
         Self::default()

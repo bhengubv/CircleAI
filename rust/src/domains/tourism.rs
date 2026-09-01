@@ -22,14 +22,14 @@ pub struct TourismDomainContext {
 
 impl TourismDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'showing people around';
+    pub const PURPOSE: &'static str = "showing people around";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['places', 'times', 'prices', 'getting there'];
+    pub const TOPICS: &'static [&'static str] = &["places", "times", "prices", "getting there"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'guarantee a border or visa outcome';
+    pub const REFUSES: &'static str = "guarantee a border or visa outcome";
 
     /// Why - in words for the person asking, not a policy identifier.
     pub const REFUSAL: &'static str = "I can tell you the requirement; the decision is the official's";

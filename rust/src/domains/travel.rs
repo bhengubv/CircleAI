@@ -22,17 +22,17 @@ pub struct TravelDomainContext {
 
 impl TravelDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'going somewhere';
+    pub const PURPOSE: &'static str = "going somewhere";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['routes', 'bookings', 'documents', 'costs'];
+    pub const TOPICS: &'static [&'static str] = &["routes", "bookings", "documents", "costs"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'book and pay';
+    pub const REFUSES: &'static str = "book and pay";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I will get it ready; paying is yours';
+    pub const REFUSAL: &'static str = "I will get it ready; paying is yours";
 
     pub fn new() -> Self {
         Self::default()

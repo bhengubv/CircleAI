@@ -26,13 +26,13 @@ impl SafetyChildDomainContext {
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['check-ins', 'boundaries', 'contacts'];
+    pub const TOPICS: &'static [&'static str] = &["check-ins", "boundaries", "contacts"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'track a child without them knowing';
+    pub const REFUSES: &'static str = "track a child without them knowing";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'anyone being located should know they are';
+    pub const REFUSAL: &'static str = "anyone being located should know they are";
 
     pub fn new() -> Self {
         Self::default()

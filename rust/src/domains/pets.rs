@@ -22,14 +22,14 @@ pub struct PetsDomainContext {
 
 impl PetsDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'animals in the house';
+    pub const PURPOSE: &'static str = "animals in the house";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['feeding', 'vaccinations', 'vets', 'routines'];
+    pub const TOPICS: &'static [&'static str] = &["feeding", "vaccinations", "vets", "routines"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'dose an animal';
+    pub const REFUSES: &'static str = "dose an animal";
 
     /// Why - in words for the person asking, not a policy identifier.
     pub const REFUSAL: &'static str = "weights and doses are the vet's";

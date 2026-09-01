@@ -87,7 +87,11 @@ impl WavIo {
         if data.len() < 12 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
             return None;
         }
-        let u16_at = |i: usize| u16::from_le_bytes([*data.get(i)?, *data.get(i + 1)?]);
+        // Returns an OPTION, like its u32 sibling: a truncated header must
+        // stop the parse rather than read past the end of the buffer.
+        let u16_at = |i: usize| {
+            Some(u16::from_le_bytes([*data.get(i)?, *data.get(i + 1)?]))
+        };
         let u32_at = |i: usize| {
             Some(u32::from_le_bytes([
                 *data.get(i)?,

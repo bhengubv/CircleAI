@@ -39,6 +39,26 @@ def type_prefix(name: str) -> str:
     return "".join(part for part in name.split("."))
 
 
+def rust_str(value: str) -> str:
+    """A Rust string literal.
+
+    NOT `repr()`. Python's repr prefers SINGLE quotes, which Rust reads as a
+    character literal — `'making a device usable'` is a parse error, not a
+    string. Every generated constant carried one until the crate was first
+    compiled.
+    """
+    escaped = value
+    for raw, rendered in (
+        (chr(92), chr(92) * 2),
+        (chr(34), chr(92) + chr(34)),
+        (chr(10), chr(92) + 'n'),
+        (chr(13), chr(92) + 'r'),
+        (chr(9), chr(92) + 't'),
+    ):
+        escaped = escaped.replace(raw, rendered)
+    return chr(34) + escaped + chr(34)
+
+
 def wrap(text: str, indent: str = "/// ", width: int = 76) -> str:
     words, line, lines = text.split(), "", []
     for w in words:
@@ -75,17 +95,17 @@ pub struct {prefix}DomainContext {{
 
 impl {prefix}DomainContext {{
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = {purpose!r};
+    pub const PURPOSE: &'static str = {purpose};
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
     pub const TOPICS: &'static [&'static str] = &[{topics}];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = {refuses!r};
+    pub const REFUSES: &'static str = {refuses};
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = {refusal!r};
+    pub const REFUSAL: &'static str = {refusal};
 
     pub fn new() -> Self {{
         Self::default()
@@ -209,10 +229,10 @@ def main() -> None:
         body = TEMPLATE.format(
             title=name,
             prefix=prefix,
-            purpose=purpose,
-            refuses=refuses,
-            refusal=refusal,
-            topics=", ".join(repr(t) for t in topics),
+            purpose=rust_str(purpose),
+            refuses=rust_str(refuses),
+            refusal=rust_str(refusal),
+            topics=", ".join(rust_str(t) for t in topics),
             context_doc=wrap(
                 "What the %s vertical is working with. Held on the device, "
                 "shown back on request, and cleared when asked." % purpose

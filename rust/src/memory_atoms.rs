@@ -595,7 +595,7 @@ impl MemoryWear {
 // The log and the stores
 
 /// One row as it is written.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AtomRecord {
     pub id: String,
     pub kind: String,

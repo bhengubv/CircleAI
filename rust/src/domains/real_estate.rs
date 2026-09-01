@@ -22,17 +22,17 @@ pub struct RealEstateDomainContext {
 
 impl RealEstateDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'property';
+    pub const PURPOSE: &'static str = "property";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['listings', 'viewings', 'documents', 'prices'];
+    pub const TOPICS: &'static [&'static str] = &["listings", "viewings", "documents", "prices"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'value a property';
+    pub const REFUSES: &'static str = "value a property";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I can show you what sold nearby; a valuation is signed by someone qualified';
+    pub const REFUSAL: &'static str = "I can show you what sold nearby; a valuation is signed by someone qualified";
 
     pub fn new() -> Self {
         Self::default()

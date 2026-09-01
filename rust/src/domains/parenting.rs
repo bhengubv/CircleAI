@@ -22,17 +22,17 @@ pub struct ParentingDomainContext {
 
 impl ParentingDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'raising children';
+    pub const PURPOSE: &'static str = "raising children";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['routines', 'milestones', 'school', 'sleep'];
+    pub const TOPICS: &'static [&'static str] = &["routines", "milestones", "school", "sleep"];
 
     /// The one thing it will NOT do, however it is asked.
     pub const REFUSES: &'static str = "assess a child's development";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'every child differs; a clinic can tell you what I cannot';
+    pub const REFUSAL: &'static str = "every child differs; a clinic can tell you what I cannot";
 
     pub fn new() -> Self {
         Self::default()

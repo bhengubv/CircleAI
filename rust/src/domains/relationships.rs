@@ -22,17 +22,17 @@ pub struct RelationshipsDomainContext {
 
 impl RelationshipsDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'people you are close to';
+    pub const PURPOSE: &'static str = "people you are close to";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['dates', 'occasions', 'messages', 'plans'];
+    pub const TOPICS: &'static [&'static str] = &["dates", "occasions", "messages", "plans"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'read or write to somebody as you without asking';
+    pub const REFUSES: &'static str = "read or write to somebody as you without asking";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I will draft it and you send it';
+    pub const REFUSAL: &'static str = "I will draft it and you send it";
 
     pub fn new() -> Self {
         Self::default()

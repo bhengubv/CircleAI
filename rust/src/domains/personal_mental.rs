@@ -22,17 +22,17 @@ pub struct PersonalMentalDomainContext {
 
 impl PersonalMentalDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'how you are doing';
+    pub const PURPOSE: &'static str = "how you are doing";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['mood', 'sleep', 'journalling', 'support'];
+    pub const TOPICS: &'static [&'static str] = &["mood", "sleep", "journalling", "support"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'stand in for care';
+    pub const REFUSES: &'static str = "stand in for care";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'if things are bad right now, please talk to someone - I will help you find who';
+    pub const REFUSAL: &'static str = "if things are bad right now, please talk to someone - I will help you find who";
 
     pub fn new() -> Self {
         Self::default()

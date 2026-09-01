@@ -22,17 +22,17 @@ pub struct HRDomainContext {
 
 impl HRDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'people at work';
+    pub const PURPOSE: &'static str = "people at work";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['leave', 'policies', 'onboarding', 'reviews'];
+    pub const TOPICS: &'static [&'static str] = &["leave", "policies", "onboarding", "reviews"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'decide a disciplinary case';
+    pub const REFUSES: &'static str = "decide a disciplinary case";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I can lay out the policy; a decision about a person is for people';
+    pub const REFUSAL: &'static str = "I can lay out the policy; a decision about a person is for people";
 
     pub fn new() -> Self {
         Self::default()

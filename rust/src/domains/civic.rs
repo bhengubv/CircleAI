@@ -22,17 +22,17 @@ pub struct CivicDomainContext {
 
 impl CivicDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'dealing with public services';
+    pub const PURPOSE: &'static str = "dealing with public services";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['documents', 'queues', 'offices', 'deadlines', 'rights'];
+    pub const TOPICS: &'static [&'static str] = &["documents", "queues", "offices", "deadlines", "rights"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'tell you how to vote';
+    pub const REFUSES: &'static str = "tell you how to vote";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I will find you the facts and the dates; the choice is not mine to influence';
+    pub const REFUSAL: &'static str = "I will find you the facts and the dates; the choice is not mine to influence";
 
     pub fn new() -> Self {
         Self::default()

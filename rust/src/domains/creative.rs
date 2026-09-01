@@ -22,17 +22,17 @@ pub struct CreativeDomainContext {
 
 impl CreativeDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'making things';
+    pub const PURPOSE: &'static str = "making things";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['drafts', 'edits', 'briefs', 'portfolios'];
+    pub const TOPICS: &'static [&'static str] = &["drafts", "edits", "briefs", "portfolios"];
 
     /// The one thing it will NOT do, however it is asked.
     pub const REFUSES: &'static str = "pass someone else's work off as yours";
 
     /// Why - in words for the person asking, not a policy identifier.
-    pub const REFUSAL: &'static str = 'I will help you make your own';
+    pub const REFUSAL: &'static str = "I will help you make your own";
 
     pub fn new() -> Self {
         Self::default()

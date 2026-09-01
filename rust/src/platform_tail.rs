@@ -3852,19 +3852,25 @@ impl IoTCompanionPipeline {
 
     /// Only what actually changed.
     pub fn changed(&mut self, readings: &[(String, f64)]) -> Vec<(String, f64)> {
-        readings
-            .iter()
-            .filter(|(sensor, value)| {
-                self.last
-                    .get(sensor)
-                    .map(|previous| (value - previous).abs() >= self.change_threshold)
-                    .unwrap_or(true)
-            })
-            .map(|(sensor, value)| {
-                self.last.insert(sensor.clone(), *value);
-                (sensor.clone(), *value)
-            })
-            .collect()
+        // DECIDE FIRST, then record. A single chained pass reads `self.last`
+        // in the filter and writes it in the map, which is two borrows of the
+        // same field at once - and reordering the two silently changes the
+        // answer, because a reading compared against itself never differs.
+        let mut changed: Vec<(String, f64)> = Vec::new();
+        for (sensor, value) in readings {
+            let differs = self
+                .last
+                .get(sensor)
+                .map(|previous| (value - previous).abs() >= self.change_threshold)
+                .unwrap_or(true);
+            if differs {
+                changed.push((sensor.clone(), *value));
+            }
+        }
+        for (sensor, value) in &changed {
+            self.last.insert(sensor.clone(), *value);
+        }
+        changed
     }
 
     pub fn summarise(&mut self, readings: &[(String, f64)]) -> Option<String> {

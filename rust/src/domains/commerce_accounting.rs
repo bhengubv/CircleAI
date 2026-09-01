@@ -22,14 +22,14 @@ pub struct CommerceAccountingDomainContext {
 
 impl CommerceAccountingDomainContext {
     /// What this vertical is for.
-    pub const PURPOSE: &'static str = 'books and reconciliation';
+    pub const PURPOSE: &'static str = "books and reconciliation";
 
     /// What it will speak to. A topic list rather than a classifier, because a
     /// list can be read by the person it applies to.
-    pub const TOPICS: &'static [&'static str] = &['ledgers', 'reconciliation', 'VAT', 'statements'];
+    pub const TOPICS: &'static [&'static str] = &["ledgers", "reconciliation", "VAT", "statements"];
 
     /// The one thing it will NOT do, however it is asked.
-    pub const REFUSES: &'static str = 'sign off accounts';
+    pub const REFUSES: &'static str = "sign off accounts";
 
     /// Why - in words for the person asking, not a policy identifier.
     pub const REFUSAL: &'static str = "reconciling I can do; signing is an accountant's";
