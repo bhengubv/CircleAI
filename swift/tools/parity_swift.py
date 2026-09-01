@@ -139,9 +139,21 @@ EXCLUDED, RENAMES = read_exclusions()
 
 rows = []
 for d in sorted(glob.glob("src/CircleAI.*/")):
-    mod = os.path.basename(d.rstrip("/"))[len("CircleAI."):]
+    # normpath, not rstrip("/"): glob hands back a trailing os.sep, which is a
+    # BACKSLASH on Windows. rstrip("/") leaves it, basename then returns "" and
+    # every module is nameless — so every qualified exclusion and rename in
+    # PARITY-EXCLUSIONS.md silently stops matching and the same commit measures
+    # four points lower on Windows than on macOS. A ruler that reads differently
+    # per platform is worse than no ruler.
+    mod = os.path.basename(os.path.normpath(d))[len("CircleAI."):]
     ts = {}
-    for root, _, files in os.walk(d):
+    for root, dirs, files in os.walk(d):
+        # obj/ and bin/ are BUILD OUTPUT, not API. Scanning them counts the
+        # Android resource designer's generated "Resource" class as a public
+        # type every port is then failing to provide — a phantom gap that
+        # appears only on a machine that has built the solution, and that no
+        # amount of porting can ever close.
+        dirs[:] = [x for x in dirs if x not in ("obj", "bin")]
         for fn in files:
             if fn.endswith(".cs"):
                 for line in open(os.path.join(root, fn), encoding="utf-8", errors="ignore"):
