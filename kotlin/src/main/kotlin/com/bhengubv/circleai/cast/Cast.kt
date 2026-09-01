@@ -86,9 +86,9 @@ data class CastStatus(
     val currentUri: String?,
 )
 
-class CastControlException(message: String) : Exception(message)
+class CastControlException(message: String) : CastException(message)
 
-class NoMediaHostException : Exception(
+class NoMediaHostException : CastException(
     "Byte/file media requires a local media host so the renderer can pull it over the LAN. " +
         "Construct the session with a host."
 )
