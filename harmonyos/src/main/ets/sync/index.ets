@@ -1,57 +1,144 @@
-// sync/index.ets — Cross-device continuity primitives for Circle AI
-// ArkTS port: no `any`, numeric enums, explicit types.
-
 /**
- * How urgently a SyncDelta must be delivered.
+ * sync/index
+ *
+ * ArkTS for HarmonyOS. Ported from the TypeScript source of the same module by
+ * `harmonyos/tools/gen_arkts.py`: ArkTS is TypeScript without the dynamic
+ * parts, so the logic is shared rather than retyped, and what differs is the
+ * platform - Node's filesystem, paths and cryptography are reached here through
+ * `src/main/ets/platform.ets`, which is over `@ohos.*`.
+ *
+ * Edit the TypeScript source, not this file.
  */
+
+// sync/index.ts
+// Cross-device state synchronisation: SyncDelta, ISyncChannel, SyncDomainKeys.
+// Ported from Circle.AI.Networking + Circle.AI.Sync (C#).
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SyncDeliveryMode enum
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Delivery semantics for a SyncDelta. */
 export enum SyncDeliveryMode {
-  Immediate   = 0,
-  Batched     = 1,
-  BestEffort  = 2,
+  /** Fire-and-forget. No retries. Acceptable for non-critical state. */
+  BEST_EFFORT = "BestEffort",
+  /** Retry until acknowledged. Required for episodic memory and persona. */
+  GUARANTEED = "Guaranteed",
+  /** Bypass batching windows; deliver as fast as transport allows. */
+  URGENT = "Urgent",
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SchedulingHint
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Scheduling hint attached to a SyncDelta, allowing the transport layer
- * to choose optimal delivery timing and peer selection.
+ * Advisory scheduling information attached to a SyncDelta by the Circle AI
+ * reasoning layer. The Aether transport is free to disregard these hints,
+ * but honouring them minimises unnecessary wakeups and battery drain.
  */
 export interface SchedulingHint {
-  preferredPeerIds: string[];
-  suggestedWindowAt?: number;   // unix ms, optional
-  confidenceScore: number;      // 0.0..1.0
+  /**
+   * Device IDs that are strongly preferred as the first delivery targets.
+   * Empty means "no preference".
+   */
+  readonly preferredPeerIds: readonly string[];
+  /**
+   * The earliest UTC timestamp at which the transport should attempt delivery.
+   * null means "forward immediately".
+   */
+  readonly suggestedWindowUtc?: Date;
+  /**
+   * How confident the AI layer is that these hints are accurate. [0.0, 1.0].
+   * Below 0.5 = weak advisory; above 0.8 = strong advisory.
+   */
+  readonly confidenceScore: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SyncDelta
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * An incremental state change that must reach every device owned by ownerId.
- * payload is serialised as Uint8Array (e.g. JSON or MessagePack bytes).
+ * This is the primitive that makes Circle AI cross-device continuous —
+ * HER + JARVIS memory following the person.
  */
 export interface SyncDelta {
-  domainKey: string;
-  entityId: string;
-  payload: Uint8Array;
-  timestamp: number;               // unix ms
-  deliveryMode: SyncDeliveryMode;
-  schedulingHint?: SchedulingHint;
+  /** Identity whose state this belongs to. */
+  readonly ownerId: string;
+  /** Origin device. */
+  readonly sourceDeviceId: string;
+  /** Target device. Empty string = broadcast to all owned devices. */
+  readonly targetDeviceId: string;
+  /** Domain key (e.g. "memory.episodic" | "affect.state" | "persona"). */
+  readonly domainKey: string;
+  /** Serialised payload bytes. */
+  readonly payload: Uint8Array;
+  /** Monotonic sequence number per owner+domain. */
+  readonly sequence: number;
+  readonly deliveryMode: SyncDeliveryMode;
+  /** Time-to-live in milliseconds, or undefined for no expiry. */
+  readonly ttlMs?: number;
+  readonly createdAt: Date;
+  /** Optional AI-layer routing advisory. */
+  readonly schedulingHint?: SchedulingHint;
 }
 
-/**
- * Standard domain key constants.
- * Use these when constructing SyncDelta records.
- */
-export const SyncDomainKeys = {
-  AFFECT:   'affect',
-  EPISODIC: 'episodic',
-  PERSONA:  'persona',
-  GOALS:    'goals',
-  IDENTITY: 'identity',
-  FEEDBACK: 'feedback',
-} as const;
+// ─────────────────────────────────────────────────────────────────────────────
+// ISyncChannel
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * The cross-device continuity primitive.
  * Pushes memory/state deltas across whatever transport is available:
- * gRPC over 5G, BLE mesh, or DTN bundle.
+ * gRPC over 5G, BLE mesh via a neighbour, DTN bundle arriving 6 hours later.
+ * App code is identical in every case.
  */
 export interface ISyncChannel {
-  send(delta: SyncDelta): Promise<void>;
-  receive(): AsyncGenerator<SyncDelta>;
+  /**
+   * Push a delta. Channel selects transport and handles retries.
+   * Resolves when accepted (not necessarily delivered for DTN/LocalStore).
+   */
+  pushDeltaAsync(delta: SyncDelta): Promise<void>;
+
+  /**
+   * Receive deltas for ownerId as they arrive.
+   * The generator yields continuously until the caller breaks or disposes.
+   */
+  receiveDeltasAsync(ownerId: string): AsyncGenerator<SyncDelta>;
+
+  /** Returns the last seen sequence number for ownerId + domainKey. */
+  getLastSequenceAsync(ownerId: string, domainKey: string): Promise<number>;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SyncDomainKeys
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Well-known domain keys for SyncDelta.domainKey.
+ */
+export const SyncDomainKeys = {
+  EPISODIC_MEMORY: "memory.episodic",
+  AFFECT_STATE: "affect.state",
+  PERSONA: "persona",
+  GOALS: "goals",
+  SKILLS: "skills",
+  PREFERENCES: "preferences",
+} as const;
+
+export type SyncDomainKey = typeof SyncDomainKeys[keyof typeof SyncDomainKeys];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MemorySyncService — push/receive orchestrator (CircleAI.Sync).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  MemorySyncService,
+  JsonEpisodicDeltaCodec,
+} from "./memory_sync_service";
+export type {
+  IMemorySyncService,
+  IEpisodicDeltaCodec,
+} from "./memory_sync_service";

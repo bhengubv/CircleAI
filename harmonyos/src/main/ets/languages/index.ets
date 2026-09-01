@@ -1,151 +1,199 @@
-// languages/index.ets — Circle AI language layer
-// ArkTS port: enum-based WritingSystem, no `any`, explicit types throughout.
-// All 20 languages must exactly match fixtures/language_tags.json.
+/**
+ * languages/index
+ *
+ * ArkTS for HarmonyOS. Ported from the TypeScript source of the same module by
+ * `harmonyos/tools/gen_arkts.py`: ArkTS is TypeScript without the dynamic
+ * parts, so the logic is shared rather than retyped, and what differs is the
+ * platform - Node's filesystem, paths and cryptography are reached here through
+ * `src/main/ets/platform.ets`, which is over `@ohos.*`.
+ *
+ * Edit the TypeScript source, not this file.
+ */
 
-// ---------------------------------------------------------------------------
+// languages/index.ts
+// Circle AI language registry: writing systems, language tags, detection results.
+// Ported from Circle.AI.Languages (C#).
+
+// ─────────────────────────────────────────────────────────────────────────────
 // WritingSystem enum
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** Writing system (script) used by a language. */
 export enum WritingSystem {
-  Latin      = 0,
-  Arabic     = 1,
-  Ethiopic   = 2,
-  Han        = 3,
-  Devanagari = 4,
+  Latin = "Latin",
+  Arabic = "Arabic",
+  Ethiopic = "Ethiopic",
+  Geez = "Geez",
+  Devanagari = "Devanagari",
+  Han = "Han",
+  Cyrillic = "Cyrillic",
+  Hebrew = "Hebrew",
+  Greek = "Greek",
+  Other = "Other",
 }
 
-// ---------------------------------------------------------------------------
-// Core types
-// ---------------------------------------------------------------------------
-
-/** A BCP-47 language tag enriched with display metadata. */
-export interface LanguageTag {
-  /** IETF BCP-47 tag (e.g. "en", "zu", "ar"). */
-  bcp47Tag: string;
-  /** English display name (e.g. "English", "isiZulu"). */
-  englishName: string;
-  /** Native name of the language (e.g. "isiZulu", "العربية"). */
-  nativeName: string;
-  /** Writing system / script used by this language. */
-  writingSystem: WritingSystem;
-  /** true for right-to-left languages (Arabic, etc.). */
-  isRtl: boolean;
-  /** ISO 3166-1 alpha-2 primary region code (e.g. "ZA", "NG"). */
-  primaryRegion: string;
-}
-
-/** Sentinel value returned when language detection fails. */
-export const UNKNOWN_LANGUAGE: LanguageTag = {
-  bcp47Tag:      'und',
-  englishName:   'Unknown',
-  nativeName:    'Unknown',
-  writingSystem: WritingSystem.Latin,
-  isRtl:         false,
-  primaryRegion: '',
-};
-
-// ---------------------------------------------------------------------------
-// KnownLanguages — static registry (20 languages, declaration order fixed)
-// Must match fixtures/language_tags.json exactly.
-// ---------------------------------------------------------------------------
-
-/** Static registry of every language Circle AI ships support for. */
-export const KnownLanguages = {
-  // ── Africa ────────────────────────────────────────────────────────────────
-  IsiZulu:    {
-    bcp47Tag: 'zu',  englishName: 'isiZulu',    nativeName: 'isiZulu',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Sesotho:    {
-    bcp47Tag: 'st',  englishName: 'Sesotho',    nativeName: 'Sesotho',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Afrikaans:  {
-    bcp47Tag: 'af',  englishName: 'Afrikaans',  nativeName: 'Afrikaans',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Swahili:    {
-    bcp47Tag: 'sw',  englishName: 'Swahili',    nativeName: 'Kiswahili',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'KE',
-  } as LanguageTag,
-  Hausa:      {
-    bcp47Tag: 'ha',  englishName: 'Hausa',      nativeName: 'Hausa',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'NG',
-  } as LanguageTag,
-  Amharic:    {
-    bcp47Tag: 'am',  englishName: 'Amharic',    nativeName: 'አማርኛ',
-    writingSystem: WritingSystem.Ethiopic,   isRtl: false, primaryRegion: 'ET',
-  } as LanguageTag,
-  Yoruba:     {
-    bcp47Tag: 'yo',  englishName: 'Yoruba',     nativeName: 'Yorùbá',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'NG',
-  } as LanguageTag,
-  Igbo:       {
-    bcp47Tag: 'ig',  englishName: 'Igbo',       nativeName: 'Igbo',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'NG',
-  } as LanguageTag,
-  Xhosa:      {
-    bcp47Tag: 'xh',  englishName: 'isiXhosa',   nativeName: 'isiXhosa',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Sepedi:     {
-    bcp47Tag: 'nso', englishName: 'Sepedi',     nativeName: 'Sepedi',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Setswana:   {
-    bcp47Tag: 'tn',  englishName: 'Setswana',   nativeName: 'Setswana',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ZA',
-  } as LanguageTag,
-  Somali:     {
-    bcp47Tag: 'so',  englishName: 'Somali',     nativeName: 'Soomaali',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'SO',
-  } as LanguageTag,
-  Oromo:      {
-    bcp47Tag: 'om',  englishName: 'Oromo',      nativeName: 'Afaan Oromoo',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ET',
-  } as LanguageTag,
-
-  // ── Middle East & North Africa ────────────────────────────────────────────
-  Arabic:     {
-    bcp47Tag: 'ar',  englishName: 'Arabic',     nativeName: 'العربية',
-    writingSystem: WritingSystem.Arabic,     isRtl: true,  primaryRegion: 'SA',
-  } as LanguageTag,
-
-  // ── Europe & Americas ─────────────────────────────────────────────────────
-  English:    {
-    bcp47Tag: 'en',  englishName: 'English',    nativeName: 'English',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'GB',
-  } as LanguageTag,
-  Portuguese: {
-    bcp47Tag: 'pt',  englishName: 'Portuguese', nativeName: 'Português',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'PT',
-  } as LanguageTag,
-  French:     {
-    bcp47Tag: 'fr',  englishName: 'French',     nativeName: 'Français',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'FR',
-  } as LanguageTag,
-  Spanish:    {
-    bcp47Tag: 'es',  englishName: 'Spanish',    nativeName: 'Español',
-    writingSystem: WritingSystem.Latin,      isRtl: false, primaryRegion: 'ES',
-  } as LanguageTag,
-
-  // ── Asia ──────────────────────────────────────────────────────────────────
-  Mandarin:   {
-    bcp47Tag: 'zh',  englishName: 'Mandarin',   nativeName: '中文',
-    writingSystem: WritingSystem.Han,        isRtl: false, primaryRegion: 'CN',
-  } as LanguageTag,
-  Hindi:      {
-    bcp47Tag: 'hi',  englishName: 'Hindi',      nativeName: 'हिन्दी',
-    writingSystem: WritingSystem.Devanagari, isRtl: false, primaryRegion: 'IN',
-  } as LanguageTag,
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// LanguageTag
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * All 20 Circle AI languages in canonical declaration order.
- * Must match fixtures/language_tags.json order exactly.
+ * A BCP-47 language tag enriched with display metadata.
+ *
+ * Field naming matches the canonical fixture format (language_tags.json):
+ *   englishName   = human-readable English display name
+ *   nativeName    = name in the language itself
+ *   writingSystem = WritingSystem enum value
+ *   primaryRegion = ISO 3166-1 alpha-2 region code
  */
-export const ALL_LANGUAGES: LanguageTag[] = [
+export interface LanguageTag {
+  readonly bcpTag: string;
+  readonly englishName: string;
+  readonly nativeName: string;
+  readonly writingSystem: WritingSystem;
+  readonly isRtl: boolean;
+  readonly primaryRegion: string;
+}
+
+/** Sentinel for an unrecognised or undetermined language. */
+export const UNKNOWN_LANGUAGE: LanguageTag = {
+  bcpTag: "und",
+  englishName: "Unknown",
+  nativeName: "Unknown",
+  writingSystem: WritingSystem.Latin,
+  isRtl: false,
+  primaryRegion: "",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DetectionResult
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Result of a language detection operation. */
+export interface DetectionResult {
+  readonly language: LanguageTag;
+  readonly confidence: number;
+  readonly isReliable: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KnownLanguages
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Static registry of every language Circle AI ships support for.
+ * 20 entries in canonical declaration order.
+ * Must match fixtures/language_tags.json exactly.
+ */
+export const KnownLanguages = {
+  // ── Africa ──────────────────────────────────────────────────────────────────
+  IsiZulu: {
+    bcpTag: "zu", englishName: "isiZulu", nativeName: "isiZulu",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Sesotho: {
+    bcpTag: "st", englishName: "Sesotho", nativeName: "Sesotho",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Afrikaans: {
+    bcpTag: "af", englishName: "Afrikaans", nativeName: "Afrikaans",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Swahili: {
+    bcpTag: "sw", englishName: "Swahili", nativeName: "Kiswahili",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "KE",
+  } as LanguageTag,
+
+  Hausa: {
+    bcpTag: "ha", englishName: "Hausa", nativeName: "Hausa",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "NG",
+  } as LanguageTag,
+
+  Amharic: {
+    bcpTag: "am", englishName: "Amharic", nativeName: "አማርኛ",
+    writingSystem: WritingSystem.Ethiopic, isRtl: false, primaryRegion: "ET",
+  } as LanguageTag,
+
+  Yoruba: {
+    bcpTag: "yo", englishName: "Yoruba", nativeName: "Yorùbá",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "NG",
+  } as LanguageTag,
+
+  Igbo: {
+    bcpTag: "ig", englishName: "Igbo", nativeName: "Igbo",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "NG",
+  } as LanguageTag,
+
+  Xhosa: {
+    bcpTag: "xh", englishName: "isiXhosa", nativeName: "isiXhosa",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Sepedi: {
+    bcpTag: "nso", englishName: "Sepedi", nativeName: "Sepedi",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Setswana: {
+    bcpTag: "tn", englishName: "Setswana", nativeName: "Setswana",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ZA",
+  } as LanguageTag,
+
+  Somali: {
+    bcpTag: "so", englishName: "Somali", nativeName: "Soomaali",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "SO",
+  } as LanguageTag,
+
+  Oromo: {
+    bcpTag: "om", englishName: "Oromo", nativeName: "Afaan Oromoo",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ET",
+  } as LanguageTag,
+
+  // ── Middle East & North Africa ─────────────────────────────────────────────
+  Arabic: {
+    bcpTag: "ar", englishName: "Arabic", nativeName: "العربية",
+    writingSystem: WritingSystem.Arabic, isRtl: true, primaryRegion: "SA",
+  } as LanguageTag,
+
+  // ── Europe & Americas ──────────────────────────────────────────────────────
+  English: {
+    bcpTag: "en", englishName: "English", nativeName: "English",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "GB",
+  } as LanguageTag,
+
+  Portuguese: {
+    bcpTag: "pt", englishName: "Portuguese", nativeName: "Português",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "PT",
+  } as LanguageTag,
+
+  French: {
+    bcpTag: "fr", englishName: "French", nativeName: "Français",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "FR",
+  } as LanguageTag,
+
+  Spanish: {
+    bcpTag: "es", englishName: "Spanish", nativeName: "Español",
+    writingSystem: WritingSystem.Latin, isRtl: false, primaryRegion: "ES",
+  } as LanguageTag,
+
+  // ── Asia ───────────────────────────────────────────────────────────────────
+  Mandarin: {
+    bcpTag: "zh", englishName: "Mandarin", nativeName: "中文",
+    writingSystem: WritingSystem.Han, isRtl: false, primaryRegion: "CN",
+  } as LanguageTag,
+
+  Hindi: {
+    bcpTag: "hi", englishName: "Hindi", nativeName: "हिन्दी",
+    writingSystem: WritingSystem.Devanagari, isRtl: false, primaryRegion: "IN",
+  } as LanguageTag,
+
+  /** All languages shipped with Circle AI, in canonical declaration order. */
+  ALL: [] as LanguageTag[],
+};
+
+// Populate ALL after all members are declared (avoids forward-reference issues).
+KnownLanguages.ALL = [
   KnownLanguages.IsiZulu,
   KnownLanguages.Sesotho,
   KnownLanguages.Afrikaans,
