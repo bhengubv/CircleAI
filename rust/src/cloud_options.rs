@@ -138,12 +138,12 @@ impl PlayHtOptions {
 
 /// Wires whichever speech providers have keys.
 #[derive(Debug, Default)]
-pub struct SpeechCloudServiceRegistration {
+pub struct SpeechCloudServiceCollectionExtensions {
     recognizers: Vec<String>,
     synthesizers: Vec<String>,
 }
 
-impl SpeechCloudServiceRegistration {
+impl SpeechCloudServiceCollectionExtensions {
     pub fn new() -> Self {
         Self::default()
     }
