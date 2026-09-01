@@ -22,6 +22,83 @@ type Wiring interface {
 	Defaults() string
 }
 
+// AetherNetServiceCollectionExtensions states the defaults for the AetherNet bridges.
+type AetherNetServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (AetherNetServiceCollectionExtensions) Wires() string { return "the AetherNet bridges" }
+
+// Defaults implements Wiring.
+func (AetherNetServiceCollectionExtensions) Defaults() string {
+	return "a directive sink that surfaces rather than executes, and a state channel that refuses to send unsealed"
+}
+
+// CodeAgentServiceCollectionExtensions states the defaults for the code agent.
+type CodeAgentServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (CodeAgentServiceCollectionExtensions) Wires() string { return "the code agent" }
+
+// Defaults implements Wiring.
+func (CodeAgentServiceCollectionExtensions) Defaults() string {
+	return "a disabled command runner: an agent that can run commands because nobody configured one runs them by accident"
+}
+
+// CompanionServiceCollectionExtensions states the defaults for the companion.
+type CompanionServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (CompanionServiceCollectionExtensions) Wires() string { return "the companion" }
+
+// Defaults implements Wiring.
+func (CompanionServiceCollectionExtensions) Defaults() string {
+	return "an in-memory store, a null voice identity that returns nobody, and proactive behaviour off"
+}
+
+// HostingServiceCollectionExtensions states the defaults for the host.
+type HostingServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (HostingServiceCollectionExtensions) Wires() string { return "the host" }
+
+// Defaults implements Wiring.
+func (HostingServiceCollectionExtensions) Defaults() string {
+	return "an in-process endpoint, enrichment always on, and no observers"
+}
+
+// MeshServiceCollectionExtensions states the defaults for mesh offload.
+type MeshServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (MeshServiceCollectionExtensions) Wires() string { return "mesh offload" }
+
+// Defaults implements Wiring.
+func (MeshServiceCollectionExtensions) Defaults() string {
+	return "offloading off, and a local fallback that reports unavailable rather than pretending"
+}
+
+// SecurityAetherNetServiceCollectionExtensions states the defaults for the mesh security gate.
+type SecurityAetherNetServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (SecurityAetherNetServiceCollectionExtensions) Wires() string { return "the mesh security gate" }
+
+// Defaults implements Wiring.
+func (SecurityAetherNetServiceCollectionExtensions) Defaults() string {
+	return "a gate that refuses every peer that is not mutually added"
+}
+
+// WebServiceCollectionExtensions states the defaults for the web surface.
+type WebServiceCollectionExtensions struct{}
+
+// Wires implements Wiring.
+func (WebServiceCollectionExtensions) Wires() string { return "the web surface" }
+
+// Defaults implements Wiring.
+func (WebServiceCollectionExtensions) Defaults() string {
+	return "a companion with no generator wired, so the surface answers nothing rather than answering wrongly"
+}
+
 // CircleAIRuntimeServiceCollectionExtensions states the defaults for the runtime.
 type CircleAIRuntimeServiceCollectionExtensions struct{}
 
@@ -29,7 +106,9 @@ type CircleAIRuntimeServiceCollectionExtensions struct{}
 func (CircleAIRuntimeServiceCollectionExtensions) Wires() string { return "the runtime" }
 
 // Defaults implements Wiring.
-func (CircleAIRuntimeServiceCollectionExtensions) Defaults() string { return "a backend selector that picks CPU unless a host says otherwise" }
+func (CircleAIRuntimeServiceCollectionExtensions) Defaults() string {
+	return "a backend selector that picks CPU unless a host says otherwise"
+}
 
 // MemoryServiceCollectionExtensions states the defaults for the memory store.
 type MemoryServiceCollectionExtensions struct{}
@@ -38,7 +117,9 @@ type MemoryServiceCollectionExtensions struct{}
 func (MemoryServiceCollectionExtensions) Wires() string { return "the memory store" }
 
 // Defaults implements Wiring.
-func (MemoryServiceCollectionExtensions) Defaults() string { return "an in-memory store and an append-only log with no file behind it" }
+func (MemoryServiceCollectionExtensions) Defaults() string {
+	return "an in-memory store and an append-only log with no file behind it"
+}
 
 // PluginsServiceCollectionExtensions states the defaults for the plugin host.
 type PluginsServiceCollectionExtensions struct{}
@@ -47,7 +128,9 @@ type PluginsServiceCollectionExtensions struct{}
 func (PluginsServiceCollectionExtensions) Wires() string { return "the plugin host" }
 
 // Defaults implements Wiring.
-func (PluginsServiceCollectionExtensions) Defaults() string { return "a root resolver pointing at the project, and every plugin disabled" }
+func (PluginsServiceCollectionExtensions) Defaults() string {
+	return "a root resolver pointing at the project, and every plugin disabled"
+}
 
 // CloudFallbackServiceCollectionExtensions states the defaults for the cloud fallback chain.
 type CloudFallbackServiceCollectionExtensions struct{}
@@ -56,7 +139,9 @@ type CloudFallbackServiceCollectionExtensions struct{}
 func (CloudFallbackServiceCollectionExtensions) Wires() string { return "the cloud fallback chain" }
 
 // Defaults implements Wiring.
-func (CloudFallbackServiceCollectionExtensions) Defaults() string { return "an empty chain: no provider is configured, so nothing leaves the device" }
+func (CloudFallbackServiceCollectionExtensions) Defaults() string {
+	return "an empty chain: no provider is configured, so nothing leaves the device"
+}
 
 // McpServiceCollectionExtensions states the defaults for the MCP endpoints.
 type McpServiceCollectionExtensions struct{}
@@ -65,7 +150,9 @@ type McpServiceCollectionExtensions struct{}
 func (McpServiceCollectionExtensions) Wires() string { return "the MCP endpoints" }
 
 // Defaults implements Wiring.
-func (McpServiceCollectionExtensions) Defaults() string { return "the endpoints registered but no tools imported" }
+func (McpServiceCollectionExtensions) Defaults() string {
+	return "the endpoints registered but no tools imported"
+}
 
 // MultiplayerServiceCollectionExtensions states the defaults for multiplayer hosting.
 type MultiplayerServiceCollectionExtensions struct{}
@@ -74,7 +161,9 @@ type MultiplayerServiceCollectionExtensions struct{}
 func (MultiplayerServiceCollectionExtensions) Wires() string { return "multiplayer hosting" }
 
 // Defaults implements Wiring.
-func (MultiplayerServiceCollectionExtensions) Defaults() string { return "a per-session peer identity, never the device's AetherTag" }
+func (MultiplayerServiceCollectionExtensions) Defaults() string {
+	return "a per-session peer identity, never the device's AetherTag"
+}
 
 // NeuronServiceCollectionExtensions states the defaults for the resident-model manager.
 type NeuronServiceCollectionExtensions struct{}
@@ -83,7 +172,9 @@ type NeuronServiceCollectionExtensions struct{}
 func (NeuronServiceCollectionExtensions) Wires() string { return "the resident-model manager" }
 
 // Defaults implements Wiring.
-func (NeuronServiceCollectionExtensions) Defaults() string { return "one slot and a RAM ceiling the host must set" }
+func (NeuronServiceCollectionExtensions) Defaults() string {
+	return "one slot and a RAM ceiling the host must set"
+}
 
 // RealtimeServiceCollectionExtensions states the defaults for the realtime contracts.
 type RealtimeServiceCollectionExtensions struct{}
@@ -92,7 +183,9 @@ type RealtimeServiceCollectionExtensions struct{}
 func (RealtimeServiceCollectionExtensions) Wires() string { return "the realtime contracts" }
 
 // Defaults implements Wiring.
-func (RealtimeServiceCollectionExtensions) Defaults() string { return "no transport, so the local voice loop runs" }
+func (RealtimeServiceCollectionExtensions) Defaults() string {
+	return "no transport, so the local voice loop runs"
+}
 
 // RealtimeCloudServiceCollectionExtensions states the defaults for the realtime cloud services.
 type RealtimeCloudServiceCollectionExtensions struct{}
@@ -101,7 +194,9 @@ type RealtimeCloudServiceCollectionExtensions struct{}
 func (RealtimeCloudServiceCollectionExtensions) Wires() string { return "the realtime cloud services" }
 
 // Defaults implements Wiring.
-func (RealtimeCloudServiceCollectionExtensions) Defaults() string { return "a null transport factory: the local loop runs unless a provider is wired" }
+func (RealtimeCloudServiceCollectionExtensions) Defaults() string {
+	return "a null transport factory: the local loop runs unless a provider is wired"
+}
 
 // SpeechCloudServiceCollectionExtensions states the defaults for the cloud speech services.
 type SpeechCloudServiceCollectionExtensions struct{}
@@ -110,7 +205,9 @@ type SpeechCloudServiceCollectionExtensions struct{}
 func (SpeechCloudServiceCollectionExtensions) Wires() string { return "the cloud speech services" }
 
 // Defaults implements Wiring.
-func (SpeechCloudServiceCollectionExtensions) Defaults() string { return "nothing configured, so audio stays on the device" }
+func (SpeechCloudServiceCollectionExtensions) Defaults() string {
+	return "nothing configured, so audio stays on the device"
+}
 
 // VisionCloudServiceCollectionExtensions states the defaults for the cloud image generators.
 type VisionCloudServiceCollectionExtensions struct{}
@@ -128,7 +225,9 @@ type TwilioServiceCollectionExtensions struct{}
 func (TwilioServiceCollectionExtensions) Wires() string { return "the Twilio carrier" }
 
 // Defaults implements Wiring.
-func (TwilioServiceCollectionExtensions) Defaults() string { return "absent unless credentials are supplied, so no test can place a real call" }
+func (TwilioServiceCollectionExtensions) Defaults() string {
+	return "absent unless credentials are supplied, so no test can place a real call"
+}
 
 // TelnyxServiceCollectionExtensions states the defaults for the Telnyx carrier.
 type TelnyxServiceCollectionExtensions struct{}
@@ -137,7 +236,9 @@ type TelnyxServiceCollectionExtensions struct{}
 func (TelnyxServiceCollectionExtensions) Wires() string { return "the Telnyx carrier" }
 
 // Defaults implements Wiring.
-func (TelnyxServiceCollectionExtensions) Defaults() string { return "absent unless credentials are supplied" }
+func (TelnyxServiceCollectionExtensions) Defaults() string {
+	return "absent unless credentials are supplied"
+}
 
 // PlivoServiceCollectionExtensions states the defaults for the Plivo carrier.
 type PlivoServiceCollectionExtensions struct{}
@@ -146,5 +247,6 @@ type PlivoServiceCollectionExtensions struct{}
 func (PlivoServiceCollectionExtensions) Wires() string { return "the Plivo carrier" }
 
 // Defaults implements Wiring.
-func (PlivoServiceCollectionExtensions) Defaults() string { return "absent unless credentials are supplied" }
-
+func (PlivoServiceCollectionExtensions) Defaults() string {
+	return "absent unless credentials are supplied"
+}

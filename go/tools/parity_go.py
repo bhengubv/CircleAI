@@ -7,7 +7,13 @@ import re, os, glob, sys
 # same-named type cannot both keep it, so one of them takes its module as a
 # prefix, exactly as the Swift port does for the same reason.
 types = set()
-decl = re.compile(r"^type\s+([A-Z][A-Za-z0-9_]*)\s")
+# type, var, const and func — all four, because a C# STATIC CLASS has no single
+# Go spelling. Some became a type with methods, some a package-level var of an
+# anonymous struct (SafetyDomainContext, GrpcDeadline, TcpKnownPorts), some a
+# set of free functions. Scanning only `type` reported every one of the latter
+# as missing while it was sitting there, which is the same false negative the C
+# ruler had for noun-versus-verb naming.
+decl = re.compile(r"^(?:type|var|const|func)\s+([A-Z][A-Za-z0-9_]*)\s*[\s({=]")
 for root, dirs, files in os.walk("go"):
     # vendor/ is somebody else's code and testdata/ is fixtures; neither is this
     # port's API, and counting either inflates the number with types nobody
@@ -29,9 +35,11 @@ cs = re.compile(r"^\s*public\s+(?:sealed\s+|abstract\s+|static\s+|readonly\s+|pa
 def candidates(t, module):
     """Every name this type could legitimately have taken in the Go port.
 
-    The port is deliberately literal — it KEEPS the I on interfaces rather than
-    renaming to Go's -er convention, because 166 modules' worth of interfaces
-    renamed by hand is 166 chances to rename two of them to the same thing.
+    Interfaces are spelled BOTH ways in this port — some files keep the C# I
+    prefix, some drop it for Go's convention — so both are tried. That
+    inconsistency is real and predates this measure; settling on one spelling
+    across 166 modules is a rename worth doing deliberately, not as a side
+    effect of measuring.
 
     What it cannot keep is a name another module already used. Those take the
     module as a prefix, and the module word is not repeated when it is already

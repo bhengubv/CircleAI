@@ -54,7 +54,19 @@ bindings to a runtime Go is not running inside.
 Maui.*                               .NET MAUI bindings — Android services, MAUI capture, MAUI push
 Device.*                             Android Binder/AIDL, framework callbacks, a bound foreground service
 WindowsAutomation.UIAutomationDriver UI Automation is a Windows COM API
+Core.HuggingFaceSource               removed from this port; see below
 ```
+
+## One deliberate absence
+
+`Core.HuggingFaceSource` is not missing — it was REMOVED. `go/model_source.go`
+returns `ErrHuggingFaceSourceRemoved` from its constructor, which is a decision
+somebody made and recorded in code. Re-adding the type to make a number go up
+would undo that decision quietly, which is the opposite of what this file is
+for.
+
+If the decision should be reversed, reverse it deliberately and delete this
+entry.
 
 **Everything else stays in.** Go has `net/http`, so `Inference.Server`,
 `Hosting.Mcp` and `Web` are ordinary work rather than exclusions — the C port

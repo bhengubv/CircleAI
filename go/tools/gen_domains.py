@@ -120,6 +120,20 @@ DOMAINS = [
 # Modules whose C# ServiceCollectionExtensions carry defaults worth stating.
 # (go type name, one-line what-it-wires, the defaults sentence)
 WIRING = [
+    ("AetherNetServiceCollectionExtensions", "the AetherNet bridges",
+     "a directive sink that surfaces rather than executes, and a state channel that refuses to send unsealed"),
+    ("CodeAgentServiceCollectionExtensions", "the code agent",
+     "a disabled command runner: an agent that can run commands because nobody configured one runs them by accident"),
+    ("CompanionServiceCollectionExtensions", "the companion",
+     "an in-memory store, a null voice identity that returns nobody, and proactive behaviour off"),
+    ("HostingServiceCollectionExtensions", "the host",
+     "an in-process endpoint, enrichment always on, and no observers"),
+    ("MeshServiceCollectionExtensions", "mesh offload",
+     "offloading off, and a local fallback that reports unavailable rather than pretending"),
+    ("SecurityAetherNetServiceCollectionExtensions", "the mesh security gate",
+     "a gate that refuses every peer that is not mutually added"),
+    ("WebServiceCollectionExtensions", "the web surface",
+     "a companion with no generator wired, so the surface answers nothing rather than answering wrongly"),
     ("CircleAIRuntimeServiceCollectionExtensions", "the runtime",
      "a backend selector that picks CPU unless a host says otherwise"),
     ("MemoryServiceCollectionExtensions", "the memory store",

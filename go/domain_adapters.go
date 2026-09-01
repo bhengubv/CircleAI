@@ -225,9 +225,7 @@ func NewCommerceFinanceCompanionAdapter(inner any) *CommerceFinanceCompanionAdap
 type CommerceIntegrationPayFastDomainContext struct{}
 
 // DomainID implements DomainContext.
-func (CommerceIntegrationPayFastDomainContext) DomainID() string {
-	return "Commerce.Integration.PayFast"
-}
+func (CommerceIntegrationPayFastDomainContext) DomainID() string { return "Commerce.Integration.PayFast" }
 
 // SystemPromptSnippet implements DomainContext.
 func (CommerceIntegrationPayFastDomainContext) SystemPromptSnippet() string {
@@ -889,3 +887,4 @@ type WearableCompanionAdapter struct{ *DomainCompanionAdapter }
 func NewWearableCompanionAdapter(inner any) *WearableCompanionAdapter {
 	return &WearableCompanionAdapter{NewDomainCompanionAdapter(inner, WearableDomainContext{})}
 }
+
