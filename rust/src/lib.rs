@@ -135,6 +135,7 @@ pub mod business_ledger;
 pub mod cloud_providers;
 pub mod voice_loop_telephony;
 pub mod platform_plugins;
+pub mod verticals_core;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
