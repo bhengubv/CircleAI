@@ -17,7 +17,16 @@ private final class LoopTransport: INetworkTransport, @unchecked Sendable {
     var sendError: Error?
 
     func start() async throws { isAvailable = true }
-    func stop() async throws { isAvailable = false }
+
+    /// FINISHES THE STREAM. A double that stops delivering but never ends its
+    /// stream leaves any pump awaiting it suspended for the life of the test
+    /// bundle — one leaked thread of the cooperative pool per test, which is
+    /// invisible until the pool runs out and the whole class stops dead.
+    func stop() async throws {
+        isAvailable = false
+        lock.lock(); let c = continuation; continuation = nil; lock.unlock()
+        c?.finish()
+    }
 
     func send(_ payload: NetworkPayload) async throws {
         if let sendError { throw sendError }
@@ -27,6 +36,14 @@ private final class LoopTransport: INetworkTransport, @unchecked Sendable {
     func receive() -> AsyncStream<NetworkPayload> {
         AsyncStream { c in
             lock.lock(); continuation = c; lock.unlock()
+            // Drops the stored continuation when the stream ends for ANY reason
+            // — finished, or its consumer cancelled. Without this a cancelled
+            // pump leaves a continuation behind that a later `deliver` would
+            // yield into, feeding a consumer that no longer exists.
+            c.onTermination = { [weak self] _ in
+                guard let self else { return }
+                self.lock.lock(); self.continuation = nil; self.lock.unlock()
+            }
         }
     }
 

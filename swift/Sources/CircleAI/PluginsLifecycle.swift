@@ -131,10 +131,16 @@ public final class PluginLifecycleService: @unchecked Sendable {
                                       version: plugin.version, permissions: permissions)
             }
 
+            // The lifecycle carries a log CLOSURE and `PluginContext` wants an
+            // `ICircleAILogger`, so the closure is adapted rather than dropped:
+            // a plugin whose logging goes nowhere is a plugin nobody can
+            // diagnose. With no sink configured it stays silent.
             let base = PluginContext(
                 workspacePathAccessor: { [workspace] in workspace?.workspacePath },
-                events: events)
-            let context = PermissionedPluginContext(inner: base, permissions: permissions)
+                events: events,
+                logger: ClosureCircleAILogger(log))
+            let context = PermissionedPluginContext(inner: base,
+                                                    grantedPermissions: permissions)
 
             do {
                 try await plugin.initialize(context: context)

@@ -138,6 +138,25 @@ public struct ConsoleCircleAILogger: ICircleAILogger {
     }
 }
 
+/// Adapts a plain log closure to `ICircleAILogger`.
+///
+/// Several places in the tree carry an optional `(String) -> Void` sink because
+/// that is all they need; anything wanting the protocol can wrap one here
+/// instead of each site inventing its own. A nil closure is SILENT, not a
+/// crash and not a print: "no sink configured" is a real configuration, and the
+/// console is not a safe default on a phone.
+public struct ClosureCircleAILogger: ICircleAILogger {
+    private let sink: (@Sendable (String) -> Void)?
+
+    public init(_ sink: (@Sendable (String) -> Void)?) {
+        self.sink = sink
+    }
+
+    public func logInformation(_ message: String) {
+        sink?(message)
+    }
+}
+
 // MARK: - NoopAuditLog — CircleAI.Core.Auditing.NoopAuditLog
 
 /// Default `ICircleAIAuditLog` — silently discards every entry and returns an

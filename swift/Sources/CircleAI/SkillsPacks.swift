@@ -165,7 +165,11 @@ public enum SkillPackLoader {
                 description: parsed.description,
                 instructions: parsed.instructions,
                 tags: mergedTags)
-            _ = await store.upsert(parsed.id, draft: draft)
+            // PROPAGATES rather than warning. A store that refuses a write
+            // refuses every write - importing into the read-only capability
+            // manifest cannot partly succeed - so swallowing this would
+            // return skillCount: 0 as though the pack were empty.
+            _ = try await store.upsert(parsed.id, draft: draft)
             count += 1
         }
         return SkillPackManifest(name: packName, version: packVersion, sourceUrl: sourceUrl, license: license, skillCount: count)

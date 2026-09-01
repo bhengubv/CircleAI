@@ -47,15 +47,15 @@ public struct CapabilityManifestSkillStore: ISkillStore, Sendable {
     /// embedded), so a host passes its own.
     public static let empty = CapabilityManifestSkillStore(skills: [])
 
-    public func list() async throws -> [SkillSummary] {
+    public func list() async -> [SkillSummary] {
         skills.map(Self.summary)
     }
 
-    public func get(_ id: String) async throws -> SkillDetail? {
+    public func get(_ id: String) async -> SkillDetail? {
         skills.first { $0.id.caseInsensitiveCompare(id) == .orderedSame }
     }
 
-    public func search(_ query: String) async throws -> [SkillSummary] {
+    public func search(_ query: String) async -> [SkillSummary] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return [] }
 
@@ -73,7 +73,7 @@ public struct CapabilityManifestSkillStore: ISkillStore, Sendable {
     /// REFUSED, both of them. If the assistant could edit its own capability
     /// list at runtime it could write itself a capability it does not have, and
     /// then cite it.
-    public func upsert(id: String?, draft: SkillDraft) async throws -> SkillDetail {
+    public func upsert(_ id: String?, draft: SkillDraft) async throws -> SkillDetail {
         throw SkillStoreError.manifestIsReadOnly
     }
 

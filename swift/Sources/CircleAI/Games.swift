@@ -140,6 +140,13 @@ public final class TimerGameLoop: IGameLoop, @unchecked Sendable {
     private var loopTask: Task<Void, Never>?
     private var frame: Int = 0
     private var start: Date = Date()
+    /// Set by `stop()` before it returns. Checked under the lock in `onTick`
+    /// AND inside each dispatched handler task, because a task can be spawned
+    /// and scheduled either side of the flag being set.
+    private var stopped: Bool = false
+    /// Handler tasks not yet finished. `stop()` awaits these, so delivery is
+    /// genuinely over when it returns rather than merely requested to end.
+    private var inFlight: [Task<Void, Never>] = []
 
     public init() {}
 
@@ -154,6 +161,8 @@ public final class TimerGameLoop: IGameLoop, @unchecked Sendable {
         let intervalNs = UInt64(intervalMs) * 1_000_000
         start = Date()
         frame = 0
+        stopped = false
+        inFlight.removeAll()
         let task = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: intervalNs)
@@ -165,12 +174,27 @@ public final class TimerGameLoop: IGameLoop, @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Stops ticking and WAITS for delivery to finish.
+    ///
+    /// `cancel()` alone is a request, not an event: the loop may already be
+    /// inside `onTick`, and handler tasks it dispatched are queued
+    /// independently. Both are drained here so that when this returns, no
+    /// further tick can reach a subscriber — which is what callers have always
+    /// been told.
     public func stop() async {
         lock.lock()
         let task = loopTask
+        let pending = inFlight
         loopTask = nil
+        inFlight.removeAll()
+        stopped = true
         lock.unlock()
+
         task?.cancel()
+        await task?.value
+        for handler in pending {
+            await handler.value
+        }
     }
 
     public func subscribe(_ handler: @escaping @Sendable (GameTick) async -> Void) -> IGameSubscription {
@@ -196,14 +220,33 @@ public final class TimerGameLoop: IGameLoop, @unchecked Sendable {
         // handlers are invoked OUTSIDE the lock so a subscriber that (un)subscribes
         // from within its handler never self-deadlocks.
         lock.lock()
+        if stopped { lock.unlock(); return }
         frame += 1
         let tick = GameTick(frame: frame, elapsed: Date().timeIntervalSince(start))
         let snap = Array(subs.values)
         lock.unlock()
+
+        var spawned: [Task<Void, Never>] = []
         for handler in snap {
-            // Fire-and-forget, matching C# `_ = s(tick)`; errors are swallowed.
-            Task { await handler(tick) }
+            // Errors are swallowed, matching C# `_ = s(tick)`. What is NOT
+            // fire-and-forget any more is the task's lifetime: it is recorded
+            // so `stop()` can wait for it, and it re-checks `stopped` because
+            // it may not be scheduled until after the loop was told to stop.
+            spawned.append(Task { [weak self] in
+                guard let self else { return }
+                self.lock.lock()
+                let goneAway = self.stopped
+                self.lock.unlock()
+                if goneAway { return }
+                await handler(tick)
+            })
         }
+
+        lock.lock()
+        // Finished tasks are dropped so a long run does not accumulate them.
+        inFlight.removeAll { $0.isCancelled }
+        inFlight.append(contentsOf: spawned)
+        lock.unlock()
     }
 
     private func remove(_ id: UUID) {

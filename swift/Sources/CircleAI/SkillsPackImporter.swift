@@ -12,15 +12,27 @@
 import Foundation
 
 /// Ensures a pack is on disk and returns its directory.
+///
+/// THE FIRST ARGUMENT IS UNLABELLED. `ensure(pack, cacheRoot:, cacheTtl:)`
+/// reads as a sentence at the call site, which is the Swift convention for a
+/// method whose first argument is its subject.
 public protocol IPackDownloader: Sendable {
-    func ensure(source: SkillPackSource, cacheRoot: String,
+    func ensure(_ source: SkillPackSource, cacheRoot: String,
                 cacheTtl: TimeInterval) async throws -> String
 }
 
-public enum SkillPackError: Error, CustomStringConvertible {
+/// Everything that can stop a pack reaching disk.
+///
+/// `Equatable` because tests compare the case they expected against the one
+/// thrown; without it they can only check that *something* was thrown, which
+/// passes just as happily when the wrong thing goes wrong.
+public enum SkillPackError: Error, Equatable, CustomStringConvertible {
     case emptyCacheRoot
     case fetchFailed(String, Int)
     case extractionUnavailable
+    /// Nothing is registered for this source. Distinct from `fetchFailed`: the
+    /// fetch never happened, so reporting an HTTP status would invent one.
+    case unavailable(String)
 
     public var description: String {
         switch self {
@@ -31,6 +43,8 @@ public enum SkillPackError: Error, CustomStringConvertible {
         case .extractionUnavailable:
             return "This host has no archive extractor wired. Supply one to "
                  + "HttpPackDownloader, or use a downloader that stages files directly."
+        case .unavailable(let name):
+            return "Pack '\(name)' is not available."
         }
     }
 }
@@ -60,7 +74,7 @@ public struct HttpPackDownloader: IPackDownloader, Sendable {
         self.now = now
     }
 
-    public func ensure(source: SkillPackSource, cacheRoot: String,
+    public func ensure(_ source: SkillPackSource, cacheRoot: String,
                        cacheTtl: TimeInterval) async throws -> String {
         guard !cacheRoot.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw SkillPackError.emptyCacheRoot
@@ -184,7 +198,7 @@ public struct SkillPackAutoImporter: Sendable {
         let explicit = Set(options.explicitlyEnabled.map { $0.lowercased() })
         return options.sources.filter { source in
             if explicit.contains(source.name.lowercased()) { return true }
-            return options.importDefaultEnabledPacks && source.enabledByDefault
+            return options.importDefaultEnabledPacks && source.isDefaultEnabled
         }
     }
 
@@ -194,7 +208,7 @@ public struct SkillPackAutoImporter: Sendable {
 
         for source in enabledSources() {
             do {
-                let dir = try await downloader.ensure(source: source,
+                let dir = try await downloader.ensure(source,
                                                       cacheRoot: options.cacheDirectory,
                                                       cacheTtl: options.cacheTtl)
                 imported[source.name] = try await importPack(dir, source)

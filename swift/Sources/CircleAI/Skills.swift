@@ -122,9 +122,17 @@ public protocol ISkillStore: Sendable {
     func search(_ query: String) async -> [SkillSummary]
     /// Creates or replaces a skill. A `nil`/empty `id` auto-generates a slug
     /// from the draft name.
-    func upsert(_ id: String?, draft: SkillDraft) async -> SkillDetail
+    ///
+    /// THROWS so a read-only store can REFUSE. `CapabilityManifestSkillStore`
+    /// serves the capability manifest, and letting the assistant write to that
+    /// at runtime would let it grant itself a capability and then cite it. A
+    /// store that cannot say no would have to pretend the write succeeded.
+    ///
+    /// The stores that never refuse are unaffected: Swift lets a non-throwing
+    /// method satisfy a throwing requirement.
+    func upsert(_ id: String?, draft: SkillDraft) async throws -> SkillDetail
     /// Removes the skill with `id`. No-op if absent.
-    func delete(_ id: String) async
+    func delete(_ id: String) async throws
 }
 
 /// Thread-safe in-memory `ISkillStore`. (C# `InMemorySkillStore`.)
@@ -310,10 +318,32 @@ public struct SkillPackSourcesOptions: Sendable {
     public var importDefaultEnabledPacks: Bool
     /// Pack names opted in beyond the default-enabled set.
     public var explicitlyEnabled: [String]
+    /// Where fetched packs are cached.
+    ///
+    /// Defaults to the platform caches directory rather than to an empty
+    /// string: an empty root makes the importer raise `emptyCacheRoot` on
+    /// every run, which reads as a broken importer rather than as a setting
+    /// nobody chose.
+    public var cacheDirectory: String
+    /// How long a cached pack is reused before it is fetched again.
+    public var cacheTtl: TimeInterval
+
+    /// The platform's caches directory, or the temporary directory when there
+    /// is none — never the current directory, which on iOS is not writable.
+    public static var defaultCacheDirectory: String {
+        let caches = FileManager.default.urls(for: .cachesDirectory,
+                                              in: .userDomainMask).first
+        return (caches?.appendingPathComponent("CircleAI/SkillPacks").path)
+            ?? NSTemporaryDirectory() + "CircleAI/SkillPacks"
+    }
 
     public init(sources: [SkillPackSource] = KnownSkillPacks.all,
                 importDefaultEnabledPacks: Bool = true,
-                explicitlyEnabled: [String] = []) {
+                explicitlyEnabled: [String] = [],
+                cacheDirectory: String = SkillPackSourcesOptions.defaultCacheDirectory,
+                cacheTtl: TimeInterval = 24 * 60 * 60) {
+        self.cacheDirectory = cacheDirectory
+        self.cacheTtl = cacheTtl
         self.sources = sources
         self.importDefaultEnabledPacks = importDefaultEnabledPacks
         self.explicitlyEnabled = explicitlyEnabled
@@ -339,23 +369,12 @@ public struct SkillPackSourcesOptions: Sendable {
     }
 }
 
-/// Errors raised by a pack downloader.
-public enum SkillPackError: Error, Equatable, CustomStringConvertible {
-    case unavailable(String)
-    public var description: String {
-        switch self {
-        case .unavailable(let name): return "Pack '\(name)' is not available."
-        }
-    }
-}
+// `SkillPackError` and `IPackDownloader` are declared in
+// SkillsPackImporter.swift, which is the file named for the C# source they
+// come from. They were declared HERE as well by a separate porting pass,
+// and the two disagreed on an argument label - which Swift reported as a
+// hundred redeclarations and two hundred ambiguous lookups.
 
-/// Strategy for materialising a remote pack into a local directory. (C#
-/// `IPackDownloader`.) Returns the local path containing the extracted repo.
-public protocol IPackDownloader: Sendable {
-    /// Ensure `source` is materialised under `cacheRoot`. Returns the local
-    /// path containing the extracted repo.
-    func ensure(_ source: SkillPackSource, cacheRoot: String, cacheTtl: TimeInterval) async throws -> String
-}
 
 /// Deterministic in-memory downloader — seeded with source-name → local-path
 /// mappings. Replaces the C# `HttpPackDownloader` (GitHub tarball fetch) so the

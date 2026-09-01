@@ -227,6 +227,11 @@ public final class MeshOffloadClient: IMeshOffloadClient, @unchecked Sendable {
         lock.unlock()
 
         task?.cancel()
+        // AWAIT it. Cancelling asks the pump to stop; it does not witness that
+        // it has. Returning while it is still suspended leaves a task holding a
+        // thread of the cooperative pool, and enough of those starve the pool
+        // so completely that nothing runs at all.
+        await task?.value
         for (_, c) in waiting { c.resume(throwing: CancellationError()) }
     }
 
