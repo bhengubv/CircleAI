@@ -27,10 +27,16 @@ through the port:
   same-named type. The loser takes its module as a prefix, and the module word
   is not repeated when it is already inside the name: `PiperVoiceConfig` is
   `VoicePiperConfig`, never `VoicePiperVoiceConfig`.
-- **Interfaces KEEP the `I`.** Not idiomatic Go, and deliberate: renaming 166
-  modules' worth of interfaces to the `-er` convention by hand is 166 chances to
-  rename two of them to the same thing, in a package where that is a compile
-  error rather than a shrug. The measure accepts both spellings.
+- **Interfaces are spelled BOTH ways, and the measure accepts either.** Some
+  files keep the C# `I` prefix (`ICatalogSignatureVerifier`) and some drop it for
+  Go's convention (`FamilyBoard`). That inconsistency is real and predates this
+  measure; what matters for parity is that the type exists, so `candidates()`
+  tries both spellings. Settling on one across 166 modules is a rename worth
+  doing deliberately, not as a side effect of measuring.
+
+  This entry previously claimed the port keeps the `I`. It does not, uniformly —
+  that was a statement about the code I had not checked, in the one file whose
+  whole job is to be checkable.
 - **An exception becomes an error value.** Every `...Exception` is an error
   type or a sentinel, so the word "Exception" does not survive.
 - **A `...EventArgs` becomes a payload struct.** Go has no events; the fields
