@@ -24,6 +24,7 @@ function(add_circle_test name)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
+add_circle_test(test_domain_context)
 add_circle_test(test_affect_state)
 add_circle_test(test_biometric_matcher)
 add_circle_test(test_language_registry)

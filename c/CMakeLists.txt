@@ -16,6 +16,7 @@ endif()
 
 add_library(circle_ai STATIC
     src/models.c
+    src/domain_context.c
     src/memory.c
     src/identity.c
     src/languages.c
