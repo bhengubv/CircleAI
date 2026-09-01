@@ -29,11 +29,17 @@ class LanguageRegistryTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun locateFixture(name: String): File {
-        val absolute = File("C:\\Dev\\Solutions\\com.bhengubv\\CircleAI\\fixtures\\$name")
-        if (absolute.exists()) return absolute
-        val relative = File("../../fixtures/$name")
-        if (relative.exists()) return relative
-        error("Cannot locate fixture $name")
+        // Walk UP from the working directory looking for a `fixtures` dir.
+        // The previous version hardcoded a Windows absolute path with a
+        // relative fallback that resolved on neither CI nor a Mac, so these
+        // tests could only pass on one machine.
+        var dir: File? = File(".").absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, "fixtures/" + name)
+            if (candidate.exists()) return candidate
+            dir = dir.parentFile
+        }
+        error("Cannot locate fixture " + name)
     }
 
     @Test
