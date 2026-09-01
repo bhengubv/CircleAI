@@ -46,6 +46,28 @@ public enum ModelDownloadError: Error, Equatable, CustomStringConvertible {
     case httpStatus(Int)
     case cannotDetermineDriveRoot(String)
 
+    /// A transport failure that carries its own DIAGNOSIS.
+    ///
+    /// So callers and UI layers stop pattern-matching on error text to work out
+    /// whether the person is offline, the mirror is dead, or the file is
+    /// corrupt. Those have completely different remedies, and only some of them
+    /// are the user's to fix.
+    case diagnosed(message: String, diagnosis: NetworkDiagnosis)
+
+    /// What to actually show a person, as opposed to what to put in a log.
+    ///
+    /// Falls back to something plain rather than to the transport's own words:
+    /// "Unable to resolve host modelscope.cn" tells somebody holding a phone
+    /// nothing they can act on.
+    public var userMessage: String {
+        switch self {
+        case .diagnosed(_, let d) where !d.remedy.isEmpty:
+            return d.remedy
+        default:
+            return "The model could not be downloaded right now. Please try again later."
+        }
+    }
+
     public var description: String {
         switch self {
         case .emptyStorageDirectory: return "Storage directory must not be empty."
@@ -56,6 +78,7 @@ public enum ModelDownloadError: Error, Equatable, CustomStringConvertible {
         case .shaMismatch(let s): return s
         case .httpStatus(let c): return "HTTP request failed with status \(c)."
         case .cannotDetermineDriveRoot(let d): return "Cannot determine drive root for '\(d)'."
+        case .diagnosed(let m, let d): return "\(m) (\(d))"
         }
     }
 }
