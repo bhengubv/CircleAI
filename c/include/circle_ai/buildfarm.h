@@ -69,6 +69,14 @@ typedef struct {
     bool available;
     /* How many jobs it will take at once. */
     size_t max_concurrent;
+    /* What the machine IS, as opposed to what it will accept. A job that needs
+     * a mac cannot be placed on availability alone. */
+    char *os;
+    char *hardware;
+    /* Whether `hardware` was ever set. An empty string means "nothing special";
+     * absent means "nobody said" - and a scheduler must not read the second as
+     * the first. */
+    bool has_hardware;
 } ca_build_agent_t;
 
 void ca_build_agent_free(ca_build_agent_t *agent);
@@ -107,63 +115,67 @@ void ca_build_artifact_free(ca_build_artifact_t *artifact);
 
 /* ── the pool ─────────────────────────────────────────────────────────────── */
 
-typedef struct ca_build_agent_pool {
-    void *state;
-    bool (*add)(void *state, const ca_build_agent_t *agent);
-    /* An agent that can run `kind` and is not full, or NULL. Caller frees. */
-    ca_build_agent_t *(*acquire)(void *state, ca_build_agent_kind_t kind);
-    void (*release)(void *state, const char *agent_id);
-    ca_build_agent_t *(*list)(void *state, size_t *out_count);
-    void (*free_fn)(void *state);
-} ca_build_agent_pool_t;
+/* Which machines exist and which are free. OPAQUE: the layout is
+ * buildfarm.c's, so adding a scheduling field later is not an ABI break. */
+typedef struct ca_build_pool ca_build_pool_t;
 
-void ca_build_agent_pool_free(ca_build_agent_pool_t *pool);
+ca_build_pool_t *ca_build_pool_create(void);
+void ca_build_pool_destroy(ca_build_pool_t *pool);
 
-ca_build_agent_pool_t *ca_in_memory_build_agent_pool_new(void);
+/* Adds or replaces an agent. Returns the number registered, or negative. */
+int ca_build_pool_register(ca_build_pool_t *pool, const ca_build_agent_t *agent);
 
-/* Accepts agents and never hands one back. For a host with no farm wired: jobs
- * queue honestly rather than appearing to run. */
-ca_build_agent_pool_t *ca_null_build_agent_pool_new(void);
+/* Takes a free agent of `kind`. False when none is free - an ANSWER, not an
+ * error: a queue with nothing available is the normal state. */
+bool ca_build_pool_acquire(ca_build_pool_t *pool, ca_build_agent_kind_t kind,
+                           ca_build_agent_t *out);
+
+int ca_build_pool_release(ca_build_pool_t *pool, const char *agent_id);
+/* The agents, as a heap array the caller frees with
+ * ca_build_agent_free_array. `*out_count` is (size_t)-1 on a bad pool, so
+ * "no agents" and "no pool" are distinguishable. */
+ca_build_agent_t *ca_build_pool_list(const ca_build_pool_t *pool, size_t *out_count);
+const char *ca_build_pool_backend_id(const ca_build_pool_t *pool);
+void ca_build_agent_free_array(ca_build_agent_t *agents, size_t count);
 
 /* ── the runner ───────────────────────────────────────────────────────────── */
 
-typedef struct ca_build_job_runner {
-    void *state;
-    /* Returns the job id, or NULL. */
-    char *(*submit)(void *state, const ca_build_job_t *job);
-    ca_build_job_t *(*get)(void *state, const char *job_id);
-    ca_build_job_t *(*list)(void *state, size_t *out_count);
-    bool (*advance)(void *state, const char *job_id, ca_build_job_phase_t phase,
-                    const char *failure_reason);
-    bool (*cancel)(void *state, const char *job_id);
-    void (*free_fn)(void *state);
-} ca_build_job_runner_t;
+/* Runs jobs. OPAQUE, for the same reason. */
+typedef struct ca_build_runner ca_build_runner_t;
 
-void ca_build_job_runner_free(ca_build_job_runner_t *runner);
+ca_build_runner_t *ca_build_runner_create(void);
+void ca_build_runner_destroy(ca_build_runner_t *runner);
 
-ca_build_job_runner_t *ca_in_memory_build_job_runner_new(ca_build_agent_pool_t *pool);
+/* Starts a job and fills `out`. `now_ms` is passed IN so a caller can test
+ * at a fixed time; a runner that reads the clock itself cannot be. */
+int ca_build_runner_start(ca_build_runner_t *runner, const char *agent_id,
+                          const char *repository, const char *git_ref,
+                          int64_t now_ms, ca_build_job_t *out);
+bool ca_build_runner_get(const ca_build_runner_t *runner, const char *job_id,
+                         ca_build_job_t *out);
+int ca_build_runner_complete(ca_build_runner_t *runner, const char *job_id,
+                             bool success);
 
-ca_build_job_runner_t *ca_null_build_job_runner_new(void);
+/* Refuses, and says so. The default when no farm is wired: a build that never
+ * starts beats one reporting a job id nothing will ever run. */
+int ca_build_null_runner_start(const char *agent_id, const char *repository,
+                               const char *git_ref, ca_build_job_t *out);
+const char *ca_build_null_runner_backend_id(void);
 
 /* ── artifacts ────────────────────────────────────────────────────────────── */
 
-typedef struct ca_build_artifact_store {
-    void *state;
-    /* Returns the artifact id, or NULL. Hashes the bytes on the way in. */
-    char *(*store)(void *state, const char *job_id, const char *name,
-                   const uint8_t *bytes, size_t byte_count);
-    ca_build_artifact_t *(*get)(void *state, const char *artifact_id);
-    ca_build_artifact_t *(*for_job)(void *state, const char *job_id, size_t *out_count);
-    void (*free_fn)(void *state);
-} ca_build_artifact_store_t;
+/* Keeps what builds produced. OPAQUE, for the same reason. */
+typedef struct ca_build_store ca_build_store_t;
 
-void ca_build_artifact_store_free(ca_build_artifact_store_t *store);
+ca_build_store_t *ca_build_store_create(void);
+void ca_build_store_destroy(ca_build_store_t *store);
 
-ca_build_artifact_store_t *ca_in_memory_build_artifact_store_new(void);
-
-/* Accepts and discards, and SAYS SO by returning NULL rather than a plausible
- * id. An id that does not resolve is worse than no id. */
-ca_build_artifact_store_t *ca_null_build_artifact_store_new(void);
+/* Stores and hashes on the way in. Returns the number held, or negative - an
+ * artifact with no bytes is refused rather than recorded as empty. */
+int ca_build_store_save(ca_build_store_t *store, const ca_build_artifact_t *artifact);
+bool ca_build_store_get(const ca_build_store_t *store, const char *artifact_id,
+                        ca_build_artifact_t *out);
+const char *ca_build_null_store_backend_id(void);
 
 #ifdef __cplusplus
 }

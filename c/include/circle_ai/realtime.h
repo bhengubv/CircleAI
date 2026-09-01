@@ -81,6 +81,10 @@ typedef struct {
     int64_t offset_ms;
 } ca_realtime_audio_frame_t;
 
+/* Samples per second for a format. One place that knows, so a caller
+ * never hardcodes 16000 beside a format that is not 16 kHz. */
+int ca_realtime_sample_rate_of(ca_realtime_audio_format_t format);
+
 void ca_realtime_audio_frame_free(ca_realtime_audio_frame_t *frame);
 
 /* ── events ───────────────────────────────────────────────────────────────── */
@@ -119,64 +123,128 @@ void ca_realtime_event_free(ca_realtime_event_t *event);
 
 const char *ca_realtime_event_kind_name(ca_realtime_event_kind_t kind);
 
+/*
+ * Turns text into PCM. The seam a host fills with a real voice; the loopback
+ * service uses a silent one so the loop can be exercised with no audio stack.
+ * Returns the number of bytes written, or a negative value on failure.
+ */
+/*
+ * Renders text to PCM in `format`. ALLOCATES: `*out_pcm` is the callee's
+ * buffer and the caller frees it. Returns 0 on success, non-zero on
+ * failure - a failed synthesis must not be mistaken for silence.
+ */
+typedef int (*ca_realtime_text_to_audio_fn)(void *ctx, const char *text,
+                                            ca_realtime_audio_format_t format,
+                                            uint8_t **out_pcm, size_t *out_len);
+
 /* ── the session ──────────────────────────────────────────────────────────── */
 
-typedef struct ca_realtime_session {
-    void *state;
-
-    const char *(*session_id)(void *state);
-
-    /* Pulls the next audio frame, or NULL when the stream has ended. Caller
-     * frees. Blocking is the implementation's business. */
-    ca_realtime_audio_frame_t *(*receive_audio)(void *state);
-
-    /* Pulls the next event, or NULL when the stream has ended. Caller frees. */
-    ca_realtime_event_t *(*receive_event)(void *state);
-
-    bool (*send_audio)(void *state, const ca_realtime_audio_frame_t *frame);
-    bool (*send_text)(void *state, const char *text);
-    bool (*send_tool_result)(void *state, const char *call_id, const char *result_json);
-
-    /* Stops the model mid-answer. THE most important call here: it is what a
-     * barge-in becomes, and a session that cannot be interrupted talks over
-     * the person it is meant to be listening to. */
-    bool (*cancel_response)(void *state);
-
-    void (*close_fn)(void *state);
-} ca_realtime_session_t;
-
-void ca_realtime_session_close(ca_realtime_session_t *session);
+/*
+ * A live session. OPAQUE: the layout lives in realtime.c.
+ *
+ * Callers hold a pointer and use the functions below. Publishing the fields
+ * would freeze the layout into every caller's ABI, and this struct still has
+ * transports to grow.
+ */
+typedef struct ca_realtime_session ca_realtime_session_t;
 
 /* Accepts everything and produces nothing. For a build with no vendor wired:
  * the loop runs and stays silent rather than crashing at the first turn. */
-ca_realtime_session_t *ca_null_realtime_session_new(const char *session_id);
-
-/* ── the service ──────────────────────────────────────────────────────────── */
-
-typedef struct ca_realtime_service {
-    void *state;
-    const char *(*provider_id)(void *state);
-    /* False when credentials or a model are missing. Asked BEFORE a call is
-     * placed, so a misconfiguration is a startup problem and not a caller
-     * listening to silence. */
-    bool (*is_configured)(void *state);
-    ca_realtime_session_t *(*start_session)(void *state,
-                                            const ca_realtime_session_config_t *config);
-    void (*free_fn)(void *state);
-} ca_realtime_service_t;
-
-void ca_realtime_service_free(ca_realtime_service_t *service);
+ca_realtime_session_t *ca_realtime_null_session_create(void);
 
 /*
  * Echoes audio back and emits a transcript for whatever text is sent.
  *
- * Not a toy: it is how the loop above is tested without a vendor, a network or
- * a bill, and every behaviour that matters — barge-in, turn completion, tool
- * calls — is exercisable through it.
+ * Not a toy: it is how the loop is exercised without a vendor, a network or a
+ * bill, and every behaviour that matters - barge-in, turn completion, tool
+ * calls - is reachable through it.
  */
-ca_realtime_service_t *ca_loopback_realtime_service_new(void);
+ca_realtime_session_t *ca_realtime_loopback_session_create(
+    const ca_realtime_session_config_t *config,
+    ca_realtime_text_to_audio_fn text_to_audio,
+    void *text_to_audio_ctx);
 
-ca_realtime_session_t *ca_loopback_realtime_session_new(const char *session_id);
+void ca_realtime_session_destroy(ca_realtime_session_t *session);
+
+const char *ca_realtime_session_id(const ca_realtime_session_t *session);
+
+/* Frames queued, or negative on failure. */
+int ca_realtime_session_send_audio(ca_realtime_session_t *session,
+                                   const ca_realtime_audio_frame_t *frame);
+int ca_realtime_session_send_text(ca_realtime_session_t *session, const char *text);
+int ca_realtime_session_send_tool_result(ca_realtime_session_t *session,
+                                         const char *call_id,
+                                         const char *result_json);
+
+/* Stops the model mid-answer. THE most important call here: it is what a
+ * barge-in becomes, and a session that cannot be interrupted talks over the
+ * person it is meant to be listening to. */
+int ca_realtime_session_cancel_response(ca_realtime_session_t *session);
+
+/* How many are queued - a DEPTH, not a flag, so a caller can drain in one
+ * pass instead of probing before every read. */
+size_t ca_realtime_session_audio_pending(const ca_realtime_session_t *session);
+size_t ca_realtime_session_event_pending(const ca_realtime_session_t *session);
+
+/* Copies the next item into `out` and returns true, or returns false when
+ * nothing is queued. The caller owns what lands in `out`. */
+bool ca_realtime_session_receive_audio_next(ca_realtime_session_t *session,
+                                            ca_realtime_audio_frame_t *out);
+bool ca_realtime_session_receive_event_next(ca_realtime_session_t *session,
+                                            ca_realtime_event_t *out);
+
+/* ── the transport ────────────────────────────────────────────────────────── */
+
+/*
+ * A live connection to a provider. Opaque payload: what a WebSocket needs is
+ * the host's business, and nothing in the core reads it.
+ */
+typedef struct {
+    void *state;
+    void (*close)(void *state);
+} ca_realtime_transport_t;
+
+/*
+ * Opens one. Returns 0 on success and fills `out`; non-zero means it did not
+ * connect, and `out` is zeroed.
+ */
+typedef struct {
+    void *self;
+    int (*connect)(void *self, const char *endpoint,
+                   const char *const *header_keys,
+                   const char *const *header_values,
+                   size_t header_count, ca_realtime_transport_t *out);
+} ca_realtime_transport_factory_t;
+
+/*
+ * A factory that always refuses.
+ *
+ * The default for a build with no transport wired. It REFUSES rather than
+ * returning a dead connection, so "nobody registered a transport" surfaces at
+ * the attempt instead of as a session that connects and never speaks.
+ */
+ca_realtime_transport_factory_t ca_realtime_null_transport_factory(void);
+
+/* ── the service ──────────────────────────────────────────────────────────── */
+
+/* A provider that can start sessions. OPAQUE, for the same reason. */
+typedef struct ca_realtime_service ca_realtime_service_t;
+
+ca_realtime_service_t *ca_realtime_loopback_service_create(
+    ca_realtime_text_to_audio_fn text_to_audio, void *text_to_audio_ctx);
+ca_realtime_service_t *ca_realtime_null_service_create(void);
+
+void ca_realtime_service_destroy(ca_realtime_service_t *service);
+
+const char *ca_realtime_service_provider_id(const ca_realtime_service_t *service);
+
+/* False when credentials or a model are missing. Asked BEFORE a call is placed,
+ * so a misconfiguration is a startup problem and not a caller listening to
+ * silence. */
+bool ca_realtime_service_is_configured(const ca_realtime_service_t *service);
+
+ca_realtime_session_t *ca_realtime_service_start_session(
+    ca_realtime_service_t *service, const ca_realtime_session_config_t *config);
 
 #ifdef __cplusplus
 }

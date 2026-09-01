@@ -96,11 +96,11 @@ static void test_sentence_splitter(void)
 {
     printf("SentenceSplitter\n");
 
-    check(CIRCLE_MAX_CHARS_PER_SEGMENT == SPLITTER_MAX_CHARS, "MaxCharsPerSegment");
+    check(CA_MAX_CHARS_PER_SEGMENT == SPLITTER_MAX_CHARS, "MaxCharsPerSegment");
 
     for (size_t c = 0; c < COUNT(SPLITTER_CASES); c++) {
-        circle_speech_segment got[32];
-        size_t n = circle_split_sentences(SPLITTER_CASES[c].text, got, 32);
+        ca_speech_segment_t got[32];
+        size_t n = ca_split_sentences(SPLITTER_CASES[c].text, got, 32);
 
         char what[160];
         snprintf(what, sizeof what, "%s segment count", SPLITTER_CASES[c].name);
@@ -109,7 +109,7 @@ static void test_sentence_splitter(void)
             printf("  FAIL: %s — got %zu segments, want %zu\n",
                    what, n, SPLITTER_CASES[c].count);
             failures++;
-            circle_speech_segments_free(got, n < 32 ? n : 32);
+            ca_speech_segments_free(got, n < 32 ? n : 32);
             continue;
         }
 
@@ -119,7 +119,7 @@ static void test_sentence_splitter(void)
             snprintf(what, sizeof what, "%s segment %zu pause", SPLITTER_CASES[c].name, i);
             check(got[i].trailing_pause_ms == SPLITTER_CASES[c].segments[i].pause, what);
         }
-        circle_speech_segments_free(got, n);
+        ca_speech_segments_free(got, n);
     }
 }
 
@@ -145,10 +145,10 @@ static void test_splits_non_latin_scripts(void)
         checks++;
         if (!c) { printf("  FAIL: no case named %s\n", names[i]); failures++; continue; }
 
-        circle_speech_segment got[32];
-        size_t n = circle_split_sentences(c->text, got, 32);
+        ca_speech_segment_t got[32];
+        size_t n = ca_split_sentences(c->text, got, 32);
         if (n < 2) { printf("  FAIL: %s produced %zu segments\n", names[i], n); failures++; }
-        circle_speech_segments_free(got, n < 32 ? n : 32);
+        ca_speech_segments_free(got, n < 32 ? n : 32);
     }
 }
 
@@ -162,10 +162,10 @@ static void test_does_not_split_decimal_or_domain(void)
         checks++;
         if (!c) { printf("  FAIL: no case named %s\n", names[i]); failures++; continue; }
 
-        circle_speech_segment got[32];
-        size_t n = circle_split_sentences(c->text, got, 32);
+        ca_speech_segment_t got[32];
+        size_t n = ca_split_sentences(c->text, got, 32);
         if (n != 2) { printf("  FAIL: %s produced %zu segments, want 2\n", names[i], n); failures++; }
-        circle_speech_segments_free(got, n < 32 ? n : 32);
+        ca_speech_segments_free(got, n < 32 ? n : 32);
     }
 }
 
@@ -176,8 +176,8 @@ static void test_language_spans(void)
     printf("LanguageSpanSplitter\n");
 
     for (size_t c = 0; c < COUNT(SPANS_CASES); c++) {
-        circle_language_span got[16];
-        size_t n = circle_split_language_spans(SPANS_CASES[c].text, got, 16);
+        ca_language_span_t got[16];
+        size_t n = ca_split_language_spans(SPANS_CASES[c].text, got, 16);
 
         char what[160];
         snprintf(what, sizeof what, "span count for %s", SPANS_CASES[c].text);
@@ -185,7 +185,7 @@ static void test_language_spans(void)
         if (n != SPANS_CASES[c].count) {
             printf("  FAIL: %s — got %zu, want %zu\n", what, n, SPANS_CASES[c].count);
             failures++;
-            circle_language_spans_free(got, n < 16 ? n : 16);
+            ca_language_spans_free(got, n < 16 ? n : 16);
             continue;
         }
 
@@ -195,11 +195,11 @@ static void test_language_spans(void)
             snprintf(what, sizeof what, "span %zu flag of %s", i, SPANS_CASES[c].text);
             check(got[i].is_foreign == SPANS_CASES[c].spans[i].is_foreign, what);
         }
-        circle_language_spans_free(got, n);
+        ca_language_spans_free(got, n);
     }
 
     for (size_t i = 0; i < COUNT(SPOKEN_CASES); i++) {
-        char *got = circle_to_spoken_form(SPOKEN_CASES[i].input);
+        char *got = ca_to_spoken_form(SPOKEN_CASES[i].input);
         char what[160];
         snprintf(what, sizeof what, "spoken form of %s", SPOKEN_CASES[i].input);
         check_str(got, SPOKEN_CASES[i].output, what);
@@ -209,13 +209,13 @@ static void test_language_spans(void)
     for (size_t i = 0; i < COUNT(FOREIGN_CASES); i++) {
         char what[160];
         snprintf(what, sizeof what, "isForeignWord(%s)", FOREIGN_CASES[i].input);
-        check(circle_is_foreign_word(FOREIGN_CASES[i].input) == FOREIGN_CASES[i].flag, what);
+        check(ca_is_foreign_word(FOREIGN_CASES[i].input) == FOREIGN_CASES[i].flag, what);
     }
 
     /* The conservatism is the contract, not an accident: guessing wrong
      * mispronounces a native word to fix a foreign one. */
-    check(!circle_is_foreign_word("hello"), "an ordinary word is not foreign");
-    check(!circle_is_foreign_word("Ngiyabonga"), "a capitalised native word is not foreign");
+    check(!ca_is_foreign_word("hello"), "an ordinary word is not foreign");
+    check(!ca_is_foreign_word("Ngiyabonga"), "a capitalised native word is not foreign");
 }
 
 /* ---- GeezRomanizer ------------------------------------------------------ */
@@ -227,11 +227,11 @@ static void test_geez(void)
     for (size_t i = 0; i < COUNT(ETHIOPIC_CASES); i++) {
         char what[160];
         snprintf(what, sizeof what, "isEthiopic(%s)", ETHIOPIC_CASES[i].input);
-        check(circle_is_ethiopic(ETHIOPIC_CASES[i].input) == ETHIOPIC_CASES[i].flag, what);
+        check(ca_is_ethiopic(ETHIOPIC_CASES[i].input) == ETHIOPIC_CASES[i].flag, what);
     }
 
     for (size_t i = 0; i < COUNT(ROMANIZE_CASES); i++) {
-        char *got = circle_geez_romanize(ROMANIZE_CASES[i].input);
+        char *got = ca_geez_romanize(ROMANIZE_CASES[i].input);
         char what[160];
         snprintf(what, sizeof what, "romanize(%s)", ROMANIZE_CASES[i].input);
         check_str(got, ROMANIZE_CASES[i].output, what);
@@ -241,11 +241,11 @@ static void test_geez(void)
     /* The eight-per-consonant layout stops at U+1357. Sizing the range check off
      * the consonant table swept seven numerals back into the syllabary, and they
      * came out as sound, so nothing failed. */
-    char *numerals = circle_geez_romanize("\xe1\x8d\xa9\xe1\x8d\xaa\xe1\x8d\xab");
+    char *numerals = ca_geez_romanize("\xe1\x8d\xa9\xe1\x8d\xaa\xe1\x8d\xab");
     check_str(numerals, "", "the numerals have no sound to render");
     free(numerals);
 
-    char *lone = circle_geez_romanize("\xe1\x8d\x98\xe1\x8d\x99\xe1\x8d\x9a");
+    char *lone = ca_geez_romanize("\xe1\x8d\x98\xe1\x8d\x99\xe1\x8d\x9a");
     check_str(lone, "ryamyafya", "the three LONE syllables are not a row of eight");
     free(lone);
 }
@@ -263,7 +263,7 @@ static void test_tone_shaper(void)
 {
     printf("ToneShaper\n");
 
-    circle_tone_shaper_settings warm = circle_tone_shaper_warm();
+    ca_tone_shaper_t warm = ca_tone_shaper_warm();
     check(warm.low_shelf_hz == TONE_SETTINGS.low_shelf_hz, "lowShelfHz");
     check(warm.low_shelf_db == TONE_SETTINGS.low_shelf_db, "lowShelfDb");
     check(warm.presence_hz == TONE_SETTINGS.presence_hz, "presenceHz");
@@ -274,8 +274,8 @@ static void test_tone_shaper(void)
     /* 1e-9 relative, not exact: pow, sin and cos are not bit-identical across
      * languages, and pretending otherwise makes a flaky test, not a strict one. */
     for (size_t i = 0; i < COUNT(COEFF_CASES); i++) {
-        circle_biquad_coefficients ls = circle_low_shelf_coefficients(&warm, COEFF_CASES[i].rate);
-        circle_biquad_coefficients pk = circle_peaking_coefficients(&warm, COEFF_CASES[i].rate);
+        ca_biquad_coefficients_t ls = ca_low_shelf_coefficients(&warm, COEFF_CASES[i].rate);
+        ca_biquad_coefficients_t pk = ca_peaking_coefficients(&warm, COEFF_CASES[i].rate);
         for (int k = 0; k < 3; k++) {
             char what[96];
             snprintf(what, sizeof what, "lowShelf b[%d] at %d", k, COEFF_CASES[i].rate);
@@ -303,15 +303,15 @@ static void test_tone_shaper(void)
     if (!x) { check(0, "allocation"); return; }
     for (size_t i = 0; i < n; i++) x[i] = (float)TONE_INPUT[i];
 
-    circle_biquad_coefficients ls, pk;
+    ca_biquad_coefficients_t ls, pk;
     memcpy(ls.b, entry->ls_b, sizeof ls.b);
     memcpy(ls.a, entry->ls_a, sizeof ls.a);
     memcpy(pk.b, entry->pk_b, sizeof pk.b);
     memcpy(pk.a, entry->pk_a, sizeof pk.a);
 
     float before = peak_of(x, n);
-    circle_biquad(x, n, &ls);
-    circle_biquad(x, n, &pk);
+    ca_biquad(x, n, &ls);
+    ca_biquad(x, n, &pk);
     float after = peak_of(x, n);
     if (after > 0.0f && after > before) {
         float g = before / after;
@@ -330,9 +330,9 @@ static void test_tone_shaper(void)
     float *only_shelf = (float *)malloc(n * sizeof(float));
     if (both && only_shelf) {
         for (size_t i = 0; i < n; i++) both[i] = only_shelf[i] = (float)TONE_INPUT[i];
-        circle_apply_tone_shaper(both, n, TONE_SAMPLE_RATE, &warm);
-        circle_biquad_coefficients derived = circle_low_shelf_coefficients(&warm, TONE_SAMPLE_RATE);
-        circle_biquad(only_shelf, n, &derived);
+        ca_apply_tone_shaper(both, n, TONE_SAMPLE_RATE, &warm);
+        ca_biquad_coefficients_t derived = ca_low_shelf_coefficients(&warm, TONE_SAMPLE_RATE);
+        ca_biquad(only_shelf, n, &derived);
 
         int differs = 0;
         for (size_t i = 0; i < n; i++)
@@ -346,7 +346,7 @@ static void test_tone_shaper(void)
     /* A silent buffer must come back untouched: Apply bails when the peak is 0,
      * and a port that divided by that peak would produce NaN. */
     float silence[TONE_SILENCE_COUNT] = { 0 };
-    circle_apply_tone_shaper(silence, TONE_SILENCE_COUNT, TONE_SAMPLE_RATE, &warm);
+    ca_apply_tone_shaper(silence, TONE_SILENCE_COUNT, TONE_SAMPLE_RATE, &warm);
     int quiet = 1;
     for (size_t i = 0; i < TONE_SILENCE_COUNT; i++) if (silence[i] != 0.0f) quiet = 0;
     check(quiet, "silence stays silent rather than dividing by its peak");
@@ -354,9 +354,9 @@ static void test_tone_shaper(void)
 
 /* ---- NchltPhonemizer ---------------------------------------------------- */
 
-static circle_nchlt_phonemizer *make_phonemizer(void)
+static ca_nchlt_phonemizer *make_phonemizer(void)
 {
-    return circle_nchlt_new(NCHLT_DICT, NCHLT_RULES, NCHLT_PHONE_MAP,
+    return ca_nchlt_new(NCHLT_DICT, NCHLT_RULES, NCHLT_PHONE_MAP,
                             NCHLT_GRAPH_MAP, NCHLT_GNULLS);
 }
 
@@ -365,12 +365,12 @@ static void test_nchlt(void)
     printf("NchltPhonemizer\n");
 
     for (size_t c = 0; c < COUNT(NCHLT_CASES); c++) {
-        circle_nchlt_phonemizer *p = make_phonemizer();
+        ca_nchlt_phonemizer *p = make_phonemizer();
         check(p != NULL, "phonemizer loads");
         if (!p) return;
 
         const char *got[32];
-        size_t n = circle_nchlt_phonemize(p, NCHLT_CASES[c].text, got, 32);
+        size_t n = ca_nchlt_phonemize(p, NCHLT_CASES[c].text, got, 32);
 
         char what[160];
         snprintf(what, sizeof what, "%s phone count", NCHLT_CASES[c].name);
@@ -387,11 +387,11 @@ static void test_nchlt(void)
         }
 
         snprintf(what, sizeof what, "%s rulePredictedWords", NCHLT_CASES[c].name);
-        check((int)circle_nchlt_last_rule_predicted_words(p) == NCHLT_CASES[c].rule_predicted,
+        check((int)ca_nchlt_last_rule_predicted_words(p) == NCHLT_CASES[c].rule_predicted,
               what);
 
         const char *const *unknown = NULL;
-        size_t un = circle_nchlt_last_unknown_graphemes(p, &unknown);
+        size_t un = ca_nchlt_last_unknown_graphemes(p, &unknown);
         snprintf(what, sizeof what, "%s unknown count", NCHLT_CASES[c].name);
         checks++;
         if (un != NCHLT_CASES[c].unknown_count) {
@@ -405,15 +405,15 @@ static void test_nchlt(void)
             }
         }
 
-        circle_nchlt_free(p);
+        ca_nchlt_free(p);
     }
 
     for (size_t c = 0; c < COUNT(PREDICT_CASES); c++) {
-        circle_nchlt_phonemizer *p = make_phonemizer();
+        ca_nchlt_phonemizer *p = make_phonemizer();
         if (!p) return;
 
         const char *got[32];
-        size_t n = circle_nchlt_predict_word(p, PREDICT_CASES[c].word, got, 32);
+        size_t n = ca_nchlt_predict_word(p, PREDICT_CASES[c].word, got, 32);
 
         char what[160];
         snprintf(what, sizeof what, "predictWord(%s) count", PREDICT_CASES[c].word);
@@ -428,20 +428,20 @@ static void test_nchlt(void)
                 check_str(got[i], PREDICT_CASES[c].phones[i], what);
             }
         }
-        circle_nchlt_free(p);
+        ca_nchlt_free(p);
     }
 
     /* Both paths can pronounce this word. The dictionary must win, and the rule
      * counter must show it did — the counter is the only evidence of which path
      * ran, and a port that always predicted would still return sensible phones. */
     {
-        circle_nchlt_phonemizer *p = make_phonemizer();
+        ca_nchlt_phonemizer *p = make_phonemizer();
         if (p) {
             const char *got[32];
-            circle_nchlt_phonemize(p, "sawubona", got, 32);
-            check(circle_nchlt_last_rule_predicted_words(p) == 0,
+            ca_nchlt_phonemize(p, "sawubona", got, 32);
+            check(ca_nchlt_last_rule_predicted_words(p) == 0,
                   "a catalogued word must not be predicted");
-            circle_nchlt_free(p);
+            ca_nchlt_free(p);
         }
     }
 }

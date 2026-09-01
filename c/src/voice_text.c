@@ -7,6 +7,8 @@
  */
 
 #include "circle_ai/voice_text.h"
+/* ca_language_span_t and the span splitter live here. */
+#include "circle_ai/voice_frontend.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -297,7 +299,7 @@ static int has_speech(const char *s)
 }
 
 typedef struct {
-    circle_speech_segment *out;
+    ca_speech_segment_t *out;
     size_t capacity;
     size_t count;      /* how many we WOULD have written */
 } seg_sink;
@@ -369,8 +371,8 @@ static size_t cut_at_word_boundary(seg_sink *sink, unsigned short *current, size
     return rest;
 }
 
-size_t circle_split_sentences(const char *text,
-                              circle_speech_segment *out, size_t out_capacity)
+size_t ca_split_sentences(const char *text,
+                              ca_speech_segment_t *out, size_t out_capacity)
 {
     seg_sink sink = { out, out_capacity, 0 };
     if (!text || !*text) return 0;
@@ -403,7 +405,7 @@ size_t circle_split_sentences(const char *text,
             continue;
         }
 
-        if (clen >= CIRCLE_MAX_CHARS_PER_SEGMENT)
+        if (clen >= CA_MAX_CHARS_PER_SEGMENT)
             clen = cut_at_word_boundary(&sink, current, clen);
     }
 
@@ -418,7 +420,7 @@ size_t circle_split_sentences(const char *text,
     return sink.count;
 }
 
-void circle_speech_segments_free(circle_speech_segment *segments, size_t count)
+void ca_speech_segments_free(ca_speech_segment_t *segments, size_t count)
 {
     if (!segments) return;
     for (size_t i = 0; i < count; i++) { free(segments[i].text); segments[i].text = NULL; }
@@ -426,7 +428,7 @@ void circle_speech_segments_free(circle_speech_segment *segments, size_t count)
 
 /* ── LanguageSpanSplitter ────────────────────────────────────────────────── */
 
-int circle_is_foreign_word(const char *word)
+int ca_is_foreign_word(const char *word)
 {
     if (!word) return 0;
 
@@ -453,8 +455,8 @@ int circle_is_foreign_word(const char *word)
     return 0;
 }
 
-size_t circle_split_language_spans(const char *text,
-                                   circle_language_span *out, size_t out_capacity)
+size_t ca_split_language_spans(const char *text,
+                                   ca_language_span_t *out, size_t out_capacity)
 {
     size_t written = 0;
     if (!text || !*text) return 0;
@@ -498,7 +500,7 @@ size_t circle_split_language_spans(const char *text,
         while (i < n && is_letter_or_digit_cp(units[i])) i++;
 
         char *word = from_utf16(units + word_start, i - word_start);
-        int foreign = word ? circle_is_foreign_word(word) : 0;
+        int foreign = word ? ca_is_foreign_word(word) : 0;
         free(word);
 
         if (current_is_foreign != -1 && current_is_foreign != foreign) {
@@ -520,13 +522,13 @@ size_t circle_split_language_spans(const char *text,
     return written;
 }
 
-void circle_language_spans_free(circle_language_span *spans, size_t count)
+void ca_language_spans_free(ca_language_span_t *spans, size_t count)
 {
     if (!spans) return;
     for (size_t i = 0; i < count; i++) { free(spans[i].text); spans[i].text = NULL; }
 }
 
-char *circle_to_spoken_form(const char *text)
+char *ca_to_spoken_form(const char *text)
 {
     if (!text) return NULL;
     if (!*text) { char *e = (char *)malloc(1); if (e) e[0] = '\0'; return e; }
@@ -620,7 +622,7 @@ static const char *const GEEZ_CONSONANTS[] = {
 /* Vowel per order. The sixth is SILENT — it marks a bare consonant. */
 static const char *const GEEZ_VOWELS[] = { "e", "u", "i", "a", "e", "", "o", "wa" };
 
-int circle_is_ethiopic(const char *text)
+int ca_is_ethiopic(const char *text)
 {
     if (!text) return 0;
     for (const char *p = text; *p; ) {
@@ -632,7 +634,7 @@ int circle_is_ethiopic(const char *text)
     return 0;
 }
 
-char *circle_geez_romanize(const char *text)
+char *ca_geez_romanize(const char *text)
 {
     if (!text) return NULL;
 
@@ -719,22 +721,22 @@ char *circle_geez_romanize(const char *text)
 
 #define LOW_SHELF_SLOPE 0.9
 
-circle_tone_shaper_settings circle_tone_shaper_warm(void)
+ca_tone_shaper_t ca_tone_shaper_warm(void)
 {
-    circle_tone_shaper_settings s = { 320.0, 4.0, 3200.0, -4.0, 0.8 };
+    ca_tone_shaper_t s = { 320.0, 4.0, 3200.0, -4.0, 0.8 };
     return s;
 }
 
-static circle_biquad_coefficients normalise(double b[3], double a[3])
+static ca_biquad_coefficients_t normalise(double b[3], double a[3])
 {
-    circle_biquad_coefficients c;
+    ca_biquad_coefficients_t c;
     double a0 = a[0];
     for (int i = 0; i < 3; i++) { c.b[i] = b[i] / a0; c.a[i] = a[i] / a0; }
     return c;
 }
 
-circle_biquad_coefficients circle_low_shelf_coefficients(
-    const circle_tone_shaper_settings *s, int rate)
+ca_biquad_coefficients_t ca_low_shelf_coefficients(
+    const ca_tone_shaper_t *s, int rate)
 {
     double amp = pow(10, s->low_shelf_db / 40);
     double w0 = 2 * 3.14159265358979323846 * s->low_shelf_hz / rate;
@@ -755,8 +757,8 @@ circle_biquad_coefficients circle_low_shelf_coefficients(
     return normalise(b, a);
 }
 
-circle_biquad_coefficients circle_peaking_coefficients(
-    const circle_tone_shaper_settings *s, int rate)
+ca_biquad_coefficients_t ca_peaking_coefficients(
+    const ca_tone_shaper_t *s, int rate)
 {
     double amp = pow(10, s->presence_db / 40);
     double w0 = 2 * 3.14159265358979323846 * s->presence_hz / rate;
@@ -768,7 +770,7 @@ circle_biquad_coefficients circle_peaking_coefficients(
     return normalise(b, a);
 }
 
-void circle_biquad(float *x, size_t n, const circle_biquad_coefficients *c)
+void ca_biquad(float *x, size_t n, const ca_biquad_coefficients_t *c)
 {
     double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
     for (size_t i = 0; i < n; i++) {
@@ -787,18 +789,18 @@ static float peak_of(const float *x, size_t n)
     return p;
 }
 
-void circle_apply_tone_shaper(float *waveform, size_t n, int sample_rate,
-                              const circle_tone_shaper_settings *s)
+void ca_apply_tone_shaper(float *waveform, size_t n, int sample_rate,
+                              const ca_tone_shaper_t *s)
 {
     if (!waveform || n == 0 || sample_rate <= 0 || !s) return;
 
     float before = peak_of(waveform, n);
     if (before <= 0.0f) return;   /* a silent buffer, and dividing by that peak is NaN */
 
-    circle_biquad_coefficients ls = circle_low_shelf_coefficients(s, sample_rate);
-    circle_biquad(waveform, n, &ls);
-    circle_biquad_coefficients pk = circle_peaking_coefficients(s, sample_rate);
-    circle_biquad(waveform, n, &pk);
+    ca_biquad_coefficients_t ls = ca_low_shelf_coefficients(s, sample_rate);
+    ca_biquad(waveform, n, &ls);
+    ca_biquad_coefficients_t pk = ca_peaking_coefficients(s, sample_rate);
+    ca_biquad(waveform, n, &pk);
 
     float after = peak_of(waveform, n);
     if (after > 0.0f && after > before) {
@@ -816,7 +818,8 @@ typedef struct { int order; char *left; char *right; char *code; } nchlt_rule;
 typedef struct { char *word; char **phones; size_t phone_count; } dict_entry;
 typedef struct { unsigned int grapheme; nchlt_rule *rules; size_t count; } rule_group;
 
-struct circle_nchlt_phonemizer {
+typedef struct ca_nchlt_phonemizer ca_nchlt_phonemizer;
+struct ca_nchlt_phonemizer {
     dict_entry *dict;
     size_t dict_count;
     rule_group *groups;
@@ -864,7 +867,7 @@ static int next_line(line_iter *it, const char **start, size_t *len)
     return 1;
 }
 
-static void parse_dict_text(circle_nchlt_phonemizer *p, const char *text)
+static void parse_dict_text(ca_nchlt_phonemizer *p, const char *text)
 {
     line_iter it = { text };
     const char *line; size_t len;
@@ -932,7 +935,7 @@ static int parse_int_strict(const char *s, size_t len, int *out)
     return 1;
 }
 
-static rule_group *group_for(circle_nchlt_phonemizer *p, unsigned int g, int create)
+static rule_group *group_for(ca_nchlt_phonemizer *p, unsigned int g, int create)
 {
     for (size_t i = 0; i < p->group_count; i++)
         if (p->groups[i].grapheme == g) return &p->groups[i];
@@ -948,7 +951,7 @@ static rule_group *group_for(circle_nchlt_phonemizer *p, unsigned int g, int cre
     return &p->groups[p->group_count++];
 }
 
-static void parse_rules_text(circle_nchlt_phonemizer *p, const char *text)
+static void parse_rules_text(ca_nchlt_phonemizer *p, const char *text)
 {
     line_iter it = { text };
     const char *line; size_t len;
@@ -1003,7 +1006,7 @@ static void parse_rules_text(circle_nchlt_phonemizer *p, const char *text)
     }
 }
 
-static void parse_phone_map_text(circle_nchlt_phonemizer *p, const char *text)
+static void parse_phone_map_text(ca_nchlt_phonemizer *p, const char *text)
 {
     line_iter it = { text };
     const char *line; size_t len;
@@ -1027,7 +1030,7 @@ static void parse_phone_map_text(circle_nchlt_phonemizer *p, const char *text)
     }
 }
 
-static void parse_graph_map_text(circle_nchlt_phonemizer *p, const char *text)
+static void parse_graph_map_text(ca_nchlt_phonemizer *p, const char *text)
 {
     /* File line: "<funny>\t<std>" — we map std->funny (per remap_dict's gmap). */
     line_iter it = { text };
@@ -1058,7 +1061,7 @@ static void parse_graph_map_text(circle_nchlt_phonemizer *p, const char *text)
     }
 }
 
-static void parse_gnulls_text(circle_nchlt_phonemizer *p, const char *text)
+static void parse_gnulls_text(ca_nchlt_phonemizer *p, const char *text)
 {
     line_iter it = { text };
     const char *line; size_t len;
@@ -1080,7 +1083,7 @@ static void parse_gnulls_text(circle_nchlt_phonemizer *p, const char *text)
     }
 }
 
-circle_nchlt_phonemizer *circle_nchlt_new(const char *dict_text,
+ca_nchlt_phonemizer *ca_nchlt_new(const char *dict_text,
                                           const char *rules_text,
                                           const char *phone_map_text,
                                           const char *graph_map_text,
@@ -1088,8 +1091,8 @@ circle_nchlt_phonemizer *circle_nchlt_new(const char *dict_text,
 {
     if (!dict_text || !rules_text || !phone_map_text) return NULL;
 
-    circle_nchlt_phonemizer *p =
-        (circle_nchlt_phonemizer *)calloc(1, sizeof(circle_nchlt_phonemizer));
+    ca_nchlt_phonemizer *p =
+        (ca_nchlt_phonemizer *)calloc(1, sizeof(ca_nchlt_phonemizer));
     if (!p) return NULL;
 
     parse_dict_text(p, dict_text);
@@ -1101,7 +1104,7 @@ circle_nchlt_phonemizer *circle_nchlt_new(const char *dict_text,
     return p;
 }
 
-void circle_nchlt_free(circle_nchlt_phonemizer *p)
+void ca_nchlt_free(ca_nchlt_phonemizer *p)
 {
     if (!p) return;
 
@@ -1142,7 +1145,7 @@ void circle_nchlt_free(circle_nchlt_phonemizer *p)
     free(p);
 }
 
-static void push_unknown(circle_nchlt_phonemizer *p, const char *sym)
+static void push_unknown(ca_nchlt_phonemizer *p, const char *sym)
 {
     for (size_t i = 0; i < p->unknown_count; i++)
         if (strcmp(p->unknown[i], sym) == 0) return;
@@ -1153,7 +1156,7 @@ static void push_unknown(circle_nchlt_phonemizer *p, const char *sym)
     if (p->unknown[p->unknown_count]) p->unknown_count++;
 }
 
-static void push_phone(circle_nchlt_phonemizer *p, const char *value)
+static void push_phone(ca_nchlt_phonemizer *p, const char *value)
 {
     char **g = (char **)realloc(p->phones, (p->phones_count + 1) * sizeof(char *));
     if (!g) return;
@@ -1162,7 +1165,7 @@ static void push_phone(circle_nchlt_phonemizer *p, const char *value)
     if (p->phones[p->phones_count]) p->phones_count++;
 }
 
-static void clear_phones(circle_nchlt_phonemizer *p)
+static void clear_phones(ca_nchlt_phonemizer *p)
 {
     for (size_t i = 0; i < p->phones_count; i++) free(p->phones[i]);
     free(p->phones);
@@ -1170,7 +1173,7 @@ static void clear_phones(circle_nchlt_phonemizer *p)
     p->phones_count = 0;
 }
 
-static char *map_and_gnull(circle_nchlt_phonemizer *p, const char *word)
+static char *map_and_gnull(ca_nchlt_phonemizer *p, const char *word)
 {
     /* Grapheme remap (usually identity) then grapheme-null insertion. */
     size_t wlen = strlen(word);
@@ -1212,7 +1215,7 @@ static char *map_and_gnull(circle_nchlt_phonemizer *p, const char *word)
     return mapped;
 }
 
-static void predict_into(circle_nchlt_phonemizer *p, const char *word)
+static void predict_into(ca_nchlt_phonemizer *p, const char *word)
 {
     if (!word || !*word) return;
 
@@ -1303,7 +1306,7 @@ static size_t copy_out(char **src, size_t count, const char **out, size_t out_ca
     return count;
 }
 
-size_t circle_nchlt_phonemize(circle_nchlt_phonemizer *p, const char *text,
+size_t ca_nchlt_phonemize(ca_nchlt_phonemizer *p, const char *text,
                               const char **out, size_t out_capacity)
 {
     if (!p) return 0;
@@ -1370,7 +1373,7 @@ size_t circle_nchlt_phonemize(circle_nchlt_phonemizer *p, const char *text,
     return copy_out(p->phones, p->phones_count, out, out_capacity);
 }
 
-size_t circle_nchlt_predict_word(circle_nchlt_phonemizer *p, const char *word,
+size_t ca_nchlt_predict_word(ca_nchlt_phonemizer *p, const char *word,
                                  const char **out, size_t out_capacity)
 {
     if (!p) return 0;
@@ -1379,12 +1382,12 @@ size_t circle_nchlt_predict_word(circle_nchlt_phonemizer *p, const char *word,
     return copy_out(p->phones, p->phones_count, out, out_capacity);
 }
 
-size_t circle_nchlt_last_rule_predicted_words(const circle_nchlt_phonemizer *p)
+size_t ca_nchlt_last_rule_predicted_words(const ca_nchlt_phonemizer *p)
 {
     return p ? p->last_rule_predicted_words : 0;
 }
 
-size_t circle_nchlt_last_unknown_graphemes(const circle_nchlt_phonemizer *p,
+size_t ca_nchlt_last_unknown_graphemes(const ca_nchlt_phonemizer *p,
                                            const char *const **out)
 {
     if (!p) return 0;

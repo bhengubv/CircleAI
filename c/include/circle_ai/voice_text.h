@@ -27,6 +27,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* ca_language_span_t: the span type the declarations below take.
+ * No cycle - voice_frontend.h includes no project headers. */
+#include "circle_ai/voice_frontend.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -176,9 +180,83 @@ typedef struct {
     char *language;
     size_t start_offset;
     size_t length;
+    /* Silence to leave AFTER this segment, in milliseconds.
+     *
+     * Prosody, not padding: a full stop wants a longer gap than a comma, and a
+     * synthesiser handed segments with no gaps runs sentences together. Zero on
+     * the last segment - trailing silence at the end of an utterance is the
+     * player's business, not the splitter's. */
+    int trailing_pause_ms;
 } ca_speech_segment_t;
 
 void ca_speech_segment_free(ca_speech_segment_t *segment);
+
+/* Frees an array of segments and the array itself. */
+void ca_speech_segments_free(ca_speech_segment_t *segments, size_t count);
+
+/*
+ * Splits text into what gets spoken, writing up to `out_capacity` segments.
+ *
+ * RETURNS THE NUMBER THE TEXT NEEDED, which may exceed `out_capacity` — so a
+ * caller can size a buffer from a first call rather than silently losing the
+ * tail. Only the first `out_capacity` are written.
+ */
+/*
+ * Longest run handed to a synthesiser in one go.
+ *
+ * Not a limit of anything - a bound on TIME TO FIRST AUDIO. A long paragraph
+ * rendered whole is silence while it renders; split at roughly a spoken
+ * sentence and the first plays while the rest is still being made. 220 is the value every other port uses; this is a PARITY constant, not
+ * because a caller sizing a buffer needs the same number the splitter uses.
+ */
+#define CA_MAX_CHARS_PER_SEGMENT 220
+
+size_t ca_split_sentences(const char *text, ca_speech_segment_t *out,
+                          size_t out_capacity);
+
+/* ── runs of one language inside mixed text ───────────────────────────────── */
+
+size_t ca_split_language_spans(const char *text, ca_language_span_t *out,
+                               size_t out_capacity);
+void ca_language_spans_free(ca_language_span_t *spans, size_t count);
+
+/* Whether a word looks borrowed rather than native to the surrounding text.
+ * A judgement, not a lookup: it changes which phonemiser gets the word. */
+int ca_is_foreign_word(const char *word);
+
+/* Numbers, dates and abbreviations as they are SAID rather than written.
+ * Caller frees. */
+char *ca_to_spoken_form(const char *text);
+
+/* ── Ge'ez ────────────────────────────────────────────────────────────────── */
+
+/* Ge'ez is a SYLLABARY: each character is a consonant and a vowel, so this is a
+ * syllable table and not a character map. Caller frees. */
+char *ca_geez_romanize(const char *text);
+int ca_is_ethiopic(const char *text);
+
+/* ── the NCHLT phonemiser ─────────────────────────────────────────────────── */
+
+typedef struct ca_nchlt_phonemizer ca_nchlt_phonemizer;
+
+ca_nchlt_phonemizer *ca_nchlt_new(const char *dict_text, const char *rules_text,
+                                  const char *phone_map_text,
+                                  const char *graph_map_text,
+                                  const char *gnulls_text);
+void ca_nchlt_free(ca_nchlt_phonemizer *phonemizer);
+
+/* Phonemes for `text`, up to `out_capacity`. Returns how many it needed. */
+size_t ca_nchlt_phonemize(ca_nchlt_phonemizer *phonemizer, const char *text,
+                          const char **out, size_t out_capacity);
+size_t ca_nchlt_predict_word(ca_nchlt_phonemizer *phonemizer, const char *word,
+                             const char **out, size_t out_capacity);
+
+/* How much of the last call came from RULES rather than the dictionary, and
+ * which graphemes were unknown. Both are quality signals: a language whose
+ * words are mostly rule-predicted is one whose dictionary needs work. */
+size_t ca_nchlt_last_rule_predicted_words(const ca_nchlt_phonemizer *phonemizer);
+size_t ca_nchlt_last_unknown_graphemes(const ca_nchlt_phonemizer *phonemizer,
+                                       const char *const **out);
 
 /*
  * Splits into sentences for synthesis. Returns a heap array of *out_count.
@@ -236,6 +314,30 @@ typedef struct {
     double presence_db;    /* -4.0, negative cuts */
     double presence_q;     /* 0.8, lower is wider */
 } ca_tone_shaper_t;
+
+/*
+ * One biquad section, coefficients NORMALISED by a0 at construction so the
+ * filter loop never divides. `a[0]` is 1 afterwards and is kept only so the
+ * arrays line up with the textbook form.
+ */
+typedef struct {
+    double b[3];
+    double a[3];
+} ca_biquad_coefficients_t;
+
+ca_biquad_coefficients_t ca_low_shelf_coefficients(const ca_tone_shaper_t *shaper,
+                                                   int sample_rate);
+ca_biquad_coefficients_t ca_peaking_coefficients(const ca_tone_shaper_t *shaper,
+                                                 int sample_rate);
+
+/* Applies one section in place. */
+void ca_biquad(float *waveform, size_t n, const ca_biquad_coefficients_t *coefficients);
+
+/* Warms a waveform: a low shelf lifts the body, a gentle presence cut takes the
+ * hardness off. Milliseconds of work against seconds of synthesis - the cost
+ * does not register. */
+void ca_apply_tone_shaper(float *waveform, size_t n, int sample_rate,
+                          const ca_tone_shaper_t *shaper);
 
 /* The measured setting. */
 ca_tone_shaper_t ca_tone_shaper_warm(void);
