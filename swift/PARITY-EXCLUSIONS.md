@@ -28,7 +28,12 @@ Banking.Account                      = BankAccount
 Personal.Finance.Account             = FinanceAccount
 Hosting.CloudFallback.ProviderIds    = CloudProviderIds
 Vision.Cloud.GeneratorIds            = VisionGeneratorIds
+Cast.CastControlException            = CastError
 ```
+
+`CastControlException` folds into `CastError` as its `.control` case: Swift has
+no exception subclassing, so the two C# classes become two cases of one Error
+enum, which a caller can switch on exhaustively rather than downcast.
 
 `CloudProviderIds` and `VisionGeneratorIds` are prefixed for the same reason and
 one more: they hold *different* ids for the *same* vendor (`openai` versus
@@ -257,7 +262,48 @@ Hosting.HttpLoopbackEndpoint               ASP.NET minimal API
 Core.CircleAIComponentBase           Blazor ComponentBase
 ```
 
-### 4f. ADO.NET
+### 4f. .NET assembly loading
+
+`PluginLoader` discovers `.dll` files, loads each into its own collectible
+`AssemblyLoadContext` so two plugins can ship conflicting dependency versions,
+and finds the `IPlugin` implementation by reflection. Swift has no equivalent —
+there is no supported way to load a Swift type out of a dynamic library and
+discover its protocol conformance, and on Android and Linux there is no runtime
+that could. `PluginLoadResult` is that loader's return shape.
+
+What was portable is ported: `PluginLifecycleService` still runs the lifecycle —
+resolve root, initialise, apply the permission set, shut down, hot-reload — over
+plugins the host supplies rather than DLLs it loads.
+
+```excluded
+Plugins.PluginLoader                 needs .NET AssemblyLoadContext + reflection
+Plugins.PluginLoadResult             the assembly loader's result shape
+```
+
+### 4g. The turbovec Rust crate
+
+`TurboVecEmbeddingIndex` is a P/Invoke wrapper over `turbovecbridge` — SIMD
+quantised vector search in a vendored Rust crate. It is native interop with no
+managed logic to carry across; the `IEmbeddingIndex` seam it fills IS ported, so
+a Swift host can bind the same crate itself.
+
+```excluded
+Embeddings.Local.TurboVecEmbeddingIndex  P/Invoke over the turbovec Rust crate
+```
+
+### 4h. Native runtime archives
+
+`NativeRuntimeFetcher` downloads and extracts the MNN native runtime for a
+specific OS/architecture/backend triple. It sits with `NativeRuntimePrep` and
+`NativeLibraryResolver`, already excluded above, for the same reason: what it
+fetches is a `.so`/`.dll` this package cannot load, and zip extraction has no
+Foundation equivalent on the platforms that would need it.
+
+```excluded
+Runtime.NativeRuntimeFetcher         fetches and extracts native runtime archives
+```
+
+### 4i. ADO.NET
 
 `Memory.Sql` is a `DbConnection`-based store for SQL Server and PostgreSQL. The
 Swift package has no database driver and adding one would be a dependency; the
