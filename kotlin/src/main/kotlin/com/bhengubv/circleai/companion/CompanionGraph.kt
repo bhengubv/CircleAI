@@ -8,6 +8,12 @@
 
 package com.bhengubv.circleai.companion
 
+
+import com.bhengubv.circleai.memory.brain.IHippoRagStore
+import com.bhengubv.circleai.memory.brain.KnowledgeNode
+import com.bhengubv.circleai.memory.brain.KnowledgeTriple
+import com.bhengubv.circleai.memory.brain.MemoryHit
+import com.bhengubv.circleai.memory.brain.MemoryItem
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
@@ -162,7 +168,7 @@ class SqliteHippoRagStore(
 
     override val backendId: String get() = "sqlite-hippo-ppr"
 
-    override suspend fun index(item: MemoryItem) {
+    override suspend fun indexAsync(item: MemoryItem) {
         // The graph is populated by the extractor; this only ensures the item
         // exists as a NODE so the walker has somewhere to land on it.
         graph.addTriple(item.id, "memory_text", item.text, item.id, 1.0f)
@@ -171,7 +177,7 @@ class SqliteHippoRagStore(
         }
     }
 
-    override suspend fun multiHopRecall(query: String, topK: Int): List<MemoryHit> {
+    override suspend fun multiHopRecallAsync(query: String, topK: Int): List<MemoryHit> {
         require(query.isNotBlank()) { "A query is required." }
         require(topK > 0) { "topK must be greater than zero." }
 
@@ -181,8 +187,8 @@ class SqliteHippoRagStore(
         val outgoing = HashMap<String, MutableList<Pair<String, Float>>>()
         val allNodes = LinkedHashSet<String>()
         for (t in triples) {
-            allNodes.add(t.subject); allNodes.add(t.`object`)
-            outgoing.getOrPut(t.subject) { ArrayList() }.add(t.`object` to t.confidence)
+            allNodes.add(t.subject); allNodes.add(t.obj)
+            outgoing.getOrPut(t.subject) { ArrayList() }.add(t.obj to t.confidence)
         }
 
         val queryTerms = terms(query).toSet()
@@ -238,13 +244,13 @@ class SqliteHippoRagStore(
             .sortedWith(compareByDescending<Map.Entry<String, Double>> { it.value }
                 .thenBy { it.key })
             .take(topK)
-            .map { MemoryHit(MemoryItem(it.key, textFor(it.key)), it.value) }
+            .map { MemoryHit(MemoryItem(it.key, textFor(it.key)), it.value.toFloat()) }
     }
 
     /** The stored text for a node, or the node id when it is an entity rather
      *  than a memory. Never empty: a hit with no text is a row nobody can show. */
     private fun textFor(node: String): String =
-        graph.readTriples(node).firstOrNull { it.predicate == "memory_text" }?.`object` ?: node
+        graph.readTriples(node).firstOrNull { it.predicate == "memory_text" }?.obj ?: node
 
     private fun terms(text: String): List<String> =
         text.lowercase(Locale.ROOT).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }

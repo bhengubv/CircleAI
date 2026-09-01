@@ -24,6 +24,16 @@
 
 package com.bhengubv.circleai.aethernet
 
+
+
+
+import com.bhengubv.circleai.aether.AetherVersion
+import com.bhengubv.circleai.aether.ISecurityDirectiveConsumer
+import com.bhengubv.circleai.aether.AetherInstallLevel
+import com.bhengubv.circleai.aether.IAetherContext
+import com.bhengubv.circleai.aether.IAetherTelemetry
+import com.bhengubv.circleai.aether.IAetherTelemetryObserver
+import com.bhengubv.circleai.aether.SecurityDirective
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -59,14 +69,14 @@ interface IMeshTelemetryPublisher {
  */
 class AetherNetContextAdapter(
     protocolVersion: Int,
-    val minimumRequired: SemanticVersion? = null,
-    val isEnabled: Boolean = true
+    override val minimumRequired: AetherVersion? = null,
+    override val isEnabled: Boolean = true
 ) : IAetherContext {
 
     // The mesh protocol version IS the major version. A mesh speaking protocol 4
     // and one speaking 5 are not the same runtime, and a caller comparing
     // versions has to see that in the number it is handed.
-    override val runtimeVersion: SemanticVersion? = SemanticVersion(protocolVersion, 0, 0, 0)
+    override val runtimeVersion: AetherVersion? = AetherVersion(protocolVersion, 0, 0, 0)
 
     override val installLevel: AetherInstallLevel get() = AetherInstallLevel.App
 

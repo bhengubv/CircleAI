@@ -10,6 +10,10 @@
 
 package com.bhengubv.circleai.mesh
 
+
+import com.bhengubv.circleai.aethernet.IMeshCapabilityBroadcaster
+import com.bhengubv.circleai.device.DeviceTier
+import com.bhengubv.circleai.aethernet.MeshCapabilityAdvertisement as AetherAdvertisement
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -21,12 +25,12 @@ class AetherMeshCapabilityBroadcaster(
     private val localNodeId: String,
     private val staleAfterMillis: Long,
     private val transportAvailable: () -> Boolean,
-    private val send: suspend (MeshCapabilityAdvertisement, ttlMillis: Long) -> Unit,
+    private val send: suspend (AetherAdvertisement, ttlMillis: Long) -> Unit,
     private val now: () -> Instant = { Instant.now() },
     private val log: ((String) -> Unit)? = null
 ) : IMeshCapabilityBroadcaster {
 
-    override suspend fun broadcast(ad: MeshCapabilityAdvertisement) {
+    override suspend fun broadcast(ad: AetherAdvertisement) {
         if (!transportAvailable()) {
             log?.invoke("mesh advert: transport unavailable; skipping broadcast")
             return
@@ -81,9 +85,30 @@ class MeshAdvertisementBeacon(
         // look like a failure.
         val ad = advertisement() ?: return
         try {
-            broadcaster.broadcast(ad)
+            broadcaster.broadcast(ad.toAether())
         } catch (t: Throwable) {
             log?.invoke("mesh advert beacon: tick failed: $t")
         }
     }
 }
+
+
+/**
+ * The mesh advert as the AetherNet interface wants it.
+ *
+ * The two declarations differ only in `tier` - an ordinal here, a `DeviceTier`
+ * there - and the ordinal on the wire IS the enum's ordinal. An out-of-range
+ * value maps to the LOWEST tier rather than throwing: a peer advertising a tier
+ * this build has not heard of should be treated as the least capable thing it
+ * could be, not dropped and not trusted with more than it can do.
+ */
+private fun MeshCapabilityAdvertisement.toAether(): AetherAdvertisement =
+    AetherAdvertisement(
+        peerId = peerId,
+        modelId = modelId,
+        freeKvTokens = freeKvTokens,
+        tier = DeviceTier.entries.getOrElse(tier) { DeviceTier.WEARABLE },
+        contextWindowTokens = contextWindowTokens,
+        advertisedAtUtc = advertisedAtUtc,
+        latencyHintMs = latencyHintMs,
+    )

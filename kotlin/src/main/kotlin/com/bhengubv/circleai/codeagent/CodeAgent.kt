@@ -420,6 +420,11 @@ data class CodeAgentStep(
     val action: AgentActionKind,
     val detail: String,
     val observation: String,
+    /** The command this step ran, when it ran one. Null for a step that only
+     *  thought. Without it a transcript cannot show what was executed. */
+    val command: List<String>? = null,
+    /** What that command returned. Null when nothing ran. */
+    val result: CommandResult? = null,
 )
 
 /** An edit the agent applied. */
@@ -441,6 +446,14 @@ data class CodeAgentRunResult(
     val steps: List<CodeAgentStep>,
     val appliedEdits: List<CodeFileEdit>,
     val finalSummary: String,
+    /**
+     * Whether the agent stopped because it was DONE.
+     *
+     * "reached the step limit" and "the task is done" are completely different
+     * outcomes and a caller must be able to tell them apart. `reason` is prose
+     * for a person; this is the flag code branches on.
+     */
+    val finished: Boolean = false,
 )
 
 /** The workspace seams the loop drives. */

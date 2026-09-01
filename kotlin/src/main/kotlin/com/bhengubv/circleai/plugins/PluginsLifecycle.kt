@@ -95,7 +95,18 @@ class PluginLifecycleService(
                 registry.register(plugin.id, plugin.displayName, plugin.version, permissions)
             }
 
-            val base = PluginContext({ workspace?.workspacePath }, events)
+            // The lifecycle carries a log CLOSURE and PluginContext wants a
+            // PluginLogger, so the closure is adapted rather than dropped: a
+            // plugin whose logging goes nowhere is one nobody can diagnose.
+            val pluginLogger = log?.let { sink ->
+                PluginLogger { level, message, error ->
+                    // The level and any error are folded into the line: the
+                    // sink is a plain string closure, and dropping them
+                    // would make a failure indistinguishable from a trace.
+                    sink("[$level] $message" + (error?.let { " — $it" } ?: ""))
+                }
+            } ?: NullPluginLogger
+            val base = PluginContext({ workspace?.workspacePath }, events, logger = pluginLogger)
             val context = PermissionedPluginContext(base, permissions)
 
             try {

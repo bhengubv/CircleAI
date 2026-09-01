@@ -12,17 +12,18 @@
 
 package com.bhengubv.circleai.codeagent
 
+
+// `CommandResult`, `CodeAgentStep` and `CodeAgentRunResult` are declared in
+// CodeAgent.kt. They were declared here too by a separate porting pass, with
+// different shapes — which Kotlin reports as a redeclaration and which is also
+// where this file's argument-type mismatches came from. What the loop's copies
+// carried and the canonical ones did not — `finished`, and a step's command and
+// result — has been merged into them rather than lost.
+
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-data class CommandResult(
-    val exitCode: Int,
-    val stdout: String,
-    val stderr: String,
-    val timedOut: Boolean = false
-) {
-    val succeeded: Boolean get() = exitCode == 0 && !timedOut
-}
+
 
 /**
  * Runs a command in a workspace.
@@ -42,17 +43,14 @@ class ProcessCommandRunner(
 ) {
     fun run(command: List<String>, cwd: String? = null): CommandResult {
         if (command.isEmpty()) {
-            return CommandResult(-1, "", "No command was given.")
+            return CommandResult(executed = false, exitCode = -1, stdout = "", stderr = "No command was given.", timedOut = false)
         }
 
         // Checked on the RESOLVED name so "/usr/bin/git" and "git" are the same
         // decision, and a path cannot smuggle something past a name check.
         val executable = File(command.first()).name
         if (executable !in allowed) {
-            return CommandResult(
-                -1, "",
-                "'$executable' is not on the allow-list. Add it deliberately if it belongs there."
-            )
+            return CommandResult(executed = false, exitCode = -1, stdout = "", stderr = "'$executable' is not on the allow-list. Add it deliberately if it belongs there.", timedOut = false)
         }
 
         // The working directory must stay INSIDE the workspace. A relative "../"
@@ -60,7 +58,7 @@ class ProcessCommandRunner(
         val dir = File(cwd ?: workspaceRoot).canonicalFile
         val root = File(workspaceRoot).canonicalFile
         if (!dir.path.startsWith(root.path)) {
-            return CommandResult(-1, "", "That directory is outside the workspace.")
+            return CommandResult(executed = false, exitCode = -1, stdout = "", stderr = "That directory is outside the workspace.", timedOut = false)
         }
 
         return try {
@@ -68,32 +66,24 @@ class ProcessCommandRunner(
             val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                return CommandResult(-1, "", "Timed out after ${timeoutSeconds}s.", timedOut = true)
+                return CommandResult(executed = true, exitCode = -1, stdout = "", stderr = "Timed out after ${timeoutSeconds}s.", timedOut = true)
             }
             CommandResult(
-                process.exitValue(),
-                process.inputStream.bufferedReader().readText().take(maxOutputChars),
-                process.errorStream.bufferedReader().readText().take(maxOutputChars)
+                executed = true,
+                exitCode = process.exitValue(),
+                stdout = process.inputStream.bufferedReader().readText().take(maxOutputChars),
+                stderr = process.errorStream.bufferedReader().readText().take(maxOutputChars),
+                timedOut = false,
             )
         } catch (t: Throwable) {
-            CommandResult(-1, "", "Could not run '$executable': ${t.message}")
+            CommandResult(executed = false, exitCode = -1, stdout = "", stderr = "Could not run '$executable': ${t.message}", timedOut = false)
         }
     }
 }
 
-data class CodeAgentStep(
-    val thought: String,
-    val command: List<String>?,
-    val result: CommandResult?
-)
 
-data class CodeAgentRunResult(
-    val steps: List<CodeAgentStep>,
-    val finished: Boolean,
-    /** Why it stopped. "reached the step limit" and "the task is done" are
-     *  completely different outcomes and a caller must be able to tell. */
-    val reason: String
-)
+
+
 
 interface ICodeAgent {
     suspend fun run(task: String, workspaceRoot: String): CodeAgentRunResult
@@ -121,17 +111,48 @@ class CodeAgentLoop(
             // No command means the agent is finished. Recorded as a step anyway,
             // so the transcript shows WHY it stopped rather than just ending.
             if (command == null) {
-                steps.add(CodeAgentStep(thought, null, null))
-                return CodeAgentRunResult(steps, finished = true, reason = "the agent stopped")
+                steps.add(
+                    CodeAgentStep(
+                        index = steps.size,
+                        action = AgentActionKind.FINISH,
+                        detail = thought,
+                        observation = "",
+                    )
+                )
+                return CodeAgentRunResult(
+                    available = true,
+                    quality = CodingSelectionQuality.GOOD,
+                    reason = "the agent stopped",
+                    steps = steps,
+                    appliedEdits = emptyList(),
+                    finalSummary = thought,
+                    finished = true,
+                )
             }
 
             val result = runner.run(command, workspaceRoot)
-            steps.add(CodeAgentStep(thought, command, result))
+            steps.add(
+                CodeAgentStep(
+                    index = steps.size,
+                    action = AgentActionKind.RUN_COMMAND,
+                    detail = thought,
+                    observation = result.stdout,
+                    command = command,
+                    result = result,
+                )
+            )
         }
 
         return CodeAgentRunResult(
-            steps, finished = false,
-            reason = "reached the step limit ($maxSteps) without finishing"
+            available = true,
+            quality = CodingSelectionQuality.GOOD,
+            reason = "reached the step limit ($maxSteps) without finishing",
+            steps = steps,
+            appliedEdits = emptyList(),
+            finalSummary = "",
+            // NOT finished: the limit stopped it, the task did not end. A caller
+            // that cannot tell these apart reports an unfinished job as done.
+            finished = false,
         )
     }
 }

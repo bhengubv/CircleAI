@@ -6,6 +6,8 @@
 
 package com.bhengubv.circleai.voice
 
+
+import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.atomic.AtomicBoolean
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ class PhrasedTtsEngine(
     override var lastApproximatedSymbols: List<String> = emptyList()
         private set
 
-    override suspend fun synthesise(text: String): TtsSynthesisResult {
+    override suspend fun synthesiseAsync(text: String): TtsSynthesisResult {
         var segments = SentenceSplitter.split(text)
         if (sentencesPerUtterance > 1) segments = group(segments, sentencesPerUtterance)
         lastSegmentCount = segments.size
@@ -75,7 +77,7 @@ class PhrasedTtsEngine(
         // the common case lands here, and skipping the padding would apply it to
         // short text and not to long.
         if (segments.size == 1 && leadInSilenceMs <= 0 && tailSilenceMs <= 0) {
-            val only = inner.synthesise(segments[0].text)
+            val only = inner.synthesiseAsync(segments[0].text)
             collectDiagnostics()
             return only
         }
@@ -85,7 +87,7 @@ class PhrasedTtsEngine(
         var first = true
 
         for (segment in segments) {
-            val part = inner.synthesise(segment.text)
+            val part = inner.synthesiseAsync(segment.text)
             collectDiagnostics()
             if (part.audioData.isEmpty()) continue
 
@@ -160,6 +162,13 @@ class PhrasedTtsEngine(
             return ByteArray(frames * bytesPerFrame)
         }
     }
+
+    override fun streamSynthesiseAsync(text: String): Flow<ByteArray> =
+        // The SAME phrasing as the buffered path. A decorator that transforms
+        // one and not the other makes the streamed voice differ from the
+        // buffered one for the same input.
+        inner.streamSynthesiseAsync(text)
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,8 +186,23 @@ class RespellingTtsEngine(
     val inner: ITtsEngine,
     val respeller: Respeller
 ) : ITtsEngine {
-    override suspend fun synthesise(text: String): TtsSynthesisResult =
-        inner.synthesise(respeller.rewrite(text))
+    override suspend fun synthesiseAsync(text: String): TtsSynthesisResult =
+        inner.synthesiseAsync(respell(text))
+
+    override fun streamSynthesiseAsync(text: String): Flow<ByteArray> =
+        inner.streamSynthesiseAsync(respell(text))
+
+    /**
+     * Respelled WORD BY WORD.
+     *
+     * `Respeller.respelling` takes a word and looks it up; a whole sentence
+     * handed to it is one key that will never match. Anything with no respelling
+     * is left exactly as it was.
+     */
+    private fun respell(text: String): String =
+        text.split(' ').joinToString(" ") { word ->
+            respeller.respelling(word) ?: word
+        }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,7 +277,7 @@ class VoiceLoop(
         try {
             val reply = brain(utterance)
             if (reply.isNotBlank()) {
-                val audio = mouth.synthesise(reply)
+                val audio = mouth.synthesiseAsync(reply)
                 if (audio.audioData.isNotEmpty() && speaker != null) {
                     speaking.set(true)
                     try {

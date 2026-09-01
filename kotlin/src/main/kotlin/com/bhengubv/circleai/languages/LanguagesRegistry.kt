@@ -38,15 +38,15 @@ class DefaultLanguageRegistry : ILanguageRegistry {
     // Lower-cased keys, because a BCP-47 tag is case-insensitive and "en-za"
     // arriving lower-cased must not read as an unknown language.
     private val byTag: Map<String, LanguageTag> =
-        KnownLanguages.all.associateBy { it.bcpTag.lowercase(Locale.ROOT) }
+        KnownLanguages.All.associateBy { it.bcpTag.lowercase(Locale.ROOT) }
 
     private val byRegion: Map<String, List<LanguageTag>> =
-        KnownLanguages.all.groupBy { it.primaryRegion.lowercase(Locale.ROOT) }
+        KnownLanguages.All.groupBy { it.isoRegion.lowercase(Locale.ROOT) }
 
     override fun getByBcpTag(bcpTag: String): LanguageTag? =
         byTag[bcpTag.lowercase(Locale.ROOT)]
 
-    override fun getAll(): List<LanguageTag> = KnownLanguages.all
+    override fun getAll(): List<LanguageTag> = KnownLanguages.All
 
     override fun getForRegion(isoRegion: String): List<LanguageTag> =
         byRegion[isoRegion.lowercase(Locale.ROOT)].orEmpty()
@@ -64,9 +64,9 @@ class DefaultLanguageRegistry : ILanguageRegistry {
  */
 object NullLanguageDetector : ILanguageDetector {
 
-    override suspend fun detect(text: String): DetectionResult =
+    override suspend fun detectAsync(text: String): DetectionResult =
         DetectionResult(LanguageTag.Unknown, 0f, false)
 
-    override suspend fun detectMultiple(text: String, maxResults: Int): List<DetectionResult> =
+    override suspend fun detectMultipleAsync(text: String, maxResults: Int): List<DetectionResult> =
         listOf(DetectionResult(LanguageTag.Unknown, 0f, false))
 }

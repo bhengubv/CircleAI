@@ -15,6 +15,8 @@
 
 package com.bhengubv.circleai.skills
 
+
+import java.time.Duration
 import java.io.File
 import java.time.Instant
 import java.util.Locale
@@ -141,16 +143,23 @@ class CapabilityManifestSkillStore(private val skills: List<SkillDetail>) : ISki
  * silently bypass what the host configured.
  */
 class HttpPackDownloader(
+    /**
+     * Where fetched packs are cached.
+     *
+     * A property of the DOWNLOADER, not of a call: every pack it fetches goes
+     * under the same root, and passing it per call is what let this class and
+     * `IPackDownloader` drift apart.
+     */
+    private val cacheRoot: String,
     private val fetch: suspend (url: String) -> Pair<ByteArray, Int>,
     /** Extracts an archive into a directory. Returns false when it cannot. */
     private val extract: ((archive: ByteArray, directory: String) -> Boolean)? = null,
     private val now: () -> Instant = { Instant.now() }
 ) : IPackDownloader {
 
-    override suspend fun ensure(
-        source: SkillPackSource, cacheRoot: String, cacheTtlMillis: Long
-    ): String {
+    override suspend fun ensure(source: SkillPackSource, cacheTtl: Duration): List<ParsedSkill> {
         require(cacheRoot.isNotBlank()) { "A cache directory is required." }
+        val cacheTtlMillis = cacheTtl.toMillis()
 
         val packDir = File(cacheRoot, sanitise(source.name))
         val stamp = File(packDir, ".stamp")
@@ -159,7 +168,7 @@ class HttpPackDownloader(
         // a host that re-fetches on every launch costs somebody data for bytes
         // they already have.
         if (stamp.isFile && now().toEpochMilli() - stamp.lastModified() <= cacheTtlMillis) {
-            return packDir.path
+            return parsePack(packDir)
         }
 
         val (body, status) = fetch(tarballUrl(source))
@@ -192,8 +201,24 @@ class HttpPackDownloader(
         stage.deleteRecursively()
         File(packDir, ".stamp").writeText(now().toString())
 
-        return packDir.path
+        return parsePack(packDir)
     }
+
+    /**
+     * Every SKILL.md under [packDir], parsed.
+     *
+     * A file that will not parse is SKIPPED rather than failing the pack: one
+     * malformed skill out of forty should cost that skill, not the other
+     * thirty-nine.
+     */
+    private fun parsePack(packDir: File): List<ParsedSkill> =
+        packDir.walkTopDown()
+            .filter { it.isFile && it.name.equals("SKILL.md", ignoreCase = true) }
+            .sortedBy { it.path }
+            .mapNotNull { file ->
+                runCatching { SkillPackLoader.parse(file.readText(), file.path) }.getOrNull()
+            }
+            .toList()
 
     companion object {
         /** `https://github.com/<owner>/<repo>/archive/<ref>.tar.gz` */
