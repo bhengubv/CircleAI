@@ -7,6 +7,20 @@ function(add_circle_test name)
     else()
         target_link_libraries(${name} circle_ai)
     endif()
+    # ASSERTS STAY ON IN THESE TESTS, IN EVERY BUILD TYPE.
+    #
+    # Every check in this suite is an assert(). A Release build defines NDEBUG,
+    # which compiles assert() to nothing - so the suite does not merely get
+    # weaker, it becomes MEANINGLESS: a test that asserts nothing passes, and a
+    # test whose guard assert was the only thing stopping it dereferencing a
+    # NULL runs on and aborts with no message at all.
+    #
+    # That is exactly what was happening here. In Release the suite reported 69
+    # of 135 failing and the other 66 passing vacuously; in Debug the same code
+    # was 135 of 135. The code was never broken - the build type was silently
+    # deciding whether the tests checked anything.
+    target_compile_options(${name} PRIVATE -UNDEBUG)
+
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
