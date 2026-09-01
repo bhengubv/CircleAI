@@ -129,6 +129,8 @@ pub mod domain_seams;
 pub mod media_rendering;
 pub mod security_antibodies;
 pub mod cast_dlna;
+pub mod memory_atoms;
+pub mod inference_runtime;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
