@@ -17,6 +17,11 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.11.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // TEST SCOPE ONLY. The store takes an open JDBC Connection and references
+    // no driver, exactly as the C# takes a DbConnection and references none -
+    // that is what keeps the Oracle client out of a phone build. The tests need
+    // a real engine to run real SQL against, and SQLite needs no server.
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
 }
 
 tasks.test {
