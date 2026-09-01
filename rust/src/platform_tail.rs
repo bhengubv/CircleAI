@@ -3705,6 +3705,10 @@ impl TurboVecEmbeddingIndex {
 }
 
 /// Draws a scene.
+///
+/// Named `SceneRenderer3D` and not `3DSceneRenderer`: a Rust identifier cannot
+/// begin with a digit, so the C# name minus its `I` prefix is not spellable
+/// here. The rename is recorded in `rust/PARITY-EXCLUSIONS.md`.
 pub trait SceneRenderer3D {
     fn is_available(&self) -> bool;
     fn render(&self, scene_json: &str, width: u32, height: u32) -> Result<Vec<u8>, String>;
@@ -3712,9 +3716,9 @@ pub trait SceneRenderer3D {
 
 /// Draws nothing.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct NullSceneRenderer3D;
+pub struct Null3DSceneRenderer;
 
-impl SceneRenderer3D for NullSceneRenderer3D {
+impl SceneRenderer3D for Null3DSceneRenderer {
     fn is_available(&self) -> bool {
         false
     }

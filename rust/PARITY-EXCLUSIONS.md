@@ -57,11 +57,23 @@ WindowsAutomation.*
 ## Renames
 
 A rename is recorded when a type is genuinely present under a different name —
-not as a way of matching two unrelated things. None are recorded yet: Rust drops
-the `I` prefix on traits, spells modules and functions in `snake_case`, spells
-constants in `SCREAMING_SNAKE`, and names an error type `FooError` rather than
+not as a way of matching two unrelated things. Rust drops the `I` prefix on
+traits, spells modules and functions in `snake_case`, spells constants in
+`SCREAMING_SNAKE`, and names an error type `FooError` rather than
 `FooException`. The ruler accepts all four conventions directly rather than
 needing a line here for each one.
 
+One rename is recorded, and it is forced by the language rather than chosen:
+
+**`Spatial.I3DSceneRenderer` → `SceneRenderer3D`** — dropping the `I` leaves
+`3DSceneRenderer`, and **a Rust identifier cannot begin with a digit**. There is
+no spelling of the C# name that compiles, so the digit moves to the end. The
+trait is present, with the same two methods and the same null implementation;
+only the name differs, and it differs because the grammar left no alternative.
+
+Its null implementation needed no rename: `Null3DSceneRenderer` begins with a
+letter and is spelled exactly as the C# is.
+
 ```renames
+Spatial.I3DSceneRenderer = SceneRenderer3D
 ```

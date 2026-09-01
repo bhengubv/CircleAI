@@ -141,6 +141,7 @@ pub mod personal_bench;
 pub mod domains;
 pub mod languages_integrations;
 pub mod platform_tail;
+pub mod companion_stores;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
