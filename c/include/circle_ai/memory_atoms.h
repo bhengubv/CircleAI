@@ -236,9 +236,13 @@ double ca_forgetting_spacing_gain(void);
  * corrections put an atom roughly a year out on its own. */
 double ca_forgetting_correction_gain(void);
 
-/* How much of a kind's weight decays at all. Rulings and relationships hold
- * hardest (0.40), preferences less (0.20), and a decision's record does not
- * decay by kind at all - what happened, happened. */
+/* The fraction of retrievability a kind KEEPS no matter how long it sits.
+ *
+ * A FLOOR, not a decay rate - the name is the C#'s and it reads backwards. A
+ * ruling keeps 0.40 and so can never fade; a relationship the same; a
+ * preference keeps 0.20; everything else keeps nothing and decays to zero.
+ * Reading it as a decay rate gives a plain fact a floor of 1.0, so it never
+ * fades and the store grows forever while reporting that forgetting works. */
 double ca_forgetting_kind_decay(ca_atom_kind_t kind);
 
 /* 0..1: how likely this is to be retrievable now. */

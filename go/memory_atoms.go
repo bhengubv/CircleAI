@@ -534,10 +534,12 @@ const CorrectionGain = 0.9
 // Forgetting is the decay curve.
 type Forgetting struct{}
 
-// KindDecay returns how much of a kind's weight decays at all.
+// KindDecay returns the fraction of retrievability a kind KEEPS no matter how
+// long it sits.
 //
-// Rulings and relationships hold hardest; preferences less; a decision's record
-// does not decay by kind at all — what happened, happened.
+// A floor, not a decay rate — the name is the C#'s and it reads backwards. A
+// ruling keeps 0.40 and so can never fade; a relationship the same; a
+// preference keeps 0.20; everything else keeps nothing and decays to zero.
 func (Forgetting) KindDecay(kind AtomKind) float64 {
 	switch kind {
 	case AtomRuling, AtomRelationship:
@@ -568,14 +570,14 @@ func (f Forgetting) Retrievability(atom MemoryAtom, now time.Time) float64 {
 	// Exponential decay, scaled by how much this KIND decays at all. A ruling
 	// with decay 0.40 fades to 40% of the way down and no further.
 	base := math.Exp(-elapsedDays / stability)
-	floor := 1 - f.KindDecay(atom.Kind)
-	if atom.Kind == AtomRuling {
-		// A ruling never falls below the threshold: it was decided, and a
-		// decision that quietly stops being offered is a decision made twice.
-		if base < ForgettingThreshold {
-			return ForgettingThreshold
-		}
-	}
+	// The floor is what the kind KEEPS. A ruling's 0.40 is what stops it ever
+	// fading: it was decided, and a decision that quietly stops being offered is
+	// a decision made twice.
+	//
+	// This read `1 - KindDecay` at first, which gave a plain FACT a floor of 1.0
+	// so it never faded at all — the store would have grown forever while
+	// reporting that forgetting worked. Found by running it.
+	floor := f.KindDecay(atom.Kind)
 	return floor + (1-floor)*base
 }
 
