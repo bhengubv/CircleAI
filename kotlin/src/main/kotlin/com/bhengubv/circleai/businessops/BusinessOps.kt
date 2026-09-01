@@ -204,11 +204,11 @@ class SequentialInvoiceNumberGenerator(
     private val prefix: String = "INV-",
     private val year: Int = LocalDate.now().year,
     seed: Long = 0,
-) {
+) : IInvoiceNumberGenerator {
     private val lock = Any()
     private var seq: Long = seed
 
-    fun next(): String {
+    override fun next(): String {
         val n = synchronized(lock) { ++seq }
         return prefix + year + "-" + String.format("%04d", n)
     }
