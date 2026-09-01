@@ -165,6 +165,14 @@ for d in sorted(glob.glob("src/CircleAI.*/")):
             return True
         for cand in set(candidates(t)):
             want = {stem(w) for w in words(cand) if w not in NOISE}
+            # When NOISE eats EVERY word, it has over-filtered: `MemoryService`
+            # is "memory" (noise, because of the InMemory prefixes) plus
+            # "service" (noise), leaving nothing to match on, and a type that
+            # plainly exists reads as missing. Falling back to the unfiltered
+            # words constrains MORE, not less, so this can only ever remove a
+            # false negative — it cannot manufacture a match.
+            if not want:
+                want = {stem(w) for w in words(cand)}
             if not want:
                 continue
             for sw in sym_words:
