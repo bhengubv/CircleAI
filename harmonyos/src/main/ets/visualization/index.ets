@@ -124,7 +124,7 @@ export class JsonApiDocBuilder implements IApiDocBuilder {
 
   async buildAsync(openApiSpec: string): Promise<ApiDoc> {
     if (openApiSpec == null || openApiSpec.trim().length === 0) throw new Error("openApiSpec required");
-    const root = JSON.parse(openApiSpec) as Object;
+    const root = JSON.parse(openApiSpec) as unknown;
     let title = "API";
     if (isObject(root) && isObject(root.info) && typeof root.info.title === "string") {
       title = root.info.title;
@@ -143,7 +143,7 @@ export class StaticSiteBuilder implements ISiteBuilder {
 
   async buildAsync(siteSpec: string): Promise<GeneratedSite> {
     if (siteSpec == null || siteSpec.trim().length === 0) throw new Error("siteSpec required");
-    const root = JSON.parse(siteSpec) as Object;
+    const root = JSON.parse(siteSpec) as unknown;
     const files = new Map<string, Uint8Array>();
 
     if (!isObject(root) || !Array.isArray(root.pages)) {
@@ -211,7 +211,7 @@ export class NullSiteBuilder implements ISiteBuilder {
 
 const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
 
-function isObject(v: Object): v is Map<string, unknown> {
+function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 

@@ -87,10 +87,10 @@ export class HmacJwtAuthenticator {
     const expected = this.signBase64Url(signing);
     if (!fixedTimeEquals(expected, sig)) return null;
 
-    let json: Map<string, unknown>;
+    let json: Record<string, unknown>;
     try {
       const jsonBytes = base64UrlDecode(payload);
-      json = JSON.parse(jsonBytes.toString("utf8")) as Map<string, unknown>;
+      json = JSON.parse(jsonBytes.toString("utf8")) as Record<string, unknown>;
     } catch {
       return null;
     }
@@ -120,7 +120,7 @@ export class HmacJwtAuthenticator {
     claims: ReadonlyMap<string, string> | null,
   ): string {
     const header = '{"alg":"HS256","typ":"JWT"}';
-    const payload: Map<string, unknown> = {
+    const payload: Record<string, unknown> = {
       sub: subject,
       typ: type,
       exp: Math.trunc(expires.getTime() / 1000),

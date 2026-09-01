@@ -56,8 +56,8 @@ TARGET = os.path.join(ROOT, "harmonyos", "src", "main", "ets")
 #: WHOLE PATHS, not basenames. `index.ets` as a bare name would protect the
 #: top-level barrel and also every one of the hundred-odd `index.ts` modules in
 #: the tree, silently porting none of them.
-HAND_WRITTEN = {"platform.ets", "ability.ets", "index.ets"}
-HAND_WRITTEN_PATHS = {"platform.ets", "ability.ets", "index.ets"}
+HAND_WRITTEN = {"platform.ets", "globals.ets", "ability.ets", "index.ets"}
+HAND_WRITTEN_PATHS = {"platform.ets", "globals.ets", "ability.ets", "index.ets"}
 
 
 def relative_platform_import(from_file: str) -> str:
@@ -68,8 +68,12 @@ def relative_platform_import(from_file: str) -> str:
     return "../" * depth + "platform"
 
 
+# BOTH quote styles. The port is not uniform about it, and a regex that only
+# matched double quotes silently left `import { randomUUID } from 'node:crypto'`
+# in place — which then failed to resolve at the very end of the run, looking
+# like a missing shim rather than a missed rewrite.
 NODE_IMPORT = re.compile(
-    r'^\s*import\s+(?:\*\s+as\s+(\w+)|\{([^}]*)\})\s+from\s+"node:(\w+)";\s*$'
+    r"""^\s*import\s+(?:\*\s+as\s+(\w+)|\{([^}]*)\})\s+from\s+['"]node:([\w/]+)['"];?\s*$"""
 )
 
 #: Node name -> what it is called in the platform layer. A name absent from this
@@ -82,7 +86,16 @@ NODE_NAMES = {
     "createHmac": "createHmac",
     "timingSafeEqual": "timingSafeEqual",
     "tmpdir": "tmpdir",
-    "join": "Path",
+    "join": "join",
+    "dirname": "dirname",
+    "basename": "basename",
+    "extname": "extname",
+    "resolve": "resolve",
+    "sep": "sep",
+    "homedir": "homedir",
+    "freemem": "freemem",
+    "totalmem": "totalmem",
+    "cpus": "cpus",
     "webcrypto": "webcrypto",
     "createSign": "createSign",
     "createVerify": "createVerify",
@@ -127,10 +140,15 @@ def rewrite_imports(text: str, rel: str) -> tuple[str, bool]:
             name = raw.strip()
             if not name:
                 continue
-            # `type X` imports carry no runtime value and are dropped: the type
-            # they name is a Node type that does not exist here.
+            # A `type X` import is KEPT when the platform layer has that name.
+            # Dropping it outright, as the first pass did, left `KeyObject`
+            # undefined in the two files that sign with it - the type carries no
+            # runtime value, but the annotation still has to resolve.
             if name.startswith("type "):
-                continue
+                bare = name[len("type ") :].strip().split(" as ")[0].strip()
+                if bare not in NODE_NAMES:
+                    continue
+                name = bare
             alias = name.split(" as ")[1].strip() if " as " in name else ""
             name = name.split(" as ")[0].strip()
             mapped = NODE_NAMES.get(name)
@@ -151,6 +169,32 @@ def rewrite_imports(text: str, rel: str) -> tuple[str, bool]:
     return "\n".join(out), touched
 
 
+def rewrite_dynamic_node(text: str, rel: str) -> str:
+    """`require("node:x")`, `import("node:x")` and `typeof import("node:x")`.
+
+    The port loads a few Node modules lazily so the same source stays usable in
+    a browser. Those forms do not look like an import statement, so the line
+    rewriter above never saw them — and they resolved to nothing at the end of
+    the run. All three point at the platform layer here, whose module-level
+    functions carry the same names the call sites use.
+    """
+    platform = relative_platform_import(rel)
+    # A synchronous `require` becomes the statically-imported namespace. It
+    # cannot become `await import(...)`: both call sites sit inside synchronous
+    # functions, where an await is a parse error rather than a type error.
+    if re.search(r"""require\(\s*['"]node:[\w/]+['"]\s*\)""", text):
+        text = re.sub(
+            r"""require\(\s*['"]node:[\w/]+['"]\s*\)""", "__platform", text
+        )
+        text = 'import * as __platform from "%s";\n' % platform + text
+    text = re.sub(
+        r"""import\(\s*['"]node:[\w/]+['"]\s*\)""",
+        'import("%s")' % platform,
+        text,
+    )
+    return text
+
+
 def rewrite_relative_imports(text: str) -> str:
     """Relative imports lose their `.js` extension.
 
@@ -162,20 +206,26 @@ def rewrite_relative_imports(text: str) -> str:
 
 
 def rewrite_types(text: str) -> str:
-    """The type-level constructs ArkTS does not have."""
-    # `as unknown as T` -> `as T`. The double cast exists in TypeScript only to
-    # get past the checker; ArkTS has no `unknown` and the single cast says the
-    # same thing.
-    text = re.sub(r"\bas\s+unknown\s+as\s+", "as ", text)
-    # A bare `unknown` and a bare `any` both become ArkTS's top type.
-    text = re.sub(r"(:\s*)unknown\b", r"\1Object", text)
-    text = re.sub(r"(:\s*)any\b", r"\1Object", text)
-    text = re.sub(r"\bas\s+unknown\b", "as Object", text)
-    text = re.sub(r"\bany\[\]", "Object[]", text)
-    text = re.sub(r"<\s*any\s*>", "<Object>", text)
-    # `Record<string, X>` is an index signature underneath, which ArkTS has not
-    # got. A runtime dictionary is a Map here.
-    text = re.sub(r"\bRecord<\s*string\s*,\s*([^<>]+?)\s*>", r"Map<string, \1>", text)
+    """Type-level rewrites — and there are deliberately almost none.
+
+    THE FIRST PASS OF THIS FUNCTION WAS THE BUG. It rewrote `Record<string, T>`
+    to `Map<string, T>`, `any` and `unknown` to `Object`, and collapsed double
+    casts — all of them type-level edits with no view of the call sites. A
+    `Record` read as `x[key]` does not compile against a `Map`, which needs
+    `x.get(key)`; the rewrite produced roughly five hundred type errors and a
+    port that measured 100% on declared names while not compiling at all.
+
+    A regex cannot do a semantic rewrite. What is left here is the one edit that
+    is purely textual and cannot change meaning: dropping the `.js` extension
+    that TypeScript's ESM output requires and ArkTS's resolver does not want.
+
+    The constructs ArkTS genuinely forbids — `any`, `unknown`, structural typing
+    of object literals — are handled at their call sites in the shared
+    TypeScript source, where the surrounding types are visible, rather than
+    guessed at here. What is not yet handled is written down in
+    `harmonyos/PARITY-EXCLUSIONS.md` under "Known ArkTS gaps" instead of being
+    papered over with a substitution that compiles and means something else.
+    """
     return text
 
 
@@ -187,20 +237,35 @@ def rewrite_process(text: str) -> str:
     reads `undefined` and carries on with a wrong default - which is worse than
     failing.
     """
-    text = re.sub(r"process\.env\.[A-Za-z_][A-Za-z0-9_]*", "undefined", text)
-    text = re.sub(r"process\.env\[[^\]]+\]", "undefined", text)
+    # `Env.get` returns `string | undefined`, which is the same shape
+    # `process.env.X` had — so the call sites' null handling still applies.
+    # Substituting a bare `undefined`, as the first pass did, put a literal into
+    # positions typed `string` and produced type errors that read as the port
+    # being broken rather than the rewrite being wrong.
+    text = re.sub(
+        r"process\.env\.([A-Za-z_][A-Za-z0-9_]*)", r'Env.get("\1")', text
+    )
+    text = re.sub(r"process\.env\[([^\]]+)\]", r"Env.get(\1)", text)
     text = re.sub(r"process\.cwd\(\)", "Files.root()", text)
     return text
 
 
-def needs_files_import(text: str, rel: str) -> str:
-    """Adds the `Files` import when `process.cwd()` was rewritten to use it."""
-    if "Files.root()" not in text:
-        return text
-    if re.search(r'import\s*\{[^}]*\bFiles\b[^}]*\}\s*from', text):
+def needs_platform_import(text: str, rel: str) -> str:
+    """Adds the platform imports the `process` rewrites above introduced."""
+    wanted = []
+    if "Files.root()" in text and not re.search(
+        r'import\s*\{[^}]*(?<![A-Za-z0-9_])Files(?![A-Za-z0-9_ ])[^}]*\}\s*from',
+        text,
+    ):
+        wanted.append("Files")
+    if "Env.get(" in text and not re.search(
+        r'import\s*\{[^}]*\bEnv\b[^}]*\}\s*from', text
+    ):
+        wanted.append("Env")
+    if not wanted:
         return text
     platform = relative_platform_import(rel)
-    return 'import { Files } from "%s";\n' % platform + text
+    return 'import { %s } from "%s";\n' % (", ".join(wanted), platform) + text
 
 
 HEADER = """/**
@@ -225,10 +290,11 @@ def port_file(source_path: str, rel: str) -> str | None:
     except Unsupported as reason:
         print("  SKIPPED %s: %s" % (rel, reason))
         return None
+    text = rewrite_dynamic_node(text, rel)
     text = rewrite_relative_imports(text)
     text = rewrite_types(text)
     text = rewrite_process(text)
-    text = needs_files_import(text, rel)
+    text = needs_platform_import(text, rel)
     return HEADER % rel.replace(".ets", "") + text
 
 

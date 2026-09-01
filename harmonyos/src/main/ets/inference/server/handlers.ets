@@ -73,8 +73,8 @@ export const StatusCodes = {
 /** A non-streaming HTTP result: a status code + JSON body (+ optional headers). */
 export interface HttpResult {
   readonly statusCode: number;
-  readonly body: Object;
-  readonly headers?: Readonly<Map<string, string>>;
+  readonly body: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
   /** True for streaming responses whose body was written to the SSE sink. */
   readonly streamed?: boolean;
 }
@@ -552,7 +552,7 @@ export class InferenceServerHandler implements IInferenceServerHandler {
  */
 export function buildInferenceRequest(body: ChatCompletionRequest): InferenceRequest {
   const prompt = body.messages.map((m) => `<|${m.role}|>\n${m.content}\n<|end|>`).join("\n");
-  const metadata: Map<string, string> = {};
+  const metadata: Record<string, string> = {};
   if (body.user) metadata["user"] = body.user;
 
   return {
@@ -617,15 +617,15 @@ export function normaliseInput(input: string | string[]): NormaliseResult {
   };
 }
 
-function json(statusCode: number, body: Object): HttpResult {
+function json(statusCode: number, body: unknown): HttpResult {
   return { statusCode, body };
 }
 
-function badRequest(body: Object): HttpResult {
+function badRequest(body: unknown): HttpResult {
   return { statusCode: StatusCodes.BadRequest, body };
 }
 
-function isAbort(e: Object): boolean {
+function isAbort(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
 }
 

@@ -42,8 +42,8 @@ export interface IPromptTemplateEngine {
 }
 
 interface NunjucksLike {
-  configure(opts: { autoescape: boolean }): Object;
-  renderString(src: string, ctx: Map<string, unknown>): string;
+  configure(opts: { autoescape: boolean }): unknown;
+  renderString(src: string, ctx: Record<string, unknown>): string;
 }
 
 let _nunjucks: NunjucksLike | null | undefined = undefined;
@@ -51,7 +51,7 @@ async function loadNunjucks(): Promise<NunjucksLike | null> {
   if (_nunjucks !== undefined) return _nunjucks;
   try {
     // @ts-expect-error optional dep — typed at runtime via the structural cast below
-    const mod = (await import("nunjucks")) as Object;
+    const mod = (await import("nunjucks")) as unknown;
     const env = (
       (mod as { default?: NunjucksLike }).default ?? (mod as NunjucksLike)
     );

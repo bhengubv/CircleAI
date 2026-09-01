@@ -46,7 +46,7 @@ export const AccessibilityNeed = Object.freeze({
   Motor: 2,
   Cognitive: 3,
   Speech: 4,
-} as const) satisfies Map<string, AccessibilityNeed>;
+} as const) satisfies Record<string, AccessibilityNeed>;
 
 /** Enum-name for each {@link AccessibilityNeed}, matching C# `Enum.ToString()`. */
 const NEED_NAMES: readonly string[] = ["Visual", "Hearing", "Motor", "Cognitive", "Speech"];

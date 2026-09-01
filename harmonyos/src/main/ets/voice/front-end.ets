@@ -658,11 +658,11 @@ export class Respeller {
     if (key) this.personal.set(key, pronunciation);
   }
 
-  addLexicon(entries: Readonly<Map<string, string>>): void {
+  addLexicon(entries: Readonly<Record<string, string>>): void {
     for (const [k, v] of Object.entries(entries)) this.lexicon.set(k.toLowerCase(), v);
   }
 
-  addLoanwords(entries: Readonly<Map<string, string>>): void {
+  addLoanwords(entries: Readonly<Record<string, string>>): void {
     for (const [k, v] of Object.entries(entries)) this.loanwords.set(k.toLowerCase(), v);
   }
 
@@ -758,8 +758,8 @@ export class PersonalRespellings {
       : LearningState.Provisional;
   }
 
-  established(): Readonly<Map<string, string>> {
-    const out: Map<string, string> = {};
+  established(): Readonly<Record<string, string>> {
+    const out: Record<string, string> = {};
     for (const [key, w] of this.words) {
       if (w.timesConfirmed >= PersonalRespellings.ESTABLISH_AT) out[key] = w.pronunciation;
     }

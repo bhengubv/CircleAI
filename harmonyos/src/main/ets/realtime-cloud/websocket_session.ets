@@ -114,9 +114,9 @@ export class RealtimeWebSocketSession implements IRealtimeSession {
   /** Lenient cross-vendor JSON event parser. Mirrors C# `ParseEvent`. */
   static parseEvent(json: string): RealtimeEvent | null {
     if (json == null || json.trim().length === 0) return null;
-    const root: Object = JSON.parse(json);
+    const root: unknown = JSON.parse(json);
     if (root == null || typeof root !== "object") return null;
-    const obj = root as Map<string, unknown>;
+    const obj = root as Record<string, unknown>;
     const at = new Date();
 
     // OpenAI Realtime uses "type" = "input_audio_buffer.speech_started" etc.
@@ -158,8 +158,8 @@ export class RealtimeWebSocketSession implements IRealtimeSession {
         case "error": {
           const err = obj["error"];
           const message =
-            err != null && typeof err === "object" && typeof (err as Map<string, unknown>)["message"] === "string"
-              ? ((err as Map<string, unknown>)["message"] as string)
+            err != null && typeof err === "object" && typeof (err as Record<string, unknown>)["message"] === "string"
+              ? ((err as Record<string, unknown>)["message"] as string)
               : json;
           return sessionErrorEvent(at, message);
         }
@@ -172,17 +172,17 @@ export class RealtimeWebSocketSession implements IRealtimeSession {
     // Gemini Live emits { serverContent: { modelTurn: { parts: [{ text: "..." }] } } }
     const sc = obj["serverContent"];
     if (sc != null && typeof sc === "object") {
-      const scObj = sc as Map<string, unknown>;
+      const scObj = sc as Record<string, unknown>;
       if (scObj["turnComplete"] === true) {
         return turnCompleteEvent(at);
       }
       const mt = scObj["modelTurn"];
       if (mt != null && typeof mt === "object") {
-        const parts = (mt as Map<string, unknown>)["parts"];
+        const parts = (mt as Record<string, unknown>)["parts"];
         if (Array.isArray(parts)) {
           for (const part of parts) {
-            if (part != null && typeof part === "object" && typeof (part as Map<string, unknown>)["text"] === "string") {
-              return transcriptDeltaEvent(at, (part as Map<string, unknown>)["text"] as string, RealtimeDirection.Outbound);
+            if (part != null && typeof part === "object" && typeof (part as Record<string, unknown>)["text"] === "string") {
+              return transcriptDeltaEvent(at, (part as Record<string, unknown>)["text"] as string, RealtimeDirection.Outbound);
             }
           }
         }
@@ -194,16 +194,16 @@ export class RealtimeWebSocketSession implements IRealtimeSession {
 }
 
 /** Read a JSON value as a string, defaulting to "" (mirrors `GetString() ?? ""`). */
-function str(v: Object): string {
+function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-function hasString(obj: Map<string, unknown>, key: string): boolean {
+function hasString(obj: Record<string, unknown>, key: string): boolean {
   return typeof obj[key] === "string";
 }
 
 /** Re-serialise a parsed JSON value as raw text (mirrors `GetRawText()`); fallback when absent. */
-function rawJson(v: Object, fallback: string): string {
+function rawJson(v: unknown, fallback: string): string {
   return v === undefined ? fallback : JSON.stringify(v);
 }
 

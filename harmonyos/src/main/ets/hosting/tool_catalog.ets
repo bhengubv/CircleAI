@@ -42,7 +42,7 @@ export interface ToolDescriptor {
  */
 export interface ToolExecutionResult {
   readonly success: boolean;
-  readonly result?: Object;
+  readonly result?: unknown;
   readonly error?: string | null;
   readonly durationMs?: number;
 }

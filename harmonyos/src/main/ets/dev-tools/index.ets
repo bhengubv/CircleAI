@@ -10,6 +10,7 @@
  * Edit the TypeScript source, not this file.
  */
 
+import { Files } from "../platform";
 // dev-tools/index.ts
 //
 // Full-parity port of CircleAI.DevTools (C#). C# is the exact spec.

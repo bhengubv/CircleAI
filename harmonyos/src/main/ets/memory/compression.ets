@@ -872,10 +872,10 @@ export class CompressedEpisodicMemoryStore implements IEpisodicMemoryStore {
   }
 
   private copyTagsWithCompressed(
-    src: Map<string, string> | undefined,
+    src: Record<string, string> | undefined,
     embedding: number[],
-  ): Map<string, string> {
-    const dict: Map<string, string> = src ? { ...src } : {};
+  ): Record<string, string> {
+    const dict: Record<string, string> = src ? { ...src } : {};
     dict[COMPRESSED_TAG_KEY] = EmbeddingPayloadCodec.encodeBase64(embedding, this.bitsPerDim);
     return dict;
   }
@@ -974,7 +974,7 @@ export class CompressedMultimodalMemoryStore implements IMultimodalMemoryStore {
   }
 
   private compress(entry: MultimodalMemoryEntry): MultimodalMemoryEntry {
-    const tags: Map<string, string> = entry.tags ? { ...entry.tags } : {};
+    const tags: Record<string, string> = entry.tags ? { ...entry.tags } : {};
     tags[COMPRESSED_TAG_KEY] = EmbeddingPayloadCodec.encodeBase64(entry.embedding!, this.bitsPerDim);
 
     return {

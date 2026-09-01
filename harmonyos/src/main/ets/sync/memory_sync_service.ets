@@ -76,7 +76,7 @@ interface EpisodicWire {
   assistantText: string;
   appContext?: string;
   embedding?: number[];
-  tags?: Map<string, string>;
+  tags?: Record<string, string>;
 }
 
 /** Default UTF-8 JSON {@link IEpisodicDeltaCodec}. */

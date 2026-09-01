@@ -62,7 +62,7 @@ export interface TransportCapability {
  * Frozen and stated once. Every routing decision in this file reads from here,
  * so correcting a measurement corrects every decision rather than one of them.
  */
-export const TRANSPORT_CAPABILITIES: Readonly<Map<string, TransportCapability>> = Object.freeze({
+export const TRANSPORT_CAPABILITIES: Readonly<Record<string, TransportCapability>> = Object.freeze({
   [TransportKind.WifiDirect]: Object.freeze({
     kind: TransportKind.WifiDirect,
     messagesPerSecond: 50,
@@ -762,7 +762,7 @@ export interface ModelSource {
   /** Keyed by file name. A file with no digest is refused on import, so this
    * being complete is the difference between a bundle that can be verified and
    * one that cannot. */
-  readonly digests: Readonly<Map<string, string>>;
+  readonly digests: Readonly<Record<string, string>>;
   readonly totalBytes: number;
 }
 
@@ -866,7 +866,7 @@ export class ModelPaths {
  */
 export class EmbeddedVoiceConfigs {
   private static readonly families: Readonly<
-    Map<string, { sampleRateHz: number; padIndex: number; declaresRate: boolean }>
+    Record<string, { sampleRateHz: number; padIndex: number; declaresRate: boolean }>
   > = Object.freeze({
     mms: { sampleRateHz: 16000, padIndex: 0, declaresRate: true },
     piper: { sampleRateHz: 22050, padIndex: 3, declaresRate: true },
@@ -1050,7 +1050,7 @@ export class CircleAIDiagnostics {
     return samples[index];
   }
 
-  snapshot(): Readonly<Map<string, unknown>> {
+  snapshot(): Readonly<Record<string, unknown>> {
     const operations = [...this.durations.keys()].sort();
     return Object.freeze({
       uptimeSeconds: (this.now() - this.startedAtMs) / 1000,

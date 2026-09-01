@@ -27,7 +27,7 @@
 // They MUST stay in this exact declaration order so ordinals match the C#
 // reference implementation and all other-language ports.
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from "./platform";
 
 // ---------------------------------------------------------------------------
 // ThreatVector
@@ -126,7 +126,7 @@ export interface AnomalySignal {
    * Structured evidence attached by the detection site.
    * Keys are evidence labels; values are serialised data or hashes.
    */
-  readonly evidence: Readonly<Map<string, string>>;
+  readonly evidence: Readonly<Record<string, string>>;
 
   /** UTC timestamp of detection. */
   readonly detectedAt: Date;
@@ -143,7 +143,7 @@ export function createAnomalySignal(
   confidence: number,
   affectedModule: string,
   description: string,
-  evidence?: Map<string, string>,
+  evidence?: Record<string, string>,
 ): AnomalySignal {
   return {
     id: randomUUID(),

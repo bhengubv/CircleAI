@@ -14,7 +14,7 @@
 //
 // Host-neutral chat runtime seam — the TS port of
 // CircleAI.Hosting.Chat.IChatRuntime (pulled down verbatim from
-// circle-concierge). Zero CircleAI-internal deps: Object harness can drive a
+// circle-concierge). Zero CircleAI-internal deps: any harness can drive a
 // Neuron node through this surface without touching engine internals.
 
 /** One turn in a host-neutral conversation. Mirrors ChatTurn(role, content). */

@@ -44,7 +44,7 @@ export const PropertyKind = Object.freeze({
   Townhouse: "Townhouse",
   Commercial: "Commercial",
   Land: "Land",
-} as const) satisfies Map<string, PropertyKind>;
+} as const) satisfies Record<string, PropertyKind>;
 
 /** A property. Mirrors C# `Property` record. */
 export interface Property {

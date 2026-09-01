@@ -314,7 +314,7 @@ export function isBundleEntry(entry: RegistryModelEntry): boolean {
  * The registry map injected in place of C#'s embedded `registry.json`. Keys are
  * model ids (case-insensitive lookups are performed by the loader/downloader).
  */
-export type ModelRegistryMap = Readonly<Map<string, RegistryModelEntry>>;
+export type ModelRegistryMap = Readonly<Record<string, RegistryModelEntry>>;
 
 function registryLookup(
   registry: ModelRegistryMap,
@@ -1043,7 +1043,7 @@ export class CircleEngine {
    * Optional embedding service. Kept untyped (the C# `object?`) so Core does not
    * reference downstream embedding implementations.
    */
-  embeddingService: Object = null;
+  embeddingService: unknown = null;
 
   constructor(modelLoader: IModelLoader) {
     if (modelLoader === null || modelLoader === undefined)

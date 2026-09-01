@@ -75,7 +75,7 @@ export const BiosignalKind = Object.freeze({
   GalvanicSkinResponse: 7,
   /** Catch-all for vendor-specific or future signals. */
   Unknown: 8,
-} as const) satisfies Map<string, BiosignalKind>;
+} as const) satisfies Record<string, BiosignalKind>;
 
 /** A single biosignal measurement. Mirrors C# `BiosignalSample` record. */
 export interface BiosignalSample {
@@ -340,7 +340,7 @@ export class BiosignalAggregator {
 }
 
 /** True for an AbortError (the cancellation surfaced by an aborted stream). */
-function isAbortError(ex: Object): boolean {
+function isAbortError(ex: unknown): boolean {
   return ex instanceof DOMException && ex.name === "AbortError";
 }
 

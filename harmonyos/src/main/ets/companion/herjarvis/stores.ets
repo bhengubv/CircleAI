@@ -422,9 +422,9 @@ function extractName(demonstrationJson: string): string | null {
       doc !== null &&
       typeof doc === "object" &&
       !Array.isArray(doc) &&
-      typeof (doc as Map<string, unknown>).name === "string"
+      typeof (doc as Record<string, unknown>).name === "string"
     ) {
-      return (doc as Map<string, string>).name;
+      return (doc as Record<string, string>).name;
     }
   } catch {
     /* JsonException → null */

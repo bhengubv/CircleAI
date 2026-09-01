@@ -46,7 +46,7 @@ export type OrderSide = "Buy" | "Sell";
 export const OrderSide = Object.freeze({
   Buy: "Buy",
   Sell: "Sell",
-} as const) satisfies Map<string, OrderSide>;
+} as const) satisfies Record<string, OrderSide>;
 
 /** Market/limit order type. Mirrors C# `enum OrderType`. */
 export type OrderType = "Market" | "Limit";
@@ -54,7 +54,7 @@ export type OrderType = "Market" | "Limit";
 export const OrderType = Object.freeze({
   Market: "Market",
   Limit: "Limit",
-} as const) satisfies Map<string, OrderType>;
+} as const) satisfies Record<string, OrderType>;
 
 /** A tradable instrument. Mirrors C# `Instrument` record. */
 export interface Instrument {

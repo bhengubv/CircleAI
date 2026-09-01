@@ -91,7 +91,7 @@ export class HttpCacheKey {
   constructor(
     readonly method: string,
     readonly url: string,
-    readonly varyValues: Readonly<Map<string, string>> = {},
+    readonly varyValues: Readonly<Record<string, string>> = {},
   ) {}
 
   toString(): string {
@@ -106,7 +106,7 @@ export class HttpCacheKey {
 
   /** A request with an Authorization header is NEVER cached under a shared key.
    * Two people on one device is the normal case here. */
-  static isSafeToCache(headers: Readonly<Map<string, string>>): boolean {
+  static isSafeToCache(headers: Readonly<Record<string, string>>): boolean {
     const lowered = Object.keys(headers).map((k) => k.toLowerCase());
     return !lowered.includes("authorization") && !lowered.includes("cookie");
   }
@@ -163,7 +163,7 @@ export class HttpNetworkTransport {
   constructor(
     private readonly send?: (
       descriptor: HttpEndpointDescriptor,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body?: Uint8Array,
     ) => Promise<{ status: number; body: Uint8Array }>,
     readonly metrics = new InMemoryHttpRequestMetrics(),
@@ -177,7 +177,7 @@ export class HttpNetworkTransport {
 
   async request(
     descriptor: HttpEndpointDescriptor,
-    headers: Map<string, string> = {},
+    headers: Record<string, string> = {},
     body?: Uint8Array,
   ): Promise<{ status: number; body: Uint8Array; fromCache: boolean; error: string }> {
     if (!this.send) {
@@ -1211,8 +1211,8 @@ export class AetherNetTelemetryAdapter {
   constructor(private readonly registry: InMemoryAetherNetRegistry) {}
 
   /** Summaries only, never payloads - see `AetherPacketSummary`. */
-  summarise(packets: readonly AetherPacketSummary[]): Readonly<Map<string, number>> {
-    const byPeer: Map<string, number> = {};
+  summarise(packets: readonly AetherPacketSummary[]): Readonly<Record<string, number>> {
+    const byPeer: Record<string, number> = {};
     for (const packet of packets) byPeer[packet.toTag] = (byPeer[packet.toTag] ?? 0) + packet.bytes;
     return Object.freeze(byPeer);
   }
@@ -1256,7 +1256,7 @@ export class CircleAiAetherNetAiProvider {
 export class VersionVector {
   private readonly counters = new Map<string, number>();
 
-  constructor(seed: Readonly<Map<string, number>> = {}) {
+  constructor(seed: Readonly<Record<string, number>> = {}) {
     for (const [k, v] of Object.entries(seed)) this.counters.set(k, v);
   }
 
@@ -1296,7 +1296,7 @@ export class VersionVector {
     return !this.dominates(other) && !other.dominates(this);
   }
 
-  toRecord(): Map<string, number> {
+  toRecord(): Record<string, number> {
     return Object.fromEntries(this.counters);
   }
 }

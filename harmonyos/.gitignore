@@ -3,3 +3,4 @@ dist/
 .preview/
 build/
 oh_modules/
+.typecheck/

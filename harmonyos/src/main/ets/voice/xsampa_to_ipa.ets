@@ -26,7 +26,7 @@
  * nchlt_afr.dict, with every IPA character checked against the target voice's
  * own token table before the table was written.
  */
-const XSAMPA_TO_IPA: Readonly<Map<string, string>> = Object.freeze({
+const XSAMPA_TO_IPA: Readonly<Record<string, string>> = Object.freeze({
   // Vowels
   a: 'a', 'A:': 'ɑː', 'A:r': 'ɑːr',
   E: 'ɛ', O: 'ɔ', '@': 'ə',
@@ -124,11 +124,11 @@ const FALLBACK_PENALTY = 10.0;
 
 /** SentencePiece unigram tokeniser — Viterbi over the piece lattice. */
 export class SentencePieceUnigram {
-  private readonly ids: Map<string, number>;
-  private readonly scores: Map<string, number>;
+  private readonly ids: Record<string, number>;
+  private readonly scores: Record<string, number>;
   private readonly maxPieceLength: number;
 
-  constructor(ids: Map<string, number>, scores: Map<string, number>) {
+  constructor(ids: Record<string, number>, scores: Record<string, number>) {
     this.ids = ids;
     this.scores = scores;
     this.maxPieceLength = Object.keys(ids).reduce(

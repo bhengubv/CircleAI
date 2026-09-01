@@ -115,7 +115,7 @@ export interface IHttpTransport {
   sendAsync(
     method: string,
     path: string,
-    headers: Readonly<Map<string, string>>,
+    headers: Readonly<Record<string, string>>,
     body: string | null,
   ): Promise<HttpResponse>;
 }
@@ -236,7 +236,7 @@ export class HttpLoopbackEndpoint implements IAIEndpoint {
   async handleAsync(
     method: string,
     path: string,
-    headers: Readonly<Map<string, string>>,
+    headers: Readonly<Record<string, string>>,
     body: string | null,
   ): Promise<HttpResponse> {
     if (!this.authorise(headers)) return plain(401, "unauthorised");
@@ -319,7 +319,7 @@ export class HttpLoopbackEndpoint implements IAIEndpoint {
     return json(result.success ? 200 : 502, result);
   }
 
-  private authorise(headers: Readonly<Map<string, string>>): boolean {
+  private authorise(headers: Readonly<Record<string, string>>): boolean {
     const token = this._token;
     if (token == null || token.length === 0) return false;
     const supplied = headerValue(headers, "X-Butler-Token");
@@ -350,7 +350,7 @@ export class LoopbackHttpTransport implements IHttpTransport {
   sendAsync(
     method: string,
     path: string,
-    headers: Readonly<Map<string, string>>,
+    headers: Readonly<Record<string, string>>,
     body: string | null,
   ): Promise<HttpResponse> {
     // The endpoint routes on the absolute path; strip a leading base if present.
@@ -379,7 +379,7 @@ export class AIHttpClient {
     this.token = token;
   }
 
-  private get headers(): Map<string, string> {
+  private get headers(): Record<string, string> {
     return { "X-Butler-Token": this.token, Accept: "application/json" };
   }
 
@@ -495,7 +495,7 @@ interface ChatPayload {
 
 interface ToolPayload {
   toolName?: string;
-  arguments?: Map<string, unknown>;
+  arguments?: Record<string, unknown>;
 }
 
 function convertMessages(messages: readonly ChatMessage[]): ChatMessagePayload[] {
@@ -526,7 +526,7 @@ function plain(status: number, text: string): HttpResponse {
   return { status, contentType: "text/plain; charset=utf-8", body: text };
 }
 
-function json(status: number, payload: Object): HttpResponse {
+function json(status: number, payload: unknown): HttpResponse {
   return {
     status,
     contentType: "application/json; charset=utf-8",
@@ -544,7 +544,7 @@ function deserialise<T>(body: string | null): T | null {
 }
 
 function headerValue(
-  headers: Readonly<Map<string, string>>,
+  headers: Readonly<Record<string, string>>,
   name: string,
 ): string | undefined {
   const lower = name.toLowerCase();

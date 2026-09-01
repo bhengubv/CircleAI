@@ -182,7 +182,7 @@ export interface IPersonaProvider {
 
 function personaToJson(p: Persona): string {
   // WriteIndented=true, JsonStringEnumConverter, WhenWritingNull.
-  const obj: Map<string, unknown> = {
+  const obj: Record<string, unknown> = {
     Id: p.id,
     DisplayName: p.displayName,
     IdentityTags: p.identityTags,
@@ -201,14 +201,14 @@ function personaToJson(p: Persona): string {
 }
 
 function personaFromJson(text: string): Persona | null {
-  const raw = JSON.parse(text) as Map<string, unknown> | null;
+  const raw = JSON.parse(text) as Record<string, unknown> | null;
   if (raw == null) return null;
 
-  const fm = (raw.Formality ?? {}) as Map<string, unknown>;
+  const fm = (raw.Formality ?? {}) as Record<string, unknown>;
   const privacyRaw = raw.Privacy;
   let privacy = PrivacyLevel.Balanced;
   if (typeof privacyRaw === "string") {
-    const mapped = (PrivacyLevel as Map<string, number>)[privacyRaw];
+    const mapped = (PrivacyLevel as unknown as Record<string, number>)[privacyRaw];
     if (mapped != null) privacy = mapped;
   } else if (typeof privacyRaw === "number") {
     privacy = privacyRaw as PrivacyLevel;
@@ -230,7 +230,7 @@ function personaFromJson(text: string): Persona | null {
   );
 }
 
-function parseDate(raw: Object): Date {
+function parseDate(raw: unknown): Date {
   if (typeof raw === "string") {
     const d = new Date(raw);
     if (!Number.isNaN(d.getTime())) return d;

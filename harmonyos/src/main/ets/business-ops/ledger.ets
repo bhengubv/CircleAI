@@ -40,7 +40,7 @@ export class Currencies {
    * than every currency means a currency nobody thought about gets the common
    * answer instead of no answer.
    */
-  private static readonly exponents: Readonly<Map<string, number>> = Object.freeze({
+  private static readonly exponents: Readonly<Record<string, number>> = Object.freeze({
     JPY: 0, KRW: 0, VND: 0, CLP: 0, ISK: 0, UGX: 0, RWF: 0, XAF: 0, XOF: 0, PYG: 0,
     KWD: 3, BHD: 3, OMR: 3, TND: 3, JOD: 3, IQD: 3, LYD: 3,
   });
@@ -1185,7 +1185,7 @@ export class SqliteCareerStore {
   }
 
   /** Everything a person has sent, so they can see it. Nobody else can. */
-  approvedDocuments(): Object[][] {
+  approvedDocuments(): unknown[][] {
     if (!this.execute) return [];
     return this.execute(
       "SELECT id, job_title, organisation, approved_at FROM approved ORDER BY approved_at DESC",

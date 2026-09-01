@@ -22,7 +22,7 @@
 //   record                                            → readonly interface (+ factory)
 //   string? Schema                                     → string | null
 //   IReadOnlyDictionary<string, ReadOnlyMemory<byte>>  → ReadonlyMap<string, Uint8Array>
-//   IReadOnlyDictionary<string,string>?                → Readonly<Map<string, string>> | null
+//   IReadOnlyDictionary<string,string>?                → Readonly<Record<string,string>> | null
 //   JsonDocument.Parse                                 → JSON.parse
 //   ValueTask<T>                                        → Promise<T>
 
@@ -36,7 +36,7 @@ export interface Specification {
   readonly title: string;
   readonly body: string;
   readonly schema: string | null;
-  readonly metadata: Readonly<Map<string, string>> | null;
+  readonly metadata: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs a {@link Specification}. */
@@ -45,7 +45,7 @@ export function specification(
   title: string,
   body: string,
   schema: string | null,
-  metadata: Readonly<Map<string, string>> | null = null,
+  metadata: Readonly<Record<string, string>> | null = null,
 ): Specification {
   return { specId, title, body, schema, metadata };
 }
@@ -137,7 +137,7 @@ export class JsonShapeSpecificationValidator implements ISpecificationValidator 
     if (spec.body == null || spec.body.trim().length === 0) errors.push("Body is required.");
     if (spec.schema != null && spec.schema.trim().length > 0) {
       try {
-        const root = JSON.parse(spec.schema) as Object;
+        const root = JSON.parse(spec.schema) as unknown;
         if (!isObject(root)) errors.push("Schema must be a JSON object.");
         else if (!("type" in root)) errors.push("Schema must declare a top-level 'type'.");
       } catch (ex) {
@@ -252,7 +252,7 @@ export class NullSpecToScaffold implements ISpecToScaffold {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isObject(v: Object): v is Map<string, unknown> {
+function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 

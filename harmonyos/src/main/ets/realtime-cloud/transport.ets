@@ -79,13 +79,13 @@ export class NullRealtimeTransportFactory implements IRealtimeTransportFactory {
  * WebSocket session makes on an unparseable vendor frame.
  */
 export interface IRealtimeLogger {
-  debug(message: string, error?: Object): void;
+  debug(message: string, error?: unknown): void;
 }
 
 /** No-op {@link IRealtimeLogger}. Mirrors C# `NullLogger.Instance`. */
 export class NullRealtimeLogger implements IRealtimeLogger {
   static readonly instance = new NullRealtimeLogger();
-  debug(_message: string, _error?: Object): void {
+  debug(_message: string, _error?: unknown): void {
     /* nothing */
   }
 }

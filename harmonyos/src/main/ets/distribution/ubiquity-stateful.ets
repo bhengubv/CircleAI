@@ -117,7 +117,7 @@ export class DefaultUssdFallback implements UssdFallback {
   private readonly sessions = new Map<string, string>();
 
   private static readonly menus: Readonly<
-    Record<string, { prompt: string; routes: Readonly<Map<string, string>> }>
+    Record<string, { prompt: string; routes: Readonly<Record<string, string>> }>
   > = Object.freeze({
     root: {
       prompt: "1. Ask something\n2. My balance\n3. Family\n4. Help",
@@ -479,7 +479,7 @@ export interface CulturalGreetings {
  * works for one of them is a greeting that fails on half the devices.
  */
 export class DefaultCulturalGreetings implements CulturalGreetings {
-  private static readonly greetings: Readonly<Map<string, string>> = Object.freeze({
+  private static readonly greetings: Readonly<Record<string, string>> = Object.freeze({
     zu: "Sawubona", zul: "Sawubona",
     xh: "Molo", xho: "Molo",
     af: "Goeiedag", afr: "Goeiedag",
@@ -545,7 +545,7 @@ export interface CurrencyFormatter {
  * and both by a factor a person notices only when they are billed.
  */
 export class DefaultCurrencyFormatter implements CurrencyFormatter {
-  private static readonly exponent: Readonly<Map<string, number>> = Object.freeze({
+  private static readonly exponent: Readonly<Record<string, number>> = Object.freeze({
     JPY: 0, KRW: 0, VND: 0, CLP: 0, ISK: 0, UGX: 0, RWF: 0, XAF: 0, XOF: 0,
     KWD: 3, BHD: 3, OMR: 3, TND: 3, JOD: 3, IQD: 3,
   });
@@ -583,7 +583,7 @@ export interface PhoneNumberFormatter {
  */
 export class DefaultPhoneNumberFormatter implements PhoneNumberFormatter {
   /** Country to (dialling code, grouping of the national part). */
-  private static readonly groupings: Readonly<Map<string, [string, number[]]>> =
+  private static readonly groupings: Readonly<Record<string, [string, number[]]>> =
     Object.freeze({
       ZA: ["27", [2, 3, 4]],
       KE: ["254", [3, 6]],
@@ -682,8 +682,8 @@ export class DefaultPerCallTransparency implements PerCallTransparency {
   }
 
   /** What the device has spent, in minor units, per currency. */
-  totals(): Readonly<Map<string, number>> {
-    const out: Map<string, number> = {};
+  totals(): Readonly<Record<string, number>> {
+    const out: Record<string, number> = {};
     for (const r of this.receipts.values()) {
       out[r.currency] = (out[r.currency] ?? 0) + r.costMinor;
     }
@@ -765,7 +765,7 @@ export interface ImpairedUserMode {
 export class DefaultImpairedUserMode implements ImpairedUserMode {
   private readonly engaged = new Set<string>();
 
-  private static readonly byKind: Readonly<Map<string, readonly string[]>> = Object.freeze({
+  private static readonly byKind: Readonly<Record<string, readonly string[]>> = Object.freeze({
     vision: Object.freeze(["larger text", "higher contrast", "spoken replies"]),
     hearing: Object.freeze(["captions", "vibration alerts", "no audio-only replies"]),
     motor: Object.freeze(["longer timeouts", "larger targets", "voice control"]),

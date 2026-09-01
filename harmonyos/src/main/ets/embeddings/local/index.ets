@@ -43,14 +43,14 @@ import {
 export interface EmbeddingDocument {
   readonly id: string;
   readonly text: string;
-  readonly metadata?: Readonly<Map<string, string>> | null;
+  readonly metadata?: Readonly<Record<string, string>> | null;
 }
 
 /** Build an {@link EmbeddingDocument} (mirrors the positional C# record ctor). */
 export function makeEmbeddingDocument(
   id: string,
   text: string,
-  metadata: Readonly<Map<string, string>> | null = null,
+  metadata: Readonly<Record<string, string>> | null = null,
 ): EmbeddingDocument {
   return { id, text, metadata };
 }
@@ -504,7 +504,7 @@ export class InMemoryEmbeddingStore implements ICircleEmbeddingStore {
       const id = br.readString();
       const text = br.readString();
       const metaCount = br.readInt32();
-      let metadata: Map<string, string> | null = null;
+      let metadata: Record<string, string> | null = null;
       if (metaCount > 0) {
         metadata = {};
         for (let m = 0; m < metaCount; m++) {
@@ -1060,7 +1060,7 @@ export class HnswEmbeddingStore implements ICircleEmbeddingStore {
         const text = br.readString();
         const live = br.readBoolean();
         const metaCount = br.readInt32();
-        let metadata: Map<string, string> | null = null;
+        let metadata: Record<string, string> | null = null;
         if (metaCount > 0) {
           metadata = {};
           for (let m = 0; m < metaCount; m++) metadata[br.readString()] = br.readString();

@@ -22,7 +22,7 @@
 //
 // Type mappings (C# → TS):
 //   record                                → readonly interface (+ positional factory)
-//   IReadOnlyDictionary<string,string>    → Readonly<Map<string, string>>
+//   IReadOnlyDictionary<string,string>    → Readonly<Record<string,string>>
 //   ReadOnlyMemory<byte>?                 → Uint8Array | null
 //   DateTimeOffset                        → Date
 //   IDisposable Subscribe(...)            → { dispose(): void }
@@ -45,7 +45,7 @@ export interface SensorReading {
   readonly kind: string;
   /** UTC capture instant (C# `DateTimeOffset CapturedAtUtc`). */
   readonly capturedAtUtc: Date;
-  readonly values: Readonly<Map<string, string>>;
+  readonly values: Readonly<Record<string, string>>;
   readonly payload: Uint8Array | null;
 }
 
@@ -54,7 +54,7 @@ export function sensorReading(
   sensorId: string,
   kind: string,
   capturedAtUtc: Date,
-  values: Readonly<Map<string, string>>,
+  values: Readonly<Record<string, string>>,
   payload: Uint8Array | null = null,
 ): SensorReading {
   return { sensorId, kind, capturedAtUtc, values, payload };
@@ -76,7 +76,7 @@ export interface ObservationTool {
   readonly toolId: string;
   readonly description: string;
   readonly tags: readonly string[];
-  readonly invoke: (args: Readonly<Map<string, string>>) => Promise<string>;
+  readonly invoke: (args: Readonly<Record<string, string>>) => Promise<string>;
 }
 
 /** Constructs an {@link ObservationTool}. */
@@ -84,7 +84,7 @@ export function observationTool(
   toolId: string,
   description: string,
   tags: readonly string[],
-  invoke: (args: Readonly<Map<string, string>>) => Promise<string>,
+  invoke: (args: Readonly<Record<string, string>>) => Promise<string>,
 ): ObservationTool {
   return { toolId, description, tags, invoke };
 }
@@ -131,14 +131,14 @@ export interface IObservationLoop {
 export interface ObserverDecision {
   readonly reasoning: string;
   readonly toolsToInvoke: readonly string[];
-  readonly toolArgs: Readonly<Map<string, string>> | null;
+  readonly toolArgs: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs an {@link ObserverDecision}. */
 export function observerDecision(
   reasoning: string,
   toolsToInvoke: readonly string[],
-  toolArgs: Readonly<Map<string, string>> | null = null,
+  toolArgs: Readonly<Record<string, string>> | null = null,
 ): ObserverDecision {
   return { reasoning, toolsToInvoke, toolArgs };
 }

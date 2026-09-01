@@ -368,13 +368,13 @@ export class GoogleCalendarConnector implements ICalendarConnector {
       `&timeMax=${encodeURIComponent(fmtRoundTripUtc(toUtc))}` +
       `&singleEvents=true&orderBy=startTime&maxResults=250`;
     const resp = ensureSuccess(await this.get(GOOGLE_BASE + path, token, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
 
     const list: CalendarEvent[] = [];
     const items = root["items"];
     if (Array.isArray(items)) {
       for (const evUnknown of items) {
-        const ev = evUnknown as Map<string, unknown>;
+        const ev = evUnknown as Record<string, unknown>;
         if (typeof ev["status"] === "string" && ev["status"] === "cancelled") continue;
 
         const [startUtc, isAllDay] = parseGoogleTime(ev, "start");
@@ -384,7 +384,7 @@ export class GoogleCalendarConnector implements ICalendarConnector {
         const atts = ev["attendees"];
         if (Array.isArray(atts)) {
           for (const aUnknown of atts) {
-            const a = aUnknown as Map<string, unknown>;
+            const a = aUnknown as Record<string, unknown>;
             if ("email" in a) attendees.push(typeof a["email"] === "string" ? (a["email"] as string) : "");
           }
         }
@@ -422,7 +422,7 @@ export class GoogleCalendarConnector implements ICalendarConnector {
     const resp = ensureSuccess(
       await this.postJson(GOOGLE_BASE + `calendars/${encodeURIComponent(ev.calendarId)}/events`, body, token, ct),
     );
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
     return { ...ev, eventId: typeof root["id"] === "string" ? (root["id"] as string) : "" };
   }
 
@@ -447,7 +447,7 @@ export class GoogleCalendarConnector implements ICalendarConnector {
   private get(url: string, token: string, ct?: AbortSignal): Promise<HttpResponse> {
     return this.http.send({ method: "GET", url, headers: new Map([["Authorization", `Bearer ${token}`]]) }, ct);
   }
-  private postJson(url: string, body: Object, token: string, ct?: AbortSignal): Promise<HttpResponse> {
+  private postJson(url: string, body: unknown, token: string, ct?: AbortSignal): Promise<HttpResponse> {
     return this.http.send(
       {
         method: "POST",
@@ -464,10 +464,10 @@ export class GoogleCalendarConnector implements ICalendarConnector {
 }
 
 /** C# `GoogleCalendarConnector.ParseTime` → (utc, allDay). */
-function parseGoogleTime(parent: Map<string, unknown>, property: string): [Date, boolean] {
+function parseGoogleTime(parent: Record<string, unknown>, property: string): [Date, boolean] {
   const node = parent[property];
   if (node == null || typeof node !== "object") return [DateTimeOffsetMinValue, false];
-  const obj = node as Map<string, unknown>;
+  const obj = node as Record<string, unknown>;
   if (typeof obj["dateTime"] === "string") {
     const dto = tryParseDate(obj["dateTime"] as string);
     if (dto !== null) return [dto, false];
@@ -529,21 +529,21 @@ export class MsGraphCalendarConnector implements ICalendarConnector {
         ct,
       ),
     );
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
 
     const list: CalendarEvent[] = [];
     const arr = root["value"];
     if (Array.isArray(arr)) {
       for (const evUnknown of arr) {
-        const ev = evUnknown as Map<string, unknown>;
+        const ev = evUnknown as Record<string, unknown>;
         const attendees: string[] = [];
         const atts = ev["attendees"];
         if (Array.isArray(atts)) {
           for (const aUnknown of atts) {
-            const a = aUnknown as Map<string, unknown>;
+            const a = aUnknown as Record<string, unknown>;
             const em = a["emailAddress"];
             if (em != null && typeof em === "object" && "address" in (em as object)) {
-              const addr = (em as Map<string, unknown>)["address"];
+              const addr = (em as Record<string, unknown>)["address"];
               attendees.push(typeof addr === "string" ? addr : "");
             }
           }
@@ -555,7 +555,7 @@ export class MsGraphCalendarConnector implements ICalendarConnector {
         let location: string | null = null;
         const loc = ev["location"];
         if (loc != null && typeof loc === "object" && "displayName" in (loc as object)) {
-          const dn = (loc as Map<string, unknown>)["displayName"];
+          const dn = (loc as Record<string, unknown>)["displayName"];
           location = typeof dn === "string" ? dn : null;
         }
 
@@ -603,7 +603,7 @@ export class MsGraphCalendarConnector implements ICalendarConnector {
         ct,
       ),
     );
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
     return { ...ev, eventId: typeof root["id"] === "string" ? (root["id"] as string) : "" };
   }
 
@@ -629,10 +629,10 @@ export class MsGraphCalendarConnector implements ICalendarConnector {
 }
 
 /** C# `MsGraphCalendarConnector.ParseGraphTime` → UTC or MinValue. */
-function parseGraphTime(parent: Map<string, unknown>, property: string): Date {
+function parseGraphTime(parent: Record<string, unknown>, property: string): Date {
   const node = parent[property];
   if (node == null || typeof node !== "object") return DateTimeOffsetMinValue;
-  const dt = (node as Map<string, unknown>)["dateTime"];
+  const dt = (node as Record<string, unknown>)["dateTime"];
   if (typeof dt !== "string" || dt.length === 0) return DateTimeOffsetMinValue;
   const dto = tryParseDate(dt);
   return dto !== null ? dto : DateTimeOffsetMinValue;

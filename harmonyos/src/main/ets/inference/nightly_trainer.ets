@@ -206,7 +206,7 @@ export class NightlyAdapterTrainer {
       this.scheduleNext();
     }, this.opts.intervalMs);
     // Do not keep the event loop alive purely for this timer.
-    (this.timer as { unref?: () => void }).unref?.();
+    (this.timer as unknown as { unref?: () => void }).unref?.();
   }
 
   /**

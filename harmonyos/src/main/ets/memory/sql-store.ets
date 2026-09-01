@@ -152,7 +152,7 @@ export class AdoAtomStore {
     return true;
   }
 
-  byKind(kind: string): Object[][] {
+  byKind(kind: string): unknown[][] {
     return this.execute ? this.execute(this.selectByKindSql(), [kind]) : [];
   }
 
@@ -213,7 +213,7 @@ export class InMemoryIdentityStore {
     return this.records.get(identityId);
   }
 
-  allTemplates(): Readonly<Map<string, number[][]>> {
+  allTemplates(): Readonly<Record<string, number[][]>> {
     return Object.freeze(
       Object.fromEntries([...this.templates].map(([k, v]) => [k, v.map((t) => [...t])])),
     );
@@ -273,7 +273,7 @@ export class BiometricMatcher {
 
   static match(
     live: readonly number[],
-    enrolled: Readonly<Map<string, number[][]>>,
+    enrolled: Readonly<Record<string, number[][]>>,
   ): BiometricMatch {
     const none = Object.freeze({ identityId: "", similarity: 0, matched: false, margin: 0 });
     if (live.length === 0) return none;
@@ -360,12 +360,12 @@ export class AmbientCompanionMonitor {
  */
 export class McpEndpoints {
   constructor(
-    private readonly tools: readonly Map<string, unknown>[] = [],
-    private readonly invoke?: (name: string, args: Map<string, unknown>) => Promise<unknown>,
+    private readonly tools: readonly Record<string, unknown>[] = [],
+    private readonly invoke?: (name: string, args: Record<string, unknown>) => Promise<unknown>,
     private readonly isAllowed?: (name: string) => boolean,
   ) {}
 
-  listTools(): readonly Map<string, unknown>[] {
+  listTools(): readonly Record<string, unknown>[] {
     return Object.freeze(
       this.tools.filter((t) => !this.isAllowed || this.isAllowed(String(t.name ?? ""))),
     );
@@ -373,7 +373,7 @@ export class McpEndpoints {
 
   async callTool(
     name: string,
-    args: Map<string, unknown>,
+    args: Record<string, unknown>,
   ): Promise<{ isError: boolean; content: { type: string; text: string }[] }> {
     if (this.isAllowed && !this.isAllowed(name)) {
       return {
@@ -416,11 +416,11 @@ export class IoTCompanionPipeline {
 
   constructor(
     private readonly read?: (deviceId: string) => Promise<unknown>,
-    private readonly write?: (deviceId: string, value: Object) => Promise<boolean>,
+    private readonly write?: (deviceId: string, value: unknown) => Promise<boolean>,
     private readonly confirm?: (deviceId: string, action: string) => Promise<boolean>,
   ) {}
 
-  async readState(deviceId: string): Promise<{ value?: Object; reason: string }> {
+  async readState(deviceId: string): Promise<{ value?: unknown; reason: string }> {
     if (!this.read) return { reason: "nothing is connected to this device" };
     return { value: await this.read(deviceId), reason: "" };
   }
@@ -428,7 +428,7 @@ export class IoTCompanionPipeline {
   async act(
     deviceId: string,
     action: string,
-    value?: Object,
+    value?: unknown,
   ): Promise<{ done: boolean; reason: string }> {
     if (!this.write) return { done: false, reason: "nothing is connected to this device" };
     if (IoTCompanionPipeline.GUARDED.includes(action.toLowerCase())) {

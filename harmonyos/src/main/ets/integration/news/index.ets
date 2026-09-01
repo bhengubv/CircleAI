@@ -106,33 +106,33 @@ export class BlueskySource implements INewsSource {
       `${this.opts.host}/xrpc/app.bsky.feed.searchPosts` +
       `?q=${encodeURIComponent(this.opts.query)}&limit=${Math.min(max, 100)}&sort=latest`;
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers: new Map() }, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
 
     const list: NewsItem[] = [];
     const arr = root["posts"];
     if (!Array.isArray(arr)) return list;
     for (const postUnknown of arr) {
-      const post = postUnknown as Map<string, unknown>;
+      const post = postUnknown as Record<string, unknown>;
       const uri = typeof post["uri"] === "string" ? (post["uri"] as string) : "";
       const record = post["record"];
-      const recObj = record != null && typeof record === "object" && !Array.isArray(record) ? (record as Map<string, unknown>) : undefined;
+      const recObj = record != null && typeof record === "object" && !Array.isArray(record) ? (record as Record<string, unknown>) : undefined;
       const text = recObj !== undefined && typeof recObj["text"] === "string" ? (recObj["text"] as string) : "";
       const ts = recObj !== undefined && typeof recObj["createdAt"] === "string" ? (recObj["createdAt"] as string) : null;
       let author: string | null = null;
       const a = post["author"];
-      if (a != null && typeof a === "object" && typeof (a as Map<string, unknown>)["handle"] === "string") {
-        author = (a as Map<string, unknown>)["handle"] as string;
+      if (a != null && typeof a === "object" && typeof (a as Record<string, unknown>)["handle"] === "string") {
+        author = (a as Record<string, unknown>)["handle"] as string;
       }
       const tags: string[] = [];
       if (recObj !== undefined) {
         const facets = recObj["facets"];
         if (Array.isArray(facets)) {
           for (const fUnknown of facets) {
-            const f = fUnknown as Map<string, unknown>;
+            const f = fUnknown as Record<string, unknown>;
             const feats = f["features"];
             if (Array.isArray(feats)) {
               for (const featUnknown of feats) {
-                const feat = featUnknown as Map<string, unknown>;
+                const feat = featUnknown as Record<string, unknown>;
                 if ("tag" in feat) tags.push(typeof feat["tag"] === "string" ? (feat["tag"] as string) : "");
               }
             }
@@ -208,12 +208,12 @@ export class MastodonSource implements INewsSource {
     if (!isNullOrWhiteSpace(this.opts.accessToken)) headers.set("Authorization", `Bearer ${this.opts.accessToken}`);
     const url = this.opts.instance.replace(/\/+$/, "") + path;
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers }, ct));
-    const root = JSON.parse(resp.body) as Object;
+    const root = JSON.parse(resp.body) as unknown;
 
     if (!Array.isArray(root)) return [];
     const list: NewsItem[] = [];
     for (const sUnknown of root) {
-      const s = sUnknown as Map<string, unknown>;
+      const s = sUnknown as Record<string, unknown>;
       const url2 = typeof s["url"] === "string" ? (s["url"] as string) : "";
       const contentHtml = typeof s["content"] === "string" ? (s["content"] as string) : "";
       const pub = typeof s["created_at"] === "string" ? (s["created_at"] as string) : null;
@@ -221,14 +221,14 @@ export class MastodonSource implements INewsSource {
       const tagsArr = s["tags"];
       if (Array.isArray(tagsArr)) {
         for (const tgUnknown of tagsArr) {
-          const tg = tgUnknown as Map<string, unknown>;
+          const tg = tgUnknown as Record<string, unknown>;
           if ("name" in tg) tags.push(typeof tg["name"] === "string" ? (tg["name"] as string) : "");
         }
       }
       let acct: string | null = null;
       const a = s["account"];
-      if (a != null && typeof a === "object" && typeof (a as Map<string, unknown>)["acct"] === "string") {
-        acct = (a as Map<string, unknown>)["acct"] as string;
+      if (a != null && typeof a === "object" && typeof (a as Record<string, unknown>)["acct"] === "string") {
+        acct = (a as Record<string, unknown>)["acct"] as string;
       }
       const text = stripTags(contentHtml);
       list.push(
@@ -282,21 +282,21 @@ export class NewsApiSource implements INewsSource {
       ["User-Agent", "CircleAI/1.0 (NewsApiSource)"],
     ]);
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers }, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
 
     const list: NewsItem[] = [];
     const arr = root["articles"];
     if (Array.isArray(arr)) {
       for (const aUnknown of arr) {
-        const a = aUnknown as Map<string, unknown>;
+        const a = aUnknown as Record<string, unknown>;
         const title = typeof a["title"] === "string" ? (a["title"] as string) : "";
         const desc = typeof a["description"] === "string" ? (a["description"] as string) : "";
         const url2 = typeof a["url"] === "string" ? (a["url"] as string) : "";
         const pub = typeof a["publishedAt"] === "string" ? (a["publishedAt"] as string) : null;
         let src: string | null = null;
         const s = a["source"];
-        if (s != null && typeof s === "object" && typeof (s as Map<string, unknown>)["name"] === "string") {
-          src = (s as Map<string, unknown>)["name"] as string;
+        if (s != null && typeof s === "object" && typeof (s as Record<string, unknown>)["name"] === "string") {
+          src = (s as Record<string, unknown>)["name"] as string;
         }
         list.push(newsItem(url2, src ?? this.sourceId, title, desc, absoluteUrlOrBlank(url2), parseDateOrMin(pub), []));
       }

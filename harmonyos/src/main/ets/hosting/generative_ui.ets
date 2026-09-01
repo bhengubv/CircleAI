@@ -29,7 +29,7 @@ export interface UiComponent {
   /** Catalog identifier, e.g. "card", "button", "list". */
   readonly kind: string;
   /** Bag of property values keyed by JSON property name. */
-  readonly properties: Readonly<Map<string, unknown>>;
+  readonly properties: Readonly<Record<string, unknown>>;
   /** Optional nested components. */
   readonly children?: readonly UiComponent[] | null;
 }
@@ -42,7 +42,7 @@ export interface UiCatalogEntry {
   readonly kind: string;
   readonly description: string;
   /** Property names → JSON Schema type strings. */
-  readonly allowedProperties: Readonly<Map<string, string>>;
+  readonly allowedProperties: Readonly<Record<string, string>>;
   readonly allowsChildren?: boolean;
 }
 
@@ -132,7 +132,7 @@ export function parseRender(
   if (json == null || json.length === 0) throw new JsonRenderError("json required");
   if (!catalog) throw new JsonRenderError("catalog required");
 
-  let root: Object;
+  let root: unknown;
   try {
     root = JSON.parse(json);
   } catch (e) {
@@ -148,7 +148,7 @@ export function parseRender(
 }
 
 function parseElement(
-  el: Object,
+  el: unknown,
   catalog: Map<string, UiCatalogEntry>,
   strict: boolean,
 ): UiComponent {
@@ -169,7 +169,7 @@ function parseElement(
     };
   }
 
-  const props: Map<string, unknown> = {};
+  const props: Record<string, unknown> = {};
   const propsEl = el["properties"];
   if (isPlainObject(propsEl)) {
     for (const [name, value] of Object.entries(propsEl)) {
@@ -222,11 +222,11 @@ export function describeCatalogForPrompt(
   return lines.join("\n") + "\n";
 }
 
-function isPlainObject(v: Object): v is Map<string, unknown> {
+function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function describeKind(v: Object): string {
+function describeKind(v: unknown): string {
   if (v === null) return "Null";
   if (Array.isArray(v)) return "Array";
   switch (typeof v) {

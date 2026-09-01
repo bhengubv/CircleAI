@@ -104,7 +104,7 @@ export class PacaMcpServer {
     const tools = [...this.tools.values()].map((t) => ({
       name: t.tool.name,
       description: t.tool.description,
-      inputSchema: JSON.parse(t.tool.inputSchema) as Object,
+      inputSchema: JSON.parse(t.tool.inputSchema) as unknown,
     }));
     return JSON.stringify({ tools });
   }

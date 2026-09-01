@@ -125,7 +125,7 @@ export interface InferenceRequest {
   readonly temperature: number;
   readonly topP: number;
   readonly stopSequences: readonly string[];
-  readonly metadata: Readonly<Map<string, string>>;
+  readonly metadata: Readonly<Record<string, string>>;
   readonly requestedAt: string;
 }
 

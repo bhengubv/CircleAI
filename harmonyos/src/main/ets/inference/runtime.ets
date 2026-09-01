@@ -447,15 +447,15 @@ export const threadsFor = (availableCores: number): MnnRuntimeConfig =>
 export class MnnNativeDiagnostics {
   private readonly values = new Map<string, unknown>();
 
-  record(key: string, value: Object): void {
+  record(key: string, value: unknown): void {
     this.values.set(key, value);
   }
 
-  get(key: string): Object {
+  get(key: string): unknown {
     return this.values.get(key);
   }
 
-  snapshot(): Readonly<Map<string, unknown>> {
+  snapshot(): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(this.values));
   }
 
@@ -970,7 +970,7 @@ export class BundleModelLoader {
 
   /** Reports EVERY problem, not the first. Fixing one missing file, re-running
    * and finding the next is three trips where one would do. */
-  verify(root: string, expected: Readonly<Map<string, number>>): { complete: boolean; problems: string[] } {
+  verify(root: string, expected: Readonly<Record<string, number>>): { complete: boolean; problems: string[] } {
     const problems: string[] = [];
     for (const name of Object.keys(expected).sort()) {
       const path = `${root}/${name}`;
@@ -1116,8 +1116,8 @@ export class SpeechModelSelector implements SpeechModelSelectorContract {
   private readonly voices: ReadonlyMap<string, string>;
 
   constructor(
-    transcribersByLanguage: Readonly<Map<string, string>> = {},
-    voicesByLanguage: Readonly<Map<string, string>> = {},
+    transcribersByLanguage: Readonly<Record<string, string>> = {},
+    voicesByLanguage: Readonly<Record<string, string>> = {},
     private readonly generatorId = "",
   ) {
     this.transcribers = new Map(
@@ -1287,7 +1287,7 @@ export interface AgentAction {
   readonly raw: string;
 }
 
-const ACTION_ALIASES: Readonly<Map<string, AgentActionKind>> = Object.freeze({
+const ACTION_ALIASES: Readonly<Record<string, AgentActionKind>> = Object.freeze({
   read_file: AgentActionKind.ReadFile,
   read: AgentActionKind.ReadFile,
   edit_file: AgentActionKind.EditFile,
@@ -1352,11 +1352,11 @@ export class AgentActionParser {
 
     const object = AgentActionParser.extractJsonObject(reply);
     if (!object) return unknown(reply);
-    let parsed: Map<string, unknown>;
+    let parsed: Record<string, unknown>;
     try {
       const value = JSON.parse(object);
       if (!value || typeof value !== "object" || Array.isArray(value)) return unknown(reply);
-      parsed = value as Map<string, unknown>;
+      parsed = value as Record<string, unknown>;
     } catch {
       return unknown(reply);
     }

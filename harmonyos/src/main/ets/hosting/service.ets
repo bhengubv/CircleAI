@@ -1073,7 +1073,7 @@ export class AIService implements IAIService {
     if (json.length === 0) return null;
 
     try {
-      const root = JSON.parse(json) as Map<string, unknown>;
+      const root = JSON.parse(json) as Record<string, unknown>;
 
       // Support both {"name":...} and {"tool_name":...}.
       let toolName: string | null = null;
@@ -1083,7 +1083,7 @@ export class AIService implements IAIService {
 
       if (toolName == null || toolName.trim().length === 0) return null;
 
-      const args: Map<string, unknown> = {};
+      const args: Record<string, unknown> = {};
       const argsProp = root["arguments"];
       if (isPlainObject(argsProp)) {
         for (const [k, v] of Object.entries(argsProp)) {
@@ -1146,6 +1146,6 @@ function formatLocalTime(d: Date): string {
   return `${y}-${mo}-${da} ${h}:${mi}`;
 }
 
-function isPlainObject(v: Object): v is Map<string, unknown> {
+function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }

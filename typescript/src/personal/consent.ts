@@ -424,7 +424,19 @@ export const noPermissions = (): Permissions =>
     paths: Object.freeze([]),
   });
 
-export const permissions = (partial: Partial<Permissions> = {}): Permissions =>
+/**
+ * What `permissions()` accepts.
+ *
+ * `consentScopes` is widened to any ITERABLE, because the factory already
+ * builds a `Set` from it and every caller has one of an array, a set, or
+ * nothing. Requiring a `ReadonlySet` on the way in made two correct call sites
+ * fail to type-check while the factory itself was happy to take either.
+ */
+export type PermissionsInit = Omit<Partial<Permissions>, "consentScopes"> & {
+  readonly consentScopes?: Iterable<ConsentScope>;
+};
+
+export const permissions = (partial: PermissionsInit = {}): Permissions =>
   Object.freeze({
     readFiles: partial.readFiles ?? false,
     writeFiles: partial.writeFiles ?? false,
@@ -498,7 +510,11 @@ export class PluginLoader {
       writeFiles: requested.writeFiles && allowed.writeFiles,
       network: requested.network && allowed.network,
       inference: requested.inference && allowed.inference,
-      consentScopes: [...requested.consentScopes].filter((s) => allowed.consentScopes.has(s)),
+      // The factory builds the Set; what it needs is the members. Everything
+      // downstream calls `.has()` on this field, so it must not stay an array.
+      consentScopes: [...requested.consentScopes].filter((s) =>
+        allowed.consentScopes.has(s),
+      ),
       // Paths intersect too. A plugin granted one directory and asking for two
       // gets one.
       paths: requested.paths.filter((p) => allowed.paths.includes(p)),

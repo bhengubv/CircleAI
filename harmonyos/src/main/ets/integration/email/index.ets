@@ -82,13 +82,13 @@ export class GmailEmailConnector implements IEmailConnector {
 
     const listPath = `messages?q=${encodeURIComponent(query)}&maxResults=${Math.min(max, 100)}`;
     const listResp = ensureSuccess(await this.get(GMAIL_BASE + listPath, token, ct));
-    const listRoot = JSON.parse(listResp.body) as Map<string, unknown>;
+    const listRoot = JSON.parse(listResp.body) as Record<string, unknown>;
 
     const ids: string[] = [];
     const msgs = listRoot["messages"];
     if (Array.isArray(msgs)) {
       for (const mUnknown of msgs) {
-        const m = mUnknown as Map<string, unknown>;
+        const m = mUnknown as Record<string, unknown>;
         if ("id" in m) ids.push(typeof m["id"] === "string" ? (m["id"] as string) : "");
       }
     }
@@ -97,7 +97,7 @@ export class GmailEmailConnector implements IEmailConnector {
     for (const id of ids) {
       const getResp = await this.get(GMAIL_BASE + `messages/${encodeURIComponent(id)}?format=full`, token, ct);
       if (!isSuccessStatusCode(getResp.statusCode)) continue;
-      const root = JSON.parse(getResp.body) as Map<string, unknown>;
+      const root = JSON.parse(getResp.body) as Record<string, unknown>;
       result.push(parseGmailMessage(root));
     }
     return result;
@@ -133,7 +133,7 @@ export class GmailEmailConnector implements IEmailConnector {
 }
 
 /** C# `GmailEmailConnector.ParseGmailMessage`. */
-function parseGmailMessage(msg: Map<string, unknown>): EmailMessage {
+function parseGmailMessage(msg: Record<string, unknown>): EmailMessage {
   const id = typeof msg["id"] === "string" ? (msg["id"] as string) : "";
   const labels: string[] = [];
   const labs = msg["labelIds"];
@@ -144,10 +144,10 @@ function parseGmailMessage(msg: Map<string, unknown>): EmailMessage {
   const headers = new Map<string, string>();
   const payload = msg["payload"];
   if (payload != null && typeof payload === "object") {
-    const hs = (payload as Map<string, unknown>)["headers"];
+    const hs = (payload as Record<string, unknown>)["headers"];
     if (Array.isArray(hs)) {
       for (const hUnknown of hs) {
-        const h = hUnknown as Map<string, unknown>;
+        const h = hUnknown as Record<string, unknown>;
         if ("name" in h && "value" in h) {
           const name = typeof h["name"] === "string" ? (h["name"] as string) : "";
           const val = typeof h["value"] === "string" ? (h["value"] as string) : "";
@@ -158,7 +158,7 @@ function parseGmailMessage(msg: Map<string, unknown>): EmailMessage {
   }
   const getHeader = (name: string): string | undefined => headers.get(name.toLowerCase());
 
-  const bodyText = extractBody(payload != null && typeof payload === "object" ? (payload as Map<string, unknown>) : undefined);
+  const bodyText = extractBody(payload != null && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined);
   const internal = msg["internalDate"];
   let receivedMs = 0;
   if (typeof internal === "string") {
@@ -175,22 +175,22 @@ function parseGmailMessage(msg: Map<string, unknown>): EmailMessage {
 }
 
 /** C# `GmailEmailConnector.ExtractBody` — walks the MIME tree, preferring text/plain. */
-function extractBody(payload: Map<string, unknown> | undefined): string {
+function extractBody(payload: Record<string, unknown> | undefined): string {
   if (payload === undefined) return "";
   const body = payload["body"];
   if (body != null && typeof body === "object") {
-    const data = (body as Map<string, unknown>)["data"];
+    const data = (body as Record<string, unknown>)["data"];
     if (typeof data === "string") return decodeBase64Url(data);
   }
   const parts = payload["parts"];
   if (Array.isArray(parts)) {
     for (const partUnknown of parts) {
-      const part = partUnknown as Map<string, unknown>;
+      const part = partUnknown as Record<string, unknown>;
       const mime = typeof part["mimeType"] === "string" ? (part["mimeType"] as string) : null;
       if (mime !== null && mime.toLowerCase() === "text/plain") return extractBody(part);
     }
     for (const partUnknown of parts) {
-      const content = extractBody(partUnknown as Map<string, unknown>);
+      const content = extractBody(partUnknown as Record<string, unknown>);
       if (!isNullOrEmpty(content)) return content;
     }
   }
@@ -249,7 +249,7 @@ export class MsGraphEmailConnector implements IEmailConnector {
     const token = await this.ensureAuth(ct);
     const path = `me/mailFolders('Inbox')/messages?$filter=isRead+eq+false&$top=${Math.min(max, 50)}&$orderby=receivedDateTime+desc`;
     const resp = ensureSuccess(await this.get(MSGRAPH_MAIL_BASE + path, token, ct));
-    return readMessages(JSON.parse(resp.body) as Map<string, unknown>);
+    return readMessages(JSON.parse(resp.body) as Record<string, unknown>);
   }
 
   async searchAsync(query: string, max: number, ct?: AbortSignal): Promise<readonly EmailMessage[]> {
@@ -257,7 +257,7 @@ export class MsGraphEmailConnector implements IEmailConnector {
     const token = await this.ensureAuth(ct);
     const path = `me/messages?$search=${encodeURIComponent(query)}&$top=${Math.min(max, 50)}`;
     const resp = ensureSuccess(await this.get(MSGRAPH_MAIL_BASE + path, token, ct));
-    return readMessages(JSON.parse(resp.body) as Map<string, unknown>);
+    return readMessages(JSON.parse(resp.body) as Record<string, unknown>);
   }
 
   async markReadAsync(messageId: string, ct?: AbortSignal): Promise<void> {
@@ -290,20 +290,20 @@ export class MsGraphEmailConnector implements IEmailConnector {
 }
 
 /** C# `MsGraphEmailConnector.ReadMessages`. */
-function readMessages(root: Map<string, unknown>): readonly EmailMessage[] {
+function readMessages(root: Record<string, unknown>): readonly EmailMessage[] {
   const list: EmailMessage[] = [];
   const arr = root["value"];
   if (!Array.isArray(arr)) return list;
   for (const mUnknown of arr) {
-    const m = mUnknown as Map<string, unknown>;
+    const m = mUnknown as Record<string, unknown>;
     const to: string[] = [];
     const rcpts = m["toRecipients"];
     if (Array.isArray(rcpts)) {
       for (const rUnknown of rcpts) {
-        const r = rUnknown as Map<string, unknown>;
+        const r = rUnknown as Record<string, unknown>;
         const ea = r["emailAddress"];
         if (ea != null && typeof ea === "object" && "address" in (ea as object)) {
-          const addr = (ea as Map<string, unknown>)["address"];
+          const addr = (ea as Record<string, unknown>)["address"];
           to.push(typeof addr === "string" ? addr : "");
         }
       }
@@ -311,9 +311,9 @@ function readMessages(root: Map<string, unknown>): readonly EmailMessage[] {
     let fromAddr = "";
     const fr = m["from"];
     if (fr != null && typeof fr === "object") {
-      const fea = (fr as Map<string, unknown>)["emailAddress"];
+      const fea = (fr as Record<string, unknown>)["emailAddress"];
       if (fea != null && typeof fea === "object" && "address" in (fea as object)) {
-        const a = (fea as Map<string, unknown>)["address"];
+        const a = (fea as Record<string, unknown>)["address"];
         fromAddr = typeof a === "string" ? a : "";
       }
     }
@@ -329,7 +329,7 @@ function readMessages(root: Map<string, unknown>): readonly EmailMessage[] {
     let body = "";
     const b = m["body"];
     if (b != null && typeof b === "object" && "content" in (b as object)) {
-      const bc = (b as Map<string, unknown>)["content"];
+      const bc = (b as Record<string, unknown>)["content"];
       body = typeof bc === "string" ? bc : "";
     } else if (typeof m["bodyPreview"] === "string") {
       body = m["bodyPreview"] as string;

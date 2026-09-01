@@ -17,7 +17,7 @@
 //     as a compact context block for injection into the B! system prompt
 //   • RagPipelineBuilder — fluent factory with sensible defaults
 //
-// RAG is strictly best-effort: Object retrieval / embedding failure degrades to an
+// RAG is strictly best-effort: any retrieval / embedding failure degrades to an
 // empty string and must never block inference. In-memory port — the C#
 // WithSqliteStore convenience is intentionally omitted (no SQLite backend in the
 // TS tree); use withStore / withInMemoryStore instead.

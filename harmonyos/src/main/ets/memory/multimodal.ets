@@ -89,7 +89,7 @@ export interface MultimodalMemoryEntry {
    */
   referenceCount: number;
   /** Optional tags (e.g. location, person, topic). */
-  readonly tags?: Map<string, string>;
+  readonly tags?: Record<string, string>;
 }
 
 /**
@@ -333,7 +333,7 @@ export interface IngestOptions {
   /** Optional URI of the original (host-retained). */
   readonly sourceUri?: string | null;
   /** Optional caller-supplied tags. */
-  readonly tags?: Map<string, string> | null;
+  readonly tags?: Record<string, string> | null;
 }
 
 /**

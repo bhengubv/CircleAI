@@ -62,7 +62,7 @@ export class OpenMeteoWeatherProvider implements IWeatherProvider {
       `https://api.open-meteo.com/v1/forecast?latitude=${invNum(lat)}&longitude=${invNum(lon)}` +
       "&current=temperature_2m,apparent_temperature,precipitation,wind_speed_10m,cloud_cover,weather_code";
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers: new Map() }, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
     const cur = getProp(root, "current");
     const ts = getStr(cur, "time");
     return weatherSample(
@@ -83,7 +83,7 @@ export class OpenMeteoWeatherProvider implements IWeatherProvider {
       "&hourly=temperature_2m,apparent_temperature,precipitation,wind_speed_10m,cloud_cover,weather_code" +
       `&forecast_hours=${hours}`;
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers: new Map() }, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
     const h = getProp(root, "hourly");
     const time = getArr(h, "time");
     const temp = getArr(h, "temperature_2m");
@@ -204,20 +204,20 @@ export class OsrmRoutingProvider implements IRoutingProvider {
       `${invNum(toLon)},${invNum(toLat)}` +
       "?overview=full&geometries=geojson";
     const resp = ensureSuccess(await this.http.send({ method: "GET", url, headers: new Map() }, ct));
-    const root = JSON.parse(resp.body) as Map<string, unknown>;
+    const root = JSON.parse(resp.body) as Record<string, unknown>;
 
     const code = getStr(root, "code");
     if (code !== "Ok") throw new Error(`OSRM returned code=${code}`);
 
     const routes = root["routes"];
     if (!Array.isArray(routes) || routes.length === 0) throw new Error("OSRM returned no routes");
-    const route = routes[0] as Map<string, unknown>;
+    const route = routes[0] as Record<string, unknown>;
     const dist = getNum(route, "distance"); // metres
     const dur = getNum(route, "duration"); // seconds
     const poly: GeoPoint[] = [];
     const geom = route["geometry"];
     if (geom != null && typeof geom === "object") {
-      const coords = (geom as Map<string, unknown>)["coordinates"];
+      const coords = (geom as Record<string, unknown>)["coordinates"];
       if (Array.isArray(coords)) {
         for (const pt of coords) {
           if (!Array.isArray(pt) || pt.length < 2) continue;
@@ -231,33 +231,33 @@ export class OsrmRoutingProvider implements IRoutingProvider {
 
 // ── JSON access helpers (mirror JsonElement.GetProperty / Get*) ───────────────
 
-function getProp(obj: Map<string, unknown>, key: string): Map<string, unknown> {
+function getProp(obj: Record<string, unknown>, key: string): Record<string, unknown> {
   const v = obj[key];
   if (v == null || typeof v !== "object" || Array.isArray(v)) throw new Error(`missing object property '${key}'`);
-  return v as Map<string, unknown>;
+  return v as Record<string, unknown>;
 }
-function getArr(obj: Map<string, unknown>, key: string): Object[] {
+function getArr(obj: Record<string, unknown>, key: string): unknown[] {
   const v = obj[key];
   if (!Array.isArray(v)) throw new Error(`missing array property '${key}'`);
   return v;
 }
-function getStr(obj: Map<string, unknown>, key: string): string | null {
+function getStr(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key];
   return typeof v === "string" ? v : null;
 }
-function getNum(obj: Map<string, unknown>, key: string): number {
+function getNum(obj: Record<string, unknown>, key: string): number {
   const v = obj[key];
   if (typeof v !== "number") throw new Error(`property '${key}' is not a number`);
   return v;
 }
-function getInt(obj: Map<string, unknown>, key: string): number {
+function getInt(obj: Record<string, unknown>, key: string): number {
   return Math.trunc(getNum(obj, key));
 }
-function asNum(v: Object): number {
+function asNum(v: unknown): number {
   if (typeof v !== "number") throw new Error("expected number");
   return v;
 }
-function asInt(v: Object): number {
+function asInt(v: unknown): number {
   return Math.trunc(asNum(v));
 }
 

@@ -55,7 +55,7 @@
 // synchronously via a snapshot taken before the callbacks fire, so a consumer
 // that unsubscribes inside its own callback cannot corrupt the iteration.
 
-import { createHash, createSign, createVerify, generateKeyPairSync, randomUUID, timingSafeEqual } from "../platform";
+import { KeyObject, createHash, createSign, createVerify, generateKeyPairSync, randomUUID, timingSafeEqual } from "../platform";
 import { AsyncQueue } from "../companion/herjarvis/async_queue";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ export interface AnomalySignal {
   /** Human-readable description of the anomaly. */
   readonly description: string;
   /** Structured evidence attached by the detection site. */
-  readonly evidence: Readonly<Map<string, string>>;
+  readonly evidence: Readonly<Record<string, string>>;
   /** UTC timestamp of detection. */
   readonly detectedAt: Date;
 }
@@ -126,7 +126,7 @@ export function createAnomalySignal(
   confidence: number,
   affectedModule: string,
   description: string,
-  evidence?: Map<string, string>,
+  evidence?: Record<string, string>,
 ): AnomalySignal {
   return {
     id: randomUUID(),
@@ -1502,10 +1502,10 @@ export class UhidKeyRing {
  * `"sha256:" + lowercase-hex(SHA256(utf8(value)))`.
  */
 export function redactEvidence(
-  value: Readonly<Map<string, string>> | null | undefined,
-): Map<string, string> | null {
+  value: Readonly<Record<string, string>> | null | undefined,
+): Record<string, string> | null {
   if (value == null) return null;
-  const out: Map<string, string> = {};
+  const out: Record<string, string> = {};
   for (const key of Object.keys(value)) out[key] = hashRedacted(value[key]);
   return out;
 }
@@ -1535,13 +1535,13 @@ export class RedactedEvidenceJsonConverter {
   }
 
   /** Read side — never trusts inbound values; returns an empty object (or null for JSON null). */
-  static read(json: Object): Map<string, string> | null {
+  static read(json: unknown): Record<string, string> | null {
     if (json === null) return null;
     return {};
   }
 
   /** Write side — redacts every value to its SHA-256 hex. Returns null for a null input. */
-  static write(value: Readonly<Map<string, string>> | null | undefined): Map<string, string> | null {
+  static write(value: Readonly<Record<string, string>> | null | undefined): Record<string, string> | null {
     return redactEvidence(value);
   }
 }

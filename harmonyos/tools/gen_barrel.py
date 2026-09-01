@@ -6,19 +6,35 @@ are: a hand-written list of four hundred exports goes stale the first time a
 module is added, and a module missing from the barrel is a module the package
 does not have as far as anyone consuming it is concerned.
 
-WHAT IS EXPORTED: the top-level entry of each area, not every file. Exporting
-every module would re-export the same names through several paths and produce
-ambiguity at the point of use, which ArkTS reports as a conflict rather than
-resolving.
+THE HARD PART IS NAME COLLISIONS. Two areas each define their own
+`CONFUSION_THRESHOLD`, and `export *` from both is an error ArkTS reports rather
+than resolving. So the barrel has to know what each area actually exports.
+
+"Actually exports" is the whole difficulty, and getting it wrong is worse than
+not trying: an earlier version of this file listed every declaration found
+anywhere under an area's directory, which included plenty its `index.ets` never
+re-exports — and the barrel then claimed to re-export names that do not exist,
+producing five hundred errors where there had been ninety-six. The resolver
+below follows the area's index the way the compiler does: its own declarations,
+its explicit `export { ... } from`, and one hop through each `export * from`.
 """
 from __future__ import annotations
 
 import io
 import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 ETS = os.path.join(ROOT, "harmonyos", "src", "main", "ets")
+
+DECL = re.compile(
+    r"^\s*export\s+(?:declare\s+)?(?:abstract\s+)?"
+    r"(?:class|struct|interface|enum|function|const|let|var|type)\s+"
+    r"([A-Za-z_$][A-Za-z0-9_$]*)"
+)
+NAMED = re.compile(r"^\s*export\s*\{([^}]*)\}")
+STAR = re.compile(r"^\s*export\s+\*\s+from\s+['\"]([^'\"]+)['\"]")
 
 HEADER = """/**
  * Circle AI for HarmonyOS.
@@ -27,40 +43,127 @@ HEADER = """/**
  * ported from the TypeScript source by `harmonyos/tools/gen_arkts.py`; the
  * platform layer beneath them is hand-written ArkTS over `@ohos.*`.
  *
- * The platform layer comes FIRST: nothing else works until an ability has
- * called `bindPlatform`, and a consumer reading this file top to bottom should
- * meet that fact before anything that depends on it.
+ * The platform layer and the global shims come FIRST: nothing else works until
+ * an ability has called `bindPlatform` and `installGlobals`, and a consumer
+ * reading this file top to bottom should meet that fact before anything that
+ * depends on it.
  */
 
 export * from './platform';
+export * from './globals';
 """
 
 
+def resolve(path: str, seen: set[str] | None = None) -> set[str]:
+    """The names a module exports, following `export *` one hop at a time."""
+    if seen is None:
+        seen = set()
+    real = os.path.normpath(path)
+    if real in seen or not os.path.exists(real):
+        return set()
+    seen.add(real)
+
+    names: set[str] = set()
+    for line in io.open(real, encoding="utf-8", errors="replace"):
+        m = DECL.match(line)
+        if m:
+            names.add(m.group(1))
+            continue
+        m = NAMED.match(line)
+        if m:
+            for part in m.group(1).split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                # `X as Y` exports Y; `type X` exports X.
+                part = part.split(" as ")[-1].strip()
+                if part.startswith("type "):
+                    part = part[len("type ") :].strip()
+                if part:
+                    names.add(part)
+            continue
+        m = STAR.match(line)
+        if m:
+            target = m.group(1)
+            if not target.startswith("."):
+                continue
+            base = os.path.join(os.path.dirname(real), target)
+            for candidate in (base + ".ets", os.path.join(base, "index.ets")):
+                if os.path.exists(candidate):
+                    names |= resolve(candidate, seen)
+                    break
+    return names
+
+
 def main() -> None:
-    entries: list[str] = []
+    entries: list[tuple[str, str]] = []
     for name in sorted(os.listdir(ETS)):
         path = os.path.join(ETS, name)
         if os.path.isdir(path):
-            # An area is exported through its own index if it has one; without
-            # one there is no single name for the area and its files are reached
-            # directly, which the barrel does not try to flatten.
-            if os.path.exists(os.path.join(path, "index.ets")):
-                entries.append("./%s/index" % name)
+            index = os.path.join(path, "index.ets")
+            if os.path.exists(index):
+                entries.append(("./%s/index" % name, index))
             continue
         if not name.endswith(".ets"):
             continue
         stem = name[: -len(".ets")]
-        if stem in ("index", "platform"):
+        if stem in ("index", "platform", "globals"):
             continue
-        entries.append("./%s" % stem)
+        entries.append(("./%s" % stem, path))
 
+    # The FIRST area to export a name keeps it through the barrel. A later area
+    # is re-exported without the colliding names, which stay reachable through
+    # their own module path. The collisions are listed in the file rather than
+    # swallowed, so the real fix — renaming one of them at the source — stays
+    # visible.
+    reserved = resolve(os.path.join(ETS, "platform.ets")) | resolve(
+        os.path.join(ETS, "globals.ets")
+    )
+    seen: dict[str, str] = {n: "./platform" for n in reserved}
     lines = [HEADER]
-    for entry in entries:
-        lines.append("export * from '%s';" % entry)
+    collisions: list[str] = []
+
+    for specifier, path in entries:
+        names = resolve(path)
+        clashing = sorted(n for n in names if n in seen)
+        for n in names:
+            seen.setdefault(n, specifier)
+        # EXPLICIT LISTS THROUGHOUT, even where nothing clashes.
+        #
+        # `export *` re-exports whatever a module happens to expose, including
+        # names this resolver did not see — and two of those colliding is an
+        # error the barrel cannot then avoid. Naming what is exported makes the
+        # barrel's contents a decision rather than a consequence, and a name the
+        # resolver missed is absent rather than ambiguous.
+        if not clashing:
+            listed = sorted(names)
+            if listed:
+                lines.append(
+                    "export { %s } from '%s';" % (", ".join(listed), specifier)
+                )
+            continue
+        for n in clashing:
+            collisions.append("%s: %s already from %s" % (specifier, n, seen[n]))
+        kept = sorted(n for n in names if seen[n] == specifier)
+        if kept:
+            lines.append("export { %s } from '%s';" % (", ".join(kept), specifier))
+
+    if collisions:
+        lines.append("")
+        lines.append("// Names below are exported by an earlier module and stay")
+        lines.append("// reachable through it; they are not re-exported here:")
+        for line in collisions[:40]:
+            lines.append("//   %s" % line)
+        if len(collisions) > 40:
+            lines.append("//   ... and %d more" % (len(collisions) - 40))
+
     io.open(
         os.path.join(ETS, "index.ets"), "w", encoding="utf-8", newline="\n"
     ).write("\n".join(lines) + "\n")
-    print("barrel exports %d modules" % len(entries))
+    print(
+        "barrel exports %d modules, %d name collisions resolved"
+        % (len(entries), len(collisions))
+    )
 
 
 if __name__ == "__main__":

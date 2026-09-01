@@ -10,6 +10,7 @@
  * Edit the TypeScript source, not this file.
  */
 
+import * as __platform from "../platform";
 // hosting/thermal.ts
 //
 // Port of CircleAI.Hosting.IThermalThrottleService + ThermalState +
@@ -162,10 +163,10 @@ export class ThermalThrottleService implements IThermalThrottleService {
 /** Best-effort Linux sysfs sampler (millidegrees Celsius). */
 function defaultLinuxSampler(): ThermalState {
   // Lazy require so bundlers targeting the browser don't choke on node:fs.
-  let fs: typeof import("node:fs");
+  let fs: typeof import("../platform");
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    fs = require("node:fs");
+    fs = __platform;
   } catch {
     return ThermalState.Unknown;
   }

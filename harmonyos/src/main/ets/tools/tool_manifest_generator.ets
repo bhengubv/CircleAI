@@ -37,14 +37,14 @@ export const ToolManifestGenerator = {
     if (tools === null || tools === undefined) throw new Error("tools is required.");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const array: Object[] = [];
+    const array: any[] = [];
     for (const tool of tools) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const properties: Map<string, any> = {};
+      const properties: Record<string, any> = {};
       for (const key of Object.keys(tool.parameters)) {
         const p = tool.parameters[key];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const prop: Map<string, any> = { type: p.type, description: p.description };
+        const prop: Record<string, any> = { type: p.type, description: p.description };
         if (p.enum !== undefined && p.enum.length > 0) {
           prop.enum = p.enum;
         }

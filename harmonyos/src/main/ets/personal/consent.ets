@@ -436,7 +436,19 @@ export const noPermissions = (): Permissions =>
     paths: Object.freeze([]),
   });
 
-export const permissions = (partial: Partial<Permissions> = {}): Permissions =>
+/**
+ * What `permissions()` accepts.
+ *
+ * `consentScopes` is widened to any ITERABLE, because the factory already
+ * builds a `Set` from it and every caller has one of an array, a set, or
+ * nothing. Requiring a `ReadonlySet` on the way in made two correct call sites
+ * fail to type-check while the factory itself was happy to take either.
+ */
+export type PermissionsInit = Omit<Partial<Permissions>, "consentScopes"> & {
+  readonly consentScopes?: Iterable<ConsentScope>;
+};
+
+export const permissions = (partial: PermissionsInit = {}): Permissions =>
   Object.freeze({
     readFiles: partial.readFiles ?? false,
     writeFiles: partial.writeFiles ?? false,
@@ -501,7 +513,7 @@ export class PluginLoader {
   constructor(
     private readonly roots?: PluginsRootResolver,
     private readonly workspaces?: WorkspacePathProvider,
-    private readonly readManifest?: (pluginId: string) => Map<string, unknown>,
+    private readonly readManifest?: (pluginId: string) => Record<string, unknown>,
   ) {}
 
   static intersect(requested: Permissions, allowed: Permissions): Permissions {
@@ -510,7 +522,11 @@ export class PluginLoader {
       writeFiles: requested.writeFiles && allowed.writeFiles,
       network: requested.network && allowed.network,
       inference: requested.inference && allowed.inference,
-      consentScopes: [...requested.consentScopes].filter((s) => allowed.consentScopes.has(s)),
+      // The factory builds the Set; what it needs is the members. Everything
+      // downstream calls `.has()` on this field, so it must not stay an array.
+      consentScopes: [...requested.consentScopes].filter((s) =>
+        allowed.consentScopes.has(s),
+      ),
       // Paths intersect too. A plugin granted one directory and asking for two
       // gets one.
       paths: requested.paths.filter((p) => allowed.paths.includes(p)),
@@ -531,14 +547,14 @@ export class PluginLoader {
     if (!pluginId.trim()) return failed("a plugin needs an identifier");
     if (!this.readManifest) return failed("no way to read a manifest");
 
-    let manifest: Map<string, unknown>;
+    let manifest: Record<string, unknown>;
     try {
       manifest = this.readManifest(pluginId);
     } catch (error) {
       return failed(error instanceof Error ? error.message : String(error));
     }
 
-    const raw = (manifest.permissions ?? {}) as Map<string, unknown>;
+    const raw = (manifest.permissions ?? {}) as Record<string, unknown>;
     const scopes: ConsentScope[] = [];
     for (const name of (raw.consent_scopes as string[] | undefined) ?? []) {
       const found = Object.values(ConsentScope).find((s) => s === name);
@@ -712,7 +728,7 @@ export class PluginsServiceCollectionExtensions {
   static addPlugins(
     roots?: PluginsRootResolver,
     workspaces?: WorkspacePathProvider,
-    readManifest?: (pluginId: string) => Map<string, unknown>,
+    readManifest?: (pluginId: string) => Record<string, unknown>,
   ): PluginLifecycleService {
     return new PluginLifecycleService(new PluginLoader(roots, workspaces, readManifest));
   }
@@ -785,7 +801,7 @@ export class FaceAffectMapper {
    * corroboration, not evidence. */
   static readonly TRUST = 0.7;
 
-  private static readonly labels: Readonly<Map<string, AffectLabel>> = Object.freeze({
+  private static readonly labels: Readonly<Record<string, AffectLabel>> = Object.freeze({
     neutral: AffectLabel.Calm,
     happy: AffectLabel.Engaged,
     angry: AffectLabel.Stressed,
@@ -794,7 +810,7 @@ export class FaceAffectMapper {
     tired: AffectLabel.Tired,
   });
 
-  map(scores: Readonly<Map<string, number>>, atMs = 0): AffectReading {
+  map(scores: Readonly<Record<string, number>>, atMs = 0): AffectReading {
     const entries = Object.entries(scores);
     if (entries.length === 0) return affectReading(AffectLabel.Uncertain, 0, "face", atMs);
     const best = entries.reduce((a, b) => (b[1] > a[1] ? b : a));
@@ -841,7 +857,7 @@ export class FaceCompanionBridge {
     this.enabledUntilMs = undefined;
   }
 
-  read(scores: Readonly<Map<string, number>>): AffectReading {
+  read(scores: Readonly<Record<string, number>>): AffectReading {
     if (!this.isEnabled) return affectReading(AffectLabel.Uncertain, 0, "face", this.now());
     return this.mapper.map(scores, this.now());
   }
@@ -940,7 +956,7 @@ export class OnnxSpeakerIdentityAdapter {
  * is what lets it run without the transcript and without keeping one.
  */
 export class OnnxSpeechEmotionSensor {
-  private static readonly labels: Readonly<Map<string, AffectLabel>> = Object.freeze({
+  private static readonly labels: Readonly<Record<string, AffectLabel>> = Object.freeze({
     neutral: AffectLabel.Calm,
     happy: AffectLabel.Engaged,
     angry: AffectLabel.Stressed,
@@ -948,7 +964,7 @@ export class OnnxSpeechEmotionSensor {
     tired: AffectLabel.Tired,
   });
 
-  constructor(private readonly infer?: (audio: readonly number[]) => Map<string, number>) {}
+  constructor(private readonly infer?: (audio: readonly number[]) => Record<string, number>) {}
 
   get isAvailable(): boolean {
     return this.infer !== undefined;
@@ -1039,7 +1055,7 @@ export class SqliteKnowledgeGraph {
     return true;
   }
 
-  about(subject: string): Object[][] {
+  about(subject: string): unknown[][] {
     if (!this.execute) return [];
     return this.execute(
       "SELECT predicate, object, confidence FROM facts WHERE subject = ? ORDER BY confidence DESC",
@@ -1104,7 +1120,7 @@ export class SqliteHippoRagStore {
     return true;
   }
 
-  neighbours(passageId: string, limit = 8): Object[][] {
+  neighbours(passageId: string, limit = 8): unknown[][] {
     if (!this.execute) return [];
     return this.execute(
       "SELECT to_id, weight FROM links WHERE from_id = ? ORDER BY weight DESC LIMIT ?",
@@ -1173,16 +1189,16 @@ export class CompanionRecallExtensions {
 export class CompanionServiceCollectionExtensions {
   private readonly registered = new Map<string, unknown>();
 
-  add(name: string, service: Object): CompanionServiceCollectionExtensions {
+  add(name: string, service: unknown): CompanionServiceCollectionExtensions {
     this.registered.set(name, service);
     return this;
   }
 
-  get(name: string): Object {
+  get(name: string): unknown {
     return this.registered.get(name);
   }
 
-  build(): Readonly<Map<string, unknown>> {
+  build(): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(this.registered));
   }
 }

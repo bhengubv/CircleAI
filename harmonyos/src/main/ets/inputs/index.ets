@@ -28,7 +28,7 @@
 // Type mappings (C# → TS):
 //   record                                → readonly interface (+ positional factory)
 //   Uri                                   → URL
-//   IReadOnlyDictionary<string,string>?   → Readonly<Map<string, string>> | null
+//   IReadOnlyDictionary<string,string>?   → Readonly<Record<string,string>> | null
 //   IReadOnlyList<T>                       → readonly T[]
 //   TimeSpan Duration / Offset            → number (milliseconds / seconds×1000)
 //   ValueTask<T>                          → Promise<T>
@@ -45,7 +45,7 @@ export interface IHttpFetcher {
    * Issues a GET for `url` with optional extra request headers and returns the
    * response body as text. Implementations throw on non-success status.
    */
-  getStringAsync(url: URL, headers?: Readonly<Map<string, string>>): Promise<string>;
+  getStringAsync(url: URL, headers?: Readonly<Record<string, string>>): Promise<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export interface ScrapedPage {
   readonly url: URL;
   readonly text: string;
   readonly title: string | null;
-  readonly metadata: Readonly<Map<string, string>> | null;
+  readonly metadata: Readonly<Record<string, string>> | null;
   readonly resolvedLinks: readonly URL[] | null;
 }
 
@@ -66,7 +66,7 @@ export function scrapedPage(
   url: URL,
   text: string,
   title: string | null = null,
-  metadata: Readonly<Map<string, string>> | null = null,
+  metadata: Readonly<Record<string, string>> | null = null,
   resolvedLinks: readonly URL[] | null = null,
 ): ScrapedPage {
   return { url, text, title, metadata, resolvedLinks };
@@ -94,11 +94,11 @@ export function videoIngestResult(
 /** An MCP scrape job. Mirrors C# `McpScrapeJob`. */
 export interface McpScrapeJob {
   readonly url: string;
-  readonly headers: Readonly<Map<string, string>> | null;
+  readonly headers: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs a {@link McpScrapeJob}. */
-export function mcpScrapeJob(url: string, headers: Readonly<Map<string, string>> | null = null): McpScrapeJob {
+export function mcpScrapeJob(url: string, headers: Readonly<Record<string, string>> | null = null): McpScrapeJob {
   return { url, headers };
 }
 
@@ -139,7 +139,7 @@ export interface IWebScraper {
 /** Fingerprint-avoiding HTTP client (Scrapling pattern). Mirrors C# `IStealthHttpClient`. */
 export interface IStealthHttpClient {
   readonly backendId: string;
-  getAsync(url: URL, headers?: Readonly<Map<string, string>> | null): Promise<ScrapedPage>;
+  getAsync(url: URL, headers?: Readonly<Record<string, string>> | null): Promise<ScrapedPage>;
 }
 
 /** Video → model-ready text stream (openvid). Mirrors C# `IVideoIngest`. */
@@ -228,10 +228,10 @@ export class StealthHttpClient implements IStealthHttpClient {
     return "stealth-http";
   }
 
-  async getAsync(url: URL, headers: Readonly<Map<string, string>> | null = null): Promise<ScrapedPage> {
+  async getAsync(url: URL, headers: Readonly<Record<string, string>> | null = null): Promise<ScrapedPage> {
     if (url == null) throw new Error("url required");
     const seq = ++this.seq;
-    const reqHeaders: Map<string, string> = {
+    const reqHeaders: Record<string, string> = {
       "User-Agent": USER_AGENTS[seq % USER_AGENTS.length],
       "Accept-Language": ACCEPT_LANGUAGES[seq % ACCEPT_LANGUAGES.length],
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -292,7 +292,7 @@ export class AsciinemaTerminalCast implements ITerminalCast {
     const first = lines[0];
     if (first.length === 0) throw new Error("empty cast file");
     try {
-      const hdr = JSON.parse(first) as Object;
+      const hdr = JSON.parse(first) as unknown;
       if (isObject(hdr)) {
         if (typeof hdr.width === "number") width = hdr.width;
         if (typeof hdr.height === "number") height = hdr.height;
@@ -305,7 +305,7 @@ export class AsciinemaTerminalCast implements ITerminalCast {
       const line = lines[i];
       if (line == null || line.trim().length === 0) continue;
       try {
-        const arr = JSON.parse(line) as Object;
+        const arr = JSON.parse(line) as unknown;
         if (!Array.isArray(arr) || arr.length < 3) continue;
         const t = arr[0] as number;
         const typ = arr[1] as string;
@@ -398,7 +398,7 @@ function firstMatch(rx: RegExp, text: string): string {
   return m ? m[1] : "";
 }
 
-function isObject(v: Object): v is Map<string, unknown> {
+function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 

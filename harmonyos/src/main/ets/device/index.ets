@@ -20,15 +20,15 @@
 
 // Lazy-loaded — keeps the bundle browser-clean when the host doesn't need
 // Node-only modules.
-type NodeOSModule = typeof import("node:os");
+type NodeOSModule = typeof import("../platform");
 let _nodeOS: NodeOSModule | null = null;
 async function nodeOS(): Promise<NodeOSModule | null> {
   if (_nodeOS !== null) return _nodeOS;
   try {
-    _nodeOS = await import("node:os");
+    _nodeOS = await import("../platform");
     return _nodeOS;
   } catch {
-    _nodeOS = null as NodeOSModule;
+    _nodeOS = null as unknown as NodeOSModule;
     return null;
   }
 }
@@ -113,8 +113,8 @@ async function probeStorageFree(path?: string): Promise<number> {
   if (!path) return 0;
   try {
     // statfs is available in Node 19+ — use the async variant.
-    const fs = await import("node:fs/promises");
-    const fsInst = fs as {
+    const fs = await import("../platform");
+    const fsInst = fs as unknown as {
       statfs?: (p: string) => Promise<{ bavail: bigint; bsize: bigint }>;
     };
     if (typeof fsInst.statfs === "function") {

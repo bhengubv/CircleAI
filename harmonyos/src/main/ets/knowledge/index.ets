@@ -735,7 +735,7 @@ export class MarkdownEpisodicMemoryStore implements IEpisodicMemoryStore {
 
     const { user: userText, assistant: assistantText } = splitBody(note.bodyMarkdown);
 
-    let tagsOut: Map<string, string> | undefined;
+    let tagsOut: Record<string, string> | undefined;
     for (const [k, v] of note.frontmatter) {
       if (!k.startsWith(TAG_PREFIX)) continue;
       tagsOut ??= {};

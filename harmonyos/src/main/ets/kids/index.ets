@@ -47,7 +47,7 @@ export const AgeAppropriateness = Object.freeze({
   LatePrimary: 3,
   PreTeen: 4,
   Teen: 5,
-} as const) satisfies Map<string, AgeAppropriateness>;
+} as const) satisfies Record<string, AgeAppropriateness>;
 
 /** A piece of kids content. Mirrors C# `KidsContent` record. */
 export interface KidsContent {

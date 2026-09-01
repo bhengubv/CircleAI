@@ -45,7 +45,7 @@ export const IncidentSeverity = Object.freeze({
   Warning: 1,
   Critical: 2,
   Emergency: 3,
-} as const) satisfies Map<string, IncidentSeverity>;
+} as const) satisfies Record<string, IncidentSeverity>;
 
 /** A logged safety incident. Mirrors C# `Incident` record. */
 export interface Incident {

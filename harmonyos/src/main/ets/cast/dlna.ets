@@ -428,7 +428,7 @@ export class UpnpControlPoint {
   constructor(
     private readonly post?: (
       url: string,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body: string,
     ) => Promise<string>,
   ) {}
@@ -441,14 +441,14 @@ export class UpnpControlPoint {
    * that omits them works on the television it was tested against and fails on
    * somebody else's.
    */
-  static headersFor(serviceType: string, action: string): Map<string, string> {
+  static headersFor(serviceType: string, action: string): Record<string, string> {
     return {
       "Content-Type": 'text/xml; charset="utf-8"',
       SOAPACTION: `"${serviceType}#${action}"`,
     };
   }
 
-  static envelope(serviceType: string, action: string, args: Map<string, string>): string {
+  static envelope(serviceType: string, action: string, args: Record<string, string>): string {
     const body = Object.entries(args)
       .map(([k, v]) => `<${k}>${v}</${k}>`)
       .join("");
@@ -466,7 +466,7 @@ export class UpnpControlPoint {
     controlUrl: string,
     serviceType: string,
     action: string,
-    args: Map<string, string>,
+    args: Record<string, string>,
   ): Promise<string> {
     if (!this.post) throw new CastControlException("no transport configured", action);
     let reply: string;

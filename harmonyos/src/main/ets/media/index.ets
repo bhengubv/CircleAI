@@ -42,7 +42,7 @@ export const MediaKind = Object.freeze({
   Audio: 0,
   Video: 1,
   Image: 2,
-} as const) satisfies Map<string, MediaKind>;
+} as const) satisfies Record<string, MediaKind>;
 
 /** A catalogued media asset. Mirrors C# `MediaAsset` record. */
 export interface MediaAsset {

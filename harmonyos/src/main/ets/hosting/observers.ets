@@ -273,6 +273,6 @@ export class AetherAIObserver implements IAIObserver {
 }
 
 /** Serialise a value to UTF-8 JSON bytes (System.Text.Json.SerializeToUtf8Bytes). */
-function utf8Json(value: Object): Uint8Array {
+function utf8Json(value: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
 }

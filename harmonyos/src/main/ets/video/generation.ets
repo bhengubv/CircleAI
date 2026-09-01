@@ -584,18 +584,18 @@ export interface SkillPackManifest {
  */
 export class SkillPackLoader {
   static parse(json: string): { manifest?: SkillPackManifest; problems: string[] } {
-    let raw: Object;
+    let raw: unknown;
     try {
       raw = JSON.parse(json);
     } catch {
       return { problems: ["the pack manifest is not readable as JSON"] };
     }
     if (!raw || typeof raw !== "object") return { problems: ["the pack manifest is not an object"] };
-    const record = raw as Map<string, unknown>;
+    const record = raw as Record<string, unknown>;
     const problems: string[] = [];
     const skills: ParsedSkill[] = [];
 
-    for (const entry of (record.skills as Map<string, unknown>[] | undefined) ?? []) {
+    for (const entry of (record.skills as Record<string, unknown>[] | undefined) ?? []) {
       const skillId = String(entry?.id ?? "").trim();
       const name = String(entry?.name ?? "").trim();
       if (!skillId || !name) {
@@ -846,9 +846,9 @@ abstract class CarrierCallSessionBase implements CarrierCallSession {
     protected readonly options: CarrierOptions,
     protected readonly post?: (
       path: string,
-      headers: Map<string, string>,
-      body: Map<string, unknown>,
-    ) => Promise<Map<string, unknown>>,
+      headers: Record<string, string>,
+      body: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>,
   ) {}
 
   get isActive(): boolean {
@@ -857,7 +857,7 @@ abstract class CarrierCallSessionBase implements CarrierCallSession {
 
   protected abstract hangUpPath(): string;
   protected abstract dtmfPath(): string;
-  protected abstract headers(): Map<string, string>;
+  protected abstract headers(): Record<string, string>;
 
   /**
    * IDEMPOTENT. A call is hung up by the person, by the far end and by an error
@@ -902,7 +902,7 @@ export class TwilioCallSession extends CarrierCallSessionBase {
   protected dtmfPath(): string {
     return `${this.hangUpPath()}`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     // Twilio uses BASIC auth with the account SID as the username. A bearer
     // token gets a 401 that reads exactly like a bad key.
     const basic = `${this.options.accountId}:${this.options.apiKey.reveal()}`;
@@ -918,7 +918,7 @@ export class TelnyxCallSession extends CarrierCallSessionBase {
   protected dtmfPath(): string {
     return `${this.options.baseUrl}/calls/${this.callId}/actions/send_dtmf`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.options.apiKey.reveal()}`,
       "Content-Type": "application/json",
@@ -934,7 +934,7 @@ export class PlivoCallSession extends CarrierCallSessionBase {
   protected dtmfPath(): string {
     return `${this.hangUpPath()}DTMF/`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     const basic = `${this.options.accountId}:${this.options.apiKey.reveal()}`;
     return { Authorization: `Basic ${basic}`, "Content-Type": "application/json" };
   }
@@ -947,9 +947,9 @@ abstract class CarrierBase {
     protected readonly options: CarrierOptions,
     protected readonly post?: (
       path: string,
-      headers: Map<string, string>,
-      body: Map<string, unknown>,
-    ) => Promise<Map<string, unknown>>,
+      headers: Record<string, string>,
+      body: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>,
   ) {}
 
   /** Needs a FROM NUMBER as well as a key: a carrier will not place a call
@@ -1188,7 +1188,7 @@ export interface ScriptNormaliser {
  * rest as an afterthought.
  */
 export class DefaultLanguageRegistry {
-  private static readonly languages: Readonly<Map<string, string>> = Object.freeze({
+  private static readonly languages: Readonly<Record<string, string>> = Object.freeze({
     zu: "isiZulu", xh: "isiXhosa", af: "Afrikaans", nso: "Sepedi", tn: "Setswana",
     st: "Sesotho", ts: "Xitsonga", ss: "siSwati", ve: "Tshivenda", nr: "isiNdebele",
     en: "English",

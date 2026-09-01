@@ -283,7 +283,7 @@ export interface IDtmfSendable {
 }
 
 /** Runtime type-guard for {@link IDtmfSendable} (mirrors a C# `is IDtmfSendable` check). */
-export function isDtmfSendable(value: Object): value is IDtmfSendable {
+export function isDtmfSendable(value: unknown): value is IDtmfSendable {
   return (
     typeof value === "object" &&
     value !== null &&

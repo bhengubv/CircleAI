@@ -232,9 +232,9 @@ abstract class CloudSpeechRecognizerBase implements CloudSpeechRecognizer {
     protected readonly options: CloudSpeechOptionsBase,
     protected readonly post?: (
       url: string,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body: Uint8Array,
-    ) => Promise<Map<string, unknown>>,
+    ) => Promise<Record<string, unknown>>,
   ) {}
 
   /** Configured AND given a transport. A recogniser with a key and no way to
@@ -245,8 +245,8 @@ abstract class CloudSpeechRecognizerBase implements CloudSpeechRecognizer {
   }
 
   protected abstract url(language: string): string;
-  protected abstract headers(mimeType: string): Map<string, string>;
-  protected abstract parse(raw: Map<string, unknown>): CloudTranscription;
+  protected abstract headers(mimeType: string): Record<string, string>;
+  protected abstract parse(raw: Record<string, unknown>): CloudTranscription;
 
   async transcribe(audio: Uint8Array, mimeType: string, language = ""): Promise<CloudTranscription> {
     if (!this.isAvailable) {
@@ -285,13 +285,13 @@ export class OpenAiSpeechRecognizer extends CloudSpeechRecognizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/audio/transcriptions`;
   }
-  protected headers(mimeType: string): Map<string, string> {
+  protected headers(mimeType: string): Record<string, string> {
     return {
       Authorization: `Bearer ${this.options.apiKey.reveal()}`,
       "Content-Type": mimeType,
     };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     return transcription({ text: String(raw.text ?? ""), providerId: this.providerId });
   }
 }
@@ -308,10 +308,10 @@ export class DeepgramSpeechRecognizer extends CloudSpeechRecognizerBase {
     if (language) params.set("language", language);
     return `${this.options.baseUrl}/listen?${params.toString()}`;
   }
-  protected headers(mimeType: string): Map<string, string> {
+  protected headers(mimeType: string): Record<string, string> {
     return { Authorization: `Token ${this.options.apiKey.reveal()}`, "Content-Type": mimeType };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     const results = raw.results as { channels?: { alternatives?: { transcript?: string; confidence?: number }[] }[] } | undefined;
     const best = results?.channels?.[0]?.alternatives?.[0];
     return transcription({
@@ -330,12 +330,12 @@ export class AssemblyAiSpeechRecognizer extends CloudSpeechRecognizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/transcript`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     // `authorization` bare, not a bearer. Sending a bearer gets a 401 that
     // reads exactly like a bad key.
     return { authorization: this.options.apiKey.reveal(), "content-type": "application/json" };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     return transcription({
       text: String(raw.text ?? ""),
       providerId: this.providerId,
@@ -357,13 +357,13 @@ export class AzureSpeechRecognizer extends CloudSpeechRecognizerBase {
     const base = this.options.baseUrl.replace("REGION", this.azure.region);
     return `${base}/speech/recognition/conversation/cognitiveservices/v1?language=${language || "en-US"}`;
   }
-  protected headers(mimeType: string): Map<string, string> {
+  protected headers(mimeType: string): Record<string, string> {
     return {
       "Ocp-Apim-Subscription-Key": this.options.apiKey.reveal(),
       "Content-Type": mimeType,
     };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     return transcription({ text: String(raw.DisplayText ?? ""), providerId: this.providerId });
   }
 }
@@ -376,7 +376,7 @@ export class GoogleSpeechRecognizer extends CloudSpeechRecognizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/speech:recognize`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     // A HEADER, never `?key=` in the URL. A key in a query string reaches every
     // proxy log and browser history between here and there.
     return {
@@ -384,7 +384,7 @@ export class GoogleSpeechRecognizer extends CloudSpeechRecognizerBase {
       "Content-Type": "application/json",
     };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     const results = raw.results as { alternatives?: { transcript?: string; confidence?: number }[] }[] | undefined;
     const best = results?.[0]?.alternatives?.[0];
     return transcription({
@@ -403,7 +403,7 @@ export class CartesiaSpeechRecognizer extends CloudSpeechRecognizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/stt`;
   }
-  protected headers(mimeType: string): Map<string, string> {
+  protected headers(mimeType: string): Record<string, string> {
     return {
       "X-API-Key": this.options.apiKey.reveal(),
       // Cartesia pins an API VERSION by date and rejects a request without it.
@@ -413,7 +413,7 @@ export class CartesiaSpeechRecognizer extends CloudSpeechRecognizerBase {
       "Content-Type": mimeType,
     };
   }
-  protected parse(raw: Map<string, unknown>): CloudTranscription {
+  protected parse(raw: Record<string, unknown>): CloudTranscription {
     return transcription({ text: String(raw.text ?? ""), providerId: this.providerId });
   }
 }
@@ -450,7 +450,7 @@ abstract class CloudSpeechSynthesizerBase implements CloudSpeechSynthesizer {
     protected readonly options: CloudSpeechOptionsBase,
     protected readonly post?: (
       url: string,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body: string,
     ) => Promise<Uint8Array>,
   ) {}
@@ -460,7 +460,7 @@ abstract class CloudSpeechSynthesizerBase implements CloudSpeechSynthesizer {
   }
 
   protected abstract url(): string;
-  protected abstract headers(): Map<string, string>;
+  protected abstract headers(): Record<string, string>;
   protected abstract body(text: string, language: string): string;
   protected mimeType(): string {
     return "audio/mpeg";
@@ -501,7 +501,7 @@ export class OpenAiSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/audio/speech`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.options.apiKey.reveal()}`,
       "Content-Type": "application/json",
@@ -525,7 +525,7 @@ export class ElevenLabsSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/text-to-speech/${this.eleven.voiceId}`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return { "xi-api-key": this.options.apiKey.reveal(), "Content-Type": "application/json" };
   }
   protected body(text: string): string {
@@ -541,7 +541,7 @@ export class DeepgramSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/speak?model=${this.deepgram.voice || this.options.model}`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return { Authorization: `Token ${this.options.apiKey.reveal()}`, "Content-Type": "application/json" };
   }
   protected body(text: string): string {
@@ -557,7 +557,7 @@ export class GoogleSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/text:synthesize`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return { "x-goog-api-key": this.options.apiKey.reveal(), "Content-Type": "application/json" };
   }
   protected body(text: string, language: string): string {
@@ -583,7 +583,7 @@ export class AzureSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl.replace("REGION", this.azure.region)}/cognitiveservices/v1`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return {
       "Ocp-Apim-Subscription-Key": this.options.apiKey.reveal(),
       "Content-Type": "application/ssml+xml",
@@ -619,7 +619,7 @@ export class CartesiaSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/tts/bytes`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return {
       "X-API-Key": this.options.apiKey.reveal(),
       "Cartesia-Version": "2024-06-10",
@@ -650,7 +650,7 @@ export class PlayHtSpeechSynthesizer extends CloudSpeechSynthesizerBase {
   protected url(): string {
     return `${this.options.baseUrl}/tts/stream`;
   }
-  protected headers(): Map<string, string> {
+  protected headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.options.apiKey.reveal()}`,
       "X-USER-ID": this.play.userId,
@@ -857,9 +857,9 @@ export class OpenAiImageGenerator implements ImageGenerator {
     private readonly options: OpenAiImageOptions = openAiImageOptions(),
     private readonly post?: (
       url: string,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body: string,
-    ) => Promise<Map<string, unknown>>,
+    ) => Promise<Record<string, unknown>>,
   ) {}
 
   get isAvailable(): boolean {
@@ -912,7 +912,7 @@ export class StabilityImageGenerator implements ImageGenerator {
     private readonly options: StabilityImageOptions = stabilityImageOptions(),
     private readonly post?: (
       url: string,
-      headers: Map<string, string>,
+      headers: Record<string, string>,
       body: string,
     ) => Promise<Uint8Array>,
   ) {}

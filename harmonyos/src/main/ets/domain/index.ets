@@ -23,7 +23,7 @@
 //   record                                → readonly interface (+ positional factory)
 //   float[]                               → Float32Array (Math.fround at float sites)
 //   IReadOnlyList<T>                      → readonly T[]
-//   IReadOnlyDictionary<string,string>?   → Readonly<Map<string, string>> | null
+//   IReadOnlyDictionary<string,string>?   → Readonly<Record<string,string>> | null
 //   ValueTask<T>                          → Promise<T>
 //   ConcurrentDictionary (Ordinal)        → Map<string, T>
 //   ConcurrentDictionary (OrdinalIgnore)  → case-folded key Map
@@ -163,11 +163,11 @@ export interface IJobSearchPipeline {
 export interface MemoryItem {
   readonly id: string;
   readonly text: string;
-  readonly metadata: Readonly<Map<string, string>> | null;
+  readonly metadata: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs a {@link MemoryItem}. */
-export function memoryItem(id: string, text: string, metadata: Readonly<Map<string, string>> | null = null): MemoryItem {
+export function memoryItem(id: string, text: string, metadata: Readonly<Record<string, string>> | null = null): MemoryItem {
   return { id, text, metadata };
 }
 

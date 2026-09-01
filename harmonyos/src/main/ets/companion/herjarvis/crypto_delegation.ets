@@ -28,7 +28,7 @@
 // equivalent of the C# `ECDsa? key` constructor parameter); the default
 // generates a fresh P-256 keypair, exactly like `ECDsa.Create(...)`.
 
-import { createSign, createVerify, generateKeyPairSync } from "../../platform";
+import { KeyObject, createSign, createVerify, generateKeyPairSync } from "../../platform";
 import { toRoundTripUtc } from "./stores";
 import type { ICryptoDelegation, DelegationCredential } from "./contracts";
 

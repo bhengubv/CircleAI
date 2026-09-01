@@ -177,12 +177,12 @@ export class AesGcmCredentialStore implements ICredentialStore {
 interface SerializedBundle {
   readonly providerId: string;
   readonly userId: string;
-  readonly fields: Map<string, string>;
+  readonly fields: Record<string, string>;
   readonly expiresAtUtc: string | null;
 }
 
 function serializeBundle(b: CredentialBundle): string {
-  const fields: Map<string, string> = {};
+  const fields: Record<string, string> = {};
   for (const [k, v] of b.fields) fields[k] = v;
   const payload: SerializedBundle = {
     providerId: b.providerId,

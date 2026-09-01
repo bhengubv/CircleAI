@@ -148,7 +148,7 @@ export class ComposioToolBridge implements IToolBridge {
     method: "GET" | "POST",
     url: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    body: Object,
+    body: any,
   ): HttpRequest {
     const headers = new Map<string, string>();
     headers.set("Accept", "application/json");
@@ -163,10 +163,10 @@ export class ComposioToolBridge implements IToolBridge {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseToolList(root: Object): ToolDefinition[] {
+function parseToolList(root: any): ToolDefinition[] {
   // Composio may return an array at root, or { "tools": [...] }.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let toolsArray: Object[];
+  let toolsArray: any[];
   if (Array.isArray(root)) {
     toolsArray = root;
   } else if (isObject(root) && Array.isArray(root.tools)) {
@@ -183,7 +183,7 @@ function parseToolList(root: Object): ToolDefinition[] {
 
     if (name === null || name.trim().length === 0) continue;
 
-    const parameters: Map<string, ToolParameter> = {};
+    const parameters: Record<string, ToolParameter> = {};
     const required: string[] = [];
 
     const schema = item.inputSchema;
@@ -214,7 +214,7 @@ function parseToolList(root: Object): ToolDefinition[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractError(body: Object, fallback: string): string {
+function extractError(body: any, fallback: string): string {
   if (isObject(body) && "error" in body) {
     const e = body.error;
     if (isObject(e) && typeof e.message === "string") return e.message;
@@ -228,7 +228,7 @@ function ensureTrailingSlash(uri: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseJson(body: string): Object {
+function parseJson(body: string): any {
   if (body === undefined || body === null || body.length === 0) return null;
   try {
     return JSON.parse(body);
@@ -238,12 +238,12 @@ function parseJson(body: string): Object {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isObject(v: Object): v is Map<string, any> {
+function isObject(v: any): v is Record<string, any> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function jsonToString(v: Object): string {
+function jsonToString(v: any): string {
   try {
     return JSON.stringify(v);
   } catch {
@@ -251,10 +251,10 @@ function jsonToString(v: Object): string {
   }
 }
 
-function isAbort(ex: Object, signal?: AbortSignal): boolean {
+function isAbort(ex: unknown, signal?: AbortSignal): boolean {
   return signal?.aborted === true || (ex instanceof Error && ex.name === "AbortError");
 }
 
-function errorMessage(ex: Object): string {
+function errorMessage(ex: unknown): string {
   return ex instanceof Error ? ex.message : String(ex);
 }

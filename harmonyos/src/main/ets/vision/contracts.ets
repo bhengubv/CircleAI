@@ -36,7 +36,7 @@ export interface IComputerVisionRuntime {
   /** Decode bytes into a backend-private opaque image. */
   decodeAsync(imageBytes: Uint8Array, signal?: AbortSignal): Promise<unknown>;
   /** Resize an opaque image. Returns a new opaque image. */
-  resizeAsync(image: Object, width: number, height: number, signal?: AbortSignal): Promise<unknown>;
+  resizeAsync(image: unknown, width: number, height: number, signal?: AbortSignal): Promise<unknown>;
   /** Backend self-identification — "compv-3.x", "null", etc. */
   readonly backendId: string;
 }

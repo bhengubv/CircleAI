@@ -139,7 +139,7 @@ function isBelowConfidence(hit: MemoryHit, threshold: number): boolean {
 }
 
 function adaptEpisodic(e: EpisodicMemoryEntry): MemoryItem {
-  const meta: Map<string, string> = {
+  const meta: Record<string, string> = {
     source: "episodic",
     recordedAt: e.recordedAtUtc.toISOString(),
   };

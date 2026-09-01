@@ -82,14 +82,14 @@ export function parseTriples(
   const jsonSlice = raw.slice(firstBracket, lastBracket + 1);
 
   try {
-    const parsed: Object = JSON.parse(jsonSlice);
+    const parsed: unknown = JSON.parse(jsonSlice);
     if (!Array.isArray(parsed)) return [];
 
     const now = new Date();
     const hits: KnowledgeTriple[] = [];
     for (const entry of parsed) {
       if (entry == null || typeof entry !== "object" || Array.isArray(entry)) continue;
-      const obj = entry as Map<string, unknown>;
+      const obj = entry as Record<string, unknown>;
       const s = typeof obj.s === "string" ? obj.s : null;
       const p = typeof obj.p === "string" ? obj.p : null;
       const o = typeof obj.o === "string" ? obj.o : null;

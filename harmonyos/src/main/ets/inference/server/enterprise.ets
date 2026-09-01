@@ -40,7 +40,7 @@ export enum ServerTier {
 export interface TenantContext {
   readonly tenantId: string;
   readonly parentTenantId?: string | null;
-  readonly tags?: Readonly<Map<string, string>> | null;
+  readonly tags?: Readonly<Record<string, string>> | null;
 }
 
 /** Ported from TenantQuota. */

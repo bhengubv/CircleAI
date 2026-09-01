@@ -49,7 +49,7 @@ export interface IOnnxSession {
    * Run inference. `feeds` maps input names to tensors; the return maps output
    * names to float32 output tensors. Callers read the first output.
    */
-  run(feeds: Readonly<Map<string, DenseTensor>>): Map<string, DenseTensor>;
+  run(feeds: Readonly<Record<string, DenseTensor>>): Record<string, DenseTensor>;
 
   /** Release native session resources. */
   dispose(): void;

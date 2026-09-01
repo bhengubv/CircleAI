@@ -185,7 +185,7 @@ export interface EpisodicMemoryEntry {
   readonly embedding: number[] | null;
 
   /** Arbitrary key-value tags (e.g. locale, sentiment). */
-  readonly tags: Map<string, string> | null;
+  readonly tags: Record<string, string> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +278,7 @@ export class PersonaState {
    * Key = normalised topic label (e.g. "finance", "sport"),
    * Value = accumulated positive-signal weight (unbounded positive float).
    */
-  topicWeights: Map<string, number> = {};
+  topicWeights: Record<string, number> = {};
 
   /** Topics the user has down-voted or explicitly rejected. */
   disfavouredTopics: Set<string> = new Set();

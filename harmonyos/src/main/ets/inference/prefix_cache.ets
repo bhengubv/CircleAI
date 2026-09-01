@@ -10,6 +10,7 @@
  * Edit the TypeScript source, not this file.
  */
 
+import { Env } from "../platform";
 // inference/prefix_cache.ts
 //
 // Port of CircleAI.Inference.PrefixCacheService (RT-06). Manages an on-disk
@@ -206,11 +207,11 @@ export class PrefixCacheService {
   private static defaultRoot(): string {
     // Windows: %LOCALAPPDATA%/CircleAI/prefix-cache
     // Unix-like: ~/.circleai/prefix-cache
-    const local = undefined;
+    const local = Env.get("LOCALAPPDATA");
     if (local && local.trim().length > 0) {
       return joinPath(local, joinPath("CircleAI", "prefix-cache"));
     }
-    const home = undefined ?? undefined ?? ".";
+    const home = Env.get("HOME") ?? Env.get("USERPROFILE") ?? ".";
     return joinPath(home, joinPath(".circleai", "prefix-cache"));
   }
 }

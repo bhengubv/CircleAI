@@ -40,7 +40,7 @@ export const BluetoothConnectionState = Object.freeze({
   Connecting: 2,
   Connected: 3,
   Failed: 4,
-} as const) satisfies Map<string, BluetoothConnectionState>;
+} as const) satisfies Record<string, BluetoothConnectionState>;
 
 /** A discovered Bluetooth endpoint. Mirrors C# `BluetoothEndpointDescriptor` record. */
 export interface BluetoothEndpointDescriptor {

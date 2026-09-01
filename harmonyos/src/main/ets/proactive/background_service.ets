@@ -39,7 +39,7 @@ export class ProactiveSchedulerBackgroundService {
   private readonly scheduler: IProactiveScheduler;
   private readonly tickIntervalMs: number;
   private readonly refreshIntervalMs: number;
-  private readonly onError?: (message: string, error: Object) => void;
+  private readonly onError?: (message: string, error: unknown) => void;
 
   private controller: AbortController | null = null;
   private loop: Promise<void> | null = null;
@@ -47,7 +47,7 @@ export class ProactiveSchedulerBackgroundService {
   constructor(
     scheduler: IProactiveScheduler,
     options: ProactiveSchedulerOptions = {},
-    onError?: (message: string, error: Object) => void,
+    onError?: (message: string, error: unknown) => void,
   ) {
     if (scheduler == null) throw new Error("scheduler required");
     this.scheduler = scheduler;

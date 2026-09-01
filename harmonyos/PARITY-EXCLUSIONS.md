@@ -73,3 +73,51 @@ same job.
 
 ```renames
 ```
+
+## What "100%" here means, and what it does not
+
+Parity counts declared type names. It says nothing about whether the code
+compiles, and for a while this port measured 100% while not compiling at all —
+2,049 type errors, from rewrites that changed types without their call sites.
+So the number above is now reported alongside a compile check, and neither is
+claimed to be the other.
+
+`harmonyos/tools/check_arkts.py` copies the `.ets` tree to `.ts` and runs
+`tsc --strict` over it with **no Node types and no DOM lib**, which is the
+closest a machine without the HarmonyOS SDK can get to the device's environment.
+It currently reports **0 errors across 423 modules**.
+
+**That is a necessary condition, not a sufficient one.** ArkTS is stricter than
+TypeScript in ways `tsc` cannot check:
+
+- object literals cannot be typed structurally against an interface — ArkTS
+  wants a class
+- `Object` is not a general escape hatch the way `any` was
+- `globalThis` is not available, so the global installs in `globals.ets` need the
+  ability's own mechanism
+- decorators, `struct` components and the ArkUI DSL are only checked by the ArkTS
+  compiler
+
+**None of this has been through DevEco Studio or `hvigor`,** because the
+HarmonyOS SDK is not installed on the build host — `ohpm` is absent. Until it
+runs there, the honest claim is: every C# public type is present, the tree is
+type-correct TypeScript under a HarmonyOS-shaped environment, and it has never
+been built for the device.
+
+## Known gaps
+
+**`any` and `unknown`** — the shared TypeScript source uses `any` in about a
+dozen places and `unknown` in a dozen more, all of them parsing JSON. ArkTS has
+neither. These are not rewritten by the generator, because the first pass did
+exactly that and produced hundreds of broken call sites: a regex cannot see the
+surrounding types. They need fixing at the shared source, where the types are
+visible, and that fix belongs to every port rather than this one.
+
+**The synchronous filesystem** — one thermal sampler reads Linux sysfs through
+`existsSync` / `readFileSync`. HarmonyOS has neither the sync API nor that path,
+so `existsSync` returns false and the sampler reports "unknown", which is the
+truth on this device.
+
+**`process`** — HarmonyOS applications have no environment variables and no
+working directory. `Env.get` always returns `undefined`, keeping the
+`string | undefined` shape the call sites already handle.

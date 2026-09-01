@@ -897,8 +897,11 @@ export class ImageCodecs {
     let width = 0;
     let height = 0;
     let colourType = 0;
-    let palette = new Uint8Array(0);
-    let trns = new Uint8Array(0);
+    // Typed against `ArrayBufferLike`, not the default `ArrayBuffer`: these are
+    // assigned SUBARRAYS of the file, which share its backing store, and the
+    // narrower default made a correct assignment fail to type-check.
+    let palette: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    let trns: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
     const idat: Uint8Array[] = [];
     while (p + 8 <= data.length) {
       const length = view.getUint32(p, false);

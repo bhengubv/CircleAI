@@ -43,7 +43,7 @@
  */
 export function extractObservations(scenarioJson: string | null | undefined): string[] {
   if (scenarioJson == null || scenarioJson.trim().length === 0) return [];
-  let root: Object;
+  let root: unknown;
   try {
     root = JSON.parse(scenarioJson);
   } catch {
@@ -53,7 +53,7 @@ export function extractObservations(scenarioJson: string | null | undefined): st
   if (root === null || typeof root !== "object" || Array.isArray(root)) return [];
 
   const hits: string[] = [];
-  for (const [name, value] of Object.entries(root as Map<string, unknown>)) {
+  for (const [name, value] of Object.entries(root as Record<string, unknown>)) {
     hits.push(name + "=" + jsonElementToString(value));
   }
   return hits;
@@ -66,7 +66,7 @@ export function extractObservations(scenarioJson: string | null | undefined): st
  * `JSON.stringify`, which — like System.Text.Json — emits compact,
  * key-order-preserving JSON with no spaces).
  */
-export function jsonElementToString(value: Object): string {
+export function jsonElementToString(value: unknown): string {
   if (value === null || value === undefined) return "";
   switch (typeof value) {
     case "string":

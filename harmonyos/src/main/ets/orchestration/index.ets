@@ -236,7 +236,7 @@ export class LocalAgentDispatcher implements IAgentDispatcher {
   }
 
   /**
-   * Deterministic gate: Object issue prefixed with `[CRITICAL]` or `[HIGH]`
+   * Deterministic gate: any issue prefixed with `[CRITICAL]` or `[HIGH]`
    * (case-insensitive) is a blocker; every other issue is a warning.
    */
   runQualityGateAsync(result: SwarmResult, _signal?: AbortSignal): Promise<QualityGateResult> {

@@ -46,7 +46,7 @@ const EOS = '$';
 
 /** A Piper-layout voice's phoneme→id vocabulary and inference settings. */
 export class PiperVoiceConfig {
-  private readonly map: Map<string, number[]>;
+  private readonly map: Record<string, number[]>;
   readonly sampleRate: number;
   readonly noiseScale: number;
   readonly lengthScale: number;
@@ -55,7 +55,7 @@ export class PiperVoiceConfig {
   readonly phonemeType: string;
 
   constructor(
-    map: Map<string, number[]>,
+    map: Record<string, number[]>,
     sampleRate = 22050,
     noiseScale = 0.667,
     lengthScale = 1.0,
@@ -71,10 +71,10 @@ export class PiperVoiceConfig {
   }
 
   /** Parse a Piper `.onnx.json` sidecar. */
-  static parse(root: Map<string, any>): PiperVoiceConfig {
+  static parse(root: Record<string, any>): PiperVoiceConfig {
     const sampleRate = root.audio?.sample_rate ?? 22050;
     const inference = root.inference ?? {};
-    const map: Map<string, number[]> = {};
+    const map: Record<string, number[]> = {};
     const pim = root.phoneme_id_map;
     if (pim && typeof pim === 'object') {
       for (const [symbol, ids] of Object.entries(pim)) {

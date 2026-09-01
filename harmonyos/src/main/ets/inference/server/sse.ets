@@ -66,6 +66,6 @@ export class ServerSentEventsWriter {
  * JsonIgnoreCondition.WhenWritingNull on the OpenAI DTOs (reasoning_content,
  * delta fields, error.param/code, etc.).
  */
-export function stripNullReplacer(_key: string, value: Object): Object {
+export function stripNullReplacer(_key: string, value: unknown): unknown {
   return value === null || value === undefined ? undefined : value;
 }

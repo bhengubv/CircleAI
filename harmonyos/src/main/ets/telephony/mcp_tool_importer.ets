@@ -102,22 +102,22 @@ export class HttpMcpToolImporter implements IMcpToolImporter {
       return [];
     }
 
-    let root: Map<string, unknown>;
+    let root: Record<string, unknown>;
     try {
-      root = JSON.parse(resp.body) as Map<string, unknown>;
+      root = JSON.parse(resp.body) as Record<string, unknown>;
     } catch {
       return [];
     }
 
     const result = root["result"];
     if (result === null || typeof result !== "object") return [];
-    const tools = (result as Map<string, unknown>)["tools"];
+    const tools = (result as Record<string, unknown>)["tools"];
     if (!Array.isArray(tools)) return [];
 
     const imported: ToolDefinition[] = [];
     for (const entry of tools) {
       if (entry === null || typeof entry !== "object") continue;
-      const e = entry as Map<string, unknown>;
+      const e = entry as Record<string, unknown>;
       const name = typeof e["name"] === "string" ? (e["name"] as string) : undefined;
       const description = typeof e["description"] === "string" ? (e["description"] as string) : "";
       const schema =

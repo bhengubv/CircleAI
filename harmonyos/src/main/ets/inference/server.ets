@@ -78,7 +78,7 @@ export class ApiKeyAuthHandler {
    * Rejecting it produces a 401 that nobody can explain.
    */
   authenticate(
-    headers: Readonly<Map<string, string>>,
+    headers: Readonly<Record<string, string>>,
     isLoopback = false,
   ): { allowed: boolean; reason: string } {
     if (!this.options.required) return { allowed: true, reason: "this server does not require a key" };
@@ -184,7 +184,7 @@ export interface DiagnosticsResponse {
   readonly backend: BackendSelectionDto;
   readonly models: readonly LoadedModelInfo[];
   readonly counters: readonly CounterSnapshot[];
-  readonly p95Ms: Readonly<Map<string, number>>;
+  readonly p95Ms: Readonly<Record<string, number>>;
 }
 
 export const diagnosticsResponse = (
@@ -207,10 +207,10 @@ export const diagnosticsResponse = (
 /** What a handler returns. */
 export interface EndpointResponse {
   readonly status: number;
-  readonly body: Map<string, unknown>;
+  readonly body: Record<string, unknown>;
 }
 
-const endpointResponse = (status: number, body: Map<string, unknown>): EndpointResponse =>
+const endpointResponse = (status: number, body: Record<string, unknown>): EndpointResponse =>
   Object.freeze({ status, body });
 
 export const endpointOk = (r: EndpointResponse): boolean => r.status >= 200 && r.status < 300;
@@ -218,7 +218,7 @@ export const endpointOk = (r: EndpointResponse): boolean => r.status >= 200 && r
 /** One route. */
 export interface Endpoint {
   readonly path: string;
-  handle(request: Map<string, unknown>): Promise<EndpointResponse>;
+  handle(request: Record<string, unknown>): Promise<EndpointResponse>;
 }
 
 /**
@@ -234,11 +234,11 @@ export class ChatCompletionsEndpoint implements Endpoint {
   constructor(
     private readonly generate?: (
       turns: readonly { role: string; content: string }[],
-      request: Map<string, unknown>,
+      request: Record<string, unknown>,
     ) => Promise<string>,
   ) {}
 
-  async handle(request: Map<string, unknown>): Promise<EndpointResponse> {
+  async handle(request: Record<string, unknown>): Promise<EndpointResponse> {
     const messages = request.messages;
     if (!Array.isArray(messages) || messages.length === 0) {
       // 400 with a reason, not a 500. A malformed request is the caller's to
@@ -258,7 +258,7 @@ export class ChatCompletionsEndpoint implements Endpoint {
       });
     }
     const turns = messages
-      .filter((m): m is Map<string, unknown> => Boolean(m) && typeof m === "object")
+      .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === "object")
       .map((m) => ({ role: String(m.role ?? "user"), content: String(m.content ?? "") }));
     try {
       const text = await this.generate(turns, request);
@@ -293,7 +293,7 @@ export class EmbeddingsEndpoint implements Endpoint {
 
   constructor(private readonly embed?: (inputs: readonly string[]) => Promise<number[][]>) {}
 
-  async handle(request: Map<string, unknown>): Promise<EndpointResponse> {
+  async handle(request: Record<string, unknown>): Promise<EndpointResponse> {
     // A single string and a list of strings are BOTH valid input in this API.
     // Accepting only the list rejects the commonest call.
     const raw = request.input;
@@ -335,7 +335,7 @@ export class CompanionEndpoint implements Endpoint {
 
   constructor(private readonly respond?: (sessionId: string, text: string) => Promise<string>) {}
 
-  async handle(request: Map<string, unknown>): Promise<EndpointResponse> {
+  async handle(request: Record<string, unknown>): Promise<EndpointResponse> {
     const text = String(request.text ?? "").trim();
     if (!text) {
       return endpointResponse(400, {
@@ -375,7 +375,7 @@ export class DiagnosticsEndpoint implements Endpoint {
     private readonly diagnostics?: () => DiagnosticsResponse,
   ) {}
 
-  async handle(request: Map<string, unknown>): Promise<EndpointResponse> {
+  async handle(request: Record<string, unknown>): Promise<EndpointResponse> {
     const wantsFull = String(request.path ?? "").replace(/\/+$/, "").endsWith("diagnostics");
     if (!wantsFull) {
       return endpointResponse(200, { ...(this.health?.() ?? healthResponse()) });
@@ -409,7 +409,7 @@ export class AdminEndpoints implements Endpoint {
     private readonly gate?: (modelId: string) => { allowed: boolean; reason: string },
   ) {}
 
-  async handle(request: Map<string, unknown>): Promise<EndpointResponse> {
+  async handle(request: Record<string, unknown>): Promise<EndpointResponse> {
     const action = String(request.action ?? "").toLowerCase();
     const modelId = String(request.model_id ?? "").trim();
     if (!modelId) {
@@ -457,7 +457,7 @@ export class AdminEndpoints implements Endpoint {
  */
 export class MnnInferenceBridgeFactory {
   private modelId = "";
-  private bridge?: Object;
+  private bridge?: unknown;
 
   constructor(private readonly build?: (modelId: string) => unknown) {}
 
@@ -465,7 +465,7 @@ export class MnnInferenceBridgeFactory {
     return this.modelId;
   }
 
-  get(modelId: string): Object {
+  get(modelId: string): unknown {
     if (!modelId || !this.build) return undefined;
     if (this.bridge !== undefined && this.modelId === modelId) return this.bridge;
     // The old bridge is dropped BEFORE the new one is built. Holding both for
@@ -577,8 +577,8 @@ export class InferenceServer {
 
   async dispatch(
     path: string,
-    body: Map<string, unknown> = {},
-    headers: Readonly<Map<string, string>> = {},
+    body: Record<string, unknown> = {},
+    headers: Readonly<Record<string, string>> = {},
     isLoopback = true,
   ): Promise<EndpointResponse> {
     const key = path.replace(/\/+$/, "") || "/";
@@ -775,9 +775,9 @@ export class OpenAiCompatibleChatGeneratorBase {
     protected readonly options: CloudChatOptions,
     protected readonly post?: (
       url: string,
-      headers: Map<string, string>,
-      body: Map<string, unknown>,
-    ) => Promise<Map<string, unknown>>,
+      headers: Record<string, string>,
+      body: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>,
   ) {}
 
   /** Configured AND given a transport. A generator with a key and no way to
@@ -792,7 +792,7 @@ export class OpenAiCompatibleChatGeneratorBase {
     );
   }
 
-  headers(): Map<string, string> {
+  headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.options.apiKey.reveal()}`,
       "Content-Type": "application/json",
@@ -802,7 +802,7 @@ export class OpenAiCompatibleChatGeneratorBase {
   body(
     turns: readonly { role: string; content: string }[],
     system: string,
-  ): Map<string, unknown> {
+  ): Record<string, unknown> {
     const messages = system ? [{ role: "system", content: system }, ...turns] : [...turns];
     return {
       model: this.options.model,
@@ -812,7 +812,7 @@ export class OpenAiCompatibleChatGeneratorBase {
     };
   }
 
-  parse(raw: Map<string, unknown>): CloudChatResult {
+  parse(raw: Record<string, unknown>): CloudChatResult {
     const choices = raw.choices as { message?: { content?: string } }[] | undefined;
     const usage = (raw.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number };
     return Object.freeze({
@@ -1188,12 +1188,12 @@ export class ToolCatalogExtensions {
 export class NeuronServiceCollectionExtensions {
   private readonly registered = new Map<string, unknown>();
 
-  addNeuron(name: string, service: Object): NeuronServiceCollectionExtensions {
+  addNeuron(name: string, service: unknown): NeuronServiceCollectionExtensions {
     this.registered.set(name, service);
     return this;
   }
 
-  build(): Readonly<Map<string, unknown>> {
+  build(): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(this.registered));
   }
 
@@ -1206,17 +1206,17 @@ export class NeuronServiceCollectionExtensions {
 export class HostingServiceCollectionExtensions {
   private readonly registered = new Map<string, unknown>();
 
-  add(name: string, service: Object): HostingServiceCollectionExtensions {
+  add(name: string, service: unknown): HostingServiceCollectionExtensions {
     if (!name.trim()) throw new Error("a registration needs a name");
     this.registered.set(name, service);
     return this;
   }
 
-  get(name: string): Object {
+  get(name: string): unknown {
     return this.registered.get(name);
   }
 
-  build(): Readonly<Map<string, unknown>> {
+  build(): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(this.registered));
   }
 }
@@ -1305,8 +1305,8 @@ export class JsonRenderParser {
     "text", "heading", "list", "table", "chart", "image", "button", "input", "card",
   ]);
 
-  static parse(json: string): { components: Map<string, unknown>[]; dropped: string[] } {
-    let parsed: Object;
+  static parse(json: string): { components: Record<string, unknown>[]; dropped: string[] } {
+    let parsed: unknown;
     try {
       parsed = JSON.parse(json);
     } catch {
@@ -1315,11 +1315,11 @@ export class JsonRenderParser {
       return { components: [], dropped: ["the reply was not readable as JSON"] };
     }
     const raw = Array.isArray(parsed) ? parsed : [parsed];
-    const components: Map<string, unknown>[] = [];
+    const components: Record<string, unknown>[] = [];
     const dropped: string[] = [];
     for (const item of raw) {
       if (!item || typeof item !== "object") continue;
-      const record = item as Map<string, unknown>;
+      const record = item as Record<string, unknown>;
       const kind = String(record.type ?? "").toLowerCase();
       if (!JsonRenderParser.ALLOWED.includes(kind)) {
         dropped.push(kind || "(no type)");

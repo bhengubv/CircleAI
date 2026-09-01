@@ -123,7 +123,7 @@ export class LinkedTimeout {
 }
 
 /** True when an error represents a cancellation (native `AbortError` or {@link OperationCancelledError}). */
-export function isCancellation(err: Object): boolean {
+export function isCancellation(err: unknown): boolean {
   return (
     err instanceof OperationCancelledError ||
     (typeof err === "object" && err !== null && (err as { name?: string }).name === "AbortError")
@@ -158,7 +158,7 @@ export class AsyncChannel<T> {
     this.completed = true;
     let waiter = this.waiters.shift();
     while (waiter) {
-      waiter({ value: undefined as T, done: true });
+      waiter({ value: undefined as unknown as T, done: true });
       waiter = this.waiters.shift();
     }
     return true;

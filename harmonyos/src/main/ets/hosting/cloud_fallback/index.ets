@@ -848,7 +848,7 @@ export class FakeConfigurableChatGenerator implements IConfigurableChatGenerator
 function parseOpenAiDelta(frame: string): string | null {
   try {
     const doc = JSON.parse(frame) as {
-      choices?: { delta?: { content?: Object } }[];
+      choices?: { delta?: { content?: unknown } }[];
     };
     const c = doc.choices;
     if (Array.isArray(c) && c.length > 0) {
@@ -865,7 +865,7 @@ function parseAnthropicDelta(frame: string): string | null {
   try {
     const doc = JSON.parse(frame) as {
       type?: string;
-      delta?: { text?: Object };
+      delta?: { text?: unknown };
     };
     if (doc.type === "content_block_delta" && typeof doc.delta?.text === "string")
       return doc.delta.text;
@@ -878,7 +878,7 @@ function parseAnthropicDelta(frame: string): string | null {
 function parseGeminiDelta(frame: string): string | null {
   try {
     const doc = JSON.parse(frame) as {
-      candidates?: { content?: { parts?: { text?: Object }[] } }[];
+      candidates?: { content?: { parts?: { text?: unknown }[] } }[];
     };
     const cand = doc.candidates;
     if (Array.isArray(cand) && cand.length > 0) {

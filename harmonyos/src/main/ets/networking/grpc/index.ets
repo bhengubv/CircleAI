@@ -46,7 +46,7 @@ export const GrpcChannelState = Object.freeze({
   Ready: 2,
   TransientFailure: 3,
   Shutdown: 4,
-} as const) satisfies Map<string, GrpcChannelState>;
+} as const) satisfies Record<string, GrpcChannelState>;
 
 /**
  * Lifecycle state of a managed gRPC connection, mirroring the connectivity
@@ -61,7 +61,7 @@ export const GrpcConnectionState = Object.freeze({
   Ready: 2,
   TransientFailure: 3,
   Shutdown: 4,
-} as const) satisfies Map<string, GrpcConnectionState>;
+} as const) satisfies Record<string, GrpcConnectionState>;
 
 /** A gRPC channel descriptor. Mirrors C# `GrpcChannelDescriptor` record. */
 export interface GrpcChannelDescriptor {

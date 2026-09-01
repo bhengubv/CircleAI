@@ -81,8 +81,8 @@ export class AIApiClient implements IAIService {
     return this.ready;
   }
 
-  private get headers(): Map<string, string> {
-    const h: Map<string, string> = { "Content-Type": "application/json" };
+  private get headers(): Record<string, string> {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
     if (this.bearerToken != null && this.bearerToken.trim().length > 0)
       h["Authorization"] = `Bearer ${this.bearerToken}`;
     return h;

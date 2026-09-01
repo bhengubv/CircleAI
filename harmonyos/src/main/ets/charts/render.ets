@@ -833,7 +833,7 @@ export class InMemoryGoldenStore implements GoldenStore {
   private readonly written: string[] = [];
 
   constructor(
-    seed: Readonly<Map<string, string>> = {},
+    seed: Readonly<Record<string, string>> = {},
     private readonly updateMode = false,
   ) {
     this.values = new Map(Object.entries(seed));

@@ -228,7 +228,7 @@ export interface AetherSecurityEvent {
   readonly kind: AetherSecurityEventKind;
   readonly threatLevel: AetherThreatLevel;
   readonly description: string;
-  readonly metadata: Readonly<Map<string, string>>;
+  readonly metadata: Readonly<Record<string, string>>;
   readonly occurredAt: Date;
 }
 

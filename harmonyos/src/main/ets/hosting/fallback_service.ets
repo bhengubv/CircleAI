@@ -10,6 +10,7 @@
  * Edit the TypeScript source, not this file.
  */
 
+import * as __platform from "../platform";
 // hosting/fallback_service.ts
 //
 // Port of CircleAI.Hosting.FallbackAIService — a transparent IAIService wrapper
@@ -162,7 +163,7 @@ export class FallbackAIService implements IAIService {
 function defaultRamProbe(): number {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const os = require("node:os") as typeof import("node:os");
+    const os = __platform as typeof import("../platform");
     return os.freemem();
   } catch {
     return 0;

@@ -30,7 +30,7 @@ export interface ToolParameter {
 export interface ToolDefinition {
   readonly name: string;
   readonly description: string;
-  readonly parameters: Map<string, ToolParameter>;
+  readonly parameters: Record<string, ToolParameter>;
   readonly requiredParameters: readonly string[];
 }
 
@@ -38,7 +38,7 @@ export interface ToolDefinition {
 export interface ToolInvocation {
   readonly toolName: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly arguments: Map<string, any>;
+  readonly arguments: Record<string, any>;
 }
 
 /** The result of executing a tool invocation. */
@@ -46,7 +46,7 @@ export interface ToolResult {
   readonly toolName: string;
   readonly success: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly result?: Object;
+  readonly result?: any;
   readonly error?: string;
 }
 
@@ -57,7 +57,7 @@ export function toolResultFailure(toolName: string, error: string): ToolResult {
 
 /** Convenience factory for a successful tool result. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function toolResultOk(toolName: string, result?: Object): ToolResult {
+export function toolResultOk(toolName: string, result?: any): ToolResult {
   return { toolName, success: true, result };
 }
 

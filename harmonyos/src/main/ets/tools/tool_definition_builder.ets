@@ -105,7 +105,7 @@ export class ToolDefinitionBuilder {
       );
     }
 
-    const parameters: Map<string, ToolParameter> = {};
+    const parameters: Record<string, ToolParameter> = {};
     const required: string[] = [];
     for (const { name, parameter, required: isRequired } of this.parameters) {
       parameters[name] = parameter;

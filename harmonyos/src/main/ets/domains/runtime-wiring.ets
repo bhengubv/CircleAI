@@ -30,7 +30,7 @@ export class CircleAIRuntimeServiceCollectionExtensions {
 
   /** Overwriting is deliberate and last-wins, so a host can replace a default
    * without having to remove it first. */
-  add(name: string, service: Object): CircleAIRuntimeServiceCollectionExtensions {
+  add(name: string, service: unknown): CircleAIRuntimeServiceCollectionExtensions {
     if (!name.trim()) throw new Error("a registration needs a name");
     this.registered.set(name, service);
     return this;
@@ -38,7 +38,7 @@ export class CircleAIRuntimeServiceCollectionExtensions {
 
   /** Undefined when absent, never a stand-in. A caller that gets a silent
    * placeholder cannot tell a working service from a missing one. */
-  get(name: string): Object {
+  get(name: string): unknown {
     return this.registered.get(name);
   }
 
@@ -46,7 +46,7 @@ export class CircleAIRuntimeServiceCollectionExtensions {
     return Object.freeze([...this.registered.keys()].sort());
   }
 
-  build(): Readonly<Map<string, unknown>> {
+  build(): Readonly<Record<string, unknown>> {
     return Object.freeze(Object.fromEntries(this.registered));
   }
 }

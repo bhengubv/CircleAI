@@ -360,9 +360,9 @@ export class BenchSuiteRegistry {
    * the enum name). Missing fields fall back to the C# record defaults.
    */
   registerFromJson(suiteId: string, json: string): void {
-    const parsed = JSON.parse(json) as Object;
+    const parsed = JSON.parse(json) as unknown;
     if (!Array.isArray(parsed)) throw new Error("Empty / invalid bench file");
-    const tasks = parsed.map((raw) => coerceTask(raw as Map<string, unknown>));
+    const tasks = parsed.map((raw) => coerceTask(raw as Record<string, unknown>));
     this.register(suiteId, tasks);
   }
 
@@ -376,8 +376,8 @@ export class BenchSuiteRegistry {
 }
 
 /** Coerce a case-insensitive JSON object into a BenchTask with C# defaults. */
-function coerceTask(raw: Map<string, unknown>): BenchTask {
-  const get = (name: string): Object => {
+function coerceTask(raw: Record<string, unknown>): BenchTask {
+  const get = (name: string): unknown => {
     for (const key of Object.keys(raw)) {
       if (key.toLowerCase() === name.toLowerCase()) return raw[key];
     }
@@ -618,7 +618,7 @@ function cryptoId(): string {
   return s;
 }
 
-function describeError(ex: Object): string {
+function describeError(ex: unknown): string {
   if (ex instanceof Error) return `${ex.name}: ${ex.message}`;
   return `Error: ${String(ex)}`;
 }

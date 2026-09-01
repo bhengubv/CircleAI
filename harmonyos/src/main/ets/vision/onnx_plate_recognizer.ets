@@ -135,7 +135,7 @@ function abortError(): Error {
   return e;
 }
 
-function message(ex: Object): string {
+function message(ex: unknown): string {
   return ex instanceof Error ? ex.message : String(ex);
 }
 

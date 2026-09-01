@@ -38,7 +38,7 @@ export interface ToolParameter {
 export interface ToolDefinition {
   readonly name: string;
   readonly description: string;
-  readonly parameters: Map<string, ToolParameter>;
+  readonly parameters: Record<string, ToolParameter>;
   readonly requiredParameters: readonly string[];
 }
 
@@ -49,14 +49,14 @@ export interface ToolDefinition {
 /** A tool call produced by the model. */
 export interface ToolInvocation {
   readonly toolName:  string;
-  readonly arguments: Map<string, unknown>;
+  readonly arguments: Record<string, unknown>;
 }
 
 /** The outcome of executing a ToolInvocation. */
 export interface ToolResult {
   readonly toolName: string;
   readonly success:  boolean;
-  readonly result:   Object;
+  readonly result:   unknown;
   readonly error:    string | null;
 }
 
@@ -66,7 +66,7 @@ export function toolFailure(toolName: string, error: string): ToolResult {
 }
 
 /** Convenience factory for a successful tool result. */
-export function toolSuccess(toolName: string, result?: Object): ToolResult {
+export function toolSuccess(toolName: string, result?: unknown): ToolResult {
   return { toolName, success: true, result: result ?? null, error: null };
 }
 

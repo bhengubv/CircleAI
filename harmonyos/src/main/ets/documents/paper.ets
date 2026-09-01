@@ -44,7 +44,7 @@ export const A4_HEIGHT = 842;
  * here, and anything absent falls back to 556 - the width of a digit, which is
  * close to the average.
  */
-const HELVETICA: Readonly<Map<string, number>> = Object.freeze({
+const HELVETICA: Readonly<Record<string, number>> = Object.freeze({
   " ": 278, "!": 278, '"': 355, "#": 556, $: 556, "%": 889, "&": 667,
   "'": 191, "(": 333, ")": 333, "*": 389, "+": 584, ",": 278, "-": 333,
   ".": 278, "/": 278, ":": 278, ";": 278, "<": 584, "=": 584, ">": 584,
@@ -248,7 +248,7 @@ export interface DocumentRequest {
   /** The typed document. Untyped here because the engine dispatches on `kind`,
    * and threading a generic through every caller buys nothing a runtime check
    * does not. */
-  readonly payload: Object;
+  readonly payload: unknown;
 }
 
 /** What came back. */
@@ -772,7 +772,7 @@ export enum Scale {
   WholeTone = "whole-tone",
 }
 
-const SCALE_INTERVALS: Readonly<Map<string, readonly number[]>> = Object.freeze({
+const SCALE_INTERVALS: Readonly<Record<string, readonly number[]>> = Object.freeze({
   [Scale.Major]: Object.freeze([0, 2, 4, 5, 7, 9, 11]),
   [Scale.Minor]: Object.freeze([0, 2, 3, 5, 7, 8, 10]),
   [Scale.Pentatonic]: Object.freeze([0, 2, 4, 7, 9]),

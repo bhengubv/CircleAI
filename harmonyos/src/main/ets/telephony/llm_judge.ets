@@ -103,10 +103,10 @@ export class LlmJudge {
     const scores = new Map<string, number>();
     try {
       const trimmed = LlmJudge.extractJson(raw);
-      const root = JSON.parse(trimmed) as Map<string, unknown>;
+      const root = JSON.parse(trimmed) as Record<string, unknown>;
       const s = root["scores"];
       if (s !== null && typeof s === "object" && !Array.isArray(s)) {
-        const scoreObj = s as Map<string, unknown>;
+        const scoreObj = s as Record<string, unknown>;
         for (const dim of dims) {
           if (Object.prototype.hasOwnProperty.call(scoreObj, dim.name)) {
             const v = scoreObj[dim.name];

@@ -104,7 +104,7 @@ export interface IToolCallRegistry {
 
 /** Optional sink the default registry logs warnings to (mirrors `ILogger`). */
 export interface ILogger {
-  warn(message: string, error?: Object): void;
+  warn(message: string, error?: unknown): void;
 }
 
 interface ToolEntry {
@@ -183,7 +183,7 @@ export class DefaultToolCallRegistry implements IToolCallRegistry {
       }
 
       if (entry.webhook !== undefined) {
-        const parsedArgs: Object = JSON.parse(invocation.argumentsJson);
+        const parsedArgs: unknown = JSON.parse(invocation.argumentsJson);
         const body = JSON.stringify({
           call_id: invocation.callId,
           tool: invocation.toolName,

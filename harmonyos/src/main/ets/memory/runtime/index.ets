@@ -118,7 +118,7 @@ export interface CompanionRuntimeObserver {
   /** Informational lifecycle event (start, stop, tick outcomes). */
   onEvent?(message: string): void;
   /** A non-fatal failure inside a background loop. */
-  onError?(message: string, error: Object): void;
+  onError?(message: string, error: unknown): void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ export class CompanionRuntime {
     sourceBytes: Uint8Array,
     mimeType?: string | null,
     sourceUri?: string | null,
-    tags?: Map<string, string> | null,
+    tags?: Record<string, string> | null,
   ): Promise<IngestionResult> {
     if (this.ingester === null) {
       throw new Error("CompanionRuntime was constructed without a MultimodalMemoryIngester.");
@@ -330,7 +330,7 @@ export class CompanionRuntime {
     this.observer.onEvent?.(message);
   }
 
-  private logError(message: string, error: Object): void {
+  private logError(message: string, error: unknown): void {
     this.observer.onError?.(message, error);
   }
 }

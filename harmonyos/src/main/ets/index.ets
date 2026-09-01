@@ -5,120 +5,159 @@
  * ported from the TypeScript source by `harmonyos/tools/gen_arkts.py`; the
  * platform layer beneath them is hand-written ArkTS over `@ohos.*`.
  *
- * The platform layer comes FIRST: nothing else works until an ability has
- * called `bindPlatform`, and a consumer reading this file top to bottom should
- * meet that fact before anything that depends on it.
+ * The platform layer and the global shims come FIRST: nothing else works until
+ * an ability has called `bindPlatform` and `installGlobals`, and a consumer
+ * reading this file top to bottom should meet that fact before anything that
+ * depends on it.
  */
 
 export * from './platform';
+export * from './globals';
 
-export * from './accessibility/index';
-export * from './aether/index';
-export * from './aethernet/index';
-export * from './agriculture/index';
-export * from './ambient/index';
-export * from './autonomousbiz/index';
-export * from './banking/index';
-export * from './beauty/index';
-export * from './buildfarm/index';
-export * from './business/index';
-export * from './catalog/index';
-export * from './civic/index';
-export * from './code-understanding/index';
-export * from './collaboration/index';
-export * from './commerce/index';
-export * from './community/index';
-export * from './companion/index';
-export * from './companion';
-export * from './construction/index';
-export * from './content-policy/index';
-export * from './core/index';
-export * from './creative/index';
-export * from './crm/index';
-export * from './depbot/index';
-export * from './dev-tools/index';
-export * from './device/index';
-export * from './distribution/index';
-export * from './doc-analytics/index';
-export * from './domain/index';
-export * from './education/index';
-export * from './elderly/index';
-export * from './embeddings/index';
-export * from './energy/index';
-export * from './faith/index';
-export * from './family/index';
-export * from './federation/index';
-export * from './fitness/index';
-export * from './food/index';
-export * from './games/index';
-export * from './gaming/index';
-export * from './healthcare/index';
-export * from './home/index';
-export * from './hospitality/index';
-export * from './hosting/index';
-export * from './hr/index';
-export * from './identity/index';
-export * from './identity';
-export * from './inference/index';
-export * from './inference';
-export * from './inputs/index';
-export * from './integration/index';
-export * from './iot/index';
-export * from './kids/index';
-export * from './knowledge/index';
-export * from './languages/index';
-export * from './languages';
-export * from './legal/index';
-export * from './logistics/index';
-export * from './markets/index';
-export * from './media/index';
-export * from './memory/index';
-export * from './memory';
-export * from './microagents/index';
-export * from './models/index';
-export * from './models';
-export * from './observability/index';
-export * from './observer/index';
-export * from './operator/index';
-export * from './orchestration/index';
-export * from './parenting/index';
-export * from './personality/index';
-export * from './pets/index';
-export * from './pipelines/index';
-export * from './plugins/index';
-export * from './proactive/index';
-export * from './prompt/index';
-export * from './realestate/index';
-export * from './realtime/index';
-export * from './realtime-cloud/index';
-export * from './registry/index';
-export * from './relationships/index';
-export * from './research/index';
-export * from './retail/index';
-export * from './runtime/index';
-export * from './safety/index';
-export * from './sdd/index';
-export * from './search/index';
-export * from './security/index';
-export * from './security';
-export * from './selector/index';
-export * from './selfbench/index';
-export * from './simulation/index';
-export * from './skills/index';
-export * from './social/index';
-export * from './spatial/index';
-export * from './speech/index';
-export * from './sports/index';
-export * from './sync/index';
-export * from './sync';
-export * from './telephony/index';
-export * from './tools/index';
-export * from './tools';
-export * from './tools_catalog/index';
-export * from './tourism/index';
-export * from './travel/index';
-export * from './vision/index';
-export * from './visualization/index';
-export * from './voice/index';
-export * from './wearable/index';
-export * from './workflows/index';
+export { AccessibilityDomainContext, AccessibilityNeed, AdaptationHint, IAccessibilityBoard, InMemoryAccessibilityBoard, UserAccessibilityProfile, adaptationHint, userAccessibilityProfile } from './accessibility/index';
+export { AetherInstallLevel, AetherNetworkEvent, AetherNetworkEventKind, AetherNodeEvent, AetherNodeEventKind, AetherNodeHealth, AetherRouteEvent, AetherRouteEventKind, AetherSecurityEvent, AetherSecurityEventKind, AetherThreatLevel, AetherTransportEvent, AetherTransportEventKind, AetherTransportKind, AetherVersion, AuthChallengeReason, AuthChallengeResult, AuthMethod, IAISecurityLayer, IAetherContext, IAetherDisposable, IAetherIntelligence, IAetherTelemetry, IAetherTelemetryObserver, IAuthChallenge, ISecurityDirectiveConsumer, InMemoryAetherContext, InMemoryAetherContextOptions, InMemoryAetherIntelligence, InMemoryAetherTelemetry, InMemoryAuthChallenge, NetworkHealthReport, NullAetherTelemetry, RoutingAdvice, SecurityDirective, SecurityDirectiveKind, SecurityPosture, ThreatAssessment, TrustScoreUpdate, aetherNetworkEventIsHighCongestion, aetherNodeEventIsExit, aetherNodeHealthIsValid, aetherRouteEventHopCount, aetherRouteEventIsFailed, aetherSecurityEventIsHighSeverity, aetherTransportEventExceedsLoss, aetherVersion, compareAetherVersion, networkHealthReportIsValid, securityDirectiveHasTarget, securityDirectiveIsPermanent, threatAssessmentIsValid, trustScoreUpdateHasChanged, trustScoreUpdateIsDegraded } from './aether/index';
+export { IMeshCapabilityBroadcaster, IMeshCapabilityRegistry, InMemoryMeshCapabilityRegistry, MeshCapabilityAdvertisement, NullMeshCapabilityBroadcaster, RegistryBackedMeshCapabilityBroadcaster, meshCapabilityAdvertisement } from './aethernet/index';
+export { AgricultureDomainContext, Crop, Field, IFarmBoard, InMemoryFarmBoard, YieldRecord, crop, field, yieldRecord } from './agriculture/index';
+export { AmbientPreference, AmbientReading, IAmbientBoard, InMemoryAmbientBoard, ambientPreference, ambientReading } from './ambient/index';
+export { AutonomousDecision, Disposable, IDecisionLog, IRevenueLoop, ITreasury, InMemoryDecisionLog, InMemoryRevenueLoop, InMemoryTreasury, NullDecisionLog, NullRevenueLoop, NullTreasury, RevenueEvent, TreasurySnapshot, autonomousDecision, revenueEvent, treasurySnapshot } from './autonomousbiz/index';
+export { Account, IAccountReader, ILedgerWriter, IPaymentProcessor, InMemoryAccountReader, InMemoryBank, InMemoryLedgerWriter, InMemoryPaymentProcessor, LedgerEntry, NullAccountReader, NullLedgerWriter, NullPaymentProcessor, PaymentRequest, PaymentResult, account, ledgerEntry, paymentRequest, paymentResult } from './banking/index';
+export { Appointment, BeautyDomainContext, IBeautyBoard, InMemoryBeautyBoard, SkinProfile, Treatment, appointment, skinProfile, treatment } from './beauty/index';
+export { BuildAgent, BuildAgentKind, BuildArtifact, BuildJob, BuildJobPhase, IBuildAgentPool, IBuildArtifactStore, IBuildJobRunner, InMemoryBuildAgentPool, InMemoryBuildArtifactStore, InMemoryBuildJobRunner, NullBuildAgentPool, NullBuildArtifactStore, NullBuildJobRunner, buildAgent, buildArtifact, buildJob } from './buildfarm/index';
+export { BusinessDomainContext, BusinessUnit, IBusinessBoard, InMemoryBusinessBoard, KpiSample, QuarterTarget, businessUnit, kpiSample, quarterTarget } from './business/index';
+export { CatalogRefreshCadence, CatalogSignatureResult, ICatalogSignatureVerifier, ModelEntry, ModelRegistry, ModelScopeCatalogClient, ModelScopeCatalogOptions, NullCatalogSignatureVerifier } from './catalog/index';
+export { CategoryCount, CivicDomainContext, CivicEvent, CivicIssue, ICivicBoard, InMemoryCivicBoard, Representative, civicEvent, civicIssue, representative } from './civic/index';
+export { CodeMatch, CodeSymbol, FilesystemCodeIndexer, ICodeIndexer, ICodeSearch, ISymbolGraph, InMemorySymbolGraph, IndexBackedCodeSearch, NullCodeIndexer, NullCodeSearch, NullSymbolGraph, SymbolEdge, codeMatch, codeSymbol, symbolEdge } from './code-understanding/index';
+export { Channel, IChannelStore, IMessageStore, IPresence, InMemoryChannelStore, InMemoryMessageStore, InMemoryPresence, Message, NullChannelStore, NullMessageStore, NullPresence, PresenceState, channel, message, presenceState } from './collaboration/index';
+export { CommerceCustomer, CommerceDomainContext, CommerceLineItem, CommerceOrder, ICommerceBoard, InMemoryCommerceBoard, commerceCustomer, commerceLineItem, commerceOrder } from './commerce/index';
+export { Announcement, CommunityDomainContext, CommunityGroup, ICommunityBoard, InMemoryCommunityBoard, VolunteerOpportunity, announcement, communityGroup, volunteerOpportunity } from './community/index';
+export { AsyncQueue, CONFUSION_THRESHOLD, CapabilityEntry, CompanionContext, CompanionProactiveEvent, CompanionSessionFactory, CompanionSessionFactoryDeps, CompanionTurn, EXTERNAL_CAPABILITY_REGISTRY, EcdsaCryptoDelegation, EnergyBandVoiceIdentity, ExternalCapabilityRegistry, FACE_AFFECT_CONFIDENCE_THRESHOLD, ICompanionSession, ICompanionSessionFactory, IIdentityProvider, InterfaceKind, ProactiveMessageHandler, ResolvedIdentity, SelfBenchSelfImprovementLoop, VoiceCompanionListener, applyFaceToAffect, capabilitiesByPackage, defaultRegressionGateConfig, findCapability, generateP256KeyPair, newGuidN, observeFace } from './companion/index';
+export { ConstructionDomainContext, ConstructionTask, CostEntry, IConstructionBoard, InMemoryConstructionBoard, Project, constructionTask, costEntry, project } from './construction/index';
+export { CommonKeywordRules, IContentFilter, IPromptInjectionDetector, IRefusalPolicy, ISafetyAuditLog, KeywordContentFilter, KeywordPromptInjectionDetector, KeywordRule, NullContentFilter, NullPromptInjectionDetector, NullRefusalPolicy, NullSafetyAuditLog, SafetyAuditEntry, SafetyFinding, SafetyVerdict, ThresholdRefusalPolicy, safetyAuditEntry, safetyFinding } from './content-policy/index';
+export { CircleAIAuditEntry, CircleAIAuditQuery, CircleAIAuditing, CircleEngine, ConsoleAuditLogger, DEFAULT_AUDIT_QUERY_MAX_ITEMS, DotNetRandom, DownloadProgressReport, HuggingFaceSource, IAuditLogger, ICircleAIAuditLog, ICircleAITenantContext, ICircleModule, IEmbeddingService, IModelDownloader, IModelLoader, IModelManager, IModelSource, INativeModelBinding, ISourceTransport, InMemoryTransport, LocalModelLoader, LocalModelManager, LoggerAuditLog, ModelDownloader, ModelRegistryMap, ModelScopeSource, ModuleKey, NoopAuditLog, NullTenantContext, PlatformInterop, ProgressReporter, RegistryBundleFile, RegistryModelEntry, SafeModelHandle, ShardCompressedFrame, ShardKvCodec, SingleTenantContext, SourceDownloadHelper, isBundleEntry } from './core/index';
+export { CreativeDomainContext, CreativeWork, Critique, ICreativeBoard, InMemoryCreativeBoard, Inspiration, creativeWork, critique, inspiration } from './creative/index';
+export { Activity, Company, Contact, Deal, IActivityLog, IContactStore, IDealPipeline, InMemoryActivityLog, InMemoryContactStore, InMemoryDealPipeline, NullActivityLog, NullContactStore, NullDealPipeline, activity, company, contact, deal } from './crm/index';
+export { Dependency, DependencyUpdate, FilesystemDependencyAnalyzer, IDependencyAnalyzer, IDependencyUpdater, NullDependencyAnalyzer, NullDependencyUpdater, TextRewriteDependencyUpdater, dependency, dependencyUpdate } from './depbot/index';
+export { AgentExecutor, AgentTurn, FileEdit, FilesystemCodeEditor, IAgentShell, ICodeEditor, IInlineSuggester, IPatchPlanner, IRefactorTool, InMemoryAgentShell, InlineSuggestion, NullAgentShell, NullCodeEditor, NullInlineSuggester, NullPatchPlanner, NullRefactorTool, PatchPlan, PatternMatchPatchPlanner, RefactorRequest, RegexRefactorTool, TokenContextInlineSuggester, agentTurn, fileEdit, inlineSuggestion, patchPlan, refactorRequest } from './dev-tools/index';
+export { Connectivity, DEFAULT_DEVICE_CONTEXT, DefaultDeviceContext, DeviceProbe, DeviceTier, DeviceTierDefaults, GpuKind, IDeviceContext, NullDeviceContext, SnapshotOptions, ThermalClass, classify } from './device/index';
+export { AppStorePackage, DefaultAbusiveEnvironmentMode, DefaultAppStoreSubmitter, DefaultCarrierPreloadCatalog, DefaultOemPreloadCatalog, DefaultSignedDeltaUpdater, DeltaUpdate, IAbusiveEnvironmentMode, IAppStoreSubmitter, ICarrierPreloadCatalog, IOemPreloadCatalog, ISignedDeltaUpdater, appStorePackage, deltaUpdate } from './distribution/index';
+export { DocumentInsight, DocumentView, DocumentViewCount, IDocumentInsights, IDocumentTracker, InMemoryDocumentTracker, NullDocumentInsights, NullDocumentTracker, documentInsight, documentView } from './doc-analytics/index';
+export { FinanceFinding, FinanceSnippet, GeneratedPresentation, IFinanceRetrieval, IFinancialAgent, IFoodEmbeddings, IHippoRagStore, IJobSearchPipeline, IMemPalaceStore, IPersonalLoRA, IPresentationGenerator, ISwarmCoordinator, InMemoryFinanceRetrieval, InMemoryFoodEmbeddings, InMemoryHippoRagStore, InMemoryMemPalaceStore, InMemoryPersonalLoRA, InMemorySwarmCoordinator, Ingredient, JobApplicationDraft, LoRAAdapterState, LoRATrainingSummary, MemoryHit, MemoryItem, MultiPassFinancialAgent, NullFinanceRetrieval, NullFinancialAgent, NullFoodEmbeddings, NullHippoRagStore, NullJobSearchPipeline, NullMemPalaceStore, NullPersonalLoRA, NullPresentationGenerator, NullSwarmCoordinator, SlideOutline, SwarmPeer, TemplateJobSearchPipeline, TemplatePresentationGenerator, financeFinding, financeSnippet, generatedPresentation, ingredient, jobApplicationDraft, loRATrainingSummary, memoryHit, memoryItem, slideOutline, swarmPeer } from './domain/index';
+export { Course, EducationDomainContext, IEducationBoard, InMemoryEducationBoard, Lesson, StudentRecord, course, lesson, studentRecord } from './education/index';
+export { CarePlan, CheckIn, ElderlyDomainContext, IElderlyCareBoard, InMemoryElderlyCareBoard, MedReminder, carePlan, checkIn, medReminder } from './elderly/index';
+export { EmbeddingBackendFactory, IEmbeddingBackend, ITextEmbedder, TextEmbedder, l2Normalize } from './embeddings/index';
+export { EnergyDomainContext, EnergyTariff, IEnergyBoard, InMemoryEnergyBoard, MeterReading, Outage, energyTariff, meterReading, outage } from './energy/index';
+export { FaithDomainContext, FaithService, IFaithBoard, InMemoryFaithBoard, PrayerRequest, ScriptureReference, faithService, prayerRequest, scriptureReference } from './faith/index';
+export { FamilyDomainContext, FamilyEvent, FamilyMember, IFamilyBoard, InMemoryFamilyBoard, SharedExpense, familyEvent, familyMember, sharedExpense } from './family/index';
+export { DefaultFederationDeltaDispatcher, DeltaDispatchOutcome, FederatedAveraging, FederationRound, IFederationAggregator, IFederationDeltaDispatcher, IFederationParticipant, InMemoryFederationAggregator, KeyNotFoundError, ModelDelta, RoundStatus, federationRound, modelDelta } from './federation/index';
+export { ExerciseSet, FitnessDomainContext, FitnessGoal, IFitnessBoard, InMemoryFitnessBoard, Workout, exerciseSet, fitnessGoal, workout } from './fitness/index';
+export { FoodDomainContext, IFoodBoard, InMemoryFoodBoard, MealLog, PantryItem, Recipe, mealLog, pantryItem, recipe } from './food/index';
+export { GameTick, IGameDisposable, IGameLoop, IInputMap, ISceneGraph, InMemoryInputMap, InMemorySceneGraph, InputEvent, NullGameLoop, NullInputMap, NullSceneGraph, SceneNode, TimerGameLoop, gameTick, inputEvent, sceneNode } from './games/index';
+export { AchievementUnlock, GameTitle, GamingDomainContext, IGamingBoard, InMemoryGamingBoard, PlaySession, achievementUnlock, gameTitle, playSession } from './gaming/index';
+export { HealthAppointment, HealthcareDomainContext, IHealthcareBoard, InMemoryHealthcareBoard, Patient, Prescription, healthAppointment, patient, prescription } from './healthcare/index';
+export { HomeDevice, HomeDomainContext, IHomeBoard, InMemoryHomeBoard, MaintenanceTask, Room, homeDevice, maintenanceTask, room } from './home/index';
+export { FrontDeskNote, GuestReservation, HospitalityDomainContext, HotelRoom, IHospitalityBoard, InMemoryHospitalityBoard, frontDeskNote, guestReservation, hotelRoom } from './hospitality/index';
+export { AIApiClient, AIService, AnthropicChatGenerator, AnthropicChatOptions, BackgroundInferenceWorker, BackupBrainOrchestrator, BackupBrainPolicy, BrainHealth, BrainStatus, CerebrasChatGenerator, CloudFallbackChain, CronScheduleError, DEFAULT_AI_OPTIONS, DEFAULT_VOICE_OPTIONS, DeepSeekChatGenerator, FakeConfigurableChatGenerator, FallbackAIService, GeminiChatGenerator, GeminiChatOptions, GroqChatGenerator, GuestPeerIdentity, IConfigurableChatGenerator, IMcpResourceProvider, IMcpTool, IMultiplayerBroadcaster, IMultiplayerPeerIdentity, IdleTrigger, InMemoryScheduledTaskStore, InMemoryToolCatalog, McpRegistry, McpResource, McpResourceContent, McpServerInfo, McpToolException, MultiplayerHub, NullChatRuntime, NullToolBridge, OpenAiChatGenerator, OpenAiChatOptions, OpenAiCompatibleChatGenerator, OpenAiCompatibleOptions, PeerState, ProactiveReasoningService, RecordingBroadcaster, ScheduleTrigger, ScheduledAIService, ThermalState, ThermalThrottleService, TogetherChatGenerator, buildManifest, chatTurn, generateRandomToken, getNextOccurrence, importFromAsync, isPersistable } from './hosting/index';
+export { Employee, HRDomainContext, IHRBoard, InMemoryHRBoard, LeaveRequest, PerformanceReview, employee, leaveRequest, performanceReview } from './hr/index';
+export { BiometricProfile, CircleIdentity, IBiometricStore, IIdentityStore, IdentityTier, RegisteredDevice, cosineSimilarity, isMatch } from './identity/index';
+export { BundleFileSpec, ChatCapability, ChatFragmentKind, ContextWindowBudgetManager, DEFAULT_GENERATION_OPTIONS, DEFAULT_STOP_SEQUENCES, DeterministicChatGenerator, DeterministicGeneratorOptions, FeedbackTrainingQueue, FinishReason, GenerationOptions, IByteSource, IChatGenerator, IFeedbackTrainingQueue, IFileStore, IKvCompressionController, ILayerShardListing, ILayerStreamingRunner, ILineStore, ILoRAAdapterManager, IModelDownloadService, IModelSelector, IPrefixCacheStore, InMemoryByteSource, InMemoryFileStore, InMemoryKvCompressionController, InMemoryLayerShardListing, InMemoryLineStore, InMemoryLoRAAdapterManager, InMemoryPrefixCacheStore, KvCompressionApplyResult, KvCompressionMode, LayerActivations, LayerStreamingOrchestrator, LayerStreamingPlan, LayerWeightShard, ModelDownloadService, ModelSelection, NightlyAdapterTrainer, NightlyAdapterTrainerOptions, NullLayerStreamingRunner, PowerBudget, PowerBudgetResolution, PrefixCacheService, ProgressCallback, THINK_CLOSE, THINK_HOLDBACK, THINK_OPEN, TokenRouterSink, TrainingNotSupportedError, TrainingSample, VisionInput, buildFallbackUrl, buildPrimaryUrl, buildQwenChatPrompt, capabilityHas, capabilityOr, charTokenizer, discoverLayerShards, drainRemainder, resolvePowerBudget, routeChunk, stripShaAlgorithmPrefix, tryDrainUtf8, tryFindStopSequence } from './inference/index';
+export { AsciinemaTerminalCast, DefaultMcpWebScrape, HttpHtmlScraper, IHttpFetcher, IMcpWebScrape, IStealthHttpClient, ITerminalCast, IVideoIngest, IWebScraper, McpScrapeJob, NullMcpWebScrape, NullStealthHttpClient, NullTerminalCast, NullVideoIngest, NullWebScraper, ScrapedPage, StealthHttpClient, TerminalCast, TerminalCastSegment, VideoIngestResult, mcpScrapeJob, scrapedPage, terminalCast, terminalCastSegment, videoIngestResult } from './inputs/index';
+export { CalendarEvent, DateTimeOffsetMinValue, EmailMessage, GeoPoint, HaEntity, HttpMethod, HttpRequest, HttpResponse, HttpResponseError, ICalendarConnector, IEmailConnector, IHomeAutomationConnector, IHttpClient, INewsSource, IRoutingProvider, IWeatherProvider, InMemoryCalendarConnector, InMemoryEmailConnector, InMemoryHomeAutomationConnector, InMemoryNewsSource, InMemoryRoutingProvider, InMemoryWeatherProvider, NewsItem, RouteEstimate, WeatherSample, calendarEvent, emailMessage, ensureSuccess, haEntity, isMinValue, isNullOrEmpty, isNullOrWhiteSpace, isSuccessStatusCode, newsItem, resolveUrl, routeEstimate, weatherSample } from './integration/index';
+export { IIoTBoard, InMemoryIoTBoard, IoTCommand, IoTDevice, IoTTelemetry, ioTCommand, ioTDevice, ioTTelemetry } from './iot/index';
+export { AgeAppropriateness, DailyTime, IKidsBoard, InMemoryKidsBoard, KidsContent, KidsDomainContext, TimeLog, dailyTime, kidsContent, timeLog } from './kids/index';
+export { FileSystemKnowledgeStore, IKnowledgeStore, KnowledgeNote, MarkdownEpisodicMemoryStore, YamlFrontmatter, knowledgeNote, knowledgeNoteToFileText, parseKnowledgeNoteFile } from './knowledge/index';
+export { DetectionResult, KnownLanguages, LanguageTag, UNKNOWN_LANGUAGE, WritingSystem } from './languages/index';
+export { ILanguageDetector, ILanguageRegistry, ScriptNormalisationResult } from './languages';
+export { Clause, Contract, ILegalBoard, InMemoryLegalBoard, LegalDeadline, LegalDomainContext, Matter, clause, contract, legalDeadline, matter } from './legal/index';
+export { ILogisticsBoard, InMemoryLogisticsBoard, LogisticsDomainContext, RouteLeg, RoutePlan, Shipment, Vehicle, routeLeg, routePlan, shipment, vehicle } from './logistics/index';
+export { IDisposable, IInstrumentCatalog, IMarketDataFeed, IOrderRouter, InMemoryInstrumentCatalog, InMemoryMarketDataFeed, InMemoryOrderRouter, Instrument, NullInstrumentCatalog, NullMarketDataFeed, NullOrderRouter, OrderRequest, OrderResult, OrderSide, OrderType, Quote, QuoteHandler, instrument, orderRequest, orderResult, quote } from './markets/index';
+export { IMediaLibrary, InMemoryMediaLibrary, MediaAsset, MediaKind, mediaAsset } from './media/index';
+export { AffectState, AffectVad, EpisodicMemoryEntry, FeedbackPolarity, FeedbackSignal, Goal, GoalPriority, GoalStatus, IAffectStore, IEpisodicMemoryStore, IFeedbackStore, IGoalStore, IPersonaStore, PersonaState, affectStateToVad } from './memory/index';
+export { FuncMicroAgent, IMicroAgent, IMicroAgentHost, InMemoryMicroAgentHost, MicroAgentDescriptor, MicroAgentInvocation, MicroAgentInvocationLog, MicroAgentResponse, MicroAgentSearch, NullMicroAgent, microAgentDescriptor, microAgentInvocation, microAgentResponse } from './microagents/index';
+export { BundleFile, ChatFragment, ChatMessage, ChatResponse, DownloadProgress, InstalledManifest, UpgradeInfo, UpgradeReason } from './models/index';
+export { DashboardSpec, IDashboardPublisher, IMetricSink, ITraceSink, InMemoryDashboardPublisher, InMemoryMetricSink, InMemoryTraceSink, MetricSample, NullDashboardPublisher, NullMetricSink, NullTraceSink, TraceSpan, dashboardSpec, metricSample, traceSpan } from './observability/index';
+export { IObservationLoop, IObservationToolbox, ISensor, InMemoryObservationLoop, InMemoryObservationToolbox, NullObservationLoop, NullSensor, ObservationTick, ObservationTool, ObserverDecision, SensorReading, SensorRecorder, observationTick, observationTool, observerDecision, sensorReading } from './observer/index';
+export { IDeploymentObserver, IModelOperator, InMemoryModelOperator, ModelDeployment, ModelLifecyclePhase, ModelStatus, NullDeploymentObserver, NullModelOperator, modelDeployment, modelStatus } from './operator/index';
+export { AgentHandler, AgentPriority, AgentRole, AgentStatus, AgentSwarmConfig, AgentTask, IAgentDispatcher, IncidentTrigger, LocalAgentDispatcher, LokiOrchestrator, QualityGateResult, SecurityOrchestrationBridge, SwarmResult, createAgentTask, qualityGateResult, swarmResult } from './orchestration/index';
+export { Child, DayOfWeek, IParentingBoard, InMemoryParentingBoard, Milestone, ParentingDomainContext, Routine, RoutineEntry, child, milestone, routine, routineEntry } from './parenting/index';
+export { DeclaredWinsResolver, FormalityRange, IPersonaConflictResolver, IPersonaProvider, JsonPersonaProvider, LearnedWinsResolver, Persona, PersonaPromptBuilder, PrivacyLevel, createPersona, formalityRange, persona } from './personality/index';
+export { IPetsBoard, InMemoryPetsBoard, Pet, PetsDomainContext, Vaccination, VetAppointment, WeightSample, pet, vaccination, vetAppointment, weightSample } from './pets/index';
+export { DatabaseQueryResult, IDatabaseQueryTool, IPipelineExecutor, IPipelineSink, IPipelineSource, InMemoryDatabaseQueryTool, InMemoryPipelineExecutor, InMemoryPipelineSink, InMemoryPipelineSource, NullDatabaseQueryTool, NullPipelineExecutor, NullPipelineSink, NullPipelineSource, PipelineRecord, PipelineRun, PipelineRunner, databaseQueryResult, pipelineRecord, pipelineRun } from './pipelines/index';
+export { ILogger, IPlugin, IPluginContext, IPluginEvents, IWorkspacePathProvider, NullLogger, PermissionedPluginContext, PermissionedPluginContextPermissions, PluginContext, PluginEventNames, PluginEvents } from './plugins/index';
+export { CronExpression, ProactiveScheduler, ProactiveSchedulerBackgroundService } from './proactive/index';
+export { FALLBACK_CHAT_TEMPLATE, IPromptTemplateEngine, PromptTemplateEngine } from './prompt/index';
+export { IRealEstateBoard, InMemoryRealEstateBoard, Listing, Property, PropertyKind, RealEstateDomainContext, Valuation, Viewing, listing, property, valuation, viewing } from './realestate/index';
+export { LoopbackRealtimeService, LoopbackRealtimeSession, NullRealtimeService, NullRealtimeSession, silenceTextToAudio } from './realtime/index';
+export { ElevenLabsConvService, GeminiLiveService, NovaSonicService, NullRealtimeHttpClient, NullRealtimeLogger, NullRealtimeTransportFactory, OpenAiRealtimeService, RealtimeWebSocketSession, UltravoxService } from './realtime-cloud/index';
+export { ModelRegistryService } from './registry/index';
+export { ContactEvent, IRelationshipsBoard, ImportantDate, InMemoryRelationshipsBoard, PersonContact, RelationshipsDomainContext, contactEvent, importantDate, personContact } from './relationships/index';
+export { Citation, ICitationGraph, IPaperRetrieval, IResearchCorpus, InMemoryCitationGraph, InMemoryPaperRetrieval, InMemoryResearchCorpus, NullCitationGraph, NullPaperRetrieval, NullResearchCorpus, ResearchPaper, citation, researchPaper } from './research/index';
+export { IRetailBoard, InMemoryRetailBoard, Product, RetailDomainContext, Sale, StockLevel, TopSeller, product, sale, stockLevel } from './retail/index';
+export { ArchitectureKind, BackendKind, BackendSelection, BackendSelector, CapabilityProbe, CapabilityTier, GpuInfo, GpuVendor, HostProfile, IBackendSelector, ICapabilityProbe, INativeRuntimeFetcher, InMemoryNativeRuntimeFetcher, NativeRegistryBundleEntry, NativeRegistryDocument, NativeRegistryVersionEntry, NativeRuntimeBundle, NativeRuntimeInstall, NativeRuntimeRegistry, NpuInfo, NpuVendor, OperatingSystemKind, StaticCapabilityProbe, UnknownCapabilityProbe, backendSelection, gpuInfo, hasUsableGpu, hostProfile, is64Bit, nativeRuntimeBundle, nativeRuntimeInstall, npuInfo } from './runtime/index';
+export { EmergencyContact, Hazard, ISafetyBoard, InMemorySafetyBoard, Incident, IncidentSeverity, emergencyContact, hazard, incident } from './safety/index';
+export { HelloWorldSpecToScaffold, ISpecToScaffold, ISpecificationStore, ISpecificationValidator, InMemorySpecificationStore, JsonShapeSpecificationValidator, NullSpecToScaffold, NullSpecificationStore, NullSpecificationValidator, ScaffoldedProject, SpecValidationResult, Specification, scaffoldedProject, specValidationResult, specification } from './sdd/index';
+export { SearchScoring, SearchTokenisation, SimdOps, VectorMath } from './search/index';
+export { AnomalyDispatchOutcome, AnomalyDispatchResult, AnomalySignal, DefaultAnomalyEventDispatcher, DefaultSecurityWatchdog, DirectivePublisher, IAnomalyEventDispatcher, IDisposableHandle, IPeerDirectiveConsumer, IPeerIntelligence, IPeerSecurityEventFeed, IPeerSecurityLayer, ISecurityWatchdog, NodeTrustEntry, NodeTrustRegistry, PeerDirective, PeerDirectiveKind, PeerIntelligenceService, PeerNetworkHealthReport, PeerRoutingAdvice, PeerSecurityEvent, PeerSecurityEventKind, PeerSecurityPosture, PeerThreatAssessment, PeerThreatLevel, PeerTrustScoreUpdate, RedactedEvidenceJsonConverter, SecurityCheckpoint, SecurityLayerService, SecurityOptions, SecurityResponse, SecurityResponseKind, ThreatDetector, ThreatVector, UhidKeyRing, createAnomalySignal, redactEvidence } from './security/index';
+export { DeviceAwareModelSelector, parseCapabilities } from './selector/index';
+export { AbBenchRunner, AbVerdict, BenchResult, BenchRunner, BenchScoring, BenchSuiteRegistry, BenchSummary, BenchTask, BuiltInScorers, ExactMatchScorer, IBenchLogger, IBenchScorer, NumericToleranceScorer, RegexScorer, RegressionGateConfig, SubstringScorer, buildDefaultSuite, makeBenchTask } from './selfbench/index';
+export { EpisodicGraphExtractor, GraphEdge, GraphNode, IGraphBuilder, ISimulationEngine, KnowledgeGraph, LocalSimulationEngine, MiroFishAdapter, NetworkHealthSimulator, ScenarioKind, SimulationOutcome, SimulationResult, SimulationScenario, ThreatPropagationScenario, createGraphEdge, createGraphNode, createSimulationScenario, graphEdge, graphNode, simulationResult, simulationScenario } from './simulation/index';
+export { IPackDownloader, ISkillStore, InMemoryPackDownloader, InMemorySkillStore, KnownSkillPacks, SkillDetail, SkillDraft, SkillPackSource, SkillPackSourcesOptions, SkillSource, SkillSummary, skillDetail, skillDraft, skillPackSource, skillPackSourcesOptions, skillSummary } from './skills/index';
+export { Follow, ISocialBoard, InMemorySocialBoard, Reaction, SocialDomainContext, SocialPost, follow, reaction, socialPost } from './social/index';
+export { GeoTile, I3DSceneRenderer, IGeoTileSource, IRadarReadout, ISkyTracker, InMemoryGeoTileSource, JsonScene3DRenderer, LatLon, Null3DSceneRenderer, NullGeoTileSource, NullRadarReadout, NullSkyTracker, RadarReading, RadarReturn, Scene3D, SkyObject, SyntheticRadarReadout, SyntheticSkyTracker, geoTile, latLon, radarReading, radarReturn, scene3D, skyObject } from './spatial/index';
+export { SHORT_MAX, SHORT_MIN, clampShort, readInt16LE, writeInt16LE } from './speech/index';
+export { DistanceKind, ISportsBoard, InMemorySportsBoard, PersonalBest, SportsDomainContext, TrainingSession, personalBest, trainingSession } from './sports/index';
+export { ISyncChannel, SchedulingHint, SyncDeliveryMode, SyncDelta, SyncDomainKey, SyncDomainKeys } from './sync/index';
+export { ALL_EVENTS, AmdVerdict, AnsweringMachineDetector, BargeInController, BargeInState, CallCostCalculator, CircuitBreakerToolRegistry, CommonGuardrails, ConsultEscalator, DEFAULT_REASSURANCE_VOCABULARY, DEFAULT_RING_TIMEOUT_SECONDS, DefaultAgentHandoffOrchestrator, DefaultDashboardDataSource, DefaultFirstMessagePreamble, DefaultReassuranceFiller, DefaultSpeculativeGenerator, DefaultWarmTransferOrchestrator, DtmfToneGenerator, EvalSession, GuardrailAction, Guardrails, HoldMusicMixer, HttpMcpToolImporter, HttpWebhookConsultChannel, InMemoryFalseInterruptionTracker, InMemoryProvisionedNumberStore, InMemorySpeechLifecycleBus, IvrLoopDetector, LatencyStage, LatencyTracker, LlmJudge, NullInboundCallDispatcher, NullTelephonyCarrier, PhoneNumberProvisioner, PromptVariableResolver, SentenceChunker, StereoCallRecorder, TestCallSession, ToolBreakerState, VoiceLoopAsTool, callAgent, callPricing, consultRequest, dashboardSummary, evalTurn, guardrailRule, isDtmfSendable, ivrRound, judgeDimension } from './telephony/index';
+export { ComposioToolBridge, DeviceDiagnosticsTools, FaceBoundingBox, FaceExpressionClassification, FacexTools, FacialMetricMatrix, HttpToolBridge, TheGeekNetworkTools, ToolDefinition, ToolDefinitionBuilder, ToolInvocation, ToolManifestGenerator, ToolParameter, ToolResult, toolResultFailure, toolResultOk } from './tools/index';
+export { IToolBridge, toolFailure, toolSuccess } from './tools';
+export { IAeadCipher, WebCryptoAesGcmCipher } from './tools_catalog/index';
+export { Attraction, ITourismBoard, InMemoryTourismBoard, Itinerary, ItineraryItem, TourismBooking, TourismDomainContext, attraction, itinerary, itineraryItem, tourismBooking } from './tourism/index';
+export { Flight, HotelStay, ITravelBoard, InMemoryTravelBoard, TravelDomainContext, TravelTrip, flight, hotelStay, travelTrip } from './travel/index';
+export { OnnxFaceDetector, OnnxFaceEmbedder, OnnxPlateRecognizer, decodeYoloBoxes, iou, nonMaxSuppression, onnxFaceDetectorOptions, onnxFaceEmbedderOptions, onnxPlateRecognizerOptions } from './vision/index';
+export { ApiDoc, DashboardDefinition, GeneratedSite, IApiDocBuilder, IDashboardDefinitionStore, ISiteBuilder, InMemoryDashboardStore, JsonApiDocBuilder, NullApiDocBuilder, NullDashboardDefinitionStore, NullSiteBuilder, StaticSiteBuilder, apiDoc, dashboardDefinition, generatedSite } from './visualization/index';
+export { EnergyVadDetector, EnergyWakeWordDetector, KwsInputKind, KwsWakeWordDetector, NullWhisperContext, OnnxSpeechEmotionDetector, OnnxTtsEngine, VoicePipeline, WhisperTranscriber, floatTensor, int64Tensor, kwsConfig, speechEmotionConfig, speechEmotionFrame, tokeniseText } from './voice/index';
+export { IWearableBoard, InMemoryWearableBoard, WearableContext, WearableDevice, WearableKind, WearableSample, WearableTelemetryKind, wearableContext, wearableDevice, wearableSample } from './wearable/index';
+export { AgentTemplates, CheckpointPayload, HmacJwtAuthenticator, IWorkflowDefinitionStore, IWorkflowRunner, IWorkflowState, InMemoryPacaMemberStore, InMemoryPacaStore, InMemoryWorkflowDefinitionStore, InMemoryWorkflowRunner, InMemoryWorkflowState, McpTransportKind, MemberKind, NullWorkflowDefinitionStore, NullWorkflowRunner, NullWorkflowState, PacaApiKeyAuthenticator, PacaBoard, PacaCoreMcpTools, PacaDeployMode, PacaDeployer, PacaDocService, PacaMcpServer, PacaPluginRegistry, PluginExtensionPoint, SprintState, WorkflowDefinition, WorkflowExecution, WorkflowPhase, checkpointPayload, pacaDeployOverrides, pacaMcpTool, pluginResourceLimits, statusColumn, taskReference, workflowDefinition, workflowExecution } from './workflows/index';
+
+// Names below are exported by an earlier module and stay
+// reachable through it; they are not re-exported here:
+//   ./companion: CONFUSION_THRESHOLD already from ./companion/index
+//   ./companion: CompanionContext already from ./companion/index
+//   ./companion: CompanionProactiveEvent already from ./companion/index
+//   ./companion: CompanionTurn already from ./companion/index
+//   ./companion: FACE_AFFECT_CONFIDENCE_THRESHOLD already from ./companion/index
+//   ./companion: ICompanionSession already from ./companion/index
+//   ./companion: InterfaceKind already from ./companion/index
+//   ./companion: applyFaceToAffect already from ./companion/index
+//   ./companion: observeFace already from ./companion/index
+//   ./identity: BiometricProfile already from ./identity/index
+//   ./identity: CircleIdentity already from ./identity/index
+//   ./identity: IBiometricStore already from ./identity/index
+//   ./identity: IIdentityProvider already from ./companion/index
+//   ./identity: IIdentityStore already from ./identity/index
+//   ./identity: IdentityTier already from ./identity/index
+//   ./identity: RegisteredDevice already from ./identity/index
+//   ./identity: cosineSimilarity already from ./identity/index
+//   ./identity: isMatch already from ./identity/index
+//   ./inference: GenerationOptions already from ./inference/index
+//   ./inference: IChatGenerator already from ./inference/index
+//   ./languages: DetectionResult already from ./languages/index
+//   ./languages: KnownLanguages already from ./languages/index
+//   ./languages: LanguageTag already from ./languages/index
+//   ./languages: UNKNOWN_LANGUAGE already from ./languages/index
+//   ./languages: WritingSystem already from ./languages/index
+//   ./memory: AffectState already from ./memory/index
+//   ./memory: AffectVad already from ./memory/index
+//   ./memory: EpisodicMemoryEntry already from ./memory/index
+//   ./memory: FeedbackPolarity already from ./memory/index
+//   ./memory: FeedbackSignal already from ./memory/index
+//   ./memory: Goal already from ./memory/index
+//   ./memory: GoalPriority already from ./memory/index
+//   ./memory: GoalStatus already from ./memory/index
+//   ./memory: IAffectStore already from ./memory/index
+//   ./memory: IEpisodicMemoryStore already from ./memory/index
+//   ./memory: IFeedbackStore already from ./memory/index
+//   ./memory: IGoalStore already from ./memory/index
+//   ./memory: IPersonaStore already from ./memory/index
+//   ./memory: PersonaState already from ./memory/index
+//   ./memory: affectStateToVad already from ./memory/index
+//   ... and 25 more

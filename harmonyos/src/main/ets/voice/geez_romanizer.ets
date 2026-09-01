@@ -68,7 +68,7 @@ const VOWELS: readonly string[] = ['e', 'u', 'i', 'a', 'e', '', 'o', 'wa'];
  * The three syllables Unicode assigns singly rather than as a row of eight.
  * They are already in the -a order, so the vowel is part of the value.
  */
-const LONE_SYLLABLES: Readonly<Map<string, string>> = Object.freeze({
+const LONE_SYLLABLES: Readonly<Record<string, string>> = Object.freeze({
   'ፘ': 'rya',
   'ፙ': 'mya',
   'ፚ': 'fya',
@@ -82,7 +82,7 @@ const LONE_SYLLABLES: Readonly<Map<string, string>> = Object.freeze({
 const MARKS: ReadonlySet<string> = new Set(['፝', '፞', '፟']);
 
 /** Ethiopic punctuation, mapped so sentence splitting still works. */
-const PUNCTUATION: Readonly<Map<string, string>> = Object.freeze({
+const PUNCTUATION: Readonly<Record<string, string>> = Object.freeze({
   '፠': ' ',   // section
   '፡': ' ',   // word separator
   '።': '.',   // full stop

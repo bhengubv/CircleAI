@@ -49,7 +49,7 @@ interface EndpointMapping {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Args = Map<string, any>;
+type Args = Record<string, any>;
 
 /**
  * HTTP-backed implementation of {@link IToolBridge}. Mirrors
@@ -315,7 +315,7 @@ function buildQueryString(args: Args): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function renderQueryValue(value: Object): string | null {
+function renderQueryValue(value: any): string | null {
   if (typeof value === "string") return value;
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value === "number") return String(value);
@@ -325,7 +325,7 @@ function renderQueryValue(value: Object): string | null {
 
 /** Parse a response body as JSON; fall back to the raw string on parse failure / empty. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseBody(body: string): Object {
+function parseBody(body: string): any {
   if (body === undefined || body === null || body.length === 0) return null;
   try {
     return JSON.parse(body);
@@ -334,10 +334,10 @@ function parseBody(body: string): Object {
   }
 }
 
-function isAbort(ex: Object, signal?: AbortSignal): boolean {
+function isAbort(ex: unknown, signal?: AbortSignal): boolean {
   return signal?.aborted === true || (ex instanceof Error && ex.name === "AbortError");
 }
 
-function errorMessage(ex: Object): string {
+function errorMessage(ex: unknown): string {
   return ex instanceof Error ? ex.message : String(ex);
 }

@@ -56,12 +56,12 @@ export abstract class LanguagePackBase implements ILanguagePack {
 
   protected constructor(
     metadata: LanguagePackMetadata,
-    idioms: Readonly<Map<string, string>>,
-    notes: Readonly<Map<string, readonly CulturalNote[]>>,
+    idioms: Readonly<Record<string, string>>,
+    notes: Readonly<Record<string, readonly CulturalNote[]>>,
     systemPromptTemplate: string,
     morningGreeting: string,
     otherGreeting: string,
-    hints: Readonly<Map<string, string>>,
+    hints: Readonly<Record<string, string>>,
   ) {
     this.metadata = metadata;
     // Normalise keys to lower-case for OrdinalIgnoreCase parity.

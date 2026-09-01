@@ -45,7 +45,7 @@ export class CompanionMemoryEncoder {
   private readonly drain: Promise<void>;
 
   /** First error hit while draining, if any (diagnostics). */
-  lastError: Object = null;
+  lastError: unknown = null;
 
   constructor(
     extractor: IKnowledgeGraphExtractor,

@@ -47,7 +47,7 @@ export const WearableKind = Object.freeze({
   ChestStrap: 2,
   Patch: 3,
   Headset: 4,
-} as const) satisfies Map<string, WearableKind>;
+} as const) satisfies Record<string, WearableKind>;
 
 /** A wearable telemetry channel. Mirrors C# `WearableTelemetryKind` (HeartRate = 0). */
 export type WearableTelemetryKind = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -60,7 +60,7 @@ export const WearableTelemetryKind = Object.freeze({
   SkinTempC: 4,
   Stress: 5,
   OxygenPct: 6,
-} as const) satisfies Map<string, WearableTelemetryKind>;
+} as const) satisfies Record<string, WearableTelemetryKind>;
 
 /** A wearable device descriptor. Mirrors C# `WearableDevice` record. */
 export interface WearableDevice {

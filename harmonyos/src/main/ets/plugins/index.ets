@@ -24,7 +24,7 @@
 //
 // Type mappings (C# → TS):
 //   IDisposable Subscribe(...)          → returns { dispose(): void }
-//   Action<object?> handler             → (payload: Object) => void
+//   Action<object?> handler             → (payload: unknown) => void
 //   ILogger (Microsoft.Extensions)      → the minimal ILogger seam below
 //   ConcurrentDictionary<string, List>  → Map<string, Array<...>>
 
@@ -56,15 +56,15 @@ export const NullLogger: ILogger = {
  * subscribe with {@link subscribe}. Payload is opaque. Mirrors C# `IPluginEvents`.
  */
 export interface IPluginEvents {
-  subscribe(eventName: string, handler: (payload: Object) => void): Disposable;
-  raise(eventName: string, payload: Object): void;
+  subscribe(eventName: string, handler: (payload: unknown) => void): Disposable;
+  raise(eventName: string, payload: unknown): void;
 }
 
 /** Thread-safe default {@link IPluginEvents}. Mirrors C# `PluginEvents`. */
 export class PluginEvents implements IPluginEvents {
-  private readonly handlers = new Map<string, Array<(payload: Object) => void>>();
+  private readonly handlers = new Map<string, Array<(payload: unknown) => void>>();
 
-  subscribe(eventName: string, handler: (payload: Object) => void): Disposable {
+  subscribe(eventName: string, handler: (payload: unknown) => void): Disposable {
     if (isEmpty(eventName)) throw new Error("eventName required");
     if (handler == null) throw new Error("handler required");
     let list = this.handlers.get(eventName);
@@ -76,7 +76,7 @@ export class PluginEvents implements IPluginEvents {
     return new PluginSubscription(this, eventName, handler);
   }
 
-  raise(eventName: string, payload: Object): void {
+  raise(eventName: string, payload: unknown): void {
     const list = this.handlers.get(eventName);
     if (list === undefined) return;
     // Snapshot before invoking so mutation during dispatch is safe.
@@ -90,7 +90,7 @@ export class PluginEvents implements IPluginEvents {
   }
 
   /** @internal */
-  unsubscribe(eventName: string, handler: (payload: Object) => void): void {
+  unsubscribe(eventName: string, handler: (payload: unknown) => void): void {
     const list = this.handlers.get(eventName);
     if (list === undefined) return;
     const idx = list.indexOf(handler);
@@ -103,7 +103,7 @@ class PluginSubscription implements Disposable {
   constructor(
     private readonly owner: PluginEvents,
     private readonly name: string,
-    private readonly handler: (payload: Object) => void,
+    private readonly handler: (payload: unknown) => void,
   ) {}
   dispose(): void {
     if (this.disposed) return;
@@ -210,10 +210,10 @@ export class PermissionedPluginContext implements IPluginContext {
 
 /** Drop-on-the-floor event bus for permission-denied plugins. Mirrors the C# `SilentEvents`. */
 class SilentEvents implements IPluginEvents {
-  subscribe(_eventName: string, _handler: (payload: Object) => void): Disposable {
+  subscribe(_eventName: string, _handler: (payload: unknown) => void): Disposable {
     return { dispose(): void {} };
   }
-  raise(_eventName: string, _payload: Object): void {}
+  raise(_eventName: string, _payload: unknown): void {}
 }
 
 function isEmpty(s: string | null | undefined): boolean {

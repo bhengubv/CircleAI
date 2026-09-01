@@ -137,7 +137,7 @@ export class HttpWebhookConsultChannel implements IConsultChannel {
       const resp = await this.http.send(req, linked.signal);
       if (!isSuccessStatusCode(resp.statusCode)) return undefined;
 
-      const root = JSON.parse(resp.body) as Map<string, unknown>;
+      const root = JSON.parse(resp.body) as Record<string, unknown>;
       const answerRaw = root["answer"];
       const answer = typeof answerRaw === "string" ? answerRaw : undefined;
       if (!answer || answer.trim().length === 0) return undefined;

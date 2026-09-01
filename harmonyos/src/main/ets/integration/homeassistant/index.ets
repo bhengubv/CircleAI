@@ -80,12 +80,12 @@ export class HomeAssistantConnector implements IHomeAutomationConnector {
     const resp = ensureSuccess(
       await this.http.send({ method: "GET", url: combineBase(this.opts.baseUrl, "api/states"), headers: this.headers() }, ct),
     );
-    const root = JSON.parse(resp.body) as Object;
+    const root = JSON.parse(resp.body) as unknown;
 
     const list: HaEntity[] = [];
     if (!Array.isArray(root)) return list;
     for (const stUnknown of root) {
-      const st = stUnknown as Map<string, unknown>;
+      const st = stUnknown as Record<string, unknown>;
       const entityId = typeof st["entity_id"] === "string" ? (st["entity_id"] as string) : "";
       if (isNullOrEmpty(entityId)) continue;
       const state = typeof st["state"] === "string" ? (st["state"] as string) : "";
@@ -94,7 +94,7 @@ export class HomeAssistantConnector implements IHomeAutomationConnector {
       let friendly = entityId;
       const attEl = st["attributes"];
       if (attEl != null && typeof attEl === "object" && !Array.isArray(attEl)) {
-        for (const [name, value] of Object.entries(attEl as Map<string, unknown>)) {
+        for (const [name, value] of Object.entries(attEl as Record<string, unknown>)) {
           attrs.set(name, jsonElementToString(value));
           // C#: if name == "friendly_name" && value is a JSON string → friendly = value ?? entityId.
           if (name === "friendly_name" && typeof value === "string") friendly = value;
@@ -113,7 +113,7 @@ export class HomeAssistantConnector implements IHomeAutomationConnector {
   ): Promise<void> {
     if (isNullOrWhiteSpace(domain)) throw new Error("domain required");
     if (isNullOrWhiteSpace(service)) throw new Error("service required");
-    const payloadObj: Map<string, unknown> = {};
+    const payloadObj: Record<string, unknown> = {};
     if (data != null) for (const [k, v] of data) payloadObj[k] = v;
     const resp = await this.http.send(
       {
@@ -151,7 +151,7 @@ export class HomeAssistantConnector implements IHomeAutomationConnector {
  *   True → "true"; False → "false"; anything else → JsonElement.ToString() (its
  *   raw JSON serialization).
  */
-function jsonElementToString(value: Object): string {
+function jsonElementToString(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number") return numberToJsonText(value);
   if (value === true) return "true";

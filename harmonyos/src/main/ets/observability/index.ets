@@ -20,7 +20,7 @@
 // Type mappings (C# → TS):
 //   record                                → readonly interface (+ positional factory)
 //   double Value                          → number
-//   IReadOnlyDictionary<string,string>?   → Readonly<Map<string, string>> | null
+//   IReadOnlyDictionary<string,string>?   → Readonly<Record<string,string>> | null
 //   TimeSpan Duration                     → number (milliseconds)
 //   DateTimeOffset StartUtc               → Date
 //   ValueTask<T>                          → Promise<T>
@@ -33,11 +33,11 @@
 export interface MetricSample {
   readonly name: string;
   readonly value: number;
-  readonly tags: Readonly<Map<string, string>> | null;
+  readonly tags: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs a {@link MetricSample}. */
-export function metricSample(name: string, value: number, tags: Readonly<Map<string, string>> | null = null): MetricSample {
+export function metricSample(name: string, value: number, tags: Readonly<Record<string, string>> | null = null): MetricSample {
   return { name, value, tags };
 }
 
@@ -51,7 +51,7 @@ export interface TraceSpan {
   readonly startUtc: Date;
   /** Span duration in milliseconds (C# `TimeSpan Duration`). */
   readonly durationMs: number;
-  readonly attributes: Readonly<Map<string, string>> | null;
+  readonly attributes: Readonly<Record<string, string>> | null;
 }
 
 /** Constructs a {@link TraceSpan}. */
@@ -62,7 +62,7 @@ export function traceSpan(
   name: string,
   startUtc: Date,
   durationMs: number,
-  attributes: Readonly<Map<string, string>> | null = null,
+  attributes: Readonly<Record<string, string>> | null = null,
 ): TraceSpan {
   return { traceId, spanId, parentSpanId, name, startUtc, durationMs, attributes };
 }

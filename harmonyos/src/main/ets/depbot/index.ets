@@ -110,7 +110,7 @@ export class FilesystemDependencyAnalyzer implements IDependencyAnalyzer {
     for (const pkg of await findFiles(repoPath, (n) => n === "package.json")) {
       if (pkg.includes("node_modules")) continue;
       try {
-        const doc = JSON.parse(await fs.readFile(pkg, "utf8")) as Object;
+        const doc = JSON.parse(await fs.readFile(pkg, "utf8")) as unknown;
         if (isObject(doc)) {
           for (const key of ["dependencies", "devDependencies"]) {
             const section = doc[key];
@@ -256,7 +256,7 @@ export class NullDependencyUpdater implements IDependencyUpdater {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isObject(v: Object): v is Map<string, unknown> {
+function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 

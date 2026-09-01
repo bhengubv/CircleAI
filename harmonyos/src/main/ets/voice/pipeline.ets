@@ -50,7 +50,7 @@ export interface TranscribedEventArgs {
 /** Handler for {@link VoicePipeline} transcription events. */
 export type PipelineTranscribedHandler = (args: TranscribedEventArgs) => void;
 /** Handler for {@link VoicePipeline} activation-failure events (C# `EventHandler<Exception>`). */
-export type ActivationFailedHandler = (error: Object) => void;
+export type ActivationFailedHandler = (error: unknown) => void;
 
 /**
  * Options bag for {@link VoicePipeline}. `capture` defaults to a

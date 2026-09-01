@@ -40,7 +40,7 @@ export const NearLinkPairingState = Object.freeze({
   Pairing: 1,
   Paired: 2,
   PairingFailed: 3,
-} as const) satisfies Map<string, NearLinkPairingState>;
+} as const) satisfies Record<string, NearLinkPairingState>;
 
 /** Power profile for a NearLink session. Mirrors C# `NearLinkPowerProfile` (LowEnergy = 0). */
 export type NearLinkPowerProfile = 0 | 1 | 2;
@@ -49,7 +49,7 @@ export const NearLinkPowerProfile = Object.freeze({
   LowEnergy: 0,
   Balanced: 1,
   HighThroughput: 2,
-} as const) satisfies Map<string, NearLinkPowerProfile>;
+} as const) satisfies Record<string, NearLinkPowerProfile>;
 
 /** A NearLink device. Mirrors C# `NearLinkDevice` record. */
 export interface NearLinkDevice {

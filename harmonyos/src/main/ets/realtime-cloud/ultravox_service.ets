@@ -124,7 +124,7 @@ export class UltravoxService implements IRealtimeService {
 
     let joinUrl: string | null = null;
     try {
-      const doc = JSON.parse(resp.bodyText) as Map<string, unknown>;
+      const doc = JSON.parse(resp.bodyText) as Record<string, unknown>;
       joinUrl = typeof doc["joinUrl"] === "string" ? (doc["joinUrl"] as string) : null;
     } catch {
       joinUrl = null;

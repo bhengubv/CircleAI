@@ -114,7 +114,7 @@ export class Forgetting {
    * same; a preference keeps 0.20; everything else keeps nothing and decays
    * towards zero. Reading these as decay rates inverts the whole table.
    */
-  private static readonly floors: Readonly<Map<string, number>> = Object.freeze({
+  private static readonly floors: Readonly<Record<string, number>> = Object.freeze({
     [AtomKind.Ruling]: 0.4,
     [AtomKind.Relationship]: 0.4,
     [AtomKind.Preference]: 0.2,
@@ -690,7 +690,7 @@ export class SqliteEpisodicStore {
 
   /** BETWEEN two times, because "what happened on Tuesday" is the question
    * people actually ask - not "the last twenty things". */
-  between(fromMs: number, toMs: number): Object[][] {
+  between(fromMs: number, toMs: number): unknown[][] {
     if (!this.execute) return [];
     return this.execute(
       "SELECT id, text, at FROM episodes WHERE at >= ? AND at <= ? ORDER BY at",
@@ -726,7 +726,7 @@ export class SqliteGoalStore {
     return true;
   }
 
-  open(): Object[][] {
+  open(): unknown[][] {
     if (!this.execute) return [];
     // `due_at IS NULL` sorts LAST rather than first, which is what an undated
     // goal deserves - it is not urgent, it is undated.
@@ -784,7 +784,7 @@ export class JsonAffectStore {
 
 /** How the companion presents itself, as JSON on disk. */
 export class JsonPersonaStore {
-  private persona: Map<string, unknown> = {};
+  private persona: Record<string, unknown> = {};
 
   constructor(
     private readonly read?: () => string,
@@ -803,11 +803,11 @@ export class JsonPersonaStore {
     }
   }
 
-  set(key: string, value: Object): void {
+  set(key: string, value: unknown): void {
     this.persona[key] = value;
   }
 
-  get(key: string): Object {
+  get(key: string): unknown {
     return this.persona[key];
   }
 

@@ -20,7 +20,7 @@
 // rebuildable from the registry).
 
 import { tmpdir } from "../../platform";
-import { Path } from "../../platform";
+import { join } from "../../platform";
 import type { ChatMessage } from "../../models/index";
 import type { IAIService } from "../service";
 import type {

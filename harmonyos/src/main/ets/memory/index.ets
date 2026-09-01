@@ -160,7 +160,7 @@ export interface EpisodicMemoryEntry {
   readonly appContext?: string;
   /** L2-normalised embedding, null if embedding backend was unavailable. */
   readonly embedding?: number[];
-  readonly tags?: Map<string, string>;
+  readonly tags?: Record<string, string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ export class PersonaState {
    * Weighted topic interests accumulated from positive interactions.
    * Key = normalised topic label, Value = accumulated positive-signal weight.
    */
-  topicWeights: Map<string, number> = {};
+  topicWeights: Record<string, number> = {};
 
   /** Topics the user has down-voted or explicitly rejected. */
   disfavouredTopics: Set<string> = new Set();

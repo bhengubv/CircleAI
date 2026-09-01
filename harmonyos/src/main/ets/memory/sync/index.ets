@@ -958,7 +958,7 @@ interface PersonaWire {
   verbosity: string;
   formality: string;
   preferredLocale: string | null;
-  topicWeights: Map<string, number>;
+  topicWeights: Record<string, number>;
   disfavouredTopics: string[];
   totalInteractions: number;
   positiveSignals: number;

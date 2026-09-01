@@ -82,7 +82,7 @@ export class ApiKeyAuthHandler {
    * Authenticate a request given its headers. Ported from
    * HandleAuthenticateAsync.
    */
-  authenticate(headers: Map<string, string> | Map<string, string>): AuthenticateResult {
+  authenticate(headers: Record<string, string> | Map<string, string>): AuthenticateResult {
     const cfg = this.serverOptions().auth.apiKey;
 
     if (!cfg.enabled) {
@@ -134,7 +134,7 @@ export function tryMatchKey(presented: string, allowed: readonly string[]): bool
 }
 
 function getHeader(
-  headers: Map<string, string> | Map<string, string>,
+  headers: Record<string, string> | Map<string, string>,
   name: string,
 ): string | undefined {
   const lower = name.toLowerCase();

@@ -40,7 +40,7 @@ export interface ProactiveTask {
   /** Cron / event / manual trigger. */
   readonly trigger: ProactiveTrigger;
   /** Consumer-owned object. The substrate never inspects it. */
-  readonly payload: Object;
+  readonly payload: unknown;
   /** Optional context tag (vault path, tenant id, …) for per-context last-run state. */
   readonly sourceContext?: string | null;
 }
@@ -73,7 +73,7 @@ export function proactiveTrigger(
 export function proactiveTask(
   id: string,
   trigger: ProactiveTrigger,
-  payload: Object,
+  payload: unknown,
   sourceContext: string | null = null,
 ): ProactiveTask {
   return { id, trigger, payload, sourceContext };

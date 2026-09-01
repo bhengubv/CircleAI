@@ -52,7 +52,7 @@ export const DayOfWeek = Object.freeze({
   Thursday: 4,
   Friday: 5,
   Saturday: 6,
-} as const) satisfies Map<string, DayOfWeek>;
+} as const) satisfies Record<string, DayOfWeek>;
 
 /** Enum-name for each {@link DayOfWeek} value, matching C# `DayOfWeek.ToString()`. */
 const DAY_NAMES: readonly string[] = [

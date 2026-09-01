@@ -51,7 +51,7 @@ export const DistanceKind = Object.freeze({
   Swim: 2,
   Walk: 3,
   Row: 4,
-} as const) satisfies Map<string, DistanceKind>;
+} as const) satisfies Record<string, DistanceKind>;
 
 /** A logged endurance activity. Mirrors C# `Activity` record. */
 export interface Activity {

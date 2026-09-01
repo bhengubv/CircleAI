@@ -35,13 +35,13 @@ export interface IMcpTool {
   /** One-line description shown in tool listings. */
   readonly description: string;
   /** JSON Schema describing the tool's arguments object. */
-  readonly inputSchema: Object;
+  readonly inputSchema: unknown;
   /**
    * Execute the tool. Return any JSON-serialisable value; the dispatcher wraps
    * it in MCP's {content:[{type:"text",text}]} envelope. Throw
    * {@link McpToolException} to signal a tool-level error (isError:true).
    */
-  executeAsync(args: Map<string, unknown>): Promise<unknown>;
+  executeAsync(args: Record<string, unknown>): Promise<unknown>;
 }
 
 /** One MCP resource provider. Mirrors IMcpResourceProvider. */
@@ -115,7 +115,7 @@ export interface McpRegistry {
  * McpEndpoints.DispatchAsync.
  */
 export async function dispatchAsync(
-  req: Object,
+  req: unknown,
   registry: McpRegistry,
   info: McpServerInfo = DEFAULT_INFO,
 ): Promise<unknown | null> {
@@ -159,7 +159,7 @@ export async function dispatchAsync(
 export function buildManifest(
   registry: McpRegistry,
   info: McpServerInfo = DEFAULT_INFO,
-): Object {
+): unknown {
   const resolved: Required<McpServerInfo> = { ...DEFAULT_INFO, ...info };
   return {
     name: resolved.name,
@@ -175,7 +175,7 @@ export function buildManifest(
   };
 }
 
-function handleInitialize(id: Object, info: Required<McpServerInfo>): Object {
+function handleInitialize(id: unknown, info: Required<McpServerInfo>): unknown {
   return mcpResult(id, {
     protocolVersion: "2024-11-05",
     serverInfo: { name: info.name, version: info.version },
@@ -186,7 +186,7 @@ function handleInitialize(id: Object, info: Required<McpServerInfo>): Object {
   });
 }
 
-function handleToolsList(id: Object, registry: McpRegistry): Object {
+function handleToolsList(id: unknown, registry: McpRegistry): unknown {
   const tools = registry.tools.map((t) => ({
     name: t.name,
     description: t.description,
@@ -196,8 +196,8 @@ function handleToolsList(id: Object, registry: McpRegistry): Object {
 }
 
 async function handleToolsCall(
-  id: Object,
-  params: Object,
+  id: unknown,
+  params: unknown,
   registry: McpRegistry,
 ): Promise<unknown> {
   const toolName = isObject(params) ? (params["name"] as string | undefined) : undefined;
@@ -208,7 +208,7 @@ async function handleToolsCall(
   if (tool === undefined) return mcpError(id, -32602, `Unknown tool: ${toolName}`);
 
   const argsNode = isObject(params) ? params["arguments"] : undefined;
-  const args: Map<string, unknown> = isObject(argsNode) ? argsNode : {};
+  const args: Record<string, unknown> = isObject(argsNode) ? argsNode : {};
   try {
     const result = await tool.executeAsync(args);
     return mcpToolResult(id, result);
@@ -218,7 +218,7 @@ async function handleToolsCall(
   }
 }
 
-async function handleResourcesList(id: Object, registry: McpRegistry): Promise<unknown> {
+async function handleResourcesList(id: unknown, registry: McpRegistry): Promise<unknown> {
   const resources: McpResource[] = [];
   for (const p of registry.resourceProviders) {
     const page = await p.listAsync();
@@ -235,8 +235,8 @@ async function handleResourcesList(id: Object, registry: McpRegistry): Promise<u
 }
 
 async function handleResourcesRead(
-  id: Object,
-  params: Object,
+  id: unknown,
+  params: unknown,
   registry: McpRegistry,
 ): Promise<unknown> {
   const uri = isObject(params) ? (params["uri"] as string | undefined) : undefined;
@@ -262,32 +262,32 @@ async function handleResourcesRead(
 // C# serialises `id` via id?.ToJsonString(), i.e. the JSON *text* of the id
 // node (e.g. the number 1 becomes the string "1"). We reproduce that exactly.
 
-function idToJsonString(id: Object): string | null {
+function idToJsonString(id: unknown): string | null {
   return id == null ? null : JSON.stringify(id);
 }
 
-function mcpResult(id: Object, result: Object): Object {
+function mcpResult(id: unknown, result: unknown): unknown {
   return { jsonrpc: "2.0", id: idToJsonString(id), result };
 }
 
-function mcpToolResult(id: Object, data: Object): Object {
+function mcpToolResult(id: unknown, data: unknown): unknown {
   return mcpResult(id, {
     content: [{ type: "text", text: JSON.stringify(data) }],
     isError: false,
   });
 }
 
-function mcpToolError(id: Object, message: string): Object {
+function mcpToolError(id: unknown, message: string): unknown {
   return mcpResult(id, {
     content: [{ type: "text", text: message }],
     isError: true,
   });
 }
 
-function mcpError(id: Object, code: number, message: string): Object {
+function mcpError(id: unknown, code: number, message: string): unknown {
   return { jsonrpc: "2.0", id: idToJsonString(id), error: { code, message } };
 }
 
-function isObject(v: Object): v is Map<string, unknown> {
+function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
