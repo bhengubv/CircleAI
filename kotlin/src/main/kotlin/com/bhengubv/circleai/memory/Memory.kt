@@ -203,7 +203,22 @@ data class EpisodicMemoryEntry(
     /** Arbitrary tags for filtering. */
     val tags: List<String> = emptyList(),
     /** Importance score 0.0–1.0. */
-    val importance: Float = 0.5f
+    val importance: Float = 0.5f,
+    // ---- The conversational shape the C# carries, and CueExtractor reads.
+    //
+    // BOTH SHAPES LIVE HERE ON PURPOSE. The vector store above indexes one
+    // blob of [content]; atom extraction needs the two SIDES of the exchange
+    // apart, because it must read only what the PERSON said - extracting from
+    // the assistant turn lets the thing that was just corrected file its own
+    // version of events alongside the correction.
+    /** What the person said. The only text atom extraction reads. */
+    val userText: String = "",
+    /** What the assistant said back. Recorded, never extracted from. */
+    val assistantText: String = "",
+    /** Where this happened - the default subject for anything filed from it. */
+    val appContext: String? = null,
+    /** When the exchange happened, as distinct from when the row was written. */
+    val recordedAtUtc: Instant = Instant.EPOCH,
 ) {
     // FloatArray is reference-equal by default; override for value semantics.
     override fun equals(other: Any?): Boolean {
@@ -215,7 +230,11 @@ data class EpisodicMemoryEntry(
             embedding.contentEquals(other.embedding) &&
             createdUtc == other.createdUtc &&
             tags == other.tags &&
-            importance == other.importance
+            importance == other.importance &&
+            userText == other.userText &&
+            assistantText == other.assistantText &&
+            appContext == other.appContext &&
+            recordedAtUtc == other.recordedAtUtc
     }
 
     override fun hashCode(): Int {
@@ -226,6 +245,10 @@ data class EpisodicMemoryEntry(
         result = 31 * result + createdUtc.hashCode()
         result = 31 * result + tags.hashCode()
         result = 31 * result + importance.hashCode()
+        result = 31 * result + userText.hashCode()
+        result = 31 * result + assistantText.hashCode()
+        result = 31 * result + (appContext?.hashCode() ?: 0)
+        result = 31 * result + recordedAtUtc.hashCode()
         return result
     }
 }
