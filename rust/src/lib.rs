@@ -138,6 +138,7 @@ pub mod platform_plugins;
 pub mod verticals_core;
 pub mod cloud_options;
 pub mod personal_bench;
+pub mod domains;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
