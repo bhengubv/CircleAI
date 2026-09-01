@@ -1312,7 +1312,7 @@ public final class AdmissionSlot: @unchecked Sendable {
 // MARK: - Auth (API key, constant-time)
 // ─────────────────────────────────────────────────────────────────────────────
 
-public struct ApiKeyOptions: Sendable {
+public struct ApiKeyOptions: Sendable, Equatable, Codable {
     public var enabled: Bool
     public var headerName: String
     public var keys: [String]
