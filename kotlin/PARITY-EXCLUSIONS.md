@@ -264,3 +264,24 @@ Presentations.PdfSharpDeckEngine     needs PDFsharp
 WindowsAutomation.UiElementHelpers   UI Automation is a Windows COM API
 Desktop.DesktopCompanionAdapter      binds a Windows desktop shell
 ```
+
+## Renames
+
+Kotlin does not need the module-prefix renaming Swift does — it has packages —
+but one C# name could not survive as written: an attribute class becomes an
+annotation, and `...Attribute` is a C# naming convention the JVM does not share.
+
+```renames
+Core.CircleAIVerificationStatusAttribute = CircleAIVerificationStatus
+```
+
+## Sealed-class cases
+
+`CastMediaSource.File` is a nested record in C# and a sealed-class subclass in
+Kotlin, but a nested `File` collides with `java.io.File` at every use site, so
+it is `LocalFile` here. The set is complete and a `when` over it is still
+exhaustive.
+
+```renames
+Cast.File                            = LocalFile
+```
