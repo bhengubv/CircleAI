@@ -140,6 +140,7 @@ pub mod cloud_options;
 pub mod personal_bench;
 pub mod domains;
 pub mod languages_integrations;
+pub mod platform_tail;
 pub mod voice_piper;
 pub mod voice_wav;
 pub mod voice_text;
