@@ -12,6 +12,8 @@ package circleai
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"time"
 )
@@ -123,13 +125,28 @@ func (p BiometricProfile) EmbeddingDimension() int { return len(p.EmbeddingVecto
 // BiometricMatcher
 // ---------------------------------------------------------------------------
 
+// ErrEmbeddingDimensionMismatch is returned when the two embeddings have
+// different dimensions. A similarity between them means nothing, and returning
+// one anyway is a false-match path, so the comparison is refused rather than
+// scored. Wrapped with the two dimensions — test for it with errors.Is.
+var ErrEmbeddingDimensionMismatch = errors.New(
+	"embedding dimension mismatch: both vectors must come from the same model")
+
 // CosineSimilarity computes the cosine similarity between two float32 slices.
 // Uses float64 accumulators for cross-platform reproducibility.
 // Do NOT use SIMD/vector intrinsics here.
-// Returns 0 when slices are of different lengths or empty.
-func CosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
+//
+// Returns 0 for empty (but equal-length) or zero-magnitude slices, matching the
+// other ports. Slices of DIFFERENT lengths return
+// ErrEmbeddingDimensionMismatch: this used to return 0, which reads as "not
+// this person" when the honest answer is "these came from different models".
+// SearchCosineSimilarity in search_primitives.go already errors this way.
+func CosineSimilarity(a, b []float32) (float64, error) {
+	if len(a) != len(b) {
+		return 0, fmt.Errorf("%w: a=%d, b=%d", ErrEmbeddingDimensionMismatch, len(a), len(b))
+	}
+	if len(a) == 0 {
+		return 0, nil
 	}
 	var dot, magA, magB float64
 	for i := range a {
@@ -142,22 +159,30 @@ func CosineSimilarity(a, b []float32) float64 {
 	magA = math.Sqrt(magA)
 	magB = math.Sqrt(magB)
 	if magA < 1e-10 || magB < 1e-10 {
-		return 0
+		return 0, nil
 	}
 	sim := dot / (magA * magB)
 	if sim > 1 {
-		return 1
+		return 1, nil
 	}
 	if sim < -1 {
-		return -1
+		return -1, nil
 	}
-	return sim
+	return sim, nil
 }
 
 // IsMatch returns true when the cosine similarity between candidate and the
 // stored embedding meets or exceeds the profile's MatchThreshold.
-func IsMatch(candidate []float32, stored BiometricProfile) bool {
-	return CosineSimilarity(candidate, stored.EmbeddingVector) >= float64(stored.MatchThreshold)
+//
+// Returns ErrEmbeddingDimensionMismatch when the candidate and the enrolled
+// profile have different dimensions — a mismatched model rather than a failed
+// match, and worth surfacing instead of a quiet false.
+func IsMatch(candidate []float32, stored BiometricProfile) (bool, error) {
+	sim, err := CosineSimilarity(candidate, stored.EmbeddingVector)
+	if err != nil {
+		return false, err
+	}
+	return sim >= float64(stored.MatchThreshold), nil
 }
 
 // ---------------------------------------------------------------------------

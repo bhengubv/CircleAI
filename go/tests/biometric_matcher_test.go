@@ -8,6 +8,7 @@ package circleai_test
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -22,28 +23,28 @@ import (
 // ---------------------------------------------------------------------------
 
 type biometricFixture struct {
-	CosineSimilarityVectors []cosineVector      `json:"cosine_similarity_vectors"`
+	CosineSimilarityVectors []cosineVector       `json:"cosine_similarity_vectors"`
 	AffectMapperVectors     []affectMapperVector `json:"affect_mapper_vectors"`
 }
 
 type cosineVector struct {
-	ID                              string    `json:"id"`
-	Description                     string    `json:"description"`
-	A                               []float32 `json:"a"`
-	B                               []float32 `json:"b"`
-	ExpectedSimilarity              float64   `json:"expected_similarity"`
-	Tolerance                       float64   `json:"tolerance"`
-	ExpectedIsMatchAtThreshold085   *bool     `json:"expected_is_match_at_threshold_0_85"`
+	ID                            string    `json:"id"`
+	Description                   string    `json:"description"`
+	A                             []float32 `json:"a"`
+	B                             []float32 `json:"b"`
+	ExpectedSimilarity            float64   `json:"expected_similarity"`
+	Tolerance                     float64   `json:"tolerance"`
+	ExpectedIsMatchAtThreshold085 *bool     `json:"expected_is_match_at_threshold_0_85"`
 }
 
 type affectMapperVector struct {
-	ID            string          `json:"id"`
-	Description   string          `json:"description"`
-	InitialAffect affectDims      `json:"initial_affect"`
-	Expression    string          `json:"expression"`
-	Confidence    float32         `json:"confidence"`
-	ExpectedAffect affectDims     `json:"expected_affect"`
-	Tolerance     float64         `json:"tolerance"`
+	ID             string     `json:"id"`
+	Description    string     `json:"description"`
+	InitialAffect  affectDims `json:"initial_affect"`
+	Expression     string     `json:"expression"`
+	Confidence     float32    `json:"confidence"`
+	ExpectedAffect affectDims `json:"expected_affect"`
+	Tolerance      float64    `json:"tolerance"`
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,10 @@ func TestCosineSimilarity_Vectors(t *testing.T) {
 	for _, v := range fix.CosineSimilarityVectors {
 		v := v
 		t.Run(v.ID, func(t *testing.T) {
-			got := circleai.CosineSimilarity(v.A, v.B)
+			got, err := circleai.CosineSimilarity(v.A, v.B)
+			if err != nil {
+				t.Fatalf("CosineSimilarity: unexpected error: %v", err)
+			}
 			if math.Abs(got-v.ExpectedSimilarity) > v.Tolerance {
 				t.Errorf("CosineSimilarity: got %v, want %v (tolerance %v)",
 					got, v.ExpectedSimilarity, v.Tolerance)
@@ -129,9 +133,12 @@ func TestIsMatch_Vectors(t *testing.T) {
 			if v.ExpectedIsMatchAtThreshold085 != nil {
 				want = *v.ExpectedIsMatchAtThreshold085
 			}
-			got := circleai.IsMatch(v.A, profile)
+			got, err := circleai.IsMatch(v.A, profile)
+			if err != nil {
+				t.Fatalf("IsMatch: unexpected error: %v", err)
+			}
 			if got != want {
-				sim := circleai.CosineSimilarity(v.A, v.B)
+				sim, _ := circleai.CosineSimilarity(v.A, v.B)
 				t.Errorf("IsMatch: got %v, want %v (sim=%.6f, threshold=%.2f)",
 					got, want, sim, defaultThreshold)
 			}
@@ -144,26 +151,59 @@ func TestIsMatch_Vectors(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCosineSimilarity_EmptySlices(t *testing.T) {
-	if got := circleai.CosineSimilarity(nil, nil); got != 0 {
-		t.Errorf("empty slices: got %v, want 0", got)
-	}
-	if got := circleai.CosineSimilarity([]float32{}, []float32{}); got != 0 {
-		t.Errorf("empty slices: got %v, want 0", got)
+	// Empty but EQUAL length stays 0 with no error, matching C#, Python,
+	// TypeScript and C. Only a LENGTH MISMATCH is refused.
+	for _, pair := range [][2][]float32{{nil, nil}, {{}, {}}} {
+		got, err := circleai.CosineSimilarity(pair[0], pair[1])
+		if err != nil {
+			t.Fatalf("empty slices: unexpected error: %v", err)
+		}
+		if got != 0 {
+			t.Errorf("empty slices: got %v, want 0", got)
+		}
 	}
 }
 
 func TestCosineSimilarity_LengthMismatch(t *testing.T) {
+	// Was: expected 0. Scoring embeddings of different dimensions is a
+	// false-match path, and 0 reads as "not this person" when the honest
+	// answer is "these came from different models".
 	a := []float32{1, 0}
 	b := []float32{1, 0, 0}
-	if got := circleai.CosineSimilarity(a, b); got != 0 {
-		t.Errorf("length mismatch: got %v, want 0", got)
+	got, err := circleai.CosineSimilarity(a, b)
+	if !errors.Is(err, circleai.ErrEmbeddingDimensionMismatch) {
+		t.Fatalf("length mismatch: got error %v, want ErrEmbeddingDimensionMismatch", err)
+	}
+	if got != 0 {
+		t.Errorf("length mismatch: got %v alongside the error, want 0", got)
+	}
+}
+
+func TestIsMatch_LengthMismatch(t *testing.T) {
+	// A wrong-sized embedding is a model mismatch, not a failed match.
+	profile := circleai.BiometricProfile{
+		IdentityID:      "test",
+		EmbeddingVector: []float32{1, 0, 0},
+		MatchThreshold:  0.85,
+		EnrolledAt:      time.Now(),
+	}
+	got, err := circleai.IsMatch([]float32{1, 0}, profile)
+	if !errors.Is(err, circleai.ErrEmbeddingDimensionMismatch) {
+		t.Fatalf("IsMatch: got error %v, want ErrEmbeddingDimensionMismatch", err)
+	}
+	if got {
+		t.Error("IsMatch: a refused comparison must not report a match")
 	}
 }
 
 func TestCosineSimilarity_ZeroVector(t *testing.T) {
 	a := []float32{0, 0, 0}
 	b := []float32{1, 0, 0}
-	if got := circleai.CosineSimilarity(a, b); got != 0 {
+	got, err := circleai.CosineSimilarity(a, b)
+	if err != nil {
+		t.Fatalf("zero vector: unexpected error: %v", err)
+	}
+	if got != 0 {
 		t.Errorf("zero vector: got %v, want 0", got)
 	}
 }
@@ -201,11 +241,11 @@ func TestFaceAffectMapper_Vectors(t *testing.T) {
 			circleai.ApplyFaceAffect(&matrix, &state)
 
 			eps := v.Tolerance
-			assertDim(t, v.ID, "curiosity",   state.Curiosity,   v.ExpectedAffect.Curiosity,   eps)
-			assertDim(t, v.ID, "engagement",  state.Engagement,  v.ExpectedAffect.Engagement,  eps)
+			assertDim(t, v.ID, "curiosity", state.Curiosity, v.ExpectedAffect.Curiosity, eps)
+			assertDim(t, v.ID, "engagement", state.Engagement, v.ExpectedAffect.Engagement, eps)
 			assertDim(t, v.ID, "uncertainty", state.Uncertainty, v.ExpectedAffect.Uncertainty, eps)
-			assertDim(t, v.ID, "rapport",     state.Rapport,     v.ExpectedAffect.Rapport,     eps)
-			assertDim(t, v.ID, "energy",      state.Energy,      v.ExpectedAffect.Energy,      eps)
+			assertDim(t, v.ID, "rapport", state.Rapport, v.ExpectedAffect.Rapport, eps)
+			assertDim(t, v.ID, "energy", state.Energy, v.ExpectedAffect.Energy, eps)
 		})
 	}
 }
