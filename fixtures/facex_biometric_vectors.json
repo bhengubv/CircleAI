@@ -58,6 +58,29 @@
     }
   ],
 
+  "_dimension_mismatch_contract": "Every entry in dimension_mismatch_vectors MUST be REFUSED, never scored. C# and Kotlin throw, TypeScript and HarmonyOS throw, Swift throws BiometricError.embeddingDimensionMismatch, Go returns ErrEmbeddingDimensionMismatch, Python raises ValueError, Rust panics. C is the sole exemption and cannot express the case: ca_biometric_cosine_similarity takes ONE length n for both vectors, so a mismatch is unrepresentable in its signature. This array exists because every row in cosine_similarity_vectors is EQUAL-LENGTH, so nothing forced the ports to agree on invalid input and they silently diverged three ways.",
+
+  "dimension_mismatch_vectors": [
+    {
+      "id": "shorter_first",
+      "description": "A 1-element embedding against a 2-element one. Python truncated to the shorter vector via zip and returned 0.894 — past the 0.85 default threshold, i.e. a false match between embeddings that never came from the same model.",
+      "a": [1.0],
+      "b": [1.0, 0.5]
+    },
+    {
+      "id": "longer_first",
+      "description": "The same mismatch with the arguments reversed. A port that guards only one side passes the row above and fails this one.",
+      "a": [1.0, 0.5],
+      "b": [1.0]
+    },
+    {
+      "id": "empty_against_populated",
+      "description": "Empty against non-empty. Distinct from two EMPTY vectors, which every port answers 0.0 for — only a genuine length mismatch is refused.",
+      "a": [],
+      "b": [1.0]
+    }
+  ],
+
   "affect_mapper_vectors": [
     {
       "id": "happy_from_neutral",

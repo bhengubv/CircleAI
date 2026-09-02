@@ -23,8 +23,19 @@ import (
 // ---------------------------------------------------------------------------
 
 type biometricFixture struct {
-	CosineSimilarityVectors []cosineVector       `json:"cosine_similarity_vectors"`
-	AffectMapperVectors     []affectMapperVector `json:"affect_mapper_vectors"`
+	CosineSimilarityVectors  []cosineVector       `json:"cosine_similarity_vectors"`
+	DimensionMismatchVectors []mismatchVector     `json:"dimension_mismatch_vectors"`
+	AffectMapperVectors      []affectMapperVector `json:"affect_mapper_vectors"`
+}
+
+// mismatchVector is a pair that MUST be refused. No expected value: the
+// contract is that there is no answer, which is why these rows live in their
+// own array rather than alongside the scored ones.
+type mismatchVector struct {
+	ID          string    `json:"id"`
+	Description string    `json:"description"`
+	A           []float32 `json:"a"`
+	B           []float32 `json:"b"`
 }
 
 type cosineVector struct {
@@ -205,6 +216,28 @@ func TestCosineSimilarity_ZeroVector(t *testing.T) {
 	}
 	if got != 0 {
 		t.Errorf("zero vector: got %v, want 0", got)
+	}
+}
+
+func TestCosineSimilarity_DimensionMismatchVectors(t *testing.T) {
+	fix := loadBiometricFixture(t)
+
+	if len(fix.DimensionMismatchVectors) == 0 {
+		t.Fatal("no dimension_mismatch_vectors in fixture")
+	}
+
+	for _, v := range fix.DimensionMismatchVectors {
+		v := v
+		t.Run(v.ID, func(t *testing.T) {
+			got, err := circleai.CosineSimilarity(v.A, v.B)
+			if !errors.Is(err, circleai.ErrEmbeddingDimensionMismatch) {
+				t.Fatalf("%s: got error %v, want ErrEmbeddingDimensionMismatch (%s)",
+					v.ID, err, v.Description)
+			}
+			if got != 0 {
+				t.Errorf("%s: got %v alongside the error, want 0", v.ID, got)
+			}
+		})
 	}
 }
 
