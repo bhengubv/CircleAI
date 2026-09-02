@@ -49,6 +49,15 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<!--
+	    COMING BACK AFTER A REBOOT. Without this the assistant is silent from the
+	    moment the phone restarts until somebody happens to open the app, and a
+	    thing that forgets how to listen every time the battery dies is not an
+	    assistant. See BootReceiver - which restores the MODELS only: from
+	    Android 14 a microphone-typed foreground service may not be started from
+	    BOOT_COMPLETED, so listening waits for one deliberate tap by design.
+	-->
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+	<!--
 	    hasFragileUserData: on Android 10+ the uninstall dialog OFFERS to keep this
 	    app's data. One attribute, and a reinstall stops wiping 250 MB of models
 	    somebody already paid for - which is the mechanism Android provides for

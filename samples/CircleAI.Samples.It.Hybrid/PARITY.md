@@ -72,8 +72,8 @@ lines, and `NotFound.razor` at 16 is a 404 by design.
 | Language read-out line | `HomeActivity._lang` | in — `Home.razor` renders "Answering in …", deliberately empty until a turn has been heard |
 | **Battery exemption prompt** | `HomeActivity.AskToKeepRunning` | ✅ **corrected** — **in**, not missing. `DeviceSetup.AllowBackgroundAsync` is ported "vendor list and all" (Huawei, Xiaomi, Oppo, Vivo: standard intent first, vendor screen after, every call wrapped), and it is WIRED — `Setup.razor:202` calls it. This row previously read *missing*, on the step it itself calls the one that decides whether the rest survives. |
 | Always-on assistant | `ResidentAssistant` | **in, and verified end to end on the P30 2026-09-02** — `DeviceResidentAssistant`, turned on at Settings › Phone › "Answer to its name". `ResidentWakeWord` is LINKED from the native head; the orchestration is re-expressed against `ISpokenLanguage` rather than copied, because the native file reads its own SharedPreferences store and this app would then have two. Measured: `resident listening: on`, service `isForeground=true` with its notification posted, `capture: VoiceRecognition + 2 effect(s)`, process alive with no ANR. Two defects had to be fixed first — the glibc ONNX substitution above, and a missing `FOREGROUND_SERVICE` permission in this head's manifest that had been refusing the service since it existed. |
-| **Start on boot** | `BootReceiver` | **missing** — verified: no mention anywhere in the hybrid |
-| **Earcons** | `Earcon` | **missing** — verified: no mention anywhere in the hybrid. The sounds that say it heard you. |
+| Start on boot | `BootReceiver` | in — `BootReceiver` LINKED from the native head, registered with all three actions (`BOOT_COMPLETED` plus the two `QUICKBOOT_POWERON` variants Huawei and HTC send instead), and `RECEIVE_BOOT_COMPLETED` declared. `DeviceResidentAssistant` writes the `ResidentPrefs` consent flag it reads — verified on the device: `<boolean name="was-running" value="true" />`. **Not yet seen to FIRE**: `BOOT_COMPLETED` is a protected broadcast and the receiver's own `android:permission` refuses a simulated one from adb, so only a real reboot exercises it. Restores the MODELS only — from Android 14 a microphone-typed service may not start from boot, so listening waits for one deliberate tap by design. |
+| Earcons | `Earcon` | in — `Earcon` LINKED from the native head. `Woke()` plays in `DeviceResidentAssistant.OnWoke`, so it sounds in the always-on path whether or not a screen is watching; `Heard()` in `TurnAsync` once there are words; `CannotSpeak()` around `SayAsync`. **Not yet HEARD**: both triggers need audio into the microphone, which adb cannot provide. |
 | Sideloaded bundle import | `ItTtsProbe`, `WakeWordActivity` | partial — `DeviceVoiceHost` carries the sideload-before-download path; the wake screen's does not |
 
 ## The shape of what is left
@@ -83,12 +83,21 @@ Two behaviours, both parts of one capability: **staying alive to listen.**
 What remains is `BootReceiver` (surviving a restart) and `Earcon` (the sound
 that says it heard you).
 
-✅ **It listens.** Verified on the P30 on 2026-09-02: the wake word loads, the
-resident service holds the microphone in the foreground with its notification
-posted, and the process survives. Two defects underneath had to go first — a
-glibc `libonnxruntime.so` the RID graph substituted for the Android one, and a
-`FOREGROUND_SERVICE` permission this head had never declared, which had been
-refusing the service on every attempt since it existed.
+✅ **Nothing is missing.** Every row above is either in, or absent on purpose
+with the reason stated.
+
+The always-on assistant listens, verified on the P30 on 2026-09-02: the wake
+word loads, the resident service holds the microphone in the foreground with
+its notification posted, and the process survives. Two defects underneath had
+to go first — a glibc `libonnxruntime.so` the RID graph substituted for the
+Android one, and a `FOREGROUND_SERVICE` permission this head had never
+declared, which had been refusing the service on every attempt since it
+existed.
+
+⚠️ **Two things are written and reachable but have never been seen to happen**,
+and the table says so rather than implying otherwise: the boot receiver has not
+been through a real reboot, and the earcons have not been heard. Both need
+something a desk cannot supply — a power cycle, and a voice.
 
 On the boot receiver, note the platform rule before treating it as a gap: from
 Android 14 a microphone foreground service may NOT be started from

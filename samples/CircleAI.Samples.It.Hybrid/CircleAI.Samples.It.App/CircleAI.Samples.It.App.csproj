@@ -169,6 +169,20 @@
     -->
     <Compile Include="..\..\CircleAI.Samples.It.Android\ResidentWakeWord.cs"
              Link="Shared\ResidentWakeWord.cs" />
+    <!--
+      The two sounds a person across the room actually gets, and the receiver
+      that brings the models back after a restart. Both are platform-only -
+      ToneGenerator, a BroadcastReceiver and a SharedPreferences flag - so they
+      link cleanly, like VoiceTurn above.
+
+      BootReceiver's [BroadcastReceiver(Name = "com.bhengubv.itsample.BootReceiver")]
+      is shared with the native head. That name is only an identifier inside
+      whichever APK declares it, so both heads can carry it without colliding.
+    -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\Earcon.cs"
+             Link="Shared\Earcon.cs" />
+    <Compile Include="..\..\CircleAI.Samples.It.Android\BootReceiver.cs"
+             Link="Shared\BootReceiver.cs" />
   </ItemGroup>
 
   <!--

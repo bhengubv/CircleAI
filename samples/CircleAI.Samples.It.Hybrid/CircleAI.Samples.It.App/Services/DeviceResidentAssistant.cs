@@ -147,6 +147,12 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
                 ? "resident listening: on"
                 : "service started but the listener did not open the microphone");
 
+            // THE OWNER ASKED FOR THIS, and BootReceiver needs to know after a
+            // restart. A consent record rather than a cache: it is the difference
+            // between restoring something somebody chose and helping ourselves to
+            // a foreground service on every boot.
+            if (listening) ResidentPrefs.SetRunning(context, true);
+
             return listening
                 ? new ResidentStatus(ResidentState.Listening,
                     "Listening",
@@ -173,6 +179,10 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             // the next time somebody speaks, which nobody asked for by turning
             // listening off.
             await CircleNeuronService.StopListeningAsync().ConfigureAwait(false);
+
+            // Turned off deliberately, so it stays off across a reboot.
+            ResidentPrefs.SetRunning(Android.App.Application.Context, false);
+
             return new ResidentStatus(ResidentState.Off,
                 "Not listening",
                 "Tap to have it answer to its name again.");
@@ -184,5 +194,17 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
         }
     }
 
-    private void OnWoke(object? sender, string phrase) => Woke?.Invoke(this, phrase);
+    private void OnWoke(object? sender, string phrase)
+    {
+        // "I HEARD YOU", BEFORE ANYTHING ELSE. Measured on a P30, the wake
+        // phrase is followed by thirty to ninety seconds of work, and every
+        // other sign of life is on a screen the person who just called from the
+        // kitchen doorway is not looking at. This tone is the whole of what they
+        // get, so it is played here - in the resident path, where it sounds
+        // whether or not any screen is watching - rather than from a page.
+        try { Earcon.Woke(); }
+        catch (Exception ex) { Android.Util.Log.Warn(Tag, "earcon failed: " + ex.Message); }
+
+        Woke?.Invoke(this, phrase);
+    }
 }

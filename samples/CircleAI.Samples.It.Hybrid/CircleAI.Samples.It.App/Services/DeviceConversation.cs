@@ -113,6 +113,14 @@ public sealed class DeviceConversation : IConversation
                 return;
             }
 
+            // "GOT IT - WORKING ON IT." The gap between the last word and the
+            // first word back is transcription and then prefill, and on this
+            // phone that is seconds. A conversation has a sound for that moment
+            // and it is not silence. Played here, once there are words: before
+            // this, the only sign of life was a caption on a screen the speaker
+            // had already turned away from.
+            try { global::CircleAI.Samples.It.Mobile.Earcon.Heard(); } catch { /* a tone is never worth a turn */ }
+
             // WHAT LANGUAGE THAT WAS, reported rather than chosen. A person who
             // fixed a language in Settings keeps it; otherwise every turn is
             // answered in the language it was asked in.
@@ -138,7 +146,20 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Speaking,
                 Heard: heard, Reply: reply, Language: tag));
-            await SayAsync(reply, tag, ct).ConfigureAwait(false);
+
+            try
+            {
+                await SayAsync(reply, tag, ct).ConfigureAwait(false);
+            }
+            catch (Exception speak) when (speak is not OperationCanceledException)
+            {
+                // IT CANNOT ANSWER ALOUD, AND SAYS SO OUT LOUD. Otherwise the
+                // turn finishes by putting text on a screen nobody is looking
+                // at, and a broken assistant sounds exactly like a thinking one:
+                // like nothing. The reply is still on screen for whoever is.
+                Android.Util.Log.Warn("CircleAI.Turn", "could not speak the reply: " + speak.Message);
+                try { global::CircleAI.Samples.It.Mobile.Earcon.CannotSpeak(); } catch { }
+            }
 
             updates.Report(new TurnState(TurnPhase.Idle,
                 Heard: heard, Reply: reply, Language: tag));
