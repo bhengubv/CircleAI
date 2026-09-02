@@ -19,7 +19,11 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.21.0" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
+    <!-- 3.1.7 is the first release past GHSA-2cmq-823j-5qj8 / CVE-2025-27598:
+         an out-of-bounds write in the GIF decoder, reachable by a crafted
+         GIF and with no workaround short of patching. 3.1.12 is the latest
+         in the 3.1 line; 4.x is a major bump and not needed for this. -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 
 </Project>
