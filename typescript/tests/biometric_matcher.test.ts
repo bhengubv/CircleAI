@@ -46,9 +46,17 @@ interface AffectMapperVector {
   tolerance:       number;
 }
 
+interface DimensionMismatchVector {
+  id:          string;
+  description: string;
+  a:           number[];
+  b:           number[];
+}
+
 interface BiometricFixture {
   match_threshold_default:     number;
   cosine_similarity_vectors:   CosineSimilarityVector[];
+  dimension_mismatch_vectors:  DimensionMismatchVector[];
   affect_mapper_vectors:       AffectMapperVector[];
 }
 
@@ -167,6 +175,23 @@ describe('cosineSimilarity edge cases', () => {
     const sim = cosineSimilarity([], []);
     assert.equal(sim, 0);
   });
+});
+
+// ---------------------------------------------------------------------------
+// dimension_mismatch_vectors — fixture-driven refusals
+// ---------------------------------------------------------------------------
+
+describe('cosineSimilarity dimension_mismatch_vectors', () => {
+  assert.ok(
+    fixture.dimension_mismatch_vectors.length > 0,
+    'fixture has no dimension_mismatch_vectors',
+  );
+
+  for (const v of fixture.dimension_mismatch_vectors) {
+    it(`refuses ${v.id}`, () => {
+      assert.throws(() => cosineSimilarity(v.a, v.b), /dimension mismatch/i, v.description);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
