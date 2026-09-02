@@ -61,21 +61,46 @@ public sealed class AndroidAudioCapture : IAudioCapture
 
         if (_record.State != State.Initialized)
         {
+            // SAID OUT LOUD. This used to yield break in silence, so a microphone
+            // the platform had refused was indistinguishable from a quiet room -
+            // the wake word simply never fired and nothing anywhere explained why.
+            Android.Util.Log.Error(Tag,
+                $"AudioRecord did not initialise (state={_record.State}) - no capture. "
+                + "Permission, a mic held by another app, or an unsupported format.");
             _record.Release();
             _record = null;
-            yield break; // no mic / permission denied — stay silent rather than crash
+            yield break;
         }
 
         AttachFarFieldEffects(_record.AudioSessionId);
         _record.StartRecording();
         var buffer = new byte[3200]; // 100 ms at 16 kHz mono 16-bit
+        var empty = 0;               // consecutive reads that returned nothing
 
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 var read = await _record.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
-                if (read <= 0) { await Task.Delay(10, ct).ConfigureAwait(false); continue; }
+                if (read <= 0)
+                {
+                    // A CAPTURE THAT DELIVERS NOTHING IS NOT A QUIET ROOM. This
+                    // loop used to spin here forever without a word, which is how
+                    // a microphone that opens and then hands back nothing looked
+                    // exactly like silence. Reported once, then every ~5 s, so it
+                    // names itself without filling the log.
+                    if (++empty == 1 || empty % 500 == 0)
+                        Android.Util.Log.Warn(Tag,
+                            $"capture returned no audio {empty} times in a row (read={read})");
+                    await Task.Delay(10, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (empty > 0)
+                {
+                    Android.Util.Log.Info(Tag, $"capture recovered after {empty} empty reads");
+                    empty = 0;
+                }
 
                 var chunk = new byte[read];
                 Buffer.BlockCopy(buffer, 0, chunk, 0, read);
@@ -87,6 +112,8 @@ public sealed class AndroidAudioCapture : IAudioCapture
             try { _record?.Stop(); } catch { }
         }
     }
+
+    private const string Tag = "CircleAI.Audio";
 
     private readonly List<Android.Media.Audiofx.AudioEffect> _effects = new();
 
