@@ -68,3 +68,55 @@ def test_is_match(entry: dict) -> None:
     assert result == expected_match, (
         f"[{entry['id']}] is_match mismatch: got {result}, expected {expected_match}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Dimension mismatch — the case the shared fixture does not cover.
+#
+# facex_biometric_vectors.json has six entries and every one pairs equal-length
+# vectors, which is precisely why this went unnoticed for so long: there was no
+# row that could fail. The ports do not agree on what belongs here — C#,
+# Kotlin, TypeScript and HarmonyOS raise; Go and Swift return 0.0 — so these
+# assert the majority behaviour, which is also C#'s (the reference), rather
+# than settle it in the shared fixture unilaterally.
+# ---------------------------------------------------------------------------
+
+
+def test_cosine_similarity_refuses_mismatched_dimensions() -> None:
+    with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+        cosine_similarity([1.0], [1.0, 0.5])
+
+
+def test_cosine_similarity_does_not_score_a_truncated_prefix() -> None:
+    """The regression itself: zip() silently truncated to the shorter vector.
+
+    [1.0] against [1.0, 0.5] scored 0.894 — past the 0.85 default threshold —
+    by comparing a 1-element embedding against the first element of a
+    2-element one. Both argument orders truncated, so both are asserted.
+    """
+    with pytest.raises(ValueError):
+        cosine_similarity([1.0], [1.0, 0.5])
+    with pytest.raises(ValueError):
+        cosine_similarity([1.0, 0.5], [1.0])
+
+
+def test_is_match_refuses_a_profile_of_another_dimension() -> None:
+    """A wrong-sized embedding is a model mismatch, not a failed match."""
+    profile = BiometricProfile(
+        identity_id="test",
+        embedding_vector=[1.0, 0.5],
+        match_threshold=DEFAULT_THRESHOLD,
+    )
+    with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+        is_match([1.0], profile)
+
+
+def test_cosine_similarity_zero_and_empty_vectors() -> None:
+    assert cosine_similarity([], []) == 0.0
+    assert cosine_similarity([0.0, 0.0], [1.0, 0.0]) == 0.0
+
+
+def test_cosine_similarity_stays_within_bounds() -> None:
+    """Accumulated rounding must not push a self-comparison past 1.0."""
+    v = [0.1234567] * 512
+    assert -1.0 <= cosine_similarity(v, v) <= 1.0
