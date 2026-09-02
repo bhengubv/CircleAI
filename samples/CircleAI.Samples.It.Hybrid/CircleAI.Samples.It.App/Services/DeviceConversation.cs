@@ -82,11 +82,7 @@ public sealed class DeviceConversation : IConversation
                 return;
             }
 
-            var mic = await Permissions.CheckStatusAsync<Permissions.Microphone>()
-                .ConfigureAwait(false);
-            if (mic != PermissionStatus.Granted)
-                mic = await Permissions.RequestAsync<Permissions.Microphone>()
-                    .ConfigureAwait(false);
+            var mic = await MicPermission.EnsureAsync().ConfigureAwait(false);
 
             if (mic != PermissionStatus.Granted)
             {
@@ -195,11 +191,7 @@ public sealed class DeviceConversation : IConversation
             // NO BRAIN CHECK. This is the whole point of the method: writing down
             // what somebody said needs the ears, not the answering model, and the
             // screen that uses it was demanding - and naming - the wrong one.
-            var mic = await Permissions.CheckStatusAsync<Permissions.Microphone>()
-                .ConfigureAwait(false);
-            if (mic != PermissionStatus.Granted)
-                mic = await Permissions.RequestAsync<Permissions.Microphone>()
-                    .ConfigureAwait(false);
+            var mic = await MicPermission.EnsureAsync().ConfigureAwait(false);
 
             if (mic != PermissionStatus.Granted)
             {

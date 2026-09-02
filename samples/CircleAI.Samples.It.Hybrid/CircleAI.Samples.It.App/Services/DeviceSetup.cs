@@ -181,12 +181,7 @@ public sealed class DeviceSetup : ISetup
     /// <inheritdoc />
     public async Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
     {
-        var status = await Permissions.CheckStatusAsync<Permissions.Microphone>()
-            .ConfigureAwait(false);
-        if (status != PermissionStatus.Granted)
-            status = await Permissions.RequestAsync<Permissions.Microphone>()
-                .ConfigureAwait(false);
-        return status == PermissionStatus.Granted;
+        return await MicPermission.GrantedAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
