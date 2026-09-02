@@ -15,6 +15,21 @@ namespace CircleAI.Companion;
 /// Determines sensory capabilities, available UI affordances, and
 /// how the Companion adapts its communication style.
 /// </summary>
+// REPRESENTATION IS PER-PORT ON PURPOSE, and that is not drift to be tidied.
+//
+// C#, Go, Rust and Kotlin carry this as an ordinal; TypeScript, HarmonyOS and
+// Python as the string "Mobile"; Swift as a String raw value, which is
+// lowercase "mobile". Three spellings across eight ports.
+//
+// It does not matter, and the reason is measurable: this value is NEVER
+// SERIALISED. Checked 2026-09-02 - no JSON, no database column, no fixture, no
+// wire format anywhere in the tree reads or writes it. It exists only inside a
+// running process, so each port spells it the way that port would.
+//
+// Unifying it would churn eight ports and make most of them less idiomatic for
+// no behavioural gain. If this value ever DOES have to cross a boundary, that
+// is the moment to pick one spelling - and the moment this comment stops being
+// true.
 public enum InterfaceKind
 {
     /// <summary>Mobile phone or tablet (MAUI).</summary>
