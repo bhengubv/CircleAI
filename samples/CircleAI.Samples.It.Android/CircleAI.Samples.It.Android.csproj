@@ -55,8 +55,22 @@
 
       OFF by default: it adds ONNX Runtime + whisper.cpp natives (tens of MB) to
       the APK, and mobile TTS additionally needs libespeak-ng.so + espeak-ng-data
-      bundled (see NativeEspeakPhonemizer). Kept as a deliberate switch so the
-      chat-only APK — the one proven on the Huawei — stays lean.
+      bundled (see NativeEspeakPhonemizer). Kept as a deliberate switch.
+
+      ⚠️ AND IT DOES NOT PRODUCE A LEAN APK, whatever this comment claimed
+      before. Measured on a CLEAN voice-off build, bin and obj removed:
+      lib_CircleAI.Voice.dll.so, libespeak-ng.so and the 12 MB
+      espeak-ng-data.zip are all in the package anyway - about 16 MB of voice
+      in the build that is supposed to have none.
+
+      The route is CircleAI.Media -> CircleAI.Companion -> CircleAI.Voice.
+      Media is referenced unconditionally above, so this flag governs only the
+      DIRECT reference and the #if; the assembly and its native payload arrive
+      through the side door regardless.
+
+      Left standing rather than cut: breaking Media -> Companion is a change to
+      the dependency graph, not a build tidy-up. Recorded so the next reader
+      measures instead of trusting the sentence that used to be here.
     -->
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj"
                       Condition="'$(ItVoiceOnAndroid)' == 'true'" />
