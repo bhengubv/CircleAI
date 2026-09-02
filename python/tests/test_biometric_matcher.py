@@ -23,6 +23,7 @@ def _load_fixture() -> dict:
 
 FIXTURE = _load_fixture()
 COSINE_VECTORS = FIXTURE["cosine_similarity_vectors"]
+MISMATCH_VECTORS = FIXTURE["dimension_mismatch_vectors"]
 DEFAULT_THRESHOLD = float(FIXTURE["match_threshold_default"])
 
 
@@ -120,3 +121,18 @@ def test_cosine_similarity_stays_within_bounds() -> None:
     """Accumulated rounding must not push a self-comparison past 1.0."""
     v = [0.1234567] * 512
     assert -1.0 <= cosine_similarity(v, v) <= 1.0
+
+
+@pytest.mark.parametrize(
+    "entry", MISMATCH_VECTORS, ids=[e["id"] for e in MISMATCH_VECTORS]
+)
+def test_dimension_mismatch_is_refused(entry: dict) -> None:
+    """Fixture-driven: every row here must be refused, never scored.
+
+    These rows exist because the six scored ones are all equal-length, so
+    nothing forced the ports to agree on invalid input.
+    """
+    a = [float(v) for v in entry["a"]]
+    b = [float(v) for v in entry["b"]]
+    with pytest.raises(ValueError, match="Embedding dimension mismatch"):
+        cosine_similarity(a, b)
