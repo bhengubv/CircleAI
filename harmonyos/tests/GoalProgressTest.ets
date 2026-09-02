@@ -4,7 +4,7 @@
 // Each result must match fixture exactly (or within 1e-6).
 // Uses if/throw assertion pattern (no external test framework).
 
-import { Goal, GoalStatus, GoalPriority, advanceProgress } from '../src/main/ets/memory/index';
+import { Goal, GoalStatus, GoalPriority } from '../src/main/ets/memory/index';
 
 // ---------------------------------------------------------------------------
 // Assertion helpers
@@ -22,16 +22,19 @@ function assertApprox(label: string, actual: number, expected: number, tol: numb
 // ---------------------------------------------------------------------------
 
 function makeGoal(progress: number): Goal {
-  return {
-    id:          'test-goal-id',
-    userId:      'test-user',
-    title:       'Test Goal',
-    description: 'A test goal for progress verification',
-    status:      GoalStatus.Active,
-    priority:    GoalPriority.Normal,
-    createdAt:   Date.now(),
-    progress:    progress,
-  };
+  // A real instance, not an object literal: `Goal` is a CLASS here and
+  // `advanceProgress` is a method on it. A literal satisfies the type and has
+  // no methods, which is why every call failed as "not a function".
+  const g = new Goal();
+  g.id = 'test-goal-id';
+  g.userId = 'test-user';
+  g.title = 'Test Goal';
+  g.description = 'A test goal for progress verification';
+  g.status = GoalStatus.Active;
+  g.priority = GoalPriority.Normal;
+  g.createdUtc = new Date();
+  g.progress = progress;
+  return g;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +44,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.0);
-  const result: Goal = advanceProgress(g, 0.0);
+  const result: Goal = g.advanceProgress(0.0);
   assertApprox('zero_initial', result.progress, 0.0);
   // Original goal must be immutable
   assertApprox('zero_initial_original_unchanged', g.progress, 0.0);
@@ -55,7 +58,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.0);
-  const result: Goal = advanceProgress(g, 0.3);
+  const result: Goal = g.advanceProgress(0.3);
   assertApprox('partial_advance', result.progress, 0.3);
   console.log('PASS: partial_advance');
 })();
@@ -67,7 +70,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.9);
-  const result: Goal = advanceProgress(g, 0.5);
+  const result: Goal = g.advanceProgress(0.5);
   assertApprox('clamp_max', result.progress, 1.0);
   console.log('PASS: clamp_max');
 })();
@@ -79,7 +82,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.1);
-  const result: Goal = advanceProgress(g, -0.5);
+  const result: Goal = g.advanceProgress(-0.5);
   assertApprox('clamp_min', result.progress, 0.0);
   console.log('PASS: clamp_min');
 })();
@@ -91,7 +94,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.5);
-  const result: Goal = advanceProgress(g, 0.0);
+  const result: Goal = g.advanceProgress(0.0);
   assertApprox('zero_delta', result.progress, 0.5);
   console.log('PASS: zero_delta');
 })();
@@ -103,7 +106,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.75);
-  const result: Goal = advanceProgress(g, 0.25);
+  const result: Goal = g.advanceProgress(0.25);
   assertApprox('advance_to_full', result.progress, 1.0);
   console.log('PASS: advance_to_full');
 })();
@@ -115,7 +118,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.6);
-  const result: Goal = advanceProgress(g, -0.2);
+  const result: Goal = g.advanceProgress(-0.2);
   assertApprox('negative_delta', result.progress, 0.4);
   console.log('PASS: negative_delta');
 })();
@@ -127,7 +130,7 @@ function makeGoal(progress: number): Goal {
 ((): void => {
   const g: Goal = makeGoal(0.5);
   const originalProgress: number = g.progress;
-  advanceProgress(g, 0.3);
+  g.advanceProgress(0.3);
   assertApprox('immutability_original', g.progress, originalProgress);
   console.log('PASS: original_goal_immutable');
 })();
@@ -138,7 +141,7 @@ function makeGoal(progress: number): Goal {
 
 ((): void => {
   const g: Goal = makeGoal(0.4);
-  const result: Goal = advanceProgress(g, 0.1);
+  const result: Goal = g.advanceProgress(0.1);
   if (result.id !== g.id)               throw new Error('FAIL carry_id');
   if (result.userId !== g.userId)       throw new Error('FAIL carry_userId');
   if (result.title !== g.title)         throw new Error('FAIL carry_title');
@@ -153,17 +156,22 @@ function makeGoal(progress: number): Goal {
 // GoalStatus and GoalPriority enum value checks
 // ---------------------------------------------------------------------------
 
+// STRING VALUES in this port, and that is a divergence worth naming: C# and Go
+// spell these as ordinals (plain enum / iota), while the TypeScript source this
+// port is generated from spells them as strings. Asserted here as the port
+// actually is; which convention should win across the four is a decision about
+// the wire format, not one to settle inside a test.
 ((): void => {
-  if (GoalStatus.Active    !== 0) throw new Error(`FAIL GoalStatus.Active: expected 0, got ${GoalStatus.Active}`);
-  if (GoalStatus.Completed !== 1) throw new Error(`FAIL GoalStatus.Completed: expected 1, got ${GoalStatus.Completed}`);
-  if (GoalStatus.Abandoned !== 2) throw new Error(`FAIL GoalStatus.Abandoned: expected 2, got ${GoalStatus.Abandoned}`);
+  if (GoalStatus.Active    !== 'Active')    throw new Error(`FAIL GoalStatus.Active: expected Active, got ${GoalStatus.Active}`);
+  if (GoalStatus.Completed !== 'Completed') throw new Error(`FAIL GoalStatus.Completed: expected Completed, got ${GoalStatus.Completed}`);
+  if (GoalStatus.Abandoned !== 'Abandoned') throw new Error(`FAIL GoalStatus.Abandoned: expected Abandoned, got ${GoalStatus.Abandoned}`);
   console.log('PASS: GoalStatus_enum_values');
 })();
 
 ((): void => {
-  if (GoalPriority.Low    !== 0) throw new Error(`FAIL GoalPriority.Low: expected 0, got ${GoalPriority.Low}`);
-  if (GoalPriority.Normal !== 1) throw new Error(`FAIL GoalPriority.Normal: expected 1, got ${GoalPriority.Normal}`);
-  if (GoalPriority.High   !== 2) throw new Error(`FAIL GoalPriority.High: expected 2, got ${GoalPriority.High}`);
+  if (GoalPriority.Low    !== 'Low')    throw new Error(`FAIL GoalPriority.Low: expected Low, got ${GoalPriority.Low}`);
+  if (GoalPriority.Normal !== 'Normal') throw new Error(`FAIL GoalPriority.Normal: expected Normal, got ${GoalPriority.Normal}`);
+  if (GoalPriority.High   !== 'High')   throw new Error(`FAIL GoalPriority.High: expected High, got ${GoalPriority.High}`);
   console.log('PASS: GoalPriority_enum_values');
 })();
 

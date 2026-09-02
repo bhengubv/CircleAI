@@ -3,8 +3,10 @@
   "version": "1.5.0",
   "private": true,
   "scripts": {
-    "test": "tsx --test tests/*.test.ts",
-    "build": "tsc --noEmit"
+    "test": "npm run test:ts && npm run test:ets",
+    "build": "tsc --noEmit",
+    "test:ts": "tsx --test tests/*.test.ts",
+    "test:ets": "python3 tools/run_ets_tests.py"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

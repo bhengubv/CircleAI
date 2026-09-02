@@ -5,7 +5,6 @@
 
 import {
   KnownLanguages,
-  ALL_LANGUAGES,
   WritingSystem,
   LanguageTag,
   UNKNOWN_LANGUAGE,
@@ -30,11 +29,11 @@ function assertFalse(label: string, condition: boolean): void {
 }
 
 // ---------------------------------------------------------------------------
-// Test: ALL_LANGUAGES count
+// Test: KnownLanguages.ALL count
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  assertEqual('count_20', ALL_LANGUAGES.length, 20);
+  assertEqual('count_20', KnownLanguages.ALL.length, 20);
   console.log('PASS: count_exactly_20');
 })();
 
@@ -53,7 +52,7 @@ function assertFalse(label: string, condition: boolean): void {
     'zh', 'hi',
   ];
   for (let i: number = 0; i < expectedOrder.length; i++) {
-    assertEqual(`order[${i}]_bcp47`, ALL_LANGUAGES[i].bcp47Tag, expectedOrder[i]);
+    assertEqual(`order[${i}]_bcp47`, KnownLanguages.ALL[i].bcpTag, expectedOrder[i]);
   }
   console.log('PASS: canonical_declaration_order');
 })();
@@ -63,9 +62,9 @@ function assertFalse(label: string, condition: boolean): void {
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  const rtl: LanguageTag[] = ALL_LANGUAGES.filter((t: LanguageTag): boolean => t.isRtl);
+  const rtl: LanguageTag[] = KnownLanguages.ALL.filter((t: LanguageTag): boolean => t.isRtl);
   assertEqual('rtl_count', rtl.length, 1);
-  assertEqual('rtl_bcp47', rtl[0].bcp47Tag, 'ar');
+  assertEqual('rtl_bcp47', rtl[0].bcpTag, 'ar');
   assertTrue('arabic_isRtl', KnownLanguages.Arabic.isRtl);
   console.log('PASS: only_arabic_is_rtl');
 })();
@@ -80,7 +79,7 @@ function assertFalse(label: string, condition: boolean): void {
 
 ((): void => {
   const africanRegions: Set<string> = new Set<string>(['ZA', 'KE', 'NG', 'ET', 'SO']);
-  const count: number = ALL_LANGUAGES.filter(
+  const count: number = KnownLanguages.ALL.filter(
     (t: LanguageTag): boolean => africanRegions.has(t.primaryRegion)
   ).length;
   assertEqual('african_count', count, 13);
@@ -107,7 +106,7 @@ function assertFalse(label: string, condition: boolean): void {
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  const latinCount: number = ALL_LANGUAGES.filter(
+  const latinCount: number = KnownLanguages.ALL.filter(
     (t: LanguageTag): boolean => t.writingSystem === WritingSystem.Latin
   ).length;
   assertTrue('latin_most_common', latinCount > 10);
@@ -119,26 +118,26 @@ function assertFalse(label: string, condition: boolean): void {
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  assertEqual('isizulu_bcp47',    KnownLanguages.IsiZulu.bcp47Tag,    'zu');
-  assertEqual('sesotho_bcp47',    KnownLanguages.Sesotho.bcp47Tag,    'st');
-  assertEqual('afrikaans_bcp47',  KnownLanguages.Afrikaans.bcp47Tag,  'af');
-  assertEqual('swahili_bcp47',    KnownLanguages.Swahili.bcp47Tag,    'sw');
-  assertEqual('hausa_bcp47',      KnownLanguages.Hausa.bcp47Tag,      'ha');
-  assertEqual('amharic_bcp47',    KnownLanguages.Amharic.bcp47Tag,    'am');
-  assertEqual('yoruba_bcp47',     KnownLanguages.Yoruba.bcp47Tag,     'yo');
-  assertEqual('igbo_bcp47',       KnownLanguages.Igbo.bcp47Tag,       'ig');
-  assertEqual('xhosa_bcp47',      KnownLanguages.Xhosa.bcp47Tag,      'xh');
-  assertEqual('sepedi_bcp47',     KnownLanguages.Sepedi.bcp47Tag,     'nso');
-  assertEqual('setswana_bcp47',   KnownLanguages.Setswana.bcp47Tag,   'tn');
-  assertEqual('somali_bcp47',     KnownLanguages.Somali.bcp47Tag,     'so');
-  assertEqual('oromo_bcp47',      KnownLanguages.Oromo.bcp47Tag,      'om');
-  assertEqual('arabic_bcp47',     KnownLanguages.Arabic.bcp47Tag,     'ar');
-  assertEqual('english_bcp47',    KnownLanguages.English.bcp47Tag,    'en');
-  assertEqual('portuguese_bcp47', KnownLanguages.Portuguese.bcp47Tag, 'pt');
-  assertEqual('french_bcp47',     KnownLanguages.French.bcp47Tag,     'fr');
-  assertEqual('spanish_bcp47',    KnownLanguages.Spanish.bcp47Tag,    'es');
-  assertEqual('mandarin_bcp47',   KnownLanguages.Mandarin.bcp47Tag,   'zh');
-  assertEqual('hindi_bcp47',      KnownLanguages.Hindi.bcp47Tag,      'hi');
+  assertEqual('isizulu_bcp47',    KnownLanguages.IsiZulu.bcpTag,    'zu');
+  assertEqual('sesotho_bcp47',    KnownLanguages.Sesotho.bcpTag,    'st');
+  assertEqual('afrikaans_bcp47',  KnownLanguages.Afrikaans.bcpTag,  'af');
+  assertEqual('swahili_bcp47',    KnownLanguages.Swahili.bcpTag,    'sw');
+  assertEqual('hausa_bcp47',      KnownLanguages.Hausa.bcpTag,      'ha');
+  assertEqual('amharic_bcp47',    KnownLanguages.Amharic.bcpTag,    'am');
+  assertEqual('yoruba_bcp47',     KnownLanguages.Yoruba.bcpTag,     'yo');
+  assertEqual('igbo_bcp47',       KnownLanguages.Igbo.bcpTag,       'ig');
+  assertEqual('xhosa_bcp47',      KnownLanguages.Xhosa.bcpTag,      'xh');
+  assertEqual('sepedi_bcp47',     KnownLanguages.Sepedi.bcpTag,     'nso');
+  assertEqual('setswana_bcp47',   KnownLanguages.Setswana.bcpTag,   'tn');
+  assertEqual('somali_bcp47',     KnownLanguages.Somali.bcpTag,     'so');
+  assertEqual('oromo_bcp47',      KnownLanguages.Oromo.bcpTag,      'om');
+  assertEqual('arabic_bcp47',     KnownLanguages.Arabic.bcpTag,     'ar');
+  assertEqual('english_bcp47',    KnownLanguages.English.bcpTag,    'en');
+  assertEqual('portuguese_bcp47', KnownLanguages.Portuguese.bcpTag, 'pt');
+  assertEqual('french_bcp47',     KnownLanguages.French.bcpTag,     'fr');
+  assertEqual('spanish_bcp47',    KnownLanguages.Spanish.bcpTag,    'es');
+  assertEqual('mandarin_bcp47',   KnownLanguages.Mandarin.bcpTag,   'zh');
+  assertEqual('hindi_bcp47',      KnownLanguages.Hindi.bcpTag,      'hi');
   console.log('PASS: all_bcp47_tags_correct');
 })();
 
@@ -184,7 +183,7 @@ function assertFalse(label: string, condition: boolean): void {
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  const nonRtl: LanguageTag[] = ALL_LANGUAGES.filter((t: LanguageTag): boolean => !t.isRtl);
+  const nonRtl: LanguageTag[] = KnownLanguages.ALL.filter((t: LanguageTag): boolean => !t.isRtl);
   assertEqual('non_rtl_count', nonRtl.length, 19);
   assertFalse('english_not_rtl',    KnownLanguages.English.isRtl);
   assertFalse('hindi_not_rtl',      KnownLanguages.Hindi.isRtl);
@@ -198,7 +197,7 @@ function assertFalse(label: string, condition: boolean): void {
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  assertEqual('unknown_bcp47',   UNKNOWN_LANGUAGE.bcp47Tag,   'und');
+  assertEqual('unknown_bcp47',   UNKNOWN_LANGUAGE.bcpTag,   'und');
   assertEqual('unknown_english', UNKNOWN_LANGUAGE.englishName, 'Unknown');
   assertEqual('unknown_native',  UNKNOWN_LANGUAGE.nativeName,  'Unknown');
   assertFalse('unknown_rtl',     UNKNOWN_LANGUAGE.isRtl);
@@ -207,7 +206,7 @@ function assertFalse(label: string, condition: boolean): void {
 })();
 
 // ---------------------------------------------------------------------------
-// Test: every language in ALL_LANGUAGES is also accessible as a named constant
+// Test: every language in KnownLanguages.ALL is also accessible as a named constant
 // ---------------------------------------------------------------------------
 
 ((): void => {
@@ -221,11 +220,11 @@ function assertFalse(label: string, condition: boolean): void {
     KnownLanguages.Mandarin, KnownLanguages.Hindi,
   ];
   for (let i: number = 0; i < namedTags.length; i++) {
-    if (ALL_LANGUAGES[i] !== namedTags[i]) {
+    if (KnownLanguages.ALL[i] !== namedTags[i]) {
       throw new Error(
         `FAIL named_vs_all[${i}]: ` +
-        `ALL_LANGUAGES[${i}].bcp47Tag='${ALL_LANGUAGES[i].bcp47Tag}' ` +
-        `!= named='${namedTags[i].bcp47Tag}'`
+        `KnownLanguages.ALL[${i}].bcpTag='${KnownLanguages.ALL[i].bcpTag}' ` +
+        `!= named='${namedTags[i].bcpTag}'`
       );
     }
   }

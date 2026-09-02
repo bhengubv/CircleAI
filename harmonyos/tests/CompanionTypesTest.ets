@@ -2,8 +2,8 @@
 // Covers:
 //   - InterfaceKind enum (7 values, correct ordinal)
 //   - CompanionContext and CompanionTurn structural correctness
-//   - applyFaceAffect deltas (must match fixtures/facex_biometric_vectors.json within 1e-5)
-//   - faceObserve() confusion threshold proactive event
+//   - applyFaceToAffect deltas (must match fixtures/facex_biometric_vectors.json within 1e-5)
+//   - observeFace() confusion threshold proactive event
 //   - CONFUSION_THRESHOLD constant
 // Uses if/throw assertion pattern (no external test framework).
 
@@ -12,8 +12,8 @@ import {
   CompanionContext,
   CompanionTurn,
   CompanionProactiveEvent,
-  applyFaceAffect,
-  faceObserve,
+  applyFaceToAffect,
+  observeFace,
   CONFUSION_THRESHOLD,
   MIN_FACE_CONFIDENCE,
 } from '../src/main/ets/companion/index';
@@ -89,13 +89,21 @@ function makeAffectState(
 // ---------------------------------------------------------------------------
 
 ((): void => {
-  assertEqual('mobile_value',   InterfaceKind.Mobile,   0);
-  assertEqual('wearable_value', InterfaceKind.Wearable, 1);
-  assertEqual('desktop_value',  InterfaceKind.Desktop,  2);
-  assertEqual('web_value',      InterfaceKind.Web,      3);
-  assertEqual('iot_value',      InterfaceKind.IoT,      4);
-  assertEqual('ambient_value',  InterfaceKind.Ambient,  5);
-  assertEqual('headless_value', InterfaceKind.Headless, 6);
+  // STRING VALUES, and that is a divergence worth naming rather than hiding:
+  // C# and Go spell this enum as ordinals (plain enum / iota, Mobile = 0), and
+  // the TypeScript port spells it 'Mobile'. HarmonyOS is generated from the
+  // TypeScript source, so it inherited strings.
+  //
+  // Asserted here as the port actually is. Which convention should win across
+  // the four is a decision about the wire format, not one to settle inside a
+  // test — but a reader should not have to discover the split by hand.
+  assertEqual('mobile_value',   InterfaceKind.Mobile,   'Mobile');
+  assertEqual('wearable_value', InterfaceKind.Wearable, 'Wearable');
+  assertEqual('desktop_value',  InterfaceKind.Desktop,  'Desktop');
+  assertEqual('web_value',      InterfaceKind.Web,      'Web');
+  assertEqual('iot_value',      InterfaceKind.IoT,      'IoT');
+  assertEqual('ambient_value',  InterfaceKind.Ambient,  'Ambient');
+  assertEqual('headless_value', InterfaceKind.Headless, 'Headless');
   console.log('PASS: InterfaceKind_enum_values');
 })();
 
@@ -197,8 +205,8 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Happy, 0.92);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.HAPPY, 0.92);
+  applyFaceToAffect(matrix, affect);
   assertApprox('happy_curiosity',   affect.curiosity,   0.5);
   assertApprox('happy_engagement',  affect.engagement,  0.53);
   assertApprox('happy_uncertainty', affect.uncertainty, 0.2);
@@ -214,8 +222,8 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Surprised, 0.88);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.SURPRISED, 0.88);
+  applyFaceToAffect(matrix, affect);
   assertApprox('surprised_curiosity',   affect.curiosity,   0.54);
   assertApprox('surprised_engagement',  affect.engagement,  0.5);
   assertApprox('surprised_uncertainty', affect.uncertainty, 0.2);
@@ -230,8 +238,8 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Confused, 0.79);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.CONFUSED, 0.79);
+  applyFaceToAffect(matrix, affect);
   assertApprox('confused_curiosity',   affect.curiosity,   0.5);
   assertApprox('confused_engagement',  affect.engagement,  0.5);
   assertApprox('confused_uncertainty', affect.uncertainty, 0.25);
@@ -246,8 +254,8 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Stressed, 0.85);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.STRESSED, 0.85);
+  applyFaceToAffect(matrix, affect);
   assertApprox('stressed_curiosity',   affect.curiosity,   0.5);
   assertApprox('stressed_engagement',  affect.engagement,  0.5);
   assertApprox('stressed_uncertainty', affect.uncertainty, 0.28);
@@ -263,8 +271,8 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.3, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Angry, 0.91);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.ANGRY, 0.91);
+  applyFaceToAffect(matrix, affect);
   assertApprox('angry_curiosity',   affect.curiosity,   0.5);
   assertApprox('angry_engagement',  affect.engagement,  0.46);
   assertApprox('angry_uncertainty', affect.uncertainty, 0.2);
@@ -281,8 +289,8 @@ function makeAffectState(
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
   const before: number = affect.lastUpdatedAt;
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Neutral, 0.95);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.NEUTRAL, 0.95);
+  applyFaceToAffect(matrix, affect);
   assertApprox('neutral_curiosity',   affect.curiosity,   0.5);
   assertApprox('neutral_engagement',  affect.engagement,  0.5);
   assertApprox('neutral_uncertainty', affect.uncertainty, 0.2);
@@ -301,8 +309,8 @@ function makeAffectState(
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
   const before: number = affect.lastUpdatedAt;
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Stressed, 0.49);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.STRESSED, 0.49);
+  applyFaceToAffect(matrix, affect);
   assertApprox('lowconf_curiosity',   affect.curiosity,   0.5);
   assertApprox('lowconf_engagement',  affect.engagement,  0.5);
   assertApprox('lowconf_uncertainty', affect.uncertainty, 0.2);
@@ -319,22 +327,22 @@ function makeAffectState(
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.99, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Happy, 0.95);
-  applyFaceAffect(matrix, affect);
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.HAPPY, 0.95);
+  applyFaceToAffect(matrix, affect);
   assertApprox('clampmax_engagement', affect.engagement, 1.0);
   assertApprox('clampmax_energy',     affect.energy,     0.52);
   console.log('PASS: face_affect_clamp_max_engagement');
 })();
 
 // ---------------------------------------------------------------------------
-// faceObserve: confusion threshold NOT crossed — returns null
+// observeFace: confusion threshold NOT crossed — returns null
 // uncertainty=0.2 + confused(+0.05) = 0.25 < 0.70
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.2, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Confused, 0.79);
-  const event: CompanionProactiveEvent | null = faceObserve(
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.CONFUSED, 0.79);
+  const event: CompanionProactiveEvent | null = observeFace(
     matrix, affect, 'session-1', 'identity-1', InterfaceKind.Mobile
   );
   assertNull('no_event_below_threshold', event);
@@ -342,14 +350,14 @@ function makeAffectState(
 })();
 
 // ---------------------------------------------------------------------------
-// faceObserve: confusion threshold crossed — returns proactive event
+// observeFace: confusion threshold crossed — returns proactive event
 // Start with uncertainty=0.67 + confused(+0.05) = 0.72 >= 0.70
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.67, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Confused, 0.79);
-  const event: CompanionProactiveEvent | null = faceObserve(
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.CONFUSED, 0.79);
+  const event: CompanionProactiveEvent | null = observeFace(
     matrix, affect, 'session-2', 'identity-2', InterfaceKind.Mobile
   );
   assertNotNull('event_above_threshold', event);
@@ -363,14 +371,14 @@ function makeAffectState(
 })();
 
 // ---------------------------------------------------------------------------
-// faceObserve: Stressed expression also triggers confusion event
+// observeFace: Stressed expression also triggers confusion event
 // Start with uncertainty=0.64 + stressed(+0.08) = 0.72 >= 0.70
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.64, 0.0, 0.5);
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Stressed, 0.85);
-  const event: CompanionProactiveEvent | null = faceObserve(
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.STRESSED, 0.85);
+  const event: CompanionProactiveEvent | null = observeFace(
     matrix, affect, 'session-3', 'identity-3', InterfaceKind.Wearable
   );
   assertNotNull('stressed_event',           event);
@@ -379,13 +387,13 @@ function makeAffectState(
 })();
 
 // ---------------------------------------------------------------------------
-// faceObserve: Happy expression never triggers confusion event
+// observeFace: Happy expression never triggers confusion event
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.9, 0.0, 0.5);  // very high uncertainty
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Happy, 0.95);
-  const event: CompanionProactiveEvent | null = faceObserve(
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.HAPPY, 0.95);
+  const event: CompanionProactiveEvent | null = observeFace(
     matrix, affect, 'session-4', 'identity-4', InterfaceKind.Mobile
   );
   // Happy does not qualify for the confusion trigger (only Confused/Stressed does)
@@ -394,24 +402,24 @@ function makeAffectState(
 })();
 
 // ---------------------------------------------------------------------------
-// faceObserve: low confidence → no affect change, no event
+// observeFace: low confidence → no affect change, no event
 // ---------------------------------------------------------------------------
 
 ((): void => {
   const affect: AffectState = makeAffectState(0.5, 0.5, 0.9, 0.0, 0.5);  // very high uncertainty
-  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.Confused, 0.49);
-  const event: CompanionProactiveEvent | null = faceObserve(
+  const matrix: FacialMetricMatrix = makeFaceMatrix(FaceExpressionClassification.CONFUSED, 0.49);
+  const event: CompanionProactiveEvent | null = observeFace(
     matrix, affect, 'session-5', 'identity-5', InterfaceKind.Mobile
   );
-  // Low confidence → applyFaceAffect does nothing → uncertainty stays 0.9 >= 0.70
-  // but expression check in faceObserve fires AFTER applyFaceAffect
+  // Low confidence → applyFaceToAffect does nothing → uncertainty stays 0.9 >= 0.70
+  // but expression check in observeFace fires AFTER applyFaceToAffect
   // uncertainty was already >= threshold before, but expression=Confused → should fire
-  // Actually: applyFaceAffect returns early on low confidence, then faceObserve
+  // Actually: applyFaceToAffect returns early on low confidence, then observeFace
   // checks: affect.uncertainty >= CONFUSION_THRESHOLD (0.9 >= 0.70 = true)
   // AND expression===Confused → true. So event IS triggered despite low confidence
   // because the uncertainty was already above threshold.
   // This is correct behavior per spec (we guard affect mutation, not the observe check).
-  // No assertion on null here — just verify applyFaceAffect didn't change values.
+  // No assertion on null here — just verify applyFaceToAffect didn't change values.
   assertApprox('lowconf_observe_uncertainty', affect.uncertainty, 0.9);
   console.log('PASS: faceObserve_low_confidence_no_affect_mutation');
 })();

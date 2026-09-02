@@ -4,3 +4,5 @@ dist/
 build/
 oh_modules/
 .typecheck/
+
+.ets-run/

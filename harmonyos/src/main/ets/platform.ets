@@ -1049,8 +1049,23 @@ export function createHmac(algorithm: string, key: string | Uint8Array): HmacBui
  * from something called `getRandomValues` has no way to notice.
  */
 export class WebCryptoShim {
-  /** AES-GCM through the platform's own crypto framework. */
-  readonly subtle: SubtleCryptoShim = new SubtleCryptoShim();
+  private subtleInstance: SubtleCryptoShim | undefined = undefined;
+
+  /**
+   * AES-GCM through the platform's own crypto framework.
+   *
+   * LAZY, and it has to be: `SubtleCryptoShim` is declared further down this
+   * file, and a stored property would evaluate the name while that class is
+   * still in its temporal dead zone — constructing a WebCryptoShim would throw
+   * before doing anything. A getter is only evaluated on use, by which point
+   * the whole module has been.
+   */
+  get subtle(): SubtleCryptoShim {
+    if (this.subtleInstance === undefined) {
+      this.subtleInstance = new SubtleCryptoShim();
+    }
+    return this.subtleInstance;
+  }
 
   getRandomValues(buffer: Uint8Array): Uint8Array {
     const fill = cryptoBindings.fillRandom;

@@ -167,8 +167,8 @@ function assertFalse(label: string, condition: boolean): void {
   );
   const after: number = Date.now();
   // Allow a 1s slack window on either side to absorb clock-resolution jitter
-  assertTrue('detectedAtMs_after_before',  s.detectedAtMs >= before - 1000);
-  assertTrue('detectedAtMs_before_after',  s.detectedAtMs <= after + 1000);
+  assertTrue('detectedAtMs_after_before',  s.detectedAt.getTime() >= before - 1000);
+  assertTrue('detectedAtMs_before_after',  s.detectedAt.getTime() <= after + 1000);
   console.log('PASS: detectedAtMs_within_window');
 })();
 

@@ -135,10 +135,21 @@ function assertFalse(label: string, condition: boolean): void {
 })();
 
 ((): void => {
-  // Different length arrays → 0
-  const sim: number = cosineSimilarity([1.0], [1.0, 0.5]);
-  assertApprox('mismatched_length', sim, 0, 1e-5);
-  console.log('PASS: mismatched_length_return_0');
+  // Different-length vectors are REFUSED, not scored.
+  //
+  // A similarity for embeddings of different dimensions is meaningless, and
+  // silently returning one is how a false match happens — so this port throws
+  // rather than answering. (Note for anyone reconciling the ports: Python's
+  // cosine_similarity zips the two lists and returns 0.894 here instead of
+  // refusing.)
+  let refused = false;
+  try {
+    cosineSimilarity([1.0], [1.0, 0.5]);
+  } catch (e) {
+    refused = true;
+  }
+  assertTrue('mismatched_length_refused', refused);
+  console.log('PASS: mismatched_length_is_refused');
 })();
 
 ((): void => {
