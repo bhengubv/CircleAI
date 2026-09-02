@@ -73,35 +73,37 @@
     @for (var i = 0; i < _profile.Sections.Count; i++)
     {
         var index = i + 1;
-        var section = _profile.Sections[i];
+        @* NOT `section`: @section is a Razor DIRECTIVE, so `@section.Title`
+           parses as that directive and the file stops compiling. *@
+        var part = _profile.Sections[i];
 
         <button class="fold @(_open == index ? "fold-on" : null)" @onclick="() => Open(index)"
                 aria-expanded="@(_open == index)">
-            <span class="fold-title">@section.Title</span>
-            <span class="fold-now">@(section.Entries.Count == 0 ? "—" : section.Entries.Count.ToString())</span>
+            <span class="fold-title">@part.Title</span>
+            <span class="fold-now">@(part.Entries.Count == 0 ? "—" : part.Entries.Count.ToString())</span>
             <span class="fold-chevron" aria-hidden="true">›</span>
         </button>
 
         @if (_open == index)
         {
-            @if (section.Entries.Count == 0)
+            @if (part.Entries.Count == 0)
             {
                 @*
                     WHAT WOULD GO HERE AND WHY, not "nothing yet". Somebody who
                     does not know a licence code decides applications outright has
                     no reason to go and add one.
                 *@
-                <p class="nothing">@section.Nothing</p>
+                <p class="nothing">@part.Nothing</p>
                 <button class="ask" @onclick="Interview">Tell it about this</button>
             }
             else
             {
-                @foreach (var entry in section.Entries)
+                @foreach (var entry in part.Entries)
                 {
                     @* Keyed on the section as well as the row id: ids come from
                        five different tables and only happen not to collide because
                        one section is open at a time. *@
-                    var key = section.Key + entry.Id;
+                    var key = part.Key + entry.Id;
 
                     <div class="line" @key="key">
                         <span class="line-text">
@@ -117,7 +119,7 @@
                             needs here is to strike out what is wrong or stale, and
                             adding happens where it can be asked about properly.
                         *@
-                        <button class="strike" @onclick="() => Remove(section, entry)"
+                        <button class="strike" @onclick="() => Remove(part, entry)"
                                 aria-label="@($"Remove {entry.Title}")">Remove</button>
                     </div>
                 }

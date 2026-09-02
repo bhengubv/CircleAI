@@ -136,6 +136,12 @@
     <Compile Include="..\..\CircleAI.Samples.It\ItToolBridge.cs" Link="Shared\ItToolBridge.cs" />
     <Compile Include="..\..\CircleAI.Samples.It\WebSearch.cs" Link="Shared\WebSearch.cs" />
     <Compile Include="..\..\CircleAI.Samples.It\FirstRun.cs" Link="Shared\FirstRun.cs" />
+    <!-- The voice CATALOGUE IDS, which FirstRun names while listing what a first
+         run should fetch. They are not the engine: ItSpeaker is compiled only
+         where voice is on, and a setup screen needs the name, not the player.
+         Listed explicitly because this head does not glob the shared root — a
+         new shared file is invisible here until it is named. -->
+    <Compile Include="..\..\CircleAI.Samples.It\VoiceNames.cs" Link="Shared\VoiceNames.cs" />
   </ItemGroup>
 
   <!-- The microphone. Android-only by nature, and taken from the native head
