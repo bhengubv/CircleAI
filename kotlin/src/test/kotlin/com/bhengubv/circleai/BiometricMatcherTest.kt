@@ -154,4 +154,39 @@ class BiometricMatcherTest {
             // expected
         }
     }
+
+    // ── fixtures/facex_biometric_vectors.json → dimension_mismatch_vectors ──
+    //
+    // Transcribed, like the scored vectors above: this port reads no JSON.
+    // Keep in step with the fixture — a row added there must be added here.
+    //
+    // They exist because every SCORED row is equal-length, so nothing forced
+    // the ports to agree on invalid input and they diverged three ways.
+
+    @Test
+    fun `fixture shorter_first is refused`() {
+        assertRefused(floatArrayOf(1.0f), floatArrayOf(1.0f, 0.5f), "shorter_first")
+    }
+
+    @Test
+    fun `fixture longer_first is refused`() {
+        // The same mismatch reversed: a port guarding one side only passes
+        // shorter_first and fails this.
+        assertRefused(floatArrayOf(1.0f, 0.5f), floatArrayOf(1.0f), "longer_first")
+    }
+
+    @Test
+    fun `fixture empty_against_populated is refused`() {
+        // Distinct from two EMPTY vectors, which answer 0.0.
+        assertRefused(floatArrayOf(), floatArrayOf(1.0f), "empty_against_populated")
+    }
+
+    private fun assertRefused(a: FloatArray, b: FloatArray, id: String) {
+        try {
+            val sim = BiometricMatcher.cosineSimilarity(a, b)
+            assertTrue(false, "[$id] returned $sim instead of refusing")
+        } catch (e: IllegalArgumentException) {
+            // expected
+        }
+    }
 }
