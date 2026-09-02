@@ -54,7 +54,7 @@ final class BiometricMatcherTests: XCTestCase {
             let expected  = Double(truncating: vec["expected_similarity"] as! NSNumber)
             let tolerance = Double(truncating: vec["tolerance"]           as! NSNumber)
 
-            let actual = BiometricMatcher.cosineSimilarity(a, b)
+            let actual = try BiometricMatcher.cosineSimilarity(a, b)
             XCTAssertEqual(actual, expected, accuracy: tolerance,
                            "cosineSimilarity mismatch for vector '\(id)': expected \(expected), got \(actual)")
 
@@ -67,7 +67,7 @@ final class BiometricMatcherTests: XCTestCase {
                     matchThreshold: threshold,
                     enrolledAt: Date()
                 )
-                let matched = BiometricMatcher.isMatch(a, against: profile)
+                let matched = try BiometricMatcher.isMatch(a, against: profile)
                 XCTAssertEqual(matched, expectedMatch,
                                "isMatch mismatch for vector '\(id)': expected \(expectedMatch), got \(matched)")
             }
@@ -76,46 +76,65 @@ final class BiometricMatcherTests: XCTestCase {
 
     // ── CosineSimilarity — inline unit tests ─────────────────────────────────
 
-    func testIdentical() {
+    func testIdentical() throws {
         let v: [Float] = [0.6, 0.8]
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity(v, v), 1.0, accuracy: 1e-5)
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity(v, v), 1.0, accuracy: 1e-5)
     }
 
-    func testOrthogonal() {
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity([1.0, 0.0], [0.0, 1.0]), 0.0, accuracy: 1e-5)
+    func testOrthogonal() throws {
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity([1.0, 0.0], [0.0, 1.0]), 0.0, accuracy: 1e-5)
     }
 
-    func testOpposite() {
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity([1.0, 0.0], [-1.0, 0.0]), -1.0, accuracy: 1e-5)
+    func testOpposite() throws {
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity([1.0, 0.0], [-1.0, 0.0]), -1.0, accuracy: 1e-5)
     }
 
-    func testSameFace4D() {
+    func testSameFace4D() throws {
         let a: [Float] = [0.5257, 0.7236, 0.2425, 0.3780]
         let b: [Float] = [0.5133, 0.7340, 0.2511, 0.3692]
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.999794, accuracy: 1e-4)
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity(a, b), 0.999794, accuracy: 1e-4)
     }
 
-    func testDifferentFace4D() {
+    func testDifferentFace4D() throws {
         let a: [Float] = [0.5257,  0.7236,  0.2425,  0.3780]
         let b: [Float] = [-0.3015, 0.6547,  0.5893, -0.3812]
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity(a, b), 0.311911, accuracy: 1e-4)
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity(a, b), 0.311911, accuracy: 1e-4)
     }
 
-    func testEmptyVectorsReturn0() {
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity([], []), 0.0, accuracy: 1e-10)
+    func testEmptyVectorsReturn0() throws {
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity([], []), 0.0, accuracy: 1e-10)
     }
 
-    func testMismatchedLengthsReturn0() {
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity([1.0], [1.0, 2.0]), 0.0, accuracy: 1e-10)
+    func testMismatchedLengthsThrow() {
+        // Was: expected 0.0. Scoring vectors of different dimensions is
+        // meaningless, and 0.0 conflates "different models" with "orthogonal".
+        XCTAssertThrowsError(try BiometricMatcher.cosineSimilarity([1.0], [1.0, 2.0])) { error in
+            guard case BiometricError.embeddingDimensionMismatch(let a, let b) = error else {
+                return XCTFail("expected embeddingDimensionMismatch, got \(error)")
+            }
+            XCTAssertEqual(a, 1)
+            XCTAssertEqual(b, 2)
+        }
     }
 
-    func testZeroVectorReturn0() {
-        XCTAssertEqual(BiometricMatcher.cosineSimilarity([0.0, 0.0], [0.0, 0.0]), 0.0, accuracy: 1e-10)
+    func testIsMatchRefusesProfileOfAnotherDimension() {
+        // A wrong-sized embedding is a model mismatch, not a failed match.
+        let profile = BiometricProfile(
+            identityId: "user-4",
+            embeddingVector: [1.0, 0.5],
+            matchThreshold: 0.85,
+            enrolledAt: Date()
+        )
+        XCTAssertThrowsError(try BiometricMatcher.isMatch([1.0], against: profile))
+    }
+
+    func testZeroVectorReturn0() throws {
+        XCTAssertEqual(try BiometricMatcher.cosineSimilarity([0.0, 0.0], [0.0, 0.0]), 0.0, accuracy: 1e-10)
     }
 
     // ── isMatch ───────────────────────────────────────────────────────────────
 
-    func testIsMatchAboveThreshold() {
+    func testIsMatchAboveThreshold() throws {
         let enrolled: [Float] = [0.6, 0.8]
         let candidate: [Float] = [0.6, 0.8]
         let profile = BiometricProfile(
@@ -124,10 +143,10 @@ final class BiometricMatcherTests: XCTestCase {
             matchThreshold: 0.85,
             enrolledAt: Date()
         )
-        XCTAssertTrue(BiometricMatcher.isMatch(candidate, against: profile))
+        XCTAssertTrue(try BiometricMatcher.isMatch(candidate, against: profile))
     }
 
-    func testIsMatchBelowThreshold() {
+    func testIsMatchBelowThreshold() throws {
         let a: [Float] = [0.5257,  0.7236,  0.2425,  0.3780]
         let b: [Float] = [-0.3015, 0.6547,  0.5893, -0.3812]
         let profile = BiometricProfile(
@@ -136,10 +155,10 @@ final class BiometricMatcherTests: XCTestCase {
             matchThreshold: 0.85,
             enrolledAt: Date()
         )
-        XCTAssertFalse(BiometricMatcher.isMatch(a, against: profile))
+        XCTAssertFalse(try BiometricMatcher.isMatch(a, against: profile))
     }
 
-    func testIsMatchExactlyAtThreshold() {
+    func testIsMatchExactlyAtThreshold() throws {
         // Identical vectors → similarity 1.0 ≥ 0.85
         let v: [Float] = [0.7071, 0.7071]
         let profile = BiometricProfile(
@@ -148,7 +167,7 @@ final class BiometricMatcherTests: XCTestCase {
             matchThreshold: 0.85,
             enrolledAt: Date()
         )
-        XCTAssertTrue(BiometricMatcher.isMatch(v, against: profile))
+        XCTAssertTrue(try BiometricMatcher.isMatch(v, against: profile))
     }
 
     // ── FaceAffectMapper — fixture-driven ────────────────────────────────────

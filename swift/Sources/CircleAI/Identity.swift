@@ -140,6 +140,25 @@ public struct BiometricProfile: Sendable {
     }
 }
 
+// MARK: - BiometricError
+
+/// Errors raised by `BiometricMatcher`.
+public enum BiometricError: Error, CustomStringConvertible, Sendable {
+    /// The two embeddings have different dimensions, so no similarity between
+    /// them means anything. Refused rather than scored: answering would be a
+    /// false-match path, and 0.0 would read as "not this person" when the real
+    /// answer is "these came from different models".
+    case embeddingDimensionMismatch(a: Int, b: Int)
+
+    public var description: String {
+        switch self {
+        case let .embeddingDimensionMismatch(a, b):
+            return "Embedding dimension mismatch: a=\(a), b=\(b). "
+                 + "Both vectors must come from the same model."
+        }
+    }
+}
+
 // MARK: - BiometricMatcher
 
 /// Scalar cosine-similarity matcher for face embeddings.
@@ -150,12 +169,17 @@ public struct BiometricProfile: Sendable {
 public enum BiometricMatcher {
 
     /// Computes the cosine similarity between two Float vectors.
-    /// Returns a value in [-1.0, 1.0], or 0.0 for empty/mismatched vectors.
+    /// Returns a value in [-1.0, 1.0], or 0.0 for empty or zero-magnitude
+    /// vectors. Vectors of DIFFERENT lengths are refused, not scored —
+    /// see `BiometricError.embeddingDimensionMismatch`.
     ///
     /// Uses Double accumulators for cross-platform reproducibility.
     /// Do NOT use SIMD, vDSP, Accelerate framework, or any hardware intrinsics.
-    public static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Double {
-        guard a.count == b.count, !a.isEmpty else { return 0.0 }
+    public static func cosineSimilarity(_ a: [Float], _ b: [Float]) throws -> Double {
+        guard a.count == b.count else {
+            throw BiometricError.embeddingDimensionMismatch(a: a.count, b: b.count)
+        }
+        guard !a.isEmpty else { return 0.0 }
         var dot  = 0.0
         var magA = 0.0
         var magB = 0.0
@@ -174,8 +198,12 @@ public enum BiometricMatcher {
 
     /// Returns true when the candidate embedding's cosine similarity to the
     /// enrolled profile meets or exceeds the profile's matchThreshold.
-    public static func isMatch(_ candidate: [Float], against profile: BiometricProfile) -> Bool {
-        return cosineSimilarity(candidate, profile.embeddingVector) >= Double(profile.matchThreshold)
+    ///
+    /// Throws when the candidate and the enrolled profile have different
+    /// dimensions — a mismatched model rather than a failed match, and worth
+    /// surfacing instead of reporting as a quiet `false`.
+    public static func isMatch(_ candidate: [Float], against profile: BiometricProfile) throws -> Bool {
+        return try cosineSimilarity(candidate, profile.embeddingVector) >= Double(profile.matchThreshold)
     }
 }
 
