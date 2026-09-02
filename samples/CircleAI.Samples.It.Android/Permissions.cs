@@ -41,6 +41,11 @@
 // its model host back after a restart.
 [assembly: Android.App.UsesPermission("android.permission.RECEIVE_BOOT_COMPLETED")]
 
+// MODIFY_AUDIO_SETTINGS is required by every audio EFFECT this app attaches to its capture - AutomaticGainControl, NoiseSuppressor and AcousticEchoCanceler, see AndroidAudio.cs.
+// Without it the audio server refuses the request ("Request requires android.permission.MODIFY_AUDIO_SETTINGS"), the effects fail to configure ("SET_CONFIG returned Invalid argument"), and on this Huawei the capture restarts every ~20s with "record is not occpied, check mic mute" - so the wake word listens to nothing.
+// Measured on the P30.
+[assembly: Android.App.UsesPermission("android.permission.MODIFY_AUDIO_SETTINGS")]
+
 #if IT_VOICE_ANDROID
 
 // Permissions.cs
