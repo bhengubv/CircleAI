@@ -29,4 +29,11 @@ builder.Services.AddSingleton<IConversation, BrowserConversation>();
 builder.Services.AddSingleton<IProfile, BrowserProfile>();
 builder.Services.AddSingleton<IResidentAssistant, BrowserResidentAssistant>();
 
+// ONE MICROPHONE, SO ONE ANSWER TO WHAT IT IS DOING. Home's circle and the
+// middle of the tab bar are the same control offered twice, and each used to keep
+// its own copy of the phase - so a turn started from one left the other drawn
+// idle. Scoped rather than singleton: on the server head that is one per circuit,
+// and a singleton would show every visitor whoever spoke last.
+builder.Services.AddScoped<VoiceMark>();
+
 await builder.Build().RunAsync();

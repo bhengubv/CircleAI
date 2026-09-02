@@ -17,6 +17,8 @@
 @inject ISettings Settings
 @inject IConversation Talk
 @inject NavigationManager Nav
+@inject VoiceMark Mark
+@implements IDisposable
 
 <div class="home">
 
@@ -40,13 +42,16 @@
     <div class="spacer spacer-top"></div>
 
     @* THE THING YOU PRESS, and the only large control on the screen. *@
-    <button class="hero" @onclick="Tap" disabled="@(_state != MarkState.Idle)"
-            aria-label="@(_state == MarkState.Idle ? "Tap to talk" : "Working")">
-        <BrandMark Fluid="true" State="_state" Halo="true" Level="_level" Ring="true"
+    @* DISABLED BY THE TURN, NOT BY THIS SCREEN'S COPY OF IT. The bar's
+       microphone is the same microphone, so a turn started down there has to
+       close this button too - there is one of them, not one per button. *@
+    <button class="hero" @onclick="Tap" disabled="@Mark.Busy"
+            aria-label="@(Mark.Busy ? "Working" : "Tap to talk")">
+        <BrandMark Fluid="true" State="Mark.State" Halo="true" Level="Mark.Level" Ring="true"
                    Decorative="true" />
         @* The mark is the whole of this button, and a logo is not a name.
            See .sr-only. *@
-        <span class="sr-only">@(_state == MarkState.Idle ? "Tap to talk" : "Working")</span>
+        <span class="sr-only">@(Mark.Busy ? "Working" : "Tap to talk")</span>
     </button>
 
     <div class="prompt">@Prompt</div>
@@ -112,11 +117,9 @@
 </div>
 
 @code {
-    MarkState _state = MarkState.Idle;
     string? _progress;
     string? _detail;
     string? _spokenIn;
-    double _level;
 
     /*
         THE GREETING CYCLE, deliberately not English first. The point being made is
@@ -130,11 +133,23 @@
     static string LanguageName(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
 
     /*
-        NO MIC LEVEL, AND NO PRETEND ONE. BrandMark can scale its arcs with a real
-        microphone level and the native mark feeds it one, but IVoiceHost only
-        speaks - it does not listen - so no head here has a level to report. A
-        fabricated value would animate the mark as though it were hearing you,
-        which is the one lie the component's own notes forbid.
+        A REAL MIC LEVEL, OR NONE - never a pretend one. It now lives on
+        VoiceMark.Level rather than in a field here, because the bar's microphone
+        is the same microphone.
+
+        THIS NOTE USED TO SAY NO HEAD HAD ONE, AND THAT WAS ONLY HALF TRUE. It is
+        true of IVoiceHost, which is what this screen uses to say hello: that one
+        only SPEAKS, so a greeting has no level and reports none. It was never
+        true of IConversation - DeviceConversation.ListenAsync subscribes to
+        VoiceTurn.Level, which is real RMS off the microphone clamped to 0..1, and
+        both a turn and dictation carry it. So the arcs do widen with your voice
+        on the phone, and stay still on a head that only speaks.
+
+        The rule the old note was protecting still stands: zero is the honest
+        default and nothing may invent a value, because a mark that moves as
+        though it were hearing you when it is not is the one lie the component's
+        own notes forbid. What changed is that the listening arcs breathe on their
+        own, so an absent level no longer reads as a dead button.
     */
 
     /// <summary>
@@ -180,7 +195,7 @@
                       && _ready.Stage != ReadyStage.NeedsSetup
                       && Voice.Availability == VoiceAvailability.OnDevice;
 
-    string Prompt => _state switch
+    string Prompt => Mark.State switch
     {
         MarkState.Thinking => "Getting it ready",
         MarkState.Speaking => "Speaking",
@@ -203,8 +218,17 @@
                     ? _ready.Caption
                     : Voice.Provenance);
 
+    // THE OTHER BUTTON, AND THE WAKE WORD. The circle shows a turn this screen
+    // did not necessarily start, so it has to be told about one. Off the UI
+    // thread - the audio loop and the wake service both report from their own.
+    void OnMarkChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Mark.Changed -= OnMarkChanged;
+
     protected override async Task OnInitializedAsync()
     {
+        Mark.Changed += OnMarkChanged;
+
         _ready = await Setup.ReadinessAsync();
 
         // Which app this is, and - if it is the interpreter - between whom.
@@ -299,14 +323,7 @@
         {
             var updates = new Progress<TurnState>(t =>
             {
-                _state = t.Phase switch
-                {
-                    TurnPhase.Listening => MarkState.Listening,
-                    TurnPhase.Thinking => MarkState.Thinking,
-                    TurnPhase.Speaking => MarkState.Speaking,
-                    _ => MarkState.Idle,
-                };
-                _level = t.Level;
+                Mark.Report(t);
                 _detail = t.Detail ?? t.Heard;
                 if (t.Language is { Length: > 0 } lang) _spokenIn = LanguageName(lang);
                 StateHasChanged();
@@ -314,11 +331,11 @@
 
             try { await Talk.TurnAsync(updates); }
             catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
-            finally { _state = MarkState.Idle; _level = 0; }
+            finally { Mark.Clear(); }
             return;
         }
 
-        _state = MarkState.Speaking;
+        Mark.Report(MarkState.Speaking);
         _detail = brain.Detail;
 
         var progress = new Progress<string>(line =>
@@ -343,7 +360,7 @@
         finally
         {
             _progress = null;
-            _state = MarkState.Idle;
+            Mark.Clear();
         }
     }
 

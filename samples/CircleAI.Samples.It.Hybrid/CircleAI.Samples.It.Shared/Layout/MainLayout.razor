@@ -20,6 +20,8 @@
 @inject NavigationManager Nav
 @inject IConversation Talk
 @inject IShareTarget Share
+@inject VoiceMark Mark
+@inject IResidentAssistant Resident
 
 <div class="app">
     @*
@@ -78,17 +80,17 @@
                    Home, so the persistent voice control being the same object
                    means one thing to learn rather than two doing the same job. *@
                 <button class="tabbar-item tabbar-voice" @onclick="Listen"
-                        aria-label="@(_state == MarkState.Idle ? "Talk to it" : "Listening")">
-                    <span class="voice-ring @(_state != MarkState.Idle ? "voice-on" : null)">
+                        aria-label="@(Mark.Busy ? "Listening" : "Talk to it")">
+                    <span class="voice-ring @(Mark.Busy ? "voice-on" : null)">
                         @* 52 in a 72px ring: the same proportion the mark had at
                            38 in 56, so the button grew without the logo starting
                            to crowd its own edge. *@
-                        <BrandMark Size="52" State="_state" Level="_level" Ring="true"
+                        <BrandMark Size="52" State="Mark.State" Level="Mark.Level" Ring="true"
                                    Decorative="true" />
                     </span>
                     @* The mark is the whole of this button, and a logo is not a
                        name. See .sr-only. *@
-                    <span class="sr-only">@(_state == MarkState.Idle ? "Talk to it" : "Listening")</span>
+                    <span class="sr-only">@(Mark.Busy ? "Listening" : "Talk to it")</span>
                 </button>
             }
             else
@@ -219,6 +221,24 @@
     protected override void OnInitialized()
     {
         Nav.LocationChanged += OnLocationChanged;
+
+        // THE OTHER BUTTON, AND THE WAKE WORD. This mark shows a turn it did not
+        // necessarily start - one begun on Home, or by the phone hearing its name
+        // with nobody touching it at all - so it has to be told, not just told
+        // about its own presses.
+        Mark.Changed += OnMarkChanged;
+
+        // AND THE PHONE HEARING ITS OWN NAME. The resident service raises this
+        // and, in this head, NOTHING WAS LISTENING FOR IT: the earcon sounded
+        // from the service, the wake was real, and then the app did nothing -
+        // no turn, no mark, no line. The native head has always answered it
+        // (HomeActivity wires HandsFree.Woke the same way); the hybrid was
+        // ported without this half.
+        //
+        // On the layout rather than on Home, because a wake is not about which
+        // screen you left open - it works from wherever you already are, which
+        // is the whole point of saying the name instead of finding the app.
+        Resident.Woke += OnWoke;
         Resolve();
 
         // AN ADVERT SHARED FROM WHATSAPP LANDS ON THE SCREEN THAT WANTS IT.
@@ -266,8 +286,6 @@
 
     void GoHome() => Nav.NavigateTo("home");
 
-    MarkState _state = MarkState.Idle;
-    double _level;
 
     /// <summary>One spoken turn, from wherever you already are.</summary>
     /// <remarks>
@@ -303,7 +321,10 @@
         // EVEN THIS SAYS SO. A guard that returns in silence is the same dead
         // button from the other side: the mark is mid-turn, the press is correct,
         // and nothing acknowledges it.
-        if (_state != MarkState.Idle)
+        // AND IT NOW SEES THE OTHER BUTTON'S TURN. This tested its own field, so
+        // pressing here during a turn started on Home opened a second microphone
+        // on top of the first.
+        if (Mark.Busy)
         {
             _says = "It is still on the last one.";
             return;
@@ -313,14 +334,7 @@
 
         var updates = new Progress<TurnState>(t =>
         {
-            _state = t.Phase switch
-            {
-                TurnPhase.Listening => MarkState.Listening,
-                TurnPhase.Thinking => MarkState.Thinking,
-                TurnPhase.Speaking => MarkState.Speaking,
-                _ => MarkState.Idle,
-            };
-            _level = t.Level;
+            Mark.Report(t);
 
             // THE REASON, WHEREVER IT COMES FROM. Every early return in a turn -
             // no model, no permission, nothing heard - arrives as a Detail on an
@@ -332,8 +346,28 @@
 
         try { await Talk.TurnAsync(updates); }
         catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
-        finally { _state = MarkState.Idle; _level = 0; StateHasChanged(); }
+        finally { Mark.Clear(); StateHasChanged(); }
     }
 
-    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+    /// <summary>The phone heard its name, so take the turn nobody pressed for.</summary>
+    /// <remarks>
+    /// ARRIVES OFF THE UI THREAD - the wake detector raises it from its own
+    /// audio loop - so everything here goes through InvokeAsync. Listen already
+    /// refuses a second turn and says so, which is the behaviour wanted: a wake
+    /// in the middle of a turn must not open a second microphone, and the native
+    /// head learned the hard way that dropping it in SILENCE makes a stuck turn
+    /// look like a phone that beeps at its name and then ignores you.
+    /// </remarks>
+    void OnWoke(object? sender, string phrase) => InvokeAsync(Listen);
+
+    // OFF THE UI THREAD. A turn reports from the audio loop and the wake word
+    // from a background service, so this cannot touch component state directly.
+    void OnMarkChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        Mark.Changed -= OnMarkChanged;
+        Resident.Woke -= OnWoke;
+    }
 }
