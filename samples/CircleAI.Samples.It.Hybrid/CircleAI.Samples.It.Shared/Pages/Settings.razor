@@ -334,8 +334,8 @@ else
                 <span class="row-title">Answer to its name</span>
                 <span class="row-sub">@ResidentSub</span>
             </span>
-            <input type="checkbox" checked="@Resident.IsListening" disabled="@_residentBusy"
-                   @onchange="ToggleResident" />
+            <input type="checkbox" @key="_residentNonce" checked="@ResidentOn"
+                   disabled="@_residentBusy" @onchange="ToggleResident" />
         </label>
 
         @if (_trouble is not null)
@@ -422,9 +422,19 @@ else
     // there is nothing honest to report before then.
     string? _residentHint;
     bool _residentBusy;
+    bool? _residentOn;
+
+    // Bumped after every toggle so the checkbox's @key changes. Blazor then
+    // destroys and recreates the element instead of diffing it - see the note
+    // in ToggleResident for why diffing is not enough here.
+    int _residentNonce;
+
+    // First render asks the service; after that this screen holds the value and
+    // re-reads it from the service after each toggle.
+    bool ResidentOn => _residentOn ??= Resident.IsListening;
 
     string ResidentSub => _residentHint
-        ?? (Resident.IsListening
+        ?? (ResidentOn
             ? "It answers to its name with the screen off."
             : "Listen for the wake phrase with the screen off.");
 
@@ -451,6 +461,17 @@ else
         finally
         {
             _residentBusy = false;
+
+            // THE TRUTH, NOT THE TAP. Observed on the P30: the service refused
+            // for want of the microphone and the box stayed ticked, one line
+            // above its own subtitle saying so. The browser ticks the box
+            // before the handler runs, and Blazor only writes an attribute
+            // whose bound value CHANGED - false before, false after, so it
+            // wrote nothing and left the tick. Re-reading the service and
+            // changing the @key makes Blazor rebuild the element from the
+            // value, which is the only version the DOM cannot argue with.
+            _residentOn = Resident.IsListening;
+            _residentNonce++;
         }
     }
 

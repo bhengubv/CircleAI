@@ -59,6 +59,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             if (context.CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
                 != Android.Content.PM.Permission.Granted)
             {
+                Android.Util.Log.Info(Tag, "not starting: no microphone permission");
                 return new ResidentStatus(ResidentState.NeedsPermission,
                     "Not listening",
                     "It needs the microphone. Turn on Hey B and allow it there.");
@@ -69,6 +70,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             var bundle = DeviceWakeWord.FindBundle();
             if (bundle is null)
             {
+                Android.Util.Log.Info(Tag, "not starting: no wake bundle on this device");
                 return new ResidentStatus(ResidentState.NotInstalled,
                     "Not listening",
                     "The wake word is not downloaded yet. Open Hey B to get it.");
