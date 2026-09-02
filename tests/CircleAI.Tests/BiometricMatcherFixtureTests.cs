@@ -26,15 +26,17 @@ public sealed class BiometricMatcherFixtureTests
 
     private const string MatchKey = "expected_is_match_at_threshold_0_85";
 
-    private static JsonElement Vectors()
+    private const string MismatchKey = "dimension_mismatch_vectors";
+
+    private static JsonElement Vectors(string key = "cosine_similarity_vectors")
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(FixturePath));
-        return doc.RootElement.GetProperty("cosine_similarity_vectors").Clone();
+        return doc.RootElement.GetProperty(key).Clone();
     }
 
-    private static JsonElement Entry(string id)
+    private static JsonElement Entry(string id, string key = "cosine_similarity_vectors")
     {
-        foreach (var e in Vectors().EnumerateArray())
+        foreach (var e in Vectors(key).EnumerateArray())
             if (e.GetProperty("id").GetString() == id)
                 return e.Clone();
         throw new InvalidOperationException($"fixture entry not found: {id}");
@@ -59,6 +61,12 @@ public sealed class BiometricMatcherFixtureTests
         foreach (var e in Vectors().EnumerateArray())
             if (e.TryGetProperty(MatchKey, out _))
                 yield return new object[] { e.GetProperty("id").GetString()! };
+    }
+
+    public static IEnumerable<object[]> MismatchIds()
+    {
+        foreach (var e in Vectors(MismatchKey).EnumerateArray())
+            yield return new object[] { e.GetProperty("id").GetString()! };
     }
 
     [Fact]
@@ -96,6 +104,18 @@ public sealed class BiometricMatcherFixtureTests
         };
 
         Assert.Equal(expected, BiometricMatcher.IsMatch(Floats(entry, "a"), profile));
+    }
+
+    // The fixture rows themselves. These exist because every SCORED row is
+    // equal-length, so nothing forced the ports to agree on invalid input.
+    [Theory]
+    [MemberData(nameof(MismatchIds))]
+    public void CosineSimilarity_RefusesFixtureMismatchRows(string id)
+    {
+        var entry = Entry(id, MismatchKey);
+        var ex = Assert.Throws<ArgumentException>(() =>
+            BiometricMatcher.CosineSimilarity(Floats(entry, "a"), Floats(entry, "b")));
+        Assert.Contains("Embedding dimension mismatch", ex.Message);
     }
 
     [Fact]
