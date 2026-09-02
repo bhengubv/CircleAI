@@ -152,6 +152,28 @@ function assertFalse(label: string, condition: boolean): void {
   console.log('PASS: mismatched_length_is_refused');
 })();
 
+// ── fixtures/facex_biometric_vectors.json → dimension_mismatch_vectors ──────
+//
+// Transcribed, like the scored vectors above: this port reads no JSON. Keep in
+// step with the fixture — a row added there must be added here.
+((): void => {
+  const rows: Array<[string, number[], number[]]> = [
+    ['shorter_first',           [1.0],      [1.0, 0.5]],
+    ['longer_first',            [1.0, 0.5], [1.0]],
+    ['empty_against_populated', [],         [1.0]],
+  ];
+  for (const row of rows) {
+    let refused = false;
+    try {
+      cosineSimilarity(row[1], row[2]);
+    } catch (e) {
+      refused = true;
+    }
+    assertTrue('fixture_' + row[0] + '_refused', refused);
+  }
+  console.log('PASS: dimension_mismatch_vectors_all_refused');
+})();
+
 ((): void => {
   // Zero vector → 0 (magA < 1e-10)
   const sim: number = cosineSimilarity([0.0, 0.0], [1.0, 0.0]);
