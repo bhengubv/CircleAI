@@ -1,4 +1,11 @@
-#if IT_VOICE_ANDROID
+// NOT BEHIND IT_VOICE_ANDROID, deliberately.
+//
+// This file is SharedPreferences and two string keys — `using System;` and
+// `using Android.Content;`, no voice API anywhere in it. It was wrapped in
+// #if IT_VOICE_ANDROID all the same, which took the type out of the chat-only
+// build and left LanguagePickerActivity.Choose calling something that was not
+// there. Which language a person chose is worth remembering whether or not the
+// assistant can speak it aloud — it answers in that language either way.
 #nullable enable
 
 // SpokenLanguage.cs
@@ -124,4 +131,3 @@ public static class SpokenLanguage
     /// </remarks>
     public static string NameOf(string? code) => CircleAI.Samples.It.LanguageGuess.NameOf(code);
 }
-#endif

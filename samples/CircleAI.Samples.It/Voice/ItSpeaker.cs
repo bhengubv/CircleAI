@@ -236,7 +236,7 @@ public sealed class ItSpeaker : IDisposable
     // set here.
 
     /// <summary>The multi-speaker, multi-lingual South African voice.</summary>
-    internal const string PreferredVoice = "Vits-11ZA";
+    internal const string PreferredVoice = CircleAI.Samples.It.VoiceNames.Preferred;
 
     /// <summary>The same voice, quantised to int8.</summary>
     /// <remarks>
@@ -266,7 +266,7 @@ public sealed class ItSpeaker : IDisposable
     /// Already catalogued, so this is a routing change rather than a new
     /// dependency. See <see cref="TryLoadEnglishAsync"/> for the measurements.
     /// </remarks>
-    internal const string EnglishVoice = "Piper-en_US-lessac-medium";
+    internal const string EnglishVoice = CircleAI.Samples.It.VoiceNames.English;
 
     /// <summary>The Japanese voice: Open JTalk labels, not a lexicon and not espeak.</summary>
     /// <remarks>

@@ -21,7 +21,7 @@
          build a user could install over, or the install is refused. It sat at 1
          from the first commit, so no update could ever have replaced an earlier
          copy. Bump it with each build that leaves this machine. -->
-    <ApplicationVersion>4</ApplicationVersion>
+    <ApplicationVersion>5</ApplicationVersion>
     <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
 
     <!-- Plain APK so `adb install` just works (no bundletool step). -->

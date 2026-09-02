@@ -67,7 +67,6 @@ public class ItApplication : Application
 
 #if IT_VOICE_ANDROID
         VoiceWiring.Install(this);
-#endif
 
         // THE VOICE LAYER CAN SAY WHERE ITS TIME GOES, ONCE SOMETHING IS
         // LISTENING. It is a plain assembly with no Android reference and no
@@ -101,6 +100,11 @@ public class ItApplication : Application
         CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = System.IO.Path.Combine(
             System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
             "CircleAI", "Models");
+        // The guard ends HERE, not three statements ago. Everything above it
+        // touches CircleAI.Voice or ItSpeaker, neither of which is compiled
+        // into the chat-only APK; the #endif used to sit right after
+        // VoiceWiring.Install, so each assignment added later landed outside it.
+#endif
 
         Log.Info(Tag, "process wiring installed");
     }
