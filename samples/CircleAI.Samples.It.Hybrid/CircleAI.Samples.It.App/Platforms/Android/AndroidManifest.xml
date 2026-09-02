@@ -17,6 +17,38 @@
 	-->
 	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 	<!--
+	    THE RESIDENT SERVICE RUNS IN THE FOREGROUND, AND ON ANDROID THAT IS A
+	    PERMISSION, NOT A CHOICE. Without FOREGROUND_SERVICE, startForeground
+	    throws SecurityException and the platform then kills the process for not
+	    having gone foreground - measured on a P30 (API 29): the wake word was
+	    listening, and the app died about ten seconds later with
+
+	        Context.startForegroundService() did not then call
+	        Service.startForeground()
+
+	    which names the symptom and not one word of the cause. This manifest had
+	    only INTERNET and RECORD_AUDIO, so the service had been refused on every
+	    attempt since this head existed.
+
+	      FOREGROUND_SERVICE             API 28+. The one that was missing.
+	      FOREGROUND_SERVICE_DATA_SYNC   API 34+. From 14 the TYPE needs its own
+	                                     permission or the start is refused.
+	      FOREGROUND_SERVICE_MICROPHONE  API 34+. Same rule for the microphone
+	                                     type, which this head claims from API 30.
+	      POST_NOTIFICATIONS             API 33+. A foreground service must show a
+	                                     notification; denied, it still runs but
+	                                     nobody can see it is holding the
+	                                     microphone - which is the one thing that
+	                                     notification exists to be honest about.
+
+	    Declared unguarded, as in the native head: a build that cannot host the
+	    device service is not a smaller build, it is a broken one.
+	-->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!--
 	    hasFragileUserData: on Android 10+ the uninstall dialog OFFERS to keep this
 	    app's data. One attribute, and a reinstall stops wiping 250 MB of models
 	    somebody already paid for - which is the mechanism Android provides for

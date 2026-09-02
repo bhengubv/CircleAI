@@ -58,6 +58,9 @@ namespace CircleAI.Device;
                           | global::Android.Content.PM.ForegroundService.TypeMicrophone)]
 public sealed partial class CircleNeuronService : Service
 {
+    /// <summary>logcat tag for this service. Filter on it to see the whole lifecycle.</summary>
+    private const string LogTag = "CircleAI.Neuron";
+
     /// <summary>Notification channel id for the resident-service notification.</summary>
     public const string ChannelId = "circleai-neuron";
 
@@ -154,7 +157,18 @@ public sealed partial class CircleNeuronService : Service
     {
         var types = global::Android.Content.PM.ForegroundService.TypeDataSync;
 
+        // API 30 OR LATER FOR THE MICROPHONE TYPE. TypeMicrophone is 0x80 and
+        // was introduced in API 30; Android 10 does not know that bit, rejects
+        // a StartForeground that claims it, and then kills the process for not
+        // having gone foreground. Measured on a P30 (API 29): the wake word was
+        // listening and the app died ten seconds later.
+        //
+        // Claiming it is a DECLARATION to the OS about what this service does.
+        // Not claiming it on Android 10 does not close the microphone - the
+        // listener still holds it; the service simply declares dataSync, which
+        // is the whole vocabulary that platform has.
         if (Listener is not null &&
+            Build.VERSION.SdkInt >= BuildVersionCodes.R &&
             CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio)
                 == global::Android.Content.PM.Permission.Granted)
         {
@@ -183,13 +197,40 @@ public sealed partial class CircleNeuronService : Service
         {
             EnsureChannel();
             var notification = BuildNotification("starting…");
+
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-                StartForeground(NotificationId, notification, ClaimedTypes());
+            {
+                try
+                {
+                    StartForeground(NotificationId, notification, ClaimedTypes());
+                }
+                catch (Exception typed)
+                {
+                    // GOING FOREGROUND MATTERS MORE THAN THE TYPES. If the
+                    // platform refuses the types - a constant it does not know,
+                    // a permission it wants first - the untyped call still puts
+                    // this service in the foreground, and a narrower declaration
+                    // is far better than the ANR that follows not going
+                    // foreground at all.
+                    global::Android.Util.Log.Warn(LogTag,
+                        "StartForeground refused the claimed types (" + typed.Message
+                        + ") - going foreground untyped");
+                    StartForeground(NotificationId, notification);
+                }
+            }
             else
+            {
                 StartForeground(NotificationId, notification);
+            }
         }
         catch (Exception ex)
         {
+            // LOUD. This used to set a Status string that nothing reads and log
+            // nothing at all, so a service the platform had rejected looked
+            // exactly like a service that had never been asked to start - and
+            // Android kills the process seconds later, which is where the only
+            // visible evidence appeared.
+            global::Android.Util.Log.Error(LogTag, "could not go foreground: " + ex);
             Status = $"could not go foreground: {ex.Message}";
             State  = ServiceState.Failed;
             return StartCommandResult.Sticky;

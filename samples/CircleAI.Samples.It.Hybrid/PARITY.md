@@ -27,7 +27,7 @@ the reason stated).
 | Typing / chat | `MainActivity` | `Chat.razor` | in, partial — see controls |
 | Your CV | `CareerActivity` | `Career.razor` | in |
 | Aim at a job | `JobSpecActivity` | `JobSpec.razor` | in |
-| Hey B | `WakeWordActivity` | `WakeWord.razor` | ⚠️ **screen in, listening BROKEN on device** — verified on the P30 2026-09-02 with the bundle downloaded: the screen renders and resolves the phrase, then shows "Could not start listening (TypeInitializationException)". Underneath: `System.DllNotFoundException: libonnxruntime.so` from `ZipformerKwsSpotter..ctor`. The library IS packaged (17.4 MB, `lib/arm64-v8a/`) and will not load. The plain head ships a DIFFERENT native payload — 19.1 MB and no `libonnxruntime_providers_shared.so` — and works. Same `Microsoft.ML.OnnxRuntime` 1.21.0 reference in both, via `CircleAI.Voice`. |
+| Hey B | `WakeWordActivity` | `WakeWord.razor` | in — **verified listening on the P30 2026-09-02**. It had never worked: the APK shipped a glibc `libonnxruntime.so` that the RID graph substituted for the Android one, so `ZipformerKwsSpotter` could not construct. Fixed in `Directory.Build.targets`. |
 | Setting it up | `FirstRun` + `SetupTour` | `Setup.razor` | in — `Readiness` drives it; the native `SetupTour` type is not linked, the behaviour is folded in |
 | Settings | — | `Settings.razor` | new in hybrid |
 | **You** | — | `You.razor` | ✅ **corrected** — new in hybrid, absent from this table until 2026-09-02 |
@@ -71,7 +71,7 @@ lines, and `NotFound.razor` at 16 is a 404 by design.
 | Greeting cycle | `HomeActivity.SpeakNext` | in — `Home.razor` cycles zu → af → st → sw → en through `Voice.SpeakAsync` while the brain is still arriving |
 | Language read-out line | `HomeActivity._lang` | in — `Home.razor` renders "Answering in …", deliberately empty until a turn has been heard |
 | **Battery exemption prompt** | `HomeActivity.AskToKeepRunning` | ✅ **corrected** — **in**, not missing. `DeviceSetup.AllowBackgroundAsync` is ported "vendor list and all" (Huawei, Xiaomi, Oppo, Vivo: standard intent first, vendor screen after, every call wrapped), and it is WIRED — `Setup.razor:202` calls it. This row previously read *missing*, on the step it itself calls the one that decides whether the rest survives. |
-| Always-on assistant | `ResidentAssistant` | ⚠️ **built and wired, BLOCKED by the row above** — `DeviceResidentAssistant`, turned on at Settings › Phone › "Answer to its name". `ResidentWakeWord` is LINKED from the native head; the orchestration is re-expressed against `ISpokenLanguage` rather than copied, because the native file reads its own SharedPreferences store and this app would then have two. Verified on the P30 as far as it can go: the toggle fires, the microphone gate passes once granted, the bundle gate passes once downloaded, and the wake phrase resolves through `ISpokenLanguage` — logcat, `kws: 'en' listens for "Hey B" (3 tokens, Caution)`. It then dies in the SAME `libonnxruntime.so` load as the Hey B screen. Nothing here is waiting on this port. |
+| Always-on assistant | `ResidentAssistant` | **in, and verified end to end on the P30 2026-09-02** — `DeviceResidentAssistant`, turned on at Settings › Phone › "Answer to its name". `ResidentWakeWord` is LINKED from the native head; the orchestration is re-expressed against `ISpokenLanguage` rather than copied, because the native file reads its own SharedPreferences store and this app would then have two. Measured: `resident listening: on`, service `isForeground=true` with its notification posted, `capture: VoiceRecognition + 2 effect(s)`, process alive with no ANR. Two defects had to be fixed first — the glibc ONNX substitution above, and a missing `FOREGROUND_SERVICE` permission in this head's manifest that had been refusing the service since it existed. |
 | **Start on boot** | `BootReceiver` | **missing** — verified: no mention anywhere in the hybrid |
 | **Earcons** | `Earcon` | **missing** — verified: no mention anywhere in the hybrid. The sounds that say it heard you. |
 | Sideloaded bundle import | `ItTtsProbe`, `WakeWordActivity` | partial — `DeviceVoiceHost` carries the sideload-before-download path; the wake screen's does not |
@@ -83,11 +83,12 @@ Two behaviours, both parts of one capability: **staying alive to listen.**
 What remains is `BootReceiver` (surviving a restart) and `Earcon` (the sound
 that says it heard you).
 
-⚠️ **But none of it can listen yet, and that is not about this list.**
-`libonnxruntime.so` does not load in the hybrid — see the Hey B row. The wake
-word has therefore never worked on this head, and the always-on assistant
-inherits that. Until it loads, everything in this section is code that runs up
-to the model and stops.
+✅ **It listens.** Verified on the P30 on 2026-09-02: the wake word loads, the
+resident service holds the microphone in the foreground with its notification
+posted, and the process survives. Two defects underneath had to go first — a
+glibc `libonnxruntime.so` the RID graph substituted for the Android one, and a
+`FOREGROUND_SERVICE` permission this head had never declared, which had been
+refusing the service on every attempt since it existed.
 
 On the boot receiver, note the platform rule before treating it as a gap: from
 Android 14 a microphone foreground service may NOT be started from
