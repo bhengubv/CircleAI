@@ -3,6 +3,16 @@
  *
  * All expected values match fixtures/facex_biometric_vectors.json
  * cosine_similarity_vectors within the tolerances specified there.
+ *
+ * dimension_mismatch_vectors is deliberately NOT covered here, and C is the
+ * only port exempt from it. Those rows assert that two embeddings of
+ * DIFFERENT lengths are refused rather than scored — a case this signature
+ * cannot express:
+ *
+ *     double ca_biometric_cosine_similarity(const float *a, const float *b, int n);
+ *
+ * One n for both vectors. There is no pair of lengths to disagree, so there is
+ * nothing to refuse. Recorded in the fixture as _dimension_mismatch_contract.
  * Returns 0 on all-pass, calls assert() on first failure.
  */
 
