@@ -74,6 +74,25 @@ final class BiometricMatcherTests: XCTestCase {
         }
     }
 
+    // ── dimension_mismatch_vectors — fixture-driven refusals ─────────────────
+
+    func testDimensionMismatchFixture() throws {
+        let url = fixturesDir.appendingPathComponent("facex_biometric_vectors.json")
+        let data = try Data(contentsOf: url)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let vectors = json["dimension_mismatch_vectors"] as! [[String: Any]]
+
+        XCTAssertFalse(vectors.isEmpty, "fixture has no dimension_mismatch_vectors")
+
+        for vec in vectors {
+            let id = vec["id"] as! String
+            let a  = floats(vec["a"]!)
+            let b  = floats(vec["b"]!)
+            XCTAssertThrowsError(try BiometricMatcher.cosineSimilarity(a, b),
+                                 "[\(id)] returned a score instead of refusing")
+        }
+    }
+
     // ── CosineSimilarity — inline unit tests ─────────────────────────────────
 
     func testIdentical() throws {
