@@ -309,10 +309,29 @@ public final class MeshOffloadClient: IMeshOffloadClient, @unchecked Sendable {
 
         return try await withThrowingTaskGroup(of: OffloadReplyEnvelope.self) { group in
             group.addTask {
-                try await withCheckedThrowingContinuation { c in
+                // CANCELLATION HAS TO REACH THE CONTINUATION.
+                //
+                // A checked continuation is resumed only by someone calling
+                // `resume`; cancelling its task does nothing. Without this
+                // handler, a timeout would cancel this child, the group would
+                // wait for it to finish, and it never would — the caller hangs
+                // forever on the very timeout that was meant to release it.
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { c in
+                        self.lock.lock()
+                        self.pending[correlationId] = c
+                        self.lock.unlock()
+                    }
+                } onCancel: {
+                    // TAKEN OUT of `pending` here, not just resumed. The outer
+                    // `defer` only clears it on the way out, so a reply landing
+                    // between the timeout and the unwind would resume a
+                    // continuation that had already been resumed — and a
+                    // double-resume traps.
                     self.lock.lock()
-                    self.pending[correlationId] = c
+                    let waiter = self.pending.removeValue(forKey: correlationId)
                     self.lock.unlock()
+                    waiter?.resume(throwing: CancellationError())
                 }
             }
             group.addTask {

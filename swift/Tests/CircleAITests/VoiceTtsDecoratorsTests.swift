@@ -22,7 +22,23 @@ private final class RecordingTts: ITtsEngine, ITtsFrontEndDiagnostics, @unchecke
     var lastSkippedSymbols: [String] = []
     var lastApproximatedSymbols: [String] = []
 
+    /// Armed by a test that needs the producer held after its first render.
+    ///
+    /// Without it, `AsyncThrowingStream`'s unbounded buffer lets the producing
+    /// task render the whole passage before the consumer is scheduled to see
+    /// chunk one — so a test about time-to-first-audio measures the scheduler.
+    var holdAfterFirst: (@Sendable () async -> Void)?
+
     func synthesise(text: String) async throws -> TtsSynthesisResult {
+        // The gate is taken BEFORE the ask is recorded. Recording first would
+        // count a render that has not happened — the point of the assertion is
+        // how many sentences were actually rendered when chunk one arrived.
+        lock.lock()
+        let alreadyAsked = asked.count
+        let gate = holdAfterFirst
+        lock.unlock()
+        if alreadyAsked >= 1, let gate { await gate() }
+
         lock.lock(); asked.append(text); lock.unlock()
         let n = silentFor.contains(text) ? 0 : bytesPerCall
         return TtsSynthesisResult(audioData: Data(count: n), sampleRate: sampleRate,
@@ -188,18 +204,51 @@ final class VoiceTtsDecoratorsTests: XCTestCase {
     func testStreamingEmitsSentenceOneWithoutWaitingForTheRest() async throws {
         // The latency half of the problem: a whole paragraph means every word
         // renders before the first word plays.
+        //
+        // The producer is HELD after its first render until the consumer has
+        // chunk one. Without that gate the stream's unbounded buffer lets the
+        // producer finish the whole passage first on a loaded machine, and the
+        // test reports the scheduler rather than the engine.
         let inner = RecordingTts()
+        let firstChunkSeen = Gate()
+        inner.holdAfterFirst = { await firstChunkSeen.wait() }
         let e = PhrasedTtsEngine(inner: inner)
 
         var chunks = 0
         var firstArrivedAfterAsks = -1
         for try await _ in e.streamSynthesise(text: "One. Two. Three.") {
-            if chunks == 0 { firstArrivedAfterAsks = inner.asked.count }
+            if chunks == 0 {
+                firstArrivedAfterAsks = inner.asked.count
+                firstChunkSeen.open()
+            }
             chunks += 1
         }
-        XCTAssertLessThan(firstArrivedAfterAsks, 3,
-                          "a chunk arrives before the last sentence has rendered")
+        XCTAssertEqual(firstArrivedAfterAsks, 1,
+                       "chunk one arrives having rendered only sentence one")
         XCTAssertGreaterThanOrEqual(chunks, 3)
+    }
+
+    /// A one-shot latch. Opening before anyone waits is fine — a waiter then
+    /// returns immediately rather than blocking on an event already past.
+    private actor Gate {
+        private var isOpen = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        nonisolated func open() {
+            Task { await self.release() }
+        }
+
+        private func release() {
+            isOpen = true
+            let waiting = waiters
+            waiters = []
+            for w in waiting { w.resume() }
+        }
+
+        func wait() async {
+            if isOpen { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
     }
 
     func testStreamingEmptyTextEmitsNothingAndFinishes() async throws {
