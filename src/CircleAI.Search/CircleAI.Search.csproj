@@ -15,9 +15,21 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
-		<!-- 2.1.11 bumps the native binary past GHSA-2m69-gcr7-jv3q (SQLite buffer over-read). -->
-		<PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
+		<!--
+		  GHSA-2m69-gcr7-jv3q / CVE-2025-6965 (high): SQLite before 3.50.2 could
+		  let the number of aggregate terms exceed the columns available, which
+		  corrupts memory. Affected range: SQLitePCLRaw.lib.e_sqlite3 <= 2.1.11.
+
+		  A SQLitePCLRaw.bundle_green 2.1.11 pin used to sit here, commented as
+		  bumping the native binary PAST that advisory. It did not. 2.1.11 is the
+		  TOP of the affected range, not the first fixed release, and bundle_green
+		  was discontinued at 2.1.11 — there is no fixed version of it to reach.
+
+		  sqlite-net-pcl 1.11.285 drops bundle_green and takes its native SQLite
+		  from SourceGear.sqlite3 3.53.3, the replacement the advisory itself
+		  recommends. The pin is gone because there is nothing left to force up.
+		-->
+		<PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
 	</ItemGroup>
 
 	<PropertyGroup>

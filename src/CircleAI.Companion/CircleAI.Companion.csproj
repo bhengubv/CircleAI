@@ -32,7 +32,9 @@
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
     <ProjectReference Include="..\CircleAI.SelfBench\CircleAI.SelfBench.csproj" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <!-- 10.0.11 pulls SQLitePCLRaw lib.e_sqlite3 2.1.12, one past the
+         GHSA-2m69-gcr7-jv3q affected range (<= 2.1.11). -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
