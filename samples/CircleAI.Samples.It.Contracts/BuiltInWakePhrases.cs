@@ -37,7 +37,25 @@ public static class BuiltInWakePhrases
     public static IReadOnlyDictionary<string, string[]> Phrases { get; } =
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["en"] = ["Hey B"],
+            // "Hey B" IS THREE TOKENS, AND THE BOOK CALLS THAT CAUTION.
+            // WakePhraseBook.MinReliableTokens is 4, and its own note measures a
+            // four-token phrase at 12/12 where a shorter one is not dependable
+            // across a room. Measured on a P30 with the microphone confirmed
+            // capturing: neither a synthesised nor a human "Hey B" ever fired.
+            //
+            // "Hey Circle AI" clears both of the book's tests - four or more
+            // tokens, and "AI" is not on the everyday-words list, so it will not
+            // wake up mid-conversation the way an all-common phrase does. Note
+            // "Hey Circle" would NOT clear the second test: "hey" and "circle"
+            // are both everyday words.
+            //
+            // First in the list, so it is the default - DeviceWakePhrases falls
+            // back to all[0] when nobody has chosen.
+            //
+            // "Hey B" stays as a second option rather than being deleted: it is
+            // the product's name, somebody may already have chosen it, and the
+            // two share no token prefix so neither shadows the other.
+            ["en"] = ["Hey Circle AI", "Hey B"],
             ["ja"] = ["ビーさん", "ビーさま", "Bee san"],
             ["ko"] = ["비 님", "Bee nim"],
             ["zh"] = ["小B", "Xiao B"],

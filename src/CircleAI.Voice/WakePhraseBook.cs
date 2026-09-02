@@ -111,7 +111,22 @@ public sealed class WakePhraseBook
     public static IReadOnlyDictionary<string, string[]> CandidatesByLanguage { get; } =
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["en"] = ["Hey B"],
+            // "Hey B" IS THREE TOKENS, AND THIS FILE'S OWN RULE CALLS THAT
+            // CAUTION - MinReliableTokens is 4, and the note there measures a
+            // four-token phrase at 12/12 where a shorter one is not dependable
+            // across a room. Measured on a P30 with the microphone confirmed
+            // capturing: neither a synthesised nor a human "Hey B" ever fired.
+            //
+            // "Hey Circle AI" is first because BestFor takes the LONGEST usable
+            // candidate, and it clears both tests here: four or more tokens, and
+            // "AI" is not on the Everyday list. Note that "Hey Circle" would NOT
+            // clear the second - "hey" and "circle" are both everyday words, so
+            // it would wake up mid-conversation.
+            //
+            // "Hey B" stays: it is the product's name, and BestFor only prefers
+            // the longer one, so this remains a working fallback on a bundle
+            // whose tokenizer cannot represent the longer phrase.
+            ["en"] = ["Hey Circle AI", "Hey B"],
             ["ja"] = ["ビーさん", "ビーさま", "Bee san"],
             ["ko"] = ["비 님", "Bee nim"],
             ["zh"] = ["小B", "Xiao B"],
