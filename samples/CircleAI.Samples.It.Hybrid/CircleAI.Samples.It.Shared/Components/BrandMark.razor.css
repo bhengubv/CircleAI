@@ -65,20 +65,44 @@
 .bm-arc3 { opacity: 0.314; }
 
 /*
-    LISTENING - the arcs scale with your voice.
+    LISTENING - the arcs breathe, and your voice deepens the breath.
 
-    Driven by --bm-level, which the head sets from a real microphone level. At
-    level 0 the transform is identity, so a head that reports nothing shows a
-    still mark rather than a lie about hearing something. Each arc gains a little
-    more than the one inside it, the way the native mark widens its spread.
+    THIS USED TO BE LEVEL-ONLY, AND SO IT NEVER MOVED. Every rule here was
+    multiplied by --bm-level, which meant scale(calc(1 + 0.06 * 0)) = scale(1)
+    and a fixed opacity whenever no head reported a microphone level. No head
+    ever has: Home.razor declares _level and never assigns it, and no service in
+    either head produces one. Thinking and speaking have always had their own
+    keyframes, which is why listening was the one state that looked dead - since
+    the first commit of this file, on every build.
+
+    So the animation no longer DEPENDS on a level. The arcs breathe on their own,
+    which says "I am listening" - a statement about what the app is doing, and
+    true whether or not it can measure your voice. The level is still read, and
+    still widens the spread on top, so a head that does report one says "I am
+    listening AND I can hear you" without this rule pretending to.
+
+    That keeps the original rule intact: the mark must never imply it is hearing
+    something when it is not. A breath is not a claim about sound.
 */
 .bm-listening .bm-arc {
     transform-origin: 50% 50%;
-    transition: transform 90ms linear, opacity 90ms linear;
+    animation: bm-breathe 2.2s ease-in-out infinite;
+    transition: transform 90ms linear;
 }
-.bm-listening .bm-arc1 { transform: scale(calc(1 + 0.06 * var(--bm-level, 0))); opacity: calc(0.30 + 0.70 * var(--bm-level, 0)); }
-.bm-listening .bm-arc2 { transform: scale(calc(1 + 0.11 * var(--bm-level, 0))); opacity: calc(0.22 + 0.60 * var(--bm-level, 0)); }
-.bm-listening .bm-arc3 { transform: scale(calc(1 + 0.16 * var(--bm-level, 0))); opacity: calc(0.16 + 0.48 * var(--bm-level, 0)); }
+.bm-listening .bm-arc1 { transform: scale(calc(1 + 0.06 * var(--bm-level, 0))); --bm-dim: 0.30; --bm-lit: 0.85; animation-delay: 0s; }
+.bm-listening .bm-arc2 { transform: scale(calc(1 + 0.11 * var(--bm-level, 0))); --bm-dim: 0.22; --bm-lit: 0.70; animation-delay: 0.25s; }
+.bm-listening .bm-arc3 { transform: scale(calc(1 + 0.16 * var(--bm-level, 0))); --bm-dim: 0.16; --bm-lit: 0.55; animation-delay: 0.50s; }
+
+/*
+    A BREATH, NOT A BLINK. Two-plus seconds and eased at both ends, so it reads
+    as something waiting rather than something alerting - the arcs drift out and
+    settle the way a chest does. The floor rises with the level when there is
+    one, so a loud room lifts the whole cycle instead of replacing it.
+*/
+@keyframes bm-breathe {
+    0%, 100% { opacity: calc(var(--bm-dim, 0.22) + 0.35 * var(--bm-level, 0)); }
+    50%      { opacity: calc(var(--bm-lit, 0.70) + 0.15 * var(--bm-level, 0)); }
+}
 
 /*
     THINKING - one bright band travels outward, over and over.
@@ -126,9 +150,21 @@
     .bm-speaking .bm-arc {
         animation: none;
     }
+    /*
+        LISTENING STILL READS AS LISTENING, IT JUST DOES NOT MOVE. Now that this
+        state has an animation of its own, stopping it is not enough - stopping it
+        alone would leave the arcs wherever the keyframe floor happens to be and
+        make the state invisible again, which is the bug this pass fixed. So the
+        motion goes and the BRIGHTNESS stays: the mark is plainly lit rather than
+        plainly still.
+    */
     .bm-listening .bm-arc {
+        animation: none;
         transition: none;
     }
+    .bm-listening .bm-arc1 { opacity: 0.85; }
+    .bm-listening .bm-arc2 { opacity: 0.70; }
+    .bm-listening .bm-arc3 { opacity: 0.55; }
 }
 
 /*
