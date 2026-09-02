@@ -139,4 +139,44 @@
              Text="[CircleAI] No libwhisper.so under $(_WhisperRuntimeRoot). Speech recognition will fail on device with 'failed: libwhisper' while the abilities screen still reports Listening as ON." />
   </Target>
 
+  <!--
+    GLIBC NATIVES MUST NOT REACH AN ANDROID APK.
+
+    Microsoft.ML.OnnxRuntime ships Android support as an AAR, and separately
+    ships runtimes/linux-arm64/native/libonnxruntime.so for desktop Linux. The
+    .NET RID graph lets android-arm64 fall back through linux-bionic-arm64 to
+    linux-arm64, so NuGet offers that LINUX file to an ANDROID build. Both are
+    named libonnxruntime.so and both want lib/arm64-v8a/, so the RID-resolved
+    one overwrote the AAR's and the APK shipped a binary needing libc.so.6 and
+    libdl.so.2 - glibc names that do not exist on bionic. It cannot load:
+
+        System.DllNotFoundException: libonnxruntime.so
+
+    Measured on a P30 2026-09-02: the wake word could not start in the hybrid
+    head, and had never been able to. The AAR's own library is fine (19.1 MB,
+    needs libc.so / libdl.so / libm.so) and takes over once the impostor is gone.
+
+    Only packages whose Android build arrives as an AAR are exposed to this.
+    SourceGear.sqlite3 ships a real runtimes/android-*/native/ folder, so its
+    Android asset wins its own name - libe_sqlite3.so is correctly bionic in the
+    same APK, which is why SQLite worked while ONNX did not.
+
+    linux-bionic-* is deliberately NOT filtered: those RIDs ARE Android.
+  -->
+  <Target Name="CircleAIDropGlibcNativesFromAndroid"
+          Condition="'$(TargetPlatformIdentifier)' == 'android'"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          BeforeTargets="_CopyFilesMarkedCopyLocal;_BuildApkFastDev;_CreateBaseApk;ProcessNativeLibraries">
+    <ItemGroup>
+      <_CircleAIGlibcNative Include="@(ResolvedFileToPublish)"
+                            Condition="$([System.String]::Copy('%(Identity)').Contains('/runtimes/linux-')) And !$([System.String]::Copy('%(Identity)').Contains('/runtimes/linux-bionic'))" />
+      <ResolvedFileToPublish Remove="@(_CircleAIGlibcNative)" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+                                    Condition="$([System.String]::Copy('%(Identity)').Contains('/runtimes/linux-')) And !$([System.String]::Copy('%(Identity)').Contains('/runtimes/linux-bionic'))" />
+    </ItemGroup>
+    <Message Importance="high"
+             Condition="'@(_CircleAIGlibcNative)' != ''"
+             Text="[CircleAI] Dropped @(_CircleAIGlibcNative->Count()) glibc native(s) that the RID graph offered to this Android build." />
+  </Target>
+
 </Project>
