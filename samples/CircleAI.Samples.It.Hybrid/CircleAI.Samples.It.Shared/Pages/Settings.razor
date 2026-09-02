@@ -22,6 +22,7 @@
 @inject IVoiceHost Voice
 @inject IDeviceFacts Facts
 @inject IJSRuntime JS
+@inject IResidentAssistant Resident
 
 <div class="tabs" role="tablist">
     @for (var i = 0; i < TabNames.Length; i++)
@@ -316,6 +317,27 @@ else
             <input type="checkbox" checked="@_light" @onchange="ToggleTheme" />
         </label>
 
+        @*
+            THE MOST CONSEQUENTIAL SETTING ON THIS TAB, which is why it sits
+            with the phone's own settings rather than under Mode. Off, this is
+            an assistant you have to open; on, it answers to its name with the
+            screen dark.
+
+            `checked` reads IsListening LIVE. Android owns the service and may
+            recreate it, and Huawei, Xiaomi, Oppo and Vivo kill foreground
+            services on their own schedule - so a remembered bool would drift
+            from what the microphone is actually doing, and the control would
+            claim to be listening when it is not.
+        *@
+        <label class="row">
+            <span class="row-text">
+                <span class="row-title">Answer to its name</span>
+                <span class="row-sub">@ResidentSub</span>
+            </span>
+            <input type="checkbox" checked="@Resident.IsListening" disabled="@_residentBusy"
+                   @onchange="ToggleResident" />
+        </label>
+
         @if (_trouble is not null)
         {
             <p class="warn">@_trouble</p>
@@ -396,6 +418,42 @@ else
 }
 
 @code {
+    // What the last attempt said. Null until somebody touches the control -
+    // there is nothing honest to report before then.
+    string? _residentHint;
+    bool _residentBusy;
+
+    string ResidentSub => _residentHint
+        ?? (Resident.IsListening
+            ? "It answers to its name with the screen off."
+            : "Listen for the wake phrase with the screen off.");
+
+    /// <summary>Turns the resident listener on or off, and says what happened.</summary>
+    /// <remarks>
+    /// The hint comes from the service, not from this screen: it is the one that
+    /// knows whether the microphone was refused, the wake bundle is missing, or
+    /// something else already holds the device.
+    /// </remarks>
+    async Task ToggleResident(ChangeEventArgs e)
+    {
+        _residentBusy = true;
+        try
+        {
+            var status = e.Value is true
+                ? await Resident.StartAsync()
+                : await Resident.StopAsync();
+            _residentHint = status.Hint;
+        }
+        catch (Exception ex)
+        {
+            _residentHint = ex.Message;
+        }
+        finally
+        {
+            _residentBusy = false;
+        }
+    }
+
     /// <summary>
     /// Named after the thing being changed.
     /// </summary>

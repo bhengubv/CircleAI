@@ -55,6 +55,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<ISetup, DeviceSetup>();
         builder.Services.AddSingleton<IConversation, DeviceConversation>();
         builder.Services.AddSingleton<IProfile, DeviceProfile>();
+        builder.Services.AddSingleton<IResidentAssistant, DeviceResidentAssistant>();
 
         builder.Services.AddMauiBlazorWebView();
 

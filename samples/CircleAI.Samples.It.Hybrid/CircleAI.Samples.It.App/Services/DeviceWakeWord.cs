@@ -235,7 +235,7 @@ public sealed class DeviceWakeWord : IWakeWord
     /// a half-finished download leaves a directory with no model in it, and that
     /// must read as "not installed" rather than crash the listener.
     /// </remarks>
-    private static string? FindBundle()
+    internal static string? FindBundle()
     {
         try
         {

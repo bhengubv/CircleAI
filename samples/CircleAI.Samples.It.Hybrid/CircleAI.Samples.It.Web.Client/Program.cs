@@ -27,5 +27,6 @@ builder.Services.AddSingleton<ISettings, BrowserSettings>();
 builder.Services.AddSingleton<ISetup, BrowserSetup>();
 builder.Services.AddSingleton<IConversation, BrowserConversation>();
 builder.Services.AddSingleton<IProfile, BrowserProfile>();
+builder.Services.AddSingleton<IResidentAssistant, BrowserResidentAssistant>();
 
 await builder.Build().RunAsync();

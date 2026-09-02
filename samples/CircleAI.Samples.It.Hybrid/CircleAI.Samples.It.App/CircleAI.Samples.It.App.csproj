@@ -160,6 +160,15 @@
          in a way that only shows up as "it cuts me off". -->
     <Compile Include="..\..\CircleAI.Samples.It.Android\VoiceTurn.cs"
              Link="Shared\VoiceTurn.cs" />
+    <!--
+      The wake detector, LINKED not reimplemented, for the same reason VoiceTurn
+      is: it judges a candidate phrase against the bundle's own tokenizer and
+      falls back to English when the model cannot hear it. It takes the language
+      as a PARAMETER and carries no store, so it ports cleanly. Its caller does
+      not - see the note at the top of DeviceResidentAssistant.
+    -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\ResidentWakeWord.cs"
+             Link="Shared\ResidentWakeWord.cs" />
   </ItemGroup>
 
   <!--

@@ -946,7 +946,10 @@ public class MainActivity : Activity
     {
         try
         {
-            var folder = ResidentWakeWord.SideloadedBundleFolder(this);
+            // Asked of WakeWordActivity directly. ResidentWakeWord used to
+            // forward this call, which tied the detector builder to a screen
+            // and was the one thing stopping it being shared with the hybrid.
+            var folder = WakeWordActivity.SideloadedBundle(this);
             if (folder is null) return;
 
             using var registry = new CircleAI.Core.Models.ModelRegistryService();

@@ -71,17 +71,23 @@ lines, and `NotFound.razor` at 16 is a 404 by design.
 | Greeting cycle | `HomeActivity.SpeakNext` | in — `Home.razor` cycles zu → af → st → sw → en through `Voice.SpeakAsync` while the brain is still arriving |
 | Language read-out line | `HomeActivity._lang` | in — `Home.razor` renders "Answering in …", deliberately empty until a turn has been heard |
 | **Battery exemption prompt** | `HomeActivity.AskToKeepRunning` | ✅ **corrected** — **in**, not missing. `DeviceSetup.AllowBackgroundAsync` is ported "vendor list and all" (Huawei, Xiaomi, Oppo, Vivo: standard intent first, vendor screen after, every call wrapped), and it is WIRED — `Setup.razor:202` calls it. This row previously read *missing*, on the step it itself calls the one that decides whether the rest survives. |
-| **Always-on assistant** | `ResidentAssistant` | **missing** — verified: no mention anywhere in the hybrid |
+| Always-on assistant | `ResidentAssistant` | in — `DeviceResidentAssistant`, turned on at Settings › Phone › "Answer to its name". `ResidentWakeWord` is LINKED from the native head; the orchestration around it is re-expressed against `ISpokenLanguage` rather than copied, because the native file reads its own SharedPreferences store and this app would then have two. Not yet exercised on hardware. |
 | **Start on boot** | `BootReceiver` | **missing** — verified: no mention anywhere in the hybrid |
 | **Earcons** | `Earcon` | **missing** — verified: no mention anywhere in the hybrid. The sounds that say it heard you. |
 | Sideloaded bundle import | `ItTtsProbe`, `WakeWordActivity` | partial — `DeviceVoiceHost` carries the sideload-before-download path; the wake screen's does not |
 
 ## The shape of what is left
 
-Three behaviours, and they are one capability wearing three hats: **staying
-alive to listen.** `ResidentAssistant` (the always-on loop), `BootReceiver`
-(surviving a restart) and `Earcon` (the sound that says it heard you) are the
-difference between an assistant and a demo you have to open.
+Two behaviours, both parts of one capability: **staying alive to listen.**
+`ResidentAssistant` — the always-on loop itself — is now in. What remains is
+`BootReceiver` (surviving a restart) and `Earcon` (the sound that says it heard
+you).
+
+On the boot receiver, note the platform rule before treating it as a gap: from
+Android 14 a microphone foreground service may NOT be started from
+`BOOT_COMPLETED` at all. A boot receiver would bring the service back, not the
+listening — after a reboot that needs one deliberate tap, by rule rather than by
+omission.
 
 The battery-exemption prompt used to be counted here and is not a gap — it is
 implemented and reachable, which matters because it is the piece the other three

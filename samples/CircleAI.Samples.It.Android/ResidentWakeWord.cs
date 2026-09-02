@@ -41,10 +41,6 @@ public sealed class ResidentWakeWord : IResidentListener
     public Task StopAsync(CancellationToken ct = default) => _detector.StopAsync(ct);
     public ValueTask DisposeAsync() => _detector.DisposeAsync();
 
-    /// <summary>Where a side-loaded wake bundle sits, if the owner put one there.</summary>
-    public static string? SideloadedBundleFolder(Android.Content.Context c) =>
-        WakeWordActivity.SideloadedBundle(c);
-
     /// <summary>
     /// Builds the detector this device should use and hands it to the service.
     /// </summary>
