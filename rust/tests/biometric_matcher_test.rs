@@ -25,11 +25,55 @@ struct CosineSimilarityVector {
     expected_is_match_at_threshold_0_85: Option<bool>,
 }
 
+/// A pair that MUST be refused. No expected value: the contract is that there
+/// is no answer, which is why these live in their own array. `description` is
+/// omitted — serde ignores unknown fields.
+#[derive(Debug, Deserialize)]
+struct MismatchVector {
+    id: String,
+    a: Vec<f32>,
+    b: Vec<f32>,
+}
+
 #[derive(Debug, Deserialize)]
 struct Fixture {
     // The shared fixture JSON uses snake_case keys (cosine_similarity_vectors);
     // no rename_all so the field maps directly.
     cosine_similarity_vectors: Vec<CosineSimilarityVector>,
+    dimension_mismatch_vectors: Vec<MismatchVector>,
+}
+
+#[test]
+fn test_dimension_mismatch_vectors_are_refused() {
+    let fixture = load_fixture();
+    assert!(
+        !fixture.dimension_mismatch_vectors.is_empty(),
+        "Expected dimension_mismatch_vectors to be non-empty"
+    );
+
+    // cosine_similarity refuses by panicking (assert_eq! on the lengths), so
+    // the refusal is caught rather than returned. The panic hook is silenced
+    // first — three deliberate panics would otherwise bury the real output.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+
+    let outcomes: Vec<(String, bool)> = fixture
+        .dimension_mismatch_vectors
+        .iter()
+        .map(|v| {
+            let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                BiometricMatcher::cosine_similarity(&v.a, &v.b)
+            }))
+            .is_err();
+            (v.id.clone(), refused)
+        })
+        .collect();
+
+    std::panic::set_hook(previous);
+
+    for (id, refused) in outcomes {
+        assert!(refused, "[{}] returned a score instead of refusing", id);
+    }
 }
 
 fn load_fixture() -> Fixture {
