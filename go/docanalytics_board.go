@@ -280,7 +280,7 @@ type NullDocumentTracker struct{}
 // NullDocumentTrackerInstance is the shared singleton.
 var NullDocumentTrackerInstance = NullDocumentTracker{}
 
-func (NullDocumentTracker) BackendID() string                          { return "null" }
+func (NullDocumentTracker) BackendID() string                              { return "null" }
 func (NullDocumentTracker) RecordView(context.Context, DocumentView) error { return nil }
 func (NullDocumentTracker) ListViews(context.Context, string) ([]DocumentView, error) {
 	return []DocumentView{}, nil

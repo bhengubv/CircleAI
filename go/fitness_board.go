@@ -45,11 +45,11 @@ type FitnessGoal struct {
 
 // ExerciseSet is one set within a workout. Ports the ExerciseSet record.
 type ExerciseSet struct {
-	SetId      string
-	WorkoutId  string
-	Exercise   string
-	Reps       int
-	WeightKg   float64
+	SetId     string
+	WorkoutId string
+	Exercise  string
+	Reps      int
+	WeightKg  float64
 }
 
 // FitnessBoard is the workouts/goals/sets board. Ports IFitnessBoard.

@@ -21,9 +21,9 @@ import (
 // capturingGenerator records the prompt it was handed and returns a canned reply
 // / chunks.
 type capturingGenerator struct {
-	reply       string
-	chunks      []string
-	lastMsgs    []circleai.ChatMessage
+	reply    string
+	chunks   []string
+	lastMsgs []circleai.ChatMessage
 }
 
 func (g *capturingGenerator) Generate(_ context.Context, messages []circleai.ChatMessage, _ *circleai.GenerationOptions) (string, error) {

@@ -26,15 +26,15 @@ import (
 // Flight is a flight segment. Ports the Flight record. Price uses the shared
 // exact Decimal.
 type Flight struct {
-	FlightId   string
-	From       string
-	To         string
-	DepartUtc  time.Time
-	ArriveUtc  time.Time
-	Carrier    string
-	Cabin      string
-	Price      Decimal
-	Currency   string
+	FlightId  string
+	From      string
+	To        string
+	DepartUtc time.Time
+	ArriveUtc time.Time
+	Carrier   string
+	Cabin     string
+	Price     Decimal
+	Currency  string
 }
 
 // HotelStay is a hotel stay. Ports the HotelStay record. NightlyRate uses the

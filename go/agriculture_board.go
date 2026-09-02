@@ -42,9 +42,9 @@ type Crop struct {
 
 // YieldRecord is a harvest yield for a crop. Ports the YieldRecord record.
 type YieldRecord struct {
-	CropId       string
-	TonsPerHa    float64
-	HarvestedOn  time.Time
+	CropId      string
+	TonsPerHa   float64
+	HarvestedOn time.Time
 }
 
 // FarmBoard is the fields/crops/yields board. Ports IFarmBoard.

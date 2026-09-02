@@ -37,11 +37,11 @@ type LatLon struct {
 
 // GeoTile is a map tile with its image bytes. Ports GeoTile.
 type GeoTile struct {
-	Z         int
-	X         int
-	Y         int
+	Z          int
+	X          int
+	Y          int
 	ImageBytes []byte
-	MimeType  string
+	MimeType   string
 }
 
 // RadarReturn is a single radar return. Ports RadarReturn.

@@ -43,12 +43,12 @@ type HealthAppointment struct {
 
 // Prescription is a prescribed medication. Ports the Prescription record.
 type Prescription struct {
-	RxId          string
-	PatientId     string
+	RxId           string
+	PatientId      string
 	MedicationName string
-	Dose          string
-	Frequency     string
-	PrescribedUtc time.Time
+	Dose           string
+	Frequency      string
+	PrescribedUtc  time.Time
 }
 
 // HealthcareBoard is the healthcare operations board. Ports IHealthcareBoard.

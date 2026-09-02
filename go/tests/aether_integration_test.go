@@ -151,10 +151,10 @@ func NewSimpleCompanionSession(
 	}
 }
 
-func (s *SimpleCompanionSession) SessionID() string                      { return s.sessionID }
-func (s *SimpleCompanionSession) IdentityID() string                     { return s.identityID }
-func (s *SimpleCompanionSession) Interface() circleai.InterfaceKind      { return s.iface }
-func (s *SimpleCompanionSession) GetContext() circleai.CompanionContext   { return s.compCtx }
+func (s *SimpleCompanionSession) SessionID() string                     { return s.sessionID }
+func (s *SimpleCompanionSession) IdentityID() string                    { return s.identityID }
+func (s *SimpleCompanionSession) Interface() circleai.InterfaceKind     { return s.iface }
+func (s *SimpleCompanionSession) GetContext() circleai.CompanionContext { return s.compCtx }
 
 func (s *SimpleCompanionSession) buildSystemPrompt() string {
 	var sb strings.Builder
@@ -516,10 +516,10 @@ func TestAetherNode_AffectStateIntegration(t *testing.T) {
 			t.Errorf("%s: want %.5f, got %.5f", name, want, got)
 		}
 	}
-	checkF32("engagement",  state.Engagement,  0.52)
+	checkF32("engagement", state.Engagement, 0.52)
 	checkF32("uncertainty", state.Uncertainty, 0.18)
-	checkF32("rapport",     state.Rapport,     0.01)
-	checkF32("energy",      state.Energy,      0.5)
+	checkF32("rapport", state.Rapport, 0.01)
+	checkF32("energy", state.Energy, 0.5)
 
 	// Compose updated affect into a CompanionContext — the standard Aether pipeline.
 	lang := "zu"
@@ -569,7 +569,7 @@ func TestAetherNode_LanguageRegistryIntegration(t *testing.T) {
 		DisplayName:       "Nomvula",
 		PreferredLanguage: &lang,
 		Interface:         circleai.InterfaceKindIoT,
-		ContextBuiltAt:   time.Now().UTC(),
+		ContextBuiltAt:    time.Now().UTC(),
 	}
 
 	gen := &MockChatGenerator{Response: "Sawubona, Nomvula!"}

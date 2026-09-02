@@ -214,11 +214,11 @@ func (d *LocalAgentDispatcher) Dispatch(ctx context.Context, task AgentTask) (Sw
 		return handler(ctx, task)
 	}
 	return SwarmResult{
-		TaskID: task.ID,
-		Role:   task.Role,
-		Status: AgentStatusBlocked,
-		Output: fmt.Sprintf("No handler registered for role %s.", task.Role),
-		Issues: []string{fmt.Sprintf("Register a handler for AgentRole.%s before dispatching.", task.Role)},
+		TaskID:      task.ID,
+		Role:        task.Role,
+		Status:      AgentStatusBlocked,
+		Output:      fmt.Sprintf("No handler registered for role %s.", task.Role),
+		Issues:      []string{fmt.Sprintf("Register a handler for AgentRole.%s before dispatching.", task.Role)},
 		CompletedAt: time.Now().UTC(),
 	}, nil
 }

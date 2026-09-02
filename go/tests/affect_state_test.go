@@ -22,17 +22,17 @@ import (
 // ---------------------------------------------------------------------------
 
 type affectFixture struct {
-	Epsilon float64          `json:"epsilon"`
-	Vectors []affectVector   `json:"vectors"`
+	Epsilon float64        `json:"epsilon"`
+	Vectors []affectVector `json:"vectors"`
 }
 
 type affectVector struct {
-	ID          string          `json:"id"`
-	Description string          `json:"description"`
-	Input       affectDims      `json:"input"`
-	Operation   string          `json:"operation"`
+	ID             string                 `json:"id"`
+	Description    string                 `json:"description"`
+	Input          affectDims             `json:"input"`
+	Operation      string                 `json:"operation"`
 	OperationParam map[string]interface{} `json:"operationParam"`
-	Expected    affectDims      `json:"expected"`
+	Expected       affectDims             `json:"expected"`
 }
 
 type affectDims struct {
@@ -150,11 +150,11 @@ func TestAffectStateVectors(t *testing.T) {
 				t.Fatalf("unknown operation: %q", v.Operation)
 			}
 
-			assertDim(t, v.ID, "curiosity",   state.Curiosity,   v.Expected.Curiosity,   epsilon)
-			assertDim(t, v.ID, "engagement",  state.Engagement,  v.Expected.Engagement,  epsilon)
+			assertDim(t, v.ID, "curiosity", state.Curiosity, v.Expected.Curiosity, epsilon)
+			assertDim(t, v.ID, "engagement", state.Engagement, v.Expected.Engagement, epsilon)
 			assertDim(t, v.ID, "uncertainty", state.Uncertainty, v.Expected.Uncertainty, epsilon)
-			assertDim(t, v.ID, "rapport",     state.Rapport,     v.Expected.Rapport,     epsilon)
-			assertDim(t, v.ID, "energy",      state.Energy,      v.Expected.Energy,      epsilon)
+			assertDim(t, v.ID, "rapport", state.Rapport, v.Expected.Rapport, epsilon)
+			assertDim(t, v.ID, "energy", state.Energy, v.Expected.Energy, epsilon)
 		})
 	}
 }
@@ -192,9 +192,9 @@ func TestNewAffectState_Defaults(t *testing.T) {
 	if state.UserID != "u1" {
 		t.Errorf("UserID: got %q, want %q", state.UserID, "u1")
 	}
-	assertDim(t, "defaults", "curiosity",   state.Curiosity,   0.5, 1e-7)
-	assertDim(t, "defaults", "engagement",  state.Engagement,  0.5, 1e-7)
+	assertDim(t, "defaults", "curiosity", state.Curiosity, 0.5, 1e-7)
+	assertDim(t, "defaults", "engagement", state.Engagement, 0.5, 1e-7)
 	assertDim(t, "defaults", "uncertainty", state.Uncertainty, 0.2, 1e-7)
-	assertDim(t, "defaults", "rapport",     state.Rapport,     0.0, 1e-7)
-	assertDim(t, "defaults", "energy",      state.Energy,      0.5, 1e-7)
+	assertDim(t, "defaults", "rapport", state.Rapport, 0.0, 1e-7)
+	assertDim(t, "defaults", "energy", state.Energy, 0.5, 1e-7)
 }

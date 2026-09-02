@@ -31,14 +31,14 @@ type IAIObserver interface {
 // AIObserverBase is a no-op implementation hosts can embed.
 type AIObserverBase struct{}
 
-func (AIObserverBase) OnStarted(_ context.Context) error                                 { return nil }
-func (AIObserverBase) OnStopped(_ context.Context) error                                 { return nil }
-func (AIObserverBase) OnChatCompleted(_ context.Context, _ ChatResponse) error           { return nil }
-func (AIObserverBase) OnStreamStarted(_ context.Context, _ string) error                 { return nil }
-func (AIObserverBase) OnStreamCompleted(_ context.Context, _ string, _ int) error        { return nil }
-func (AIObserverBase) OnToolInvoked(_ context.Context, _ string, _ bool) error           { return nil }
-func (AIObserverBase) OnModelFetching(_ context.Context, _ string, _ bool) error         { return nil }
-func (AIObserverBase) OnUpgradeAvailable(_ context.Context, _ UpgradeInfo) error         { return nil }
+func (AIObserverBase) OnStarted(_ context.Context) error                          { return nil }
+func (AIObserverBase) OnStopped(_ context.Context) error                          { return nil }
+func (AIObserverBase) OnChatCompleted(_ context.Context, _ ChatResponse) error    { return nil }
+func (AIObserverBase) OnStreamStarted(_ context.Context, _ string) error          { return nil }
+func (AIObserverBase) OnStreamCompleted(_ context.Context, _ string, _ int) error { return nil }
+func (AIObserverBase) OnToolInvoked(_ context.Context, _ string, _ bool) error    { return nil }
+func (AIObserverBase) OnModelFetching(_ context.Context, _ string, _ bool) error  { return nil }
+func (AIObserverBase) OnUpgradeAvailable(_ context.Context, _ UpgradeInfo) error  { return nil }
 
 // AIOptions is the host configuration bag.
 type AIOptions struct {
@@ -48,8 +48,8 @@ type AIOptions struct {
 
 	// Inference
 	SystemPrompt string
-	ContextSize  int     // 0 = derive from DeviceTierDefaults.ContextWindow
-	ThreadCount  int     // 0 = inference layer default
+	ContextSize  int // 0 = derive from DeviceTierDefaults.ContextWindow
+	ThreadCount  int // 0 = inference layer default
 	WarmOnStart  bool
 
 	// Sensorium
@@ -87,13 +87,13 @@ func DefaultAIOptions() AIOptions {
 type AgentMessageKind int
 
 const (
-	AgentMessageDiscover         AgentMessageKind = 0
-	AgentMessageGreet            AgentMessageKind = 1
-	AgentMessageCapabilityQuery  AgentMessageKind = 2
-	AgentMessageInvoke           AgentMessageKind = 3
-	AgentMessageResponse         AgentMessageKind = 4
-	AgentMessageDecline          AgentMessageKind = 5
-	AgentMessageHeartbeat        AgentMessageKind = 6
+	AgentMessageDiscover        AgentMessageKind = 0
+	AgentMessageGreet           AgentMessageKind = 1
+	AgentMessageCapabilityQuery AgentMessageKind = 2
+	AgentMessageInvoke          AgentMessageKind = 3
+	AgentMessageResponse        AgentMessageKind = 4
+	AgentMessageDecline         AgentMessageKind = 5
+	AgentMessageHeartbeat       AgentMessageKind = 6
 )
 
 // AgentMessage is a signed, content-typed envelope between two agents.

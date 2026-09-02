@@ -41,15 +41,15 @@ type EndpointResult struct {
 
 // HTTP status codes the endpoints emit (subset, named for clarity).
 const (
-	statusOK                   = 200
-	statusNoContent            = 204
-	statusBadRequest           = 400
-	statusUnauthorized         = 401
-	statusNotFound             = 404
-	statusRequestTimeout       = 504
-	statusServiceUnavailable   = 503
-	statusInsufficientStorage  = 507
-	statusInternalServerError  = 500
+	statusOK                  = 200
+	statusNoContent           = 204
+	statusBadRequest          = 400
+	statusUnauthorized        = 401
+	statusNotFound            = 404
+	statusRequestTimeout      = 504
+	statusServiceUnavailable  = 503
+	statusInsufficientStorage = 507
+	statusInternalServerError = 500
 )
 
 // InferenceServer is the in-memory handler surface for the inference server's

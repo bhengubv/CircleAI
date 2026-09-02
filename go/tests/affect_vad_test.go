@@ -30,10 +30,10 @@ type affectVadFixture struct {
 }
 
 type affectVadCase struct {
-	ID          string         `json:"id"`
-	Description string         `json:"description"`
-	Input       affectDims     `json:"input"`
-	Expected    vadDims        `json:"expected"`
+	ID          string     `json:"id"`
+	Description string     `json:"description"`
+	Input       affectDims `json:"input"`
+	Expected    vadDims    `json:"expected"`
 }
 
 type vadDims struct {
@@ -95,8 +95,8 @@ func TestAffectStateToVad_Vectors(t *testing.T) {
 
 			vad := state.ToVad()
 
-			assertVadDim(t, v.ID, "valence",   vad.Valence,   v.Expected.Valence,   epsilon)
-			assertVadDim(t, v.ID, "arousal",   vad.Arousal,   v.Expected.Arousal,   epsilon)
+			assertVadDim(t, v.ID, "valence", vad.Valence, v.Expected.Valence, epsilon)
+			assertVadDim(t, v.ID, "arousal", vad.Arousal, v.Expected.Arousal, epsilon)
 			assertVadDim(t, v.ID, "dominance", vad.Dominance, v.Expected.Dominance, epsilon)
 		})
 	}
@@ -170,7 +170,7 @@ func TestAffectStateToVad_DefaultStateMatchesFixture(t *testing.T) {
 
 	// NewAffectState produces curiosity=0.5, engagement=0.5, uncertainty=0.2,
 	// rapport=0, energy=0.5 — matches the "default_state" fixture vector.
-	assertVadDim(t, "default_state", "valence",   vad.Valence,   0.43333333, epsilon)
-	assertVadDim(t, "default_state", "arousal",   vad.Arousal,   0.425,      epsilon)
-	assertVadDim(t, "default_state", "dominance", vad.Dominance, 0.65,       epsilon)
+	assertVadDim(t, "default_state", "valence", vad.Valence, 0.43333333, epsilon)
+	assertVadDim(t, "default_state", "arousal", vad.Arousal, 0.425, epsilon)
+	assertVadDim(t, "default_state", "dominance", vad.Dominance, 0.65, epsilon)
 }

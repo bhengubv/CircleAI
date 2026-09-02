@@ -316,8 +316,8 @@ type NullCodeIndexer struct{}
 // NullCodeIndexerInstance is the shared singleton.
 var NullCodeIndexerInstance = NullCodeIndexer{}
 
-func (NullCodeIndexer) BackendID() string                            { return "null" }
-func (NullCodeIndexer) Index(context.Context, string) error          { return nil }
+func (NullCodeIndexer) BackendID() string                   { return "null" }
+func (NullCodeIndexer) Index(context.Context, string) error { return nil }
 func (NullCodeIndexer) CountSymbols(context.Context, string) (int, error) {
 	return 0, nil
 }

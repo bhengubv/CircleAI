@@ -15,10 +15,10 @@ import "context"
 type WritingSystem int
 
 const (
-	WritingSystemLatin      WritingSystem = iota
+	WritingSystemLatin WritingSystem = iota
 	WritingSystemArabic
 	WritingSystemEthiopic
-	WritingSystemGeez       // alias for Ethiopic in the C# original; kept for completeness
+	WritingSystemGeez // alias for Ethiopic in the C# original; kept for completeness
 	WritingSystemDevanagari
 	WritingSystemHan
 	WritingSystemCyrillic
@@ -101,19 +101,19 @@ type ScriptNormalisationResult struct {
 
 // Africa
 var (
-	LangIsiZulu  = LanguageTag{BcpTag: "zu", EnglishName: "isiZulu", NativeName: "isiZulu", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
-	LangSesotho  = LanguageTag{BcpTag: "st", EnglishName: "Sesotho", NativeName: "Sesotho", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
+	LangIsiZulu   = LanguageTag{BcpTag: "zu", EnglishName: "isiZulu", NativeName: "isiZulu", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
+	LangSesotho   = LanguageTag{BcpTag: "st", EnglishName: "Sesotho", NativeName: "Sesotho", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
 	LangAfrikaans = LanguageTag{BcpTag: "af", EnglishName: "Afrikaans", NativeName: "Afrikaans", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
-	LangSwahili  = LanguageTag{BcpTag: "sw", EnglishName: "Swahili", NativeName: "Kiswahili", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "KE"}
-	LangHausa    = LanguageTag{BcpTag: "ha", EnglishName: "Hausa", NativeName: "Hausa", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
-	LangAmharic  = LanguageTag{BcpTag: "am", EnglishName: "Amharic", NativeName: "አማርኛ", WritingSystem: WritingSystemEthiopic, IsRtl: false, PrimaryRegion: "ET"}
-	LangYoruba   = LanguageTag{BcpTag: "yo", EnglishName: "Yoruba", NativeName: "Yorùbá", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
-	LangIgbo     = LanguageTag{BcpTag: "ig", EnglishName: "Igbo", NativeName: "Igbo", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
-	LangXhosa    = LanguageTag{BcpTag: "xh", EnglishName: "isiXhosa", NativeName: "isiXhosa", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
-	LangSepedi   = LanguageTag{BcpTag: "nso", EnglishName: "Sepedi", NativeName: "Sepedi", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
-	LangSetswana = LanguageTag{BcpTag: "tn", EnglishName: "Setswana", NativeName: "Setswana", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
-	LangSomali   = LanguageTag{BcpTag: "so", EnglishName: "Somali", NativeName: "Soomaali", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "SO"}
-	LangOromo    = LanguageTag{BcpTag: "om", EnglishName: "Oromo", NativeName: "Afaan Oromoo", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ET"}
+	LangSwahili   = LanguageTag{BcpTag: "sw", EnglishName: "Swahili", NativeName: "Kiswahili", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "KE"}
+	LangHausa     = LanguageTag{BcpTag: "ha", EnglishName: "Hausa", NativeName: "Hausa", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
+	LangAmharic   = LanguageTag{BcpTag: "am", EnglishName: "Amharic", NativeName: "አማርኛ", WritingSystem: WritingSystemEthiopic, IsRtl: false, PrimaryRegion: "ET"}
+	LangYoruba    = LanguageTag{BcpTag: "yo", EnglishName: "Yoruba", NativeName: "Yorùbá", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
+	LangIgbo      = LanguageTag{BcpTag: "ig", EnglishName: "Igbo", NativeName: "Igbo", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "NG"}
+	LangXhosa     = LanguageTag{BcpTag: "xh", EnglishName: "isiXhosa", NativeName: "isiXhosa", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
+	LangSepedi    = LanguageTag{BcpTag: "nso", EnglishName: "Sepedi", NativeName: "Sepedi", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
+	LangSetswana  = LanguageTag{BcpTag: "tn", EnglishName: "Setswana", NativeName: "Setswana", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ZA"}
+	LangSomali    = LanguageTag{BcpTag: "so", EnglishName: "Somali", NativeName: "Soomaali", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "SO"}
+	LangOromo     = LanguageTag{BcpTag: "om", EnglishName: "Oromo", NativeName: "Afaan Oromoo", WritingSystem: WritingSystemLatin, IsRtl: false, PrimaryRegion: "ET"}
 )
 
 // Middle East & North Africa

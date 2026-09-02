@@ -245,7 +245,7 @@ type NullDashboardPublisher struct{}
 // NullDashboardPublisherInstance is the shared singleton.
 var NullDashboardPublisherInstance = NullDashboardPublisher{}
 
-func (NullDashboardPublisher) BackendID() string                          { return "null" }
+func (NullDashboardPublisher) BackendID() string                            { return "null" }
 func (NullDashboardPublisher) Publish(context.Context, DashboardSpec) error { return nil }
 
 var (

@@ -65,11 +65,11 @@ type PersonalBest struct {
 // TrainingSession is a scheduled training session. Ports the TrainingSession
 // record.
 type TrainingSession struct {
-	SessionId   string
-	UserId      string
-	Plan        string
+	SessionId    string
+	UserId       string
+	Plan         string
 	ScheduledUtc time.Time
-	Completed   bool
+	Completed    bool
 }
 
 // SportsBoard is the activities/sessions/personal-bests board. Ports

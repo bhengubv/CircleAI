@@ -682,12 +682,12 @@ func (c *MsGraphCalendarConnector) CreateEvent(ctx context.Context, ev CalendarE
 		return CalendarEvent{}, err
 	}
 	body := map[string]interface{}{
-		"subject":  ev.Title,
-		"body":     map[string]interface{}{"contentType": "text", "content": derefOr(ev.Description, "")},
-		"start":    map[string]interface{}{"dateTime": isoRoundTrip(ev.StartUtc), "timeZone": "UTC"},
-		"end":      map[string]interface{}{"dateTime": isoRoundTrip(ev.EndUtc), "timeZone": "UTC"},
-		"isAllDay": ev.IsAllDay,
-		"location": map[string]interface{}{"displayName": derefOr(ev.Location, "")},
+		"subject":   ev.Title,
+		"body":      map[string]interface{}{"contentType": "text", "content": derefOr(ev.Description, "")},
+		"start":     map[string]interface{}{"dateTime": isoRoundTrip(ev.StartUtc), "timeZone": "UTC"},
+		"end":       map[string]interface{}{"dateTime": isoRoundTrip(ev.EndUtc), "timeZone": "UTC"},
+		"isAllDay":  ev.IsAllDay,
+		"location":  map[string]interface{}{"displayName": derefOr(ev.Location, "")},
 		"attendees": msGraphAttendees(ev.Attendees),
 	}
 	payload, _ := json.Marshal(body)

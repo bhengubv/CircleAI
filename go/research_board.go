@@ -24,12 +24,12 @@ import (
 // ResearchPaper is a single paper. Ports the ResearchPaper record. Doi is a
 // *string to model the nullable field.
 type ResearchPaper struct {
-	PaperID       string
-	Title         string
-	Authors       []string
-	Abstract      string
+	PaperID        string
+	Title          string
+	Authors        []string
+	Abstract       string
 	PublishedAtUTC time.Time
-	Doi           *string
+	Doi            *string
 }
 
 // Citation is a directed citation edge with context. Ports Citation.

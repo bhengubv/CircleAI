@@ -24,13 +24,13 @@ import (
 
 // CivicIssue is a reported civic issue. Ports the CivicIssue record.
 type CivicIssue struct {
-	IssueId      string
-	Category     string
-	Description  string
-	Lat          float64
-	Lon          float64
-	ReportedUtc  time.Time
-	Status       string
+	IssueId     string
+	Category    string
+	Description string
+	Lat         float64
+	Lon         float64
+	ReportedUtc time.Time
+	Status      string
 }
 
 // Representative is an elected/appointed representative. Ports the

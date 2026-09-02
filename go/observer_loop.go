@@ -384,20 +384,20 @@ var _ IObservationLoop = (*InMemoryObservationLoop)(nil)
 // NullSensor is a fail-safe no-op sensor. Ports NullSensor.
 type NullSensor struct{}
 
-func (NullSensor) SensorID() string                                          { return "null" }
-func (NullSensor) Kind() string                                              { return "null" }
-func (NullSensor) BackendID() string                                         { return "null" }
-func (NullSensor) Start(context.Context) error                               { return nil }
-func (NullSensor) Stop(context.Context) error                                { return nil }
-func (NullSensor) Subscribe(func(SensorReading)) (unsubscribe func())        { return func() {} }
+func (NullSensor) SensorID() string                                   { return "null" }
+func (NullSensor) Kind() string                                       { return "null" }
+func (NullSensor) BackendID() string                                  { return "null" }
+func (NullSensor) Start(context.Context) error                        { return nil }
+func (NullSensor) Stop(context.Context) error                         { return nil }
+func (NullSensor) Subscribe(func(SensorReading)) (unsubscribe func()) { return func() {} }
 
 // NullObservationLoop is a fail-safe no-op loop. Ports NullObservationLoop.
 type NullObservationLoop struct{}
 
-func (NullObservationLoop) BackendID() string                              { return "null" }
-func (NullObservationLoop) Start(context.Context, time.Duration) error     { return nil }
-func (NullObservationLoop) Stop(context.Context) error                     { return nil }
-func (NullObservationLoop) Subscribe(func(ObservationTick)) (func()) {
+func (NullObservationLoop) BackendID() string                          { return "null" }
+func (NullObservationLoop) Start(context.Context, time.Duration) error { return nil }
+func (NullObservationLoop) Stop(context.Context) error                 { return nil }
+func (NullObservationLoop) Subscribe(func(ObservationTick)) func() {
 	return func() {}
 }
 func (NullObservationLoop) Dispose() {}

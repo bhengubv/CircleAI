@@ -309,8 +309,8 @@ func (NullOpticalCharacterRecognizer) Recognize(context.Context, []byte, string)
 
 // Interface guards.
 var (
-	_ ISpeechRecognizer             = NullSpeechRecognizer{}
-	_ ISpeechSynthesizer            = NullSpeechSynthesizer{}
-	_ ISpeechWakeWordDetector       = NullSpeechWakeWordDetector{}
-	_ IOpticalCharacterRecognizer   = NullOpticalCharacterRecognizer{}
+	_ ISpeechRecognizer           = NullSpeechRecognizer{}
+	_ ISpeechSynthesizer          = NullSpeechSynthesizer{}
+	_ ISpeechWakeWordDetector     = NullSpeechWakeWordDetector{}
+	_ IOpticalCharacterRecognizer = NullOpticalCharacterRecognizer{}
 )

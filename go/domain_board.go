@@ -850,8 +850,8 @@ type NullMemPalaceStore struct{}
 // NullMemPalaceStoreInstance is the shared singleton.
 var NullMemPalaceStoreInstance = NullMemPalaceStore{}
 
-func (NullMemPalaceStore) BackendID() string                            { return "null" }
-func (NullMemPalaceStore) Upsert(context.Context, MemoryItem) error     { return nil }
+func (NullMemPalaceStore) BackendID() string                        { return "null" }
+func (NullMemPalaceStore) Upsert(context.Context, MemoryItem) error { return nil }
 func (NullMemPalaceStore) Recall(context.Context, string, int) ([]MemoryHit, error) {
 	return []MemoryHit{}, nil
 }
@@ -862,8 +862,8 @@ type NullHippoRagStore struct{}
 // NullHippoRagStoreInstance is the shared singleton.
 var NullHippoRagStoreInstance = NullHippoRagStore{}
 
-func (NullHippoRagStore) BackendId() string                        { return "null" }
-func (NullHippoRagStore) Index(context.Context, MemoryItem) error  { return nil }
+func (NullHippoRagStore) BackendId() string                       { return "null" }
+func (NullHippoRagStore) Index(context.Context, MemoryItem) error { return nil }
 func (NullHippoRagStore) MultiHopRecall(context.Context, string, int) ([]MemoryHit, error) {
 	return []MemoryHit{}, nil
 }

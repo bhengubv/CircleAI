@@ -380,11 +380,11 @@ var _ IAuthChallenge = (*ScriptedAuthChallenge)(nil)
 // NetworkHealthReport is the aggregate health of the mesh as assessed by
 // BhenguAI. Ports the NetworkHealthReport record.
 type NetworkHealthReport struct {
-	OverallScore         float64
-	TrustedNodeCount     int
-	SuspiciousNodeCount  int
-	Summary              string
-	GeneratedAt          time.Time
+	OverallScore        float64
+	TrustedNodeCount    int
+	SuspiciousNodeCount int
+	Summary             string
+	GeneratedAt         time.Time
 }
 
 // IsValid returns true when OverallScore is within the valid 0–1 range. Ports
@@ -396,11 +396,11 @@ func (r NetworkHealthReport) IsValid() bool {
 // ThreatAssessment is BhenguAI's assessment of the threat posed by a specific
 // node. Ports the ThreatAssessment record.
 type ThreatAssessment struct {
-	NodeID          string
+	NodeID           string
 	ThreatConfidence float64
-	Level           AetherThreatLevel
-	Indicators      []string
-	AssessedAt      time.Time
+	Level            AetherThreatLevel
+	Indicators       []string
+	AssessedAt       time.Time
 }
 
 // IsValid returns true when ThreatConfidence is within the valid 0–1 range.

@@ -105,10 +105,10 @@ type EmbeddingsRequest struct {
 
 // EmbeddingsResponse is the OpenAI-shaped embeddings response.
 type EmbeddingsResponse struct {
-	Object string          `json:"object"`
+	Object string           `json:"object"`
 	Data   []EmbeddingDatum `json:"data"`
-	Model  string          `json:"model"`
-	Usage  UsageInfo       `json:"usage"`
+	Model  string           `json:"model"`
+	Usage  UsageInfo        `json:"usage"`
 }
 
 // EmbeddingDatum is one embedding row in the response.

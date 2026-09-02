@@ -216,18 +216,18 @@ func (d *DefaultDeviceContext) TimeZoneID() string {
 	return time.Local.String()
 }
 
-func (d *DefaultDeviceContext) LocalTime() time.Time          { return time.Now() }
-func (d *DefaultDeviceContext) Latitude() *float64            { return nil }
-func (d *DefaultDeviceContext) Longitude() *float64           { return nil }
-func (d *DefaultDeviceContext) LocationHint() string          { return "" }
-func (d *DefaultDeviceContext) BatteryLevel() *float32        { return nil }
-func (d *DefaultDeviceContext) IsCharging() *bool             { return nil }
-func (d *DefaultDeviceContext) NetworkType() string           { return "" }
-func (d *DefaultDeviceContext) CPUUsagePercent() *float32     { return nil }
-func (d *DefaultDeviceContext) AvailableMemoryBytes() int64   { return probeRAMAvailable() }
-func (d *DefaultDeviceContext) ThermalState() string          { return "normal" }
-func (d *DefaultDeviceContext) StorageFreeBytes() int64       { return probeStorageFree(d.ModelCacheDir) }
-func (d *DefaultDeviceContext) LastActiveUTC() time.Time      { return time.Time{} }
+func (d *DefaultDeviceContext) LocalTime() time.Time        { return time.Now() }
+func (d *DefaultDeviceContext) Latitude() *float64          { return nil }
+func (d *DefaultDeviceContext) Longitude() *float64         { return nil }
+func (d *DefaultDeviceContext) LocationHint() string        { return "" }
+func (d *DefaultDeviceContext) BatteryLevel() *float32      { return nil }
+func (d *DefaultDeviceContext) IsCharging() *bool           { return nil }
+func (d *DefaultDeviceContext) NetworkType() string         { return "" }
+func (d *DefaultDeviceContext) CPUUsagePercent() *float32   { return nil }
+func (d *DefaultDeviceContext) AvailableMemoryBytes() int64 { return probeRAMAvailable() }
+func (d *DefaultDeviceContext) ThermalState() string        { return "normal" }
+func (d *DefaultDeviceContext) StorageFreeBytes() int64     { return probeStorageFree(d.ModelCacheDir) }
+func (d *DefaultDeviceContext) LastActiveUTC() time.Time    { return time.Time{} }
 
 // BuildProbe constructs a DeviceProbe using this context's settings.
 func (d *DefaultDeviceContext) BuildProbe(gpuOverride *GpuKind) DeviceProbe {

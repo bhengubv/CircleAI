@@ -146,10 +146,10 @@ type personaFixture struct {
 }
 
 type personaVector struct {
-	ID             string  `json:"id"`
-	Description    string  `json:"description"`
-	Input          personaInput `json:"input"`
-	ExpectedHint   string  `json:"expectedHint"`
+	ID           string       `json:"id"`
+	Description  string       `json:"description"`
+	Input        personaInput `json:"input"`
+	ExpectedHint string       `json:"expectedHint"`
 }
 
 type personaInput struct {

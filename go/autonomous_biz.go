@@ -267,7 +267,7 @@ type NullDecisionLog struct{}
 var NullDecisionLogInstance = NullDecisionLog{}
 
 // BackendID returns "null".
-func (NullDecisionLog) BackendID() string                              { return "null" }
+func (NullDecisionLog) BackendID() string                                { return "null" }
 func (NullDecisionLog) Append(context.Context, AutonomousDecision) error { return nil }
 func (NullDecisionLog) Read(context.Context, int) ([]AutonomousDecision, error) {
 	return []AutonomousDecision{}, nil

@@ -21,7 +21,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type languageFixture struct {
-	Languages []languageFixtureEntry `json:"languages"`
+	Languages  []languageFixtureEntry `json:"languages"`
 	Assertions struct {
 		TotalCount int `json:"totalCount"`
 	} `json:"assertions"`

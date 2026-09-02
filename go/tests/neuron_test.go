@@ -39,9 +39,9 @@ func (g *neuronFakeGen) Stream(_ context.Context, _ []circleai.ChatMessage, _ *c
 	return out, errc
 }
 
-func (g *neuronFakeGen) Close() error                        { g.closed = true; return nil }
-func (g *neuronFakeGen) SaveSession(string) (bool, error)    { return true, nil }
-func (g *neuronFakeGen) LoadSession(string) (bool, error)    { return true, nil }
+func (g *neuronFakeGen) Close() error                     { g.closed = true; return nil }
+func (g *neuronFakeGen) SaveSession(string) (bool, error) { return true, nil }
+func (g *neuronFakeGen) LoadSession(string) (bool, error) { return true, nil }
 
 type neuronFixedRouter struct{ d circleai.RouteDecision }
 

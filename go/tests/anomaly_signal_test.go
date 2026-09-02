@@ -23,8 +23,8 @@ import (
 // ---------------------------------------------------------------------------
 
 type anomalyFixture struct {
-	ThreatVector  threatVectorBlock `json:"threatVector"`
-	ClampVectors  []clampVector     `json:"clamp_vectors"`
+	ThreatVector threatVectorBlock `json:"threatVector"`
+	ClampVectors []clampVector     `json:"clamp_vectors"`
 }
 
 type threatVectorBlock struct {
@@ -37,9 +37,9 @@ type threatVectorEntry struct {
 }
 
 type clampVector struct {
-	ID                  string  `json:"id"`
-	InputConfidence     float64 `json:"input_confidence"`
-	ExpectedConfidence  float64 `json:"expected_confidence"`
+	ID                 string  `json:"id"`
+	InputConfidence    float64 `json:"input_confidence"`
+	ExpectedConfidence float64 `json:"expected_confidence"`
 }
 
 // ---------------------------------------------------------------------------

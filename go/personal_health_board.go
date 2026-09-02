@@ -90,10 +90,10 @@ type Allergy struct {
 // Medication is a medication course. Ports the Medication record. EndedAtUtc is a
 // pointer to mirror the nullable C# DateTimeOffset? (nil == still active).
 type Medication struct {
-	MedId       string
-	Name        string
-	Dose        string
-	Frequency   string
+	MedId        string
+	Name         string
+	Dose         string
+	Frequency    string
 	StartedAtUtc time.Time
 	EndedAtUtc   *time.Time
 }

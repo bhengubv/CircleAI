@@ -236,7 +236,7 @@ type NullSpecificationStore struct{}
 // NullSpecificationStoreInstance is the shared singleton.
 var NullSpecificationStoreInstance = NullSpecificationStore{}
 
-func (NullSpecificationStore) BackendID() string                       { return "null" }
+func (NullSpecificationStore) BackendID() string                           { return "null" }
 func (NullSpecificationStore) Upsert(context.Context, Specification) error { return nil }
 func (NullSpecificationStore) Get(context.Context, string) (Specification, bool, error) {
 	return Specification{}, false, nil

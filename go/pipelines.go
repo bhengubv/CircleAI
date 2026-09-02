@@ -355,7 +355,7 @@ type NullPipelineSink struct{}
 var NullPipelineSinkInstance = NullPipelineSink{}
 
 // BackendID returns "null".
-func (NullPipelineSink) BackendID() string                            { return "null" }
+func (NullPipelineSink) BackendID() string                           { return "null" }
 func (NullPipelineSink) Write(context.Context, PipelineRecord) error { return nil }
 func (NullPipelineSink) Flush(context.Context) error                 { return nil }
 

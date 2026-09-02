@@ -63,10 +63,10 @@ type WorkflowDefinition struct {
 // WorkflowExecution is a workflow run. Ports the WorkflowExecution record.
 // FailureReason is empty on success (C# nullable string).
 type WorkflowExecution struct {
-	RunID        string
-	DefinitionID string
-	Phase        WorkflowPhase
-	StartUTC     time.Time
+	RunID         string
+	DefinitionID  string
+	Phase         WorkflowPhase
+	StartUTC      time.Time
 	FailureReason string
 }
 
@@ -244,7 +244,7 @@ type NullWorkflowDefinitionStore struct{}
 var NullWorkflowDefinitionStoreInstance = NullWorkflowDefinitionStore{}
 
 // BackendID returns "null".
-func (NullWorkflowDefinitionStore) BackendID() string                          { return "null" }
+func (NullWorkflowDefinitionStore) BackendID() string                                { return "null" }
 func (NullWorkflowDefinitionStore) Upsert(context.Context, WorkflowDefinition) error { return nil }
 func (NullWorkflowDefinitionStore) Get(context.Context, string) (WorkflowDefinition, bool) {
 	return WorkflowDefinition{}, false
@@ -282,7 +282,7 @@ type NullWorkflowState struct{}
 var NullWorkflowStateInstance = NullWorkflowState{}
 
 // BackendID returns "null".
-func (NullWorkflowState) BackendID() string                              { return "null" }
+func (NullWorkflowState) BackendID() string                                   { return "null" }
 func (NullWorkflowState) Checkpoint(context.Context, CheckpointPayload) error { return nil }
 func (NullWorkflowState) Load(context.Context, string, string) (CheckpointPayload, bool) {
 	return CheckpointPayload{}, false

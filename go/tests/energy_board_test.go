@@ -49,9 +49,9 @@ func TestEnergy_Outages(t *testing.T) {
 	b := circleai.NewInMemoryEnergyBoard()
 	now := time.Now().UTC()
 	end := now
-	b.LogOutage(circleai.Outage{OutageId: "o2", Area: "North", StartUtc: now.Add(-time.Hour)}) // active
+	b.LogOutage(circleai.Outage{OutageId: "o2", Area: "North", StartUtc: now.Add(-time.Hour)})                   // active
 	b.LogOutage(circleai.Outage{OutageId: "o1", Area: "South", StartUtc: now.Add(-2 * time.Hour), EndUtc: &end}) // resolved
-	b.LogOutage(circleai.Outage{OutageId: "o3", Area: "East", StartUtc: now.Add(-30 * time.Minute)}) // active
+	b.LogOutage(circleai.Outage{OutageId: "o3", Area: "East", StartUtc: now.Add(-30 * time.Minute)})             // active
 
 	active := b.ActiveOutages()
 	if len(active) != 2 || active[0].OutageId != "o2" || active[1].OutageId != "o3" {

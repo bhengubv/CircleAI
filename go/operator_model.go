@@ -55,9 +55,9 @@ const (
 // ModelDeployment is a desired model deployment (CRD-style). Ports the
 // ModelDeployment record.
 type ModelDeployment struct {
-	ModelID        string
-	Namespace      string
-	Replicas       int
+	ModelID         string
+	Namespace       string
+	Replicas        int
 	TargetTierLabel string
 }
 

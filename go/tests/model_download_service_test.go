@@ -162,12 +162,12 @@ func TestModelDownloadService_CacheAndDelete(t *testing.T) {
 
 func TestStripShaAlgorithmPrefix(t *testing.T) {
 	cases := map[string]string{
-		"sha256:abc123":  "abc123",
-		"SHA-256: abc":   "abc",
-		"abc123":         "abc123",
-		"":               "",
-		"deadbeef":       "deadbeef",
-		"  sha256:xy  ":  "xy",
+		"sha256:abc123": "abc123",
+		"SHA-256: abc":  "abc",
+		"abc123":        "abc123",
+		"":              "",
+		"deadbeef":      "deadbeef",
+		"  sha256:xy  ": "xy",
 	}
 	for in, want := range cases {
 		if got := circleai.StripShaAlgorithmPrefix(in); got != want {
@@ -203,8 +203,8 @@ func TestPrefixCacheService_KeyAndTouch(t *testing.T) {
 	if !pc.HasEntry(k1) {
 		t.Error("entry should exist after write")
 	}
-	pc.Touch(k1)         // must not panic / error
-	pc.EvictIfNeeded()   // under cap → entry stays
+	pc.Touch(k1)       // must not panic / error
+	pc.EvictIfNeeded() // under cap → entry stays
 	if !pc.HasEntry(k1) {
 		t.Error("entry under cap should survive eviction")
 	}

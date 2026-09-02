@@ -65,9 +65,9 @@ type NullFileSync struct{}
 var NullFileSyncInstance = NullFileSync{}
 
 // BackendID returns "null".
-func (NullFileSync) BackendID() string                              { return "null" }
-func (NullFileSync) Has(context.Context, string) (bool, error)      { return false, nil }
-func (NullFileSync) Fetch(context.Context, string) ([]byte, bool, error) { return nil, false, nil }
+func (NullFileSync) BackendID() string                                    { return "null" }
+func (NullFileSync) Has(context.Context, string) (bool, error)            { return false, nil }
+func (NullFileSync) Fetch(context.Context, string) ([]byte, bool, error)  { return nil, false, nil }
 func (NullFileSync) Announce(context.Context, FileMetadata, []byte) error { return nil }
 
 // NullPeerAdvertiser is a no-op peer advertiser. Ports NullPeerAdvertiser.

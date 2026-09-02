@@ -140,7 +140,7 @@ func TestContextWindowBudgetManager_Guards(t *testing.T) {
 type echoLayerRunner struct{ evicted []int }
 
 func (r *echoLayerRunner) BackendID() string { return "echo" }
-func (r *echoLayerRunner) IsAvailable() bool  { return true }
+func (r *echoLayerRunner) IsAvailable() bool { return true }
 func (r *echoLayerRunner) RunLayer(_ context.Context, shard circleai.LayerWeightShard, in []float32) (circleai.LayerActivations, error) {
 	out := make([]float32, len(in))
 	for i, v := range in {

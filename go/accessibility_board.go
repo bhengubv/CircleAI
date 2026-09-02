@@ -57,12 +57,12 @@ func (n AccessibilityNeed) String() string {
 // UserAccessibilityProfile is a user's accessibility profile. Ports the
 // UserAccessibilityProfile record. Needs mirrors the C# IReadOnlyList.
 type UserAccessibilityProfile struct {
-	UserId       string
-	Needs        []AccessibilityNeed
-	TextScale    float64
-	HighContrast bool
+	UserId        string
+	Needs         []AccessibilityNeed
+	TextScale     float64
+	HighContrast  bool
 	ReducedMotion bool
-	ScreenReader bool
+	ScreenReader  bool
 }
 
 // AdaptationHint is a UI adaptation hint. Ports the AdaptationHint record.

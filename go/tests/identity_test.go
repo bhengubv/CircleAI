@@ -27,10 +27,10 @@ type identityFixture struct {
 }
 
 type identityExample struct {
-	ID          string          `json:"id"`
-	Description string          `json:"description"`
-	Identity    identityJSON    `json:"identity"`
-	Devices     []deviceJSON    `json:"devices"`
+	ID          string       `json:"id"`
+	Description string       `json:"description"`
+	Identity    identityJSON `json:"identity"`
+	Devices     []deviceJSON `json:"devices"`
 }
 
 type identityJSON struct {

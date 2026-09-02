@@ -53,8 +53,8 @@ type PhonePinBiometricOnboarding interface {
 // DefaultPhonePinBiometricOnboarding. Construct with
 // NewDefaultPhonePinBiometricOnboarding.
 type DefaultPhonePinBiometricOnboarding struct {
-	mu       sync.Mutex
-	sessions map[string]OnboardingSession
+	mu        sync.Mutex
+	sessions  map[string]OnboardingSession
 	pinHashes map[string]string
 }
 
@@ -388,7 +388,9 @@ type DefaultVerifiablePrivacyProof struct{}
 func (DefaultVerifiablePrivacyProof) BuildIsReproducible() bool { return true }
 
 // SourceURL returns the source repo URL.
-func (DefaultVerifiablePrivacyProof) SourceURL() string { return "https://github.com/bhengubv/CircleAI" }
+func (DefaultVerifiablePrivacyProof) SourceURL() string {
+	return "https://github.com/bhengubv/CircleAI"
+}
 
 // TransparencyReceipt is a per-call transparency receipt. Ports the
 // TransparencyReceipt record. CostUsd uses exact Decimal.
@@ -447,10 +449,10 @@ func (t *DefaultPerCallTransparency) ReceiptFor(ctx context.Context, callID stri
 // PricingTier is one pricing tier. Ports the PricingTier record. MonthlyPriceLocal
 // uses exact Decimal.
 type PricingTier struct {
-	Name             string
+	Name              string
 	MonthlyPriceLocal Decimal
-	Currency         string
-	Features         []string
+	Currency          string
+	Features          []string
 }
 
 // PricingMatrix lists pricing tiers. Ports IPricingMatrix.
@@ -539,7 +541,9 @@ func (DefaultCulturalNameRecogniser) RecognisesLanguage(isoLanguage string) bool
 }
 
 // CulturalGreetings returns a greeting per language. Ports ICulturalGreetings.
-type CulturalGreetings interface{ GreetingFor(isoLanguage string) string }
+type CulturalGreetings interface {
+	GreetingFor(isoLanguage string) string
+}
 
 // DefaultCulturalGreetings ports DefaultCulturalGreetings.
 type DefaultCulturalGreetings struct{}
@@ -803,9 +807,9 @@ type WhatsAppIntegration interface {
 // DefaultWhatsAppIntegration validates E.164 + records + optionally delivers.
 // Ports DefaultWhatsAppIntegration. Construct with NewDefaultWhatsAppIntegration.
 type DefaultWhatsAppIntegration struct {
-	mu    sync.Mutex
-	out   []MessagingOutboxEntry
-	send  func(ctx context.Context, phone, message string) error
+	mu   sync.Mutex
+	out  []MessagingOutboxEntry
+	send func(ctx context.Context, phone, message string) error
 }
 
 // NewDefaultWhatsAppIntegration constructs the rail with an optional send
@@ -1654,28 +1658,28 @@ func isAbsoluteHTTPURL(u string) bool {
 
 // Interface guards for the Ubiquity rails.
 var (
-	_ PhonePinBiometricOnboarding  = (*DefaultPhonePinBiometricOnboarding)(nil)
-	_ NoManualFirstRun             = DefaultNoManualFirstRun{}
-	_ VoiceLedSetup                = DefaultVoiceLedSetup{}
-	_ AiPersonalityWizard          = (*DefaultAiPersonalityWizard)(nil)
-	_ PersonalDataImport           = (*DefaultPersonalDataImport)(nil)
-	_ FamilyOnboarding             = (*DefaultFamilyOnboarding)(nil)
-	_ PerCallTransparency          = (*DefaultPerCallTransparency)(nil)
-	_ PricingMatrix                = DefaultPricingMatrix{}
-	_ CurrencyFormatter            = DefaultCurrencyFormatter{}
-	_ CulturalGreetings            = DefaultCulturalGreetings{}
-	_ OfflineQueuedOperation       = (*DefaultOfflineQueuedOperation)(nil)
-	_ SmsFallback                  = (*DefaultSmsFallback)(nil)
-	_ UssdFallback                 = (*DefaultUssdFallback)(nil)
-	_ WhatsAppIntegration          = (*DefaultWhatsAppIntegration)(nil)
-	_ TelegramIntegration          = (*DefaultTelegramIntegration)(nil)
-	_ LostDeviceFlow               = (*DefaultLostDeviceFlow)(nil)
-	_ InheritanceProtocol          = (*DefaultInheritanceProtocol)(nil)
-	_ VerifiableWipe               = DefaultVerifiableWipe{}
-	_ AccountCompromiseRecovery    = (*DefaultAccountCompromiseRecovery)(nil)
-	_ ImpairedUserMode             = (*DefaultImpairedUserMode)(nil)
-	_ AbusiveEnvironmentMode       = (*DefaultAbusiveEnvironmentMode)(nil)
-	_ QuietMode                    = (*DefaultQuietMode)(nil)
-	_ PublicTransparency           = (*DefaultPublicTransparency)(nil)
-	_ EmailConnectorRegistry       = DefaultEmailConnectorRegistry{}
+	_ PhonePinBiometricOnboarding = (*DefaultPhonePinBiometricOnboarding)(nil)
+	_ NoManualFirstRun            = DefaultNoManualFirstRun{}
+	_ VoiceLedSetup               = DefaultVoiceLedSetup{}
+	_ AiPersonalityWizard         = (*DefaultAiPersonalityWizard)(nil)
+	_ PersonalDataImport          = (*DefaultPersonalDataImport)(nil)
+	_ FamilyOnboarding            = (*DefaultFamilyOnboarding)(nil)
+	_ PerCallTransparency         = (*DefaultPerCallTransparency)(nil)
+	_ PricingMatrix               = DefaultPricingMatrix{}
+	_ CurrencyFormatter           = DefaultCurrencyFormatter{}
+	_ CulturalGreetings           = DefaultCulturalGreetings{}
+	_ OfflineQueuedOperation      = (*DefaultOfflineQueuedOperation)(nil)
+	_ SmsFallback                 = (*DefaultSmsFallback)(nil)
+	_ UssdFallback                = (*DefaultUssdFallback)(nil)
+	_ WhatsAppIntegration         = (*DefaultWhatsAppIntegration)(nil)
+	_ TelegramIntegration         = (*DefaultTelegramIntegration)(nil)
+	_ LostDeviceFlow              = (*DefaultLostDeviceFlow)(nil)
+	_ InheritanceProtocol         = (*DefaultInheritanceProtocol)(nil)
+	_ VerifiableWipe              = DefaultVerifiableWipe{}
+	_ AccountCompromiseRecovery   = (*DefaultAccountCompromiseRecovery)(nil)
+	_ ImpairedUserMode            = (*DefaultImpairedUserMode)(nil)
+	_ AbusiveEnvironmentMode      = (*DefaultAbusiveEnvironmentMode)(nil)
+	_ QuietMode                   = (*DefaultQuietMode)(nil)
+	_ PublicTransparency          = (*DefaultPublicTransparency)(nil)
+	_ EmailConnectorRegistry      = DefaultEmailConnectorRegistry{}
 )

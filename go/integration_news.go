@@ -430,7 +430,7 @@ func (s *RssNewsSource) FetchLatest(_ context.Context, max int) ([]NewsItem, err
 // doc.Descendants("item"). Elements are matched by local name (namespace-agnostic
 // for the RSS core, as XName without a namespace does).
 type xmlRSS struct {
-	XMLName xml.Name    `xml:"rss"`
+	XMLName xml.Name     `xml:"rss"`
 	Items   []xmlRSSItem `xml:"channel>item"`
 }
 
@@ -478,13 +478,13 @@ type xmlAtom struct {
 }
 
 type xmlAtomEntry struct {
-	Title     string          `xml:"http://www.w3.org/2005/Atom title"`
-	Links     []xmlAtomLink   `xml:"http://www.w3.org/2005/Atom link"`
-	Updated   string          `xml:"http://www.w3.org/2005/Atom updated"`
-	Published string          `xml:"http://www.w3.org/2005/Atom published"`
-	Summary   string          `xml:"http://www.w3.org/2005/Atom summary"`
-	Content   string          `xml:"http://www.w3.org/2005/Atom content"`
-	ID        string          `xml:"http://www.w3.org/2005/Atom id"`
+	Title      string            `xml:"http://www.w3.org/2005/Atom title"`
+	Links      []xmlAtomLink     `xml:"http://www.w3.org/2005/Atom link"`
+	Updated    string            `xml:"http://www.w3.org/2005/Atom updated"`
+	Published  string            `xml:"http://www.w3.org/2005/Atom published"`
+	Summary    string            `xml:"http://www.w3.org/2005/Atom summary"`
+	Content    string            `xml:"http://www.w3.org/2005/Atom content"`
+	ID         string            `xml:"http://www.w3.org/2005/Atom id"`
 	Categories []xmlAtomCategory `xml:"http://www.w3.org/2005/Atom category"`
 }
 

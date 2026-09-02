@@ -209,20 +209,20 @@ type SessionErrorEvent struct {
 
 // At / marker implementations.
 func (e SpeechStartedEvent) At() time.Time   { return e.AtUtc }
-func (e SpeechEndedEvent) At() time.Time      { return e.AtUtc }
-func (e TranscriptDeltaEvent) At() time.Time  { return e.AtUtc }
-func (e TranscriptFinalEvent) At() time.Time  { return e.AtUtc }
-func (e ToolCallEvent) At() time.Time         { return e.AtUtc }
-func (e TurnCompleteEvent) At() time.Time     { return e.AtUtc }
-func (e SessionErrorEvent) At() time.Time     { return e.AtUtc }
+func (e SpeechEndedEvent) At() time.Time     { return e.AtUtc }
+func (e TranscriptDeltaEvent) At() time.Time { return e.AtUtc }
+func (e TranscriptFinalEvent) At() time.Time { return e.AtUtc }
+func (e ToolCallEvent) At() time.Time        { return e.AtUtc }
+func (e TurnCompleteEvent) At() time.Time    { return e.AtUtc }
+func (e SessionErrorEvent) At() time.Time    { return e.AtUtc }
 
 func (SpeechStartedEvent) isRealtimeEvent()   {}
-func (SpeechEndedEvent) isRealtimeEvent()      {}
-func (TranscriptDeltaEvent) isRealtimeEvent()  {}
-func (TranscriptFinalEvent) isRealtimeEvent()  {}
-func (ToolCallEvent) isRealtimeEvent()         {}
-func (TurnCompleteEvent) isRealtimeEvent()     {}
-func (SessionErrorEvent) isRealtimeEvent()     {}
+func (SpeechEndedEvent) isRealtimeEvent()     {}
+func (TranscriptDeltaEvent) isRealtimeEvent() {}
+func (TranscriptFinalEvent) isRealtimeEvent() {}
+func (ToolCallEvent) isRealtimeEvent()        {}
+func (TurnCompleteEvent) isRealtimeEvent()    {}
+func (SessionErrorEvent) isRealtimeEvent()    {}
 
 // ---------------------------------------------------------------------------
 // Session + service contracts (Contracts.cs)

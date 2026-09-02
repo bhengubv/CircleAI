@@ -329,7 +329,7 @@ type NullBuildArtifactStore struct{}
 var NullBuildArtifactStoreInstance = NullBuildArtifactStore{}
 
 // BackendID returns "null".
-func (NullBuildArtifactStore) BackendID() string                       { return "null" }
+func (NullBuildArtifactStore) BackendID() string                         { return "null" }
 func (NullBuildArtifactStore) Save(context.Context, BuildArtifact) error { return nil }
 func (NullBuildArtifactStore) Get(context.Context, string) (BuildArtifact, bool) {
 	return BuildArtifact{}, false

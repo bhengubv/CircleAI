@@ -469,8 +469,8 @@ type fakeInnerSession struct {
 	mu        sync.Mutex
 }
 
-func (f *fakeInnerSession) SessionID() string             { return "sess-1" }
-func (f *fakeInnerSession) IdentityID() string            { return f.identity }
+func (f *fakeInnerSession) SessionID() string                 { return "sess-1" }
+func (f *fakeInnerSession) IdentityID() string                { return f.identity }
 func (f *fakeInnerSession) Interface() circleai.InterfaceKind { return circleai.InterfaceKindMobile }
 func (f *fakeInnerSession) Send(_ context.Context, _ string) (string, error) {
 	f.mu.Lock()

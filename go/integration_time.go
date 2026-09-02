@@ -67,20 +67,20 @@ func parseDateTimeOffsetUTC(s string) time.Time {
 	// and bare date/space-separated forms, matching the breadth of
 	// DateTimeOffset.TryParse.
 	layouts := []string{
-		time.RFC3339Nano,                // 2026-07-11T12:00:00.123+02:00 / ...Z
-		time.RFC3339,                    // 2026-07-11T12:00:00+02:00 / ...Z
-		time.RFC1123Z,                   // Fri, 11 Jul 2026 06:00:00 +0200
-		time.RFC1123,                    // Fri, 11 Jul 2026 06:00:00 GMT
-		time.RFC822Z,                    // 11 Jul 26 06:00 +0200
-		time.RFC822,                     // 11 Jul 26 06:00 GMT
-		"Mon, 2 Jan 2006 15:04:05 -0700",   // RFC-1123Z, non-padded day
-		"Mon, 2 Jan 2006 15:04:05 MST",     // RFC-1123, non-padded day
-		"2006-01-02T15:04:05.999999999", // no offset -> assume UTC
-		"2006-01-02T15:04:05",           // no offset, no frac -> assume UTC
-		"2006-01-02T15:04",              // minute precision
-		"2006-01-02 15:04:05Z07:00",     // space separator, offset
-		"2006-01-02 15:04:05",           // space separator, assume UTC
-		dateOnlyLayout,                  // date-only -> midnight UTC
+		time.RFC3339Nano,                 // 2026-07-11T12:00:00.123+02:00 / ...Z
+		time.RFC3339,                     // 2026-07-11T12:00:00+02:00 / ...Z
+		time.RFC1123Z,                    // Fri, 11 Jul 2026 06:00:00 +0200
+		time.RFC1123,                     // Fri, 11 Jul 2026 06:00:00 GMT
+		time.RFC822Z,                     // 11 Jul 26 06:00 +0200
+		time.RFC822,                      // 11 Jul 26 06:00 GMT
+		"Mon, 2 Jan 2006 15:04:05 -0700", // RFC-1123Z, non-padded day
+		"Mon, 2 Jan 2006 15:04:05 MST",   // RFC-1123, non-padded day
+		"2006-01-02T15:04:05.999999999",  // no offset -> assume UTC
+		"2006-01-02T15:04:05",            // no offset, no frac -> assume UTC
+		"2006-01-02T15:04",               // minute precision
+		"2006-01-02 15:04:05Z07:00",      // space separator, offset
+		"2006-01-02 15:04:05",            // space separator, assume UTC
+		dateOnlyLayout,                   // date-only -> midnight UTC
 	}
 	for _, layout := range layouts {
 		hasOffset := strings.Contains(layout, "Z07:00")

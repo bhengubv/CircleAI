@@ -302,13 +302,14 @@ const biosignalMinConfidence float32 = 0.5
 // fields are clamped to [0,1]. Low-confidence samples are ignored.
 //
 // Rule sheet (clamped to [0,1]):
-//   HeartRate  > 130 bpm: Energy += 0.10, Uncertainty += 0.05
-//   HeartRate  > 100 bpm: Energy += 0.05
-//   HeartRate  <  50 bpm: Energy -= 0.05
-//   HRV        <  20 ms:  Uncertainty += 0.05, Rapport -= 0.02
-//   HRV        >  60 ms:  Engagement += 0.02
-//   SpO2       <  90 %:   Uncertainty += 0.10
-//   SleepStage / others:  no mutation
+//
+//	HeartRate  > 130 bpm: Energy += 0.10, Uncertainty += 0.05
+//	HeartRate  > 100 bpm: Energy += 0.05
+//	HeartRate  <  50 bpm: Energy -= 0.05
+//	HRV        <  20 ms:  Uncertainty += 0.05, Rapport -= 0.02
+//	HRV        >  60 ms:  Engagement += 0.02
+//	SpO2       <  90 %:   Uncertainty += 0.10
+//	SleepStage / others:  no mutation
 func ApplyBiosignalToAffect(sample BiosignalSample, affect *AffectState) {
 	if affect == nil {
 		return

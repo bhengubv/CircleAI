@@ -43,8 +43,8 @@ type ChatChannelMessage struct {
 
 // PresenceState is a user's presence. Ports the PresenceState record.
 type PresenceState struct {
-	UserID     string
-	Online     bool
+	UserID      string
+	Online      bool
 	LastSeenUTC time.Time
 }
 

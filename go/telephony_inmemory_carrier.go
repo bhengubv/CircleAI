@@ -38,16 +38,16 @@ type InMemoryTelephonyCarrier struct {
 	mu         sync.Mutex
 	catalogue  map[string][]catalogueEntry // country code -> available numbers
 	owned      map[string]ProvisionedNumber
-	webhooks   map[string]*url.URL         // phone number -> configured inbound webhook
-	dials      []*InMemoryMediaStream      // media streams created by Dial (for inspection)
+	webhooks   map[string]*url.URL    // phone number -> configured inbound webhook
+	dials      []*InMemoryMediaStream // media streams created by Dial (for inspection)
 	dispatcher *InMemoryInboundCallDispatcher
 }
 
 // catalogueEntry is one buyable number in the fake carrier's inventory.
 type catalogueEntry struct {
-	number       string
-	areaCode     string
-	monthlyCost  Decimal
+	number      string
+	areaCode    string
+	monthlyCost Decimal
 }
 
 // InMemoryTelephonyCarrierOption configures the fake carrier.
@@ -287,9 +287,9 @@ func (o *inMemoryCarrierOps) coldTransfer(_ context.Context, _ string, targetNum
 type InMemoryInboundCallDispatcher struct {
 	carrierID string
 
-	mu      sync.Mutex
-	subs    map[int]func(context.Context, ICallSession) error
-	nextID  int
+	mu     sync.Mutex
+	subs   map[int]func(context.Context, ICallSession) error
+	nextID int
 }
 
 // newInMemoryInboundCallDispatcher constructs an empty dispatcher.

@@ -51,8 +51,8 @@ type fakeHippo struct {
 	hits []circleai.MemoryHit
 }
 
-func (f *fakeHippo) BackendId() string                                   { return "fake-hippo" }
-func (f *fakeHippo) Index(context.Context, circleai.MemoryItem) error    { return nil }
+func (f *fakeHippo) BackendId() string                                { return "fake-hippo" }
+func (f *fakeHippo) Index(context.Context, circleai.MemoryItem) error { return nil }
 func (f *fakeHippo) MultiHopRecall(_ context.Context, _ string, topK int) ([]circleai.MemoryHit, error) {
 	return takeHitsTest(f.hits, topK), nil
 }

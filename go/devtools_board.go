@@ -555,10 +555,10 @@ type NullCodeEditor struct{}
 // NullCodeEditorInstance is the shared singleton.
 var NullCodeEditorInstance = NullCodeEditor{}
 
-func (NullCodeEditor) BackendID() string                          { return "null" }
+func (NullCodeEditor) BackendID() string                            { return "null" }
 func (NullCodeEditor) Read(context.Context, string) (string, error) { return "", nil }
-func (NullCodeEditor) Apply(context.Context, []FileEdit) error    { return nil }
-func (NullCodeEditor) Save(context.Context, string) error         { return nil }
+func (NullCodeEditor) Apply(context.Context, []FileEdit) error      { return nil }
+func (NullCodeEditor) Save(context.Context, string) error           { return nil }
 
 // NullInlineSuggester is a fail-closed suggester. Ports NullInlineSuggester.
 type NullInlineSuggester struct{}

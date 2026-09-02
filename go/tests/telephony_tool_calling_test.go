@@ -19,9 +19,9 @@ import (
 
 // telToolDoer is a scripted HTTPDoer that captures the last request body.
 type telToolDoer struct {
-	resp    *circleai.InboundHTTPResponse
-	err     error
-	lastURL string
+	resp     *circleai.InboundHTTPResponse
+	err      error
+	lastURL  string
 	lastBody []byte
 }
 

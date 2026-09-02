@@ -30,8 +30,8 @@ import (
 type AetherSecurityBridge struct {
 	layer *SecurityLayerService
 
-	mu                    sync.Mutex
-	telemetryUnsubscribe  func()
+	mu                   sync.Mutex
+	telemetryUnsubscribe func()
 }
 
 // NewAetherSecurityBridge initialises the bridge over an existing

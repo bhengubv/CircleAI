@@ -29,8 +29,8 @@ type fakeSession struct {
 	turns    int
 }
 
-func (s *fakeSession) SessionID() string                { return s.id }
-func (s *fakeSession) IdentityID() string               { return s.identity }
+func (s *fakeSession) SessionID() string                 { return s.id }
+func (s *fakeSession) IdentityID() string                { return s.identity }
 func (s *fakeSession) Interface() circleai.InterfaceKind { return circleai.InterfaceKindWeb }
 func (s *fakeSession) Send(_ context.Context, message string) (string, error) {
 	s.turns++
@@ -48,9 +48,11 @@ func (s *fakeSession) Stream(_ context.Context, message string) (<-chan string, 
 func (s *fakeSession) Agent(_ context.Context, instruction string) (string, error) {
 	return "agent:" + instruction, nil
 }
-func (s *fakeSession) GetContext() circleai.CompanionContext     { return circleai.CompanionContext{} }
-func (s *fakeSession) RefreshContext(context.Context) error      { return nil }
-func (s *fakeSession) History() []circleai.CompanionTurn         { return make([]circleai.CompanionTurn, s.turns) }
+func (s *fakeSession) GetContext() circleai.CompanionContext { return circleai.CompanionContext{} }
+func (s *fakeSession) RefreshContext(context.Context) error  { return nil }
+func (s *fakeSession) History() []circleai.CompanionTurn {
+	return make([]circleai.CompanionTurn, s.turns)
+}
 func (s *fakeSession) SignalFeedback(context.Context, bool, *string) error { return nil }
 func (s *fakeSession) ProactiveEvents() <-chan circleai.CompanionProactiveEvent {
 	ch := make(chan circleai.CompanionProactiveEvent)
@@ -61,8 +63,8 @@ func (s *fakeSession) Close() error { return nil }
 
 // countingFactory records how many times Create runs and can fail on demand.
 type countingFactory struct {
-	mu      sync.Mutex
-	calls   int
+	mu       sync.Mutex
+	calls    int
 	failNext bool
 }
 

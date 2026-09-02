@@ -59,8 +59,8 @@ type IDependencyUpdater interface {
 // ---------------------------------------------------------------------------
 
 var (
-	depReqRx   = regexp.MustCompile(`^([A-Za-z0-9_.\-]+)\s*([=<>!~]=?)?\s*([0-9.A-Za-z_\-]+)?`)
-	depTomlRx  = regexp.MustCompile(`^([A-Za-z0-9_\-]+)\s*=\s*"([^"]+)"`)
+	depReqRx    = regexp.MustCompile(`^([A-Za-z0-9_.\-]+)\s*([=<>!~]=?)?\s*([0-9.A-Za-z_\-]+)?`)
+	depTomlRx   = regexp.MustCompile(`^([A-Za-z0-9_\-]+)\s*=\s*"([^"]+)"`)
 	depCsprojRx = regexp.MustCompile(`<PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"`)
 )
 
