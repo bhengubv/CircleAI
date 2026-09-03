@@ -119,3 +119,53 @@ public class VoiceNavigationTests : TestContext
         Assert.False(Services.GetRequiredService<VoiceMark>().Busy);
     }
 }
+
+/// <summary>
+/// The circle on Home obeys the same sentences the bar does.
+/// </summary>
+/// <remarks>
+/// A SEPARATE CLASS BECAUSE HOME TAKES A DIFFERENT ROUTE TO THE SAME TURN: its
+/// circle checks the brain first and greets in a catalogued language when there
+/// is none, so a test that did not report a ready brain would be exercising the
+/// greeting and proving nothing about routing.
+/// </remarks>
+public class HomeVoiceNavigationTests : TestContext
+{
+    private FakeConversation Wire(string? heard)
+    {
+        var talk = new FakeConversation { Heard = heard, Ready = true };
+        Services.AddSingleton(new VoiceMark());
+        Services.AddSingleton<IConversation>(talk);
+        Services.AddSingleton<IVoiceHost>(new FakeVoiceHost { Catalogue = [new VoiceRow("en", 1)] });
+        Services.AddSingleton<ISetup>(new FakeSetup());
+        Services.AddSingleton<ISettings>(new FakeSettings());
+        Services.GetRequiredService<NavigationManager>().NavigateTo("home");
+        return talk;
+    }
+
+    private string Where() => Services.GetRequiredService<NavigationManager>().Uri;
+
+    [Fact]
+    public void The_circle_takes_you_where_you_asked()
+    {
+        Wire("I need translation");
+        var home = RenderComponent<CircleAI.Samples.It.Shared.Pages.Home>();
+
+        home.Find("button.hero").Click();
+
+        home.WaitForAssertion(() => Assert.EndsWith("/translate", Where()));
+    }
+
+    [Fact]
+    public void The_circle_leaves_a_question_where_it_was_asked()
+    {
+        var talk = Wire("how do you say hello in isiZulu");
+        var home = RenderComponent<CircleAI.Samples.It.Shared.Pages.Home>();
+
+        home.Find("button.hero").Click();
+
+        home.WaitForAssertion(() => Assert.False(Services.GetRequiredService<VoiceMark>().Busy));
+        Assert.EndsWith("/home", Where());
+        Assert.False(talk.WasCancelled);
+    }
+}

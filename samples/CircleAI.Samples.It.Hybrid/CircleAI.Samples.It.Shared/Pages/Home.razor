@@ -321,17 +321,27 @@
 
         if (brain.Ready)
         {
+            // THE CIRCLE OBEYS TOO. The bar and the wake word already took
+            // somebody where they asked; the biggest control on the screen doing
+            // something different for the same sentence is the two-owner bug this
+            // app keeps producing, so both press the same router.
+            using var router = new VoiceTurnRouter();
+
             var updates = new Progress<TurnState>(t =>
             {
                 Mark.Report(t);
+                router.Observe(t);
                 _detail = t.Detail ?? t.Heard;
                 if (t.Language is { Length: > 0 } lang) _spokenIn = LanguageName(lang);
                 StateHasChanged();
             });
 
-            try { await Talk.TurnAsync(updates); }
+            try { await Talk.TurnAsync(updates, router.Token); }
+            catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
             catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
             finally { Mark.Clear(); }
+
+            await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _detail = line; StateHasChanged(); });
             return;
         }
 

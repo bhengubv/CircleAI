@@ -332,28 +332,19 @@
 
         _says = null;
 
-        // WHERE THE TURN IS ALLOWED TO END EARLY. A routed turn is cancelled the
-        // moment the transcript names a destination, so the answering model never
-        // runs for a sentence that was an instruction rather than a question.
-        using var turn = new CancellationTokenSource();
-        VoiceDestination? routed = null;
+        // WHERE THE TURN IS ALLOWED TO END EARLY. The rule and the wiring both
+        // live in one place - see VoiceTurnRouter - because Home needs exactly
+        // this and a second copy is how the two marks came to disagree.
+        using var router = new VoiceTurnRouter();
 
         var updates = new Progress<TurnState>(t =>
         {
             Mark.Report(t);
 
-            // "I NEED TRANSLATION" USED TO BE ANSWERED RATHER THAN OBEYED. The
+            // "I NEED TRANSLATION" USED TO BE ANSWERED RATHER THAN OBEYED: the
             // transcript went straight to the brain, so the app could discuss
-            // translating and could not be told to translate. Checked once, on
-            // the first transcript: Heard is reported again as the turn goes on,
-            // and routing twice would navigate on top of a navigation.
-            if (routed is null
-                && t.Heard is { Length: > 0 } heard
-                && VoiceDestinations.Match(heard) is { } where)
-            {
-                routed = where;
-                turn.Cancel();
-            }
+            // translating and could not be told to translate.
+            router.Observe(t);
 
             // THE REASON, WHEREVER IT COMES FROM. Every early return in a turn -
             // no model, no permission, nothing heard - arrives as a Detail on an
@@ -363,14 +354,12 @@
             InvokeAsync(StateHasChanged);
         });
 
-        try { await Talk.TurnAsync(updates, turn.Token); }
-        // Not a failure: this is the turn being ended on purpose because the
-        // words were a destination. Any other cancellation still reports.
-        catch (OperationCanceledException) when (routed is not null) { }
+        try { await Talk.TurnAsync(updates, router.Token); }
+        catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
         catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
         finally { Mark.Clear(); StateHasChanged(); }
 
-        if (routed is not null) await GoAsync(routed);
+        await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _says = line; StateHasChanged(); });
     }
 
     /// <summary>Put the assistant back on, if that is how it was left.</summary>
@@ -399,28 +388,6 @@
             _says = $"Could not start listening: {ex.Message}";
             StateHasChanged();
         }
-    }
-
-    /// <summary>Take somebody where they just asked to go, and say so.</summary>
-    /// <remarks>
-    /// OUT LOUD, BECAUSE THEY ARE PROBABLY NOT LOOKING. The whole point of asking
-    /// by voice is that the phone is across the room or face down; a screen that
-    /// silently changes is no answer to somebody who spoke to it.
-    /// <para>
-    /// The line goes up on screen as well, and the navigation happens whether or
-    /// not the phone manages to speak - a voice that will not play is a reason to
-    /// be quiet, never a reason to ignore what was asked.
-    /// </para>
-    /// </remarks>
-    async Task GoAsync(VoiceDestination where)
-    {
-        _says = $"Opening {where.Title}";
-        StateHasChanged();
-
-        try { await Talk.SayAsync(_says); }
-        catch { /* it moves anyway */ }
-
-        Nav.NavigateTo(where.Route);
     }
 
     /// <summary>The phone heard its name, so take the turn nobody pressed for.</summary>

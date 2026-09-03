@@ -95,8 +95,11 @@ internal sealed class FakeSettings : ISettings
 /// </remarks>
 internal sealed class FakeConversation : IConversation
 {
+    /// <summary>Whether a turn can run at all - Home greets instead when it cannot.</summary>
+    public bool Ready { get; init; }
+
     public Task<BrainState> StateAsync(CancellationToken ct = default)
-        => Task.FromResult(new BrainState(false, "no brain in a test"));
+        => Task.FromResult(new BrainState(Ready, Ready ? "" : "no brain in a test"));
 
     /// <summary>What the transcriber will claim to have heard, if anything.</summary>
     public string? Heard { get; init; }
