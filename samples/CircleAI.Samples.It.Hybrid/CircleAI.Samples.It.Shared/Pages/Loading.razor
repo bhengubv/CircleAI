@@ -129,8 +129,7 @@
         if (_census is null || _census is { Total: > 0 } c && c.Present >= c.Total)
         {
             await HoldAtLeast(shownAt, ReadableMs);
-            await WarmAsync();
-            Leave();
+            await LeaveAsync();
             return;
         }
 
@@ -191,7 +190,7 @@
         // Let the finished census sit a moment - the ticks turning green is the
         // last thing worth seeing before Home.
         await HoldAtLeast(shownAt, ReadableMs);
-        Leave();
+        await LeaveAsync();
     }
 
     /// <summary>
@@ -250,10 +249,25 @@
         }
     }
 
-    void Leave()
+    /// <summary>The only way off this screen, and it warms on the way out.</summary>
+    /// <remarks>
+    /// WARMING USED TO LIVE AT ONE OF THE TWO EXITS. The "nothing missing" path
+    /// warmed and left; the path that had just DOWNLOADED something left without
+    /// warming - so the person who waited through a setup, and is most likely to
+    /// speak the moment it finishes, got the cold eleven-second first decode.
+    /// The one that had nothing to download got the warm one.
+    /// <para>
+    /// Putting it behind the door rather than in front of each exit means a third
+    /// exit cannot forget: leaving without warming is no longer something this
+    /// file can express. The _left guard makes it once, however many callers.
+    /// </para>
+    /// </remarks>
+    async Task LeaveAsync()
     {
         if (_left) return;
         _left = true;
+
+        await WarmAsync();
         Nav.NavigateTo("home");
     }
 

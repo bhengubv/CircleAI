@@ -195,3 +195,37 @@ internal sealed class FakeSpokenLanguage : ISpokenLanguage
     public void Choose(string tag) { Chosen = tag; Current = tag; }
     public void ClearChoice() => Chosen = null;
 }
+
+/// <summary>A brain that answers with whatever the test decided.</summary>
+/// <remarks>
+/// The interpreter asks it to translate, so the "translation" a test asserts on
+/// is simply what this returns. That keeps the assertions about the SCREEN -
+/// which side a line lands on, what happens when it fails - rather than about a
+/// model nobody can pin.
+/// </remarks>
+internal sealed class FakeBrain : IBrain
+{
+    public string Answer { get; init; } = "translated";
+    public bool Ready { get; init; } = true;
+    public Exception? Throws { get; init; }
+
+    public Task<BrainState> StateAsync(CancellationToken ct = default)
+        => Task.FromResult(new BrainState(Ready, Ready ? "" : "no brain in a test"));
+
+    public Task<string> AskAsync(
+        string prompt, Action<string>? token = null, CancellationToken ct = default)
+        => Throws is not null ? Task.FromException<string>(Throws) : Task.FromResult(Answer);
+
+    public Task<string> SeeAsync(
+        string question, byte[] image,
+        Action<string>? token = null, CancellationToken ct = default)
+        => Task.FromResult(Answer);
+}
+
+/// <summary>A phone, as far as any screen can tell.</summary>
+internal sealed class FakeFormFactor : IFormFactor
+{
+    public string GetFormFactor() => "Phone";
+    public string GetPlatform() => "Test";
+    public bool IsOnDevice { get; init; } = true;
+}

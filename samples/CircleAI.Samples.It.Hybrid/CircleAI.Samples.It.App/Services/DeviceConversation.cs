@@ -307,6 +307,7 @@ public sealed class DeviceConversation : IConversation
     public async Task<string> PrepareAsync(
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        var started = Environment.TickCount64;
         var said = new List<string>();
 
         // THE EARS FIRST, because they are the eleven seconds. Through the same
@@ -335,7 +336,14 @@ public sealed class DeviceConversation : IConversation
         }
         catch (Exception ex) { said.Add($"voice: {ex.GetType().Name}: {ex.Message}"); }
 
-        return string.Join("; ", said);
+        var report = string.Join("; ", said) + $"; {Environment.TickCount64 - started} ms";
+
+        // SAID OUT LOUD, because a warm-up nobody can see is a warm-up nobody
+        // can tell ran. The loading screen shows its steps to whoever is
+        // watching the phone; this is for whoever is reading the log afterwards
+        // asking why the first turn still took eleven seconds.
+        Android.Util.Log.Info("CircleAI.Warm", report);
+        return report;
     }
 
     private ItListener? _listener;

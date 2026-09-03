@@ -124,25 +124,40 @@ public static class VoiceDestinations
         var text = Normalise(heard);
         if (text.Length == 0) return null;
 
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
-        var asking = Asking.Any(a => text.Contains(a, StringComparison.Ordinal));
-
         // Long, and not phrased as a request: a question that happens to mention
         // a screen. "How do you say hello in isiZulu" must not open Languages.
-        if (words > CommandWords && !asking) return null;
+        if (!SoundsLikeAnInstruction(text)) return null;
 
         // Longest word first, so "language list" wins over "languages" and the
         // reported destination is the more specific one.
         return All
             .SelectMany(d => d.Words.Select(w => (Destination: d, Word: w)))
-            .Where(x => Contains(text, x.Word))
+            .Where(x => HasWord(text, x.Word))
             .OrderByDescending(x => x.Word.Length)
             .Select(x => x.Destination)
             .FirstOrDefault();
     }
 
+    /// <summary>Whether this sounds like a request rather than a subject.</summary>
+    /// <remarks>
+    /// Short enough to be a command, or carrying an asking phrase. A long
+    /// sentence with neither is somebody talking ABOUT something, and acting on
+    /// it throws them off what they were doing for the crime of mentioning it.
+    /// </remarks>
+    public static bool SoundsLikeAnInstruction(string normalised)
+    {
+        var words = normalised.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        var asking = Asking.Any(a => normalised.Contains(a, StringComparison.Ordinal));
+        return words <= CommandWords || asking;
+    }
+
     /// <summary>Whole words only, so "chat" does not match "chatter".</summary>
-    private static bool Contains(string text, string word)
+    /// <remarks>
+    /// Public because the capability registry matches the same way. The RULES of
+    /// listening belong in one place even though the things being listened for
+    /// are spread across the features that own them.
+    /// </remarks>
+    public static bool HasWord(string text, string word)
     {
         var at = text.IndexOf(word, StringComparison.Ordinal);
         while (at >= 0)
@@ -162,7 +177,7 @@ public static class VoiceDestinations
     /// request, and a router that only knew one of them would work in testing and
     /// fail on the phone, where the words arrive through Whisper.
     /// </remarks>
-    private static string Normalise(string heard)
+    public static string Normalise(string heard)
     {
         var sb = new StringBuilder(heard.Length);
         var space = true;

@@ -20,11 +20,13 @@ namespace CircleAI.Samples.It.Ui.Tests;
 
 public class LoadingGateTests : TestContext
 {
-    private FakeConversation Wire()
+    private FakeConversation Wire(Census? census = null)
     {
         var talk = new FakeConversation();
         Services.AddSingleton<IConversation>(talk);
-        Services.AddSingleton<ISetup>(new FakeSetup());
+        Services.AddSingleton<ISetup>(census is null
+            ? new FakeSetup()
+            : new FakeSetup { Census = census });
         Services.AddSingleton<IWiringProbe>(new BrowserWiringProbeStub());
         JSInterop.Mode = JSRuntimeMode.Loose;
         return talk;
@@ -55,6 +57,37 @@ public class LoadingGateTests : TestContext
 
         loading.WaitForAssertion(() => Assert.EndsWith("/home", Where()), TimeSpan.FromSeconds(10));
         Assert.True(talk.Prepared > 0, "left the loading screen without warming anything");
+    }
+
+    [Fact]
+    public void Warms_on_the_path_that_had_to_download_something_too()
+    {
+        // THE EXIT THAT DID NOT WARM. Warming used to sit in front of one of the
+        // two doors: the "nothing missing" path warmed, and the path that had
+        // just finished a DOWNLOAD left cold - so the person who sat through
+        // setup, and is likeliest to speak the second it ends, got the eleven
+        // second first decode, while the person with nothing to fetch got the
+        // warm one. Exactly backwards.
+        var talk = Wire(new Census(
+            [new CensusRow("the voice", false, 1024, "still coming")], 0, 1, "0 of 1 on this phone"));
+
+        var loading = RenderComponent<Loading>();
+
+        loading.WaitForAssertion(() => Assert.EndsWith("/home", Where()), TimeSpan.FromSeconds(15));
+        Assert.True(talk.Prepared > 0, "left after downloading without warming anything");
+    }
+
+    [Fact]
+    public void Warms_once_however_many_ways_out_there_are()
+    {
+        // The guard is on the door, not on each caller, so a second exit added
+        // later cannot warm twice either.
+        var talk = Wire();
+
+        var loading = RenderComponent<Loading>();
+
+        loading.WaitForAssertion(() => Assert.EndsWith("/home", Where()), TimeSpan.FromSeconds(15));
+        Assert.Equal(1, talk.Prepared);
     }
 }
 
