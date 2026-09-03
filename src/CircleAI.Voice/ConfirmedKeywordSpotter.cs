@@ -374,8 +374,10 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
             // model that never scored are the same silence, and they are opposite
             // problems: one is a threshold to loosen, the other is a phrase the
             // model cannot hear at all.
-            VoiceTrace.Write($"wake: heard \"{d.Phrase}\" p={d.Probability:0.###} — confirming");
             _pending.Add(d);
+            VoiceTrace.Write(
+                $"wake: heard \"{d.Phrase}\" p={d.Probability:0.###} — queued on thread "
+                + $"{Environment.CurrentManagedThreadId}, pending={_pending.Count}");
         };
     }
 
@@ -408,6 +410,13 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
         if (_pending.Count == 0) return;
         var batch = _pending.ToArray();
         _pending.Clear();
+
+        // WHICH THREAD JUDGED, AND HOW MANY. Detections were reaching stage one
+        // and producing neither a confirm nor a veto, from a method where every
+        // branch raises one or the other - so the question is not what Drain
+        // decided, it is whether Drain ever saw them.
+        VoiceTrace.Write(
+            $"wake: draining {batch.Length} on thread {Environment.CurrentManagedThreadId}");
 
         foreach (var d in batch)
         {

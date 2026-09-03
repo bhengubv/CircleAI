@@ -44,7 +44,7 @@ namespace CircleAI.Voice;
 public sealed record ZipformerWakeConfig(
     string BundleDirectory,
     string? KeywordsFile = null,
-    double Threshold = 0.5,
+    double Threshold = ZipformerKwsSpotter.MeasuredThreshold,
     IWakeConfirmer? Confirmer = null,
     TimeSpan? MinIntervalBetweenFires = null);
 

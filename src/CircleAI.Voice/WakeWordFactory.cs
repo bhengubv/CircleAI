@@ -178,7 +178,15 @@ public static class WakeWordFactory
             return new ZipformerWakeWordDetector(capture, new ZipformerWakeConfig(
                 bundleDirectory,
                 keywordsFile,
-                cal.Threshold ?? 0.5,
+                // NOT A LITERAL. This was 0.5 and nothing had ever measured it:
+                // the run that measured a working wake word ("6/6 through air")
+                // took ZipformerKwsSpotter's own default of 0.25 by passing none
+                // at all, so the shipped number and the measured number were
+                // never the same and nothing compared them. On a P30 "Hey B"
+                // scores 0.24-0.34, so 0.5 could not fire - arithmetically, not
+                // unreliably. Calibration still overrides; the FALLBACK is now
+                // the only value anybody checked.
+                cal.Threshold ?? ZipformerKwsSpotter.MeasuredThreshold,
                 ConfirmerFor(host, cal, transcriber)));
 
         var model = Directory.EnumerateFiles(bundleDirectory, "*.onnx", SearchOption.AllDirectories)

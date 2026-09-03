@@ -434,7 +434,28 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// Judged on RAW log-probs. If the bonus that made the path visible also
     /// counted towards accepting it, every keyword would fire on silence.
     /// </remarks>
-    public double Threshold { get; init; } = 0.25;
+    /// <summary>The acceptance threshold this spotter was measured at.</summary>
+    /// <remarks>
+    /// 0.25, AND IT IS THE ONLY NUMBER ANYBODY EVER MEASURED. It is the value
+    /// the "6/6 through air" run used - reached by not passing one at all and
+    /// taking this default - and it stayed correct while two other places grew
+    /// their own copy of 0.5, which nothing measured and nothing checked
+    /// against it.
+    /// <para>
+    /// On a P30 the phrase "Hey B" scores 0.24 to 0.34 through the air. At 0.5
+    /// the wake word cannot fire: not unreliably, ARITHMETICALLY. The whole
+    /// phrase is matched, three tokens of three, and the gate is above every
+    /// score the model produces for it.
+    /// </para>
+    /// <para>
+    /// A lower gate also means more false wakes, which is what the confirmer
+    /// exists for - and at 0.5 that confirmer was never reached at all.
+    /// </para>
+    /// </remarks>
+    public const double MeasuredThreshold = 0.25;
+
+    /// <inheritdoc cref="MeasuredThreshold"/>
+    public double Threshold { get; init; } = MeasuredThreshold;
 
     /// <summary>Blanks required after the phrase before it is called finished.</summary>
     public int TrailingBlanksRequired { get; init; } = 1;

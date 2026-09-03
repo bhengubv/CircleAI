@@ -44,6 +44,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\samples\CircleAI.Samples.It.Hybrid\CircleAI.Samples.It.Shared\CircleAI.Samples.It.Shared.csproj" />
     <ProjectReference Include="..\..\samples\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
+    <!-- The wake threshold lives here, and a test asserting it by literal would
+         be the same three-owners bug in test form. -->
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
   </ItemGroup>
 
 </Project>
