@@ -37,6 +37,14 @@ public class MainApplication : MauiApplication
         // Application.OnCreate rather than from whichever screen opens first.
         CircleAI.Device.AndroidDeviceMemory.Install(this);
 
+        // AND THE PHONEMIZER, or this app can hear and translate but never
+        // speak. The native head has always called this; the hybrid never did,
+        // so ItSpeaker.MobilePhonemizerFactory stayed null and every voice that
+        // needs espeak G2P - all of them but Japanese - refused with "on-device
+        // phonemizer not wired". Same call, same file, same order as
+        // ItApplication.OnCreate.
+        CircleAI.Samples.It.Mobile.VoiceWiring.Install(this);
+
         // Where the phonemiser looks for Open JTalk's dictionary once it has been
         // downloaded. The model store, not the sideload folder: the catalogued
         // entry unpacks into the store, and a registry entry nothing can find is

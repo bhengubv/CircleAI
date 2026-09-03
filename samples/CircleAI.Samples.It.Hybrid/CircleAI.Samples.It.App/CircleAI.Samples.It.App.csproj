@@ -183,6 +183,34 @@
              Link="Shared\Earcon.cs" />
     <Compile Include="..\..\CircleAI.Samples.It.Android\BootReceiver.cs"
              Link="Shared\BootReceiver.cs" />
+    <!-- THE PHONEMIZER, WITHOUT WHICH THIS APP CANNOT SPEAK. ItSpeaker asks
+         MobilePhonemizerFactory for a G2P and this is the only file that sets
+         it - the native head calls VoiceWiring.Install from ItApplication, and
+         the hybrid linked five files from that head but not this one. The
+         symptom is exact and on screen: "No English voice: on-device
+         phonemizer not wired (ItSpeaker.MobilePhonemizerFactory)". Japanese
+         still spoke, because OpenJTalk is wired separately in MainApplication,
+         which is what made it look like a language problem rather than a
+         missing wire. -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\VoiceWiring.cs"
+             Link="Shared\VoiceWiring.cs" />
+    <!-- The fallback VoiceWiring falls back TO, so linking one without the
+         other does not compile. -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\OutOfProcessEspeakPhonemizer.cs"
+             Link="Shared\OutOfProcessEspeakPhonemizer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- espeak-ng, THE SAME COPY THE NATIVE HEAD SHIPS. Every voice trained on
+         espeak IPA needs it, which is every language here except Japanese.
+         arm64 only: the x86_64 .so would need the NDK recipe run again, and on
+         that ABI VoiceWiring falls through to the out-of-process app. The lib
+         and the data are version-locked - both espeak-ng 1.52.0 - so they move
+         together or not at all. -->
+    <AndroidNativeLibrary Include="../../CircleAI.Samples.It.Android/native/arm64-v8a/libespeak-ng.so"
+                          Abi="arm64-v8a" />
+    <AndroidAsset Include="..\..\CircleAI.Samples.It.Android\Assets\espeak-ng-data.zip"
+                  Link="espeak-ng-data.zip" />
   </ItemGroup>
 
   <!--
