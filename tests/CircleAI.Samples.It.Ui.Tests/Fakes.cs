@@ -98,8 +98,26 @@ internal sealed class FakeConversation : IConversation
     public Task<BrainState> StateAsync(CancellationToken ct = default)
         => Task.FromResult(new BrainState(false, "no brain in a test"));
 
-    public Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
-        => Task.CompletedTask;
+    /// <summary>What the transcriber will claim to have heard, if anything.</summary>
+    public string? Heard { get; init; }
+
+    /// <summary>True once a turn was cancelled - the routed case.</summary>
+    public bool WasCancelled { get; private set; }
+
+    public async Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
+    {
+        updates.Report(new TurnState(TurnPhase.Listening));
+
+        if (Heard is { Length: > 0 })
+            updates.Report(new TurnState(TurnPhase.Thinking, Heard: Heard));
+
+        // The real turn goes on to answer here. A routed turn is cancelled during
+        // the report above, so this is where that shows up.
+        try { await Task.Delay(20, ct); }
+        catch (OperationCanceledException) { WasCancelled = true; throw; }
+
+        updates.Report(new TurnState(TurnPhase.Idle));
+    }
 
     public Task<string?> DictateAsync(
         IProgress<TurnState> updates, CancellationToken ct = default, string? language = null)
