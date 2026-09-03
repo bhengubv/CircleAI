@@ -18,6 +18,8 @@
 @inject IConversation Talk
 @inject NavigationManager Nav
 @inject VoiceMark Mark
+@inject ISpokenLanguage Spoken
+@inject IWhereAmI Where
 @implements IDisposable
 
 <div class="home">
@@ -182,8 +184,11 @@
         A mode that changes nothing on the screen it is a mode OF is not a mode.
     */
     AppMode _mode = AppMode.Assistant;
-    string _pairFrom = "en";
-    string _pairTo = "zu";
+    // THE SAME PAIR THE INTERPRETER USES, from the same place. These were
+    // "en" and "zu" here and in Translate.razor - one fact, two owners, and
+    // wrong for anybody outside South Africa.
+    string _pairFrom = "";
+    string _pairTo = "";
 
     /// <summary>Whether the circle should open the interpreter rather than talk.</summary>
     /// <remarks>
@@ -236,8 +241,9 @@
         try
         {
             _mode = (await Settings.LoadAsync()).Mode;
-            _pairFrom = await Settings.ServiceSettingAsync("interpret", "from", "en") ?? "en";
-            _pairTo = await Settings.ServiceSettingAsync("interpret", "to", "zu") ?? "zu";
+            var (mine, theirs, _) = LanguageSuggestion.Pair(Spoken.Current, Where.Locate());
+            _pairFrom = await Settings.ServiceSettingAsync("interpret", "from", mine) ?? mine;
+            _pairTo = await Settings.ServiceSettingAsync("interpret", "to", theirs ?? mine) ?? theirs ?? mine;
         }
         catch { /* stay the assistant rather than show a broken Home */ }
 

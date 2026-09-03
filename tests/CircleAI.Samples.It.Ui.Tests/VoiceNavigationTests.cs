@@ -139,6 +139,8 @@ public class HomeVoiceNavigationTests : TestContext
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost { Catalogue = [new VoiceRow("en", 1)] });
         Services.AddSingleton<ISetup>(new FakeSetup());
         Services.AddSingleton<ISettings>(new FakeSettings());
+        Services.AddSingleton<ISpokenLanguage>(new FakeSpokenLanguage());
+        Services.AddSingleton<IWhereAmI>(new FakeWhereAmI());
         Services.GetRequiredService<NavigationManager>().NavigateTo("home");
         return talk;
     }

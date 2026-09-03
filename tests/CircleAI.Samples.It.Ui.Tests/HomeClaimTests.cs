@@ -39,6 +39,8 @@ public class HomeClaimTests : TestContext
             Readiness = new Readiness(stage, "Tap and talk", "", stage == ReadyStage.Ready),
         });
         Services.AddSingleton<ISettings>(new FakeSettings { Settings = new AppSettings(Mode: mode) });
+        Services.AddSingleton<ISpokenLanguage>(new FakeSpokenLanguage());
+        Services.AddSingleton<IWhereAmI>(new FakeWhereAmI());
     }
 
     private static VoiceRow[] Voices(params string[] tags)

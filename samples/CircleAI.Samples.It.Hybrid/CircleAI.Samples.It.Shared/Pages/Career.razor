@@ -13,6 +13,7 @@
 @page "/career"
 @inject ICareerInterview Interview
 @inject ISettings Settings
+@inject ISpokenLanguage Spoken
 @inject IConversation Talk
 @inject NavigationManager Nav
 
@@ -123,7 +124,7 @@
         .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    string _language = "en";
+    string _language = "";   // set from the phone in OnInitializedAsync
 
     CareerStep _step = new("", "", false, false);
     IReadOnlyList<CvLine> _preview = [];
@@ -140,13 +141,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _language = await Settings.ServiceSettingAsync(Service, "language", "en") ?? "en";
+        // THE PHONE'S ANSWER, NOT ENGLISH. Somebody writing their CV is
+        // writing it in their language until they say otherwise.
+        var mine = Spoken.Current;
+        _language = await Settings.ServiceSettingAsync(Service, "language", mine) ?? mine;
         await Refresh();
     }
 
     async Task SetLanguage(ChangeEventArgs e)
     {
-        _language = e.Value?.ToString() ?? "en";
+        _language = e.Value?.ToString() ?? Spoken.Current;
         await Settings.SetServiceSettingAsync(Service, "language", _language);
     }
 

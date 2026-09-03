@@ -167,7 +167,10 @@ public static class LanguageSuggestion
         {
             var here = local.Where(can.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (here.Count > 0)
-                return new LanguageChoices(here, "widely spoken where you are", FromDevice: false);
+                // NOT "where you are". This is handed a country and does not
+                // know how the caller got it - a locale says where somebody is
+                // FROM. The caller that does know says so; see Pair.
+                return new LanguageChoices(here, "widely spoken there", FromDevice: false);
         }
 
         // Asked twice, no answer. English, and the reason says exactly that.
@@ -175,6 +178,41 @@ public static class LanguageSuggestion
             ? new LanguageChoices([LastResort],
                 "your phone did not say which language you speak", FromDevice: false)
             : new LanguageChoices([], "nothing is installed yet", FromDevice: false);
+    }
+
+    /// <summary>Your language, and the language of the people around you.</summary>
+    /// <param name="mine">What the owner speaks - their locale's answer.</param>
+    /// <param name="where">Where the phone actually is, and how that was decided.</param>
+    /// <remarks>
+    /// THE INTERPRETER PAIR WAS HARD-CODED TO ENGLISH AND isiZULU, in two files
+    /// that had to agree. That is a fine guess in Johannesburg and a useless one
+    /// everywhere else: a South African in Tokyo needs English and JAPANESE, and
+    /// no amount of reading his locale more carefully will ever produce the
+    /// second - his locale says South Africa, because he is South African.
+    /// <para>
+    /// So the two sides come from two different questions. Yours from what you
+    /// speak; theirs from where you are standing. Only a signal that actually
+    /// knows position - a network, a timezone - is allowed to answer the second,
+    /// which is why a locale-derived country returns no partner rather than
+    /// pretending isiZulu is spoken in Tokyo.
+    /// </para>
+    /// </remarks>
+    public static (string Mine, string? Theirs, string Reason) Pair(
+        string mine, Whereabouts where, IEnumerable<string>? supported = null)
+    {
+        // A locale is not a location. It is the honest answer to "where are you
+        // from" and the wrong answer to "who is standing in front of you".
+        if (where.Source is CountrySource.Unknown or CountrySource.Locale)
+            return (mine, null, "nothing on this phone knows where you are");
+
+        var here = For(null, where.Here, supported).Tags
+            .FirstOrDefault(t => !string.Equals(t, mine, StringComparison.OrdinalIgnoreCase));
+
+        if (here is null)
+            return (mine, null, $"nothing this app speaks is widely spoken in {where.Here}");
+
+        var named = SampleLanguages.Find(here)?.Name ?? here;
+        return (mine, here, $"{named}, from {where.Explain}");
     }
 
     /// <summary>The single best tag to start with.</summary>

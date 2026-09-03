@@ -69,6 +69,11 @@ public static class MauiProgram
         // whether they work. Scoped, because it holds no state worth sharing.
         builder.Services.AddScoped<IWiringProbe, DeviceWiringProbe>();
 
+        // WHERE THE PHONE IS, WHICH IS NOT WHERE ITS OWNER IS FROM. The
+        // interpreter needs both: your language, and the language of the
+        // people around you.
+        builder.Services.AddSingleton<IWhereAmI, DeviceWhereAmI>();
+
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG

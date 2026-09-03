@@ -16,6 +16,11 @@ public sealed class BrowserSpokenLanguage : ISpokenLanguage
     private string? _chosen;
 
     /// <inheritdoc />
+
+    /// <inheritdoc />
+    /// <remarks>A tab is not asked to guess: what it is set to is what it offers.</remarks>
+    public IReadOnlyList<string> Suggested => [Current];
+
     public string Current => _chosen ?? "en";
 
     /// <inheritdoc />

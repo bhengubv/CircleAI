@@ -22,6 +22,22 @@ public interface ISpokenLanguage
     /// <summary>The language of the last turn, or the default.</summary>
     string Current { get; }
 
+    /// <summary>
+    /// What this phone suggests, best first, for somebody who has not chosen.
+    /// </summary>
+    /// <remarks>
+    /// SO THAT SHARED SCREENS STOP GUESSING ENGLISH. Career, Languages, Home and
+    /// Translate each carried their own `?? "en"`, and the interpreter's pair was
+    /// hard-coded to English-to-isiZulu in two files that had to agree. None of
+    /// them can read a device locale - they are rendered by a browser as well as
+    /// a phone - so the head hands them the answer instead.
+    /// <para>
+    /// Best first, and more than one, because a pair needs two: the person's own
+    /// language and somebody else's. Always at least one entry.
+    /// </para>
+    /// </remarks>
+    IReadOnlyList<string> Suggested { get; }
+
     /// <summary>The language a person picked, or null if they never did.</summary>
     string? Chosen { get; }
 

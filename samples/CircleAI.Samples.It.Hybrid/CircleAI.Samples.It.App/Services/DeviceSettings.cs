@@ -36,7 +36,10 @@ public sealed class DeviceSettings : ISettings
             // reads off it: the wake phrase is whichever one this language has,
             // and answering either follows the speaker or pins a language of its
             // own. English by default because the setup wizard runs in it.
-            _store.Get(LanguageKey, "en")!,
+            // THE LAST HARD-CODED ENGLISH, and ISpokenLanguage was already
+            // injected one line above it. Nothing had to be plumbed - the answer
+            // was in the constructor and the default ignored it.
+            _store.Get(LanguageKey, _spoken.Current)!,
             Enum.TryParse<LanguagePolicy>(
                 _store.Get(PolicyKey, nameof(LanguagePolicy.FollowTheSpeaker))!, out var p)
                 ? p : LanguagePolicy.FollowTheSpeaker,

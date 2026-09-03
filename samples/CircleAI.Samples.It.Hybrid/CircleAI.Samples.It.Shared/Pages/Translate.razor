@@ -34,6 +34,8 @@
 @page "/translate"
 @implements IDisposable
 @inject ISettings Settings
+@inject ISpokenLanguage Spoken
+@inject IWhereAmI Where
 @inject IBrain Brain
 @inject IConversation Talk
 @inject IVoiceHost Voice
@@ -104,8 +106,19 @@
         .OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    string _topLang = "zu";
-    string _bottomLang = "en";
+    // NO HARD-CODED PAIR. This was "zu" and "en", which is a fine guess in
+    // Johannesburg and a useless one anywhere else - and Home carried the same
+    // two constants, so the two screens had to agree by hand. Both now ask the
+    // phone: your language, and the language of the people around you.
+    /// <summary>Why this pair was suggested, in the words of the signal that said so.</summary>
+    /// <remarks>
+    /// Named rather than assumed: "Japanese, from this phone's timezone" is a
+    /// claim somebody can check and correct. "isiZulu" from nowhere is not.
+    /// </remarks>
+    string? _pairReason;
+
+    string _topLang = "";
+    string _bottomLang = "";
 
     /// <summary>The conversation so far, oldest first.</summary>
     readonly List<Line> _lines = new();
@@ -145,8 +158,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _bottomLang = await Settings.ServiceSettingAsync(Service, "from", "en") ?? "en";
-        _topLang = await Settings.ServiceSettingAsync(Service, "to", "zu") ?? "zu";
+        // A REMEMBERED PAIR WINS, because it was chosen. Only a first run
+        // falls through to what the phone can work out.
+        var (mine, theirs, why) = LanguageSuggestion.Pair(Spoken.Current, Where.Locate());
+        _pairReason = why;
+
+        _bottomLang = await Settings.ServiceSettingAsync(Service, "from", mine) ?? mine;
+        _topLang = await Settings.ServiceSettingAsync(Service, "to", theirs ?? mine) ?? theirs ?? mine;
     }
 
     string LangOf(Side s) => s == Side.Top ? _topLang : _bottomLang;

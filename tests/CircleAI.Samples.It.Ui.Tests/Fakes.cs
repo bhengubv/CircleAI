@@ -176,3 +176,22 @@ internal sealed class FakeResidentAssistant : IResidentAssistant
     public Task<ResidentStatus> StopAsync(CancellationToken ct = default) => Task.FromResult(Off);
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(Off);
 }
+
+/// <summary>A phone that says where it is, so a pair can be tested.</summary>
+internal sealed class FakeWhereAmI : IWhereAmI
+{
+    public Whereabouts Whereabouts { get; init; } =
+        new("ZA", CountrySource.Locale, "ZA");
+
+    public Whereabouts Locate() => Whereabouts;
+}
+
+/// <summary>A spoken language that answers whatever the test set.</summary>
+internal sealed class FakeSpokenLanguage : ISpokenLanguage
+{
+    public string Current { get; set; } = "en";
+    public IReadOnlyList<string> Suggested => [Current];
+    public string? Chosen { get; private set; }
+    public void Choose(string tag) { Chosen = tag; Current = tag; }
+    public void ClearChoice() => Chosen = null;
+}

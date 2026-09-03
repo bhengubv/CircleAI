@@ -47,7 +47,9 @@ public class LanguageSuggestionTests
 
         Assert.Equal("zu", c.Tags[0]);
         Assert.False(c.FromDevice);
-        Assert.Contains("where you are", c.Reason);
+        // Reworded deliberately: For() is handed a country and does not know
+        // how the caller got it, so it must not claim to know a position.
+        Assert.Contains("widely spoken there", c.Reason);
     }
 
     [Fact]

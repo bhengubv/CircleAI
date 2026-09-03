@@ -41,4 +41,9 @@ builder.Services.AddScoped<VoiceMark>();
 // whether they work. Scoped, because it holds no state worth sharing.
 builder.Services.AddScoped<IWiringProbe, BrowserWiringProbe>();
 
+// WHERE THE PHONE IS, WHICH IS NOT WHERE ITS OWNER IS FROM. The
+// interpreter needs both: your language, and the language of the
+// people around you.
+builder.Services.AddSingleton<IWhereAmI, BrowserWhereAmI>();
+
 await builder.Build().RunAsync();

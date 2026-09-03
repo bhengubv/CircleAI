@@ -83,6 +83,32 @@ public sealed class StoredSpokenLanguage : ISpokenLanguage
     }
 
     /// <inheritdoc />
+    public IReadOnlyList<string> Suggested => _suggested ??= FromPhoneAll();
+
+    private static IReadOnlyList<string>? _suggested;
+
+    /// <summary>Everything the phone suggests, not just the winner.</summary>
+    private static IReadOnlyList<string> FromPhoneAll()
+    {
+        try
+        {
+            var locales = new List<string>();
+            var list = Android.App.Application.Context.Resources?.Configuration?.Locales;
+            if (list is not null)
+                for (var i = 0; i < list.Size(); i++)
+                    if (list.Get(i)?.ToLanguageTag() is { Length: > 0 } tag)
+                        locales.Add(tag);
+
+            var choice = LanguageSuggestion.For(locales, Java.Util.Locale.Default?.Country);
+            return choice.Tags.Count > 0 ? choice.Tags : [LanguageSuggestion.LastResort];
+        }
+        catch
+        {
+            return [LanguageSuggestion.LastResort];
+        }
+    }
+
+    /// <inheritdoc />
     public string Current => _store.Get(Key, Default)!;
 
     /// <inheritdoc />
