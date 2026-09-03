@@ -45,8 +45,12 @@ internal sealed class FakeSetup : ISetup
     public Task<IReadOnlyList<SetupItem>> PlanAsync(CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<SetupItem>>([]);
 
+    /// <summary>A census where everything asked for is already on the device.</summary>
+    public Census Census { get; init; } =
+        new([new CensusRow("the voice", true, 1024, "here")], 1, 1, "1 of 1 on this phone");
+
     public Task<Census> CensusAsync(CancellationToken ct = default)
-        => Task.FromResult(new Census([], 0, 0, "nothing catalogued"));
+        => Task.FromResult(Census);
 
     public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
         => Task.CompletedTask;
@@ -128,6 +132,17 @@ internal sealed class FakeConversation : IConversation
 
     public Task SayAsync(string text, string? language = null, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    /// <summary>How many times the app asked for a warm-up.</summary>
+    public int Prepared { get; private set; }
+
+    public Task<string> PrepareAsync(
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        Prepared++;
+        progress?.Report("Opening the ears");
+        return Task.FromResult("ears: open; voice: ready");
+    }
 
     public Task HeardAsync(string heard, CancellationToken ct = default)
         => Task.CompletedTask;

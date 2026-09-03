@@ -57,6 +57,28 @@ public interface IConversation
     Task<BrainState> StateAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Open everything a turn needs, now, so the first one is not the slow one.
+    /// </summary>
+    /// <remarks>
+    /// THE FIRST TURN PAID FOR ALL OF THIS AND IT IS THE TURN THAT DECIDES. On a
+    /// P30 the first decode took ELEVEN SECONDS against under two for the next -
+    /// the transcriber opens its model on first use - and the first spoken reply
+    /// logs "(INCLUDING model open)" for the same reason. So somebody presses the
+    /// circle, having been shown a screen that said it was ready, and watches
+    /// nothing happen for eleven seconds.
+    /// <para>
+    /// It belongs HERE rather than on a probe because this is the object that
+    /// caches the engines: a warm-up that opened its own copy would heat
+    /// something nobody uses and leave the real path just as cold.
+    /// </para>
+    /// <para>
+    /// Returns what is now open, or why it is not. Safe to call more than once -
+    /// the second call finds everything already warm and says so quickly.
+    /// </para>
+    /// </remarks>
+    Task<string> PrepareAsync(IProgress<string>? progress = null, CancellationToken ct = default);
+
+    /// <summary>
     /// One turn: open the microphone, hear a question, answer it out loud.
     /// </summary>
     /// <remarks>

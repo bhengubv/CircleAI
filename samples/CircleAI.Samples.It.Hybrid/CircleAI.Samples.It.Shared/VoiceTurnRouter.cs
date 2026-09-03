@@ -29,6 +29,21 @@ public sealed class VoiceTurnRouter : IDisposable
     /// <summary>Pass this to the turn, so a routed one can be stopped.</summary>
     public CancellationToken Token => _cts.Token;
 
+    /// <summary>Says what was heard and where it went, or that it went nowhere.</summary>
+    /// <remarks>
+    /// THE MATCHER IS TUNED AGAINST GUESSES UNTIL THIS LINE EXISTS. Every routing
+    /// test asserts on strings somebody typed; on a phone the words arrive from
+    /// Whisper, which punctuates, capitalises and mishears - "I need translation"
+    /// can come back as "I need a translation" and match nothing at all. Without
+    /// this, a miss is silent and indistinguishable from a turn that simply
+    /// answered, which is the whole failure mode of this codebase.
+    /// <para>
+    /// Both outcomes are logged. A router that only reported its hits would make
+    /// the misses - the ones worth tuning on - the invisible half.
+    /// </para>
+    /// </remarks>
+    public static Action<string>? Trace { get; set; }
+
     /// <summary>
     /// Show a turn report; returns true when this one asked to go somewhere.
     /// </summary>
@@ -40,7 +55,11 @@ public sealed class VoiceTurnRouter : IDisposable
     {
         if (Routed is not null) return false;
         if (t.Heard is not { Length: > 0 } heard) return false;
-        if (VoiceDestinations.Match(heard) is not { } where) return false;
+
+        var match = VoiceDestinations.Match(heard);
+        Trace?.Invoke($"route: heard \"{heard}\" -> {(match is null ? "no match" : "/" + match.Route)}");
+
+        if (match is not { } where) return false;
 
         Routed = where;
 

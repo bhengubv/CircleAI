@@ -303,6 +303,41 @@ public sealed class DeviceConversation : IConversation
         return result.Text;
     }
 
+    /// <inheritdoc />
+    public async Task<string> PrepareAsync(
+        IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        var said = new List<string>();
+
+        // THE EARS FIRST, because they are the eleven seconds. Through the same
+        // field a turn uses, so what is opened here is what a turn finds.
+        progress?.Report("Opening the ears");
+        try
+        {
+            var ears = _listener ??= (await ItListener
+                .TryCreateAsync(StorageDir, ct: ct).ConfigureAwait(false)).listener;
+            said.Add(ears is null ? "ears: not available" : "ears: open");
+        }
+        catch (Exception ex) { said.Add($"ears: {ex.GetType().Name}: {ex.Message}"); }
+
+        // THE VOICE SECOND. Building the speaker is the cost - the first spoken
+        // reply logs "(INCLUDING model open)" - so it is built and let go, and
+        // what stays warm is the model file in the page cache rather than the
+        // object. Cheaper than holding an engine open for a turn that may never
+        // come, and it still takes the seconds off the first one.
+        progress?.Report("Opening the voice");
+        try
+        {
+            var (speaker, status) = await ItSpeaker
+                .TryCreateAsync(StorageDir, log: null, ct).ConfigureAwait(false);
+            (speaker as IDisposable)?.Dispose();
+            said.Add(speaker is null ? $"voice: {status}" : "voice: ready");
+        }
+        catch (Exception ex) { said.Add($"voice: {ex.GetType().Name}: {ex.Message}"); }
+
+        return string.Join("; ", said);
+    }
+
     private ItListener? _listener;
 
     private static string StorageDir => ModelStore.Path;

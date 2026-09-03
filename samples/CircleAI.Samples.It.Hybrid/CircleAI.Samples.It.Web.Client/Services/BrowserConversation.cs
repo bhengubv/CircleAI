@@ -17,6 +17,13 @@ public sealed class BrowserConversation : IConversation
         "Talking to it happens on the phone. Install the app to have a conversation.";
 
     /// <inheritdoc />
+
+    /// <inheritdoc />
+    /// <remarks>The browser's own engines are the platform's; there is nothing to open.</remarks>
+    public Task<string> PrepareAsync(
+        IProgress<string>? progress = null, CancellationToken ct = default)
+        => Task.FromResult("nothing to warm in a tab");
+
     public Task<BrainState> StateAsync(CancellationToken ct = default)
         => Task.FromResult(new BrainState(false, OnPhone));
 

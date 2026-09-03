@@ -22,6 +22,8 @@
 @inject ISetup Wizard
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IConversation Talk
+@inject IWiringProbe Probe
 @implements IDisposable
 
 <div class="loading">
@@ -31,6 +33,14 @@
     </div>
 
     <h1 class="loading-lead">@_lead</h1>
+
+    @* WHAT IT IS DOING, NOT JUST THAT IT IS DOING SOMETHING. A spinner during a
+       warm-up that can take seconds says only "wait"; the step's name says what
+       is being waited for, and turns a hang into a report. *@
+    @if (_warming is { Length: > 0 })
+    {
+        <div class="loading-step">@_warming</div>
+    }
 
     @if (_census is { Rows.Count: > 0 })
     {
@@ -67,6 +77,9 @@
     Census? _census;
     SetupProgressReport? _progress;
     string _lead = "Waking up";
+
+    /// <summary>What the warm-up is opening right now, or null once it is done.</summary>
+    string? _warming;
     bool _left;
     bool _started;
 
@@ -112,10 +125,11 @@
 
         var shownAt = DateTimeOffset.UtcNow;
 
-        // Nothing missing: a receipt. Hold it long enough to read, then Home.
+        // Nothing missing: a receipt. Hold it long enough to read, then warm.
         if (_census is null || _census is { Total: > 0 } c && c.Present >= c.Total)
         {
             await HoldAtLeast(shownAt, ReadableMs);
+            await WarmAsync();
             Leave();
             return;
         }
@@ -178,6 +192,62 @@
         // last thing worth seeing before Home.
         await HoldAtLeast(shownAt, ReadableMs);
         Leave();
+    }
+
+    /// <summary>
+    /// Do not leave this screen until the app is actually ready to be used.
+    /// </summary>
+    /// <remarks>
+    /// DOWNLOADED IS NOT READY, AND THIS SCREEN USED TO STOP AT DOWNLOADED. The
+    /// census counts bytes on disk, so the gate opened while the transcriber had
+    /// never been opened, the voice had never been built, and the phonemizer
+    /// might not be wired at all. Measured on a P30: the FIRST decode took ELEVEN
+    /// SECONDS against under two for every one after it, and the first spoken
+    /// reply logged "(INCLUDING model open)".
+    /// <para>
+    /// So the cost landed on the first turn - the one where somebody decides
+    /// whether this thing works - after a screen had already told them it was
+    /// ready. This screen exists to absorb exactly that wait, and it was handing
+    /// it to the user instead.
+    /// </para>
+    /// <para>
+    /// Never fatal. A warm-up that fails is reported and the app still opens: a
+    /// phone that will not start is worse than a phone whose first turn is slow,
+    /// and the wiring report says which it is.
+    /// </para>
+    /// </remarks>
+    async Task WarmAsync()
+    {
+        try
+        {
+            // The hooks first: they are milliseconds, and a null phonemizer means
+            // the voice cannot be warmed at all - better to say so than to open a
+            // model for a voice that will refuse.
+            var hooks = await Probe.HooksAsync();
+            foreach (var row in hooks.Failing)
+            {
+                _warming = row.Title;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            var progress = new Progress<string>(line =>
+            {
+                _warming = line;
+                InvokeAsync(StateHasChanged);
+            });
+
+            await Talk.PrepareAsync(progress);
+        }
+        catch
+        {
+            // Reported by the probe's own log; never a reason to trap somebody
+            // on a loading screen.
+        }
+        finally
+        {
+            _warming = null;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     void Leave()

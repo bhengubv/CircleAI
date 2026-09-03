@@ -56,6 +56,13 @@ public class MainApplication : MauiApplication
         // goes to logcat directly - the one place it is actually readable.
         CircleAI.Voice.VoiceTrace.Sink = line => Android.Util.Log.Info("ITHYB", line);
 
+        // And what the voice router heard, and where it sent it. Its own tag so
+        // a session's routing decisions are one grep, and it logs the MISSES too:
+        // the matcher is tuned against typed guesses until real Whisper output
+        // is written down somewhere.
+        CircleAI.Samples.It.Shared.VoiceTurnRouter.Trace =
+            line => Android.Util.Log.Info("CircleAI.Route", line);
+
         // AND NOW SAY WHAT IS ACTUALLY WIRED. Last, so the trace sink above is
         // already attached and every hook reports through the same channel.
         //
