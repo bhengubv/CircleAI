@@ -60,6 +60,28 @@ public interface IResidentAssistant
     /// </remarks>
     Task<ResidentStatus> StopAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Start again if — and only if — the owner had it on.
+    /// </summary>
+    /// <remarks>
+    /// THE CONSENT WAS RECORDED AND ONLY ONE PATH EVER READ IT. The flag behind
+    /// this is written whenever somebody turns the assistant on or off, and it
+    /// was being read by the boot receiver alone. So the service came back after
+    /// a REBOOT and never after an ordinary restart - swipe the app away, open
+    /// it again, and the setting still read "on" while nothing was listening.
+    /// A phone that quietly stops answering to its name, with the control still
+    /// ticked, is indistinguishable from a wake word that does not work.
+    /// <para>
+    /// Call it from a VISIBLE screen: this starts a foreground service, and from
+    /// Android 12 that may not be done from the background.
+    /// </para>
+    /// <para>
+    /// Returns <see cref="ResidentState.Off"/> without starting anything when
+    /// the owner had it off. It restores a choice; it does not make one.
+    /// </para>
+    /// </remarks>
+    Task<ResidentStatus> ResumeAsync(CancellationToken ct = default);
+
     /// <summary>Raised when the wake phrase is heard. Not on the UI thread.</summary>
     event EventHandler<string>? Woke;
 }

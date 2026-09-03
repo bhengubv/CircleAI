@@ -64,6 +64,19 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
     private DateTimeOffset _lastFireUtc = DateTimeOffset.MinValue;
     private bool _disposed;
 
+    // WHY THERE IS A HEARTBEAT AT ALL. A wake word that does not fire has four
+    // indistinguishable causes from the outside: no audio arriving, audio
+    // arriving silent, stage one never scoring, or stage two vetoing. Each of
+    // those needs a different fix and the app said exactly nothing about which
+    // it was, so twelve hours of guessing looked identical to progress. These
+    // traces name the stage. VoiceTrace is off unless a host attaches a sink, so
+    // this costs nothing where nobody is looking.
+    private long _chunks;
+    private double _peak;
+    private double _sumSq;
+    private long _samplesSeen;
+    private DateTimeOffset _lastBeatUtc = DateTimeOffset.MinValue;
+
     public ZipformerWakeWordDetector(IAudioCapture capture, ZipformerWakeConfig config)
     {
         ArgumentNullException.ThrowIfNull(capture);
@@ -81,12 +94,30 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
             config.Confirmer);
 
         _spotter.Woke += OnWoke;
-        _spotter.Rejected += (_, r) => Vetoed?.Invoke(this, (r.Detection.Phrase, r.Reason));
+        _spotter.Rejected += (_, r) =>
+        {
+            VoiceTrace.Write(
+                $"wake: VETOED \"{r.Detection.Phrase}\" p={r.Detection.Probability:0.###} — "
+                + (r.Reason ?? "no reason given"));
+            Vetoed?.Invoke(this, (r.Detection.Phrase, r.Reason));
+        };
 
         WakeWords = _spotter.Keywords.Count > 0
             ? _spotter.Keywords.ToArray()
             : new[] { "Hey B" };
         WakeWord = WakeWords[0];
+
+        VoiceTrace.Write(
+            $"wake: loaded [{string.Join(" | ", _spotter.Keywords)}] "
+            + $"threshold={config.Threshold:0.###} "
+            + $"confirmer={(config.Confirmer?.GetType().Name ?? "UtteranceOnsetConfirmer")} "
+            + $"from={config.KeywordsFile ?? "the bundle's keywords.txt"}");
+
+        // A PHRASE THAT CAN NEVER FIRE LOOKS EXACTLY LIKE ONE NOBODY IS SAYING,
+        // which is why this is loud rather than a property somebody remembers to
+        // read.
+        foreach (var (phrase, by) in _spotter.ShadowedKeywords)
+            VoiceTrace.Write($"wake: \"{phrase}\" can never fire — \"{by}\" finishes inside it");
     }
 
     /// <inheritdoc />
@@ -130,9 +161,19 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
         lock (_gate)
         {
             var now = DateTimeOffset.UtcNow;
-            if (now - _lastFireUtc < _debounce) return;
+            if (now - _lastFireUtc < _debounce)
+            {
+                // Dropping a real wake is worth a line: repeated, it means the
+                // debounce is eating a phrase somebody is actually saying.
+                VoiceTrace.Write(
+                    $"wake: \"{d.Phrase}\" confirmed but debounced "
+                    + $"({(now - _lastFireUtc).TotalMilliseconds:0} ms < {_debounce.TotalMilliseconds:0} ms)");
+                return;
+            }
             _lastFireUtc = now;
         }
+
+        VoiceTrace.Write($"wake: FIRED \"{d.Phrase}\" p={d.Probability:0.###}");
 
         WakeWordDetected?.Invoke(this, new WakeWordDetectedEventArgs
         {
@@ -172,6 +213,38 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
                 var span = chunk.Span;
                 for (var i = 0; i < samples; i++)
                     pcm[i] = (short)(span[i * 2] | (span[i * 2 + 1] << 8)) / 32768f;
+
+                // THE LEVEL, NOT JUST THE ARRIVAL. A capture that yields chunks
+                // of digital silence is the failure that looks most like a
+                // working microphone: the loop runs, the frames arrive, and
+                // nothing is in them. Peak and RMS tell those apart at a glance.
+                for (var i = 0; i < samples; i++)
+                {
+                    var v = pcm[i];
+                    var a = v < 0 ? -v : v;
+                    if (a > _peak) _peak = a;
+                    _sumSq += v * (double)v;
+                }
+                _chunks++;
+                _samplesSeen += samples;
+
+                var beat = DateTimeOffset.UtcNow;
+                if (beat - _lastBeatUtc >= TimeSpan.FromSeconds(5))
+                {
+                    if (_lastBeatUtc != DateTimeOffset.MinValue)
+                    {
+                        var best = _spotter.TakeBestProgress();
+                        VoiceTrace.Write(
+                            $"wake: hearing {_chunks} chunks / {_samplesSeen / 16000.0:0.0}s "
+                            + $"peak={_peak:0.####} rms={Math.Sqrt(_sumSq / Math.Max(1, _samplesSeen)):0.####} "
+                            + (best is null
+                                ? "closest=nothing matched a phrase"
+                                : $"closest=\"{best.Phrase}\" {best.Matched}/{best.Total} tokens "
+                                  + $"p={best.MeanProbability:0.###} (threshold {_config.Threshold:0.###})"));
+                    }
+                    _lastBeatUtc = beat;
+                    _chunks = 0; _peak = 0; _sumSq = 0; _samplesSeen = 0;
+                }
 
                 _spotter.AcceptWaveform(pcm.AsSpan(0, samples));
             }

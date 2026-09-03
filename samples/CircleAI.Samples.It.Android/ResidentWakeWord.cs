@@ -67,9 +67,15 @@ public sealed class ResidentWakeWord : IResidentListener
     /// The language the phone is set to, so it listens for its name in that
     /// language rather than in English.
     /// </param>
+    /// <param name="keywordsFile">
+    /// The phrase the OWNER chose, as already written by the head's own phrase
+    /// store. Null derives one instead, which is right for a head that has no
+    /// such store.
+    /// </param>
     public static bool Install(Android.Content.Context context, string bundleDirectory,
                                IVoiceTranscriber? transcriber = null,
-                               string? languageCode = null)
+                               string? languageCode = null,
+                               string? keywordsFile = null)
     {
         try
         {
@@ -85,7 +91,27 @@ public sealed class ResidentWakeWord : IResidentListener
             // WHAT TO LISTEN FOR, IN THE LANGUAGE THAT WAS CHOSEN. "Hey B" was
             // fixed regardless of language, so setting the phone to Japanese left
             // it waiting for an English phrase nobody would say to it.
-            var keywords = KeywordsFor(bundleDirectory, appData, languageCode);
+            // THE PHRASE THE OWNER ACTUALLY CHOSE, WHEN THE HEAD KNOWS IT.
+            //
+            // This used to always derive its own from WakePhraseBook.BestFor,
+            // which ignores the choice made in the UI - so the hybrid ended up
+            // with TWO keyword files holding TWO different phrases:
+            //
+            //   files/CircleAI/wake-en.txt          "Hey B"          (the UI)
+            //   files/.config/CircleAI/wake-en.txt  "Hey Circle AI"  (here)
+            //
+            // The paths differ because FileSystem.AppDataDirectory and
+            // SpecialFolder.ApplicationData are two spellings of "app data" that
+            // differ by a /.config - the same trap ModelStore exists to close.
+            // The screen said it was listening for one name and the service was
+            // listening for another, which is indistinguishable from a wake word
+            // that simply does not work.
+            var keywords = keywordsFile is not null && System.IO.File.Exists(keywordsFile)
+                ? keywordsFile
+                : KeywordsFor(bundleDirectory, appData, languageCode);
+
+            Android.Util.Log.Info("CircleAI.Kws",
+                $"wake keywords: {keywords ?? "the bundle's own"}");
 
             var detector = WakeWordFactory.Create(
                 new AndroidAudioCapture(),

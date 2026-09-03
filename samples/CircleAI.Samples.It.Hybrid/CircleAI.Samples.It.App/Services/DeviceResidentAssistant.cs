@@ -115,7 +115,8 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             }
 
             if (CircleNeuronService.Listener is null &&
-                !ResidentWakeWord.Install(context, bundle, languageCode: language))
+                !ResidentWakeWord.Install(context, bundle, languageCode: language,
+                                          keywordsFile: DeviceWakePhrases.KeywordFile(language)))
             {
                 return new ResidentStatus(ResidentState.Failed,
                     "Not listening",
@@ -192,6 +193,22 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             Android.Util.Log.Error(Tag, "could not stop resident assistant: " + ex);
             return new ResidentStatus(ResidentState.Failed, "Not listening", ex.Message);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<ResidentStatus> ResumeAsync(CancellationToken ct = default)
+    {
+        // ALREADY UP. Android may have kept the service across a restart of the
+        // UI, and starting it twice would re-register the listener.
+        if (IsListening)
+            return new ResidentStatus(ResidentState.Listening, "Listening", string.Empty);
+
+        if (!ResidentPrefs.WasRunning(Android.App.Application.Context))
+            return new ResidentStatus(ResidentState.Off, "Not listening",
+                "Turn on Answer to its name to have it listen with the screen off.");
+
+        Android.Util.Log.Info(Tag, "resuming: the owner had the assistant on");
+        return await StartAsync(ct).ConfigureAwait(false);
     }
 
     private void OnWoke(object? sender, string phrase)

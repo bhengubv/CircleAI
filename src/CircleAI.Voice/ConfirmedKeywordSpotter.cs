@@ -312,6 +312,24 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
     /// </remarks>
     public event EventHandler<(KwsDetection Detection, string? Reason)>? Rejected;
 
+    private ZipformerKwsSpotter.KwsProgress? _best;
+
+    /// <summary>
+    /// The closest stage one has come to a phrase since this was last called,
+    /// and null when it has not come close to one at all.
+    /// </summary>
+    /// <remarks>
+    /// Reading it clears it, so each caller gets the best of ITS OWN window
+    /// rather than the best since the microphone opened - which would freeze on
+    /// one lucky frame and then never move again.
+    /// </remarks>
+    public ZipformerKwsSpotter.KwsProgress? TakeBestProgress()
+    {
+        var b = _best;
+        _best = null;
+        return b;
+    }
+
     /// <summary>The phrases stage one is listening for.</summary>
     public IReadOnlyList<string> Keywords => _spotter.Keywords;
 
@@ -334,10 +352,31 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
         _confirmer = confirmer ?? new UtteranceOnsetConfirmer();
         _ring = new float[(int)(historySeconds * 16_000)];
 
+        // HOW CLOSE IT GETS, WHEN IT NEVER ARRIVES. KeywordProgress fires as the
+        // leading hypothesis walks into a phrase, and it is the difference
+        // between "the model is hearing 2 of 3 tokens at 0.31 and the threshold
+        // is 0.5" - a number to move - and "nothing happened", which is not a
+        // finding at all. Kept as the deepest sighting rather than logged here:
+        // it fires per frame, and a line per frame is not a log, it is a flood.
+        _spotter.KeywordProgress += (_, p) =>
+        {
+            if (_best is null || p.Matched > _best.Matched ||
+                (p.Matched == _best.Matched && p.MeanProbability > _best.MeanProbability))
+                _best = p;
+        };
+
         // Collected, not judged, inside the event: the detection arrives mid-decode
         // and stage two wants the audio AROUND it — including a little that has not
         // been decoded yet. Judging here would look only backwards.
-        _spotter.Detected += (_, d) => _pending.Add(d);
+        _spotter.Detected += (_, d) =>
+        {
+            // STAGE ONE, BEFORE ANYONE JUDGES IT. Without this line a veto and a
+            // model that never scored are the same silence, and they are opposite
+            // problems: one is a threshold to loosen, the other is a phrase the
+            // model cannot hear at all.
+            VoiceTrace.Write($"wake: heard \"{d.Phrase}\" p={d.Probability:0.###} — confirming");
+            _pending.Add(d);
+        };
     }
 
     /// <summary>Feeds audio. Float samples in [-1, 1] at 16 kHz.</summary>

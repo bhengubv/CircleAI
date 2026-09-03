@@ -28,4 +28,8 @@ public sealed class BrowserResidentAssistant : IResidentAssistant
 
     /// <inheritdoc />
     public Task<ResidentStatus> StopAsync(CancellationToken ct = default) => Task.FromResult(No);
+
+    /// <inheritdoc />
+    /// <remarks>There is nothing to resume: a tab never held the microphone.</remarks>
+    public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(No);
 }

@@ -349,6 +349,34 @@
         finally { Mark.Clear(); StateHasChanged(); }
     }
 
+    /// <summary>Put the assistant back on, if that is how it was left.</summary>
+    /// <remarks>
+    /// ON FIRST RENDER, WHICH IS THE POINT: starting a foreground service is
+    /// only allowed from a visible screen, and by the time this runs there is
+    /// one. ResumeAsync itself decides whether anything should start - it reads
+    /// the owner's recorded choice and returns Off without touching the
+    /// microphone when the answer is no.
+    /// <para>
+    /// Not awaited into the render path. Bringing the service up loads a wake
+    /// bundle, and a layout that waits for it is a layout that has not drawn
+    /// yet; the toggle in Settings reads IsListening live, so it catches up on
+    /// its own.
+    /// </para>
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try { await Resident.ResumeAsync(); }
+        catch (Exception ex)
+        {
+            // Never fatal to the shell. An assistant that could not restart is a
+            // reason to say so, not a reason for the app to fail to draw.
+            _says = $"Could not start listening: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
     /// <summary>The phone heard its name, so take the turn nobody pressed for.</summary>
     /// <remarks>
     /// ARRIVES OFF THE UI THREAD - the wake detector raises it from its own
