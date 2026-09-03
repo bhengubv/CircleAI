@@ -64,6 +64,11 @@ public static class MauiProgram
         // and a singleton would show every visitor whoever spoke last.
         builder.Services.AddScoped<VoiceMark>();
 
+        // WHAT IS ACTUALLY WIRED, as opposed to what is offered. The setup census
+        // counts downloads; this asks the runtime hooks and the real speech path
+        // whether they work. Scoped, because it holds no state worth sharing.
+        builder.Services.AddScoped<IWiringProbe, DeviceWiringProbe>();
+
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG

@@ -1,0 +1,49 @@
+<!--
+  The shared UI, tested without a phone.
+
+  WHY THIS EXISTS. Every defect this project was created for was found by hand,
+  on a P30, hours apart: two brand marks that never showed the same state, a
+  claim of "78 languages, spoken out loud" on a build that could speak one, a
+  circle that offered translation and a bar that did not. All of them render
+  from the shared Razor library, and none of them needed a device to catch -
+  they needed something to render the component and read what it said.
+
+  bUnit renders the real components against fake heads, so a claim can be
+  asserted against the host that supplies it rather than against a screenshot.
+
+  net10.0 only, unlike the main suite: this references the Razor library, which
+  is net10.0, and a second leg would be testing a target that does not exist.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="1.40.0" />
+    <!--
+      PINNED PAST bunit's OWN TRANSITIVE ANGLESHARP, which restores 1.2.0 and
+      carries GHSA-pgww-w46g-26qg. A test project is still a project, and this
+      repo closed two advisories the same day this one appeared; leaving a known
+      moderate in the tree because "it is only tests" is how the next audit
+      inherits it. Version taken from the NuGet flat container rather than an
+      advisory summary - a pin read off a summary has been one version short
+      here before.
+    -->
+    <PackageReference Include="AngleSharp" Version="1.7.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\samples\CircleAI.Samples.It.Hybrid\CircleAI.Samples.It.Shared\CircleAI.Samples.It.Shared.csproj" />
+    <ProjectReference Include="..\..\samples\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

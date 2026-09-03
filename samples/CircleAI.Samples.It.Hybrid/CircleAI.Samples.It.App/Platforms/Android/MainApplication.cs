@@ -55,6 +55,20 @@ public class MainApplication : MauiApplication
         // Managed voice logging reaches nothing through ILogger on Android, so it
         // goes to logcat directly - the one place it is actually readable.
         CircleAI.Voice.VoiceTrace.Sink = line => Android.Util.Log.Info("ITHYB", line);
+
+        // AND NOW SAY WHAT IS ACTUALLY WIRED. Last, so the trace sink above is
+        // already attached and every hook reports through the same channel.
+        //
+        // THE MUTE BUILD PRODUCED NO LINE ANYWHERE saying the phonemizer was
+        // missing - it had to be inferred from a translation that never spoke,
+        // days later. Five lines at startup make the next missing wire a grep
+        // instead of a day.
+        CircleAI.Samples.It.App.Services.DeviceWiringProbe.LogHooks();
+
+        // And a full voice sweep, only when somebody has asked for one. Not
+        // awaited: it takes minutes, and startup is not allowed to wait on a
+        // diagnostic.
+        _ = CircleAI.Samples.It.App.Services.DeviceWiringProbe.SweepVoicesIfRequestedAsync();
     }
 
     /// <inheritdoc />
