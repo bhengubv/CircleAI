@@ -1,0 +1,193 @@
+@*
+    Transcribe.
+
+    THE APP COULD ALWAYS DO THIS AND NEVER OFFERED IT. DictateAsync has been on
+    IConversation the whole time - speech in, text out, nothing sent to the
+    answering model - with no screen, no menu entry and no way to ask for it. An
+    assistant that answers questions but cannot take down a meeting is missing
+    the half people actually reach for a recorder to do.
+
+    IT KEEPS LISTENING. One DictateAsync call is one utterance; a meeting is
+    hundreds. So this loops until it is stopped, appending each utterance as its
+    own line, which is also what makes the transcript readable - a wall of text
+    with no breaks is a recording nobody rereads.
+
+    NOTHING IS ANSWERED. The circle elsewhere asks and replies; here it only
+    writes down. That is the whole distinction the mode exists to make, and it
+    is why this is a mode rather than a button on Chat.
+*@
+@page "/transcribe"
+@inject IConversation Talk
+@inject ISpokenLanguage Spoken
+@inject VoiceMark Mark
+@implements IDisposable
+
+<div class="transcribe">
+
+    @if (_lines.Count == 0 && !_running)
+    {
+        @*
+            The empty state says what it will DO, not what it is. "Transcribe"
+            is already on the strip above; repeating it here would spend the
+            screen's one chance to explain on a word somebody has just read.
+        *@
+        <div class="empty">
+            <div class="empty-line">Take down what is said</div>
+            <div class="empty-sub">
+                A meeting, an interview, a clinic appointment. It stays on this
+                phone and nothing is sent anywhere.
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="lines" aria-live="polite">
+            @foreach (var line in _lines)
+            {
+                <p class="line">@line</p>
+            }
+
+            @* WHAT IT IS HEARING RIGHT NOW, before the utterance ends. Without
+               it a long sentence looks like a stall - the same complaint the
+               setup screen's frozen countdown earned. *@
+            @if (_partial is { Length: > 0 })
+            {
+                <p class="line line-partial">@_partial</p>
+            }
+        </div>
+    }
+
+    @if (_trouble is { Length: > 0 })
+    {
+        <p class="warn">@_trouble</p>
+    }
+
+    <div class="controls">
+        <button class="record @(_running ? "record-on" : null)" @onclick="Toggle">
+            @(_running ? "Stop" : _lines.Count == 0 ? "Start" : "Carry on")
+        </button>
+
+        @if (_lines.Count > 0 && !_running)
+        {
+            <button class="clear" @onclick="Clear">Clear</button>
+        }
+    </div>
+
+    @if (_lines.Count > 0)
+    {
+        <p class="count">@_lines.Count line@(_lines.Count == 1 ? "" : "s")</p>
+    }
+</div>
+
+@code {
+    readonly List<string> _lines = [];
+
+    /// <summary>What is being heard right now, before the utterance closes.</summary>
+    string? _partial;
+
+    string? _trouble;
+    bool _running;
+
+    CancellationTokenSource? _cts;
+
+    /// <summary>Start listening, or stop.</summary>
+    /// <remarks>
+    /// STOP HAS TO WORK MID-UTTERANCE. A person ending a meeting presses stop
+    /// while somebody is still talking, and a button that waits for the current
+    /// sentence to finish before responding reads as broken.
+    /// </remarks>
+    async Task Toggle()
+    {
+        if (_running)
+        {
+            _cts?.Cancel();
+            return;
+        }
+
+        _trouble = null;
+        _running = true;
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            await ListenAsync(_cts.Token);
+        }
+        finally
+        {
+            _running = false;
+            _partial = null;
+            Mark.Clear();
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>One utterance after another until somebody stops it.</summary>
+    /// <remarks>
+    /// EVERY UTTERANCE IS ITS OWN CALL, because that is the shape DictateAsync
+    /// has: it returns when a speaker stops. Looping is what turns a dictation
+    /// primitive into a recorder.
+    /// <para>
+    /// A single empty result is NOT the end. Somebody pausing to think, or a
+    /// gap between two people speaking, comes back as null - and treating that
+    /// as "the meeting is over" would stop recording every time the room went
+    /// quiet. Only being cancelled stops this.
+    /// </para>
+    /// </remarks>
+    async Task ListenAsync(CancellationToken ct)
+    {
+        var updates = new Progress<TurnState>(t =>
+        {
+            Mark.Report(t);
+
+            // The transcript so far, for the line that has not landed yet.
+            if (t.Heard is { Length: > 0 } heard) _partial = heard;
+
+            if (t.Detail is { Length: > 0 } detail) _trouble = detail;
+            InvokeAsync(StateHasChanged);
+        });
+
+        while (!ct.IsCancellationRequested)
+        {
+            string? said;
+            try
+            {
+                said = await Talk.DictateAsync(updates, ct, Spoken.Current);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                // A SENTENCE, AND THE LINES SO FAR ARE KEPT. Losing an hour of
+                // a meeting because the last utterance threw would be the worst
+                // possible answer.
+                _trouble = $"Stopped: {ex.GetType().Name}: {ex.Message}";
+                break;
+            }
+
+            _partial = null;
+
+            if (said is { Length: > 0 } line)
+            {
+                _lines.Add(line.Trim());
+                StateHasChanged();
+            }
+        }
+    }
+
+    void Clear()
+    {
+        _lines.Clear();
+        _partial = null;
+        _trouble = null;
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

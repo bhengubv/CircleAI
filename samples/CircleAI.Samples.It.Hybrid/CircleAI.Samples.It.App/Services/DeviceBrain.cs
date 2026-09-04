@@ -74,10 +74,27 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // THE TWO CALLBACKS WERE THE WRONG WAY ROUND, and it put the app's
+            // own plumbing on screen as its answer. The signature is
+            // (input, emitLine, onChunk, onThinking): emitLine is ItSession's
+            // CONSOLE diagnostics, onChunk is the reply arriving token by token.
+            // Wired the other way, asking "how do you say hello in isiZulu"
+            // rendered
+            //
+            //     -> concierge routes to: Generalist  [no specialist cue -> generalist]
+            //
+            // in the chat bubble, and the actual answer went to `_ => { }`.
+            //
+            // Measured on a P30, 2026-09-05. It survived because AskAsync still
+            // RETURNS the right string - sb.ToString() is the real answer - so
+            // every caller that reads the return value was correct, and only the
+            // one screen that renders the stream showed the fault. SeeAsync two
+            // methods below has always had the order right, which is what makes
+            // this a slip rather than a convention.
             return await session.RunTurnStreamingAsync(
                 prompt,
-                fragment => token?.Invoke(fragment),
                 _ => { },
+                fragment => token?.Invoke(fragment),
                 _ => { }).ConfigureAwait(false);
         }
         finally

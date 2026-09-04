@@ -43,6 +43,40 @@
     }
 
 
+    @*
+        WHAT THE APP IS DOING, ON THE GLASS.
+
+        THE MODE USED TO BE INVISIBLE. It lived four taps into Settings, and it
+        silently repointed a link on Home labelled "Or type instead" so that one
+        control meant two different screens. Translate - the thing on the front
+        of the app - appeared in no menu at all; the only way in was to know that
+        the mode existed and go and find it.
+
+        Three peers you switch between, not a hierarchy you climb, so this stays
+        put and stays lit rather than changing as you go deeper. It is what the
+        circle will do, which is why it sits above the circle and not in a bar of
+        places to go: the bottom bar is WHERE YOU GO, this is WHAT IT DOES.
+
+        Hidden on the full-screen stages for the same reason the bottom bar is -
+        loading and setup own the whole screen, and offering a mode before there
+        is a model to run it with is offering something that cannot happen.
+    *@
+    @if (!IsFullScreen)
+    {
+        @* On Home there is no bar above this, so the strip is the topmost thing
+           on the screen and has to clear the status bar itself - see the note on
+           .modestrip-top. Everywhere else the app-bar has already done it. *@
+        <nav class="modestrip @(ScreenName is null ? "modestrip-top" : null)"
+             role="tablist" aria-label="What it does">
+            @foreach (var mode in AppRoutes.Modes)
+            {
+                <a class="modestrip-item @(IsHere(mode.Route) ? "modestrip-on" : null)"
+                   role="tab" aria-selected="@(IsHere(mode.Route) ? "true" : "false")"
+                   href="@mode.Route">@mode.OnStrip</a>
+            }
+        </nav>
+    }
+
     <main class="app-body @(ScreenName is null ? "app-body-flush" : null)">
         @Body
     </main>
@@ -173,16 +207,60 @@
         "a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83" +
         "l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09" +
         "a1.65 1.65 0 0 0-1.51 1z'/>");
+    // Two globes would read as the same item, so Translate is the exchange
+    // arrows - the sign every translator app uses for "this becomes that" - and
+    // Languages keeps the globe on the Services grid.
+    static readonly string TranslateIcon = Icon(
+        "<polyline points='17 1 21 5 17 9'/><path d='M3 11V9a4 4 0 0 1 4-4h14'/>" +
+        "<polyline points='7 23 3 19 7 15'/><path d='M21 13v2a4 4 0 0 1-4 4H3'/>");
+    static readonly string ChatIcon = Icon(
+        "<path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/>");
     static readonly string VoiceIcon = ""; // the centre is the BrandMark, not a glyph.
 
-    static readonly BottomItem[] Bottom =
-    [
-        new("home", "Home", HomeIcon),
-        new("services", "Services", GridIcon),
-        new(VoiceRoute, "Voice", VoiceIcon),
-        new("you", "You", PersonIcon),
-        new("settings", "Settings", GearIcon),
-    ];
+    /// <summary>An icon per route. Presentation, so it lives with the markup.</summary>
+    /// <remarks>
+    /// The ROUTES come from AppRoutes; only the glyphs are here. A route with no
+    /// icon still renders - it gets an empty span and its label - because a
+    /// missing picture is a worse reason to hide a screen than no reason at all.
+    /// </remarks>
+    static readonly Dictionary<string, string> Icons = new(StringComparer.Ordinal)
+    {
+        ["home"]      = HomeIcon,
+        ["translate"] = TranslateIcon,
+        ["chat"]      = ChatIcon,
+        ["services"]  = GridIcon,
+        ["settings"]  = GearIcon,
+        ["you"]       = PersonIcon,
+    };
+
+    /// <summary>The bar, built from the one table that owns the routes.</summary>
+    /// <remarks>
+    /// IT USED TO BE A LIST HERE, and that is how the app came to advertise
+    /// translation on its front page while offering no way to reach it: the bar
+    /// carried Settings and not the two screens where the work happens. The
+    /// note above about Talk and Type is still true about INPUT - one
+    /// conversation, two ways in - and it was used to justify removing the only
+    /// permanent way to type, on the grounds that Home carries "Or type
+    /// instead". A fallback on one screen is not a way in from every screen.
+    /// <para>
+    /// The voice button is spliced into the middle rather than declared as a
+    /// route, because it is not a destination - see VoiceRoute.
+    /// </para>
+    /// </remarks>
+    static readonly BottomItem[] Bottom = Build();
+
+    static BottomItem[] Build()
+    {
+        var items = AppRoutes.TabBar
+            .Select(r => new BottomItem(r.Route, r.Title, Icons.GetValueOrDefault(r.Route, "")))
+            .ToList();
+
+        // The middle, wherever the middle falls. Five items put it third; four or
+        // six put it where the count says, rather than at a hard-coded index that
+        // silently moves the microphone when somebody adds a screen.
+        items.Insert(items.Count / 2, new BottomItem(VoiceRoute, "Voice", VoiceIcon));
+        return [.. items];
+    }
 
     /// <summary>
     /// The middle button is the microphone, and it is not a destination.
@@ -202,20 +280,23 @@
         cascading the layout instance, or a state service - are plumbing that can
         fall out of step with where you actually are. Reading the path cannot.
     */
-    static readonly Dictionary<string, string> Names = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["languages"] = "Languages",
-        ["abilities"] = "What it can do",
-        ["career"] = "Your CV",
-        ["job-spec"] = "Aim at a job",
-        ["chat"] = "Ask CircleAI",
-        ["wake"] = "Hey B",
-        ["settings"] = "Settings",
-        ["services"] = "Services",
-        ["you"] = "You",
-        ["translate"] = "Translating",
-        ["setup"] = "Setting it up",
-    };
+    /*
+        AND THE NAME COMES FROM AppRoutes, not from a list here.
+
+        This was a hand-written dictionary of eleven screens - the FIFTH copy of
+        the app's routes, after the pages, the Services catalogue, the voice
+        table and a test's own array. It failed the way every copy of a list
+        fails: Transcribe was added, was not added HERE, and the screen rendered
+        with no title bar at all. Nothing was broken enough to notice; the app
+        just quietly stopped saying where you were.
+    */
+    /// <summary>The screens that carry no title bar, and why.</summary>
+    /// <remarks>
+    /// Home carries the mark itself and the bottom bar has both, so a bar there
+    /// was the same two things twice while taking a fifth of the screen from the
+    /// circle. Loading and Not Found are not places you navigated to.
+    /// </remarks>
+    static readonly string[] Untitled = ["", "home", "not-found"];
 
     string? ScreenName { get; set; }
 
@@ -277,7 +358,10 @@
         return path.Trim('/');
     }
 
-    void Resolve() => ScreenName = Names.TryGetValue(Path(), out var name) ? name : null;
+    void Resolve() => ScreenName =
+        Untitled.Contains(Path(), StringComparer.OrdinalIgnoreCase)
+            ? null
+            : AppRoutes.For(Path())?.Title;
 
     bool IsHere(string route)
         => string.Equals(Path(), route.Trim('/'), StringComparison.OrdinalIgnoreCase);

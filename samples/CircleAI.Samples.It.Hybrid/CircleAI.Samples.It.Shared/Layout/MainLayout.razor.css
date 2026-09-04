@@ -88,6 +88,77 @@
 }
 
 /*
+    THE MODE STRIP.
+
+    WHAT THE APP IS DOING, as opposed to where you are. The bottom bar is places;
+    this is the three things the product IS - talk, translate, transcribe - and
+    it is at the top because it answers a question you ask before you tap, not
+    after.
+
+    It exists because the mode was invisible. It lived four taps into Settings
+    and silently repointed a link on Home labelled "Or type instead", so one
+    control meant two different screens and Translate appeared in no menu at all.
+
+    UNDERLINE RATHER THAN A PILL. Three peers, one lit: an underline reads as
+    "this is the current one" where a filled pill reads as "this is a button you
+    have not pressed yet", and on a strip that is lit at all times the second
+    reading is wrong.
+*/
+.modestrip {
+    display: flex;
+    flex: none;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--hairline);
+}
+
+/*
+    WHEN THIS IS THE TOPMOST THING ON THE SCREEN. Home has no app bar - it
+    carries the mark itself - so on Home the strip starts at pixel zero and
+    would sit under the clock.
+
+    Same clearance as .app-bar, and for the same measured reason: Android's
+    WebView reports env(safe-area-inset-top) as 0 unless the app opts into
+    edge-to-edge, so the inset alone is not enough and max() keeps a real one
+    where a device reports it. Getting this wrong sliced the wordmark in half
+    once already.
+*/
+.modestrip-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 24px);
+}
+
+.modestrip-item {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    /*
+        44px is the smallest target a thumb hits reliably, and this strip is
+        pressed while walking, one-handed, at the top of the screen where the
+        hand is least steady.
+    */
+    min-height: 44px;
+    padding: 0.6875rem 0.25rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    text-decoration: none;
+    /* The lit item's underline, transparent until it is the one. */
+    border-bottom: 2px solid transparent;
+    /* Three words of very different length; none may wrap onto a second line. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --brand-blue, the same token .tabbar-on uses. There is ONE blue and this is
+   it; an invented --accent silently resolves to nothing and leaves the lit item
+   looking exactly like the two that are not. */
+.modestrip-on {
+    color: var(--brand-blue);
+    border-bottom-color: var(--brand-blue);
+    font-weight: 700;
+}
+
+/*
     THE BOTTOM MENU.
 
     Where a thumb is. It replaced a hamburger in the top-right corner - the

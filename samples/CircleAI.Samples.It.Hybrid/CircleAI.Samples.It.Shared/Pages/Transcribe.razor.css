@@ -1,0 +1,137 @@
+/*
+    Transcribe.
+
+    A TRANSCRIPT IS READ, NOT SCANNED, so this is the one screen in the app that
+    is mostly text at a size somebody can sit with. The controls stay at the
+    bottom where a thumb is, because starting and stopping is the only thing
+    anybody does here once it is running.
+*/
+
+.transcribe {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    gap: 1rem;
+}
+
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.5rem;
+    padding: 2rem 1rem;
+}
+
+.empty-line {
+    font-size: 1.375rem;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.empty-sub {
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+    max-width: 28ch;
+    line-height: 1.5;
+}
+
+/*
+    THE ONLY SCROLLING REGION. The controls must not travel with the text - a
+    stop button that scrolls off the top of a long meeting is a stop button
+    nobody can find in a hurry.
+*/
+.lines {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.line {
+    margin: 0;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    color: var(--ink);
+}
+
+/*
+    What is being heard right now. Dimmed rather than hidden: it is real and it
+    is not final, and showing nothing until an utterance closes made a long
+    sentence look like a stall.
+*/
+.line-partial {
+    color: var(--ink-soft);
+    font-style: italic;
+}
+
+.controls {
+    display: flex;
+    gap: 0.75rem;
+    flex: none;
+}
+
+.record {
+    flex: 1;
+    min-height: 52px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--card-btn-fill);
+    color: var(--card-btn-ink);
+    font: inherit;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/*
+    RECORDING LOOKS PRESSED, NOT RED.
+
+    The obvious design is a red stop button, and this palette does not have red -
+    it is #2196F3, #2c3e50 and #ffffff, deliberately, and inventing a fourth
+    colour for one state is how a brand stops being one. --blue-press is the
+    pressed state of every blue fill in the app, which is exactly what this is:
+    a button that is currently down.
+
+    The LABEL carries the meaning - it says Stop while it runs - and a word is a
+    better signal than a colour to somebody who cannot distinguish the two.
+*/
+.record-on {
+    background: var(--blue-press);
+}
+
+.clear {
+    flex: none;
+    min-height: 52px;
+    padding: 0 1.25rem;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.count {
+    margin: 0;
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    flex: none;
+}
+
+.warn {
+    margin: 0;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--chrome);
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    flex: none;
+}

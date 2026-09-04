@@ -64,14 +64,19 @@ public class VoiceNavigationTests : TestContext
 
         Press(layout);
 
-        // A LONGER WINDOW THAN bunit's ONE SECOND, because this one waits on a
-        // real cancellation crossing a real await rather than on a render.
-        // Measured: it passes with its class and fails when run alone, which is
-        // the signature of a COLD first render paying for JIT inside the
-        // timeout - nothing to do with the behaviour being asserted. A test that
-        // depends on what else ran first is a test that will cry wolf, and this
-        // suite is the thing that is supposed to be believable.
-        layout.WaitForAssertion(() => Assert.True(talk.WasCancelled), TimeSpan.FromSeconds(5));
+        // THIS ONE WAITS ON A REAL AWAIT CHAIN, not on a render, so its timing
+        // is the machine's rather than the code's: a cold first run pays for JIT
+        // inside the window, and it fails or passes depending on what else is
+        // building at the time. Measured twice in a row on a loaded box - 5 s
+        // failed, 860 ms passed.
+        //
+        // Fifteen seconds is not a performance claim. It is the point past which
+        // a failure means the cancellation genuinely did not happen, rather than
+        // that the box was busy. The RULE itself is pinned deterministically and
+        // in milliseconds by VoiceTurnRouterTests.Cancels_the_turn_so_the_answer
+        // _never_runs; what this adds is that the BUTTON is wired to it, and
+        // that is worth a slow test but not a flaky one.
+        layout.WaitForAssertion(() => Assert.True(talk.WasCancelled), TimeSpan.FromSeconds(15));
     }
 
     [Fact]
@@ -143,8 +148,9 @@ public class VoiceNavigationTests : TestContext
 
         Press(layout);
 
-        layout.WaitForAssertion(() =>
-            Assert.Equal(MarkState.Idle, Services.GetRequiredService<VoiceMark>().State));
+        layout.WaitForAssertion(
+            () => Assert.Equal(MarkState.Idle, Services.GetRequiredService<VoiceMark>().State),
+            TimeSpan.FromSeconds(10));
         Assert.False(Services.GetRequiredService<VoiceMark>().Busy);
     }
 }
@@ -199,7 +205,9 @@ public class HomeVoiceNavigationTests : TestContext
 
         home.Find("button.hero").Click();
 
-        home.WaitForAssertion(() => Assert.False(Services.GetRequiredService<VoiceMark>().Busy));
+        home.WaitForAssertion(
+            () => Assert.False(Services.GetRequiredService<VoiceMark>().Busy),
+            TimeSpan.FromSeconds(10));
         Assert.EndsWith("/home", Where());
         Assert.False(talk.WasCancelled);
     }

@@ -30,6 +30,24 @@ public enum AppMode
     /// Translate between two languages, rather than answering in one.
     /// </summary>
     Translator,
+
+    /// <summary>Take down what is said, without answering any of it.</summary>
+    /// <remarks>
+    /// THE APP COULD ALWAYS DO THIS AND NEVER OFFERED IT.
+    /// <see cref="IConversation.DictateAsync"/> has been on the contract the
+    /// whole time - speech in, text out, no model asked to reply - with no
+    /// screen, no menu entry and no way to ask for it. A meeting, an interview,
+    /// a clinic appointment somebody needs a record of: that is what people
+    /// actually reach for a recorder to do, and an assistant that answers
+    /// questions but cannot take down a conversation is missing the more useful
+    /// half.
+    /// <para>
+    /// It is its own MODE rather than a button, because it changes what the
+    /// circle does: in Assistant the circle asks and answers, here it listens
+    /// and writes, and nothing is sent to the answering model at all.
+    /// </para>
+    /// </remarks>
+    Transcribe,
 }
 
 /// <summary>How the conversation language is decided.</summary>

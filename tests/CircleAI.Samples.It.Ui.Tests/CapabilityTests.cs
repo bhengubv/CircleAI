@@ -204,7 +204,7 @@ public class CapabilityTests
         // reachable at all.
         var registry = Everything();
 
-        Assert.Single(registry.All, c => c.Title == "Translating");
+        Assert.Single(registry.All, c => c.Title == "Translate");
         Assert.IsType<TranslateCapability>(registry.Best("open translation"));
     }
 
@@ -320,7 +320,7 @@ public class CapabilityTests
         var registry = CapabilityRegistry.For(null);
 
         Assert.DoesNotContain(registry.All, c => c is TranslateCapability);
-        Assert.Equal("Translating", registry.Best("open translation")?.Title);
+        Assert.Equal("Translate", registry.Best("open translation")?.Title);
         Assert.Null(registry.Best("how do you say hello in isiZulu"));
     }
 }

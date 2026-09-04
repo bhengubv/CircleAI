@@ -87,17 +87,43 @@ public class VoiceDestinationTests
     [Fact]
     public void Every_destination_points_at_a_route_that_exists()
     {
-        // A SPOKEN PROMISE THAT LANDS ON NOT FOUND. This table is the second
-        // owner of the app's routes, so it is pinned to the first: every route
-        // here must be one the pages actually declare.
-        string[] declared =
-        [
-            "abilities", "career", "chat", "home", "job-spec", "languages",
-            "services", "settings", "setup", "translate", "wake", "you",
-        ];
-
+        // A SPOKEN PROMISE THAT LANDS ON NOT FOUND.
+        //
+        // THIS TEST WAS ITSELF A FOURTH COPY OF THE ROUTE LIST. It pinned the
+        // voice table to a hard-coded array of twelve strings written out here,
+        // so adding a screen meant editing the pages, the menu, the voice table
+        // AND this - and forgetting the last one turned a new feature into a red
+        // test rather than a caught bug. A guard that has to be updated by hand
+        // whenever the thing it guards changes is a fifth owner wearing a
+        // hi-vis jacket.
+        //
+        // Both sides now come from AppRoutes, which is the point of AppRoutes.
         foreach (var d in VoiceDestinations.All)
-            Assert.Contains(d.Route, declared);
+            Assert.NotNull(AppRoutes.For(d.Route));
+    }
+
+    [Fact]
+    public void Every_route_the_app_declares_is_reachable_somehow()
+    {
+        // THE QUESTION THE OLD VERSION COULD NOT ASK. Pinning voice to a list of
+        // routes catches a destination pointing at nothing; it cannot catch a
+        // SCREEN THAT NOTHING POINTS AT, which is the failure that actually
+        // happened - Translate was in no menu, reachable only by knowing a mode
+        // existed and going to find it.
+        //
+        // A route with no surface is allowed, but it has to be a decision: the
+        // loading, setup and not-found stages own the whole screen and are
+        // entered by the app rather than chosen by a person.
+        string[] entered = ["", "setup", "not-found"];
+
+        var orphans = AppRoutes.All
+            .Where(r => r.Where == Surface.None && !entered.Contains(r.Route))
+            .Select(r => r.Route)
+            .ToList();
+
+        Assert.True(orphans.Count == 0,
+            "These screens exist and nothing offers them - no tab, no mode, no "
+            + "tile, no words: " + string.Join(", ", orphans));
     }
 
     [Fact]

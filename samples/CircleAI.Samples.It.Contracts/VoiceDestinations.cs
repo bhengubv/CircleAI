@@ -56,44 +56,29 @@ public static class VoiceDestinations
     /// destination pointing at a route that no longer exists is a spoken promise
     /// that lands on Not Found.
     /// </remarks>
+    /// <remarks>
+    /// READ FROM <see cref="AppRoutes"/>, NOT DECLARED HERE. This used to be its
+    /// own table of ten routes, and the app's menus were two others - fourteen
+    /// declared by pages, four in the Services catalogue. All three disagreed,
+    /// and the casualty was Translate: voice could reach it and no menu offered
+    /// it, so the headline feature was invisible to anybody who did not speak.
+    /// <para>
+    /// A voice route that no menu shows is a secret, and an app with secret
+    /// features is one people conclude is broken. So there is one table now, and
+    /// this is a view over it: anything sayable is also somewhere findable,
+    /// because both come from the same declaration.
+    /// </para>
+    /// <para>
+    /// STILL NO ENTRY FOR "You". It cannot be matched without eating half of
+    /// everything anybody says, so it carries no words and is reached by tapping.
+    /// That is a deliberate gap and AppRoutes says so where the screen is
+    /// declared, rather than by being quietly absent from a second list.
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<VoiceDestination> All { get; } =
-    [
-        new("translate", "Translating",
-            ["translate", "translating", "translation", "translator", "interpret",
-             "interpreter", "interpreting"]),
-
-        new("languages", "Languages",
-            ["languages", "language list", "which languages"]),
-
-        new("career", "Your CV",
-            ["my cv", "the cv", "curriculum vitae", "resume", "career"]),
-
-        new("job-spec", "Aim at a job",
-            ["job spec", "job description", "aim at a job", "apply for"]),
-
-        new("chat", "Ask CircleAI",
-            ["chat", "conversation", "message it"]),
-
-        new("wake", "Hey B",
-            ["wake word", "wake phrase", "answer to its name", "hey bee"]),
-
-        new("settings", "Settings",
-            ["settings", "preferences", "options"]),
-
-        new("services", "Services",
-            ["services", "service list"]),
-
-        new("abilities", "What it can do",
-            ["what can you do", "what it can do", "abilities", "features"]),
-
-        new("home", "Home",
-            ["home screen", "go home", "the home page"]),
-
-        // NO ENTRY FOR "You" OR "Type". "you" cannot be matched without eating
-        // half of everything anybody says, and "type" is a control on three
-        // screens. A destination that cannot be named distinctively does not get
-        // a voice route.
-    ];
+        AppRoutes.Spoken
+            .Select(r => new VoiceDestination(r.Route, r.Title, r.Spoken))
+            .ToList();
 
     /// <summary>Phrases that make an utterance a request rather than a subject.</summary>
     private static readonly string[] Asking =

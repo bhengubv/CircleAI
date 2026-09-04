@@ -120,7 +120,28 @@ internal sealed class FakeConversation : IConversation
 
         // The real turn goes on to answer here. A routed turn is cancelled during
         // the report above, so this is where that shows up.
-        try { await Task.Delay(20, ct); }
+        //
+        // LONG ENOUGH FOR THE ROUTER TO GET A WORD IN, and that is not a fudge.
+        // Progress<T>.Report MARSHALS to the renderer's dispatcher - it does not
+        // run the handler inline - so the Observe call that cancels this turn
+        // happens on a later tick. At 20ms the delay could finish first, the
+        // turn completed normally, and WasCancelled stayed false FOREVER: a race
+        // no timeout can rescue, which is why raising the wait from 1s to 5s to
+        // 15s kept failing at whatever number it was given.
+        //
+        // A real turn spends seconds in the model after reporting what it heard,
+        // so a fake that reports and finishes in the same breath is not a faster
+        // version of the product - it is a different one. Only the routed case
+        // needs the room; a silent turn stays quick so the rest of the suite
+        // does not pay for this.
+        // 250ms, not 1000. A second was long enough to close the race and long
+        // enough to open another one: the tests that wait for a turn to FINISH
+        // do so inside bunit's one-second default, so a turn that took exactly
+        // that long started failing them instead. Far more than a dispatcher
+        // tick, comfortably less than the window anything waits in.
+        var thinking = Heard is { Length: > 0 } ? 250 : 20;
+
+        try { await Task.Delay(thinking, ct); }
         catch (OperationCanceledException) { WasCancelled = true; throw; }
 
         updates.Report(new TurnState(TurnPhase.Idle));
