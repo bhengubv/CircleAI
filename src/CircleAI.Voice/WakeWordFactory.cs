@@ -61,8 +61,50 @@ public sealed record WakeCalibration
     /// <summary>How many were vetoed by stage two.</summary>
     public int Vetoes { get; init; }
 
+    /// <summary>The weakest wake this phone has actually accepted.</summary>
+    /// <remarks>
+    /// THE ONLY NUMBER THAT CAN MOVE A THRESHOLD. The gate ships at
+    /// <see cref="ZipformerKwsSpotter.MeasuredThreshold"/>, measured on one
+    /// phone, one voice, one room — and until this file has some numbers in it
+    /// that is what every other phone inherits too. The distance between this
+    /// value and the gate is the margin the owner actually has; if it sits on
+    /// top of the gate the phrase is barely getting through, and if it never
+    /// approaches it the gate could be tighter and reject fewer false wakes.
+    /// </remarks>
+    public double? LowestWakeScore { get; init; }
+
+    /// <summary>The strongest wake recorded, for the other end of the range.</summary>
+    public double? HighestWakeScore { get; init; }
+
+    /// <summary>This calibration plus one more accepted wake.</summary>
+    /// <remarks>
+    /// Returns a new record rather than mutating: this is read on the audio
+    /// thread and written from the detector's event, and a struct-copy is
+    /// cheaper to reason about than a lock around four fields.
+    /// </remarks>
+    public WakeCalibration WithWake(double score) => this with
+    {
+        Wakes = Wakes + 1,
+        LowestWakeScore = LowestWakeScore is { } low ? Math.Min(low, score) : score,
+        HighestWakeScore = HighestWakeScore is { } high ? Math.Max(high, score) : score,
+    };
+
+    /// <summary>This calibration plus one more stage-two veto.</summary>
+    public WakeCalibration WithVeto() => this with { Vetoes = Vetoes + 1 };
+
     [JsonIgnore]
     public bool IsDefault => Threshold is null && MaxLeadInMs is null;
+
+    /// <summary>Whether anything has ever been recorded on this device.</summary>
+    /// <remarks>
+    /// Distinct from <see cref="IsDefault"/>, which asks whether the tuning has
+    /// been OVERRIDDEN. This asks whether any evidence exists at all — and for
+    /// the whole life of this file the answer was no on every device, because
+    /// <see cref="Load"/> was called at every start and <see cref="Save"/> was
+    /// called nowhere.
+    /// </remarks>
+    [JsonIgnore]
+    public bool HasEvidence => Wakes > 0 || Vetoes > 0;
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 

@@ -130,6 +130,20 @@ public sealed class ZipformerKwsSpotter : IDisposable
     private int _encoderFrame;
     private int _vocab;
 
+    /// <summary>The last progress actually reported, so a still one is not repeated.</summary>
+    private KwsProgress? _lastProgress;
+
+    /// <summary>
+    /// How much a mean probability has to improve to count as having moved.
+    /// </summary>
+    /// <remarks>
+    /// Not zero: the mean drifts in the last decimal place as blanks accumulate
+    /// behind a matched prefix, and reporting that would restore the flood this
+    /// is here to stop while looking like real movement. A thousandth is below
+    /// what the traces print and far below what any threshold is set to.
+    /// </remarks>
+    private const double ProgressEpsilon = 0.001;
+
     /// <summary>Blank in a k2 transducer is always id 0.</summary>
     private const int Blank = 0;
 
@@ -626,10 +640,40 @@ public sealed class ZipformerKwsSpotter : IDisposable
                 var deepest = next.Values.Aggregate((a, b) =>
                     b.State.Level > a.State.Level ||
                     (b.State.Level == a.State.Level && b.LogProb > a.LogProb) ? b : a);
+
+                // ONLY WHEN IT ACTUALLY MOVES.
+                //
+                // A partial hypothesis sits in the beam until it is pruned, and
+                // this used to re-announce it on EVERY frame at the same score.
+                // Downstream keeps the deepest sighting per window, so a phrase
+                // that got 2 of 3 tokens once and then stopped went on being
+                // reported as the closest thing heard, through minutes of
+                // silence. Measured on a P30: closest="Hey B" p=0,345 in a
+                // window whose peak amplitude was 0,042 - nobody was speaking,
+                // and the log said somebody nearly had.
+                //
+                // That is not a sighting, it is an echo of one, and it makes the
+                // only number available for tuning a threshold unusable: it
+                // never falls, so it never distinguishes a near miss from a room
+                // that has been empty for a minute.
                 if (deepest.State.Level > 0)
-                    KeywordProgress.Invoke(this, new KwsProgress(
-                        deepest.State.PrefixPhrase, deepest.State.Level, deepest.State.PrefixLength,
-                        MeanProbability(deepest, deepest.State.Level)));
+                {
+                    var p = MeanProbability(deepest, deepest.State.Level);
+                    var moved = _lastProgress is not { } last
+                        || !string.Equals(last.Phrase, deepest.State.PrefixPhrase, StringComparison.Ordinal)
+                        || deepest.State.Level != last.Matched
+                        || p > last.MeanProbability + ProgressEpsilon;
+
+                    if (moved)
+                    {
+                        var report = new KwsProgress(
+                            deepest.State.PrefixPhrase, deepest.State.Level,
+                            deepest.State.PrefixLength, p);
+                        _lastProgress = report;
+                        KeywordProgress.Invoke(this, report);
+                    }
+                }
+                else _lastProgress = null;
             }
 
             // Only the LEADING hypothesis can trigger. Any beam entry finishing a
@@ -677,6 +721,10 @@ public sealed class ZipformerKwsSpotter : IDisposable
                         + $"(needs {endState.AcThreshold:0.###}) - beam reset");
 
                 next = StartHyps();
+
+                // The beam it described is gone, so the next sighting is a new
+                // one however closely it resembles the last.
+                _lastProgress = null;
             }
 
             _hyps = next;
@@ -769,6 +817,7 @@ public sealed class ZipformerKwsSpotter : IDisposable
         _hyps = null;                 // rebuilt on the next chunk
         _processedLens = 0;
         _encoderFrame = 0;
+        _lastProgress = null;         // a new utterance owes nothing to the last
         for (var i = 0; i < _stateInNames.Length; i++)
             if (_stateInNames[i] != "processed_lens")
                 _states[i] = new DenseTensor<float>(_states[i].Dimensions.ToArray());

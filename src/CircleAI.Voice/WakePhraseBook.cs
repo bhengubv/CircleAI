@@ -72,6 +72,21 @@ public sealed class WakePhraseBook
     /// <remarks>
     /// Four, measured: three-token "Hey B" was heard 1/10 through air, four-token
     /// "Circle" 12/12, and the two are the same two syllables to say.
+    /// <para>
+    /// THAT MEASUREMENT IS NO LONGER EVIDENCE FOR THIS NUMBER, and saying so is
+    /// cheaper than the day somebody spends re-deriving it. The 1/10 was taken
+    /// while two faults were in the way: the gate stood at 0.5 where real speech
+    /// scores 0.24-0.46, and a completed-but-rejected hypothesis was never
+    /// cleared from the beam, so the spotter went deaf after two or three near
+    /// misses. Both are fixed. On a P30 on 2026-09-04, immediately after,
+    /// "Hey B" fired on four of five utterances at p=0.297-0.386.
+    /// </para>
+    /// <para>
+    /// Five utterances is not 12/12, so the constant STAYS at four — a rule kept
+    /// for a stale reason is still safer than a rule dropped for no reason. What
+    /// is owed is a re-measurement of both lengths on the fixed code, and until
+    /// that exists this number is a convention rather than a finding.
+    /// </para>
     /// </remarks>
     public const int MinReliableTokens = 4;
 
@@ -112,10 +127,15 @@ public sealed class WakePhraseBook
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
             // "Hey B" IS THREE TOKENS, AND THIS FILE'S OWN RULE CALLS THAT
-            // CAUTION - MinReliableTokens is 4, and the note there measures a
-            // four-token phrase at 12/12 where a shorter one is not dependable
-            // across a room. Measured on a P30 with the microphone confirmed
-            // capturing: neither a synthesised nor a human "Hey B" ever fired.
+            // CAUTION - MinReliableTokens is 4, and a longer phrase is still the
+            // safer default, which is why the order below is what it is.
+            //
+            // WHAT USED TO BE WRITTEN HERE WAS THAT "neither a synthesised nor a
+            // human 'Hey B' ever fired". That was true when it was written and is
+            // not true now: it was measured against a beam that wedged after two
+            // near misses and a gate set at 0.5, and with both fixed the same
+            // phrase fired four times in five on the same P30. The phrase was
+            // never the problem it was recorded as. See MinReliableTokens.
             //
             // "Hey Circle AI" is first because BestFor takes the LONGEST usable
             // candidate, and it clears both tests here: four or more tokens, and

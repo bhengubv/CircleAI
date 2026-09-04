@@ -89,6 +89,33 @@ public interface ICapability
     Cost Cost { get; }
 
     /// <summary>
+    /// Whether this recognises the sentence by its own SHAPE, beyond its phrases.
+    /// </summary>
+    /// <remarks>
+    /// A SECOND DOOR, FOR THE CASES A WORD LIST CANNOT DESCRIBE. The registry's
+    /// ordinary path asks whether a sentence contains one of this capability's
+    /// words and sounds like an instruction. That test is right, and it is why
+    /// "how do you say hello in isiZulu" is refused: seven words, no asking
+    /// phrase, so it is a question about a subject rather than a command.
+    /// <para>
+    /// But it IS a job - it names its own text and its own target language, and
+    /// the only reason to refuse it was that acting on it meant NAVIGATING
+    /// somewhere, which is not an answer to a question. A capability that can
+    /// answer it should be able to say so, and only the capability knows.
+    /// </para>
+    /// <para>
+    /// Default false: nothing claims a sentence it cannot describe, so adding
+    /// this changed the behaviour of nothing that existed.
+    /// </para>
+    /// </remarks>
+    /// <param name="normalised">
+    /// The sentence, already lower-cased and stripped of punctuation by
+    /// <see cref="VoiceDestinations.Normalise"/> - so an implementation never
+    /// has to think about what a transcriber does with full stops.
+    /// </param>
+    bool Claims(string normalised) => false;
+
+    /// <summary>
     /// Whether this can actually be done right now, and why not.
     /// </summary>
     /// <remarks>

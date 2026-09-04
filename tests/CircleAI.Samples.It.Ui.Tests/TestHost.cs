@@ -108,6 +108,13 @@ internal static class TestHost
         s.AddSingleton<IDeviceFacts>(new FakeDeviceFacts());
         s.AddSingleton<IWakePhrases>(new FakeWakePhrases());
         s.AddSingleton<IWakeWord>(new FakeWakeWord());
+
+        // BUILT THE SAME WAY THE APP BUILDS IT. Handing the tests a
+        // hand-assembled registry would let the app ship with a different set of
+        // capabilities from the one every test passes against - which is the
+        // exact shape of the bug this file's own header describes.
+        s.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
     }
 }

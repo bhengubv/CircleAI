@@ -22,6 +22,7 @@
 @inject IShareTarget Share
 @inject VoiceMark Mark
 @inject IResidentAssistant Resident
+@inject CapabilityRegistry Can
 
 <div class="app">
     @*
@@ -356,7 +357,7 @@
         // WHERE THE TURN IS ALLOWED TO END EARLY. The rule and the wiring both
         // live in one place - see VoiceTurnRouter - because Home needs exactly
         // this and a second copy is how the two marks came to disagree.
-        using var router = new VoiceTurnRouter();
+        using var router = new VoiceTurnRouter(Can);
         _turn = router;
 
         var updates = new Progress<TurnState>(t =>

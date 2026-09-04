@@ -107,4 +107,50 @@ public class VoiceTurnRouterTests
         }
         finally { VoiceTurnRouter.Trace = null; }
     }
+
+    [Fact]
+    public void Writes_a_miss_down_once_however_often_it_is_reported()
+    {
+        // A turn reports Heard again at every phase, and a MISS is not stopped
+        // by the routed-once guard - so one sentence wrote four identical lines.
+        // Four lines look like four attempts, and they push the turns either
+        // side of them off the screen; a log that repeats itself is a log
+        // nobody finishes reading.
+        var lines = new List<string>();
+        VoiceTurnRouter.Trace = lines.Add;
+        try
+        {
+            using var router = new VoiceTurnRouter();
+            var t = new TurnState(TurnPhase.Thinking, Heard: "Anita Slation.");
+
+            router.Observe(t);
+            router.Observe(t);
+            router.Observe(new TurnState(TurnPhase.Speaking, Heard: "Anita Slation."));
+
+            Assert.Single(lines);
+        }
+        finally { VoiceTurnRouter.Trace = null; }
+    }
+
+    [Fact]
+    public void A_second_transcript_is_still_written_down()
+    {
+        // The de-duplication must not swallow the NEXT thing said - that would
+        // trade a flood for a silence, and the miss it hid would be the one
+        // worth tuning on.
+        var lines = new List<string>();
+        VoiceTurnRouter.Trace = lines.Add;
+        try
+        {
+            using var router = new VoiceTurnRouter();
+
+            router.Observe(new TurnState(TurnPhase.Thinking, Heard: "Anita Slation."));
+            router.Observe(new TurnState(TurnPhase.Thinking, Heard: "Anita Slation."));
+            router.Observe(new TurnState(TurnPhase.Thinking, Heard: "what is the time"));
+
+            Assert.Equal(2, lines.Count);
+            Assert.Contains(lines, l => l.Contains("what is the time"));
+        }
+        finally { VoiceTurnRouter.Trace = null; }
+    }
 }

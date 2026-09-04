@@ -18,6 +18,10 @@ builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
 builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
 builder.Services.AddSingleton<ISpokenLanguage, BrowserSpokenLanguage>();
 builder.Services.AddSingleton<IBrain, BrowserBrain>();
+
+// What the circle can be asked to DO, as opposed to what Services lists. One
+// instance: every voice button consults it, and two would be two answers.
+builder.Services.AddSingleton(sp => CapabilityRegistry.For(sp.GetService<IBrain>(), sp.GetService<ISettings>()));
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
 builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
 builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();

@@ -23,8 +23,49 @@ public sealed class VoiceTurnRouter : IDisposable
 {
     private readonly CancellationTokenSource _cts = new();
 
+    /// <summary>The last transcript written to the trace, so it is written once.</summary>
+    private string? _lastTraced;
+
+    private readonly CapabilityRegistry? _registry;
+
+    /// <param name="registry">
+    /// What this build can be asked to DO. Null keeps the older behaviour of
+    /// only ever opening a screen, which is what a head with no model can honestly
+    /// offer.
+    /// </param>
+    public VoiceTurnRouter(CapabilityRegistry? registry = null) => _registry = registry;
+
     /// <summary>Where the turn is going, once it has been asked.</summary>
     public VoiceDestination? Routed { get; private set; }
+
+    /// <summary>What this turn asked for, when a capability claimed it.</summary>
+    /// <remarks>
+    /// SERVICES STAYS FOR BROWSING, THE CIRCLE DOES THE WORK. A grid is a fine
+    /// way to look around two hundred features and a hopeless way to use one:
+    /// you can only find what you can already name and picture. So the catalogue
+    /// stays, and asking becomes how anything is actually used.
+    /// <para>
+    /// Held rather than run here because doing something is asynchronous and
+    /// Observe is called from a progress report. <see cref="GoAsync"/> runs it,
+    /// which is also where the answer gets spoken.
+    /// </para>
+    /// </remarks>
+    public ICapability? Claimed { get; private set; }
+
+    /// <summary>What the capability did, once it has been run.</summary>
+    public Did? Outcome { get; private set; }
+
+    /// <summary>
+    /// The transcript the capability was claimed on, kept for when it runs.
+    /// </summary>
+    /// <remarks>
+    /// Its own field rather than the one the trace uses. A capability that
+    /// translates needs the ACTUAL words - "how do you say good morning in
+    /// Japanese" contains the thing to translate - and reading them out of a
+    /// logging field would mean the answer changed the day somebody adjusted
+    /// the logging.
+    /// </remarks>
+    public string? Asked { get; private set; }
 
     /// <summary>Pass this to the turn, so a routed one can be stopped.</summary>
     public CancellationToken Token => _cts.Token;
@@ -53,11 +94,45 @@ public sealed class VoiceTurnRouter : IDisposable
     /// </remarks>
     public bool Observe(TurnState t)
     {
-        if (Routed is not null) return false;
+        if (Routed is not null || Claimed is not null) return false;
         if (t.Heard is not { Length: > 0 } heard) return false;
 
+        // ASK THE CAPABILITIES FIRST, when this build has any. They cover
+        // everything the destination table did - each place a voice can reach is
+        // a NavigateCapability reading its words straight out of that same table
+        // - plus the things that can be DONE rather than opened.
+        if (_registry is not null)
+        {
+            var best = _registry.Best(heard);
+
+            if (!string.Equals(_lastTraced, heard, StringComparison.Ordinal))
+            {
+                _lastTraced = heard;
+                Trace?.Invoke($"route: heard \"{heard}\" -> "
+                    + (best is null ? "no match" : $"{best.Id} ({best.Title})"));
+            }
+
+            if (best is null) return false;
+
+            Claimed = best;
+            Asked = heard;
+            _cts.Cancel();
+            return true;
+        }
+
         var match = VoiceDestinations.Match(heard);
-        Trace?.Invoke($"route: heard \"{heard}\" -> {(match is null ? "no match" : "/" + match.Route)}");
+
+        // ONE LINE PER TRANSCRIPT, NOT ONE PER REPORT. A turn reports Heard
+        // again at every phase it passes through, so a single sentence arrived
+        // here four times and the log said it four times - which reads as four
+        // attempts at routing, and buries the turns either side of it. The
+        // guard above only starts working AFTER something matched; a miss,
+        // which is the case actually worth reading, repeated every time.
+        if (!string.Equals(_lastTraced, heard, StringComparison.Ordinal))
+        {
+            _lastTraced = heard;
+            Trace?.Invoke($"route: heard \"{heard}\" -> {(match is null ? "no match" : "/" + match.Route)}");
+        }
 
         if (match is not { } where) return false;
 
@@ -97,7 +172,8 @@ public sealed class VoiceTurnRouter : IDisposable
     /// thing somebody needs to be told about.
     /// </remarks>
     public bool Ended(Exception ex)
-        => ex is OperationCanceledException && (Routed is not null || StoppedByHand);
+        => ex is OperationCanceledException
+           && (Routed is not null || Claimed is not null || StoppedByHand);
 
     /// <summary>Say where it is going, then go.</summary>
     /// <param name="nav">The router. Same routes the bar and the links use.</param>
@@ -114,6 +190,39 @@ public sealed class VoiceTurnRouter : IDisposable
     public async Task GoAsync(
         NavigationManager nav, Func<string, Task>? say = null, Action<string>? show = null)
     {
+        // DO THE THING, IF SOMETHING CAN. The capability decides whether that
+        // means acting on what was said or opening the screen that would - and
+        // either way what comes back is one line a person can hear.
+        if (Claimed is { } capability)
+        {
+            Did did;
+            try
+            {
+                did = await capability.DoAsync(
+                    new Ask(Asked ?? string.Empty)).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                // A capability that throws must not take the turn's report with
+                // it. Silence here is indistinguishable from a phone that did
+                // not hear, which is the failure this whole codebase keeps
+                // running into.
+                did = new Did(false, $"That did not work. ({ex.GetType().Name})");
+            }
+
+            Outcome = did;
+            show?.Invoke(did.Say);
+
+            if (say is not null)
+            {
+                try { await say(did.Say).ConfigureAwait(true); }
+                catch { /* it still shows, and still moves */ }
+            }
+
+            if (did.Route is { Length: > 0 } route) nav.NavigateTo(route);
+            return;
+        }
+
         if (Routed is null) return;
 
         var line = $"Opening {Routed.Title}";

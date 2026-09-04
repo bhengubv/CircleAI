@@ -22,6 +22,7 @@ public class VoiceNavigationTests : TestContext
     {
         var talk = new FakeConversation { Heard = heard };
         Services.AddSingleton(new VoiceMark());
+        Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
         Services.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
@@ -83,7 +84,28 @@ public class VoiceNavigationTests : TestContext
     {
         // The regression this router could most easily cause: being thrown off
         // the screen you were using, mid-sentence, for saying a word.
-        var talk = Wire("how do you say hello in isiZulu");
+        //
+        // THIS SENTENCE IS NOW ANSWERED RATHER THAN IGNORED, which is why the
+        // turn ends: TranslateCapability recognises that it carries both the
+        // words and the target language, so there is nothing to look up and
+        // nowhere to go. Before, the choice was a paragraph ABOUT isiZulu from
+        // the general model, or a trip to a screen with two languages to set.
+        // What must NOT change is the staying put - that is the hazard.
+        Wire("how do you say hello in isiZulu");
+        var layout = Layout();
+
+        Press(layout);
+
+        layout.WaitForAssertion(() => Assert.Contains("translated", layout.Markup));
+        Assert.EndsWith("/home", Where());
+    }
+
+    [Fact]
+    public void A_question_nothing_can_answer_still_runs_as_an_ordinary_turn()
+    {
+        // The other half, and the one the rule was written for: a sentence that
+        // merely MENTIONS a screen must reach the answering model untouched.
+        var talk = Wire("what did you think of the settings we discussed");
         var layout = Layout();
 
         Press(layout);
@@ -135,6 +157,7 @@ public class HomeVoiceNavigationTests : TestContext
     {
         var talk = new FakeConversation { Heard = heard, Ready = true };
         Services.AddSingleton(new VoiceMark());
+        Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost { Catalogue = [new VoiceRow("en", 1)] });
         Services.AddSingleton<ISetup>(new FakeSetup());
@@ -161,7 +184,10 @@ public class HomeVoiceNavigationTests : TestContext
     [Fact]
     public void The_circle_leaves_a_question_where_it_was_asked()
     {
-        var talk = Wire("how do you say hello in isiZulu");
+        // Same rule as the bar's, and it has to be the SAME rule: the biggest
+        // control on the screen doing something different for one sentence is
+        // the two-owner bug this app keeps producing. Both press one router.
+        var talk = Wire("what did you think of the settings we discussed");
         var home = RenderComponent<CircleAI.Samples.It.Shared.Pages.Home>();
 
         home.Find("button.hero").Click();
@@ -169,5 +195,20 @@ public class HomeVoiceNavigationTests : TestContext
         home.WaitForAssertion(() => Assert.False(Services.GetRequiredService<VoiceMark>().Busy));
         Assert.EndsWith("/home", Where());
         Assert.False(talk.WasCancelled);
+    }
+
+    [Fact]
+    public void The_circle_answers_a_translation_without_moving_you()
+    {
+        // "Services stays for browsing, circle does the work" - this is what
+        // that means in practice. The answer arrives on the screen the person
+        // was already on.
+        Wire("how do you say hello in isiZulu");
+        var home = RenderComponent<CircleAI.Samples.It.Shared.Pages.Home>();
+
+        home.Find("button.hero").Click();
+
+        home.WaitForAssertion(() => Assert.Contains("translated", home.Markup));
+        Assert.EndsWith("/home", Where());
     }
 }

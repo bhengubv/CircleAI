@@ -46,6 +46,12 @@ public static class MauiProgram
         // One brain for the app, shared by the chat screen and the job-spec
         // tailoring: loading a model is seconds and hundreds of megabytes.
         builder.Services.AddSingleton<IBrain, DeviceBrain>();
+
+        // WHAT THE CIRCLE CAN BE ASKED TO DO. Services is the catalogue you
+        // browse; this is the side that acts. One instance, because every voice
+        // button consults it and two would be two answers to one sentence.
+        builder.Services.AddSingleton(
+            sp => CapabilityRegistry.For(sp.GetService<IBrain>(), sp.GetService<ISettings>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
         builder.Services.AddSingleton<IWakePhrases, DeviceWakePhrases>();

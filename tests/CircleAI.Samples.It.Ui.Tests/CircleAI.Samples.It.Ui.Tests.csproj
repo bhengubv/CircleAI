@@ -34,6 +34,22 @@
       inherits it. Version taken from the NuGet flat container rather than an
       advisory summary - a pin read off a summary has been one version short
       here before.
+
+      THE PIN COSTS ONE bunit API, AND THIS IS WHERE THAT IS WRITTEN DOWN.
+      IHtmlCollection<T>'s indexer changed between the version bunit 1.40 was
+      compiled against and 1.7.2, so `FindAll(".x")[0]` throws at RUNTIME:
+
+        System.MissingMethodException: Method not found:
+        '!0 AngleSharp.Dom.IHtmlCollection`1.get_Item(Int32)'
+
+      It compiles, and it fails only in the test that indexes - which reads as a
+      broken assertion rather than a broken dependency, and cost an hour the
+      first time. Use `FindAll(".x").ToList()[0]`, which goes through
+      IEnumerable and is unaffected. Everything else in bunit works.
+
+      Keeping the pin is still right: a workaround in test code beats a known
+      advisory in the tree. Re-check when bunit ships a build compiled against
+      AngleSharp 1.7.
     -->
     <PackageReference Include="AngleSharp" Version="1.7.2" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

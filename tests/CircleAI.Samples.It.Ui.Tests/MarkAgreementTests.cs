@@ -27,6 +27,7 @@ public class MarkAgreementTests : TestContext
         Services.AddSingleton<IConversation>(new FakeConversation());
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
         Services.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
+        Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
 
         // The bar is hidden on the full-screen stages - loading and setup own the
         // whole screen - so a test that never leaves "/" is testing nothing.

@@ -31,6 +31,54 @@ public sealed class CapabilityRegistry
 
     public CapabilityRegistry(IEnumerable<ICapability> all) => _all = all.ToList();
 
+    /// <summary>Everything this build can be asked to do.</summary>
+    /// <remarks>
+    /// THE ONE PLACE THAT KNOWS WHICH CAPABILITIES EXIST, which is a different
+    /// job from knowing what any of them can do - that stays in the capability.
+    /// <para>
+    /// A DOING CAPABILITY REPLACES THE NAVIGATE ONE FOR ITS ROUTE. Otherwise the
+    /// words that mean "translate" would be claimed by two entries, they would
+    /// score identically, and <see cref="Best"/> would correctly refuse to
+    /// choose - so adding the capability that actually translates would have
+    /// stopped translation being reachable at all. Two owners for one fact, in
+    /// its most embarrassing form.
+    /// </para>
+    /// </remarks>
+    /// <param name="brain">
+    /// What the doing capabilities work with. Null builds a browse-and-navigate
+    /// registry, which is the honest shape for a head with no model on it.
+    /// </param>
+    /// <param name="settings">
+    /// What the app remembers, for the capabilities that change it. Null leaves
+    /// mode switching to the Settings screen.
+    /// </param>
+    public static CapabilityRegistry For(IBrain? brain, ISettings? settings = null)
+    {
+        var doing = new List<ICapability>();
+        var replaced = new HashSet<string>(StringComparer.Ordinal);
+
+        if (brain is not null)
+        {
+            doing.Add(new TranslateCapability(brain));
+            replaced.Add("translate");
+        }
+
+        if (settings is not null)
+        {
+            // Both directions. A switch you can only throw one way is a trap,
+            // and "stop translating" has to work by voice for the same reason
+            // starting had to: the phone is being held up between two people.
+            doing.Add(new SwitchModeCapability(settings, AppMode.Translator));
+            doing.Add(new SwitchModeCapability(settings, AppMode.Assistant));
+        }
+
+        var navigating = VoiceDestinations.All
+            .Where(d => !replaced.Contains(d.Route))
+            .Select(d => (ICapability)new NavigateCapability(d));
+
+        return new CapabilityRegistry(doing.Concat(navigating));
+    }
+
     /// <summary>Everything, for Services to browse.</summary>
     public IReadOnlyList<ICapability> All => _all;
 
@@ -48,6 +96,21 @@ public sealed class CapabilityRegistry
 
         var text = VoiceDestinations.Normalise(heard);
         if (text.Length == 0) return [];
+
+        // A CLAIM BEATS A WORD MATCH, AND SKIPS THE INSTRUCTION TEST.
+        //
+        // Claiming means the capability recognised the whole shape of the
+        // sentence - "how do you say X in Y" names its text AND its target
+        // language - which is stronger evidence than having found one of its
+        // words somewhere in a phrase. It also has to skip the instruction test,
+        // because that test exists to stop a QUESTION being turned into a
+        // navigation, and a capability that answers the question is not doing
+        // that.
+        var claimed = _all.Where(c => c.Claims(text)).ToList();
+        if (claimed.Count > 0)
+            return claimed
+                .Select(c => new Candidate(c, text.Length, text))
+                .ToList();
 
         if (!VoiceDestinations.SoundsLikeAnInstruction(text)) return [];
 

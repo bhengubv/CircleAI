@@ -28,6 +28,7 @@ public class HomeClaimTests : TestContext
         ReadyStage stage = ReadyStage.Ready)
     {
         Services.AddSingleton(new VoiceMark());
+        Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
         Services.AddSingleton<IConversation>(new FakeConversation());
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost
         {

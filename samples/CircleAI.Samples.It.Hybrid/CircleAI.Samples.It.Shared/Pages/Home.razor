@@ -20,6 +20,7 @@
 @inject VoiceMark Mark
 @inject ISpokenLanguage Spoken
 @inject IWhereAmI Where
+@inject CapabilityRegistry Can
 @implements IDisposable
 
 <div class="home">
@@ -353,7 +354,7 @@
             // somebody where they asked; the biggest control on the screen doing
             // something different for the same sentence is the two-owner bug this
             // app keeps producing, so both press the same router.
-            using var router = new VoiceTurnRouter();
+            using var router = new VoiceTurnRouter(Can);
             _turn = router;
 
             var updates = new Progress<TurnState>(t =>

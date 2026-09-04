@@ -24,10 +24,57 @@ public sealed class ResidentWakeWord : IResidentListener
 {
     private readonly IWakeWordDetector _detector;
 
-    public ResidentWakeWord(IWakeWordDetector detector)
+    /// <param name="calibration">
+    /// What this phone has recorded so far, and where to write it back. Null
+    /// keeps the old behaviour of recording nothing.
+    /// </param>
+    public ResidentWakeWord(
+        IWakeWordDetector detector, (WakeCalibration Current, string Path)? calibration = null)
     {
         _detector = detector;
-        _detector.WakeWordDetected += (_, e) => Woke?.Invoke(this, e.WakeWord);
+        _calibration = calibration?.Current;
+        _calibrationPath = calibration?.Path;
+
+        _detector.WakeWordDetected += (_, e) =>
+        {
+            Record(e.Confidence);
+            Woke?.Invoke(this, e.WakeWord);
+        };
+    }
+
+    private WakeCalibration? _calibration;
+    private readonly string? _calibrationPath;
+
+    /// <summary>Writes down that a wake got through, and how well it scored.</summary>
+    /// <remarks>
+    /// NOTHING HAS EVER WRITTEN THIS FILE. WakeCalibration.Load ran at every
+    /// start and Save was called from nowhere in the whole repository, so the
+    /// per-device tuning it exists to hold was permanently empty and every phone
+    /// ran on a threshold measured on one P30, with one voice, in one room. A
+    /// record that is only ever read is not a record.
+    /// <para>
+    /// Wakes only, because wakes are all this interface can see: the stage-two
+    /// veto is raised inside ZipformerWakeWordDetector and never reaches
+    /// IWakeWordDetector. Vetoes therefore stay at zero here and that is a known
+    /// gap, not a measurement — <see cref="WakeCalibration.Vetoes"/> would need
+    /// the rejection surfaced on the interface first.
+    /// </para>
+    /// <para>
+    /// Best effort throughout. Wake detection must never fail because a counter
+    /// could not be written, and Save already swallows its own errors.
+    /// </para>
+    /// </remarks>
+    private void Record(float confidence)
+    {
+        if (_calibration is not { } current || _calibrationPath is null) return;
+
+        try
+        {
+            var updated = current.WithWake(confidence);
+            _calibration = updated;
+            updated.Save(_calibrationPath);
+        }
+        catch { /* a counter is never worth a missed wake */ }
     }
 
     public bool IsListening => _detector.IsListening;
@@ -113,15 +160,26 @@ public sealed class ResidentWakeWord : IResidentListener
             Android.Util.Log.Info("CircleAI.Kws",
                 $"wake keywords: {keywords ?? "the bundle's own"}");
 
+            // Loaded ONCE and handed to both, so the detector's gate and the
+            // counters that judge that gate cannot come from two different reads
+            // of the same file.
+            var calibration = WakeCalibration.Load(calibrationPath);
+
+            Android.Util.Log.Info("CircleAI.Kws", calibration.HasEvidence
+                ? $"wake calibration: {calibration.Wakes} wakes recorded, scores "
+                  + $"{calibration.LowestWakeScore:0.###}-{calibration.HighestWakeScore:0.###}"
+                : "wake calibration: nothing recorded on this phone yet — running on the shipped gate");
+
             var detector = WakeWordFactory.Create(
                 new AndroidAudioCapture(),
                 bundleDirectory,
                 host,
-                WakeCalibration.Load(calibrationPath),
+                calibration,
                 transcriber,
                 keywords);
 
-            CircleNeuronService.Listener = new ResidentWakeWord(detector);
+            CircleNeuronService.Listener =
+                new ResidentWakeWord(detector, (calibration, calibrationPath));
             InstalledLanguage = languageCode;
             return true;
         }
