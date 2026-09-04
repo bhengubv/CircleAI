@@ -200,9 +200,15 @@
     /// DOWNLOADED IS NOT READY, AND THIS SCREEN USED TO STOP AT DOWNLOADED. The
     /// census counts bytes on disk, so the gate opened while the transcriber had
     /// never been opened, the voice had never been built, and the phonemizer
-    /// might not be wired at all. Measured on a P30: the FIRST decode took ELEVEN
-    /// SECONDS against under two for every one after it, and the first spoken
-    /// reply logged "(INCLUDING model open)".
+    /// might not be wired at all.
+    /// <para>
+    /// HOW MUCH THIS BUYS, HONESTLY: the first spoken reply logged "(INCLUDING
+    /// model open)" and no longer does, which is about two seconds. It does NOT
+    /// fix a slow first answer - this note used to claim the eleven-second first
+    /// decode and that was wrong, as the logs it cited already showed: every stt
+    /// line reports built=15..53 ms against decode=11648..29541 ms. Opening is
+    /// milliseconds; the decode is Whisper on a P30 and belongs to the model.
+    /// </para>
     /// <para>
     /// So the cost landed on the first turn - the one where somebody decides
     /// whether this thing works - after a screen had already told them it was

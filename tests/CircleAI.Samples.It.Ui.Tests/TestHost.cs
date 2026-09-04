@@ -43,8 +43,11 @@ internal sealed class FakeProfile : IProfile
 
 internal sealed class FakeDeviceFacts : IDeviceFacts
 {
+    /// <summary>What the abilities list should report.</summary>
+    public IReadOnlyList<AbilityRow> Abilities { get; init; } = [];
+
     public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<AbilityRow>>([]);
+        => Task.FromResult(Abilities);
     public Task<PhoneFacts> PhoneAsync(CancellationToken ct = default)
         => Task.FromResult(new PhoneFacts([], []));
     public Task<string> TurnOnAsync(

@@ -12,6 +12,21 @@ namespace CircleAI.Samples.It.App.Services;
 /// <inheritdoc />
 public sealed class DeviceFacts : IDeviceFacts
 {
+    /// <summary>Whether the resident listener is actually holding the microphone.</summary>
+    /// <remarks>
+    /// Read from the service rather than taken as a constructor dependency: this
+    /// is the same static IResidentAssistant.IsListening reports, and routing it
+    /// through DI would give this screen a second path to one fact.
+    /// </remarks>
+    private static bool Listening
+    {
+        get
+        {
+            try { return CircleAI.Device.CircleNeuronService.IsListening; }
+            catch { return false; }
+        }
+    }
+
     /// <summary>The abilities, in the order the screen shows them.</summary>
     /// <remarks>
     /// COMPILED IN, NOT DISCOVERED. The list is fixed because an ability is code
@@ -106,7 +121,24 @@ public sealed class DeviceFacts : IDeviceFacts
                 // every installed model each time Settings opened.
                 if (chosen is not null && loader.ModelPresent(chosen.Name))
                 {
-                    rows.Add(new AbilityRow(title, Blurb(blurb), AbilityState.On,
+                    // PRESENT IS NOT RUNNING, AND THIS ROW USED TO SAY IT WAS.
+                    //
+                    // "Waking ✓ On" appeared the moment the bundle finished
+                    // downloading, while nothing was listening - so the only way
+                    // to actually start waking was to notice the small "Try it"
+                    // link beside the tick and open the wake screen, which builds
+                    // a detector of its own. A tick that means "the file exists"
+                    // is the same claim the setup census makes, and it was wrong
+                    // for the same reason.
+                    //
+                    // IsListening is the live answer, and the toggle three rows
+                    // below on the same screen was already reading it - because
+                    // Android can kill the service and a remembered bool drifts.
+                    // One truth, asked once.
+                    var running = modality != ModelModality.WakeWord || Listening;
+
+                    rows.Add(new AbilityRow(title, Blurb(blurb),
+                        running ? AbilityState.On : AbilityState.Ready,
                         TryRoute: RouteFor(modality)));
                     continue;
                 }

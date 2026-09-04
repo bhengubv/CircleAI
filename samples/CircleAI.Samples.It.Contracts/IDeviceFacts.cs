@@ -13,8 +13,31 @@ namespace CircleAI.Samples.It;
 /// <summary>What state an ability is in on this device.</summary>
 public enum AbilityState
 {
-    /// <summary>A model is on disk and the code that uses it is in this build.</summary>
+    /// <summary>Downloaded, wired, AND actually doing its job right now.</summary>
     On,
+
+    /// <summary>
+    /// Everything it needs is here, and it is not switched on.
+    /// </summary>
+    /// <remarks>
+    /// THE STATE THAT WAS MISSING, AND ITS ABSENCE WAS A LIE. On used to mean "a
+    /// model is on disk", so Settings printed "Waking ✓ On" the moment the wake
+    /// bundle finished downloading - while nothing was listening. Three rows
+    /// below it sat a toggle that reads IsListening LIVE, because Android can
+    /// kill the service and a remembered bool would drift. One screen, two
+    /// answers, and only one of them was true.
+    /// <para>
+    /// This file already carried the warning: "a build advertised Waking ✓ On on
+    /// a phone that could not wake at all". That was fixed for the case where the
+    /// CODE was missing and not for the case where the code is there and nothing
+    /// is running.
+    /// </para>
+    /// <para>
+    /// Distinct from <see cref="Available"/> because nothing needs downloading -
+    /// a screen must offer a switch here, not a size.
+    /// </para>
+    /// </remarks>
+    Ready,
 
     /// <summary>Catalogued and it fits - it just has not been downloaded.</summary>
     Available,

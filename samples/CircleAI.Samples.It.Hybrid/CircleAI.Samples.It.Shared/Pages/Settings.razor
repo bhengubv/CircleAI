@@ -351,6 +351,17 @@ else
 
         @if (_open == 0)
         {
+            @*
+                THE REASON, WHERE THE SWITCH IS. _trouble is also shown beside
+                the "Answer to its name" toggle - on a different tab - so a
+                failure from THIS button used to land on a screen the person
+                pressing it was not looking at.
+            *@
+            @if (_trouble is { Length: > 0 })
+            {
+                <p class="warn">@_trouble</p>
+            }
+
             @foreach (var row in _abilities)
             {
                 <div class="row" @key="row.Title">
@@ -359,7 +370,20 @@ else
                         <span class="row-sub">@Detail(row)</span>
                     </span>
 
-                    @if (row.State == AbilityState.Available)
+                    @*
+                        READY IS A SWITCH, NOT A DOWNLOAD. Everything it needs is
+                        already here, so offering a size would be a lie and a tick
+                        would be a bigger one - this is the row that used to read
+                        "Waking ✓ On" while nothing was listening.
+                    *@
+                    @if (row.State == AbilityState.Ready)
+                    {
+                        <button class="compact" disabled="@(_turning is not null)"
+                                @onclick="() => TurnOn(row)">
+                            @(_turning == row.Title ? "..." : "Turn on")
+                        </button>
+                    }
+                    else if (row.State == AbilityState.Available)
                     {
                         <button class="compact" disabled="@(_turning is not null)"
                                 @onclick="() => TurnOn(row)">
@@ -676,11 +700,47 @@ else
         _ => row.Blurb,
     };
 
+    /// <summary>Turn an ability on - by fetching it, or by starting it.</summary>
+    /// <remarks>
+    /// TWO DIFFERENT MEANINGS OF "TURN ON", and sending both down the download
+    /// path would spend somebody's data to re-fetch a bundle already on the
+    /// phone. Available needs the bytes; Ready needs a switch.
+    /// <para>
+    /// The switch is IResidentAssistant's, not this screen's. Starting a
+    /// foreground service means a permission check, a bundle lookup and the
+    /// phone's chosen language, and that logic already exists once - a second
+    /// copy here is how the wake phrase ended up written to two different files.
+    /// </para>
+    /// </remarks>
     async Task TurnOn(AbilityRow row)
     {
         if (_turning is not null) return;
         _turning = row.Title;
-        try { await Facts.TurnOnAsync(row.Title); await Reload(); }
+        try
+        {
+            string? why = null;
+
+            if (row.State == AbilityState.Ready && row.TryRoute == "wake")
+            {
+                var status = await Resident.StartAsync();
+
+                // SAY WHY IT DID NOT START. Huawei and Xiaomi kill foreground
+                // services on their own schedule, and a switch that silently
+                // does nothing is the bug this row was already an example of.
+                why = status.State == ResidentState.Listening ? null : status.Hint;
+                _residentOn = Resident.IsListening;
+            }
+            else
+            {
+                await Facts.TurnOnAsync(row.Title);
+            }
+
+            // AFTER THE RELOAD, NOT BEFORE. Reload clears _trouble - so setting
+            // the reason first wiped it one line later and produced the silent
+            // failure this whole row exists to stop. Caught by the test for it.
+            await Reload();
+            if (why is { Length: > 0 }) _trouble = why;
+        }
         finally { _turning = null; }
     }
 

@@ -162,7 +162,10 @@ internal sealed class FakeShareTarget : IShareTarget
 /// <summary>A resident assistant that is switched off and stays off.</summary>
 internal sealed class FakeResidentAssistant : IResidentAssistant
 {
-    public bool IsListening => false;
+    /// <summary>Whether it is holding the microphone, and whether Start works.</summary>
+    public bool IsListening { get; private set; }
+    public bool StartSucceeds { get; init; } = true;
+    public int Starts { get; private set; }
 
     public event EventHandler<string>? Woke;
 
@@ -172,7 +175,15 @@ internal sealed class FakeResidentAssistant : IResidentAssistant
     private static ResidentStatus Off =>
         new(ResidentState.Off, "Not listening", "");
 
-    public Task<ResidentStatus> StartAsync(CancellationToken ct = default) => Task.FromResult(Off);
+    public Task<ResidentStatus> StartAsync(CancellationToken ct = default)
+    {
+        Starts++;
+        IsListening = StartSucceeds;
+        return Task.FromResult(StartSucceeds
+            ? new ResidentStatus(ResidentState.Listening, "Listening", "")
+            : new ResidentStatus(ResidentState.Failed, "Not listening",
+                "This phone stops it in the background. Allow it there."));
+    }
     public Task<ResidentStatus> StopAsync(CancellationToken ct = default) => Task.FromResult(Off);
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(Off);
 }

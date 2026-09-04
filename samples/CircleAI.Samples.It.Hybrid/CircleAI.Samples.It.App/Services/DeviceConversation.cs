@@ -310,8 +310,20 @@ public sealed class DeviceConversation : IConversation
         var started = Environment.TickCount64;
         var said = new List<string>();
 
-        // THE EARS FIRST, because they are the eleven seconds. Through the same
-        // field a turn uses, so what is opened here is what a turn finds.
+        // THE EARS FIRST - AND NOT FOR THE REASON THIS ONCE SAID.
+        //
+        // It claimed to remove the eleven-second first decode. The logs had
+        // already disproved that and I had not read them: every stt line splits
+        // the cost, and building the processor is NOT where it goes.
+        //
+        //     stt: built=15 ms | decode=11648 ms
+        //     stt: built=53 ms | decode=29541 ms
+        //
+        // Opening is milliseconds. The seconds are the decode itself - Whisper
+        // on a P30 - and no warm-up will ever touch that. What this does buy is
+        // the model open and the first allocation, which is real and small, and
+        // saying so honestly is worth more than a gate justified by a number
+        // that was never the problem.
         progress?.Report("Opening the ears");
         try
         {
@@ -321,18 +333,30 @@ public sealed class DeviceConversation : IConversation
         }
         catch (Exception ex) { said.Add($"ears: {ex.GetType().Name}: {ex.Message}"); }
 
-        // THE VOICE SECOND. Building the speaker is the cost - the first spoken
-        // reply logs "(INCLUDING model open)" - so it is built and let go, and
-        // what stays warm is the model file in the page cache rather than the
-        // object. Cheaper than holding an engine open for a turn that may never
-        // come, and it still takes the seconds off the first one.
+        // THE VOICE SECOND, THROUGH THE PATH THAT ACTUALLY SPEAKS.
+        //
+        // THIS USED TO BUILD AN ItSpeaker AND DISPOSE IT, which warmed nothing:
+        // DeviceVoiceHost.SayAsync does not use ItSpeaker at all, it calls
+        // ItTtsProbe.RunCataloguedAsync. So the first spoken reply of every
+        // session still logged "(INCLUDING model open)" while the warm-up
+        // reported success - a warm copy of an object nobody uses, which is the
+        // same mistake as warming a listener the turn does not hold.
+        //
+        // Synthesising to a throwaway wav rather than speaking: RunCataloguedAsync
+        // writes a file and DeviceVoiceHost plays it afterwards, so calling the
+        // synthesis half directly opens everything the real path opens and makes
+        // no sound doing it.
         progress?.Report("Opening the voice");
         try
         {
-            var (speaker, status) = await ItSpeaker
-                .TryCreateAsync(StorageDir, log: null, ct).ConfigureAwait(false);
-            (speaker as IDisposable)?.Dispose();
-            said.Add(speaker is null ? $"voice: {status}" : "voice: ready");
+            var wav = System.IO.Path.Combine(FileSystem.CacheDirectory, "warm.wav");
+            await Task.Run(() => ItTtsProbe.RunCataloguedAsync(
+                StorageDir, _spoken.Current, "ready", wav, log: null, ct: ct), ct)
+                .ConfigureAwait(false);
+
+            var opened = System.IO.File.Exists(wav);
+            try { if (opened) System.IO.File.Delete(wav); } catch { }
+            said.Add(opened ? "voice: open" : "voice: could not open");
         }
         catch (Exception ex) { said.Add($"voice: {ex.GetType().Name}: {ex.Message}"); }
 
