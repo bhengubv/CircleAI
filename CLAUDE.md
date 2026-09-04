@@ -62,11 +62,26 @@ heavy builds rather than running two at once.
 
 ## Two things that cost a day each
 
-**Deploying to Android wipes the app's data.** With
-`EmbedAssembliesIntoApk=true`, `-t:Install` uninstalls first — 817 MB of
-downloaded models gone on every deploy, whatever `AndroidPreserveUserData` says.
-Use the `InstallKeepingData` target while iterating and `-t:Install` only for a
-genuine first run.
+**Deploying to Android wipes the app's data — unless you ask for an APK.**
+A **Release** `-t:Install` uninstalls first and takes the downloaded models with
+it; on the P30 that is 2 GB. Add one flag and it does not:
+
+```bash
+dotnet build <proj> -c Release -f net10.0-android -t:Install \
+  -p:AndroidPackageFormat=apk -p:AdbTarget="-s <serial>"
+```
+
+The cause is the package format, not `EmbedAssembliesIntoApk`. `Install` depends
+on `_DeployApk` and `_DeployAppBundle`; the first is `adb install -r` — an
+in-place update — and the second uninstalls before installing. Release defaults
+`AndroidPackageFormats` to `aab;apk`, which selects the bundle path;
+`EmbedAssembliesIntoApk` only chooses the harsher of two uninstalls once you are
+already on it. Debug builds an APK and has never wiped anything.
+
+Do NOT use `InstallKeepingData`: **that target does not exist.** It fails with
+`MSB4057` and `dotnet build` still exits 0, so nothing installs and nothing says
+so. Verify a deploy with `adb shell dumpsys package <pkg>` — `lastUpdateTime`
+moving means it landed, `firstInstallTime` NOT moving means the data survived.
 
 **One fact with two owners always ends up with two answers.** The language count,
 the model choice, the wake phrase and the app language each lived in three or
