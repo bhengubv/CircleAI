@@ -92,11 +92,29 @@ public class HomeClaimTests : TestContext
     {
         // The web head has no on-device voice, and the claims are per host: a
         // shared component must not make the phone's promise on a browser.
+        //
+        // THIS TEST'S NAME WAS TRUE AND ITS ASSERTION WAS NOT. It checked one
+        // claim - the one about working with no signal - and never looked at the
+        // claim that actually says the app SPEAKS. So the browser head shipped
+        // "75 languages, spoken out loud" four lines below its own caption
+        // saying the page "lists them rather than speaking them", and this test
+        // passed the whole time. Found by running the web head for the first
+        // time, not by reading it.
+        //
+        // A test that checks the second of three things and is named for all
+        // three is worse than no test: it occupies the space where the real one
+        // would go.
         Wire(Voices("en", "zu", "af"), availability: VoiceAvailability.Unavailable);
 
         var home = RenderComponent<Home>();
 
+        Assert.DoesNotContain("spoken out loud", home.Markup);
         Assert.DoesNotContain("Runs on the phone — works with no signal", home.Markup);
+
+        // The COUNT is still honest - it is this host's own catalogue - so the
+        // fix is the verb, not the number. Losing the number would be a second
+        // wrong answer.
+        Assert.Contains("3 languages", home.Markup);
     }
 
     [Fact]

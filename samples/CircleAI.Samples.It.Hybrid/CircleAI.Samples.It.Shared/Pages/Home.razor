@@ -287,10 +287,28 @@
     /// The last two are promises about where the work happens. In a browser tab
     /// they are false - the models are not there - and printing them anyway would
     /// make the shared UI lie on one of its two hosts.
+    /// <para>
+    /// AND SO WAS THE FIRST ONE, WHICH IS WORSE, because it is the one naming
+    /// what the app DOES. The browser branch dropped the two claims about where
+    /// the work happens and kept "N languages, SPOKEN OUT LOUD" untouched - on
+    /// the one host that cannot speak, four lines below this same page's own
+    /// caption saying it "lists them rather than speaking them". Two claims were
+    /// checked and the third was carried over by index.
+    /// </para>
+    /// <para>
+    /// Found by running the web head, which had only ever been compiled. It is
+    /// the same defect this whole sample was written after - "78 languages,
+    /// spoken out loud" on a build that could speak one - surviving in the head
+    /// nobody looked at. The count is honest either way: it is this host's own
+    /// catalogue. It is the verb that was not.
+    /// </para>
     /// </remarks>
     string[] Claims => Voice.Availability == VoiceAvailability.OnDevice
         ? OnDeviceClaims
-        : [OnDeviceClaims[0], "Runs on the phone — install the app to hear a voice"];
+        : [
+            _known > 0 ? $"{_known} languages, listed here" : "Languages you can browse",
+            "Runs on the phone — install the app to hear a voice",
+          ];
 
     /// <summary>The turn this button started, while it is running.</summary>
     /// <remarks>
