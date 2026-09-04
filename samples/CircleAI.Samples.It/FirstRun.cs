@@ -88,9 +88,16 @@ public readonly record struct Capabilities(
 /// instead of one, so it is the link and it varies per person. A bare percentage
 /// is honest on the fast phone and reads as a hang on the slow one.
 /// </remarks>
+/// <param name="Phase">
+/// What the download service is actually doing. Carried through rather than
+/// dropped: verifying a 1.3 GB file takes about a minute on a mid-range phone
+/// with no bytes moving, and a screen that can only show a frozen countdown
+/// reports that as a hang.
+/// </param>
 public readonly record struct SetupProgress(
     int Index, int Count, string Title, float Fraction,
-    double BytesPerSecond = 0, TimeSpan Remaining = default)
+    double BytesPerSecond = 0, TimeSpan Remaining = default,
+    CircleAI.Core.DownloadPhase Phase = CircleAI.Core.DownloadPhase.Downloading)
 {
     /// <summary>A line fit to put on screen: what, how fast, how long left.</summary>
     public string Describe()
@@ -361,14 +368,16 @@ public static class FirstRun
                     : TimeSpan.Zero;
 
                 progress?.Report(new SetupProgress(
-                    index, steps.Count, step.Title, fraction, p.BytesPerSecond, left));
+                    index, steps.Count, step.Title, fraction, p.BytesPerSecond, left, p.Phase));
             });
 
             await Task.Run(() => loader.DownloadModelAsync(step.Model.Name, inner, ct), ct)
                       .ConfigureAwait(false);
 
             done += step.Model.TotalBytes;
-            progress?.Report(new SetupProgress(index, steps.Count, step.Title, done / (float)total));
+            progress?.Report(new SetupProgress(
+                index, steps.Count, step.Title, done / (float)total,
+                Phase: CircleAI.Core.DownloadPhase.Complete));
         }
     }
 

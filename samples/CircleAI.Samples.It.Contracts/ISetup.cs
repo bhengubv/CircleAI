@@ -73,8 +73,45 @@ public sealed record SetupItem(string Title, long Bytes);
 /// person wants to know when they can use the phone, which is when the LAST byte
 /// lands, not this one.
 /// </remarks>
+/// <summary>What setup is doing, in the only three states a person cares about.</summary>
+/// <remarks>
+/// A SMALLER VOCABULARY THAN THE ENGINE'S ON PURPOSE. CircleAI.Core's
+/// DownloadPhase has six states - downloading, resuming, retrying, verifying,
+/// cached, complete - and this file may not reference it: the csproj beside it
+/// says ZERO ProjectReferences, because a WebAssembly client loads this
+/// assembly. So the head maps six engine states onto the three that change what
+/// a person should DO, and the mapping lives in exactly one place.
+/// </remarks>
+public enum SetupPhase
+{
+    /// <summary>Bytes are moving. The estimate means something.</summary>
+    Fetching,
+
+    /// <summary>
+    /// Checking what arrived. No bytes move and it can take a minute.
+    /// </summary>
+    /// <remarks>
+    /// THE STATE THAT LOOKED LIKE A CRASH. Measured on a Redmi Note 12 Pro+ on
+    /// 2026-09-05: the 1.3 GB brain finished downloading, the phone went to 267%
+    /// CPU hashing it with the network idle, and the screen sat on "about 20 sec
+    /// left" without moving for over a minute. Nothing was wrong. The screen
+    /// simply had no way to say what was happening, because the phase was
+    /// dropped twice on its way here and the only thing left to render was a
+    /// countdown that had stopped being updated.
+    /// </remarks>
+    Checking,
+
+    /// <summary>Everything is present and verified.</summary>
+    Done,
+}
+
+/// <param name="Phase">
+/// What is happening now. Defaulted, so every existing caller still compiles and
+/// still reports a download.
+/// </param>
 public sealed record SetupProgressReport(
-    int Index, int Count, string Title, double Fraction, TimeSpan Remaining);
+    int Index, int Count, string Title, double Fraction, TimeSpan Remaining,
+    SetupPhase Phase = SetupPhase.Fetching);
 
 /// <summary>Something worth doing while setup runs.</summary>
 /// <param name="Title">The invitation.</param>

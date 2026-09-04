@@ -152,7 +152,7 @@ public sealed class DeviceSetup : ISetup
                 var inner = new Progress<SetupProgress>(p =>
                 {
                     var report = new SetupProgressReport(
-                        p.Index, p.Count, p.Title, p.Fraction, p.Remaining);
+                        p.Index, p.Count, p.Title, p.Fraction, p.Remaining, Phase(p.Phase));
 
                     // Copied under the lock: a page attaching mid-report would
                     // otherwise mutate the list being walked.
@@ -177,6 +177,23 @@ public sealed class DeviceSetup : ISetup
             return _run;
         }
     }
+
+    /// <summary>Six engine states, mapped to the three a person can act on.</summary>
+    /// <remarks>
+    /// THE MAPPING LIVES HERE AND NOWHERE ELSE, because the shared UI assembly
+    /// may not reference CircleAI.Core - a browser loads it. Resuming and
+    /// Retrying are still FETCHING as far as somebody waiting is concerned:
+    /// bytes are on their way and the estimate still means something. What they
+    /// must not be is silently identical to Verifying, which is the state that
+    /// looks like a hang.
+    /// </remarks>
+    static SetupPhase Phase(CircleAI.Core.DownloadPhase phase) => phase switch
+    {
+        CircleAI.Core.DownloadPhase.Verifying => SetupPhase.Checking,
+        CircleAI.Core.DownloadPhase.Cached    => SetupPhase.Checking,
+        CircleAI.Core.DownloadPhase.Complete  => SetupPhase.Done,
+        _                                     => SetupPhase.Fetching,
+    };
 
     /// <inheritdoc />
     public async Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)

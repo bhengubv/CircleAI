@@ -138,11 +138,29 @@
     /// byte lands. The same bundle is minutes on a premium handset and most of an
     /// hour on a P30 Lite.
     /// </remarks>
-    string Remaining => _progress.Remaining <= TimeSpan.Zero
-        ? "Working out how long this will take…"
-        : _progress.Remaining.TotalMinutes >= 1.5
-            ? $"About {_progress.Remaining.TotalMinutes:0} minutes left"
-            : $"About {Math.Max(5, _progress.Remaining.TotalSeconds):0} seconds left";
+    /// <remarks>
+    /// AN ESTIMATE IS ONLY HONEST WHILE BYTES ARE MOVING. Checking a 1.3 GB file
+    /// takes about a minute on a mid-range phone with the network idle, and no
+    /// new reports arrive while it runs - so the countdown FREEZES at whatever it
+    /// last said. Measured on a Redmi Note 12 Pro+: "about 20 sec left" held for
+    /// over a minute while the phone sat at 267% CPU hashing. Nothing was wrong
+    /// and the screen had no way to say so.
+    /// <para>
+    /// So the phase is asked first. A frozen number is a worse answer than no
+    /// number, because a number that has stopped moving is the universal sign of
+    /// a hang.
+    /// </para>
+    /// </remarks>
+    string Remaining => _progress.Phase switch
+    {
+        SetupPhase.Checking => "Checking what arrived…",
+        SetupPhase.Done     => "Finishing up…",
+        _ => _progress.Remaining <= TimeSpan.Zero
+            ? "Working out how long this will take…"
+            : _progress.Remaining.TotalMinutes >= 1.5
+                ? $"About {_progress.Remaining.TotalMinutes:0} minutes left"
+                : $"About {Math.Max(5, _progress.Remaining.TotalSeconds):0} seconds left",
+    };
 
     /// <summary>
     /// The headline before anything starts, taken from readiness.
