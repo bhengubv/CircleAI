@@ -100,7 +100,36 @@ public static class ResidentPrefs
     public static void SetRunning(Context context, bool running) =>
         Prefs(context)?.Edit()?.PutBoolean(Key, running)?.Apply();
 
-    /// <summary>Whether it was running when the phone last shut down.</summary>
+    /// <summary>
+    /// Whether the assistant should be listening: what the owner last chose, and
+    /// ON when they have not chosen yet.
+    /// </summary>
+    /// <remarks>
+    /// ANSWERING TO ITS NAME IS THE PRODUCT, NOT AN EXTRA. This defaulted to
+    /// false, so a fresh install listened for nothing until somebody found
+    /// Settings › Phone › Answer to its name and switched it on. An assistant
+    /// you have to go and enable before it can hear you is an app you have to
+    /// open, which is the thing the wake word exists to remove.
+    /// <para>
+    /// IT ALSO DISAGREED WITH THE APP'S OWN SETTINGS. AppSettings.WakeEnabled
+    /// has always defaulted to TRUE - the model, the Waking section and the
+    /// language screen all say waking is on out of the box - while this said
+    /// off. One fact, two owners, opposite answers, and the one nobody could see
+    /// was winning.
+    /// </para>
+    /// <para>
+    /// STILL THREE STATES, WHICH IS THE POINT. An explicit SetRunning(false) is
+    /// written to the file and still reads false here, so turning it off keeps
+    /// it off across a reboot - the "helping ourselves to a foreground service"
+    /// concern this file was written with is about ignoring a NO, and a NO is
+    /// still recorded and still obeyed. Only the never-answered case changed.
+    /// </para>
+    /// <para>
+    /// Nothing here can listen without RECORD_AUDIO. On a phone that has not
+    /// granted it, StartAsync fails and says so; this default cannot open a
+    /// microphone the owner has not allowed.
+    /// </para>
+    /// </remarks>
     public static bool WasRunning(Context context) =>
-        Prefs(context)?.GetBoolean(Key, false) ?? false;
+        Prefs(context)?.GetBoolean(Key, true) ?? true;
 }

@@ -174,6 +174,67 @@ public class WakingAbilityTests : TestContext
         });
     }
 
+    /// <summary>Open a fold by its title, on whichever tab holds it.</summary>
+    private IRenderedComponent<Settings> Screen(string tab, string fold)
+    {
+        var screen = RenderComponent<Settings>();
+
+        screen.FindAll("button,div,span")
+            .FirstOrDefault(e => e.TextContent.Trim() == tab)?.Click();
+
+        var f = screen.FindAll("button.fold").ToList()
+            .FirstOrDefault(b => b.TextContent.Contains(fold));
+        if (f is not null && !f.ClassList.Contains("fold-on")) f.Click();
+
+        return screen;
+    }
+
+    [Fact]
+    public void Turning_off_listen_for_the_wake_phrase_actually_stops_listening()
+    {
+        // IT WROTE A SETTING AND NOTHING ELSE. Unticking this saved
+        // WakeEnabled = false and left the resident service holding the
+        // microphone, because the service is governed by a control on a
+        // DIFFERENT tab that never reads this one. The switch's own subtitle
+        // says "the microphone stays open on this phone" - and turning it off
+        // left it open.
+        //
+        // Survivable while the resident defaulted to off. Not survivable now
+        // that listening is the default.
+        var resident = new FakeResidentAssistant();
+        this.WireEverything();
+        Services.AddSingleton<IResidentAssistant>(resident);
+        Services.AddSingleton<IDeviceFacts>(new LiveFacts(resident));
+
+        resident.StartAsync().GetAwaiter().GetResult();
+        Assert.True(resident.IsListening);
+
+        var screen = Screen("Language", "Waking");
+        var box = screen.FindAll("input[type=checkbox]").ToList()
+            .Last();   // the wake-phrase switch inside the open fold
+
+        box.Change(false);
+
+        screen.WaitForAssertion(() => Assert.False(resident.IsListening));
+    }
+
+    [Fact]
+    public void Turning_it_back_on_starts_listening_again()
+    {
+        var resident = new FakeResidentAssistant();
+        this.WireEverything();
+        Services.AddSingleton<IResidentAssistant>(resident);
+        Services.AddSingleton<IDeviceFacts>(new LiveFacts(resident));
+
+        var screen = Screen("Language", "Waking");
+        var box = screen.FindAll("input[type=checkbox]").ToList().Last();
+
+        box.Change(true);
+
+        screen.WaitForAssertion(() => Assert.True(resident.IsListening));
+        Assert.Equal(1, resident.Starts);
+    }
+
     [Fact]
     public void Available_still_offers_the_download()
     {

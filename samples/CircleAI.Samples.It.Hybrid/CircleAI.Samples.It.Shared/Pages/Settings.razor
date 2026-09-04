@@ -135,7 +135,7 @@ else if (_tab == 1)
                 <span class="row-sub">The microphone stays open on this phone. Nothing is recorded.</span>
             </span>
             <input type="checkbox" checked="@_s.WakeEnabled"
-                   @onchange="e => Set(_s with { WakeEnabled = (bool)(e.Value ?? false) })" />
+                   @onchange="ToggleWakeEnabled" />
         </label>
 
         @if (_s.WakeEnabled)
@@ -774,6 +774,56 @@ else
     {
         _s = next;
         await Store.SaveAsync(next);
+    }
+
+    /// <summary>
+    /// "Listen for the wake phrase" - and actually stop listening when it is off.
+    /// </summary>
+    /// <remarks>
+    /// IT WROTE A SETTING AND NOTHING ELSE. Unticking this saved WakeEnabled =
+    /// false and left the resident service holding the microphone, because the
+    /// service is governed by "Answer to its name" on a different tab and never
+    /// reads this. Somebody who turned OFF a switch whose own subtitle says "the
+    /// microphone stays open on this phone" still had an open microphone.
+    /// <para>
+    /// Two switches for one fact, and only one of them enforced. That was
+    /// survivable while the resident defaulted to off - most phones never had it
+    /// running - and it stopped being survivable the moment listening became the
+    /// default, which is the change that came in with this one.
+    /// </para>
+    /// <para>
+    /// So this is now the same switch: the setting records the intent, the
+    /// service is made to match it, and "Answer to its name" reads the service
+    /// live, so both controls end up telling the same story.
+    /// </para>
+    /// </remarks>
+    async Task ToggleWakeEnabled(ChangeEventArgs e)
+    {
+        var wanted = (bool)(e.Value ?? false);
+        await Set(_s with { WakeEnabled = wanted });
+
+        try
+        {
+            var status = wanted
+                ? await Resident.StartAsync()
+                : await Resident.StopAsync();
+
+            // The reason belongs where the switch is. A phone that refuses to
+            // start listening says so here rather than on the tab that happens
+            // to hold the other control.
+            _trouble = status.State == ResidentState.Failed ? status.Hint : null;
+        }
+        catch (Exception ex)
+        {
+            _trouble = ex.Message;
+        }
+
+        // The Phone tab reads the service live, and the abilities list does not -
+        // so it has to be told, exactly as ToggleResident has to tell it.
+        _residentOn = Resident.IsListening;
+        _residentNonce++;
+        try { _abilities = await Facts.AbilitiesAsync(); }
+        catch { /* the switch worked; the list can be stale until reload */ }
     }
 
     /// <summary>Flip the whole app between dark and light, now and for next launch.</summary>
