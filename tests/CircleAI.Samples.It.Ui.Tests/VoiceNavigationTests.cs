@@ -64,7 +64,14 @@ public class VoiceNavigationTests : TestContext
 
         Press(layout);
 
-        layout.WaitForAssertion(() => Assert.True(talk.WasCancelled));
+        // A LONGER WINDOW THAN bunit's ONE SECOND, because this one waits on a
+        // real cancellation crossing a real await rather than on a render.
+        // Measured: it passes with its class and fails when run alone, which is
+        // the signature of a COLD first render paying for JIT inside the
+        // timeout - nothing to do with the behaviour being asserted. A test that
+        // depends on what else ran first is a test that will cry wolf, and this
+        // suite is the thing that is supposed to be believable.
+        layout.WaitForAssertion(() => Assert.True(talk.WasCancelled), TimeSpan.FromSeconds(5));
     }
 
     [Fact]

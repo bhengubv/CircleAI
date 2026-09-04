@@ -115,6 +115,65 @@ public class WakingAbilityTests : TestContext
             Assert.Contains("Allow it there", screen.Markup));
     }
 
+    /// <summary>A facts host that answers from the resident, the way the device does.</summary>
+    /// <remarks>
+    /// The fixed-list fake above cannot catch a STALE row: it returns the same
+    /// answer however the world changed, so a screen that never re-asks looks
+    /// identical to one that does. This one derives Waking from IsListening,
+    /// which is what DeviceFacts actually does, so "did the screen ask again"
+    /// becomes a question the test can put.
+    /// </remarks>
+    private sealed class LiveFacts(IResidentAssistant resident) : IDeviceFacts
+    {
+        public Task<IReadOnlyList<AbilityRow>> AbilitiesAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<AbilityRow>>(
+                [new AbilityRow("Waking", "Hears you without being touched",
+                    resident.IsListening ? AbilityState.On : AbilityState.Ready,
+                    TryRoute: "wake")]);
+
+        public Task<PhoneFacts> PhoneAsync(CancellationToken ct = default)
+            => Task.FromResult(new PhoneFacts([], []));
+
+        public Task<string> TurnOnAsync(
+            string title, IProgress<string>? progress = null, CancellationToken ct = default)
+            => Task.FromResult("nothing to turn on in a test");
+    }
+
+    [Fact]
+    public void Switching_the_listener_off_updates_the_row_that_reports_it()
+    {
+        // MEASURED ON A P30, 2026-09-05. Unticking "Answer to its name" unticked
+        // the box and rewrote its subtitle, and four inches below it "Waking ✓"
+        // sat under "Turned on" with a Try it beside it - because _abilities is
+        // read once and never again. Switching tabs did not help; only leaving
+        // the screen entirely did.
+        //
+        // So AbilityState.Ready, which was added precisely to stop the app
+        // claiming "Waking ✓ On" while nothing listens, could not reach the
+        // screen in the one situation it was written for.
+        var resident = new FakeResidentAssistant();
+        this.WireEverything();
+        Services.AddSingleton<IResidentAssistant>(resident);
+        Services.AddSingleton<IDeviceFacts>(new LiveFacts(resident));
+
+        // Start it, so the row has something true to say before the toggle.
+        resident.StartAsync().GetAwaiter().GetResult();
+
+        var screen = Screen();
+        screen.WaitForAssertion(() => Assert.Contains("Try it", screen.Markup));
+
+        // The resident checkbox is the one bound to ToggleResident. It is the
+        // second checkbox on the tab; the first is the theme.
+        var boxes = screen.FindAll("input[type=checkbox]").ToList();
+        boxes[1].Change(false);
+
+        screen.WaitForAssertion(() =>
+        {
+            Assert.Contains("Turn on", screen.Markup);
+            Assert.DoesNotContain("Try it", screen.Markup);
+        });
+    }
+
     [Fact]
     public void Available_still_offers_the_download()
     {

@@ -496,6 +496,24 @@ else
             // value, which is the only version the DOM cannot argue with.
             _residentOn = Resident.IsListening;
             _residentNonce++;
+
+            // AND THE ROW THAT SAYS THE SAME THING, four inches down the same
+            // screen. Measured on a P30 on 2026-09-05: switching this off
+            // unticked the box and changed its subtitle, and "Waking ✓" stayed
+            // sitting under "Turned on" with a Try it beside it - because
+            // _abilities is read once in OnParametersSetAsync and never again.
+            //
+            // AbilityState.Ready EXISTS FOR THIS EXACT ROW and could not reach
+            // the screen, so the state that was added to stop the app claiming
+            // "Waking ✓ On" while nothing listened was itself unreachable. One
+            // fact with two readers, and only one of them refreshed - which is
+            // this codebase's oldest bug wearing a new hat.
+            //
+            // Not fatal, and deliberately not caught into _trouble: the toggle
+            // itself succeeded, and a warning about a stale row would be a
+            // worse answer than a correct row.
+            try { _abilities = await Facts.AbilitiesAsync(); }
+            catch { /* the toggle worked; the list can be stale until reload */ }
         }
     }
 

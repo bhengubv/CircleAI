@@ -184,7 +184,20 @@ internal sealed class FakeResidentAssistant : IResidentAssistant
             : new ResidentStatus(ResidentState.Failed, "Not listening",
                 "This phone stops it in the background. Allow it there."));
     }
-    public Task<ResidentStatus> StopAsync(CancellationToken ct = default) => Task.FromResult(Off);
+    /// <summary>Stops, and actually stops.</summary>
+    /// <remarks>
+    /// IT RETURNED THE OFF STATUS AND LEFT IsListening TRUE. Start set the flag
+    /// and Stop did not clear it, so this fake could only ever go one way -
+    /// and any test that switched the listener off was quietly asserting
+    /// against a listener that was still on. It made a real staleness bug in
+    /// Settings look like a broken test.
+    /// </remarks>
+    public Task<ResidentStatus> StopAsync(CancellationToken ct = default)
+    {
+        IsListening = false;
+        return Task.FromResult(Off);
+    }
+
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(Off);
 }
 
