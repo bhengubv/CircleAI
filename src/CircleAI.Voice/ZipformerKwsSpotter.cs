@@ -649,8 +649,34 @@ public sealed class ZipformerKwsSpotter : IDisposable
                         : _encoderFrame;
                     Detected?.Invoke(this,
                         new KwsDetection(endState.Phrase, _encoderFrame, p, start));
-                    next = StartHyps();
                 }
+
+                // A JUDGED PHRASE IS SPENT, WHATEVER THE VERDICT - and this
+                // is where the wake word used to go deaf.
+                //
+                // The reset used to sit inside the `if`, so a hypothesis
+                // that COMPLETED the phrase and scored under the bar was
+                // never cleared. It cannot fire, because its score is below
+                // the threshold. It cannot be beaten, because it finished
+                // the phrase and leads on log-probability while every
+                // newcomer starts from nothing. And MeanProbability averages
+                // only the MATCHED tokens, which are fixed once matched - so
+                // more blanks can never raise it either.
+                //
+                // The result is a permanent leader that can never trigger,
+                // and a phone that goes deaf until the app restarts.
+                // Measured on a P30: twenty consecutive windows reporting an
+                // identical 3/3 score, in silence and speech alike, peak
+                // 0,055 to 0,37 while p did not move a digit.
+                //
+                // Resetting either way costs nothing - the phrase is
+                // finished, so there is no partial progress left to protect.
+                if (p < endState.AcThreshold)
+                    VoiceTrace.Write(
+                        $"kws: completed \"{endState.Phrase}\" at p={p:0.###} "
+                        + $"(needs {endState.AcThreshold:0.###}) - beam reset");
+
+                next = StartHyps();
             }
 
             _hyps = next;
