@@ -108,6 +108,39 @@ public class EmbeddedVoiceConfigsTests
     }
 
     [Fact]
+    public void Every_sidecar_we_ship_is_still_pinned_by_some_model()
+    {
+        // THE OTHER DIRECTION, and it guards a failure that looks like success.
+        //
+        // The test above asks "is every pinned file shipped". This asks "is every
+        // shipped file still pinned", which is what catches a voice DISAPPEARING
+        // from the registry. Measured 2026-09-04: tools/sync-registry rebuilt
+        // embedded_registry.json from registry.json alone, and 57 of the 88
+        // runtime models — every voice from the HuggingFace bucket — exist only
+        // in the runtime file. A single run would have deleted all of them and
+        // printed "wrote 31 models" on its way out.
+        //
+        // Nothing else in the suite would have noticed: the drift tests compare
+        // the two registries to each other, and two files agree perfectly when
+        // one of them has been emptied. The sidecars are the outside reference —
+        // 49 files that only exist because a voice needed them, so a sidecar
+        // nobody pins is a voice somebody dropped.
+        var pinned = SidecarPins()
+            .Select(p => p.FileName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var orphans = EmbeddedVoiceConfigs.Names
+            .Where(n => !pinned.Contains(n))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(orphans.Count == 0,
+            "These sidecars ship in the assembly but no model in the registry asks for "
+            + "them any more, which means the voice they belong to was dropped from the "
+            + "catalogue:\n  " + string.Join("\n  ", orphans));
+    }
+
+    [Fact]
     public void The_int8_variant_shares_the_full_models_companions()
     {
         // vits-11za-int8 was published as model.onnx alone — both its companions

@@ -594,7 +594,7 @@
     "Architecture": "vits",
     "QuantizationType": "ONNX",
     "Version": "1.0",
-    "TotalBytes": 114308580,
+    "TotalBytes": 114308677,
     "BundleFiles": [
       {
         "Name": "mms-amh/model.onnx",
@@ -603,8 +603,8 @@
       },
       {
         "Name": "mms-amh/model.onnx.json",
-        "Sha256": "0a0d8ff90a89844b2b731c7b5344db0e337d28cbda021849be81e4eeaf35ade1",
-        "SizeBytes": 936
+        "Sha256": "55d4c473f4f252d45c0770576e8df7c9b33089ba61739bf82939d4b172fca8e8",
+        "SizeBytes": 1033
       }
     ]
   },
@@ -615,7 +615,7 @@
     "Architecture": "vits",
     "QuantizationType": "ONNX",
     "Version": "1.0",
-    "TotalBytes": 114307801,
+    "TotalBytes": 114307898,
     "BundleFiles": [
       {
         "Name": "mms-tir/model.onnx",
@@ -624,8 +624,8 @@
       },
       {
         "Name": "mms-tir/model.onnx.json",
-        "Sha256": "42b5e30e601f25975f9b01e2ab1c828c2b9a6997167a19ee7c349dc92e73f78e",
-        "SizeBytes": 935
+        "Sha256": "112c770c8f01faa8e47f4204a25c03518b2b01668447e047cb323021afe0ed41",
+        "SizeBytes": 1032
       }
     ]
   },

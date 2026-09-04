@@ -9,4 +9,13 @@
     <RootNamespace>CircleAI.Tools.SyncRegistry</RootNamespace>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- So the tool can ask ModelModality what it accepts instead of carrying a
+         second copy of that vocabulary. The two registries do NOT agree on this
+         field — the keyed file says "Text" where the runtime enum says "Chat" —
+         and writing a word the runtime cannot parse takes the whole catalogue
+         down at startup, not just that entry. -->
+    <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
 </Project>
