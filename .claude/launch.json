@@ -1,0 +1,18 @@
+{
+  "//": "How to RUN the web head, which is the reason it had never been run. The MAUI head deploys to a phone and gets exercised daily; the two browser heads compiled clean for weeks and nobody opened one, so 'N languages, spoken out loud' sat on the home screen of the host that cannot speak. Compiling is not running.",
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "it-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "samples/CircleAI.Samples.It.Hybrid/CircleAI.Samples.It.Web/CircleAI.Samples.It.Web.csproj",
+        "--urls",
+        "http://localhost:5183"
+      ],
+      "port": 5183
+    }
+  ]
+}
