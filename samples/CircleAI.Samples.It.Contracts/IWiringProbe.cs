@@ -39,7 +39,39 @@ public enum WiringStage
 /// The reason, in the words the failure itself used. Never a summary of it: the
 /// string that made this findable was the one the code already produced.
 /// </param>
-public sealed record WiringRow(string Title, string Kind, WiringStage Stage, string Detail)
+/// <param name="Where">
+/// The path, folder or source this was found at - or null when there is no place
+/// to point at, which is itself worth knowing.
+/// </param>
+/// <param name="Who">
+/// What in the build holds this: the static that has to be set, the class that
+/// sets it. "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install".
+/// </param>
+/// <param name="Took">How long the check itself took.</param>
+/// <remarks>
+/// WHAT, HOW FAR, WHERE, WHO AND HOW LONG - and the last three were prose.
+/// <para>
+/// Every one of these rows already knew where its thing lived and what was
+/// supposed to be holding it; the facts were glued into Detail as sentences
+/// ("unpacked at /data/.../espeak-ng-data"), which reads fine to a person and
+/// cannot be grouped, sorted, compared between two phones, or diffed against
+/// yesterday's run. A startup report whose facts are only in prose is a log, not
+/// a report.
+/// </para>
+/// <para>
+/// Detail STAYS, and stays first-class: the string that made the mute build
+/// findable was the one the code already produced, and a structured field is no
+/// substitute for it. These sit beside it.
+/// </para>
+/// </remarks>
+public sealed record WiringRow(
+    string Title,
+    string Kind,
+    WiringStage Stage,
+    string Detail,
+    string? Where = null,
+    string? Who = null,
+    TimeSpan? Took = null)
 {
     /// <summary>Whether this can be relied on to do its job.</summary>
     public bool Working => Stage == WiringStage.Wired;
@@ -63,6 +95,23 @@ public sealed record WiringReport(IReadOnlyList<WiringRow> Rows, int Working, in
     /// <summary>Only the rows that are not doing their job.</summary>
     public IReadOnlyList<WiringRow> Failing =>
         Rows.Where(r => !r.Working).ToList();
+
+    /// <summary>How long the whole check took, added up from the rows.</summary>
+    /// <remarks>
+    /// SUMMED FROM THE ROWS RATHER THAN TIMED AROUND THEM, so a report assembled
+    /// from cached rows cannot claim to have just measured them. It also makes
+    /// the expensive check obvious: the loading screen holds the door until this
+    /// finishes, and "which one of these is costing the wait" is the first
+    /// question anybody asks of a slow start.
+    /// </remarks>
+    public TimeSpan Took =>
+        TimeSpan.FromTicks(Rows.Sum(r => r.Took?.Ticks ?? 0));
+
+    /// <summary>The slowest thing checked, when anything was timed.</summary>
+    public WiringRow? Slowest =>
+        Rows.Where(r => r.Took is not null)
+            .OrderByDescending(r => r.Took!.Value)
+            .FirstOrDefault();
 }
 
 /// <summary>Asks the device what is really wired, rather than what was intended.</summary>

@@ -47,14 +47,45 @@ public sealed class DeviceWiringProbe : IWiringProbe
     {
         var rows = new List<WiringRow>
         {
-            Phonemizer(),
-            EspeakData(),
-            OpenJTalk(),
-            RealRam(),
-            WakeBundle(),
+            Timed(Phonemizer),
+            Timed(EspeakData),
+            Timed(OpenJTalk),
+            Timed(RealRam),
+            Timed(WakeBundle),
         };
 
         return new WiringReport(rows, rows.Count(r => r.Working), rows.Count);
+    }
+
+    /// <summary>Runs one check and records how long it took.</summary>
+    /// <remarks>
+    /// AROUND THE CALL, NOT INSIDE EACH CHECK. Five methods each starting their
+    /// own stopwatch is five chances to forget one, and a row with no timing in a
+    /// report that shows timings reads as instant rather than unmeasured.
+    /// <para>
+    /// It matters because the loading screen holds the door until these finish.
+    /// "The app takes a while to start" is not a finding; "espeak G2P took 2.1 of
+    /// the 2.4 seconds" is one.
+    /// </para>
+    /// </remarks>
+    private static WiringRow Timed(Func<WiringRow> check)
+    {
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return check() with { Took = System.Diagnostics.Stopwatch.GetElapsedTime(start) };
+        }
+        catch (Exception ex)
+        {
+            // A CHECK THAT THROWS IS A FINDING, NOT A CRASH. This runs at
+            // startup, and an exception escaping here would take the app down
+            // over a diagnostic - the report exists to survive the thing it is
+            // reporting on.
+            return new WiringRow(
+                check.Method.Name, "hook", WiringStage.Broken,
+                $"the check itself threw — {ex.GetType().Name}: {ex.Message}",
+                Took: System.Diagnostics.Stopwatch.GetElapsedTime(start));
+        }
     }
 
     /// <summary>
@@ -69,21 +100,29 @@ public sealed class DeviceWiringProbe : IWiringProbe
         if (ItSpeaker.MobilePhonemizerFactory is null)
             return new WiringRow(title, "hook", WiringStage.Absent,
                 "ItSpeaker.MobilePhonemizerFactory is null — VoiceWiring.Install was never called. "
-                + "Every voice that needs espeak G2P will refuse.");
+                + "Every voice that needs espeak G2P will refuse.",
+                Where: null,
+                Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install in MainApplication");
 
         try
         {
             var symbols = ItSpeaker.MobilePhonemizerFactory("en-us").Phonemize("test");
             return symbols.Count > 0
                 ? new WiringRow(title, "hook", WiringStage.Wired,
-                    $"espeak G2P answered with {symbols.Count} symbols for \"test\"")
+                    $"espeak G2P answered with {symbols.Count} symbols for \"test\"",
+                    Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
+                    Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install")
                 : new WiringRow(title, "hook", WiringStage.Broken,
-                    "the phonemizer is wired and returned NO symbols — set, but useless");
+                    "the phonemizer is wired and returned NO symbols — set, but useless",
+                    Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
+                    Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
         }
         catch (Exception ex)
         {
             return new WiringRow(title, "hook", WiringStage.Broken,
-                $"the phonemizer is wired and threw — {ex.GetType().Name}: {ex.Message}");
+                $"the phonemizer is wired and threw — {ex.GetType().Name}: {ex.Message}",
+                Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
+                Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
         }
     }
 
@@ -101,17 +140,22 @@ public sealed class DeviceWiringProbe : IWiringProbe
 
         if (string.IsNullOrWhiteSpace(path))
             return new WiringRow(title, "engine", WiringStage.Absent,
-                "NativeEspeakPhonemizer.DataPath is unset — the espeak-ng-data.zip asset never unpacked");
+                "NativeEspeakPhonemizer.DataPath is unset — the espeak-ng-data.zip asset never unpacked",
+                Who: "NativeEspeakPhonemizer.DataPath, unpacked by VoiceWiring.Install");
 
         var dir = System.IO.Path.Combine(path, "espeak-ng-data");
         if (!System.IO.Directory.Exists(dir))
             return new WiringRow(title, "engine", WiringStage.Broken,
-                $"DataPath points at {path} but {dir} does not exist");
+                $"DataPath points at {path} but {dir} does not exist",
+                Where: dir,
+                Who: "NativeEspeakPhonemizer.DataPath, unpacked by VoiceWiring.Install");
 
         var files = System.IO.Directory.EnumerateFiles(dir, "*", System.IO.SearchOption.AllDirectories).Take(2).Count();
         return files > 0
-            ? new WiringRow(title, "engine", WiringStage.Wired, $"unpacked at {dir}")
-            : new WiringRow(title, "engine", WiringStage.Broken, $"{dir} exists and is empty");
+            ? new WiringRow(title, "engine", WiringStage.Wired, $"unpacked at {dir}",
+                Where: dir, Who: "NativeEspeakPhonemizer.DataPath, unpacked by VoiceWiring.Install")
+            : new WiringRow(title, "engine", WiringStage.Broken, $"{dir} exists and is empty",
+                Where: dir, Who: "NativeEspeakPhonemizer.DataPath, unpacked by VoiceWiring.Install");
     }
 
     /// <summary>Japanese has its own G2P, and it is wired somewhere else entirely.</summary>
@@ -127,11 +171,14 @@ public sealed class DeviceWiringProbe : IWiringProbe
 
         if (string.IsNullOrWhiteSpace(folder))
             return new WiringRow(title, "engine", WiringStage.Absent,
-                "OpenJTalkPhonemizer.ModelStoreFolder is unset");
+                "OpenJTalkPhonemizer.ModelStoreFolder is unset",
+                Who: "OpenJTalkPhonemizer.ModelStoreFolder, set in MainApplication.OnCreate");
 
         return System.IO.Directory.Exists(folder)
-            ? new WiringRow(title, "engine", WiringStage.Wired, $"model store at {folder}")
-            : new WiringRow(title, "engine", WiringStage.Broken, $"model store {folder} does not exist");
+            ? new WiringRow(title, "engine", WiringStage.Wired, $"model store at {folder}",
+                Where: folder, Who: "OpenJTalkPhonemizer.ModelStoreFolder, set in MainApplication.OnCreate")
+            : new WiringRow(title, "engine", WiringStage.Broken, $"model store {folder} does not exist",
+                Where: folder, Who: "OpenJTalkPhonemizer.ModelStoreFolder, set in MainApplication.OnCreate");
     }
 
     /// <summary>
@@ -153,11 +200,13 @@ public sealed class DeviceWiringProbe : IWiringProbe
 
             // A GC heap limit reads as a few hundred MB. No phone this app
             // supports has under a gigabyte, so that is the tell.
+            const string who = "DeviceProbe.PlatformMemoryProbe, set by AndroidDeviceMemory.Install";
             return bytes >= 1L << 30
-                ? new WiringRow(title, "hook", WiringStage.Wired, $"{gb:0.0} GB")
+                ? new WiringRow(title, "hook", WiringStage.Wired, $"{gb:0.0} GB", Who: who)
                 : new WiringRow(title, "hook", WiringStage.Broken,
                     $"reports {gb:0.00} GB — that is the GC heap limit, not the phone. "
-                    + "AndroidDeviceMemory.Install did not run.");
+                    + "AndroidDeviceMemory.Install did not run.",
+                    Who: who);
         }
         catch (Exception ex)
         {
@@ -173,8 +222,10 @@ public sealed class DeviceWiringProbe : IWiringProbe
         {
             var bundle = DeviceWakeWord.FindBundle();
             return bundle is null
-                ? new WiringRow(title, "engine", WiringStage.Absent, "no wake bundle on this device")
-                : new WiringRow(title, "engine", WiringStage.Wired, bundle);
+                ? new WiringRow(title, "engine", WiringStage.Absent, "no wake bundle on this device",
+                    Who: "DeviceWakeWord.FindBundle")
+                : new WiringRow(title, "engine", WiringStage.Wired, bundle,
+                    Where: bundle, Who: "DeviceWakeWord.FindBundle");
         }
         catch (Exception ex)
         {
