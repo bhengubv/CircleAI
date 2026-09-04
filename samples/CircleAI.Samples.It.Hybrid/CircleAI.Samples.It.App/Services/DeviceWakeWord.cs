@@ -98,6 +98,42 @@ public sealed class DeviceWakeWord : IWakeWord
         }
 
         var heard = 0;
+
+        // DO NOT OPEN A SECOND MICROPHONE ON TOP OF THE RESIDENT ONE.
+        //
+        // This screen used to build a spotter of its own regardless, so with the
+        // always-on assistant running there were TWO listeners on one
+        // microphone - both consuming audio, both scoring, and which one won
+        // depending on which screen happened to be open. It also made the log
+        // unreadable: two spotters write the same lines, and a detection from
+        // this one looked exactly like a detection the resident had lost.
+        //
+        // The assistant is already listening for this phrase. Watching it is
+        // both cheaper and more honest: what this screen then reports is what
+        // the phone will ACTUALLY do when nobody is looking at it, which is the
+        // only thing worth testing here.
+        if (CircleAI.Device.CircleNeuronService.IsListening)
+        {
+            void Woke(object? _, string phrase)
+            {
+                heard++;
+                updates.Report(new WakeStatus(WakeState.Heard, "Heard you",
+                    heard == 1 ? "Say it again to try once more" : $"{heard} times", heard));
+            }
+
+            CircleAI.Device.CircleNeuronService.Woke += Woke;
+            try
+            {
+                updates.Report(new WakeStatus(WakeState.Listening, say,
+                    "Listening — the assistant is already on", heard));
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { /* the screen was left */ }
+            finally { CircleAI.Device.CircleNeuronService.Woke -= Woke; }
+
+            return;
+        }
+
         try
         {
             // TWO STAGES. Stage one is generous so the wake never misses; stage
@@ -116,6 +152,21 @@ public sealed class DeviceWakeWord : IWakeWord
                 updates.Report(new WakeStatus(WakeState.Heard, "Heard you",
                     heard == 1 ? "Say it again to try once more" : $"{heard} times", heard));
             };
+
+            // AND SAY WHEN IT WAS HEARD AND TURNED DOWN. Only Woke was
+            // subscribed, so a phrase that stage two vetoed reported NOTHING -
+            // on the one screen whose entire job is telling somebody whether
+            // waking works. You say it, it is heard, it is refused, and the
+            // screen goes on saying "Listening".
+            //
+            // The reason is the useful part: "had been speaking 1420 ms before
+            // the phrase ended" tells somebody to pause before saying it, which
+            // is a thing they can act on. Silence tells them the app is broken.
+            kws.Rejected += (_, r) =>
+                updates.Report(new WakeStatus(WakeState.Listening, "Nearly",
+                    r.Reason is { Length: > 0 } why
+                        ? $"Heard it, but {why}"
+                        : "Heard something like it - say it on its own", heard));
 
             updates.Report(new WakeStatus(WakeState.Listening, say, "Listening", heard));
 

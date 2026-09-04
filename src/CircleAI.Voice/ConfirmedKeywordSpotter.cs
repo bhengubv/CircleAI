@@ -297,6 +297,21 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
 {
     private readonly ZipformerKwsSpotter _spotter;
     private readonly IWakeConfirmer _confirmer;
+    /// <summary>Which spotter this is, because there can be more than one.</summary>
+    /// <remarks>
+    /// TWO OF THESE CAN BE LISTENING AT ONCE. The resident service builds one
+    /// through ZipformerWakeWordDetector; the wake SCREEN builds a bare one of
+    /// its own. Both write "heard" and "draining" through the same trace, and
+    /// only the wrapped one can write FIRED or VETOED - so a detection from the
+    /// screen's spotter looks exactly like a detection the resident lost.
+    /// <para>
+    /// That cost hours of hunting a bug in Drain that was never there. An id per
+    /// instance makes two listeners look like two listeners.
+    /// </para>
+    /// </remarks>
+    private readonly int _id = System.Threading.Interlocked.Increment(ref _made);
+    private static int _made;
+
     private readonly float[] _ring;
     private int _written;                 // total samples ever accepted
     private readonly List<KwsDetection> _pending = new();
@@ -376,8 +391,8 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
             // model cannot hear at all.
             _pending.Add(d);
             VoiceTrace.Write(
-                $"wake: heard \"{d.Phrase}\" p={d.Probability:0.###} — queued on thread "
-                + $"{Environment.CurrentManagedThreadId}, pending={_pending.Count}");
+                $"wake[{_id}]: heard \"{d.Phrase}\" p={d.Probability:0.###} — queued, "
+                + $"pending={_pending.Count}");
         };
     }
 
@@ -416,7 +431,7 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
         // branch raises one or the other - so the question is not what Drain
         // decided, it is whether Drain ever saw them.
         VoiceTrace.Write(
-            $"wake: draining {batch.Length} on thread {Environment.CurrentManagedThreadId}");
+            $"wake[{_id}]: draining {batch.Length}");
 
         foreach (var d in batch)
         {
@@ -431,6 +446,7 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
             var oldest = _written - have;
             if (startSample < oldest)
             {
+                VoiceTrace.Write($"wake[{_id}]: scrolled out of the ring — letting it through");
                 Woke?.Invoke(this, d);
                 continue;
             }
@@ -441,10 +457,18 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
             var candidate = new WakeCandidate(
                 d, window, startSample - oldest, Math.Min(endSample - oldest, have));
 
-            if (_confirmer.ConfirmAsync(candidate).AsTask().GetAwaiter().GetResult())
-                Woke?.Invoke(this, d);
-            else
-                Rejected?.Invoke(this, (d, _confirmer.LastReason));
+            var ok = _confirmer.ConfirmAsync(candidate).AsTask().GetAwaiter().GetResult();
+
+            // NAMING THE SUBSCRIBER, not just the verdict. A spotter nobody
+            // listens to reaches exactly here and then goes quiet, which is
+            // indistinguishable from a detection that was lost.
+            VoiceTrace.Write(
+                $"wake[{_id}]: {(ok ? "confirmed" : "rejected")} \"{d.Phrase}\" — "
+                + $"listeners woke={(Woke is null ? 0 : Woke.GetInvocationList().Length)} "
+                + $"rejected={(Rejected is null ? 0 : Rejected.GetInvocationList().Length)}");
+
+            if (ok) Woke?.Invoke(this, d);
+            else Rejected?.Invoke(this, (d, _confirmer.LastReason));
         }
     }
 

@@ -44,11 +44,14 @@
     <div class="spacer spacer-top"></div>
 
     @* THE THING YOU PRESS, and the only large control on the screen. *@
-    @* DISABLED BY THE TURN, NOT BY THIS SCREEN'S COPY OF IT. The bar's
-       microphone is the same microphone, so a turn started down there has to
-       close this button too - there is one of them, not one per button. *@
-    <button class="hero" @onclick="Tap" disabled="@Mark.Busy"
-            aria-label="@(Mark.Busy ? "Working" : "Tap to talk")">
+    @* THE BAR'S MICROPHONE IS THE SAME MICROPHONE, so this button reflects a
+       turn started down there - there is one of them, not one per button. *@
+    @* NOT DISABLED WHILE BUSY ANY MORE. A disabled circle is a dead control in
+       the exact moment somebody wants to stop talking - they press it, nothing
+       happens, and the only way out is the small button in the bar. It stays
+       live and a second press ends the turn. *@
+    <button class="hero" @onclick="Tap"
+            aria-label="@(Mark.Busy ? "Stop" : "Tap to talk")">
         <BrandMark Fluid="true" State="Mark.State" Halo="true" Level="Mark.Level" Ring="true"
                    Decorative="true" />
         @* The mark is the whole of this button, and a logo is not a name.
@@ -288,8 +291,27 @@
         ? OnDeviceClaims
         : [OnDeviceClaims[0], "Runs on the phone — install the app to hear a voice"];
 
+    /// <summary>The turn this button started, while it is running.</summary>
+    /// <remarks>
+    /// Held so a second press can END it. Null whenever this button is not the
+    /// one running a turn - Mark.Busy can be true because the OTHER microphone
+    /// owns it, and stopping somebody else's turn from here would be its own
+    /// kind of surprise.
+    /// </remarks>
+    VoiceTurnRouter? _turn;
+
     async Task Tap()
     {
+        // PRESS AGAIN TO STOP - the circle is disabled while busy, but a turn
+        // this screen started can still be ended from the bar, and both buttons
+        // must mean the same thing.
+        if (_turn is { } running)
+        {
+            running.Stop();
+            _detail = "Stopped.";
+            return;
+        }
+
         // NOTHING INSTALLED AND NOTHING COMING. "Let's set it up. Tap to start"
         // has to actually start something; a tap that does nothing is
         // indistinguishable from broken.
@@ -332,12 +354,18 @@
             // something different for the same sentence is the two-owner bug this
             // app keeps producing, so both press the same router.
             using var router = new VoiceTurnRouter();
+            _turn = router;
 
             var updates = new Progress<TurnState>(t =>
             {
                 Mark.Report(t);
                 router.Observe(t);
-                _detail = t.Detail ?? t.Heard;
+                // NOT AFTER SOMEBODY PRESSED STOP. A cancelled turn still reports its
+                // own Detail - "I did not catch that." - which then overwrote the stop
+                // message and told somebody the app had failed to hear them, when in
+                // fact they had ended it themselves. The turn explanation stops being
+                // true the moment ending it was not the turn decision.
+                if (!router.StoppedByHand) _detail = t.Detail ?? t.Heard;
                 if (t.Language is { Length: > 0 } lang) _spokenIn = LanguageName(lang);
                 StateHasChanged();
             });
@@ -345,7 +373,7 @@
             try { await Talk.TurnAsync(updates, router.Token); }
             catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
             catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
-            finally { Mark.Clear(); }
+            finally { _turn = null; Mark.Clear(); }
 
             await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _detail = line; StateHasChanged(); });
             return;

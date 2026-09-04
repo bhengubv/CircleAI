@@ -316,6 +316,15 @@
     /// away, which is why it looked broken rather than blocked.
     /// </para>
     /// </remarks>
+    /// <summary>The turn this button started, while it is running.</summary>
+    /// <remarks>
+    /// Held so a second press can END it. Null whenever this button is not the
+    /// one running a turn - Mark.Busy can be true because the OTHER microphone
+    /// owns it, and stopping somebody else's turn from here would be its own
+    /// kind of surprise.
+    /// </remarks>
+    VoiceTurnRouter? _turn;
+
     async Task Listen()
     {
         // EVEN THIS SAYS SO. A guard that returns in silence is the same dead
@@ -324,6 +333,18 @@
         // AND IT NOW SEES THE OTHER BUTTON'S TURN. This tested its own field, so
         // pressing here during a turn started on Home opened a second microphone
         // on top of the first.
+        // PRESS AGAIN TO STOP. This used to answer "It is still on the last
+        // one." - a refusal dressed as an explanation, while the microphone sat
+        // open and somebody had plainly decided they were done. One button, two
+        // meanings, and no way to end what you started. The native head settled
+        // this long ago: a re-entrant press is STOP.
+        if (_turn is { } running)
+        {
+            running.Stop();
+            _says = "Stopped.";
+            return;
+        }
+
         if (Mark.Busy)
         {
             _says = "It is still on the last one.";
@@ -336,6 +357,7 @@
         // live in one place - see VoiceTurnRouter - because Home needs exactly
         // this and a second copy is how the two marks came to disagree.
         using var router = new VoiceTurnRouter();
+        _turn = router;
 
         var updates = new Progress<TurnState>(t =>
         {
@@ -349,7 +371,12 @@
             // THE REASON, WHEREVER IT COMES FROM. Every early return in a turn -
             // no model, no permission, nothing heard - arrives as a Detail on an
             // Idle report, and this button used to ignore all of them.
-            if (t.Detail is { Length: > 0 } detail) _says = detail;
+            // NOT AFTER SOMEBODY PRESSED STOP. A cancelled turn still reports its
+            // own Detail - "I did not catch that." - which then overwrote the stop
+            // message and told somebody the app had failed to hear them, when in
+            // fact they had ended it themselves. The turn explanation stops being
+            // true the moment ending it was not the turn decision.
+            if (!router.StoppedByHand && t.Detail is { Length: > 0 } detail) _says = detail;
 
             InvokeAsync(StateHasChanged);
         });
@@ -357,7 +384,7 @@
         try { await Talk.TurnAsync(updates, router.Token); }
         catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
         catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
-        finally { Mark.Clear(); StateHasChanged(); }
+        finally { _turn = null; Mark.Clear(); StateHasChanged(); }
 
         await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _says = line; StateHasChanged(); });
     }

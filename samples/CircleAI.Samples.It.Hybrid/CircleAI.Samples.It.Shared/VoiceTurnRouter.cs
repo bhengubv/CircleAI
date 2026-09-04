@@ -70,6 +70,26 @@ public sealed class VoiceTurnRouter : IDisposable
         return true;
     }
 
+    /// <summary>True when the person pressed the button again to end the turn.</summary>
+    public bool StoppedByHand { get; private set; }
+
+    /// <summary>Second press: end the turn rather than refusing it.</summary>
+    /// <remarks>
+    /// PRESSING IT AGAIN USED TO SAY "It is still on the last one." That is a
+    /// refusal dressed as an explanation - the microphone is open, somebody has
+    /// decided they are done, and the app argues with them. The native head
+    /// settled this long ago: TalkOnce treats a re-entrant call as STOP.
+    /// <para>
+    /// A button that starts a thing and cannot stop it is a button with one
+    /// state and two meanings, which is what makes a double press confusing.
+    /// </para>
+    /// </remarks>
+    public void Stop()
+    {
+        StoppedByHand = true;
+        _cts.Cancel();
+    }
+
     /// <summary>Whether an exception is just this router having stopped the turn.</summary>
     /// <remarks>
     /// A routed turn cancels itself, and that must not be reported as a failure.
@@ -77,7 +97,7 @@ public sealed class VoiceTurnRouter : IDisposable
     /// thing somebody needs to be told about.
     /// </remarks>
     public bool Ended(Exception ex)
-        => ex is OperationCanceledException && Routed is not null;
+        => ex is OperationCanceledException && (Routed is not null || StoppedByHand);
 
     /// <summary>Say where it is going, then go.</summary>
     /// <param name="nav">The router. Same routes the bar and the links use.</param>
