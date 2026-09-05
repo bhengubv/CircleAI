@@ -477,7 +477,24 @@ public static class FirstRun
     /// job is being checkable cannot repeat that.
     /// </remarks>
     private static string Detail(ModelEntry? entry, ModelModality modality, string? mine) =>
-        entry is null || modality != ModelModality.Tts ? "here" : Languages(entry.Language, mine);
+        entry is null ? "here"
+        : modality == ModelModality.Tts ? Languages(entry.Language, mine)
+
+        // THE VAGUEST ROW ON THE SCREEN, once the voices started naming things.
+        // "the wake word — here" says the bytes arrived and nothing else, on a
+        // capability that answers in thirty-two languages. What somebody wants to
+        // know is whether it will answer THEM, which is a question about
+        // language, and it is the same question the voice rows now answer.
+        //
+        // Read from the shipped phrase table rather than from the owner's chosen
+        // phrase: the choice lives in the app's own store, and a census reaching
+        // for it would be the fifth owner of one fact - which is the failure this
+        // screen has already been fixed for twice tonight. Coverage is a property
+        // of the build and cannot go stale under it.
+        : modality == ModelModality.WakeWord
+            ? Languages(string.Join(',', BuiltInWakePhrases.Phrases.Keys), mine)
+
+        : "here";
 
     /// <summary>The languages a voice speaks, named, the owner's first.</summary>
     /// <remarks>
@@ -525,8 +542,37 @@ public static class FirstRun
     }
 
     /// <summary>A language's name, from the app's own table; the tag if it has none.</summary>
-    private static string LanguageName(string root) =>
-        SampleLanguages.Find(root)?.Name ?? root;
+    /// <remarks>
+    /// A BARE ROOT AGAINST A REGIONALISED TABLE. The catalogue carries es-ES and
+    /// es-MX and no plain "es", so a wake phrase or a voice tagged "es" printed
+    /// as the bare code - "es, pt, nl" sitting on a screen between "isiZulu" and
+    /// "Japanese", which reads as a bug rather than as a language.
+    /// <para>
+    /// The regional name is trimmed to its base. A phrase that covers Spanish
+    /// generally should not claim to be Spanish (Spain), and the first entry for
+    /// a root is the unmarked one - nl-NL "Dutch" before nl-BE "Flemish".
+    /// </para>
+    /// <para>
+    /// Caught by a test asserting every wake language has a name to show. The
+    /// same trap is already recorded in BuiltInWakePhrasesTests, where an
+    /// assertion demanding the tag appear verbatim passed only because none of
+    /// the original five languages had a regional form.
+    /// </para>
+    /// </remarks>
+    private static string LanguageName(string root)
+    {
+        if (SampleLanguages.Find(root) is { } exact) return exact.Name;
+
+        var regional = SampleLanguages.All
+            .Where(p => string.Equals(Root(p.Key), root, StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.Value?.Name)
+            .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+
+        if (regional is null) return root;
+
+        var bracket = regional.IndexOf(" (", StringComparison.Ordinal);
+        return bracket > 0 ? regional[..bracket] : regional;
+    }
 
     /// <summary>Fetches the plan, reporting progress across the whole of it.</summary>
     /// <remarks>
