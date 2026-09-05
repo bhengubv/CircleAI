@@ -202,4 +202,26 @@ public interface ISetup
     /// </para>
     /// </remarks>
     Task<bool> AllowBackgroundAsync(CancellationToken ct = default);
+
+    /// <summary>Whether this phone will let the assistant keep running.</summary>
+    /// <remarks>
+    /// ASKING WAS ONLY EVER OFFERED DURING FIRST-RUN SETUP, so a phone set up
+    /// before the step existed - or one where somebody said no - had no
+    /// exemption and no route back to one. Measured on a P30 on 2026-09-05:
+    /// exemption not granted, and the always-listening service was hibernated by
+    /// EMUI while its owner spoke to it for eleven minutes.
+    /// <para>
+    /// A setting you can only choose once, during a flow you pass through in the
+    /// first minute, is not a setting. This is what lets the switch it protects
+    /// show the question again, and show it ONLY when the answer is no - an
+    /// always-visible prompt about battery optimisation is noise on the phones
+    /// that already work.
+    /// </para>
+    /// <para>
+    /// TRUE WHEN THERE IS NOTHING TO ASK FOR. A head with no background service
+    /// has nothing that can be killed, so it says yes rather than offering a
+    /// button that would do nothing.
+    /// </para>
+    /// </remarks>
+    Task<bool> BackgroundAllowedAsync(CancellationToken ct = default);
 }

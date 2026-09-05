@@ -59,4 +59,13 @@ public sealed class BrowserSetup : ISetup
     /// <inheritdoc />
     public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
         => Task.FromResult(false);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// TRUE, because a browser has no background service to kill. Saying false
+    /// here would put a "let it keep running" prompt on a head where there is
+    /// nothing to keep running and no setting that could change it.
+    /// </remarks>
+    public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
+        => Task.FromResult(true);
 }

@@ -235,6 +235,92 @@ public class WakingAbilityTests : TestContext
         Assert.Equal(1, resident.Starts);
     }
 
+    /// <summary>Render Settings on the Phone tab, with a given setup host.</summary>
+    private IRenderedComponent<Settings> PhoneTab(FakeSetup setup, FakeResidentAssistant resident)
+    {
+        this.WireEverything();
+        Services.AddSingleton<ISetup>(setup);
+        Services.AddSingleton<IResidentAssistant>(resident);
+        Services.AddSingleton<IDeviceFacts>(new LiveFacts(resident));
+
+        var screen = RenderComponent<Settings>();
+        screen.FindAll("button,div,span").ToList()
+            .FirstOrDefault(e => e.TextContent.Trim() == "Phone")?.Click();
+        return screen;
+    }
+
+    [Fact]
+    public void A_phone_that_kills_background_apps_says_so_next_to_the_switch()
+    {
+        // THE ONE THING THAT DECIDES WHETHER THE SWITCH STILL MEANS ANYTHING IN
+        // AN HOUR, and it was reachable only from first-run setup. Measured on a
+        // P30 on 2026-09-05: exemption never granted, EMUI hibernated the
+        // always-listening service, and its owner spoke to the phone for eleven
+        // minutes while it heard a quiet room. Nothing on any screen mentioned
+        // it - there was no screen that could.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+
+        var screen = PhoneTab(new FakeSetup { BackgroundAllowed = false }, resident);
+
+        screen.WaitForAssertion(
+            () => Assert.Contains("This phone may stop it listening", screen.Markup),
+            TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void A_phone_that_already_allows_it_is_not_nagged()
+    {
+        // A permanent notice about battery optimisation is noise on the phones
+        // that already work, and noise is how the one warning that matters gets
+        // ignored.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+
+        var screen = PhoneTab(new FakeSetup { BackgroundAllowed = true }, resident);
+
+        screen.WaitForAssertion(
+            () => Assert.DoesNotContain("This phone may stop it listening", screen.Markup),
+            TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void Nothing_is_said_about_it_while_it_is_not_listening()
+    {
+        // Irrelevant on a phone that is not listening at all: there is nothing
+        // running for the battery settings to kill.
+        var resident = new FakeResidentAssistant();   // never started
+
+        var screen = PhoneTab(new FakeSetup { BackgroundAllowed = false }, resident);
+
+        screen.WaitForAssertion(
+            () => Assert.Contains("Turn on", screen.Markup),
+            TimeSpan.FromSeconds(10));
+        Assert.DoesNotContain("This phone may stop it listening", screen.Markup);
+    }
+
+    [Fact]
+    public void Fixing_it_asks_the_phone_and_the_warning_goes()
+    {
+        // The answer comes back from Android, not from the tap - so the prompt
+        // clears because the phone now says yes, not because a button was
+        // pressed.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+        var setup = new FakeSetup { BackgroundAllowed = false };
+
+        var screen = PhoneTab(setup, resident);
+        screen.WaitForAssertion(
+            () => Assert.Contains("Fix it", screen.Markup), TimeSpan.FromSeconds(10));
+
+        screen.FindAll("button").ToList().First(b => b.TextContent.Contains("Fix it")).Click();
+
+        screen.WaitForAssertion(
+            () => Assert.DoesNotContain("This phone may stop it listening", screen.Markup),
+            TimeSpan.FromSeconds(10));
+        Assert.Equal(1, setup.BackgroundAsks);
+    }
+
     [Fact]
     public void Available_still_offers_the_download()
     {

@@ -59,7 +59,31 @@ internal sealed class FakeSetup : ISetup
         => Task.FromResult<IReadOnlyList<TourStep>>([]);
 
     public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
-    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    /// <summary>How many times the exemption screen was asked for.</summary>
+    public int BackgroundAsks { get; private set; }
+
+    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
+    {
+        BackgroundAsks++;
+
+        // Granting is what the real one CANNOT do - it opens a system screen and
+        // the person decides. The fake models that: asking makes it allowed, so
+        // a test can check the prompt disappears once the phone says yes.
+        BackgroundAllowed = true;
+        return Task.FromResult(true);
+    }
+
+    /// <summary>Whether this phone will let the assistant keep running.</summary>
+    /// <remarks>
+    /// TRUE BY DEFAULT, so the exemption warning is absent from every test that
+    /// is not about it. A prompt that appeared everywhere would be asserted
+    /// around rather than asserted on.
+    /// </remarks>
+    public bool BackgroundAllowed { get; set; } = true;
+
+    public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
+        => Task.FromResult(BackgroundAllowed);
 }
 
 /// <summary>Settings held in memory, so a test can put the app in Translator mode.</summary>

@@ -202,6 +202,30 @@ public sealed class DeviceSetup : ISetup
     }
 
     /// <inheritdoc />
+    public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
+        => Task.Run(() =>
+        {
+            try
+            {
+                var context = Android.App.Application.Context;
+                var pm = (Android.OS.PowerManager?)context.GetSystemService(
+                    Android.Content.Context.PowerService);
+
+                // NO POWER MANAGER MEANS NO QUESTION TO ASK, not a refusal. The
+                // switch would otherwise offer a fix for something it cannot
+                // check, on a phone where nothing is wrong as far as anyone can
+                // tell.
+                return pm is null || pm.IsIgnoringBatteryOptimizations(context.PackageName!);
+            }
+            catch
+            {
+                // Same reasoning: an exemption we cannot read is not an
+                // exemption we know is missing.
+                return true;
+            }
+        }, ct);
+
+    /// <inheritdoc />
     /// <remarks>
     /// PORTED FROM HomeActivity.AskToKeepRunning, vendor list and all. Huawei,
     /// Xiaomi, Oppo and Vivo each kill foreground services on their own schedule

@@ -23,6 +23,9 @@
 @inject IDeviceFacts Facts
 @inject IJSRuntime JS
 @inject IResidentAssistant Resident
+@* For the battery exemption, which decides whether the switch above still means
+   anything in an hour. It was reachable only from first-run setup. *@
+@inject ISetup Wizard
 
 <div class="tabs" role="tablist">
     @for (var i = 0; i < TabNames.Length; i++)
@@ -338,6 +341,42 @@ else
                    disabled="@_residentBusy" @onchange="ToggleResident" />
         </label>
 
+        @*
+            THE ONE THING THAT DECIDES WHETHER THE SWITCH ABOVE STILL MEANS
+            ANYTHING IN AN HOUR, and it used to be reachable only from first-run
+            setup.
+
+            Huawei, Xiaomi, Oppo and Vivo kill foreground services on their own
+            schedule whatever Android says, and only the owner can exempt an app.
+            Measured on a P30 on 2026-09-05: exemption never granted, the
+            always-listening service hibernated by EMUI, and its owner spoke to
+            the phone for eleven minutes while it heard a quiet room. Nothing on
+            any screen said a word about it.
+
+            A setting you can only choose once, in a flow you pass through in the
+            first minute, is not a setting.
+
+            SHOWN ONLY WHEN THE ANSWER IS NO, and only while it is actually
+            listening: a permanent notice about battery optimisation is noise on
+            the phones that already work, and irrelevant on a phone that is not
+            listening at all.
+        *@
+        @if (ResidentOn && _keepsRunning is false)
+        {
+            <div class="row row-warn">
+                <span class="row-text">
+                    <span class="row-title">This phone may stop it listening</span>
+                    <span class="row-sub">
+                        It is set to save battery by closing apps in the background,
+                        which switches this off without telling you.
+                    </span>
+                </span>
+                <button class="compact" disabled="@_askingBackground" @onclick="AllowBackground">
+                    @(_askingBackground ? "…" : "Fix it")
+                </button>
+            </div>
+        }
+
         @if (_trouble is not null)
         {
             <p class="warn">@_trouble</p>
@@ -453,6 +492,48 @@ else
     // in ToggleResident for why diffing is not enough here.
     int _residentNonce;
 
+    /// <summary>
+    /// Whether this phone will let the assistant keep running, or null until asked.
+    /// </summary>
+    /// <remarks>
+    /// NULL IS NOT FALSE. Before the answer arrives the prompt stays hidden -
+    /// flashing "this phone may stop it listening" for a moment on every phone,
+    /// including the ones where it is untrue, would train people to ignore the
+    /// one warning that matters.
+    /// </remarks>
+    bool? _keepsRunning;
+
+    /// <summary>True while the exemption screen is being opened.</summary>
+    bool _askingBackground;
+
+    /// <summary>Send them to the screen that exempts the app, and re-read after.</summary>
+    /// <remarks>
+    /// THE ANSWER COMES BACK FROM ANDROID, NOT FROM THE TAP. Pressing this opens
+    /// a system screen and the person may grant, refuse or reverse out of it, so
+    /// what it returns says only that something opened. The prompt disappears
+    /// when the phone says the exemption is real - which is why this re-reads
+    /// rather than assuming, and why OnParametersSetAsync reads it again on the
+    /// way back in.
+    /// </remarks>
+    async Task AllowBackground()
+    {
+        if (_askingBackground) return;
+        _askingBackground = true;
+        try
+        {
+            var opened = await Wizard.AllowBackgroundAsync();
+            _keepsRunning = await Wizard.BackgroundAllowedAsync();
+
+            // Vendors move these screens between firmwares. A button that could
+            // not open one has to say so, or it looks like it did nothing.
+            if (!opened && _keepsRunning is false)
+                _trouble = "This phone did not offer that screen. Look for battery "
+                         + "or startup settings and allow Circle AI to run in the background.";
+        }
+        catch (Exception ex) { _trouble = ex.Message; }
+        finally { _askingBackground = false; }
+    }
+
     // First render asks the service; after that this screen holds the value and
     // re-reads it from the service after each toggle.
     bool ResidentOn => _residentOn ??= Resident.IsListening;
@@ -514,6 +595,13 @@ else
             // worse answer than a correct row.
             try { _abilities = await Facts.AbilitiesAsync(); }
             catch { /* the toggle worked; the list can be stale until reload */ }
+
+            // AND ASK AGAIN WHETHER THE PHONE WILL LET IT LIVE. The warning is
+            // only shown while listening is on, so turning it on is exactly the
+            // moment the question becomes worth asking - and the moment somebody
+            // is looking at this row and will act on the answer.
+            try { _keepsRunning = await Wizard.BackgroundAllowedAsync(); }
+            catch { /* leave the last answer standing rather than guess */ }
         }
     }
 
@@ -613,6 +701,12 @@ else
             _wake = await Phrases.ForAsync(_s.Language);
         }
         catch (Exception ex) { _trouble = $"Settings: {ex.GetType().Name}: {ex.Message}"; }
+
+        // ITS OWN try, for the same reason: a phone that cannot answer whether it
+        // will keep the assistant running must not take the rest of the screen
+        // with it. Left null, the prompt simply does not appear.
+        try { _keepsRunning = await Wizard.BackgroundAllowedAsync(); }
+        catch { _keepsRunning = null; }
 
         // ITS OWN try, so a fault reading the model registry cannot take the
         // language and document tabs down with it - which is exactly what it did.
