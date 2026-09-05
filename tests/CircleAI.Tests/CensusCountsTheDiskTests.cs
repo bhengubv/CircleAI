@@ -77,9 +77,63 @@ public class CensusCountsTheDiskTests
             Plan);
 
         Assert.NotNull(row);
-        Assert.Equal("the other voices", row!.Value.Title);
-        Assert.True(row.Value.Present);
-        Assert.Contains("2 more", row.Value.Detail);
+        Assert.True(row!.Value.Present);
+        Assert.Equal("2 more voices", row.Value.Title);
+
+        // NAMED, NOT COUNTED. "2 more, 2 languages" told somebody a size and not
+        // one thing they might have opened the screen to find out.
+        Assert.Contains("isiZulu", row.Value.Detail);
+        Assert.Contains("isiXhosa", row.Value.Detail);
+    }
+
+    [Fact]
+    public void One_extra_voice_is_not_one_more_voices()
+    {
+        var row = FirstRun.OtherVoices([Voice("MMS-zul", "zu")], Plan);
+
+        Assert.NotNull(row);
+        Assert.Equal("one more voice", row!.Value.Title);
+        Assert.Equal("isiZulu", row.Value.Detail);
+    }
+
+    [Fact]
+    public void The_owners_language_is_named_first()
+    {
+        // THE QUESTION THE ROW EXISTS TO ANSWER is "is mine in there", and a list
+        // that buries it seventh is only marginally better than a count. If it is
+        // present it leads; if it is absent that is now visible rather than
+        // hidden behind "10 languages".
+        var voices = new[] { Voice("A", "af,zu,xh,ja,st") };
+
+        Assert.StartsWith("Japanese", FirstRun.OtherVoices(voices, Plan, "ja")!.Value.Detail);
+        Assert.StartsWith("isiZulu",  FirstRun.OtherVoices(voices, Plan, "zu")!.Value.Detail);
+
+        // With no opinion it is simply alphabetical, not arbitrary.
+        Assert.StartsWith("Afrikaans", FirstRun.OtherVoices(voices, Plan, null)!.Value.Detail);
+    }
+
+    [Fact]
+    public void A_long_list_says_what_it_is_not_showing()
+    {
+        // The row is one line on a phone, so it caps at three - and states what
+        // the cap hides rather than dropping it silently, which is the same rule
+        // the loading screen applies to itself.
+        var row = FirstRun.OtherVoices([Voice("A", "af,zu,xh,ja,st")], Plan, "ja");
+
+        Assert.NotNull(row);
+        Assert.Contains("+2 more", row!.Value.Detail);
+        Assert.Contains("Japanese", row.Value.Detail);
+    }
+
+    [Fact]
+    public void A_regional_tag_is_named_as_its_language()
+    {
+        // Catalogue entries carry things like "pt-BR" and "es-MX". The row must
+        // read "Portuguese", not "pt-BR", and a phone set to "pt" must match it.
+        var row = FirstRun.OtherVoices([Voice("A", "pt-BR")], Plan, "pt");
+
+        Assert.NotNull(row);
+        Assert.DoesNotContain("-BR", row!.Value.Detail);
     }
 
     [Fact]
@@ -106,40 +160,45 @@ public class CensusCountsTheDiskTests
     }
 
     [Fact]
-    public void Languages_are_counted_across_voices_and_deduplicated()
+    public void Languages_are_gathered_across_voices_and_deduplicated()
     {
-        // THE NUMBER SOMEBODY ACTUALLY CARES ABOUT. "Is my language in there" is
-        // not answered by how many files were downloaded: one multi-speaker
-        // bundle carries eleven languages, and three voices can share one.
+        // Three voices, four languages between them, one shared. The row is about
+        // what the phone can SPEAK, so a language named twice is named once.
+        // isiZulu is in two of the three voices, and the owner speaks it - so it
+        // leads, and it must appear ONCE. Four languages between them, three
+        // shown, so isiXhosa is the one behind "+1 more".
         var row = FirstRun.OtherVoices(
             [Voice("A", "zu,xh,st"), Voice("B", "zu"), Voice("C", "af")],
-            Plan);
+            Plan, "zu");
 
         Assert.NotNull(row);
-        Assert.Contains("3 more", row!.Value.Detail);
-        Assert.Contains("4 languages", row.Value.Detail);   // zu, xh, st, af
+        Assert.Equal("3 more voices", row!.Value.Title);
+        Assert.StartsWith("isiZulu", row.Value.Detail);        // the owner's, first
+        Assert.Equal(1, Occurrences(row.Value.Detail, "isiZulu"));
+        Assert.Contains("+1 more", row.Value.Detail);          // four named, three shown
     }
 
-    [Fact]
-    public void One_language_is_not_reported_as_one_languages()
+    private static int Occurrences(string haystack, string needle)
     {
-        var row = FirstRun.OtherVoices([Voice("A", "zu"), Voice("B", "zu")], Plan);
-
-        Assert.NotNull(row);
-        Assert.Contains("one language", row!.Value.Detail);
-        Assert.DoesNotContain("1 languages", row.Value.Detail);
+        var n = 0;
+        for (var i = haystack.IndexOf(needle, System.StringComparison.Ordinal);
+             i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, System.StringComparison.Ordinal))
+            n++;
+        return n;
     }
 
     [Fact]
     public void A_voice_with_no_language_tag_is_still_counted()
     {
         // The count and the languages come apart here, and the row must not
-        // silently drop a voice because the catalogue has no tag for it.
+        // silently drop a voice because the catalogue has no tag for it. The
+        // TITLE still says two; the detail can only say what it knows.
         var row = FirstRun.OtherVoices([Voice("A", ""), Voice("B", null)], Plan);
 
         Assert.NotNull(row);
-        Assert.Contains("2 more", row!.Value.Detail);
-        Assert.DoesNotContain("language", row.Value.Detail);
+        Assert.Equal("2 more voices", row!.Value.Title);
+        Assert.Equal("here", row.Value.Detail);
     }
 
     [Fact]

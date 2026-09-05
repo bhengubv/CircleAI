@@ -378,7 +378,8 @@ public static class FirstRun
                 : registry.AllModels.FirstOrDefault(m =>
                       m.Modality == modality && loader.ModelPresent(m.Name));
 
-            rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0, Detail(entry, modality)));
+            rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0,
+                                       Detail(entry, modality, language)));
         }
 
         // AND EVERYTHING ELSE THAT IS ACTUALLY ON THE PHONE.
@@ -405,7 +406,8 @@ public static class FirstRun
             var present = registry.AllModels
                 .Where(m => m.Modality == ModelModality.Tts && loader.ModelPresent(m.Name));
 
-            if (OtherVoices(present, Wanted(speech, language)) is { } surplus) rows.Add(surplus);
+            if (OtherVoices(present, Wanted(speech, language), language) is { } surplus)
+                rows.Add(surplus);
         }
 
         return new Capabilities(rows, rows.Count(r => r.Present), rows.Count);
@@ -432,7 +434,7 @@ public static class FirstRun
     /// <param name="wanted">The plan's own list, whose named voices already have rows.</param>
     /// <returns>The row, or null when the plan already accounts for everything.</returns>
     public static CapabilityRow? OtherVoices(
-        IEnumerable<ModelEntry> presentVoices, IEnumerable<Want> wanted)
+        IEnumerable<ModelEntry> presentVoices, IEnumerable<Want> wanted, string? mine = null)
     {
         ArgumentNullException.ThrowIfNull(presentVoices);
         ArgumentNullException.ThrowIfNull(wanted);
@@ -448,21 +450,18 @@ public static class FirstRun
 
         if (extra.Count == 0) return null;
 
-        var languages = extra
-            .SelectMany(v => (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
-            .Select(t => t.Trim())
-            .Where(t => t.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
+        // NAMED, LIKE EVERY OTHER VOICE ROW. This said "9 more, 4 languages",
+        // which tells somebody a size and not a single thing they might have
+        // opened the screen to find out. The count moves to the TITLE, where it
+        // belongs - it is what the row IS - and the languages take the detail,
+        // where the other voice rows put theirs.
+        var languages = Languages(
+            string.Join(',', extra.Select(v => v.Language).Where(l => !string.IsNullOrWhiteSpace(l))),
+            mine);
 
-        var detail = languages switch
-        {
-            0 => $"{extra.Count} more",
-            1 => $"{extra.Count} more, one language",
-            _ => $"{extra.Count} more, {languages} languages",
-        };
+        var title = extra.Count == 1 ? "one more voice" : $"{extra.Count} more voices";
 
-        return new CapabilityRow("the other voices", true, extra.Sum(m => m.TotalBytes), detail);
+        return new CapabilityRow(title, true, extra.Sum(m => m.TotalBytes), languages);
     }
 
     /// <inheritdoc cref="Wanted(bool)"/>
@@ -477,29 +476,57 @@ public static class FirstRun
     /// the two voices actually installed cover about twelve. A screen whose whole
     /// job is being checkable cannot repeat that.
     /// </remarks>
-    private static string Detail(ModelEntry? entry, ModelModality modality)
+    private static string Detail(ModelEntry? entry, ModelModality modality, string? mine) =>
+        entry is null || modality != ModelModality.Tts ? "here" : Languages(entry.Language, mine);
+
+    /// <summary>The languages a voice speaks, named, the owner's first.</summary>
+    /// <remarks>
+    /// NAMED, NOT COUNTED. The row used to read "10 languages", which is a number
+    /// somebody has to take on trust about the one thing they might actually be
+    /// checking: whether their own language is in there. "10 languages" and "10
+    /// languages, none of them yours" look identical, and on a phone set to
+    /// Japanese the second was the true one.
+    /// <para>
+    /// THE OWNER'S LANGUAGE FIRST, for the same reason. If it is in the bundle it
+    /// is the first word on the row rather than the seventh, and if it is absent
+    /// that is now visible instead of hidden behind a count.
+    /// </para>
+    /// <para>
+    /// Three then "+n more", because the row is one line on a phone. The cap is
+    /// about the width of a screen, not about how much is true - which is why
+    /// what it hides is stated rather than dropped.
+    /// </para>
+    /// </remarks>
+    private static string Languages(string? tags, string? mine, int show = 3)
     {
-        if (entry is null) return "here";
+        var roots = (tags ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(Root)
+            .Where(r => r is not null)
+            .Select(r => r!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        if (modality == ModelModality.Tts)
-        {
-            var tags = (entry.Language ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => t.Trim())
-                .Where(t => t.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count();
+        if (roots.Count == 0) return "here";
 
-            return tags switch
-            {
-                0 => "here",
-                1 => "one language",
-                _ => $"{tags} languages",
-            };
-        }
+        var owner = Root(mine);
+        var ordered = roots
+            .OrderByDescending(r => owner is not null
+                                 && string.Equals(r, owner, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(LanguageName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        return "here";
+        var named = ordered.Take(show).Select(LanguageName).ToList();
+        var rest = ordered.Count - named.Count;
+
+        return rest > 0
+            ? $"{string.Join(", ", named)} +{rest} more"
+            : string.Join(", ", named);
     }
+
+    /// <summary>A language's name, from the app's own table; the tag if it has none.</summary>
+    private static string LanguageName(string root) =>
+        SampleLanguages.Find(root)?.Name ?? root;
 
     /// <summary>Fetches the plan, reporting progress across the whole of it.</summary>
     /// <remarks>

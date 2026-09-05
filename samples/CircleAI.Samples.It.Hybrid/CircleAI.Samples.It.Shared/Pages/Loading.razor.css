@@ -49,26 +49,45 @@
     padding-bottom: 12px;
 }
 
+/*
+    COLUMNS, NOT A FLEX ROW THAT STARVES ITS TITLE.
+    The detail used to be an unconstrained flex item beside a flex:1 title, which
+    is fine while it reads "here" and falls apart the moment it says anything.
+    Naming the languages made it say something: on a P30, "the South African
+    voices" collapsed into a four-line stack of single words to make room for
+    "English, isiNdebele, isiXhosa +7 more".
+    A grid fixes the split, and BOTH columns have to be fractions for it to work.
+    The first attempt was `16px 1fr auto` with a max-width on the detail, which
+    changed nothing: an `auto` column is sized to max-content, so the detail took
+    whatever it wanted and 1fr gave the title the remainder - the same starvation
+    in a different notation. A max-width on the ELEMENT cannot shrink the COLUMN
+    it sits in.
+    minmax(0, …) on both is what lets either one wrap instead of pushing. The
+    ratio leans slightly to the title because it is the name of the thing and is
+    read first; the detail is a fifth smaller in type and takes the wrapping
+    better.
+*/
 .loading-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1.15fr) minmax(0, 1fr);
     align-items: baseline;
-    gap: 12px;
+    gap: 4px 12px;
     padding: 7px 0;
     font-size: 16px;
 }
 
 .loading-mark-cell {
     width: 16px;
-    flex: none;
     text-align: center;
 }
 
-.loading-title { flex: 1; }
+.loading-title { min-width: 0; }
 
 .loading-detail {
     font-size: 13px;
     color: var(--ink-soft);
     text-align: right;
+    min-width: 0;
 }
 
 /* Here: a tick in the brand blue, full-strength text. */
