@@ -34,6 +34,43 @@ public class VoiceDestinationTests
         => Assert.Null(VoiceDestinations.Match(heard));
 
     [Fact]
+    public void No_screen_is_named_after_a_wake_phrase()
+    {
+        // SEEN ON A P30 ON 2026-09-06. The wake screen's route title was the
+        // literal "Hey B", so the breadcrumb over a screen whose body read
+        // Say "Hey Circle AI" said "Hey B" — on the one screen in the app whose
+        // entire job is telling somebody what their phone answers to.
+        //
+        // A title is one fixed string. A wake phrase is neither: thirty-two
+        // languages ship one, the owner chooses among them, and they can type
+        // their own. Any title that IS a phrase is therefore stale the moment
+        // somebody exercises the screen it sits above.
+        var phrases = BuiltInWakePhrases.Phrases.Values
+            .SelectMany(p => p)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var named = AppRoutes.All
+            .Where(r => phrases.Contains(r.Title))
+            .Select(r => $"/{r.Route} is called \"{r.Title}\"")
+            .ToList();
+
+        Assert.True(named.Count == 0,
+            "a screen is named after a wake phrase, which changes under it:\n  "
+            + string.Join("\n  ", named));
+    }
+
+    [Fact]
+    public void The_wake_screen_is_still_reachable_by_asking_for_it()
+    {
+        // RENAMING IT MUST NOT MAKE IT UNSAYABLE. The title moved from the phrase
+        // to "Waking", and the words somebody would actually use to ask for this
+        // screen are the phrase-ish ones — so they are kept explicitly rather
+        // than left to fall out of the title.
+        Assert.Equal("wake", VoiceDestinations.Match("open the wake word")?.Route);
+        Assert.Equal("wake", VoiceDestinations.Match("answer to its name")?.Route);
+    }
+
+    [Fact]
     public void A_long_sentence_about_a_screen_is_not_a_request_to_open_it()
     {
         // THE ONE THAT MATTERS. Somebody asking ABOUT translation, at length, is

@@ -163,8 +163,21 @@ public static class AppRoutes
         new("job-spec", "Aim at a job", Surface.Voice,
             ["job spec", "job description", "aim at a job", "apply for"]),
 
-        new("wake", "Hey B", Surface.Voice,
-            ["wake word", "wake phrase", "answer to its name", "hey bee"]),
+        // NAMED FOR WHAT THE SCREEN IS, NOT FOR WHAT TO SAY TO IT.
+        //
+        // This was "Hey B", so the breadcrumb above a screen whose body reads
+        // Say "Hey Circle AI" said "Hey B" — seen on a P30 on 2026-09-06, on the
+        // one screen whose whole job is telling somebody what their phone answers
+        // to. A title is a fixed string and a wake phrase is neither fixed nor
+        // singular: there are thirty-two languages of them, the owner picks one,
+        // and they can type their own.
+        //
+        // "Waking" is what every other surface already calls it — the fold in
+        // Settings › Language, and the row in the abilities list — so this is one
+        // name rather than a fifth spelling. The phrase itself belongs on the
+        // screen, from the listener that is actually loaded.
+        new("wake", "Waking", Surface.Voice,
+            ["wake word", "wake phrase", "answer to its name", "waking", "hey bee"]),
 
         new("abilities", "What it can do", Surface.Voice,
             ["what can you do", "what it can do", "abilities", "features"]),
