@@ -82,6 +82,30 @@ public interface IResidentAssistant
     /// </remarks>
     Task<ResidentStatus> ResumeAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Rebuilds the listener when what it was built from has changed.
+    /// </summary>
+    /// <remarks>
+    /// THE WAKE PHRASE IS COMPILED ONCE AND NEVER RE-READ. Choosing a phrase
+    /// wrote it to the settings table and through to the keywords file on disk,
+    /// and both of those are the right thing to do — but the microphone consults
+    /// neither. It consults a graph built from that file at install time.
+    /// <para>
+    /// Measured on a P30 on 2026-09-06: "Hey Circle AI" was chosen, the screen
+    /// said so, the file said so, and six minutes of saying it produced
+    /// <c>closest="Hey B" 2/3 tokens</c>. The phone had been renamed everywhere
+    /// except in the one place that hears. This is the call that closes that,
+    /// and the reason it is on the interface rather than inside the phrase store
+    /// is that only the head knows what its listener was built from.
+    /// </para>
+    /// <para>
+    /// Does nothing when nothing is listening, and nothing when the listener is
+    /// already current — rebuilding drops the microphone and reloads a model, so
+    /// it must not happen on every visit to a screen.
+    /// </para>
+    /// </remarks>
+    Task<ResidentStatus> RefreshAsync(CancellationToken ct = default);
+
     /// <summary>Raised when the wake phrase is heard. Not on the UI thread.</summary>
     event EventHandler<string>? Woke;
 }

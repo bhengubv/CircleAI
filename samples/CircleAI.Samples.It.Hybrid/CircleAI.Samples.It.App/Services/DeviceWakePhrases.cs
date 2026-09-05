@@ -16,8 +16,39 @@ namespace CircleAI.Samples.It.App.Services;
 public sealed class DeviceWakePhrases : IWakePhrases
 {
     private readonly SqliteAppStore _store;
+    private readonly IResidentAssistant? _resident;
 
-    public DeviceWakePhrases(SqliteAppStore store) => _store = store;
+    /// <param name="resident">
+    /// The listener that has to be told, or null for a head that has none. See
+    /// <see cref="CatchUpAsync"/> — writing the file is not the same as changing
+    /// what the microphone hears.
+    /// </param>
+    public DeviceWakePhrases(SqliteAppStore store, IResidentAssistant? resident = null)
+    {
+        _store = store;
+        _resident = resident;
+    }
+
+    /// <summary>Makes the running listener match what was just stored.</summary>
+    /// <remarks>
+    /// THE THIRD OWNER. Choosing a phrase writes the settings table and writes
+    /// through to the keywords file, and both were already right — but the
+    /// microphone consults neither. It consults a graph compiled from that file
+    /// when the listener was built, and nothing re-reads it.
+    /// <para>
+    /// Measured on a P30 on 2026-09-06: "Hey Circle AI" chosen, screen agreeing,
+    /// file agreeing, log agreeing, and six minutes of saying it produced
+    /// <c>closest="Hey B" 2/3 tokens</c>.
+    /// </para>
+    /// <para>
+    /// Here rather than in the screen, so that every caller of ChooseAsync gets
+    /// it and no future screen can forget. Cheap when nothing moved: the resident
+    /// compares what it was built from against what is on disk and returns
+    /// without touching the microphone.
+    /// </para>
+    /// </remarks>
+    private Task CatchUpAsync(CancellationToken ct)
+        => _resident?.RefreshAsync(ct) ?? Task.CompletedTask;
 
     /// <summary>The wake model, which is also what judges a typed phrase.</summary>
     /// <remarks>
@@ -83,12 +114,16 @@ public sealed class DeviceWakePhrases : IWakePhrases
         => Task.FromResult(Consider(language, phrase, add: false));
 
     /// <inheritdoc />
-    public Task<WakePhraseResult> AddAsync(
+    public async Task<WakePhraseResult> AddAsync(
         string language, string phrase, CancellationToken ct = default)
-        => Task.FromResult(Consider(language, phrase, add: true));
+    {
+        var result = Consider(language, phrase, add: true);
+        await CatchUpAsync(ct).ConfigureAwait(false);
+        return result;
+    }
 
     /// <inheritdoc />
-    public Task ChooseAsync(string language, string phrase, CancellationToken ct = default)
+    public async Task ChooseAsync(string language, string phrase, CancellationToken ct = default)
     {
         _store.Set(ChosenKey(language), phrase);
 
@@ -97,16 +132,20 @@ public sealed class DeviceWakePhrases : IWakePhrases
         // one thing while the microphone waits for another - which is the exact
         // failure this whole screen was rebuilt to end.
         WriteKeywordFile(language);
-        return Task.CompletedTask;
+
+        // AND THROUGH TO THE LISTENER, which is where that failure actually
+        // lived. The file was already being written correctly; the graph built
+        // from it never got rebuilt, so the write reached disk and stopped.
+        await CatchUpAsync(ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task RemoveAsync(string language, string phrase, CancellationToken ct = default)
+    public async Task RemoveAsync(string language, string phrase, CancellationToken ct = default)
     {
         // BUILT-IN PHRASES DO NOT GO. They are what the phone falls back to, and
         // a language whose only phrase was removed could not be woken at all.
         if (BuiltInWakePhrases.For(language).Contains(phrase, StringComparer.Ordinal))
-            return Task.CompletedTask;
+            return;
 
         var kept = Added(language)
             .Where(t => !string.Equals(t, phrase, StringComparison.Ordinal))
@@ -119,7 +158,7 @@ public sealed class DeviceWakePhrases : IWakePhrases
             _store.Set(ChosenKey(language), null);
 
         WriteKeywordFile(language);
-        return Task.CompletedTask;
+        await CatchUpAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Judge a phrase, and add it unless it cannot work.</summary>
@@ -252,7 +291,14 @@ public sealed class DeviceWakePhrases : IWakePhrases
             var path = KeywordFile(language);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             book.Save(path);
-            VoiceTrace.Write($"kws: '{language}' listens for \"{phrase.Text}\" "
+            // WHAT WAS WRITTEN, NOT WHAT IS HEARD. This used to read "'en'
+            // listens for ...", which is a claim about the microphone made by
+            // code that has only touched a file. On 2026-09-06 it reported
+            // `'en' listens for "Hey Circle AI"` at the same moment the spotter
+            // was reporting closest="Hey B", and it was the line that made the
+            // fault look like a measurement problem for an hour. The listener
+            // says what it listens for; this says what it wrote.
+            VoiceTrace.Write($"kws: wrote \"{phrase.Text}\" for '{language}' "
                            + $"({phrase.Tokens.Count} tokens, {phrase.Verdict})");
         }
         catch (Exception ex)

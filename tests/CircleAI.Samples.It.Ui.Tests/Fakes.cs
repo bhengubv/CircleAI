@@ -244,6 +244,24 @@ internal sealed class FakeResidentAssistant : IResidentAssistant
     }
 
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(Off);
+
+    /// <summary>How many times the listener was asked to catch up.</summary>
+    /// <remarks>
+    /// COUNTED RATHER THAN IGNORED, because the bug this exists for is a call
+    /// that never happened: choosing a phrase wrote the settings table and the
+    /// keywords file and told the listener nothing, so the microphone went on
+    /// hearing the old name. A fake that silently returned would let that come
+    /// back.
+    /// </remarks>
+    public int Refreshes { get; private set; }
+
+    public Task<ResidentStatus> RefreshAsync(CancellationToken ct = default)
+    {
+        Refreshes++;
+        return Task.FromResult(IsListening
+            ? new ResidentStatus(ResidentState.Listening, "Listening", "")
+            : Off);
+    }
 }
 
 /// <summary>A phone that says where it is, so a pair can be tested.</summary>

@@ -76,47 +76,27 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
                     "The wake word is not downloaded yet. Open Hey B to get it.");
             }
 
-            // LISTEN FOR ITS NAME IN THE LANGUAGE THIS PHONE IS SET TO, and
-            // REBUILD when that changes — not only when nothing is installed.
-            // The phrase is chosen at install time, so a listener built for
-            // English keeps waiting for the English phrase after somebody picks
-            // another language: the screen says one thing and the microphone
-            // waits for another, with nothing to show which.
+            // LISTEN FOR ITS NAME IN THE LANGUAGE THIS PHONE IS SET TO, and for
+            // THE PHRASE THE OWNER CHOSE — rebuilding when either moves, not
+            // only when nothing is installed.
+            //
+            // This used to compare LANGUAGES, which is a proxy for the phrase and
+            // a coarser one: English to Japanese rebuilt, "Hey B" to
+            // "Hey Circle AI" did not. Measured on a P30 on 2026-09-06 with the
+            // screen, the settings table and the keywords file all reading
+            // "Hey Circle AI" while the microphone reported
+            // closest="Hey B" 2/3 tokens.
             var language = _spoken.Current;
-            var stale = CircleNeuronService.Listener is not null &&
-                        !string.Equals(ResidentWakeWord.InstalledLanguage, language,
-                                       StringComparison.OrdinalIgnoreCase);
-            if (stale)
+            var keywords = DeviceWakePhrases.KeywordFile(language);
+            if (CircleNeuronService.Listener is not null &&
+                ResidentWakeWord.Built.IsStaleFor(language, keywords))
             {
-                Android.Util.Log.Info(Tag,
-                    $"wake word was built for '{ResidentWakeWord.InstalledLanguage ?? "none"}', "
-                    + $"language is now '{language}' - rebuilding");
-
-                // STOPPED BEFORE IT IS DROPPED. Android hands out AudioRecord
-                // exclusively, so a detector that is merely dereferenced keeps
-                // the microphone and the replacement comes up deaf. Awaited, not
-                // fire-and-forget: the new detector is built on the next line and
-                // must not race the old one for the device.
-                var old = CircleNeuronService.Listener;
-                CircleNeuronService.Listener = null;
-                if (old is not null)
-                {
-                    try { await old.StopAsync().ConfigureAwait(false); }
-                    catch (Exception ex)
-                    {
-                        Android.Util.Log.Warn(Tag, "old wake detector would not stop: " + ex.Message);
-                    }
-                    try { await old.DisposeAsync().ConfigureAwait(false); }
-                    catch (Exception ex)
-                    {
-                        Android.Util.Log.Warn(Tag, "old wake detector would not dispose: " + ex.Message);
-                    }
-                }
+                await RebuildAsync(language).ConfigureAwait(false);
             }
 
             if (CircleNeuronService.Listener is null &&
                 !ResidentWakeWord.Install(context, bundle, languageCode: language,
-                                          keywordsFile: DeviceWakePhrases.KeywordFile(language)))
+                                          keywordsFile: keywords))
             {
                 return new ResidentStatus(ResidentState.Failed,
                     "Not listening",
@@ -191,6 +171,63 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
         catch (Exception ex)
         {
             Android.Util.Log.Error(Tag, "could not stop resident assistant: " + ex);
+            return new ResidentStatus(ResidentState.Failed, "Not listening", ex.Message);
+        }
+    }
+
+    /// <summary>Drops the running detector so the next Install builds a fresh one.</summary>
+    /// <remarks>
+    /// STOPPED BEFORE IT IS DROPPED. Android hands out AudioRecord exclusively,
+    /// so a detector that is merely dereferenced keeps the microphone and the
+    /// replacement comes up deaf. Awaited rather than fire-and-forget: the
+    /// replacement is built immediately afterwards and must not race the old one
+    /// for the device.
+    /// </remarks>
+    private static async Task RebuildAsync(string language)
+    {
+        Android.Util.Log.Info(Tag,
+            $"wake word was built for '{ResidentWakeWord.Built.Language ?? "none"}' "
+            + $"from '{ResidentWakeWord.Built.Keywords ?? "the bundle's own"}', "
+            + $"and that has changed — rebuilding for '{language}'");
+
+        var old = CircleNeuronService.Listener;
+        CircleNeuronService.Listener = null;
+        if (old is null) return;
+
+        try { await old.StopAsync().ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn(Tag, "old wake detector would not stop: " + ex.Message);
+        }
+        try { await old.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn(Tag, "old wake detector would not dispose: " + ex.Message);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<ResidentStatus> RefreshAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            // NOTHING TO CATCH UP. A listener that is off will be built from
+            // whatever is current the moment somebody turns it on, and starting
+            // it here would turn choosing a phrase into switching the microphone
+            // on for somebody who had switched it off.
+            if (!IsListening)
+                return new ResidentStatus(ResidentState.Off, "Not listening", string.Empty);
+
+            var language = _spoken.Current;
+            if (!ResidentWakeWord.Built.IsStaleFor(language, DeviceWakePhrases.KeywordFile(language)))
+                return new ResidentStatus(ResidentState.Listening, "Listening", string.Empty);
+
+            await RebuildAsync(language).ConfigureAwait(false);
+            return await StartAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error(Tag, "could not refresh the resident listener: " + ex);
             return new ResidentStatus(ResidentState.Failed, "Not listening", ex.Message);
         }
     }

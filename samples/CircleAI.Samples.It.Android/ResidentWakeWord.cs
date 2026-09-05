@@ -98,8 +98,8 @@ public sealed class ResidentWakeWord : IResidentListener
     /// engines drift apart with no selector in the first place.
     /// </remarks>
     /// <summary>
-    /// The language the resident listener was built for, or null if none is
-    /// installed.
+    /// What the resident listener was built from, or <see cref="WakeListenerBuild.None"/>
+    /// if none is installed.
     /// </summary>
     /// <remarks>
     /// THE WAKE PHRASE IS FIXED AT INSTALL, so this is what tells a caller the
@@ -107,8 +107,23 @@ public sealed class ResidentWakeWord : IResidentListener
     /// "Listener is null", which meant changing the language on the languages
     /// screen left the phone still waiting for the previous language's name
     /// until the process happened to restart — and nothing on screen said so.
+    /// <para>
+    /// THIS USED TO BE THE LANGUAGE ALONE, which is a PROXY for the phrase and a
+    /// coarser one: English to Japanese rebuilt the listener, and "Hey B" to
+    /// "Hey Circle AI" did not, because both are English. Measured on a P30 on
+    /// 2026-09-06 — the settings table, the keywords file and the log all said
+    /// "Hey Circle AI" while the microphone went on reporting
+    /// <c>closest="Hey B" 2/3 tokens</c>. A proxy coarser than the fact will
+    /// always have a case it cannot see, so this holds the fact.
+    /// </para>
     /// </remarks>
-    public static string? InstalledLanguage { get; private set; }
+    public static WakeListenerBuild Built { get; private set; } = WakeListenerBuild.None;
+
+    /// <summary>
+    /// The language the resident listener was built for, or null if none is
+    /// installed.
+    /// </summary>
+    public static string? InstalledLanguage => Built.Language;
 
     /// <param name="languageCode">
     /// The language the phone is set to, so it listens for its name in that
@@ -180,7 +195,12 @@ public sealed class ResidentWakeWord : IResidentListener
 
             CircleNeuronService.Listener =
                 new ResidentWakeWord(detector, (calibration, calibrationPath));
-            InstalledLanguage = languageCode;
+
+            // THE FILE THAT WAS ASKED FOR, not the one that was resolved. A
+            // fallback to the bundle's own keywords would otherwise read as a
+            // permanent difference from what the caller asked for, and rebuild
+            // the listener on every start for the rest of the phone's life.
+            Built = WakeListenerBuild.Of(languageCode, keywordsFile);
             return true;
         }
         catch (Exception ex)

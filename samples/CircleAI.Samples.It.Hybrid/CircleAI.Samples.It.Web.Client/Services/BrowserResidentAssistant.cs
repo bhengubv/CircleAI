@@ -32,4 +32,13 @@ public sealed class BrowserResidentAssistant : IResidentAssistant
     /// <inheritdoc />
     /// <remarks>There is nothing to resume: a tab never held the microphone.</remarks>
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => Task.FromResult(No);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Nothing to catch up either. The phrase screen works on the web - somebody
+    /// can choose what their phone will answer to from a browser - and it is
+    /// written to the same store; there is simply no listener in this process for
+    /// it to reach.
+    /// </remarks>
+    public Task<ResidentStatus> RefreshAsync(CancellationToken ct = default) => Task.FromResult(No);
 }
