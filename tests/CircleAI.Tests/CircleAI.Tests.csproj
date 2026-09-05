@@ -100,6 +100,17 @@
              Link="Contracts\ISettings.cs" />
     <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\IWakePhrases.cs"
              Link="Contracts\IWakePhrases.cs" />
+    <!--
+      FirstRun decides what a fresh phone downloads and what the loading screen
+      says it already has, and it had NO TESTS - while its own header said it was
+      moved into the shared sample precisely so that it could have them. It cost a
+      census reading "5 of 5 on this phone" over a handset carrying thirty-two
+      voices. VoiceNames comes with it because FirstRun names two voices through it.
+    -->
+    <Compile Include="..\..\samples\CircleAI.Samples.It\FirstRun.cs"
+             Link="Sample\FirstRun.cs" />
+    <Compile Include="..\..\samples\CircleAI.Samples.It\VoiceNames.cs"
+             Link="Sample\VoiceNames.cs" />
     <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />

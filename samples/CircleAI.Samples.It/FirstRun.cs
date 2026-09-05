@@ -293,8 +293,95 @@ public static class FirstRun
             rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0, Detail(entry, modality)));
         }
 
+        // AND EVERYTHING ELSE THAT IS ACTUALLY ON THE PHONE.
+        //
+        // THE CENSUS READ THE PLAN, NOT THE DISK. Wanted names two voices, so a
+        // phone carrying thirty-two of them reported "5 of 5 on this phone" over
+        // a list that mentioned eleven languages. Every row was true and the
+        // screen as a whole was wrong, which is the harder kind: the person had
+        // downloaded thirty more voices and the one screen whose entire job is
+        // saying what this handset can do never mentioned them.
+        //
+        // That is the same mistake this file already names twice - one fact, two
+        // owners - with the plan standing in for the disk. The plan answers "what
+        // still has to be fetched" and is the wrong question to ask about what is
+        // here.
+        //
+        // ONE ROW, NOT THIRTY. Naming every voice would bury the four capabilities
+        // this screen exists to report, and the screen's own rule is that a count
+        // must not outrun what it shows - so the count and the languages it buys
+        // are both on the row, and the row is about the surplus rather than
+        // pretending the named two are all there is.
+        if (speech)
+        {
+            var present = registry.AllModels
+                .Where(m => m.Modality == ModelModality.Tts && loader.ModelPresent(m.Name));
+
+            if (OtherVoices(present, Wanted(speech)) is { } surplus) rows.Add(surplus);
+        }
+
         return new Capabilities(rows, rows.Count(r => r.Present), rows.Count);
     }
+
+    /// <summary>The row for voices that are here but were never in the plan.</summary>
+    /// <remarks>
+    /// SEPARATED FROM THE DISK ON PURPOSE, so it can be tested. Deciding which
+    /// voices are surplus and what to say about them is the part that was wrong;
+    /// reading whether a file is on disk is BundleModelLoader's job and is
+    /// exercised elsewhere. Keeping them in one method would have made this
+    /// testable only by writing sixty-megabyte anchor files into a temp folder,
+    /// which is how a rule ends up with no test at all — as the whole of this
+    /// file did, despite its header saying it was moved here to be testable.
+    /// <para>
+    /// BOTH NUMBERS ON THE ROW, because they answer different questions. The
+    /// count is what was downloaded; the languages are what it can be understood
+    /// in, and the second is the one that matters to somebody wondering whether
+    /// their language is in there. They are not the same number — one
+    /// multi-speaker bundle carries eleven languages by itself.
+    /// </para>
+    /// </remarks>
+    /// <param name="presentVoices">Every TTS model actually on this device.</param>
+    /// <param name="wanted">The plan's own list, whose named voices already have rows.</param>
+    /// <returns>The row, or null when the plan already accounts for everything.</returns>
+    public static CapabilityRow? OtherVoices(
+        IEnumerable<ModelEntry> presentVoices,
+        IEnumerable<(string Title, ModelModality Modality, string? Named)> wanted)
+    {
+        ArgumentNullException.ThrowIfNull(presentVoices);
+        ArgumentNullException.ThrowIfNull(wanted);
+
+        var already = wanted
+            .Where(w => w.Modality == ModelModality.Tts && w.Named is not null)
+            .Select(w => w.Named!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var extra = presentVoices
+            .Where(m => m.Modality == ModelModality.Tts && !already.Contains(m.Name))
+            .ToList();
+
+        if (extra.Count == 0) return null;
+
+        var languages = extra
+            .SelectMany(v => (v.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Select(t => t.Trim())
+            .Where(t => t.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        var detail = languages switch
+        {
+            0 => $"{extra.Count} more",
+            1 => $"{extra.Count} more, one language",
+            _ => $"{extra.Count} more, {languages} languages",
+        };
+
+        return new CapabilityRow("the other voices", true, extra.Sum(m => m.TotalBytes), detail);
+    }
+
+    /// <inheritdoc cref="Wanted(bool)"/>
+    /// <remarks>Exposed so a test can pass the real plan rather than a copy of it.</remarks>
+    public static IReadOnlyList<(string Title, ModelModality Modality, string? Named)>
+        WantedFor(bool speech) => Wanted(speech);
 
     /// <summary>What being present actually gets somebody.</summary>
     /// <remarks>
