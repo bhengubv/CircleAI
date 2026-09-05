@@ -450,23 +450,52 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// </remarks>
     /// <summary>The acceptance threshold this spotter was measured at.</summary>
     /// <remarks>
-    /// 0.25, AND IT IS THE ONLY NUMBER ANYBODY EVER MEASURED. It is the value
-    /// the "6/6 through air" run used - reached by not passing one at all and
-    /// taking this default - and it stayed correct while two other places grew
-    /// their own copy of 0.5, which nothing measured and nothing checked
-    /// against it.
+    /// 0.20, LOWERED FROM 0.25 ON EVIDENCE THIS FILE WAS ALREADY CARRYING.
+    ///
     /// <para>
-    /// On a P30 the phrase "Hey B" scores 0.24 to 0.34 through the air. At 0.5
-    /// the wake word cannot fire: not unreliably, ARITHMETICALLY. The whole
-    /// phrase is matched, three tokens of three, and the gate is above every
-    /// score the model produces for it.
+    /// The note here used to say, correctly, that "Hey B" scores 0.24 to 0.34
+    /// through the air on a P30 - and then set the gate at 0.25, which is INSIDE
+    /// that range. The bottom of the observed spread was on the wrong side of
+    /// the bar, so the quietest third of real utterances were always going to be
+    /// refused. Not unreliably: arithmetically, for anyone who speaks slightly
+    /// softly or slightly further away.
     /// </para>
     /// <para>
-    /// A lower gate also means more false wakes, which is what the confirmer
-    /// exists for - and at 0.5 that confirmer was never reached at all.
+    /// Measured on a P30 on 2026-09-06, one person, one room:
+    /// </para>
+    /// <para>
+    ///   fired    0.297  0.369  0.371  0.386
+    ///   refused  0.246  - three tokens of three matched, missed by 0.004
+    /// </para>
+    /// <para>
+    /// That last one is the whole argument. The model recognised the entire
+    /// phrase and the gate turned it away by four thousandths, which from the
+    /// outside is indistinguishable from a phone that did not hear you. A
+    /// threshold that rejects a complete, correct match is not a safety margin,
+    /// it is a fault.
+    /// </para>
+    /// <para>
+    /// 0.20 SITS BELOW EVERY REAL UTTERANCE SEEN AND WELL ABOVE THE NOISE. In a
+    /// quiet room the spotter's partial sightings score 0 to 0.013 - an order of
+    /// magnitude below this - so the gap being bought here is between "somebody
+    /// spoke softly" and "a chair moved", not between speech and silence.
+    /// </para>
+    /// <para>
+    /// A lower gate does mean more false wakes, and that is what the confirmer
+    /// is for. It is worth saying that the confirmer is the RIGHT place to pay
+    /// this cost: stage two judges whether the phrase opened an utterance, which
+    /// is a question about intent, where the threshold only ever knew about
+    /// loudness.
+    /// </para>
+    /// <para>
+    /// STILL A CONSTANT, AND STILL THE WRONG SHAPE OF ANSWER. One number for
+    /// every phone, every voice and every room is what put the bar inside the
+    /// range in the first place. WakeCalibration now records what each phone
+    /// actually hears; when a device has enough of its own evidence this should
+    /// come from that file rather than from here.
     /// </para>
     /// </remarks>
-    public const double MeasuredThreshold = 0.25;
+    public const double MeasuredThreshold = 0.20;
 
     /// <inheritdoc cref="MeasuredThreshold"/>
     public double Threshold { get; init; } = MeasuredThreshold;

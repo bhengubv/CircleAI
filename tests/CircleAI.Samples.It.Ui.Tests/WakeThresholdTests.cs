@@ -23,7 +23,14 @@ public class WakeThresholdTests
 {
     [Fact]
     public void The_default_is_the_measured_one()
-        => Assert.Equal(0.25, ZipformerKwsSpotter.MeasuredThreshold);
+        // A DELIBERATE TRIPWIRE. The literal is here so that moving the gate is
+        // a conscious act with a reason attached, rather than a quiet edit that
+        // nothing notices - which is how 0.5 arrived twice.
+        //
+        // Lowered from 0.25 to 0.20 on 2026-09-06: the old value sat INSIDE the
+        // measured range 0.24-0.34 rather than below it, so the quietest third
+        // of real utterances were refused arithmetically.
+        => Assert.Equal(0.20, ZipformerKwsSpotter.MeasuredThreshold);
 
     [Fact]
     public void A_spotter_built_with_no_threshold_uses_it()
@@ -43,10 +50,48 @@ public class WakeThresholdTests
         //
         // A gate above all of these cannot fire. This is the assertion that would
         // have failed the day 0.5 was introduced.
-        double[] measured = [0.244, 0.285, 0.292, 0.304, 0.313, 0.339];
+        // 2026-09-06, same phone, same phrase, after the beam and gate fixes:
+        //
+        //     fired    0,297  0,369  0,371  0,386
+        //     refused  0,246  - three tokens of three, missed by 0,004
+        double[] measured =
+        [
+            0.244, 0.246, 0.285, 0.292, 0.297, 0.304, 0.313, 0.339, 0.369, 0.371, 0.386,
+        ];
 
-        Assert.True(measured.Any(p => p >= ZipformerKwsSpotter.MeasuredThreshold),
-            "the acceptance gate is above every score this phrase produces — it cannot fire");
+        // EVERY ONE OF THEM, NOT ANY OF THEM.
+        //
+        // This assertion used to be Any, and that is why 0.25 survived: 0.244 was
+        // already in the list above, sitting BELOW the gate, and the test passed
+        // because the other five were above it. "At least one utterance can fire"
+        // is not the property anybody wants. The property is that a phrase the
+        // model fully recognised is not turned away.
+        //
+        // It cost a real evening. On 2026-09-06 the spotter matched three tokens
+        // of three at 0,246 and the gate refused it by four thousandths, which
+        // from the outside is a phone that did not hear you.
+        Assert.All(measured, p =>
+            Assert.True(p >= ZipformerKwsSpotter.MeasuredThreshold,
+                $"a real utterance scored {p:0.000} and the gate is "
+                + $"{ZipformerKwsSpotter.MeasuredThreshold:0.000} — that one cannot fire"));
+    }
+
+    [Fact]
+    public void The_gate_still_sits_well_above_the_noise()
+    {
+        // THE OTHER SIDE OF LOWERING IT. A gate low enough to catch every real
+        // utterance is only sane if it is still far from what a quiet room
+        // scores - otherwise the fix for "it never hears me" is "it wakes at
+        // nothing", which is worse.
+        //
+        // Measured in a quiet room on a P30: partial sightings of the phrase
+        // score 0 to 0,013, an order of magnitude below the gate. The margin
+        // being bought is between somebody speaking softly and a chair moving,
+        // not between speech and silence.
+        const double loudestNoiseSeen = 0.013;
+
+        Assert.True(ZipformerKwsSpotter.MeasuredThreshold > loudestNoiseSeen * 5,
+            "the gate has been lowered to within reach of room noise");
     }
 
     [Fact]
