@@ -83,6 +83,101 @@ public sealed partial class CircleNeuronService
     /// <summary>True when the service currently holds the microphone.</summary>
     public static bool IsListening => _listener?.IsListening == true;
 
+    /// <summary>
+    /// Holds the CPU awake for exactly as long as the microphone is open.
+    /// </summary>
+    /// <remarks>
+    /// WITHOUT THIS, "ALWAYS LISTENING" LASTS UNTIL THE SCREEN GOES OFF.
+    ///
+    /// A foreground service keeps the PROCESS from being killed. It does not keep
+    /// the CPU from suspending. With the screen off and no wake lock, the
+    /// AudioRecord read loop simply stops being scheduled: the service record is
+    /// still there, the notification is still there, IsListening still says true,
+    /// and no audio is read at all. Nothing reports an error, because nothing
+    /// failed - the thread was just never run again.
+    ///
+    /// Measured on a P30 on 2026-09-05. The heartbeat prints every five seconds
+    /// while the loop is alive; after the app left the foreground it stopped
+    /// entirely, the process fell from 711 MB to 47 MB as the models were
+    /// reclaimed, and EMUI logged HibStrategySwapCandidateProcessAdd against the
+    /// package. Somebody then spoke to the phone for eleven minutes and it heard
+    /// a quiet room, because there was nothing running to hear them.
+    ///
+    /// PARTIAL, so it holds the CPU and NOT the screen - the whole point is to
+    /// answer with the screen dark. It is acquired when the microphone opens and
+    /// released when it closes, so it is exactly as long-lived as the promise the
+    /// notification is making. A wake lock held longer than the microphone would
+    /// be a battery leak; held shorter, it is this bug.
+    ///
+    /// Not sufficient on its own for every vendor - Huawei, Xiaomi, Oppo and Vivo
+    /// each add their own killing - which is what ISetup.AllowBackgroundAsync is
+    /// for. It is necessary on all of them.
+    /// </remarks>
+    private static global::Android.OS.PowerManager.WakeLock? _awake;
+
+    private const string WakeLockTag = "CircleAI:resident-listening";
+
+    private static void HoldTheCpu()
+    {
+        if (_awake is { IsHeld: true }) return;
+
+        try
+        {
+            var context = global::Android.App.Application.Context;
+            var power = (global::Android.OS.PowerManager?)context.GetSystemService(
+                global::Android.Content.Context.PowerService);
+            if (power is null) return;
+
+            _awake = power.NewWakeLock(
+                global::Android.OS.WakeLockFlags.Partial, WakeLockTag);
+
+            // NO TIMEOUT. A wake lock that expires on a timer would make the
+            // wake word work for an hour and then not, which is worse than not
+            // working at all - it is the failure that reads as "sometimes it
+            // does not hear me". Release is tied to the microphone closing.
+            _awake?.SetReferenceCounted(false);
+            _awake?.Acquire();
+
+            // AND SAY WHETHER THE OTHER HALF IS IN PLACE. The lock stops the CPU
+            // suspending; it does not stop a vendor deciding to hibernate the
+            // package anyway, which is what EMUI did here. That is what the
+            // battery-optimisation exemption is for - and it is only ever asked
+            // for during SETUP, so a phone set up before the question existed,
+            // or one where somebody said no, has no exemption and no way back to
+            // it. Printing it here means the next time listening dies we can
+            // tell "the lock did not hold" from "the vendor killed us anyway"
+            // instead of guessing.
+            var exempt = power.IsIgnoringBatteryOptimizations(context.PackageName!);
+            global::Android.Util.Log.Info(LogTag,
+                "wake lock held: the cpu stays up while listening; battery exemption: "
+                + (exempt ? "granted" : "NOT granted - this phone may still hibernate the service"));
+        }
+        catch (Exception ex)
+        {
+            // Never fatal. A phone that refuses the lock still listens while it
+            // is awake; it just stops sooner, which is the behaviour we had.
+            global::Android.Util.Log.Warn(LogTag, "could not hold the cpu: " + ex.Message);
+        }
+    }
+
+    private static void LetTheCpuSleep()
+    {
+        try
+        {
+            if (_awake is { IsHeld: true }) _awake.Release();
+            global::Android.Util.Log.Info(LogTag, "wake lock released");
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn(LogTag, "could not release the cpu: " + ex.Message);
+        }
+        finally
+        {
+            _awake?.Dispose();
+            _awake = null;
+        }
+    }
+
     /// <summary>Starts resident listening, if a listener has been supplied.</summary>
     public static async Task<bool> StartListeningAsync(CancellationToken ct = default)
     {
@@ -93,6 +188,12 @@ public sealed partial class CircleNeuronService
         listener.Woke -= OnListenerWoke;
         listener.Woke += OnListenerWoke;
         await listener.StartAsync(ct).ConfigureAwait(false);
+
+        // AFTER, and only if it actually opened. Holding the CPU for a listener
+        // that refused the microphone would drain the battery for nothing.
+        if (listener.IsListening) HoldTheCpu();
+        else LetTheCpuSleep();
+
         return listener.IsListening;
     }
 
@@ -103,6 +204,10 @@ public sealed partial class CircleNeuronService
         if (listener is null) return;
         listener.Woke -= OnListenerWoke;
         await listener.StopAsync(ct).ConfigureAwait(false);
+
+        // The lock outliving the microphone is a battery leak with no feature
+        // attached, so it goes even if the stop threw.
+        LetTheCpuSleep();
     }
 
     private static void OnListenerWoke(object? sender, string phrase) => Woke?.Invoke(sender, phrase);

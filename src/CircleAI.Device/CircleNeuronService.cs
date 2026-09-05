@@ -324,6 +324,14 @@ public sealed partial class CircleNeuronService : Service
 
     public override void OnDestroy()
     {
+        // THE CPU FIRST, because this is the path a wake lock leaks down. The
+        // service can be destroyed without anyone calling StopListening - the
+        // platform tears it down, the task is swiped away, the process is
+        // reclaimed - and a partial wake lock that outlives its service holds
+        // the CPU up with nothing listening on the other end. It is released
+        // here as well as there, and releasing twice is harmless.
+        LetTheCpuSleep();
+
         lock (Gate)
         {
             (Node?.Brain as IDisposable)?.Dispose();

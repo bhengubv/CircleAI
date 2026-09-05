@@ -55,6 +55,26 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<!--
+	    WAKE_LOCK. Normal permission, granted at install, and without it
+	    PowerManager.newWakeLock throws.
+
+	    A FOREGROUND SERVICE KEEPS THE PROCESS. IT DOES NOT KEEP THE CPU. With
+	    the screen off and no wake lock the AudioRecord loop stops being
+	    scheduled: the service record is still there, the notification is still
+	    there, IsListening still says true, and no audio is read at all. Nothing
+	    logs an error, because nothing failed - the thread was simply never run
+	    again.
+
+	    Measured on a P30 on 2026-09-05: the five-second wake heartbeat stopped
+	    the moment the app left the foreground, the process fell from 711 MB to
+	    47 MB as the models were reclaimed, and somebody then spoke to the phone
+	    for eleven minutes while it heard a quiet room.
+
+	    "Answers to its name with the screen off" is the whole feature, and this
+	    one line is what makes the sentence true.
+	-->
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<!--
 	    COMING BACK AFTER A REBOOT. Without this the assistant is silent from the
 	    moment the phone restarts until somebody happens to open the app, and a
 	    thing that forgets how to listen every time the battery dies is not an

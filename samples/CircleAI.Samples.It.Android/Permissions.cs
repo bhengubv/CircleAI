@@ -46,6 +46,25 @@
 // Measured on the P30.
 [assembly: Android.App.UsesPermission("android.permission.MODIFY_AUDIO_SETTINGS")]
 
+// WAKE_LOCK. Normal permission, granted at install, and PowerManager.newWakeLock
+// throws without it.
+//
+// A FOREGROUND SERVICE KEEPS THE PROCESS. IT DOES NOT KEEP THE CPU. With the
+// screen off and no wake lock the AudioRecord loop stops being scheduled: the
+// service record is still there, the notification is still there, IsListening
+// still says true, and no audio is read at all. Nothing logs an error, because
+// nothing failed - the thread was simply never run again.
+//
+// Measured on the P30 on 2026-09-05: the five-second wake heartbeat stopped the
+// moment the app left the foreground, the process fell from 711 MB to 47 MB as
+// the models were reclaimed, EMUI logged HibStrategySwapCandidateProcessAdd
+// against the package, and somebody then spoke to the phone for eleven minutes
+// while it heard a quiet room.
+//
+// Unguarded, like the service permissions above: the lock is taken by
+// CircleAI.Device, which every Android head carries.
+[assembly: Android.App.UsesPermission("android.permission.WAKE_LOCK")]
+
 #if IT_VOICE_ANDROID
 
 // Permissions.cs
