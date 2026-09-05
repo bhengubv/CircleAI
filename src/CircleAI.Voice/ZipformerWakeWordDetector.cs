@@ -59,6 +59,17 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector, IReportsNearM
     private readonly TimeSpan _debounce;
     private readonly object _gate = new();
 
+    /// <summary>Makes up for the platform gain control that does nothing.</summary>
+    /// <remarks>
+    /// The P30 attaches Android's AutomaticGainControl successfully and it lifts
+    /// nothing: measured on 2026-09-06, the phone could only be woken from about
+    /// five centimetres. See <see cref="SpeechGain"/> for why the model cares so
+    /// much about level and for the two rules that keep this from causing false
+    /// wakes.
+    /// </remarks>
+    private readonly SpeechGain _gain = new();
+    private double _loudestGain = 1;
+
     private CancellationTokenSource? _cts;
     private Task? _loop;
     private DateTimeOffset _lastFireUtc = DateTimeOffset.MinValue;
@@ -245,6 +256,14 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector, IReportsNearM
                 _chunks++;
                 _samplesSeen += samples;
 
+                // MEASURED BEFORE, LIFTED AFTER. The peak and rms above are what
+                // actually arrived at the microphone, and they stay that way -
+                // reporting the post-gain level would make a phone that cannot
+                // hear you look like one that can, which is the single most
+                // expensive kind of wrong a log can be here.
+                var applied = _gain.Apply(pcm.AsSpan(0, samples));
+                if (applied > _loudestGain) _loudestGain = applied;
+
                 var beat = DateTimeOffset.UtcNow;
                 if (beat - _lastBeatUtc >= TimeSpan.FromSeconds(5))
                 {
@@ -254,6 +273,7 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector, IReportsNearM
                         VoiceTrace.Write(
                             $"wake: hearing {_chunks} chunks / {_samplesSeen / 16000.0:0.0}s "
                             + $"peak={_peak:0.####} rms={Math.Sqrt(_sumSq / Math.Max(1, _samplesSeen)):0.####} "
+                            + $"gain=x{_loudestGain:0.#} "
                             + (best is null
                                 ? "closest=nothing matched a phrase"
                                 : $"closest=\"{best.Phrase}\" {best.Matched}/{best.Total} tokens "
@@ -268,7 +288,7 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector, IReportsNearM
                                 best.Phrase, best.Matched, best.Total, best.MeanProbability));
                     }
                     _lastBeatUtc = beat;
-                    _chunks = 0; _peak = 0; _sumSq = 0; _samplesSeen = 0;
+                    _chunks = 0; _peak = 0; _sumSq = 0; _samplesSeen = 0; _loudestGain = 1;
                 }
 
                 _spotter.AcceptWaveform(pcm.AsSpan(0, samples));
