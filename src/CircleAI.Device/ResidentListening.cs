@@ -34,6 +34,25 @@ namespace CircleAI.Device;
 /// about phrases, confidence or audio formats — it needs to start it, stop it,
 /// and be told when it fired.
 /// </remarks>
+/// <summary>How close the listener came to waking, without waking.</summary>
+/// <param name="Phrase">The phrase it was tracking.</param>
+/// <param name="Matched">How many of the phrase's tokens landed.</param>
+/// <param name="Total">How many tokens the phrase has.</param>
+/// <param name="Score">What that match scored.</param>
+/// <param name="Refused">
+/// Why a COMPLETE match was turned down, or null when the phrase never
+/// completed. Two different things to tell somebody: come closer, or pause
+/// first.
+/// </param>
+/// <remarks>
+/// DECLARED HERE RATHER THAN REUSED FROM CircleAI.Voice, for the same reason
+/// <see cref="IResidentListener"/> is smaller than IWakeWordDetector: this
+/// assembly must stay free of the speech stack so a chat-only build does not
+/// drag ONNX Runtime in behind it. The adapter that owns both does the mapping.
+/// </remarks>
+public sealed record ResidentNearMiss(
+    string Phrase, int Matched, int Total, double Score, string? Refused = null);
+
 public interface IResidentListener : IAsyncDisposable
 {
     /// <summary>True while the microphone is open.</summary>
@@ -44,6 +63,21 @@ public interface IResidentListener : IAsyncDisposable
 
     /// <summary>Raised with the phrase heard.</summary>
     event EventHandler<string>? Woke;
+
+    /// <summary>Raised when the phrase was nearly heard, and was not.</summary>
+    /// <remarks>
+    /// THE OTHER HALF OF <see cref="Woke"/>, and the reason it is on this
+    /// interface despite the interface being deliberately small. Without it, a
+    /// screen watching the resident listener cannot distinguish a dead
+    /// microphone from somebody standing slightly too far away - both are the
+    /// absence of Woke. Measured on a P30 on 2026-09-06: the log knew the phrase
+    /// had reached one token of eight and the screen said "Listening".
+    /// <para>
+    /// A listener that cannot tell simply never raises it, which is the honest
+    /// answer and costs its implementer one line.
+    /// </para>
+    /// </remarks>
+    event EventHandler<ResidentNearMiss>? Nearly;
 
     Task StartAsync(CancellationToken ct = default);
     Task StopAsync(CancellationToken ct = default);
@@ -79,6 +113,10 @@ public sealed partial class CircleNeuronService
     /// reference to a Service instance Android owns and may recreate.
     /// </remarks>
     public static event EventHandler<string>? Woke;
+
+    /// <summary>Raised when the resident listener nearly heard its phrase.</summary>
+    /// <inheritdoc cref="IResidentListener.Nearly" path="/remarks"/>
+    public static event EventHandler<ResidentNearMiss>? Nearly;
 
     /// <summary>True when the service currently holds the microphone.</summary>
     public static bool IsListening => _listener?.IsListening == true;
@@ -187,6 +225,8 @@ public sealed partial class CircleNeuronService
 
         listener.Woke -= OnListenerWoke;
         listener.Woke += OnListenerWoke;
+        listener.Nearly -= OnListenerNearly;
+        listener.Nearly += OnListenerNearly;
         await listener.StartAsync(ct).ConfigureAwait(false);
 
         // AFTER, and only if it actually opened. Holding the CPU for a listener
@@ -203,6 +243,7 @@ public sealed partial class CircleNeuronService
         var listener = _listener;
         if (listener is null) return;
         listener.Woke -= OnListenerWoke;
+        listener.Nearly -= OnListenerNearly;
         await listener.StopAsync(ct).ConfigureAwait(false);
 
         // The lock outliving the microphone is a battery leak with no feature
@@ -211,6 +252,9 @@ public sealed partial class CircleNeuronService
     }
 
     private static void OnListenerWoke(object? sender, string phrase) => Woke?.Invoke(sender, phrase);
+
+    private static void OnListenerNearly(object? sender, ResidentNearMiss miss) =>
+        Nearly?.Invoke(sender, miss);
 
     private static async Task SafeStopAsync(IResidentListener listener)
     {

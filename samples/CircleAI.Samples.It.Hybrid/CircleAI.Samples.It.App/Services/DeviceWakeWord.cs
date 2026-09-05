@@ -114,14 +114,48 @@ public sealed class DeviceWakeWord : IWakeWord
         // only thing worth testing here.
         if (CircleAI.Device.CircleNeuronService.IsListening)
         {
+            // WHAT WAS LAST PUT ON SCREEN, so a near miss cannot paint over the
+            // wake it belongs to. The detector reports the phrase again on the
+            // heartbeat after firing, and "Heard you" turning into "Nearly" half
+            // a second later reads as the app changing its mind.
+            var last = WakeState.Listening;
+
             void Woke(object? _, string phrase)
             {
                 heard++;
+                last = WakeState.Heard;
                 updates.Report(new WakeStatus(WakeState.Heard, "Heard you",
                     heard == 1 ? "Say it again to try once more" : $"{heard} times", heard));
             }
 
+            // AND WHEN IT NEARLY HEARD YOU.
+            //
+            // THE SAME GAP THE LOCAL BRANCH BELOW ALREADY CLOSED, and it was
+            // never closed here — which is the branch that actually runs, because
+            // the assistant is on by default. Only Woke was subscribed, so this
+            // screen showed one thing for a dead microphone, for somebody
+            // standing too far away, and for a phrase stage two had refused.
+            //
+            // Measured on a P30 on 2026-09-06: the log said
+            // closest="Hey Circle AI" 1/8 tokens p=0 and the screen said
+            // "Listening", for as long as anybody cared to keep saying it.
+            //
+            // The wording splits on WHAT WOULD HELP. A partial match means it can
+            // hear you and cannot make out the whole phrase, so the useful advice
+            // is distance. A refusal means it heard the whole thing and turned it
+            // down, and the reason is the advice.
+            void Nearly(object? _, CircleAI.Device.ResidentNearMiss m)
+            {
+                // A wake already showing must not be overwritten by the near miss
+                // that follows it half a second later.
+                if (last is WakeState.Heard) return;
+
+                updates.Report(new WakeStatus(WakeState.Listening, NearMissWords.Status,
+                    NearMissWords.Hint(m.Matched, m.Total, m.Refused), heard));
+            }
+
             CircleAI.Device.CircleNeuronService.Woke += Woke;
+            CircleAI.Device.CircleNeuronService.Nearly += Nearly;
             try
             {
                 updates.Report(new WakeStatus(WakeState.Listening, say,
@@ -129,7 +163,11 @@ public sealed class DeviceWakeWord : IWakeWord
                 await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { /* the screen was left */ }
-            finally { CircleAI.Device.CircleNeuronService.Woke -= Woke; }
+            finally
+            {
+                CircleAI.Device.CircleNeuronService.Woke -= Woke;
+                CircleAI.Device.CircleNeuronService.Nearly -= Nearly;
+            }
 
             return;
         }

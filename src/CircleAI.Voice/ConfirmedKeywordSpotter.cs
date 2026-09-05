@@ -393,6 +393,9 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
     /// <summary>The phrases stage one is listening for.</summary>
     public IReadOnlyList<string> Keywords => _spotter.Keywords;
 
+    /// <inheritdoc cref="ZipformerKwsSpotter.TokenCountOf"/>
+    public int TokenCountOf(string phrase) => _spotter.TokenCountOf(phrase);
+
     /// <summary>Registered phrases that can never fire. Empty is healthy.</summary>
     public IReadOnlyList<(string Phrase, string ShadowedBy)> ShadowedKeywords =>
         _spotter.ShadowedKeywords;

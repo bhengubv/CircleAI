@@ -40,6 +40,43 @@ public enum WakeState
 /// <param name="Heard">How many times the phrase has been heard this session.</param>
 public sealed record WakeStatus(WakeState State, string Status, string Hint, int Heard = 0);
 
+/// <summary>What to tell somebody when the phrase was nearly heard.</summary>
+/// <remarks>
+/// SHARED AND TESTABLE ON PURPOSE. This wording lived inline in the Android
+/// head, which is the one place a test cannot reach — and it is the whole point
+/// of the near-miss channel. What reaches the person is a sentence, not an
+/// event, so the sentence is the thing worth pinning.
+/// <para>
+/// The split is on WHAT WOULD HELP, not on what happened. A partial match means
+/// it can hear you and cannot make out all of the phrase: the useful advice is
+/// distance. A refusal means it heard the whole thing and stage two turned it
+/// down: the reason IS the advice, and it is already phrased for a person
+/// ("had been speaking 1320 ms before the phrase ended" tells you to pause
+/// first).
+/// </para>
+/// </remarks>
+public static class NearMissWords
+{
+    /// <summary>The large line. Always the same: they nearly got there.</summary>
+    public const string Status = "Nearly";
+
+    /// <summary>The quiet line under it.</summary>
+    /// <param name="matched">Tokens of the phrase that landed.</param>
+    /// <param name="total">Tokens the phrase has.</param>
+    /// <param name="refused">Why a complete match was turned down, or null.</param>
+    public static string Hint(int matched, int total, string? refused)
+    {
+        if (refused is { Length: > 0 } why) return $"Heard it, but {why}";
+
+        // NO FRACTION WHEN THERE IS NOTHING TO PUT IN IT. A spotter with no
+        // registered phrase cannot produce this, but a screen dividing by zero
+        // to say so would be a worse bug than the one being reported.
+        return total <= 0
+            ? "Heard something — a little closer, or a little louder"
+            : $"Heard {matched} of {total} — a little closer, or a little louder";
+    }
+}
+
 /// <summary>Listens for the wake phrase.</summary>
 /// <remarks>
 /// NOTHING IS RECORDED AND NOTHING IS SENT. The microphone feeds a keyword spotter

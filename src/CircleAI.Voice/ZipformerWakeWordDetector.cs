@@ -51,7 +51,7 @@ public sealed record ZipformerWakeConfig(
 /// <summary>
 /// Wake-word detection on a streaming zipformer transducer, with a second stage.
 /// </summary>
-public sealed class ZipformerWakeWordDetector : IWakeWordDetector
+public sealed class ZipformerWakeWordDetector : IWakeWordDetector, IReportsNearMisses
 {
     private readonly IAudioCapture _capture;
     private readonly ZipformerWakeConfig _config;
@@ -100,6 +100,13 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
                 $"wake: VETOED \"{r.Detection.Phrase}\" p={r.Detection.Probability:0.###} — "
                 + (r.Reason ?? "no reason given"));
             Vetoed?.Invoke(this, (r.Detection.Phrase, r.Reason));
+
+            // A REFUSAL IS THE NEAREST MISS THERE IS: every token matched. Sent
+            // with the reason, because "pause before you say it" is something
+            // somebody can act on and silence is not.
+            var whole = _spotter.TokenCountOf(r.Detection.Phrase);
+            NearMiss?.Invoke(this, new WakeNearMiss(
+                r.Detection.Phrase, whole, whole, r.Detection.Probability, r.Reason));
         };
 
         WakeWords = _spotter.Keywords.Count > 0
@@ -155,6 +162,16 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
     /// word did not fire" and "it fired and we vetoed it" are the same silence.
     /// </remarks>
     public event EventHandler<(string Phrase, string? Reason)>? Vetoed;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE SAME FACTS THE HEARTBEAT ALREADY PRINTS, sent somewhere a screen can
+    /// read them. Everything needed was being computed and written to the log and
+    /// then dropped, so the app could tell a developer with a cable attached that
+    /// the phrase reached one token of eight, and could tell the person holding
+    /// the phone nothing at all.
+    /// </remarks>
+    public event EventHandler<WakeNearMiss>? NearMiss;
 
     private void OnWoke(object? sender, KwsDetection d)
     {
@@ -241,6 +258,14 @@ public sealed class ZipformerWakeWordDetector : IWakeWordDetector
                                 ? "closest=nothing matched a phrase"
                                 : $"closest=\"{best.Phrase}\" {best.Matched}/{best.Total} tokens "
                                   + $"p={best.MeanProbability:0.###} (threshold {_config.Threshold:0.###})"));
+
+                        // AND OUT TO WHOEVER IS WATCHING, not only to the log.
+                        // This is the heartbeat's cadence deliberately: the beam
+                        // moves many times a second and a screen redrawing at
+                        // that rate would cost more than the wake word does.
+                        if (best is not null)
+                            NearMiss?.Invoke(this, new WakeNearMiss(
+                                best.Phrase, best.Matched, best.Total, best.MeanProbability));
                     }
                     _lastBeatUtc = beat;
                     _chunks = 0; _peak = 0; _sumSq = 0; _samplesSeen = 0;

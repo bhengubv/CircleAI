@@ -258,6 +258,17 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// <summary>The phrases this spotter is listening for.</summary>
     public IReadOnlyList<string> Keywords => _keywords.Select(k => k.Phrase).ToList();
 
+    /// <summary>How many tokens spell a registered phrase; 0 if it is not one.</summary>
+    /// <remarks>
+    /// SO A REFUSAL CAN SAY "8 OF 8". A veto is the nearest miss there is - every
+    /// token matched - but the rejection carries only the phrase, and a screen
+    /// reporting it needs the same denominator the partial matches use, or "all
+    /// of it" and "one of eight" arrive in different units.
+    /// </remarks>
+    public int TokenCountOf(string phrase) =>
+        _keywords.FirstOrDefault(k => string.Equals(k.Phrase, phrase, StringComparison.Ordinal))
+            ?.Tokens.Count ?? 0;
+
     /// <summary>
     /// Registered phrases that can never fire, each with the shorter phrase that
     /// swallows it. Empty is the healthy case.

@@ -40,6 +40,18 @@ public sealed class ResidentWakeWord : IResidentListener
             Record(e.Confidence);
             Woke?.Invoke(this, e.WakeWord);
         };
+
+        // THE MAPPING LIVES HERE BECAUSE THIS IS THE ONLY TYPE THAT SEES BOTH
+        // SIDES. CircleAI.Device must stay free of the speech stack, so it
+        // declares its own small record; the detector speaks in the Voice one.
+        //
+        // Asked for as a capability rather than required: six of the seven
+        // IWakeWordDetector implementations have no beam and nothing to report,
+        // and a listener that cannot tell how close it came should say nothing
+        // rather than declare an event it never raises.
+        if (_detector is IReportsNearMisses reports)
+            reports.NearMiss += (_, m) => Nearly?.Invoke(
+                this, new ResidentNearMiss(m.Phrase, m.Matched, m.Total, m.Score, m.Refused));
     }
 
     private WakeCalibration? _calibration;
@@ -83,6 +95,9 @@ public sealed class ResidentWakeWord : IResidentListener
     public string Describe => _detector.WakeWord;
 
     public event EventHandler<string>? Woke;
+
+    /// <inheritdoc />
+    public event EventHandler<ResidentNearMiss>? Nearly;
 
     public Task StartAsync(CancellationToken ct = default) => _detector.StartAsync(ct);
     public Task StopAsync(CancellationToken ct = default) => _detector.StopAsync(ct);
