@@ -134,32 +134,60 @@ public sealed class AndroidAudioCapture : IAudioCapture
     /// </remarks>
     private void AttachFarFieldEffects(int sessionId)
     {
-        void Try(string what, Func<Android.Media.Audiofx.AudioEffect?> make)
+        // NAMED, NOT COUNTED, AND THE ABSENT ONES NAMED TOO.
+        //
+        // This used to log "capture: VoiceRecognition + 2 effect(s)" and nothing
+        // else, and the IsAvailable guards below skip an unavailable effect in
+        // COMPLETE SILENCE - Try only ever spoke when Create threw. So a phone
+        // missing the one effect that buys distance looked identical to a phone
+        // that had it, and the count could not tell them apart.
+        //
+        // On a P30 on 2026-09-06, chasing a wake word that would not fire, the
+        // question "is AGC on this phone?" could only be answered by reading
+        // `dumpsys media.audio_flinger` and matching effect UUIDs by hand. It was
+        // on. Knowing that cost half an hour and should have cost one log line.
+        var on = new List<string>();
+        var off = new List<string>();
+
+        void Try(string what, bool available, Func<Android.Media.Audiofx.AudioEffect?> make)
         {
+            if (!available) { off.Add(what); return; }
+
             try
             {
                 var fx = make();
-                if (fx is null) return;
+                if (fx is null) { off.Add($"{what} (create returned nothing)"); return; }
                 fx.SetEnabled(true);
                 _effects.Add(fx);
+                on.Add(what);
             }
             catch (Exception ex)
             {
-                Android.Util.Log.Info("CircleAI.Kws", $"{what} unavailable: {ex.Message}");
+                off.Add($"{what} ({ex.Message})");
             }
         }
 
-        if (Android.Media.Audiofx.AutomaticGainControl.IsAvailable)
-            Try("AGC", () => Android.Media.Audiofx.AutomaticGainControl.Create(sessionId));
-        if (Android.Media.Audiofx.NoiseSuppressor.IsAvailable)
-            Try("noise suppressor", () => Android.Media.Audiofx.NoiseSuppressor.Create(sessionId));
+        Try("AGC", Android.Media.Audiofx.AutomaticGainControl.IsAvailable,
+            () => Android.Media.Audiofx.AutomaticGainControl.Create(sessionId));
+        Try("noise suppressor", Android.Media.Audiofx.NoiseSuppressor.IsAvailable,
+            () => Android.Media.Audiofx.NoiseSuppressor.Create(sessionId));
         // Echo cancellation matters once the device can talk back: without it the
         // assistant's own voice reaches the microphone and it answers itself.
-        if (Android.Media.Audiofx.AcousticEchoCanceler.IsAvailable)
-            Try("echo canceller", () => Android.Media.Audiofx.AcousticEchoCanceler.Create(sessionId));
+        Try("echo canceller", Android.Media.Audiofx.AcousticEchoCanceler.IsAvailable,
+            () => Android.Media.Audiofx.AcousticEchoCanceler.Create(sessionId));
 
         Android.Util.Log.Info("CircleAI.Kws",
-            $"capture: VoiceRecognition + {_effects.Count} effect(s)");
+            $"capture: VoiceRecognition, on=[{string.Join(", ", on)}]"
+            + (off.Count == 0 ? "" : $" missing=[{string.Join(", ", off)}]"));
+
+        // SAID OUT LOUD, because it is the difference between a phone you can
+        // call from the doorway and one you have to hold. Speech falls off with
+        // the square of distance; without gain compensation a voice at four
+        // metres arrives at a sixteenth of its power at one.
+        if (!on.Contains("AGC"))
+            Android.Util.Log.Warn("CircleAI.Kws",
+                "no automatic gain control on this phone — expect the wake word "
+                + "to need close range, and read low peak= values as distance, not silence");
     }
 
     public ValueTask DisposeAsync()

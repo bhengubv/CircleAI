@@ -98,19 +98,39 @@ public interface IWakeConfirmer
 public sealed class UtteranceOnsetConfirmer : IWakeConfirmer
 {
     /// <summary>
-    /// How long after someone starts speaking the phrase may still finish.
+    /// How long someone may already have been talking BEFORE the phrase begins.
     /// </summary>
     /// <remarks>
-    /// Read off the trade curve rather than chosen. Sweeping this value over the
-    /// 36-clip corpus, with recall on the left and false accepts on the right:
+    /// IT NOW DESCRIBES THE ALGORITHM, NOT THE PHRASE. It used to be measured
+    /// from the phrase's END, so the phrase's own duration was spent out of this
+    /// budget and the note here said, correctly:
     /// <code>
     ///   400 ms   1/6   0/30      600 ms   6/6   3/30      900 ms   6/6  10/30
     ///   500 ms   2/6   0/30      750 ms   6/6   4/30     1200 ms   6/6  12/30
+    ///
+    ///   "600 is the knee ... The number describes the PHRASE, not the
+    ///    algorithm - raise it for a longer wake phrase and re-run the sweep."
     /// </code>
-    /// 600 is the knee: full recall, and three quarters of the false accepts
-    /// gone. Below it recall collapses; above it the filter stops filtering.
-    /// The number describes the PHRASE, not the algorithm — raise it for a longer
-    /// wake phrase and re-run the sweep.
+    /// Nobody raised it, and on 2026-09-06 a P30 switched from "Hey B" to
+    /// "Hey Circle AI" and vetoed a clean 8-of-8 match at p=0,566 for "had been
+    /// speaking 1320 ms" when the 1320 ms was the phrase. The anchor moved to
+    /// KeywordStart instead, which removes the phrase from the measurement
+    /// entirely - see ConfirmAsync.
+    /// <para>
+    /// THE SWEEP ABOVE IS SUPERSEDED AND 600 IS KEPT ON PURPOSE, which is worth
+    /// saying plainly rather than quietly re-tuning. Under the new anchor the
+    /// rule is strictly MORE permissive, so recall cannot have got worse - the
+    /// six true positives passed at 600 when the phrase was being charged against
+    /// them, and they pass more easily now. The false-accept side genuinely needs
+    /// a fresh sweep against real audio, and the corpus that produced these
+    /// numbers is not in this repository. Until it is re-run, this is a measured
+    /// number being used slightly outside what it measured, and that is a debt.
+    /// </para>
+    /// <para>
+    /// It cannot go much below about 400 whatever the sweep says: the model
+    /// reports its timestamps late by roughly 200 ms, so the first fifth of a
+    /// second of the phrase is charged as lead-in on every true wake.
+    /// </para>
     /// </remarks>
     public double MaxLeadInMs { get; init; } = 600;
 
@@ -165,7 +185,32 @@ public sealed class UtteranceOnsetConfirmer : IWakeConfirmer
             else if (++quiet >= gap) break;
         }
 
-        var leadIn = (endBucket - onset + 1) * BucketMs;
+        // MEASURED TO THE START OF THE PHRASE, NOT ITS END.
+        //
+        // This used to be (endBucket - onset), which counts the phrase ITSELF as
+        // speech that came before the phrase. On a short wake word that is a
+        // constant overcharge you can absorb by raising the budget - which is
+        // exactly what the sweep below did, and why MaxLeadInMs came out at 600
+        // for a phrase lasting about 450.
+        //
+        // It stops being absorbable the moment the phrase gets longer. Measured
+        // on a P30 on 2026-09-06, "Hey Circle AI" spoken into a quiet room with
+        // nothing before it:
+        //
+        //     wake[1]: heard "Hey Circle AI" p=0,566 — queued
+        //     wake: VETOED — had been speaking 1320 ms before the phrase ended
+        //
+        // There was no speech before the phrase. The 1320 ms WAS the phrase. Stage
+        // one had matched all eight tokens at nearly triple the gate and stage two
+        // threw it away for the crime of taking a second to say.
+        //
+        // KeywordStart was already on WakeCandidate and already carried this;
+        // nothing read it. Anchoring here makes the rule mean what the class
+        // always claimed - how long they had been talking BEFORE they said it -
+        // and makes it independent of how long the phrase is, so a longer wake
+        // phrase no longer needs its own number.
+        var startBucket = Math.Clamp(candidate.KeywordStart / per, 0, endBucket);
+        var leadIn = Math.Max(0, startBucket - onset) * BucketMs;
         if (leadIn <= MaxLeadInMs)
         {
             LastReason = null;

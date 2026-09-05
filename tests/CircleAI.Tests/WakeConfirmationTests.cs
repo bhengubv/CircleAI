@@ -32,9 +32,24 @@ public class WakeConfirmationTests
         return a;
     }
 
-    private static WakeCandidate Candidate(float[] window, double keywordEndMs, string phrase = "Circle")
+    /// <summary>A candidate with an HONEST KeywordStart.</summary>
+    /// <remarks>
+    /// EVERY TEST HERE USED TO PASS 0, and that is why none of them could see the
+    /// bug. KeywordStart says where the phrase begins inside the window; pinning
+    /// it to the window's own edge makes "speech before the phrase" and "speech
+    /// before the end of the phrase" the same measurement, so a confirmer
+    /// anchored on the wrong one looked correct.
+    /// <para>
+    /// Defaults to 450 ms of phrase - roughly "Circle", which is what these
+    /// fixtures were written around - so every existing test keeps its intent.
+    /// </para>
+    /// </remarks>
+    private static WakeCandidate Candidate(
+        float[] window, double keywordEndMs, string phrase = "Circle", double phraseMs = 450)
         => new(new KwsDetection(phrase, (int)(keywordEndMs / 40), 0.7, (int)(keywordEndMs / 40) - 4),
-               window, 0, (int)(keywordEndMs * 16));
+               window,
+               (int)(Math.Max(0, keywordEndMs - phraseMs) * 16),
+               (int)(keywordEndMs * 16));
 
     [Fact]
     public async Task AWakeSpokenOnItsOwnIsConfirmed()
@@ -47,6 +62,50 @@ public class WakeConfirmationTests
         var ok = await new UtteranceOnsetConfirmer()
             .ConfirmAsync(Candidate(a, keywordEndMs: 700));
         Assert.True(ok);
+    }
+
+    [Fact]
+    public async Task ALongWakePhraseSpokenOnItsOwnIsConfirmed()
+    {
+        // THE BUG, AS A TEST. Same shape as the first case — quiet room, nothing
+        // said before — but the phrase takes 1300 ms instead of 450, because it is
+        // "Hey Circle AI" rather than "Hey B".
+        //
+        // Measured on a P30 on 2026-09-06: stage one matched all eight tokens at
+        // p=0,566, nearly triple its gate, and stage two threw it away with
+        // "had been speaking 1320 ms before the phrase ended (max 600)". Nobody
+        // had been speaking. The 1320 ms was the phrase.
+        //
+        // A confirmer that vetoes a phrase for being long is a confirmer whose
+        // budget has to be re-tuned every time somebody renames their assistant —
+        // and the app now offers thirty-two languages' worth of wake phrases, most
+        // of them greetings, all of them longer than "Hey B".
+        var a = Audio(quietMs: 300, speechMs: 1300);
+        var c = new UtteranceOnsetConfirmer();
+
+        var ok = await c.ConfirmAsync(
+            Candidate(a, keywordEndMs: 1600, phrase: "Hey Circle AI", phraseMs: 1300));
+
+        Assert.True(ok, c.LastReason ?? "vetoed with no reason given");
+    }
+
+    [Fact]
+    public async Task PhraseLengthDoesNotChangeTheVerdict()
+    {
+        // THE PROPERTY, NOT THE INSTANCE. The rule is about what came BEFORE the
+        // phrase, so two phrases of very different lengths, each spoken into the
+        // same quiet room with the same run-up, must be judged the same. This is
+        // what stops the budget from silently becoming a phrase-length limit again.
+        var c = new UtteranceOnsetConfirmer();
+
+        foreach (var phraseMs in new[] { 300.0, 700.0, 1300.0, 2000.0 })
+        {
+            var a = Audio(quietMs: 300, speechMs: phraseMs);
+            var ok = await c.ConfirmAsync(
+                Candidate(a, keywordEndMs: 300 + phraseMs, phraseMs: phraseMs));
+
+            Assert.True(ok, $"a {phraseMs} ms phrase on its own was vetoed: {c.LastReason}");
+        }
     }
 
     [Fact]
