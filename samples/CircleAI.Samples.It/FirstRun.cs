@@ -119,6 +119,21 @@ public readonly record struct SetupProgress(
     }
 }
 
+/// <summary>One thing this build wants on a device.</summary>
+/// <param name="Title">What it gives the person — "the voice", not "MMS TTS".</param>
+/// <param name="Modality">Which ability it serves.</param>
+/// <param name="Named">
+/// A specific catalogue entry, when the choice is not the selector's to make.
+/// </param>
+/// <param name="Speaks">
+/// A language root the model must speak, when the entry is chosen by ability
+/// rather than by name. Null lets the selector pick on quality and fit alone,
+/// which is right for the ears and the brain and wrong for a voice: the point of
+/// asking for a voice in somebody's own language is the language.
+/// </param>
+public readonly record struct Want(
+    string Title, ModelModality Modality, string? Named, string? Speaks = null);
+
 /// <summary>Getting a fresh install to a working assistant, in one tap.</summary>
 public static class FirstRun
 {
@@ -146,7 +161,7 @@ public static class FirstRun
     /// </param>
     public static IReadOnlyList<SetupStep> Plan(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
-        bool speech, Func<string, bool>? declined = null)
+        bool speech, Func<string, bool>? declined = null, string? language = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
@@ -166,10 +181,10 @@ public static class FirstRun
         // 95 MB once the quantised SA voice is published — next to a 22 GB brain,
         // the English voice is rounding error and it is the difference between an
         // assistant you can act on and one you cannot.
-        var wanted = Wanted(speech);
+        var wanted = Wanted(speech, language);
 
         var steps = new List<SetupStep>();
-        foreach (var (title, modality, named) in wanted)
+        foreach (var (title, modality, named, speaks) in wanted)
         {
             ModelEntry? pick;
             if (named is not null)
@@ -187,9 +202,16 @@ public static class FirstRun
             }
             else
             {
-                // Already there is already done. Note this asks the loader, not the
-                // registry: what matters is bytes on disk, not what we know about.
-                if (registry.AllModels.Any(m => m.Modality == modality && loader.ModelPresent(m.Name)))
+                // ALREADY THERE IS ALREADY DONE - IN THE LANGUAGE THAT WAS ASKED
+                // FOR. Asking only "is there any model of this modality on disk"
+                // is right for the ears and the brain, where one is enough, and
+                // wrong for a voice requested by language: a phone that already
+                // had an English voice would count that as its Japanese one and
+                // fetch nothing. Note this asks the loader, not the registry:
+                // what matters is bytes on disk, not what we know about.
+                if (registry.AllModels.Any(m => m.Modality == modality
+                                             && (speaks is null || SpeaksIt(m, speaks))
+                                             && loader.ModelPresent(m.Name)))
                     continue;
 
                 // The same choice the abilities screen makes, deliberately: best that
@@ -198,6 +220,7 @@ public static class FirstRun
                 // reports another.
                 pick = registry.AllModels
                     .Where(m => m.Modality == modality && Fits(m, probe))
+                    .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
                     .OrderByDescending(m => m.QualityRank)
                     .ThenBy(m => m.MinRamGb)
@@ -224,27 +247,92 @@ public static class FirstRun
     /// does not is the same failure as the language count and the model choice
     /// before it.
     /// </remarks>
-    private static List<(string Title, ModelModality Modality, string? Named)> Wanted(bool speech)
+    private static List<Want> Wanted(bool speech, string? language = null)
     {
-        var wanted = new List<(string Title, ModelModality Modality, string? Named)>();
+        var wanted = new List<Want>();
         if (speech)
         {
-            wanted.Add(("the English voice", ModelModality.Tts,
-                        VoiceNames.English));
+            wanted.Add(new("the English voice", ModelModality.Tts, VoiceNames.English));
             // "the local voice" said nothing: local to where, and in what? These
             // titles exist to say what the download GIVES somebody - "the voice",
             // not "MMS TTS" - and this one is the reason to want the app at all.
             // Vits-11ZA is multi-speaker across eleven South African languages;
             // naming that is both more honest and a better argument than "local".
-            wanted.Add(("the South African voices", ModelModality.Tts,
-                        VoiceNames.Preferred));
-            wanted.Add(("the ears",          ModelModality.Asr,      null));
-            wanted.Add(("the wake word",     ModelModality.WakeWord, null));
+            wanted.Add(new("the South African voices", ModelModality.Tts, VoiceNames.SouthAfrican));
+
+            // AND A VOICE FOR THE LANGUAGE THIS PHONE IS ACTUALLY SET TO.
+            //
+            // THE TWO ABOVE ARE FIXED, AND THAT WAS THE BIAS. Their reasons are
+            // real and technical - Vits-11ZA is grapheme-driven and right for the
+            // South African languages, structurally wrong for English, which is
+            // why English is fetched separately - but between them they describe
+            // one market. Every other phone on earth downloaded those two, got a
+            // voice in neither of its own languages, and was then shown a loading
+            // screen presenting the result as what it could do.
+            //
+            // Seen on a P30 running on Japan time with Japanese on the translate
+            // screen: "the English voice / the South African voices", and no
+            // Japanese anywhere.
+            //
+            // ADDED, NOT SUBSTITUTED. English stays because it is the language the
+            // rest of the app falls back to, and the South African set stays
+            // because it is what this app is for; a phone in Lagos or Osaka now
+            // also gets its own. Skipped when the phone's language is already one
+            // of the two, so the common case fetches exactly what it did before.
+            var mine = Root(language);
+            if (mine is not null && !AlreadySpoken(mine))
+                wanted.Add(new(VoiceTitle(mine), ModelModality.Tts, null, Speaks: mine));
+
+            wanted.Add(new("the ears",      ModelModality.Asr,      null));
+            wanted.Add(new("the wake word", ModelModality.WakeWord, null));
         }
-        wanted.Add(("the brain", ModelModality.Chat, null));
+        wanted.Add(new("the brain", ModelModality.Chat, null));
 
         return wanted;
     }
+
+    /// <summary>Whether a catalogue entry claims to speak a language.</summary>
+    /// <remarks>
+    /// COMPARED ON THE LANGUAGE, NOT THE TAG. Entries carry comma-separated tags
+    /// and some are regional - "es-ES", "pt-BR" - so a phone set to "es" must
+    /// still find the Spanish voice. The same rule the wake phrase table needed,
+    /// for the same reason.
+    /// </remarks>
+    private static bool SpeaksIt(ModelEntry entry, string root) =>
+        (entry.Language ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => Root(t))
+            .Any(t => string.Equals(t, root, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The language part of a tag, lowercased; null when there is none.</summary>
+    private static string? Root(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+        var root = tag.Split('-', '_')[0].Trim().ToLowerInvariant();
+        return root.Length == 0 ? null : root;
+    }
+
+    /// <summary>Whether the two fixed voices already cover a language.</summary>
+    /// <remarks>
+    /// The South African bundle's own catalogue entry is the authority on what it
+    /// speaks, but Wanted runs without a registry - it is the list, not a lookup -
+    /// so the tags are stated here. They are the eleven official languages of
+    /// South Africa, which is a fact about a country rather than about a file, and
+    /// it does not drift the way a model's contents can.
+    /// </remarks>
+    private static bool AlreadySpoken(string root) =>
+        root is "en" or "af" or "zu" or "xh" or "nso" or "tn" or "st" or "ts" or "ss" or "ve" or "nr";
+
+    /// <summary>"the Japanese voice", from the app's own language table.</summary>
+    /// <remarks>
+    /// NAMED, NOT "your language". The row sits beside "the English voice" and
+    /// "the South African voices" and would read as an afterthought without its
+    /// own name - which is precisely the impression being corrected. Falls back to
+    /// the tag when the table has no entry, because a bare code is still more use
+    /// than a pronoun.
+    /// </remarks>
+    private static string VoiceTitle(string root) =>
+        $"the {SampleLanguages.Find(root)?.Name ?? root} voice";
 
     /// <summary>
     /// What this phone can do, and what it is still missing.
@@ -264,7 +352,7 @@ public static class FirstRun
     /// </remarks>
     public static Capabilities Census(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
-        bool speech, Func<string, bool>? declined = null)
+        bool speech, Func<string, bool>? declined = null, string? language = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
@@ -273,7 +361,7 @@ public static class FirstRun
             .ToDictionary(s => s.Title, s => s.Model, StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<CapabilityRow>();
-        foreach (var (title, modality, named) in Wanted(speech))
+        foreach (var (title, modality, named, _) in Wanted(speech, language))
         {
             if (missing.TryGetValue(title, out var wanted))
             {
@@ -317,7 +405,7 @@ public static class FirstRun
             var present = registry.AllModels
                 .Where(m => m.Modality == ModelModality.Tts && loader.ModelPresent(m.Name));
 
-            if (OtherVoices(present, Wanted(speech)) is { } surplus) rows.Add(surplus);
+            if (OtherVoices(present, Wanted(speech, language)) is { } surplus) rows.Add(surplus);
         }
 
         return new Capabilities(rows, rows.Count(r => r.Present), rows.Count);
@@ -344,8 +432,7 @@ public static class FirstRun
     /// <param name="wanted">The plan's own list, whose named voices already have rows.</param>
     /// <returns>The row, or null when the plan already accounts for everything.</returns>
     public static CapabilityRow? OtherVoices(
-        IEnumerable<ModelEntry> presentVoices,
-        IEnumerable<(string Title, ModelModality Modality, string? Named)> wanted)
+        IEnumerable<ModelEntry> presentVoices, IEnumerable<Want> wanted)
     {
         ArgumentNullException.ThrowIfNull(presentVoices);
         ArgumentNullException.ThrowIfNull(wanted);
@@ -380,8 +467,8 @@ public static class FirstRun
 
     /// <inheritdoc cref="Wanted(bool)"/>
     /// <remarks>Exposed so a test can pass the real plan rather than a copy of it.</remarks>
-    public static IReadOnlyList<(string Title, ModelModality Modality, string? Named)>
-        WantedFor(bool speech) => Wanted(speech);
+    public static IReadOnlyList<Want> WantedFor(bool speech, string? language = null)
+        => Wanted(speech, language);
 
     /// <summary>What being present actually gets somebody.</summary>
     /// <remarks>

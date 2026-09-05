@@ -49,8 +49,7 @@ public class CensusCountsTheDiskTests
         };
 
     /// <summary>The real plan, so these cannot drift from what Census rows.</summary>
-    private static IReadOnlyList<(string Title, ModelModality Modality, string? Named)> Plan =>
-        FirstRun.WantedFor(speech: true);
+    private static IReadOnlyList<Want> Plan => FirstRun.WantedFor(speech: true);
 
     private static string NamedVoice(int which) =>
         Plan.Where(w => w.Modality == ModelModality.Tts && w.Named is not null)

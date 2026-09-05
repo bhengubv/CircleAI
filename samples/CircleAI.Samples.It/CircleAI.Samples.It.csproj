@@ -27,6 +27,14 @@
          head has its own csproj that links this project's *.cs non-recursively,
          so Voice/ItSpeaker.cs and this reference never reach the APK. -->
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!--
+      For SampleLanguages, so first-run can NAME the language it is fetching a
+      voice for instead of saying "your language". Contracts has zero
+      ProjectReferences of its own - a browser loads it - so depending ON it
+      cannot create a cycle, and it is where the app's language table already
+      lives. Restating that table here would be the fifth copy of one fact.
+    -->
+    <ProjectReference Include="..\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
     <!-- Capability sweep: every "hands make things" + "systems" library the
          CapabilitySweep exercises end-to-end. All pure-managed / offline. -->
     <ProjectReference Include="..\..\src\CircleAI.Charts\CircleAI.Charts.csproj" />

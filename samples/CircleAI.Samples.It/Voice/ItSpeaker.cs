@@ -236,7 +236,7 @@ public sealed class ItSpeaker : IDisposable
     // set here.
 
     /// <summary>The multi-speaker, multi-lingual South African voice.</summary>
-    internal const string PreferredVoice = CircleAI.Samples.It.VoiceNames.Preferred;
+    internal const string PreferredVoice = CircleAI.Samples.It.VoiceNames.SouthAfrican;
 
     /// <summary>The same voice, quantised to int8.</summary>
     /// <remarks>

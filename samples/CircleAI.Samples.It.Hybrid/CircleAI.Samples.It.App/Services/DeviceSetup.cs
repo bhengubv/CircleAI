@@ -32,6 +32,27 @@ public sealed class DeviceSetup : ISetup
 
     private readonly object _gate = new();
 
+    private readonly ISpokenLanguage? _spoken;
+
+    /// <param name="spoken">
+    /// The language this phone is set to, so first run can fetch a voice for it.
+    /// </param>
+    /// <remarks>
+    /// OPTIONAL, so the console head and any test can still new this up. Null
+    /// means "no opinion", and the plan falls back to the two fixed voices -
+    /// exactly the behaviour that existed before this parameter.
+    /// </remarks>
+    public DeviceSetup(ISpokenLanguage? spoken = null) => _spoken = spoken;
+
+    /// <summary>The phone's language, for fetching a voice it can answer in.</summary>
+    /// <remarks>
+    /// WITHOUT THIS THE PLAN WAS THE SAME EVERYWHERE. Two voices were named as
+    /// constants - English and the South African set - so a handset in Osaka
+    /// downloaded eleven South African languages, no Japanese, and was then shown
+    /// a loading screen presenting that as what it could do.
+    /// </remarks>
+    private string? Language => _spoken?.Current;
+
     /// <inheritdoc />
     public bool IsRunning
     {
@@ -107,7 +128,7 @@ public sealed class DeviceSetup : ISetup
             // speech: true, because this head compiles the voice stack in. The
             // chat-only APK passes false so setup does not spend somebody's data
             // on 140 MB no line of that binary can open.
-            return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true)
+            return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language)
                 .Select(s => new SetupItem(s.Title, s.Model.TotalBytes))
                 .ToList();
         }, ct);
@@ -122,7 +143,7 @@ public sealed class DeviceSetup : ISetup
             // speech: true for the same reason PlanAsync passes it - this head
             // compiles the voice stack in, and a census that counted a voice a
             // chat-only build cannot open would be describing a different app.
-            var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(), speech: true);
+            var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language);
 
             return new Census(
                 census.Rows
@@ -147,7 +168,7 @@ public sealed class DeviceSetup : ISetup
             {
                 using var registry = new ModelRegistryService();
                 using var loader = new BundleModelLoader(StorageDir, registry);
-                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true);
+                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language);
 
                 var inner = new Progress<SetupProgress>(p =>
                 {
