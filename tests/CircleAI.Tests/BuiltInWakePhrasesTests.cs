@@ -54,8 +54,13 @@ public class BuiltInWakePhrasesTests
         // listener does at the bottom of the stack so the phone answers to
         // something; a screen that falls back is a screen that lies, because the
         // person reading it came to find out what to say.
-        Assert.Empty(BuiltInWakePhrases.For("zu"));
-        Assert.False(BuiltInWakePhrases.Has("zu"));
+        // "zu" USED TO BE THE EXAMPLE HERE and now ships "Sawubona B", which is
+        // the table growing rather than this rule weakening. Picked a language
+        // that genuinely has none: Malagasy is in the app's catalogue and has no
+        // wake phrase, so the screen must still say so instead of offering "Hey
+        // Circle AI" to somebody who asked what to say in Malagasy.
+        Assert.Empty(BuiltInWakePhrases.For("mg"));
+        Assert.False(BuiltInWakePhrases.Has("mg"));
         Assert.Empty(BuiltInWakePhrases.For(null));
         Assert.Empty(BuiltInWakePhrases.For(""));
     }
@@ -83,9 +88,60 @@ public class BuiltInWakePhrasesTests
     {
         // The screen prints the language's name beside the phrase; a tag with no
         // entry in the language table would show as a bare code.
+        //
+        // COMPARED ON THE LANGUAGE, NOT THE TAG. The catalogue carries regional
+        // variants - es-ES and es-MX, no bare "es" - and the lookup strips the
+        // region, so a phrase keyed "es" correctly serves both. This assertion
+        // used to demand the key appear verbatim and only passed because none of
+        // the original five languages had a regional form; it failed the moment
+        // Spanish arrived, on a table entry that was right.
+        var known = SampleLanguages.All.Keys
+            .Select(t => t.Split('-')[0])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         foreach (var tag in BuiltInWakePhrases.Phrases.Keys)
-            Assert.True(SampleLanguages.All.ContainsKey(tag),
+            Assert.True(known.Contains(tag),
                 $"'{tag}' can wake the phone but has no name in SampleLanguages");
+    }
+
+    [Fact]
+    public void Every_phrase_is_long_enough_to_survive_a_room()
+    {
+        // THE RULE THE BOOK ALREADY HAD AND THE TABLE DID NOT FOLLOW.
+        // MinReliableTokens is 4, and "Hey B" is 3 - measured on a P30 on
+        // 2026-09-06 at ONE completed match in six spoken attempts.
+        //
+        // Tokens need the bundle's own tokenizer, which a unit test has no
+        // access to, so this uses words as the honest proxy: every language's
+        // FIRST candidate - the one BestFor reaches for - should be a real
+        // greeting rather than a syllable. The shorter forms below it are
+        // deliberate fallbacks for bundles whose tokenizer cannot represent the
+        // longer phrase, and are not held to this.
+        var tooShort = BuiltInWakePhrases.Phrases
+            .Where(p => p.Value[0].Split(' ', StringSplitOptions.RemoveEmptyEntries).Length < 2)
+            .Select(p => $"{p.Key}: \"{p.Value[0]}\"")
+            .ToList();
+
+        Assert.True(tooShort.Count == 0,
+            "these languages lead with a phrase too short to be heard across a room:\n  "
+            + string.Join("\n  ", tooShort));
+    }
+
+    [Fact]
+    public void The_best_candidate_comes_first()
+    {
+        // BestFor takes the FIRST candidate the tokenizer can represent, so the
+        // order is the decision. Longest first: the native-script forms at the
+        // end are unreachable on an English-subword bundle and exist so the
+        // table reads honestly to whoever maintains it.
+        foreach (var (tag, phrases) in BuiltInWakePhrases.Phrases)
+        {
+            var words = phrases.Select(p => p.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length).ToList();
+            for (var i = 1; i < words.Count; i++)
+                Assert.True(words[i] <= words[i - 1],
+                    $"'{tag}' lists a longer phrase after a shorter one - "
+                    + $"BestFor would settle for \"{phrases[i - 1]}\" and never reach \"{phrases[i]}\"");
+        }
     }
 
     [Fact]

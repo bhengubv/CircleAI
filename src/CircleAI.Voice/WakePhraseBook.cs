@@ -73,19 +73,25 @@ public sealed class WakePhraseBook
     /// Four, measured: three-token "Hey B" was heard 1/10 through air, four-token
     /// "Circle" 12/12, and the two are the same two syllables to say.
     /// <para>
-    /// THAT MEASUREMENT IS NO LONGER EVIDENCE FOR THIS NUMBER, and saying so is
-    /// cheaper than the day somebody spends re-deriving it. The 1/10 was taken
-    /// while two faults were in the way: the gate stood at 0.5 where real speech
-    /// scores 0.24-0.46, and a completed-but-rejected hypothesis was never
-    /// cleared from the beam, so the spotter went deaf after two or three near
-    /// misses. Both are fixed. On a P30 on 2026-09-04, immediately after,
-    /// "Hey B" fired on four of five utterances at p=0.297-0.386.
+    /// RE-MEASURED ON THE FIXED CODE, AND THE ORIGINAL NUMBER HELD. It was worth
+    /// checking: the 1/10 was taken while two faults were in the way - the gate
+    /// stood at 0.5 where real speech scores 0.24-0.39, and a completed but
+    /// rejected hypothesis was never cleared from the beam, so the spotter went
+    /// deaf after two or three near misses. Both are fixed.
     /// </para>
     /// <para>
-    /// Five utterances is not 12/12, so the constant STAYS at four — a rule kept
-    /// for a stale reason is still safer than a rule dropped for no reason. What
-    /// is owed is a re-measurement of both lengths on the fixed code, and until
-    /// that exists this number is a convention rather than a finding.
+    /// On 2026-09-05 this note briefly claimed the phrase then "fired four times
+    /// in five", and that was five utterances nobody counted properly. Counted
+    /// properly on 2026-09-06 - one person, one room, 197 windows of capture -
+    /// six spoken attempts produced four partial sightings, ONE completed phrase
+    /// and no fires. One in six, on a build with the beam and the gate both
+    /// correct.
+    /// </para>
+    /// <para>
+    /// So four tokens is a finding again rather than a convention, and the
+    /// English default leads with "Hey Circle AI" for exactly this reason.
+    /// "Hey B" stays in the table below it as a fallback for bundles whose
+    /// tokenizer cannot represent the longer phrase - not as a recommendation.
     /// </para>
     /// </remarks>
     public const int MinReliableTokens = 4;
@@ -130,12 +136,28 @@ public sealed class WakePhraseBook
             // CAUTION - MinReliableTokens is 4, and a longer phrase is still the
             // safer default, which is why the order below is what it is.
             //
-            // WHAT USED TO BE WRITTEN HERE WAS THAT "neither a synthesised nor a
-            // human 'Hey B' ever fired". That was true when it was written and is
-            // not true now: it was measured against a beam that wedged after two
-            // near misses and a gate set at 0.5, and with both fixed the same
-            // phrase fired four times in five on the same P30. The phrase was
-            // never the problem it was recorded as. See MinReliableTokens.
+            // THE ORIGINAL NOTE HERE WAS RIGHT AND I OVERTURNED IT ON BAD
+            // EVIDENCE. It said "neither a synthesised nor a human 'Hey B' ever
+            // fired", and on 2026-09-05 that was replaced with a claim that the
+            // phrase "fired four times in five on the same P30" once the beam
+            // and the gate were fixed. Five utterances, not counted carefully.
+            //
+            // COUNTED CAREFULLY on 2026-09-06, one person, one room, 197 windows
+            // of capture on the fixed build:
+            //
+            //     6  windows where somebody spoke  (peak > 0,3)
+            //     4  partial token sightings
+            //     1  completed phrase              (p = 0,246)
+            //     0  fired
+            //
+            // ONE COMPLETION IN SIX ATTEMPTS. That is nearer the 1-in-10 the
+            // original note recorded than anything that justified overturning
+            // it, and it is what MinReliableTokens has said all along: three
+            // tokens does not survive a room. Lowering the gate lets that
+            // one-in-six through and does nothing for the five that never
+            // complete - the threshold was never the main fault, the phrase is.
+            //
+            // Left in as a fallback, not as a recommendation.
             //
             // "Hey Circle AI" is first because BestFor takes the LONGEST usable
             // candidate, and it clears both tests here: four or more tokens, and
@@ -147,10 +169,59 @@ public sealed class WakePhraseBook
             // the longer one, so this remains a working fallback on a bundle
             // whose tokenizer cannot represent the longer phrase.
             ["en"] = ["Hey Circle AI", "Hey B"],
-            ["ja"] = ["ビーさん", "ビーさま", "Bee san"],
-            ["ko"] = ["비 님", "Bee nim"],
-            ["zh"] = ["小B", "Xiao B"],
-            ["yue"] = ["小B", "Siu B"],
+
+            // LONGEST FIRST, AND ROMANISED FIRST WITHIN THAT, because BestFor
+            // takes the first candidate the bundle's tokenizer can represent and
+            // that tokenizer is 500 English sub-words - no kana, no han, no
+            // hangul. A script the model cannot see scores Unusable and is
+            // skipped, so a native-script entry is a courtesy to whoever reads
+            // this file rather than something the wake model will ever hear.
+            //
+            // EACH ONE IS A GREETING SOMEBODY WOULD ACTUALLY SAY, not "hey" with
+            // a name bolted on. The point of a wake phrase in your own language
+            // is that it is a thing you would say out loud without feeling
+            // foolish - and the longer, more natural form is also the one with
+            // enough tokens to survive a room. The two goals agree here, which
+            // is unusual and worth taking.
+            ["ja"] = ["Moshi moshi B san", "Bee san", "ビーさん", "ビーさま"],
+            ["ko"] = ["Annyeong B nim", "Bee nim", "비 님"],
+            ["zh"] = ["Ni hao Xiao B", "Xiao B", "小B"],
+            ["yue"] = ["Nei hou Siu B", "Siu B", "小B"],
+
+            // SOUTH AFRICA FIRST, because that is who this is for. Every one of
+            // these is the ordinary greeting in that language followed by the
+            // name - "sawubona" and "molo" and "dumela" are what people actually
+            // open with, and all of them clear four tokens comfortably where a
+            // bare "Hey B" does not.
+            ["zu"]  = ["Sawubona B", "Sawubona Circle"],
+            ["xh"]  = ["Molo B", "Molo Circle"],
+            ["af"]  = ["Haai Circle AI", "Hallo B"],
+            ["st"]  = ["Dumela B", "Dumela Circle"],
+            ["tn"]  = ["Dumela B", "Dumela Circle"],
+            ["nso"] = ["Dumela B", "Dumela Circle"],
+            ["ts"]  = ["Avuxeni B", "Avuxeni Circle"],
+            ["ve"]  = ["Ndaa B", "Ndaa Circle"],
+            ["ss"]  = ["Sawubona B", "Sawubona Circle"],
+            ["nr"]  = ["Lotjhani B", "Lotjhani Circle"],
+
+            ["sw"] = ["Habari B", "Habari Circle"],
+            ["am"] = ["Selam B", "Selam Circle"],
+            ["ha"] = ["Sannu B", "Sannu Circle"],
+            ["yo"] = ["Bawo ni B", "Bawo B"],
+            ["ig"] = ["Ndewo B", "Ndewo Circle"],
+
+            ["fr"] = ["Salut Circle AI", "Bonjour B"],
+            ["es"] = ["Hola Circle AI", "Oye B"],
+            ["pt"] = ["Ola Circle AI", "Ola B"],
+            ["nl"] = ["Hallo Circle AI", "Hallo B"],
+            ["hi"] = ["Namaste B", "Namaste Circle"],
+            ["bn"] = ["Nomoshkar B", "Nomoshkar Circle"],
+            ["ur"] = ["Salam B", "Salam Circle"],
+            ["ar"] = ["Marhaba B", "Salam B"],
+            ["ru"] = ["Privet Circle AI", "Privet B"],
+            ["id"] = ["Halo Circle AI", "Halo B"],
+            ["vi"] = ["Xin chao B", "Xin chao Circle"],
+            ["th"] = ["Sawasdee B", "Sawasdee Circle"],
         };
 
     /// <summary>The wake phrases worth trying for a language, best first.</summary>

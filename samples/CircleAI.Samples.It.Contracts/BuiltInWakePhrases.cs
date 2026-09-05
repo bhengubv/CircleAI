@@ -56,10 +56,59 @@ public static class BuiltInWakePhrases
             // the product's name, somebody may already have chosen it, and the
             // two share no token prefix so neither shadows the other.
             ["en"] = ["Hey Circle AI", "Hey B"],
-            ["ja"] = ["ビーさん", "ビーさま", "Bee san"],
-            ["ko"] = ["비 님", "Bee nim"],
-            ["zh"] = ["小B", "Xiao B"],
-            ["yue"] = ["小B", "Siu B"],
+
+            // LONGEST FIRST, AND ROMANISED FIRST WITHIN THAT, because BestFor
+            // takes the first candidate the bundle's tokenizer can represent and
+            // that tokenizer is 500 English sub-words - no kana, no han, no
+            // hangul. A script the model cannot see scores Unusable and is
+            // skipped, so a native-script entry is a courtesy to whoever reads
+            // this file rather than something the wake model will ever hear.
+            //
+            // EACH ONE IS A GREETING SOMEBODY WOULD ACTUALLY SAY, not "hey" with
+            // a name bolted on. The point of a wake phrase in your own language
+            // is that it is a thing you would say out loud without feeling
+            // foolish - and the longer, more natural form is also the one with
+            // enough tokens to survive a room. The two goals agree here, which
+            // is unusual and worth taking.
+            ["ja"] = ["Moshi moshi B san", "Bee san", "ビーさん", "ビーさま"],
+            ["ko"] = ["Annyeong B nim", "Bee nim", "비 님"],
+            ["zh"] = ["Ni hao Xiao B", "Xiao B", "小B"],
+            ["yue"] = ["Nei hou Siu B", "Siu B", "小B"],
+
+            // SOUTH AFRICA FIRST, because that is who this is for. Every one of
+            // these is the ordinary greeting in that language followed by the
+            // name - "sawubona" and "molo" and "dumela" are what people actually
+            // open with, and all of them clear four tokens comfortably where a
+            // bare "Hey B" does not.
+            ["zu"]  = ["Sawubona B", "Sawubona Circle"],
+            ["xh"]  = ["Molo B", "Molo Circle"],
+            ["af"]  = ["Haai Circle AI", "Hallo B"],
+            ["st"]  = ["Dumela B", "Dumela Circle"],
+            ["tn"]  = ["Dumela B", "Dumela Circle"],
+            ["nso"] = ["Dumela B", "Dumela Circle"],
+            ["ts"]  = ["Avuxeni B", "Avuxeni Circle"],
+            ["ve"]  = ["Ndaa B", "Ndaa Circle"],
+            ["ss"]  = ["Sawubona B", "Sawubona Circle"],
+            ["nr"]  = ["Lotjhani B", "Lotjhani Circle"],
+
+            ["sw"] = ["Habari B", "Habari Circle"],
+            ["am"] = ["Selam B", "Selam Circle"],
+            ["ha"] = ["Sannu B", "Sannu Circle"],
+            ["yo"] = ["Bawo ni B", "Bawo B"],
+            ["ig"] = ["Ndewo B", "Ndewo Circle"],
+
+            ["fr"] = ["Salut Circle AI", "Bonjour B"],
+            ["es"] = ["Hola Circle AI", "Oye B"],
+            ["pt"] = ["Ola Circle AI", "Ola B"],
+            ["nl"] = ["Hallo Circle AI", "Hallo B"],
+            ["hi"] = ["Namaste B", "Namaste Circle"],
+            ["bn"] = ["Nomoshkar B", "Nomoshkar Circle"],
+            ["ur"] = ["Salam B", "Salam Circle"],
+            ["ar"] = ["Marhaba B", "Salam B"],
+            ["ru"] = ["Privet Circle AI", "Privet B"],
+            ["id"] = ["Halo Circle AI", "Halo B"],
+            ["vi"] = ["Xin chao B", "Xin chao Circle"],
+            ["th"] = ["Sawasdee B", "Sawasdee Circle"],
         };
 
     /// <summary>The phrases that ship for a language, or empty when there are none.</summary>
