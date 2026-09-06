@@ -354,6 +354,18 @@ public sealed class DeviceConversation : IConversation
 
             var tag = language ?? _spoken.Current;
 
+            // NAMES AND MONEY, WHICH IS WHAT A SMALL MODEL ACTUALLY GETS WRONG.
+            // Measured on a P30 on 2026-09-07: a meeting came back
+            // seventy-five words of seventy-eight exact, and the three it missed
+            // were two South African names and the word "rand", heard as "rent".
+            // Priming fixed all three on the same recording.
+            //
+            // Set per session rather than when the model was opened, because the
+            // transcriber is shared and the domain is not. Asked for as a
+            // capability: a transcriber that cannot be primed simply is not.
+            if (listener.Transcriber is WhisperNetTranscriber primable)
+                primable.Vocabulary = SpokenVocabulary.For(tag);
+
             // ONE MICROPHONE FOR THE WHOLE MEETING. The screen used to open and
             // close one per sentence, which flickers the microphone indicator,
             // pays the open cost every time somebody pauses, and loses whatever

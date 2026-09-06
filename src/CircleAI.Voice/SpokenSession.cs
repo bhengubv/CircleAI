@@ -160,6 +160,33 @@ public sealed class SpokenSession : IAsyncDisposable
     /// </remarks>
     public double PreRollMs { get; init; } = 1_000;
 
+    /// <summary>How much speech the session will hold for the closing pass.</summary>
+    /// <remarks>
+    /// THE SCREEN OFFERS THIS FOR "A MEETING, AN INTERVIEW, A CLINIC
+    /// APPOINTMENT", and the arithmetic of that is unforgiving: 16 kHz at
+    /// sixteen bits is 32 KB of speech per second, so an hour of people actually
+    /// talking is about 115 MB - held in a list that doubles its buffer as it
+    /// grows, on a phone with 3,7 GB that is already carrying a half-gigabyte
+    /// model. A two-hour meeting would take the app down, and it would do it at
+    /// the end, having transcribed the whole thing.
+    /// <para>
+    /// Forty minutes of SPEECH - not of meeting, since the silences are not kept
+    /// - is about 77 MB and covers the sessions this is for. Past it the
+    /// recording stops growing and the live transcript carries on unaffected;
+    /// what is lost is the closing pass over the earliest part, which is worth
+    /// far less than the crash it replaces.
+    /// </para>
+    /// <para>
+    /// SAID OUT LOUD WHEN IT HAPPENS. A closing pass that silently covered forty
+    /// minutes of a ninety-minute meeting would be the most expensive kind of
+    /// quiet failure: it looks like a complete re-read and is not.
+    /// </para>
+    /// </remarks>
+    public double MaxRecordedSeconds { get; init; } = 40 * 60;
+
+    /// <summary>True once the recording stopped growing at its ceiling.</summary>
+    public bool RecordingFull { get; private set; }
+
     /// <summary>Everything heard so far.</summary>
     public string Text => _all.ToString();
 
@@ -281,6 +308,21 @@ public sealed class SpokenSession : IAsyncDisposable
         // A LITTLE OF THE SILENCE, NOT ALL OF IT. Whisper reads the end of a
         // sentence better with a moment of quiet after it - the last word is not
         // left hanging at the edge of the window - but it only needs a moment.
+        // A LITTLE OF THE SILENCE THAT ENDED IT, when there was one.
+        //
+        // NOT PADDED WHEN THERE WAS NOT. Appending manufactured silence to a
+        // piece closed by stopping was tried and changed nothing: on a meeting
+        // ending "the board meets on the second of April", the live piece came
+        // back as "...on the second" with or without a quarter-second of digital
+        // quiet after it. So the truncation is not the last word sitting against
+        // the edge of the window, which was the guess. It is the decoder giving
+        // up at a low-confidence point with the temperature fallback disabled -
+        // and the closing pass recovers it because the whole meeting gives the
+        // model the context to be confident, not because it has more room.
+        //
+        // Which is worth knowing, because it is the second measured case of the
+        // closing pass recovering something the live pass dropped, and the
+        // clearest evidence for keeping the audio at all.
         var tail = (int)(TailMs / 1000 * SampleRate) * BytesPerSample;
         if (_quiet.Count > 0)
             _piece.AddRange(_quiet.GetRange(0, Math.Min(tail, _quiet.Count)));
@@ -299,10 +341,22 @@ public sealed class SpokenSession : IAsyncDisposable
         // whisper is given a third of a second of nothing to name.
         if (!wasSpeaking || audio.Length == 0 || spoke < MinSpeechMs) return;
 
-        // THE RECORDING GETS IT EITHER WAY. What the closing pass reads is the
-        // session as it was spoken, pauses included, so it has the same evidence
-        // a person listening back would.
-        _session.AddRange(audio);
+        // THE RECORDING GETS IT, UNTIL IT IS FULL. What the closing pass reads is
+        // the session as it was spoken, so it has the same evidence a person
+        // listening back would - but not at the price of the app dying at the end
+        // of a long meeting, having transcribed the whole thing.
+        var ceiling = (int)(MaxRecordedSeconds * SampleRate) * BytesPerSample;
+        if (_session.Count + audio.Length <= ceiling)
+        {
+            _session.AddRange(audio);
+        }
+        else if (!RecordingFull)
+        {
+            RecordingFull = true;
+            VoiceTrace.Write(
+                $"session: recording is full at {RecordedSeconds / 60:0} minutes of speech — "
+                + "the transcript carries on, the closing pass will cover what was kept");
+        }
 
         SpeechGain.Normalise(audio);
 
@@ -344,6 +398,19 @@ public sealed class SpokenSession : IAsyncDisposable
 
         var said = await Read(whole, ct).ConfigureAwait(false);
         if (said.Length == 0) return Text;
+
+        // A PARTIAL RE-READ MUST NOT REPLACE A COMPLETE TRANSCRIPT. When the
+        // recording hit its ceiling the closing pass covers only what was kept,
+        // so replacing the live text with it would silently delete the beginning
+        // of a long meeting - a far worse outcome than the slightly rougher
+        // wording the live pass produces.
+        if (RecordingFull)
+        {
+            VoiceTrace.Write(
+                "session: the recording was full, so the closing pass is not the whole "
+                + "meeting — keeping the transcript written as it happened");
+            return Text;
+        }
 
         _all.Clear();
         _all.Append(said);

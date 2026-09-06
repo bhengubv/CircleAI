@@ -43,7 +43,9 @@ if (!File.Exists(modelPath))
 }
 
 // The clips, in the order they are spoken.
+// Anything that is not a file is taken as vocabulary to prime the decoder with.
 var clips = args.Where(File.Exists).ToList();
+var vocabulary = string.Join(" ", args.Where(a => !File.Exists(a)));
 if (clips.Count == 0)
 {
     Console.Error.WriteLine("give me one or more 16 kHz mono WAV files");
@@ -69,7 +71,11 @@ Console.WriteLine();
 Console.WriteLine($"meeting : {clips.Count} speakers' turns, {total:F1}s including {gapSeconds:F0}s gaps");
 Console.WriteLine();
 
-await using var transcriber = new WhisperNetTranscriber(modelPath, "en");
+await using var transcriber = new WhisperNetTranscriber(modelPath, "en")
+{
+    Vocabulary = string.IsNullOrWhiteSpace(vocabulary) ? null : vocabulary,
+};
+if (!string.IsNullOrWhiteSpace(vocabulary)) Console.WriteLine($"primed  : {vocabulary}");
 await using var session = new SpokenSession(new NullAudioCapture(), transcriber, "en")
 {
     SilenceToEndMs = 5000,          // the meeting setting the Transcribe screen uses

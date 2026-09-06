@@ -304,6 +304,59 @@ public class SpokenSessionTests
     }
 
     [Fact]
+    public async Task A_long_meeting_stops_recording_rather_than_running_out_of_memory()
+    {
+        // THE ARITHMETIC THE SCREEN'S OWN COPY SIGNS UP FOR. 16 kHz at sixteen
+        // bits is 32 KB of speech per second, so an hour of people actually
+        // talking is about 115 MB - in a list that doubles as it grows, on a
+        // phone already carrying a half-gigabyte model. Left unbounded, a long
+        // meeting takes the app down at the END, having transcribed all of it.
+        var fake = new FakeTranscriber(Enumerable.Repeat("piece", 20).ToArray());
+        await using var s = new SpokenSession(new NullAudioCapture(), fake, "en")
+        {
+            SilenceToEndMs = 1000,
+            MaxRecordedSeconds = 2,          // a ceiling a test can reach
+        };
+
+        for (var i = 0; i < 6; i++)
+            await Feed(s, Speech(900), Quiet(1200));
+
+        Assert.True(s.RecordingFull, "the recording grew past its ceiling");
+        Assert.True(s.RecordedSeconds <= 2.5,
+            $"the recording reached {s.RecordedSeconds:0.0}s against a 2s ceiling");
+
+        // AND THE TRANSCRIPT IS UNAFFECTED. What is lost is the closing pass over
+        // the earliest part, not a word of what was said.
+        Assert.Equal(6, fake.Calls);
+        Assert.Contains("piece", s.Text);
+    }
+
+    [Fact]
+    public async Task A_partial_re_read_does_not_replace_a_complete_transcript()
+    {
+        // THE TRAP IN CAPPING IT. Once the recording is full the closing pass
+        // covers only what was kept, so replacing the live text with it would
+        // silently delete the beginning of a long meeting - which is a far worse
+        // outcome than the slightly rougher wording the live pass produces.
+        var fake = new FakeTranscriber("one", "two", "three", "ONLY THE TAIL");
+        await using var s = new SpokenSession(new NullAudioCapture(), fake, "en")
+        {
+            SilenceToEndMs = 1000,
+            MaxRecordedSeconds = 1,
+        };
+
+        for (var i = 0; i < 3; i++)
+            await Feed(s, Speech(900), Quiet(1200));
+
+        var live = s.Text;
+        var after = await s.ReadAgainAsync();
+
+        Assert.True(s.RecordingFull);
+        Assert.Equal(live, after);
+        Assert.DoesNotContain("ONLY THE TAIL", after);
+    }
+
+    [Fact]
     public async Task A_disposed_session_refuses_rather_than_pretends()
     {
         var s = new SpokenSession(new NullAudioCapture(), new FakeTranscriber());

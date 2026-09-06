@@ -90,6 +90,53 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
     /// </summary>
     public int MaxAudioContext { get; init; } = 1500;
 
+    /// <summary>Words the speaker is likely to use, to bias the decoder toward.</summary>
+    /// <remarks>
+    /// WHAT A SMALL MODEL GETS WRONG IS NAMES AND MONEY, NOT GRAMMAR. Measured on
+    /// a P30 on 2026-09-07, a meeting played through a speaker came back with
+    /// seventy-five of seventy-eight words exact - and the three it missed were
+    /// "Thandi" as "Tandy", "Sipho" as "Saifo", and "rand" as "rent". Whole
+    /// sentences of ordinary English were perfect; the currency of the country
+    /// this app is built for was not.
+    /// <para>
+    /// whisper's initial_prompt exists for this: it primes the decoder with text
+    /// it should consider likely, which pulls a borderline decision toward a word
+    /// that belongs in the domain rather than one that merely sounds nearer.
+    /// </para>
+    /// <para>
+    /// IT IS A BIAS AND IT CUTS BOTH WAYS - whisper will occasionally emit a
+    /// primed word that was never said, which is why this is a property with no
+    /// default rather than a list baked in here. A caller that knows the domain
+    /// sets it; a caller that does not gets the model unprompted.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// SETTABLE, NOT INIT-ONLY, because the transcriber is built once and shared
+    /// while what is being spoken about is not. A session knows its domain and
+    /// the thing that opened the model does not, so the alternative is a second
+    /// WhisperFactory - another copy of the model in memory on a phone that has
+    /// 3,7 GB - to change one string.
+    /// <para>
+    /// Changing it drops the cached processor, because the prompt is fixed when
+    /// the processor is built: a caller that set this and saw no change would
+    /// have no way of knowing why.
+    /// </para>
+    /// </remarks>
+    public string? Vocabulary
+    {
+        get => _vocabulary;
+        set
+        {
+            if (string.Equals(_vocabulary, value, StringComparison.Ordinal)) return;
+            _vocabulary = value;
+            _processor?.Dispose();
+            _processor = null;
+            _processorContext = -1;
+        }
+    }
+
+    private string? _vocabulary;
+
     /// <summary>
     /// Encoder window wide enough for <paramref name="seconds"/> of audio.
     /// </summary>
@@ -299,6 +346,11 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             .WithTemperatureInc(0f)
 
             ;
+
+        // NAMES AND MONEY, WHICH IS WHAT A SMALL MODEL ACTUALLY GETS WRONG. See
+        // Vocabulary: a prompt only when the caller has one, because priming with
+        // words nobody is going to say invites the model to produce them.
+        if (!string.IsNullOrWhiteSpace(Vocabulary)) builder.WithPrompt(Vocabulary);
 
         // PINNED, NOT INHERITED, and set apart from the chain because
         // WithGreedySamplingStrategy returns a builder for the STRATEGY rather

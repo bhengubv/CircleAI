@@ -98,6 +98,8 @@
              Link="Contracts\SampleLanguages.cs" />
     <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\ISettings.cs"
              Link="Contracts\ISettings.cs" />
+    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\SpokenVocabulary.cs"
+             Link="Contracts\SpokenVocabulary.cs" />
     <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\IWakePhrases.cs"
              Link="Contracts\IWakePhrases.cs" />
     <!--
