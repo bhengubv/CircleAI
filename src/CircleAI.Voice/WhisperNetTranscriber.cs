@@ -200,11 +200,21 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             // whether the window was sized to the audio, whether the processor
             // was reused, how many threads did the work, and how much of the
             // time was setup rather than decoding.
+            //
+            // AND THE RATIO, because milliseconds alone do not say whether it is
+            // acceptable. Speech is answered in real time or it is not: x1 means
+            // the phone finished thinking as you stopped talking, and x9 — which
+            // is what 2,8 s of audio decoding for 24,7 s actually was — means
+            // nobody waits for the end of it. One number, and it is the number
+            // that decides whether this can be demonstrated.
+            var decodeMs = total.ElapsedMilliseconds - buildMs;
+            var realtime = seconds > 0 ? decodeMs / (seconds * 1000) : 0;
+
             VoiceTrace.Write(
                 $"stt: {seconds:F1} s audio | window={window}/{MaxAudioContext} " +
                 $"({window * 100 / MaxAudioContext}%) | threads={Threads} | " +
                 $"{(built ? $"built={buildMs} ms" : "reused")} | " +
-                $"decode={total.ElapsedMilliseconds - buildMs} ms | " +
+                $"decode={decodeMs} ms (x{realtime:0.0} realtime) | " +
                 $"{result.Length} chars | {segCount} seg");
 
             var confidence = segCount > 0 ? (float)(probSum / segCount) : 0f;
@@ -242,7 +252,7 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         _processor = null;
 
         _processorLanguage = language;
-        _processor = _factory.CreateBuilder()
+        var builder = _factory.CreateBuilder()
             .WithLanguage(language)
             .WithThreads(Threads)
             .WithAudioContextSize(window)
@@ -252,7 +262,63 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             // unrelated questions — it costs decode time and lets an earlier
             // question colour the next one's wording.
             .WithNoContext()
-            .Build();
+
+            // ONE PASS, NOT SIX.
+            //
+            // whisper.cpp does not decode once. When a pass fails either of its
+            // confidence checks — average log-probability too low, or the output
+            // too repetitive — it throws the result away and decodes the whole
+            // thing again at a higher temperature, stepping by temperature_inc
+            // until it passes or runs out of temperatures. Six passes is the
+            // default ceiling and NOTHING IN THE LOG SAYS IT HAPPENED.
+            //
+            // Measured on a P30 Lite, on the warm processor:
+            //
+            //     stt: 2,8 s audio | window=256/1500 | built=22 ms
+            //          | decode=24704 ms | 6 chars | 1 seg
+            //     stt: built=15 ms | decode=11648 ms
+            //     stt: built=53 ms | decode=29541 ms
+            //
+            // Twenty-five seconds to produce SIX CHARACTERS. Tiny's decoder
+            // emits a handful of tokens for that, which is milliseconds of work,
+            // and the encoder was already cut to a fifth of its window by
+            // AudioContextFor. The wild spread across clips of the same length is
+            // the tell: it is not the audio that varies, it is how many times the
+            // same audio got decoded and rejected.
+            //
+            // Zero disables the retry entirely, so a decode is a decode.
+            //
+            // WHAT IT COSTS, HONESTLY. The retries exist to rescue a pass that
+            // fell into a repetition loop or produced low-confidence noise, and
+            // without them a bad decode is returned rather than re-attempted. On
+            // a phone that is the right trade by a wide margin: a rare garbled
+            // sentence is recoverable — the person says it again — and a
+            // twenty-five second wait is not, because nobody waits through it
+            // twice. Confidence still comes back on the result for a caller that
+            // wants to judge.
+            .WithTemperatureInc(0f)
+
+            ;
+
+        // PINNED, NOT INHERITED, and set apart from the chain because
+        // WithGreedySamplingStrategy returns a builder for the STRATEGY rather
+        // than the processor - the fluent line cannot carry on through it.
+        //
+        // Greedy is what this was already getting from the library's default,
+        // and beam search would multiply the decode by the beam width, which is
+        // exactly the cost just removed. Stating it means a library default
+        // cannot quietly reintroduce it.
+        //
+        // best_of 1 for the same reason: whisper.cpp's own default draws several
+        // candidate samples, which buys nothing once the temperature is fixed at
+        // zero - the samples are identical by construction - and is another
+        // multiplier waiting to be paid if it ever is not. Guarded rather than
+        // cast outright: a library that changes the concrete type should cost a
+        // lost optimisation, not a crash on the one path that hears people.
+        if (builder.WithGreedySamplingStrategy() is GreedySamplingStrategyBuilder greedy)
+            greedy.WithBestOf(1);
+
+        _processor = builder.Build();
 
         _processorContext = window;
         built = true;
