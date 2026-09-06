@@ -7,10 +7,22 @@
     assistant that answers questions but cannot take down a meeting is missing
     the half people actually reach for a recorder to do.
 
-    IT KEEPS LISTENING. One DictateAsync call is one utterance; a meeting is
-    hundreds. So this loops until it is stopped, appending each utterance as its
-    own line, which is also what makes the transcript readable - a wall of text
-    with no breaks is a recording nobody rereads.
+    ONE SESSION, NOT A LOOP OF UTTERANCES. This looped DictateAsync, one call per
+    utterance, which worked and does not scale to a meeting: it opened and closed
+    the microphone once per sentence, flickering the recording indicator, paying
+    the open cost at every pause, and losing whatever was said in the gap between
+    closing and reopening. It kept no audio either, so there was nothing to read
+    back at the end.
+
+    SessionAsync holds one microphone for the whole meeting, cuts at the silences
+    between sentences, appends - and when it stops, puts the entire recording
+    through in one pass and replaces the pieced-together text.
+
+    MEASURED, not assumed. A scripted meeting played through a laptop speaker
+    into a P30 on 2026-09-07 came back word perfect across four turns, proper
+    nouns and figures included - and the closing pass recovered about twelve
+    characters the live pieces had dropped, which is the argument for keeping the
+    audio made in one number.
 
     NOTHING IS ANSWERED. The circle elsewhere asks and replies; here it only
     writes down. That is the whole distinction the mode exists to make, and it
@@ -67,6 +79,21 @@
         </div>
     }
 
+    @*
+        PROGRESS AND REFUSALS ARE NOT THE SAME LINE.
+        Both arrive on TurnState.Detail, so "Reading it back…" - which is the app
+        working, and the explanation for a pause somebody would otherwise read as
+        a hang - rendered in the warning slot, in warning colours, and stayed
+        there after the meeting finished. A transcript that ends with what looks
+        like an error is a transcript nobody trusts.
+        The phase says which it is: Thinking is the app working, Idle with a
+        detail is the app refusing.
+    *@
+    @if (_status is { Length: > 0 })
+    {
+        <p class="status">@_status</p>
+    }
+
     @if (_trouble is { Length: > 0 })
     {
         <p class="warn">@_trouble</p>
@@ -96,6 +123,9 @@
     string? _partial;
 
     string? _trouble;
+
+    /// <summary>The app working, as opposed to the app refusing.</summary>
+    string? _status;
     bool _running;
 
     CancellationTokenSource? _cts;
@@ -165,7 +195,15 @@
             // show the meeting twice.
             if (t.Heard is { Length: > 0 } heard) _partial = heard;
 
-            if (t.Detail is { Length: > 0 } detail) _trouble = detail;
+            // WHICH LINE IT GOES ON IS DECIDED BY THE PHASE. Thinking is the app
+            // working and belongs in the quiet status line; Idle with a detail is
+            // the app refusing, and belongs in the warning.
+            if (t.Detail is { Length: > 0 } detail)
+            {
+                if (t.Phase == TurnPhase.Thinking) _status = detail;
+                else _trouble = detail;
+            }
+
             InvokeAsync(StateHasChanged);
         });
 
@@ -174,6 +212,7 @@
             var whole = await Talk.SessionAsync(updates, ct, Spoken.Current, silenceMs: 5000);
 
             _partial = null;
+            _status = null;
             if (whole is { Length: > 0 })
             {
                 _lines.Clear();

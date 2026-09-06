@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>meeting-sim</AssemblyName>
+    <RootNamespace>CircleAI.Tools.MeetingSim</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The REAL session and the REAL transcriber. A harness that stubbed either
+         would only prove the harness. -->
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+  </ItemGroup>
+</Project>

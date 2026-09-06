@@ -135,3 +135,19 @@
     font-size: 0.9375rem;
     flex: none;
 }
+
+/*
+    THE APP WORKING, NOT THE APP REFUSING.
+    "Reading it back…" used to render in .warn - a filled panel that reads as
+    something having gone wrong - and stayed there after the meeting ended. It is
+    the explanation for a pause, so it is quiet: no panel, centred under the
+    transcript, out of the way the moment it is done.
+*/
+.status {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    color: var(--ink-soft);
+    font-size: 0.9375rem;
+    text-align: center;
+    flex: none;
+}

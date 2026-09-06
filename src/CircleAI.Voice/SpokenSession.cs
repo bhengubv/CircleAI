@@ -59,6 +59,29 @@ public sealed class SpokenSession : IAsyncDisposable
     private readonly List<byte> _session = [];
     private readonly List<byte> _piece = [];
     private readonly List<byte> _quiet = [];
+
+    /// <summary>The last moment of audio, kept in case it turns out to be speech.</summary>
+    /// <remarks>
+    /// PRESSING RECORD WHILE SOMEBODY IS ALREADY TALKING LOST THE FIRST THREE
+    /// SECONDS OF THEM. Measured by meeting-sim: a 7,1 second clip at the start
+    /// of a session came out as a 3,9 second piece reading "the quick brown fox,
+    /// JUST over the lazy dog", where the same clip later in the same meeting -
+    /// by then with a settled noise floor - came out whole and correct.
+    /// <para>
+    /// Any level-based detector is late, because it cannot know a sound was
+    /// speech until enough of it has arrived to be sure, and at the start of a
+    /// session it is latest of all: the floor has not yet learned what the room
+    /// sounds like. A meeting is exactly where that bites, because somebody is
+    /// usually mid-sentence when the recording starts.
+    /// </para>
+    /// <para>
+    /// So the recent past is held and handed to the piece when speech is
+    /// declared. It costs a second of memory and removes the whole class of
+    /// problem rather than tuning the threshold against one recording.
+    /// </para>
+    /// </remarks>
+    private readonly Queue<byte[]> _preRoll = new();
+    private int _preRollBytes;
     private readonly StringBuilder _all = new();
 
     private readonly SpeechGain _gain = new();
@@ -128,6 +151,14 @@ public sealed class SpokenSession : IAsyncDisposable
     /// the model a stretch of nothing to invent words for.
     /// </remarks>
     public double TailMs { get; init; } = 250;
+
+    /// <summary>How much of the moment before speech is kept.</summary>
+    /// <remarks>
+    /// Long enough to cover a detector that is late and a floor that has not
+    /// settled; short enough that it is a second of memory rather than a
+    /// recording. See <see cref="_preRoll"/> for the measurement that put it here.
+    /// </remarks>
+    public double PreRollMs { get; init; } = 1_000;
 
     /// <summary>Everything heard so far.</summary>
     public string Text => _all.ToString();
@@ -199,6 +230,17 @@ public sealed class SpokenSession : IAsyncDisposable
                 _quiet.Clear();
             }
 
+            // THE MOMENT BEFORE IT WAS CALLED SPEECH. A level detector is always
+            // late, and at the start of a session it is latest of all because the
+            // floor has not learned the room yet - which is precisely when
+            // somebody is mid-sentence, because that is when recording starts.
+            if (!_speaking && _preRoll.Count > 0)
+            {
+                foreach (var earlier in _preRoll) _piece.AddRange(earlier);
+                _preRoll.Clear();
+                _preRollBytes = 0;
+            }
+
             _speaking = true;
             _speechMs += ms;
             _quietMs = 0;
@@ -214,6 +256,18 @@ public sealed class SpokenSession : IAsyncDisposable
             // invent words for.
             _quietMs += ms;
             _quiet.AddRange(chunk.Span);
+        }
+        else
+        {
+            // Quiet, and nothing being said. Held only as long as it could still
+            // turn out to have been the run-up to a word.
+            var copy = chunk.ToArray();
+            _preRoll.Enqueue(copy);
+            _preRollBytes += copy.Length;
+
+            var keep = (int)(PreRollMs / 1000 * SampleRate) * BytesPerSample;
+            while (_preRollBytes > keep && _preRoll.Count > 0)
+                _preRollBytes -= _preRoll.Dequeue().Length;
         }
 
         var longEnough = _piece.Count / (double)(SampleRate * BytesPerSample) >= MaxPieceSeconds;
