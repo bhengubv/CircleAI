@@ -118,6 +118,43 @@ public interface IConversation
     Task<string?> DictateAsync(
         IProgress<TurnState> updates, CancellationToken ct = default, string? language = null);
 
+    /// <summary>
+    /// Take down everything said until stopped, then read the whole thing again.
+    /// </summary>
+    /// <remarks>
+    /// A MEETING IS NOT A SEQUENCE OF DICTATIONS. Looping <see cref="DictateAsync"/>
+    /// works and is what the transcribe screen did, but it opens and closes the
+    /// microphone once per sentence, keeps nothing, and gives each sentence to the
+    /// recogniser with no knowledge of the one before it.
+    /// <para>
+    /// A session holds the microphone open for the whole meeting, cuts at the
+    /// silences between sentences, and appends. Each update costs one sentence
+    /// rather than everything said so far - which is the difference between
+    /// something that works for a minute and something that works for an hour.
+    /// </para>
+    /// <para>
+    /// AND IT READS IT AGAIN AT THE END. The session keeps its own audio, so the
+    /// last thing it does is put the entire recording through in one pass and
+    /// replace the pieced-together text. A piece cut at a silence was decoded
+    /// with nothing after it; read whole, every word has both its sides. The
+    /// audio is dropped when the session ends, which is what the screens mean by
+    /// "nothing is kept".
+    /// </para>
+    /// <para>
+    /// Reports each piece as it lands, then once more with <c>Final</c> set. A
+    /// head that cannot do this - a browser has no microphone it may hold - says
+    /// so on <see cref="TurnState.Detail"/> and returns what it has.
+    /// </para>
+    /// </remarks>
+    /// <param name="silenceMs">
+    /// How long a gap ends a piece. It cannot be one number for every job: a
+    /// meeting wants seconds because people pause to think, and a question wants
+    /// about one because the same gap is somebody waiting for an answer.
+    /// </param>
+    Task<string> SessionAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default,
+        string? language = null, double silenceMs = 5000);
+
     /// <summary>Say something aloud, without listening first.</summary>
     /// <remarks>
     /// What the chat screen's speaker control uses, and the greeting the circle

@@ -175,6 +175,34 @@ internal sealed class FakeConversation : IConversation
         IProgress<TurnState> updates, CancellationToken ct = default, string? language = null)
         => Task.FromResult<string?>(null);
 
+    /// <summary>What a session should hand back, and what it was asked for.</summary>
+    /// <remarks>
+    /// The silence window is recorded because it is the one setting the screen
+    /// has to choose deliberately - a meeting and a question want different
+    /// numbers, and a screen that passed the default for both would be wrong for
+    /// one of them.
+    /// </remarks>
+    public string SessionText { get; init; } = "";
+    public double? SessionSilenceMs { get; private set; }
+    public int Sessions { get; private set; }
+
+    public async Task<string> SessionAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default,
+        string? language = null, double silenceMs = 5000)
+    {
+        Sessions++;
+        SessionSilenceMs = silenceMs;
+
+        updates.Report(new TurnState(TurnPhase.Listening, Language: language));
+
+        // Runs until stopped, the way a real one does.
+        try { await Task.Delay(Timeout.Infinite, ct); }
+        catch (OperationCanceledException) { WasCancelled = true; }
+
+        updates.Report(new TurnState(TurnPhase.Idle, Heard: SessionText, Language: language));
+        return SessionText;
+    }
+
     public Task SayAsync(string text, string? language = null, CancellationToken ct = default)
         => Task.CompletedTask;
 

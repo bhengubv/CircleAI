@@ -47,10 +47,20 @@
                 <p class="line">@line</p>
             }
 
-            @* WHAT IT IS HEARING RIGHT NOW, before the utterance ends. Without
-               it a long sentence looks like a stall - the same complaint the
-               setup screen's frozen countdown earned. *@
-            @if (_partial is { Length: > 0 })
+            @* WHAT IT IS HEARING RIGHT NOW, before the piece ends. Without it a
+               long sentence looks like a stall - the same complaint the setup
+               screen's frozen countdown earned.
+
+               ONLY WHILE IT IS RUNNING, and that guard is load-bearing.
+               Progress<T> hands its reports to the renderer's dispatcher rather
+               than running them inline, so the session's LAST report - the whole
+               transcript, after the closing pass - can arrive AFTER the code that
+               cleared this and moved the text into the lines. The meeting then
+               renders twice, the second copy worded slightly differently, which
+               reads as the app having lost track of what was said. A partial is
+               by definition in progress, so saying so in the condition fixes it
+               at the meaning rather than by racing the dispatcher. *@
+            @if (_running && _partial is { Length: > 0 })
             {
                 <p class="line line-partial">@_partial</p>
             }
@@ -123,16 +133,24 @@
         }
     }
 
-    /// <summary>One utterance after another until somebody stops it.</summary>
+    /// <summary>One session, held open for the whole meeting.</summary>
     /// <remarks>
-    /// EVERY UTTERANCE IS ITS OWN CALL, because that is the shape DictateAsync
-    /// has: it returns when a speaker stops. Looping is what turns a dictation
-    /// primitive into a recorder.
+    /// THIS USED TO LOOP DictateAsync, one call per utterance. That worked and it
+    /// does not scale to the thing the screen is for: it opened and closed the
+    /// microphone once per sentence - flickering the recording indicator, paying
+    /// the open cost at every pause, and losing whatever was said in the gap
+    /// between closing and reopening - and it kept no audio, so there was nothing
+    /// to read back at the end.
     /// <para>
-    /// A single empty result is NOT the end. Somebody pausing to think, or a
-    /// gap between two people speaking, comes back as null - and treating that
-    /// as "the meeting is over" would stop recording every time the room went
-    /// quiet. Only being cancelled stops this.
+    /// A session holds the microphone once, cuts at the silences, and appends. It
+    /// reports the transcript so far as each piece lands, and once more when it
+    /// has re-read the whole recording.
+    /// </para>
+    /// <para>
+    /// FIVE SECONDS, DELIBERATELY. This is a meeting: people pause to think, and
+    /// cutting at every breath would shred one sentence across three decodes and
+    /// three chances to punctuate it wrongly. A question would want about one
+    /// second, which is why the screen chooses rather than taking a default.
     /// </para>
     /// </remarks>
     async Task ListenAsync(CancellationToken ct)
@@ -141,40 +159,37 @@
         {
             Mark.Report(t);
 
-            // The transcript so far, for the line that has not landed yet.
+            // Everything heard so far, replacing what is on screen rather than
+            // adding to it: the session owns the transcript and re-reading the
+            // recording at the end REPLACES it, so a screen that appended would
+            // show the meeting twice.
             if (t.Heard is { Length: > 0 } heard) _partial = heard;
 
             if (t.Detail is { Length: > 0 } detail) _trouble = detail;
             InvokeAsync(StateHasChanged);
         });
 
-        while (!ct.IsCancellationRequested)
+        try
         {
-            string? said;
-            try
-            {
-                said = await Talk.DictateAsync(updates, ct, Spoken.Current);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                // A SENTENCE, AND THE LINES SO FAR ARE KEPT. Losing an hour of
-                // a meeting because the last utterance threw would be the worst
-                // possible answer.
-                _trouble = $"Stopped: {ex.GetType().Name}: {ex.Message}";
-                break;
-            }
+            var whole = await Talk.SessionAsync(updates, ct, Spoken.Current, silenceMs: 5000);
 
             _partial = null;
-
-            if (said is { Length: > 0 } line)
+            if (whole is { Length: > 0 })
             {
-                _lines.Add(line.Trim());
-                StateHasChanged();
+                _lines.Clear();
+                _lines.Add(whole.Trim());
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // The ordinary way a recording ends. Whatever the session managed to
+            // read back is already on screen.
+        }
+        catch (Exception ex)
+        {
+            // THE LINES SO FAR ARE KEPT. Losing an hour of a meeting because the
+            // closing pass threw would be the worst possible answer.
+            _trouble = $"Stopped: {ex.GetType().Name}: {ex.Message}";
         }
     }
 

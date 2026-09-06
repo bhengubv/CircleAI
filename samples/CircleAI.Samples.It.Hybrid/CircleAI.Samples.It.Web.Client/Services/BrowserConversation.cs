@@ -47,6 +47,21 @@ public sealed class BrowserConversation : IConversation
 
     /// <inheritdoc />
     /// <remarks>
+    /// SAME REFUSAL, SAID THE SAME WAY. A tab may not hold a microphone for the
+    /// length of a meeting, and a session that quietly transcribed nothing would
+    /// look exactly like one that heard nothing.
+    /// </remarks>
+    public Task<string> SessionAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default,
+        string? language = null, double silenceMs = 5000)
+    {
+        updates.Report(new TurnState(TurnPhase.Idle,
+            Detail: "Taking down a meeting runs on the phone. Install the app to record one."));
+        return Task.FromResult("");
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
     /// The browser has nowhere to keep this. The memory is on the device, and
     /// a web page that quietly kept a copy somewhere else would be the one
     /// thing this whole design refuses to do.

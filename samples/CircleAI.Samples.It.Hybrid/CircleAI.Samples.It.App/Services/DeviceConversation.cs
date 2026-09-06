@@ -322,6 +322,84 @@ public sealed class DeviceConversation : IConversation
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<string> SessionAsync(
+        IProgress<TurnState> updates, CancellationToken ct = default,
+        string? language = null, double silenceMs = 5000)
+    {
+        if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+        {
+            updates.Report(new TurnState(TurnPhase.Idle,
+                Detail: "Still listening to the last one."));
+            return "";
+        }
+
+        try
+        {
+            if (await MicPermission.EnsureAsync().ConfigureAwait(false) != PermissionStatus.Granted)
+            {
+                updates.Report(new TurnState(TurnPhase.Idle,
+                    Detail: "It needs permission to hear you."));
+                return "";
+            }
+
+            var listener = _listener ??= (await ItListener
+                .TryCreateAsync(StorageDir, ct: ct).ConfigureAwait(false)).listener;
+            if (listener is null)
+            {
+                updates.Report(new TurnState(TurnPhase.Idle,
+                    Detail: "The ears are not on this phone yet."));
+                return "";
+            }
+
+            var tag = language ?? _spoken.Current;
+
+            // ONE MICROPHONE FOR THE WHOLE MEETING. The screen used to open and
+            // close one per sentence, which flickers the microphone indicator,
+            // pays the open cost every time somebody pauses, and loses whatever
+            // was said in the gap between closing and reopening.
+            await using var mic = new AndroidAudioCapture();
+            await using var session = new SpokenSession(mic, listener.Transcriber, tag)
+            {
+                SilenceToEndMs = silenceMs,
+            };
+
+            session.Heard += (_, piece) =>
+                updates.Report(new TurnState(
+                    piece.Final ? TurnPhase.Idle : TurnPhase.Listening,
+                    Heard: piece.All, Language: tag));
+
+            updates.Report(new TurnState(TurnPhase.Listening, Language: tag));
+            await session.ListenAsync(ct).ConfigureAwait(false);
+
+            // THE CLOSING PASS RUNS EVEN THOUGH THE SESSION WAS CANCELLED, which
+            // is why it gets its own token. Stopping means "I have finished
+            // speaking", not "throw away the accurate version" - and this is the
+            // one moment in the whole session when a long decode costs nobody
+            // anything, because nobody is waiting on a word.
+            updates.Report(new TurnState(TurnPhase.Thinking,
+                Heard: session.Text, Language: tag,
+                Detail: "Reading it back…"));
+
+            return await session.ReadAgainAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            updates.Report(new TurnState(TurnPhase.Idle));
+            return "";
+        }
+        catch (Exception ex)
+        {
+            updates.Report(new TurnState(TurnPhase.Idle,
+                Detail: $"{ex.GetType().Name}: {ex.Message}"));
+            return "";
+        }
+        finally
+        {
+            _one.Release();
+        }
+    }
+
     public async Task<string> PrepareAsync(
         IProgress<string>? progress = null, CancellationToken ct = default)
     {
