@@ -44,9 +44,19 @@
         <button class="allow" @onclick='() => Nav.NavigateTo("settings")'>Turn it on</button>
     }
 
+    @*
+        KEPT, NOT RECORDED, AND THE DIFFERENCE IS THE WHOLE CLAIM.
+        This said "nothing is recorded", which is not true and cannot be: audio
+        that is never recorded cannot be transcribed, and the phone holds a
+        turn's worth of samples for as long as it takes to read them. Saying
+        otherwise puts a promise on screen that the code breaks by existing.
+        What IS true is that none of it is kept and none of it leaves - and that
+        is the thing somebody was worried about anyway. Nobody minds the phone
+        hearing them; they mind it keeping a copy.
+    *@
     <div class="claims">
         <div class="claim">Listening happens on this phone</div>
-        <div class="claim">Nothing is recorded and nothing is sent</div>
+        <div class="claim">Nothing is kept and nothing is sent</div>
     </div>
 
 </div>

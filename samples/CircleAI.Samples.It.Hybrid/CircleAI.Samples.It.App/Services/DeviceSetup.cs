@@ -343,7 +343,7 @@ public sealed class DeviceSetup : ISetup
             // "#microphone", not "wake". A label that says "allow" has to allow,
             // not travel somewhere that happens to ask on arrival.
             Offer("Let it hear you",
-                  "The microphone is only used when you talk to it. Nothing is recorded.",
+                  "The microphone is only used when you talk to it. Nothing is kept.",
                   "Allow the microphone", "#microphone", 20);
 
             if (Has(ModelModality.WakeWord))

@@ -315,6 +315,7 @@ public sealed class DeviceConversation : IConversation
         var gain = SpeechGain.Normalise(lifted);
         if (gain > 1) VoiceTrace.Write($"stt: lifted the clip x{gain:0.#} before decoding");
 
+
         var result = await listener.Transcriber
             .TranscribeAsync(lifted, ct, language).ConfigureAwait(false);
         return result.Text;

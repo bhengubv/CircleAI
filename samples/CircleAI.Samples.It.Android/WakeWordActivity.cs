@@ -104,7 +104,7 @@ public class WakeWordActivity : Activity
 
         var claim = Ui.Label(this,
             "·   Listening happens on this phone\n" +
-            "·   Nothing is recorded and nothing is sent",
+            "·   Nothing is kept and nothing is sent",
             14f, Ui.InkSoft);
         claim.SetPadding(pad, 0, pad, Ui.Dp(this, 22));
         root.AddView(claim, Ui.Fill());

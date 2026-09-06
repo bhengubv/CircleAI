@@ -83,7 +83,7 @@ public static class SetupTour
 
         new TourStep(
             "Let it hear you",
-            "The microphone is only used when you talk to it. Nothing is recorded.",
+            "The microphone is only used when you talk to it. Nothing is kept.",
             "Allow the microphone", StepNeeds.Nothing, Seconds: 20),
 
         new TourStep(
