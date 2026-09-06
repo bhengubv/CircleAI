@@ -61,7 +61,25 @@ public sealed record SpeakOutcome(
 /// played the 137.6 MB one. A size belonging to a different voice is worse than no
 /// size, because it looks checked.
 /// </remarks>
-public sealed record VoiceRow(string Tag, long? Bytes);
+/// <param name="Installed">
+/// Whether a voice for this language is ON THE DEVICE NOW, as opposed to being
+/// offered by the catalogue.
+/// </param>
+/// <remarks>
+/// <para>
+/// THE CATALOGUE IS WHAT YOU COULD HAVE, AND HOME PRINTED IT AS WHAT YOU HAVE.
+/// This list is every Tts tag in the registry - the right answer for a language
+/// picker, whose whole job is offering downloads - and Home counted it into
+/// "78 languages, spoken out loud" on a handset that could speak about thirteen.
+/// The count was honest about the catalogue and the sentence was about the
+/// phone, and nothing in the type made the difference visible.
+/// </para>
+/// <para>
+/// Null where a head cannot tell, which is not the same as false: a browser has
+/// no model store to inspect and should not answer a question about one.
+/// </para>
+/// </remarks>
+public sealed record VoiceRow(string Tag, long? Bytes, bool? Installed = null);
 
 /// <summary>Speaks a language on whichever head is hosting the shared UI.</summary>
 public interface IVoiceHost

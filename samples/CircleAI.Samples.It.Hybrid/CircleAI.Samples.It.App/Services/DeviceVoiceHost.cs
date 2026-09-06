@@ -97,7 +97,20 @@ public sealed class DeviceVoiceHost : IVoiceHost
                             best[tag] = v.TotalBytes;
             }
 
-            return best.Select(kv => new VoiceRow(kv.Key, kv.Value)).ToList();
+            // AND WHETHER IT IS ACTUALLY HERE. The rows above are the catalogue -
+            // what this device COULD speak - which is what a language picker
+            // needs and is not what Home was printing. Asking the loader once per
+            // language closes the gap at its source rather than leaving every
+            // caller to guess which kind of number it is holding.
+            using var loader = new CircleAI.Inference.BundleModelLoader(StorageDir, registry);
+
+            bool Here(string tag) => voices.Any(v =>
+                (v.Language ?? "")
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Any(raw => string.Equals(raw.Trim(), tag, StringComparison.OrdinalIgnoreCase))
+                && loader.ModelPresent(v.Name));
+
+            return best.Select(kv => new VoiceRow(kv.Key, kv.Value, Here(kv.Key))).ToList();
         }, ct);
 
     /// <inheritdoc />

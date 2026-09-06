@@ -254,7 +254,18 @@
         // Counted, not claimed - and counted where the count is true. Guarded
         // because a host that cannot enumerate voices should print no number
         // rather than a zero.
-        try { _known = (await Voice.CatalogueAsync()).Count; }
+        // INSTALLED, NOT CATALOGUED. See _known: the catalogue is what this
+        // device COULD speak once everything is downloaded, and this sentence is
+        // about what it does now. A head that cannot tell reports null and is
+        // counted as the whole catalogue, which is the old behaviour and the
+        // right one for a browser that has no model store to look in.
+        try
+        {
+            var catalogue = await Voice.CatalogueAsync();
+            _known = catalogue.Any(r => r.Installed is not null)
+                ? catalogue.Count(r => r.Installed == true)
+                : catalogue.Count;
+        }
         catch { _known = 0; }
     }
 
@@ -271,6 +282,19 @@
     /// the TTS models this handset can actually run. A browser reports its own
     /// smaller number and is equally right about itself, which is the point of
     /// asking the host rather than a constant.
+    /// </para>
+    /// <para>
+    /// AND THAT WAS STILL THE WRONG NUMBER, for the third time. "Can actually
+    /// run" is not "has": the catalogue is every Tts tag in the registry, which
+    /// is exactly right for a language picker offering downloads and exactly
+    /// wrong under the words "spoken out loud". Seen on a P30 on 2026-09-06 -
+    /// Home said 78 while the loading screen, fixed that same morning to read the
+    /// disk, said about thirteen. Two screens, one phone, six times apart.
+    /// </para>
+    /// <para>
+    /// Counted from the rows that report themselves installed. A head that cannot
+    /// tell - a browser has no model store to inspect - reports null on every row
+    /// and gets the whole catalogue, which is the honest answer for it.
     /// </para>
     /// </remarks>
     int _known;
