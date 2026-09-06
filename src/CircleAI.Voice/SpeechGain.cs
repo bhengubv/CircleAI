@@ -86,6 +86,70 @@ public sealed class SpeechGain
     /// <inheritdoc cref="Attack"/>
     public double Release { get; init; } = 0.45;
 
+    /// <summary>
+    /// Lifts a whole recorded clip at once, in 16-bit PCM, and says what by.
+    /// </summary>
+    /// <remarks>
+    /// THE STREAMING FOLLOWER ABOVE IS THE WRONG TOOL FOR A FINISHED RECORDING.
+    /// It has to guess at the future - attack, release, a floor it might be
+    /// climbing out of - because it is fed one block at a time. A clip that has
+    /// already been captured has no future to guess at: its loudest moment is
+    /// known, so the whole thing can be scaled by one number with no pumping and
+    /// no artefacts at the seams.
+    /// <para>
+    /// WHY IT IS NEEDED AT ALL. The gain went into the wake detector and stopped
+    /// there, and the transcriber is fed by a different path entirely -
+    /// DeviceConversation opens its own AndroidAudioCapture and hands the bytes
+    /// straight to Whisper. So the wake word learned to hear across a room on
+    /// 2026-09-06 and the transcriber went on being handed the same near-silent
+    /// waveform: 4,7 seconds of speech came back as "A-B.".
+    /// </para>
+    /// <para>
+    /// Peak rather than RMS, because the ceiling is what clips. Target is short
+    /// of full scale so a sample that rounds up has somewhere to go.
+    /// </para>
+    /// </remarks>
+    /// <param name="pcm16">16-bit little-endian mono samples, modified in place.</param>
+    /// <returns>The multiplier applied; 1 when the clip was left alone.</returns>
+    public static double Normalise(
+        Span<byte> pcm16, double target = 0.9, double maxGain = 12, double noiseFloor = 0.01)
+    {
+        var count = pcm16.Length / 2;
+        if (count == 0) return 1;
+
+        // The loudest sample, and the energy, in one pass.
+        var peak = 0;
+        double sumSq = 0;
+        for (var i = 0; i < count; i++)
+        {
+            int v = (short)(pcm16[i * 2] | (pcm16[i * 2 + 1] << 8));
+            var a = v < 0 ? -v : v;
+            if (a > peak) peak = a;
+            sumSq += v * (double)v;
+        }
+
+        var rms = Math.Sqrt(sumSq / count) / 32768.0;
+        var loudest = peak / 32768.0;
+
+        // AN EMPTY ROOM IS LEFT ALONE, the same rule the follower uses and for
+        // the same reason: a clip of nothing, amplified twelvefold, is a clip of
+        // amplified nothing, and Whisper will hallucinate words into it.
+        if (rms < noiseFloor || loudest <= 0) return 1;
+
+        var gain = Math.Clamp(target / loudest, 1, maxGain);
+        if (gain <= 1.0001) return 1;
+
+        for (var i = 0; i < count; i++)
+        {
+            var scaled = (short)(pcm16[i * 2] | (pcm16[i * 2 + 1] << 8)) * gain;
+            var clamped = (int)Math.Round(Math.Clamp(scaled, short.MinValue, short.MaxValue));
+            pcm16[i * 2] = (byte)(clamped & 0xFF);
+            pcm16[i * 2 + 1] = (byte)((clamped >> 8) & 0xFF);
+        }
+
+        return gain;
+    }
+
     private double _gain = 1;
 
     /// <summary>The multiplier last applied.</summary>

@@ -299,7 +299,24 @@ public sealed class DeviceConversation : IConversation
         var listener = _listener ??= (await ItListener.TryCreateAsync(StorageDir).ConfigureAwait(false)).listener;
         if (listener is null) return null;
 
-        var result = await listener.Transcriber.TranscribeAsync(audio, ct, language).ConfigureAwait(false);
+        // LIFTED BEFORE WHISPER SEES IT, for the same reason the wake word is.
+        //
+        // The gain went into ZipformerWakeWordDetector and stopped there, and
+        // this path never touches that class - it opens its own microphone above
+        // and hands the bytes straight to the transcriber. So the wake word
+        // learned to hear across a room on 2026-09-06 while the transcriber went
+        // on being fed the same near-silent waveform, and 4,7 seconds of speech
+        // came back as "A-B.".
+        //
+        // Whole-clip rather than the streaming follower: the recording is
+        // finished, so its loudest moment is already known and one multiplier
+        // does the job with nothing to pump against.
+        var lifted = audio.ToArray();
+        var gain = SpeechGain.Normalise(lifted);
+        if (gain > 1) VoiceTrace.Write($"stt: lifted the clip x{gain:0.#} before decoding");
+
+        var result = await listener.Transcriber
+            .TranscribeAsync(lifted, ct, language).ConfigureAwait(false);
         return result.Text;
     }
 
