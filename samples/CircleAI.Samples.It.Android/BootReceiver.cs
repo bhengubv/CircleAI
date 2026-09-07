@@ -67,13 +67,26 @@ public sealed class BootReceiver : BroadcastReceiver
                 return;
             }
 
+            // SET BEFORE THE START, so the very first notification the service
+            // posts already says listening is off rather than "Ready". This is
+            // the only code that knows the owner had it on before the restart -
+            // the service's own statics died with the process.
+            CircleNeuronService.WaitingToBeAsked = true;
+
             CircleNeuronService.Start(context);
 
             // Deliberately NOT calling StartListeningAsync. The microphone type
             // cannot be claimed from here on Android 14+, and pretending
             // otherwise would produce a service that dies on start. The models
             // load; the ear waits to be asked.
-            Android.Util.Log.Info(Tag, "resident service restarted after boot");
+            //
+            // AND THE SHADE NOW SAYS SO. It read "Ready" here, on a phone whose
+            // wake word could not fire until somebody opened the app - a silent
+            // failure wearing a reassuring word. The notification says it is not
+            // listening and opens the app when tapped, which is the "one
+            // deliberate tap" this design has always depended on and never
+            // actually offered.
+            Android.Util.Log.Info(Tag, "resident service restarted after boot; listening awaits a tap");
         }
         catch (System.Exception ex)
         {

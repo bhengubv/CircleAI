@@ -424,13 +424,58 @@ public sealed partial class CircleNeuronService : Service
             });
     }
 
-    private Notification BuildNotification(string text) =>
-        new Notification.Builder(this, ChannelId)
+    private Notification BuildNotification(string text)
+    {
+        var builder = new Notification.Builder(this, ChannelId)
             .SetContentTitle("Circle AI")
             .SetContentText(text)
             .SetSmallIcon(global::Android.Resource.Drawable.IcMenuManage)
-            .SetOngoing(true)
-            .Build();
+            .SetOngoing(true);
+
+        // TAPPABLE, BECAUSE THE DESIGN ALREADY DEPENDED ON IT. After a reboot the
+        // microphone cannot restart itself - from Android 14 a microphone-typed
+        // foreground service may not be started from BOOT_COMPLETED - so
+        // BootReceiver brings the models back and leaves listening to "one
+        // deliberate tap", with this notification named as the place that tap
+        // happens. It had no content intent, so tapping it did nothing at all and
+        // the only route back was to go and find the app.
+        var open = OpenTheApp();
+        if (open is not null) builder.SetContentIntent(open);
+
+        return builder.Build();
+    }
+
+    /// <summary>A tap on the notification opens the app.</summary>
+    /// <remarks>
+    /// Asked of the package manager rather than naming an Activity, because this
+    /// assembly is shared by every head and must not know which one it is inside.
+    /// Null when the package has no launcher - a service-only build - and then the
+    /// notification is simply not tappable, which is honest.
+    /// </remarks>
+    private PendingIntent? OpenTheApp()
+    {
+        try
+        {
+            var launch = PackageManager?.GetLaunchIntentForPackage(PackageName!);
+            if (launch is null) return null;
+
+            launch.SetFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop);
+
+            // IMMUTABLE FROM API 31, where a PendingIntent must declare one or the
+            // other or the call throws outright.
+            var flags = Build.VERSION.SdkInt >= BuildVersionCodes.S
+                ? PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable
+                : PendingIntentFlags.UpdateCurrent;
+
+            return PendingIntent.GetActivity(this, 0, launch, flags);
+        }
+        catch
+        {
+            // A notification that cannot be tapped is a smaller loss than a
+            // service that will not start.
+            return null;
+        }
+    }
 
     private void Notify(string text)
     {

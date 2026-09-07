@@ -388,9 +388,21 @@ public sealed class DeviceSetup : ISetup
                   "The microphone is only used when you talk to it. Nothing is kept.",
                   "Allow the microphone", "#microphone", 20);
 
+            // NAMELESS ON PURPOSE, because this screen does not own the phrase and
+            // naming it here has already drifted once. It said "Hey B" while the
+            // listener on the same phone had loaded [Hey Circle AI] from
+            // wake-en.txt - so the app's own tour taught a phrase that could not
+            // match, and anybody following it would conclude the wake word was
+            // broken when it was working exactly as built.
+            //
+            // Reading the real phrase here would only move the problem along: it
+            // makes a second reader, free to disagree the next time the source
+            // changes. The wake screen already shows the phrase and listens for
+            // it, so this sends them there and claims nothing it cannot know.
             if (Has(ModelModality.WakeWord))
-                Offer("Say “Hey B”",
-                      "Wake it without touching the phone. Try it now and see it light up.",
+                Offer("Wake it by name",
+                      "Wake it without touching the phone. The next screen shows the phrase "
+                    + "and lights up when it hears you.",
                       "Try the wake word", "wake", 60);
 
             // THE STEP THAT DECIDES WHETHER ANY OF THE REST SURVIVES. Huawei,

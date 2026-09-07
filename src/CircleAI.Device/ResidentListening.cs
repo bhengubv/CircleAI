@@ -231,7 +231,14 @@ public sealed partial class CircleNeuronService
 
         // AFTER, and only if it actually opened. Holding the CPU for a listener
         // that refused the microphone would drain the battery for nothing.
-        if (listener.IsListening) HoldTheCpu();
+        if (listener.IsListening)
+        {
+            HoldTheCpu();
+
+            // Asked and answered. Leaving this set would keep the shade telling
+            // somebody to switch on the thing they just switched on.
+            WaitingToBeAsked = false;
+        }
         else LetTheCpuSleep();
 
         // AND SAY SO ON THE SHADE. The notification was only ever written while
@@ -288,5 +295,32 @@ public sealed partial class CircleNeuronService
     internal static string ListeningNotificationText() =>
         _listener is { IsListening: true } l
             ? $"Listening for “{l.Describe}” — nothing is kept or sent"
-            : "Ready";
+            : WaitingToBeAsked
+                ? "Not listening since the phone restarted — tap to switch it back on"
+                : "Ready";
+
+    /// <summary>
+    /// True when the owner had listening on, the phone restarted, and the
+    /// platform will not let it resume without a tap.
+    /// </summary>
+    /// <remarks>
+    /// THE WORD "READY" WAS COVERING A SHUT MICROPHONE. From Android 14 a
+    /// microphone-typed foreground service may not be started from
+    /// BOOT_COMPLETED, so after a reboot the models come back and listening does
+    /// not - by design, and the right design: holding a microphone should follow
+    /// a deliberate act, not a power cycle.
+    /// <para>
+    /// What was wrong is that nothing said so. The notification read "Ready" on a
+    /// phone whose wake word could never fire, which is the worst kind of failure
+    /// - silent, and reassuring. Measured on a P30 on 2026-09-08: the phone
+    /// rebooted overnight, the app was gone entirely, and the only symptom
+    /// anybody could see was that it had stopped answering to its name.
+    /// </para>
+    /// <para>
+    /// Set by the boot path, which is the only code that knows the owner had it
+    /// on before the restart. Cleared the moment listening actually starts, so
+    /// the notification can never keep asking for something already done.
+    /// </para>
+    /// </remarks>
+    public static bool WaitingToBeAsked { get; set; }
 }
