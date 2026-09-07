@@ -33,8 +33,13 @@
          an upgrade that replaces it, and the two are meant to be comparable side
          by side. -->
     <ApplicationId>com.bhengubv.circleai.hybrid</ApplicationId>
+    <!-- THE BUILD HAS TO BE NAMEABLE. Every build made while this was written was
+         1.0 (1), so three phones on a table could not be told apart and "did you
+         deploy the latest version?" had no answer but a file hash. The code goes
+         up on every cut; the display version is what somebody says out loud.
+         Settings > Phone prints both, so anybody can read it off the screen. -->
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationVersion>2</ApplicationVersion>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->

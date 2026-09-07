@@ -171,6 +171,13 @@ public sealed class DeviceFacts : IDeviceFacts
                       + $"{probe.RamTotalBytes / 1_000_000_000.0:0.#} GB"
                     : "Can't be read on this phone"),
                 new("Where it runs", "On this phone. Nothing is sent anywhere."),
+                // NAMEABLE IN THE ROOM. Three phones on a table, and the only way
+                // to tell which one had tonight's build was a file hash over adb.
+                // Read off the screen instead: the display version is the thing
+                // somebody says out loud, the build number is the thing that
+                // actually goes up on every cut.
+                new("Version", $"{Microsoft.Maui.ApplicationModel.AppInfo.Current.VersionString} "
+                             + $"(build {Microsoft.Maui.ApplicationModel.AppInfo.Current.BuildString})"),
             };
 
             var technical = new List<string>();

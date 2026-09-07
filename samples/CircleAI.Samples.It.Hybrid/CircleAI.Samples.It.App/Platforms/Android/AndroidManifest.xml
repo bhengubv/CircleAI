@@ -74,6 +74,15 @@
 	    one line is what makes the sentence true.
 	-->
 	<uses-permission android:name="android.permission.WAKE_LOCK" />
+	<!-- WITHOUT THIS, THE "Fix it" BUTTON IS A NO-OP. Settings.ACTION_REQUEST_
+	     IGNORE_BATTERY_OPTIMIZATIONS only shows its dialog to an app that holds
+	     this permission; without it the activity starts and finishes instantly,
+	     so the button appears dead and the code that launched it still reports
+	     success. Measured on a P30 on 2026-09-07: tapped, nothing happened, no
+	     error anywhere - and the exemption is the one thing standing between a
+	     wake word that works and one that goes deaf an hour after you put the
+	     phone down. -->
+	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 	<!--
 	    COMING BACK AFTER A REBOOT. Without this the assistant is silent from the
 	    moment the phone restarts until somebody happens to open the app, and a

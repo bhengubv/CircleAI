@@ -262,6 +262,28 @@ public sealed class DeviceSetup : ISetup
             var context = Android.App.Application.Context;
             var package = context.PackageName!;
 
+            // ActivityNotFoundException IS the signal, and the only reliable one.
+            // ResolveActivity looks like the tidier check and is a trap here:
+            // from API 30 it returns null for any package this app cannot "see"
+            // under the visibility rules, so it would report the Huawei and MIUI
+            // screens below as absent on the very phones that have them. Starting
+            // and catching is what distinguishes "no such screen" from "hidden
+            // from me", because a filtered target throws too.
+            //
+            // What it CANNOT tell us is that a screen opened and instantly closed
+            // itself - which is what the battery dialog did without the manifest
+            // permission, and why that permission, not this helper, is the fix.
+            bool Open(Android.Content.Intent intent)
+            {
+                try
+                {
+                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return true;
+                }
+                catch { return false; }
+            }
+
             // The standard one first. On phones that honour it, this is the whole fix.
             try
             {
@@ -269,16 +291,17 @@ public sealed class DeviceSetup : ISetup
                     Android.Content.Context.PowerService);
                 if (pm is not null && !pm.IsIgnoringBatteryOptimizations(package))
                 {
-                    var intent = new Android.Content.Intent(
-                        Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations,
-                        Android.Net.Uri.Parse("package:" + package));
-                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
-                    context.StartActivity(intent);
-                    return true;
+                    if (Open(new Android.Content.Intent(
+                            Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations,
+                            Android.Net.Uri.Parse("package:" + package))))
+                        return true;
+
+                    CircleAI.Voice.VoiceTrace.Write(
+                        "battery exemption: the standard dialog did not resolve; trying the vendor screens");
                 }
 
                 // Already exempt. Nothing to open, and nothing wrong.
-                if (pm is not null) return true;
+                else if (pm is not null) return true;
             }
             catch (Exception ex)
             {
@@ -300,11 +323,30 @@ public sealed class DeviceSetup : ISetup
                 {
                     var intent = new Android.Content.Intent();
                     intent.SetComponent(new Android.Content.ComponentName(pkg, cls));
-                    intent.SetFlags(Android.Content.ActivityFlags.NewTask);
-                    context.StartActivity(intent);
-                    return true;
+                    if (Open(intent)) return true;
                 }
                 catch { /* not this vendor, or not this firmware */ }
+            }
+
+            // LAST RESORT, AND IT ALWAYS EXISTS. The whole-phone battery list is
+            // stock Android and needs no permission, so even a firmware that
+            // hides every screen above still lands somebody one scroll away from
+            // the switch. Worse than the direct dialog, infinitely better than a
+            // button that does nothing.
+            foreach (var action in new[]
+            {
+                Android.Provider.Settings.ActionIgnoreBatteryOptimizationSettings,
+                Android.Provider.Settings.ActionApplicationDetailsSettings,
+            })
+            {
+                try
+                {
+                    var intent = new Android.Content.Intent(action);
+                    if (action == Android.Provider.Settings.ActionApplicationDetailsSettings)
+                        intent.SetData(Android.Net.Uri.Parse("package:" + package));
+                    if (Open(intent)) return true;
+                }
+                catch { /* nothing left to try */ }
             }
 
             return false;
