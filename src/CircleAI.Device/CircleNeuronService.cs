@@ -186,10 +186,39 @@ public sealed partial class CircleNeuronService : Service
         app.StopService(new Intent(app, typeof(CircleNeuronService)));
     }
 
+    /// <summary>The running service, so a static caller can refresh its notification.</summary>
+    /// <remarks>
+    /// THE SHADE SAID "READY" WHILE THE MICROPHONE WAS OPEN. The notification is
+    /// only ever written from BuildNodeAsync, which finishes BEFORE the listener
+    /// is installed - so the line somebody reads all day was decided at a moment
+    /// when there was nothing to report, and never revisited.
+    /// <para>
+    /// That is the opposite of what this service says it is for: "the
+    /// notification is not an apology for holding the microphone; it is the
+    /// honest disclosure that we are". A shade reading "Ready" while an app holds
+    /// the microphone is not disclosure, it is the absence of it.
+    /// </para>
+    /// <para>
+    /// A static handle because StartListeningAsync is static - Android owns this
+    /// object and hands it to nobody - and cleared in OnDestroy so a torn-down
+    /// service is never notified through.
+    /// </para>
+    /// </remarks>
+    private static CircleNeuronService? _running;
+
+    /// <summary>Puts what the service is actually doing back on the shade.</summary>
+    internal static void RefreshNotification()
+    {
+        try { _running?.Notify(ListeningNotificationText()); }
+        catch { /* a notification is never worth taking the service down for */ }
+    }
+
     public override IBinder OnBind(Intent? intent) => new CircleNeuronBinder(this);
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
+        _running = this;
+
         // Notification FIRST. Android gives a startForegroundService caller a few
         // seconds to call StartForeground or it kills the process with an ANR —
         // and building a Neuron takes far longer than that budget.
@@ -269,9 +298,31 @@ public sealed partial class CircleNeuronService : Service
             var factory = OptionsFactory;
             if (factory is null)
             {
-                Status = "no brain configured — set CircleNeuronService.OptionsFactory before Start";
-                State  = ServiceState.Failed;
-                Notify(Status);
+                // NO FACTORY MEANS NOBODY ASKED FOR A BRAIN, NOT THAT ONE BROKE.
+                //
+                // This said "no brain configured — set CircleNeuronService
+                // .OptionsFactory before Start", marked the service Failed, and
+                // PUT THAT ON THE NOTIFICATION SHADE. Reported from a Redmi 12 on
+                // 2026-09-07, where it is the only thing the owner of the phone
+                // ever sees this service say - a stack-trace sentence addressed to
+                // a developer, sitting under the app's name, on a service that is
+                // working perfectly.
+                //
+                // The hybrid head hosts its brain in the app process - DeviceBrain
+                // owns an ItSession - and uses this service for ONE thing: holding
+                // the microphone open while the screen is off. It never sets a
+                // factory because it never wants a node. The native head does want
+                // one and sets it. So a null factory is a caller saying "just hold
+                // the microphone", and answering that with a failure is the service
+                // reporting a decision as a fault.
+                //
+                // Idle rather than Failed: nothing failed, and Failed is read
+                // elsewhere as a reason to give up. The notification goes back to
+                // saying what the service is actually doing.
+                Status = "listening only — no brain was asked for";
+                State  = ServiceState.Idle;
+                global::Android.Util.Log.Info(LogTag, Status);
+                Notify(ListeningNotificationText());
                 return;
             }
 
@@ -347,6 +398,11 @@ public sealed partial class CircleNeuronService : Service
         Memory = null;
         Status = "stopped";
         State  = ServiceState.Idle;
+
+        // Nothing to notify through any more, and a stale handle would have a
+        // torn-down service posting about a microphone it no longer holds.
+        _running = null;
+
         StopForeground(StopForegroundFlags.Remove);
         base.OnDestroy();
     }

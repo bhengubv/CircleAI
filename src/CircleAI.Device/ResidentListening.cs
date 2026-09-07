@@ -234,6 +234,12 @@ public sealed partial class CircleNeuronService
         if (listener.IsListening) HoldTheCpu();
         else LetTheCpuSleep();
 
+        // AND SAY SO ON THE SHADE. The notification was only ever written while
+        // the service was starting - before the listener existed - so it read
+        // "Ready" for the whole time the microphone was open. Disclosure that
+        // does not update is not disclosure.
+        RefreshNotification();
+
         return listener.IsListening;
     }
 
@@ -249,6 +255,9 @@ public sealed partial class CircleNeuronService
         // The lock outliving the microphone is a battery leak with no feature
         // attached, so it goes even if the stop threw.
         LetTheCpuSleep();
+
+        // And the shade stops claiming to be listening the moment it is not.
+        RefreshNotification();
     }
 
     private static void OnListenerWoke(object? sender, string phrase) => Woke?.Invoke(sender, phrase);
@@ -267,8 +276,17 @@ public sealed partial class CircleNeuronService
     /// should be able to tell that this app is holding the microphone right now,
     /// and what it is waiting to hear — not have to infer it from "running".
     /// </remarks>
+    /// <remarks>
+    /// KEPT, NOT RECORDED. This said "nothing is recorded or sent", which is not
+    /// true and cannot be - audio that is never recorded cannot be matched
+    /// against a phrase. What is true, and what somebody glancing at their shade
+    /// actually cares about, is that none of it is kept and none of it leaves.
+    /// The same correction was made on all five screens; this is the sixth place
+    /// that claim is made, and it is the one that sits on the notification shade
+    /// all day.
+    /// </remarks>
     internal static string ListeningNotificationText() =>
         _listener is { IsListening: true } l
-            ? $"Listening for “{l.Describe}” — nothing is recorded or sent"
+            ? $"Listening for “{l.Describe}” — nothing is kept or sent"
             : "Ready";
 }
