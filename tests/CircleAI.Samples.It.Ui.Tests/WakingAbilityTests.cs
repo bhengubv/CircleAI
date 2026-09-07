@@ -300,11 +300,9 @@ public class WakingAbilityTests : TestContext
     }
 
     [Fact]
-    public void Fixing_it_asks_the_phone_and_the_warning_goes()
+    public void Fixing_it_asks_the_phone()
     {
-        // The answer comes back from Android, not from the tap - so the prompt
-        // clears because the phone now says yes, not because a button was
-        // pressed.
+        // Tapping it opens Android's screen. That is the whole job of the tap.
         var resident = new FakeResidentAssistant();
         resident.StartAsync().GetAwaiter().GetResult();
         var setup = new FakeSetup { BackgroundAllowed = false };
@@ -315,10 +313,86 @@ public class WakingAbilityTests : TestContext
 
         screen.FindAll("button").ToList().First(b => b.TextContent.Contains("Fix it")).Click();
 
+        screen.WaitForAssertion(() => Assert.Equal(1, setup.BackgroundAsks), TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void A_tap_alone_does_not_clear_the_warning()
+    {
+        // THE BUG, AS A TEST. The screen used to re-read the exemption in the
+        // same breath as opening the dialog - before anybody could have answered
+        // - so it always read the old value. Measured on a P30 on 2026-09-07:
+        // granting it changed nothing on screen, and the button sat there
+        // inviting a second tap from somebody who reasonably concluded nothing
+        // had happened.
+        //
+        // While the phone still says no, the warning MUST stay. Anything else is
+        // a screen congratulating itself for opening a dialog.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+        var setup = new FakeSetup { BackgroundAllowed = false };
+
+        var screen = PhoneTab(setup, resident);
+        screen.WaitForAssertion(
+            () => Assert.Contains("Fix it", screen.Markup), TimeSpan.FromSeconds(10));
+
+        screen.FindAll("button").ToList().First(b => b.TextContent.Contains("Fix it")).Click();
+        screen.WaitForAssertion(() => Assert.Equal(1, setup.BackgroundAsks), TimeSpan.FromSeconds(10));
+
+        // Came back without granting - reversed out of it, or said no.
+        screen.InvokeAsync(() => screen.Instance.CameBack()).GetAwaiter().GetResult();
+
+        Assert.Contains("This phone may stop it listening", screen.Markup);
+    }
+
+    [Fact]
+    public void The_warning_goes_when_the_phone_says_yes_and_the_app_comes_back()
+    {
+        // The answer comes back from Android, not from the tap. The person grants
+        // it in another activity while this screen sits in the background, so the
+        // prompt clears on the way back in - because the phone now says yes, not
+        // because a button was pressed.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+        var setup = new FakeSetup { BackgroundAllowed = false };
+
+        var screen = PhoneTab(setup, resident);
+        screen.WaitForAssertion(
+            () => Assert.Contains("Fix it", screen.Markup), TimeSpan.FromSeconds(10));
+
+        screen.FindAll("button").ToList().First(b => b.TextContent.Contains("Fix it")).Click();
+
+        setup.Grant();
+        screen.InvokeAsync(() => screen.Instance.CameBack()).GetAwaiter().GetResult();
+
         screen.WaitForAssertion(
             () => Assert.DoesNotContain("This phone may stop it listening", screen.Markup),
             TimeSpan.FromSeconds(10));
-        Assert.Equal(1, setup.BackgroundAsks);
+    }
+
+    [Fact]
+    public void Granting_it_elsewhere_also_clears_the_warning()
+    {
+        // Nobody has to use our button. The exemption can be granted in Android's
+        // own settings while this screen is in the background, and a screen that
+        // only believed its own button would be wrong in exactly the case
+        // somebody went around it.
+        var resident = new FakeResidentAssistant();
+        resident.StartAsync().GetAwaiter().GetResult();
+        var setup = new FakeSetup { BackgroundAllowed = false };
+
+        var screen = PhoneTab(setup, resident);
+        screen.WaitForAssertion(
+            () => Assert.Contains("This phone may stop it listening", screen.Markup),
+            TimeSpan.FromSeconds(10));
+
+        setup.Grant();
+        screen.InvokeAsync(() => screen.Instance.CameBack()).GetAwaiter().GetResult();
+
+        screen.WaitForAssertion(
+            () => Assert.DoesNotContain("This phone may stop it listening", screen.Markup),
+            TimeSpan.FromSeconds(10));
+        Assert.Equal(0, setup.BackgroundAsks);
     }
 
     [Fact]

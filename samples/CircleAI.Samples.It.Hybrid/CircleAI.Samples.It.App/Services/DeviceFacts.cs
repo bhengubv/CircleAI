@@ -72,22 +72,43 @@ public sealed class DeviceFacts : IDeviceFacts
     /// <summary>The blurb, with the language count filled in.</summary>
     /// <remarks>
     /// COUNTED, NOT HEDGED - "10 plus" disagreed with the abilities pitch and the
-    /// language list, which both say 75 - but counted HERE rather than in the
-    /// table above, where it would run during type initialisation.
+    /// language list - but counted HERE rather than in the table above, where it
+    /// would run during type initialisation.
+    /// <para>
+    /// INSTALLED, NOT CATALOGUED, and this is the fourth screen to learn it. Home
+    /// was fixed on 2026-09-06 to count what is on the disk; this one went on
+    /// counting every Tts tag in the registry, so on 2026-09-07 a P30 showed "11
+    /// languages, spoken out loud" on Home and "Reads things out loud, in 78
+    /// languages" in Settings, on the same phone, two taps apart. The catalogue is
+    /// what this device COULD speak once everything is downloaded, which is the
+    /// right number for a picker offering downloads and the wrong one under a
+    /// sentence describing what it does now.
+    /// </para>
+    /// <para>
+    /// Falls back to the catalogue only when nothing reports as present, which is
+    /// the honest answer for a head with no model store to inspect - the same rule
+    /// Home applies, so the two cannot drift apart again without both moving.
+    /// </para>
     /// </remarks>
     private static string Blurb(string template)
     {
         if (!template.Contains("{n}", StringComparison.Ordinal)) return template;
 
-        // THE VOICE CATALOGUE, like Home and the language list. Counting
-        // SampleLanguages here would put a third number on a third screen for
-        // one fact - the table holds 75 names, this phone offers 78 voices.
         var languages = 0;
         try
         {
             using var registry = new ModelRegistryService();
+            using var loader = new BundleModelLoader(StorageDir, registry);
+
+            var voices = registry.AllModels
+                .Where(m => m.Modality == ModelModality.Tts)
+                .ToList();
+
+            var present = voices.Where(m => loader.ModelPresent(m.Name)).ToList();
+            if (present.Count > 0) voices = present;
+
             var tags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var m in registry.AllModels.Where(m => m.Modality == ModelModality.Tts))
+            foreach (var m in voices)
                 foreach (var raw in (m.Language ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
                     if (raw.Trim().Length > 0) tags.Add(raw.Trim());
             languages = tags.Count;

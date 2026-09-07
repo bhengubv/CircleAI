@@ -26,6 +26,9 @@
 @* For the battery exemption, which decides whether the switch above still means
    anything in an hour. It was reachable only from first-run setup. *@
 @inject ISetup Wizard
+@* The exemption is granted on Android's screen, not this one, so this screen has
+   to notice when it gets control back. See CameBack. *@
+@implements IAsyncDisposable
 
 <div class="tabs" role="tablist">
     @for (var i = 0; i < TabNames.Length; i++)
@@ -506,14 +509,20 @@ else
     /// <summary>True while the exemption screen is being opened.</summary>
     bool _askingBackground;
 
-    /// <summary>Send them to the screen that exempts the app, and re-read after.</summary>
+    /// <summary>Send them to the screen that exempts the app.</summary>
     /// <remarks>
     /// THE ANSWER COMES BACK FROM ANDROID, NOT FROM THE TAP. Pressing this opens
     /// a system screen and the person may grant, refuse or reverse out of it, so
-    /// what it returns says only that something opened. The prompt disappears
-    /// when the phone says the exemption is real - which is why this re-reads
-    /// rather than assuming, and why OnParametersSetAsync reads it again on the
-    /// way back in.
+    /// what it returns says only that something opened.
+    /// <para>
+    /// WHICH IS WHY IT NO LONGER RE-READS HERE. It used to ask whether the
+    /// exemption had been granted in the same breath as opening the dialog -
+    /// before anybody could have answered - so it always read the old value and
+    /// the prompt stayed exactly where it was. Somebody who granted it then saw
+    /// the same row and the same button, concluded nothing had happened, and
+    /// tapped it again. The re-read belongs on the way back in: see
+    /// <see cref="CameBack"/>.
+    /// </para>
     /// </remarks>
     async Task AllowBackground()
     {
@@ -521,17 +530,47 @@ else
         _askingBackground = true;
         try
         {
-            var opened = await Wizard.AllowBackgroundAsync();
-            _keepsRunning = await Wizard.BackgroundAllowedAsync();
-
             // Vendors move these screens between firmwares. A button that could
             // not open one has to say so, or it looks like it did nothing.
-            if (!opened && _keepsRunning is false)
+            if (!await Wizard.AllowBackgroundAsync())
                 _trouble = "This phone did not offer that screen. Look for battery "
                          + "or startup settings and allow Circle AI to run in the background.";
         }
         catch (Exception ex) { _trouble = ex.Message; }
         finally { _askingBackground = false; }
+    }
+
+    /// <summary>Re-read what the phone decided, now that this screen is back.</summary>
+    /// <remarks>
+    /// Called from resume.js whenever the app returns to the front. Nothing in
+    /// Blazor's own lifecycle fires on that return - no navigation happened and no
+    /// state changed inside the app - so without this the screen goes on showing
+    /// what was true before it handed over to Android.
+    /// <para>
+    /// It re-reads on EVERY return rather than only after the button, because the
+    /// exemption can also be granted or revoked in Android's own settings while
+    /// this screen sits in the background. A screen that only believed its own
+    /// button would be wrong in exactly the case somebody went around it.
+    /// </para>
+    /// </remarks>
+    [JSInvokable]
+    public async Task CameBack()
+    {
+        try
+        {
+            var now = await Wizard.BackgroundAllowedAsync();
+            if (now == _keepsRunning) return;
+
+            _keepsRunning = now;
+
+            // The warning row was the only thing complaining; once the phone says
+            // the exemption is real there is nothing left to say, so clear a
+            // message that is now about a problem that no longer exists.
+            if (now is true) _trouble = null;
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* still whatever it was; the next return asks again */ }
     }
 
     // First render asks the service; after that this screen holds the value and
@@ -675,6 +714,45 @@ else
         if (!firstRender) return;
         try { _light = await JS.InvokeAsync<bool>("circleaiTheme.isLight"); StateHasChanged(); }
         catch { /* JS not ready or storage off: the toggle simply reads as dark */ }
+
+        // IMPORTED, NOT SCRIPT-TAGGED. Loading it as a module keeps both host
+        // documents ignorant of a file only this screen needs.
+        try
+        {
+            _resumeModule = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/CircleAI.Samples.It.Shared/resume.js");
+            _self = DotNetObjectReference.Create(this);
+            _resumeWatch = await _resumeModule.InvokeAsync<IJSObjectReference>(
+                "watch", _self, nameof(CameBack));
+        }
+        catch
+        {
+            // The screen still works; it just will not notice the exemption
+            // changing until something else re-reads it. Not worth a message.
+        }
+    }
+
+    IJSObjectReference? _resumeModule;
+    IJSObjectReference? _resumeWatch;
+    DotNetObjectReference<Settings>? _self;
+
+    /// <summary>Stop listening, in the order that cannot leave a callback holding a dead component.</summary>
+    /// <remarks>
+    /// The listener goes first, then the object it would have called. Disposing
+    /// the reference while the handler is still attached leaves JS able to invoke
+    /// a component that no longer exists.
+    /// <para>
+    /// Every step swallows: a WebView torn down under a navigating page throws
+    /// JSDisconnectedException on any interop, and a page that threw on the way
+    /// out would replace a clean exit with a crash report.
+    /// </para>
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        try { if (_resumeWatch is not null) await _resumeWatch.InvokeVoidAsync("stop"); } catch { }
+        try { if (_resumeWatch is not null) await _resumeWatch.DisposeAsync(); } catch { }
+        try { if (_resumeModule is not null) await _resumeModule.DisposeAsync(); } catch { }
+        _self?.Dispose();
     }
 
     /// <summary>What went wrong loading this screen, if anything.</summary>

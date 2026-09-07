@@ -67,12 +67,32 @@ internal sealed class FakeSetup : ISetup
     {
         BackgroundAsks++;
 
-        // Granting is what the real one CANNOT do - it opens a system screen and
-        // the person decides. The fake models that: asking makes it allowed, so
-        // a test can check the prompt disappears once the phone says yes.
-        BackgroundAllowed = true;
-        return Task.FromResult(true);
+        // OPENING A SCREEN IS ALL IT DOES, and modelling anything more is how a
+        // real bug stayed green. This used to set BackgroundAllowed = true right
+        // here, which describes a phone that answers before the dialog is drawn.
+        // Under that fake, code which re-read the exemption in the same breath as
+        // opening the dialog looked correct - and on a P30 on 2026-09-07 it read
+        // the old value every time, so the prompt never cleared and its button
+        // invited being tapped again by somebody who concluded nothing had
+        // happened. The person answers AFTER this returns, or never: see Grant.
+        return Task.FromResult(Opens);
     }
+
+    /// <summary>Whether this phone has a screen to open at all.</summary>
+    /// <remarks>
+    /// False models the firmware that offers nothing, which is the case the
+    /// warning text about hunting for battery settings exists for.
+    /// </remarks>
+    public bool Opens { get; set; } = true;
+
+    /// <summary>The person granting it on Android's screen, out of the app's sight.</summary>
+    /// <remarks>
+    /// Separate from <see cref="AllowBackgroundAsync"/> on purpose. The grant
+    /// happens in another activity while this screen is in the background, which
+    /// is why noticing it needs a return-to-foreground and cannot be inferred
+    /// from the tap.
+    /// </remarks>
+    public void Grant() => BackgroundAllowed = true;
 
     /// <summary>Whether this phone will let the assistant keep running.</summary>
     /// <remarks>
