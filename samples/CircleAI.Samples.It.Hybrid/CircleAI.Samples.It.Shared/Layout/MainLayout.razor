@@ -114,7 +114,10 @@
                 @* THE LOGO IS THE BUTTON. It is what somebody already presses on
                    Home, so the persistent voice control being the same object
                    means one thing to learn rather than two doing the same job. *@
-                <button class="tabbar-item tabbar-voice" @onclick="Listen"
+                @* ONE TURN FROM A PRESS. Listen takes a flag now — the wake word
+                   passes it to stay in the conversation — and a button press is
+                   already a deliberate act per turn, so it does not. *@
+                <button class="tabbar-item tabbar-voice" @onclick="() => Listen()"
                         aria-label="@(Mark.Busy ? "Listening" : "Talk to it")">
                     <span class="voice-ring @(Mark.Busy ? "voice-on" : null)">
                         @* 52 in a 72px ring: the same proportion the mark had at
@@ -410,7 +413,39 @@
     /// </remarks>
     VoiceTurnRouter? _turn;
 
-    async Task Listen()
+    /// <summary>How many turns a single wake may carry before it lets go.</summary>
+    /// <remarks>
+    /// A CONVERSATION, NOT A LOCK-IN. Without a ceiling, a turn that keeps
+    /// reporting something heard - a television in the room, a meeting happening
+    /// near the phone - would hold the microphone indefinitely, which is the one
+    /// behaviour an always-listening assistant must never have.
+    /// </remarks>
+    const int MaxWakeTurns = 8;
+
+    /// <param name="keepListening">
+    /// True when the phone heard its own name: stay in the conversation until
+    /// nobody says anything more, instead of taking one turn and going back to
+    /// sleep.
+    /// </param>
+    /// <remarks>
+    /// SAYING THE NAME AGAIN FOR EVERY SENTENCE IS NOT A CONVERSATION. A wake
+    /// used to buy exactly one turn - ask, get an answer, and the next thing you
+    /// say is heard by nothing until you have said "Hey Circle AI" again. Nobody
+    /// talks to a person that way.
+    /// <para>
+    /// So a wake opens a conversation and each turn decides whether there is
+    /// another: if a turn hears words, listen again; if it hears nothing,
+    /// somebody has stopped talking and the phone goes back to waiting for its
+    /// name. The tap button keeps the old single-turn behaviour, because pressing
+    /// a button is already a deliberate act per turn.
+    /// </para>
+    /// <para>
+    /// A turn that ROUTES ends the conversation too. "Take me to settings" was
+    /// answered by going there, and carrying on listening over a screen somebody
+    /// has just been moved to would be talking over them.
+    /// </para>
+    /// </remarks>
+    async Task Listen(bool keepListening = false)
     {
         // EVEN THIS SAYS SO. A guard that returns in silence is the same dead
         // button from the other side: the mark is mid-turn, the press is correct,
@@ -444,7 +479,14 @@
         using var router = new VoiceTurnRouter(Can);
         _turn = router;
 
-        var updates = new Progress<TurnState>(t =>
+        // DID THIS TURN HEAR ANYTHING. Set on an INLINE reporter, not through the
+        // Progress below: Progress<T> posts to the dispatcher rather than running
+        // inline, so a flag set in it is read before it is written - the same
+        // property that made a transcript render twice and a cancel land after a
+        // delay. See InlineProgress.
+        var heard = false;
+
+        IProgress<TurnState> draw = new Progress<TurnState>(t =>
         {
             Mark.Report(t);
 
@@ -466,7 +508,35 @@
             InvokeAsync(StateHasChanged);
         });
 
-        try { await Talk.TurnAsync(updates, router.Token); }
+        // The drawing is unchanged and still goes through Progress; only the flag
+        // is read inline, so this cannot alter how anything renders.
+        var updates = new InlineProgress<TurnState>(t =>
+        {
+            if (t.Heard is { Length: > 0 }) heard = true;
+            draw.Report(t);
+        });
+
+        try
+        {
+            for (var taken = 0; taken < MaxWakeTurns; taken++)
+            {
+                heard = false;
+                await Talk.TurnAsync(updates, router.Token);
+
+                // ONE TURN UNLESS THE PHONE STARTED IT. Pressing the button is a
+                // deliberate act per turn; hearing its own name is an opening.
+                if (!keepListening) break;
+
+                // NOBODY SAID ANYTHING, so the conversation is over - which is
+                // the same signal a person uses, and needs no timer of its own.
+                if (!heard) break;
+
+                // Stopped by hand, cancelled, or routed somewhere: all three mean
+                // this is no longer a conversation to carry on.
+                if (router.StoppedByHand || router.Token.IsCancellationRequested
+                    || router.Routed is not null) break;
+            }
+        }
         catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
         catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
         finally { _turn = null; Mark.Clear(); StateHasChanged(); }
@@ -511,7 +581,12 @@
     /// head learned the hard way that dropping it in SILENCE makes a stuck turn
     /// look like a phone that beeps at its name and then ignores you.
     /// </remarks>
-    void OnWoke(object? sender, string phrase) => InvokeAsync(Listen);
+    /// <remarks>
+    /// KEEPS LISTENING, because the phone started this one. Saying the name
+    /// again for every sentence is not a conversation - see Listen.
+    /// </remarks>
+    void OnWoke(object? sender, string phrase) =>
+        InvokeAsync(() => Listen(keepListening: true));
 
     // OFF THE UI THREAD. A turn reports from the audio loop and the wake word
     // from a background service, so this cannot touch component state directly.

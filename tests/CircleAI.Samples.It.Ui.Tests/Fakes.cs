@@ -135,9 +135,35 @@ internal sealed class FakeConversation : IConversation
     /// <summary>True once a turn was cancelled - the routed case.</summary>
     public bool WasCancelled { get; private set; }
 
+    /// <summary>How many turns have been taken.</summary>
+    /// <remarks>
+    /// Counted because a wake now opens a CONVERSATION rather than buying one
+    /// turn, and "did it carry on listening" is a question about how many times
+    /// this was called.
+    /// </remarks>
+    public int Turns { get; private set; }
+
+    /// <summary>Turns after which the fake stops hearing anything.</summary>
+    /// <remarks>
+    /// A conversation ends when somebody stops talking, so a fake that always
+    /// hears something can only ever test the ceiling. This is how a test says
+    /// "they said two things and then stopped".
+    /// </remarks>
+    public int HearsForTurns { get; init; } = int.MaxValue;
+
     public async Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
     {
+        var hearsThisTurn = Turns < HearsForTurns;
+        Turns++;
+
         updates.Report(new TurnState(TurnPhase.Listening));
+
+        if (!hearsThisTurn)
+        {
+            updates.Report(new TurnState(TurnPhase.Idle, Detail: "I did not catch that."));
+            return;
+        }
+
 
         if (Heard is { Length: > 0 })
             updates.Report(new TurnState(TurnPhase.Thinking, Heard: Heard));
