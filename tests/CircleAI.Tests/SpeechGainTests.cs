@@ -169,4 +169,104 @@ public class SpeechGainTests
         g.Reset();
         Assert.Equal(1.0, g.Current, precision: 6);
     }
+
+    // ── The clipping the follower's lag caused ──────────────────────────────
+    //
+    // Measured on a P30 on 2026-09-08. The follower rides up to x3,6 in a quiet
+    // room; somebody then speaks, and Release is per BLOCK - 100 ms at 16 kHz -
+    // so it is still carrying x1,8 when the loudest part of the phrase arrives.
+    // 0,719 x 1,8 = 1,29, hard limited to 1,0, and the wake model scored the
+    // resulting flat-topped waveform 1 token of 8. The same voice reaches 8 of 8
+    // through the wake screen, which applies no gain at all.
+
+    [Fact]
+    public void A_loud_block_is_never_driven_into_the_limiter()
+    {
+        // THE BUG, AS A TEST. Ride the gain up on a quiet room, then hand it a
+        // loud block the way a person actually arrives: suddenly.
+        var g = new SpeechGain();
+        for (var i = 0; i < 30; i++) g.Apply(Block(0.012));
+
+        Assert.True(g.Current > 2, $"the follower did not ride up; it is at {g.Current:0.00}");
+
+        var loud = Block(0.05);
+        Scale(loud, 0.72);                       // the measured peak of a spoken phrase
+        g.Apply(loud);
+
+        Assert.True(Peak(loud) <= 1f,
+            $"the block was clipped: peak {Peak(loud):0.000}");
+    }
+
+    [Fact]
+    public void Nothing_is_flat_topped_at_the_ceiling()
+    {
+        // Peak <= 1 is not enough on its own: the limiter produces exactly 1,0,
+        // so a clipped block passes a peak test while being a square wave. What
+        // matters is that no sample was PINNED there.
+        var g = new SpeechGain();
+        for (var i = 0; i < 30; i++) g.Apply(Block(0.012));
+
+        var loud = Block(0.05);
+        Scale(loud, 0.72);
+        g.Apply(loud);
+
+        var pinned = 0;
+        foreach (var v in loud) if (v >= 0.9999f || v <= -0.9999f) pinned++;
+
+        Assert.True(pinned == 0, $"{pinned} samples were flat-topped by the limiter");
+    }
+
+    [Fact]
+    public void The_reported_gain_is_the_one_that_was_applied()
+    {
+        // The log line prints this number. It used to report the follower's
+        // internal state, so a block capped from x3,6 to x1,3 still said x3,6 -
+        // and the one line that could have shown the clipping hid it instead.
+        var g = new SpeechGain();
+        for (var i = 0; i < 30; i++) g.Apply(Block(0.012));
+
+        var loud = Block(0.05);
+        Scale(loud, 0.72);
+        var before = Peak(loud);
+        var reported = g.Apply(loud);
+
+        Assert.True(reported * before <= 1.0 + 1e-6,
+            $"reported x{reported:0.00} on a peak of {before:0.000} would clip");
+    }
+
+    [Fact]
+    public void Quiet_speech_is_still_lifted()
+    {
+        // THE HALF THAT MUST NOT BREAK. The ceiling exists to stop clipping, not
+        // to stop the class doing its job - arm's length was the whole reason
+        // the gain was added.
+        var g = new SpeechGain();
+
+        // BELOW THE TARGET, which is what "quiet" means to this class. An earlier
+        // version of this test built a block at the target RMS and then rescaled
+        // its PEAK to the measured arm's-length 0,08 - which leaves the RMS above
+        // target, where declining to lift is the correct answer. The test was
+        // wrong, not the follower.
+        var quiet = Block(0.015);
+        var applied = g.Apply(quiet);
+
+        Assert.True(applied > 1.0, $"quiet speech was not lifted at all (x{applied:0.00})");
+        Assert.True(Peak(quiet) <= 1f, "lifting it clipped it");
+    }
+
+    /// <summary>Rescales a block so its loudest sample is exactly <paramref name="peak"/>.</summary>
+    private static void Scale(float[] a, double peak)
+    {
+        var now = Peak(a);
+        if (now <= 0) return;
+        var k = (float)(peak / now);
+        for (var i = 0; i < a.Length; i++) a[i] *= k;
+    }
+
+    private static float Peak(float[] a)
+    {
+        var p = 0f;
+        foreach (var v in a) { var x = v < 0 ? -v : v; if (x > p) p = x; }
+        return p;
+    }
 }

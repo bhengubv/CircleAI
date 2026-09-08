@@ -86,6 +86,34 @@ public sealed class SpeechGain
     /// <inheritdoc cref="Attack"/>
     public double Release { get; init; } = 0.45;
 
+    /// <summary>The loudest sample this will ever produce.</summary>
+    /// <remarks>
+    /// THE FOLLOWER LAGS BY DESIGN, AND THAT LAG WAS CLIPPING SPEECH. Release is
+    /// per BLOCK, and a block is 100 ms at 16 kHz — so coming down from the x3,6
+    /// a quiet room rides up to takes four or five blocks, half a second, which
+    /// is most of a wake phrase. Everything in that half second was multiplied by
+    /// a gain chosen for silence and flat-topped by the limiter below.
+    /// <para>
+    /// Measured on a P30 on 2026-09-08: a clearly spoken "Hey Circle AI" arrived
+    /// at peak 0,719 with the follower still at x1,8. 0,719 x 1,8 = 1,29, hard
+    /// limited to 1,0 — a square-wave-topped waveform, and the spotter scored it
+    /// 1 token of 8 at p=0,047 against a gate of 0,2. The same phrase in the same
+    /// voice reaches 8 of 8 through the wake SCREEN, which applies no gain at all.
+    /// </para>
+    /// <para>
+    /// So the ceiling is enforced on what is actually applied, not on what was
+    /// wanted: the block's own peak decides how much gain it can take, and a loud
+    /// block simply takes less. Quiet speech is still lifted — that is what this
+    /// class is for — but nothing is ever driven into the limiter to get there.
+    /// </para>
+    /// <para>
+    /// Below 1,0 because the limiter is a cliff and floating point lands near it:
+    /// a little headroom keeps the loudest syllable off the ceiling rather than
+    /// exactly on it.
+    /// </para>
+    /// </remarks>
+    public double Ceiling { get; init; } = 0.95;
+
     /// <summary>
     /// Lifts a whole recorded clip at once, in 16-bit PCM, and says what by.
     /// </summary>
@@ -165,7 +193,16 @@ public sealed class SpeechGain
         if (pcm.Length == 0) return _gain;
 
         double sum = 0;
-        for (var i = 0; i < pcm.Length; i++) sum += pcm[i] * (double)pcm[i];
+        var peak = 0f;
+        for (var i = 0; i < pcm.Length; i++)
+        {
+            sum += pcm[i] * (double)pcm[i];
+
+            // The block's own ceiling, gathered in the same pass. RMS says how
+            // much lift the speech wants; peak says how much it can survive.
+            var a = pcm[i] < 0 ? -pcm[i] : pcm[i];
+            if (a > peak) peak = a;
+        }
         var rms = Math.Sqrt(sum / pcm.Length);
 
         // AN EMPTY ROOM IS LEFT ALONE. Not "gain 1 this block" but a target of 1
@@ -176,11 +213,28 @@ public sealed class SpeechGain
         _gain += (wanted - _gain) * (wanted < _gain ? Release : Attack);
         if (_gain < 1) _gain = 1;
 
+        // ENFORCED ON WHAT IS APPLIED, NOT ON WHAT WAS WANTED — see Ceiling. The
+        // follower is deliberately slow, so on the block where somebody finally
+        // speaks it is still carrying the gain the silence before them asked for.
+        // Capping here lets that block take only the gain it can survive, while
+        // the follower goes on settling for the blocks after it.
+        //
+        // The state is NOT rewritten to the capped value: the follower must keep
+        // tracking the room, or one loud syllable would reset it and the quiet
+        // words on either side would lose the lift they need.
+        var applied = _gain;
+        if (peak > 0)
+        {
+            var room = Ceiling / peak;
+            if (room < applied) applied = room;
+        }
+        if (applied < 1) applied = 1;
+
         // Unity is the common case in a quiet room and multiplying by it is
         // pointless work on the capture thread.
-        if (_gain <= 1.0001) return _gain;
+        if (applied <= 1.0001) return applied;
 
-        var g = (float)_gain;
+        var g = (float)applied;
         for (var i = 0; i < pcm.Length; i++)
         {
             // HARD LIMIT, NOT WRAP. Float PCM has no natural ceiling, and the
@@ -191,6 +245,10 @@ public sealed class SpeechGain
             pcm[i] = v > 1f ? 1f : v < -1f ? -1f : v;
         }
 
-        return _gain;
+        // WHAT WAS MULTIPLIED, not what the follower is carrying. This is the
+        // number the wake log prints, and it was the follower's internal state -
+        // so a block capped from x3,6 down to x1,3 still reported x3,6, and the
+        // one line that could have shown the clipping instead hid it.
+        return applied;
     }
 }
