@@ -84,7 +84,13 @@ public sealed class SpokenSession : IAsyncDisposable
     private int _preRollBytes;
     private readonly StringBuilder _all = new();
 
-    private readonly SpeechGain _gain = new();
+    // NO STREAMING FOLLOWER HERE. One was declared and never used, which read as
+    // if this class rode the gain the way the wake word does - it does not. Each
+    // piece and the closing pass are lifted by SpeechGain.Normalise instead: the
+    // audio is already captured, so its loudest moment is known and one
+    // multiplier does the job with nothing to pump against and no lag to clip
+    // through. Removed rather than wired up, because the whole-clip lift is the
+    // right tool for a recording that has already finished.
     private double _floor = 0.02;
     private double _quietMs;
     private double _speechMs;

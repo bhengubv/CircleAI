@@ -95,13 +95,36 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Listening));
 
-            // ONE FILTER, AND THIS PATH WAS NOT USING IT. Speech() existed and
-            // only DictateAsync called it, so the microphone button - the main
-            // way into this app - passed whatever the transcriber said straight
-            // through. A quiet room came back as "[Sexy, so-so]" on the screen,
-            // was answered as though somebody had said it, and was handed to the
-            // memory to read for things worth remembering.
-            var heard = Speech(await ListenAsync(updates, ct).ConfigureAwait(false));
+            // TIMED AND SAID OUT LOUD, because a turn that answers slowly and
+            // wrongly is two different faults and this path reported neither. On
+            // 2026-09-08 an owner said the reply was badly wrong after a long
+            // wait, and the whole device log for that window held one GC line and
+            // the wake heartbeat - there was no way to tell a misheard question
+            // from a well-heard one answered badly.
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            // TOLD WHAT TO EXPECT, WHICH THIS PATH ALONE WAS NOT. Transcribe
+            // passes Spoken.Current and Translate passes the side's language;
+            // this decoded on auto-detect and only worked out the language
+            // AFTERWARDS, from the text it had already got wrong. Both hinted
+            // screens were reported working well on real material - a series, a
+            // subtitled film - while this one was reported completely broken, and
+            // it is the screen the wake word opens into.
+            //
+            // The hint is the decoder's, not the answer's: the reply language is
+            // still detected from what was actually heard, a few lines down, so
+            // somebody who switches language mid-conversation is still answered
+            // in the language they used.
+            var settings = await _settings.LoadAsync(ct).ConfigureAwait(false);
+            var expect = settings.Policy == LanguagePolicy.Fixed && settings.FixedLanguage is { } fixedExpect
+                ? fixedExpect
+                : _spoken.Current;
+
+            var heard = Speech(await ListenAsync(updates, ct, expect).ConfigureAwait(false));
+            var listened = clock.ElapsedMilliseconds;
+            Android.Util.Log.Info("CircleAI.Turn",
+                $"heard in {listened} ms: \"{Short(heard)}\"");
+
             if (string.IsNullOrWhiteSpace(heard))
             {
                 updates.Report(new TurnState(TurnPhase.Idle,
@@ -119,8 +142,8 @@ public sealed class DeviceConversation : IConversation
 
             // WHAT LANGUAGE THAT WAS, reported rather than chosen. A person who
             // fixed a language in Settings keeps it; otherwise every turn is
-            // answered in the language it was asked in.
-            var settings = await _settings.LoadAsync(ct).ConfigureAwait(false);
+            // answered in the language it was asked in. Read from the same
+            // settings the decoder hint came from, loaded once above.
             var tag = settings.Policy == LanguagePolicy.Fixed && settings.FixedLanguage is { } fixedTag
                 ? fixedTag
                 : LanguageGuess.Detect(heard) ?? _spoken.Current;
@@ -137,6 +160,15 @@ public sealed class DeviceConversation : IConversation
                 updates.Report(new TurnState(TurnPhase.Thinking,
                     Heard: heard, Reply: reply, Language: tag));
             }, ct).ConfigureAwait(false);
+
+            // THE TWO HALVES, SEPARATELY TIMED. "It took ages and said something
+            // mad" is either a slow transcriber or a slow brain, and either a
+            // misheard question or a well-heard one answered badly. One line that
+            // shows the question, the answer, and where the seconds went tells
+            // those four apart; nothing did before.
+            Android.Util.Log.Info("CircleAI.Turn",
+                $"answered in {clock.ElapsedMilliseconds - listened} ms "
+                + $"(turn {clock.ElapsedMilliseconds} ms, lang {tag}): \"{Short(reply)}\"");
 
             if (string.IsNullOrWhiteSpace(reply)) return;
 
@@ -214,6 +246,26 @@ public sealed class DeviceConversation : IConversation
         {
             _one.Release();
         }
+    }
+
+    /// <summary>One line of it, for the log.</summary>
+    /// <remarks>
+    /// TRUNCATED AND LOCAL. This writes what somebody said into logcat, which sits
+    /// uneasily beside a notification promising nothing is kept — so it is worth
+    /// being exact about what this is: the device's own ring buffer, which never
+    /// leaves the phone and is overwritten within minutes. It is the only way to
+    /// tell a misheard question from a badly answered one, and that question was
+    /// unanswerable without it.
+    /// <para>
+    /// Newlines collapse because a multi-line reply would otherwise become a
+    /// dozen log entries with no tag on the ones after the first.
+    /// </para>
+    /// </remarks>
+    private static string Short(string? text, int max = 160)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var one = text.Replace('\n', ' ').Replace('\r', ' ').Trim();
+        return one.Length <= max ? one : one[..max] + "…";
     }
 
     /// <summary>
@@ -315,6 +367,20 @@ public sealed class DeviceConversation : IConversation
         var gain = SpeechGain.Normalise(lifted);
         if (gain > 1) VoiceTrace.Write($"stt: lifted the clip x{gain:0.#} before decoding");
 
+        // SET ON EVERY PATH, ALWAYS, BECAUSE IT IS STICKY AND THE TRANSCRIBER IS
+        // SHARED. Only SessionAsync ever assigned this and nothing ever cleared
+        // it, so one Transcribe session left its vocabulary primed into every
+        // later Tap n Talk and Translate turn for the life of the process -
+        // words from a meeting biasing a question about the weather. Assigning it
+        // here makes the value always the one this call actually wants, which
+        // removes the leak and primes the two paths that never were.
+        //
+        // Free when it has not changed: the setter compares before it disposes
+        // the cached processor, so the common case of turn after turn in one
+        // language costs nothing.
+        if (listener.Transcriber is WhisperNetTranscriber primable)
+            primable.Vocabulary = SpokenVocabulary.For(language ?? _spoken.Current);
+
 
         var result = await listener.Transcriber
             .TranscribeAsync(lifted, ct, language).ConfigureAwait(false);
@@ -376,10 +442,17 @@ public sealed class DeviceConversation : IConversation
                 SilenceToEndMs = silenceMs,
             };
 
+            // FILTERED HERE TOO, AND THIS SCREEN WAS THE ONE THAT WAS NOT.
+            // Speech() strips the labels Whisper writes when it hears something
+            // that is not speech - [BLANK_AUDIO] for a quiet room, [Music] for a
+            // radio - and both other paths call it. A meeting transcript is
+            // exactly where a pause near a television gets recorded as if
+            // somebody had said "[Music]", and then read back in the closing
+            // summary as though they had.
             session.Heard += (_, piece) =>
                 updates.Report(new TurnState(
                     piece.Final ? TurnPhase.Idle : TurnPhase.Listening,
-                    Heard: piece.All, Language: tag));
+                    Heard: Speech(piece.All) ?? "", Language: tag));
 
             updates.Report(new TurnState(TurnPhase.Listening, Language: tag));
             await session.ListenAsync(ct).ConfigureAwait(false);
@@ -393,7 +466,20 @@ public sealed class DeviceConversation : IConversation
                 Heard: session.Text, Language: tag,
                 Detail: "Reading it back…"));
 
-            return await session.ReadAgainAsync(CancellationToken.None).ConfigureAwait(false);
+            var final = Speech(
+                await session.ReadAgainAsync(CancellationToken.None).ConfigureAwait(false)) ?? "";
+
+            // WHAT THE SESSION ACTUALLY CAME AWAY WITH, which is the question the
+            // owner asks when a reply is wrong: did it mishear me, or did it hear
+            // me and answer badly? The live text and the closing pass are logged
+            // separately because they can differ - that is the whole point of the
+            // closing pass - and when they do, the difference is the diagnosis.
+            Android.Util.Log.Info("CircleAI.Turn",
+                $"session ({tag}) live: \"{Short(session.Text)}\"");
+            Android.Util.Log.Info("CircleAI.Turn",
+                $"session ({tag}) final: \"{Short(final)}\"");
+
+            return final;
         }
         catch (OperationCanceledException)
         {
