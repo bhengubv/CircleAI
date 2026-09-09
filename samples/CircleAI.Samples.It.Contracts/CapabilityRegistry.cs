@@ -52,7 +52,8 @@ public sealed class CapabilityRegistry
     /// What the app remembers, for the capabilities that change it. Null leaves
     /// mode switching to the Settings screen.
     /// </param>
-    public static CapabilityRegistry For(IBrain? brain, ISettings? settings = null)
+    public static CapabilityRegistry For(
+        IBrain? brain, ISettings? settings = null, IPlaysMedia? player = null)
     {
         var doing = new List<ICapability>();
         var replaced = new HashSet<string>(StringComparer.Ordinal);
@@ -70,6 +71,16 @@ public sealed class CapabilityRegistry
             // starting had to: the phone is being held up between two people.
             doing.Add(new SwitchModeCapability(settings, AppMode.Translator));
             doing.Add(new SwitchModeCapability(settings, AppMode.Assistant));
+        }
+
+        if (player is not null)
+        {
+            // THE FIRST CAPABILITY THAT ACTS ON THE PHONE RATHER THAN ON THIS APP.
+            // Everything above opens one of our own screens; this hands the
+            // request to whatever already plays music here. Optional, because a
+            // head with no device - the browser - should not offer it at all
+            // rather than offer it and decline.
+            doing.Add(new PlayMediaCapability(player));
         }
 
         var navigating = VoiceDestinations.All

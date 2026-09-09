@@ -10,6 +10,7 @@
 
 using Bunit;
 using CircleAI.Samples.It;
+using CircleAI.Samples.It.Shared.State;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CircleAI.Samples.It.Ui.Tests;
@@ -114,6 +115,16 @@ internal static class TestHost
         // capabilities from the one every test passes against - which is the
         // exact shape of the bug this file's own header describes.
         s.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+
+        // THE CONVERSATION STORE, BUILT THE SAME WAY THE APP BUILDS IT. MainLayout
+        // takes IDispatcher and IState<ConversationState>, and Routes.razor hosts
+        // the StoreInitializer - so without this every test that renders a layout
+        // fails on a missing dependency rather than on anything it was testing.
+        //
+        // No IRemembers here: AddConversationStore falls back to RemembersNothing,
+        // which is what a test wants. A test that cares about the memory loop
+        // registers its own fake BEFORE calling this and keeps it.
+        s.AddConversationStore();
 
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
     }

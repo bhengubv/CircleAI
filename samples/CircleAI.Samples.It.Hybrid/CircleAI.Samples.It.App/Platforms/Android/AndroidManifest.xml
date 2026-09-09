@@ -113,6 +113,25 @@
 	    ApplicationTitle, which is why the name read correctly all along and made
 	    the icon look like a rendering quirk rather than a missing attribute.
 	-->
+	<!--
+	    WHO ELSE ON THIS PHONE CAN PLAY MUSIC.
+
+	    From Android 11 an app cannot see other apps unless it declares what it
+	    is looking for. Without this, ResolveActivity on the media search intent
+	    returns null even when Spotify, VLC and the phone's own player are all
+	    installed - so "play Coldplay" would answer "there is no music app on
+	    this phone", which is both wrong and unfalsifiable from the outside.
+
+	    An INTENT filter rather than a package name: naming apps would make the
+	    feature depend on which ones somebody happens to use, and this asks the
+	    only question that matters - who can take this request.
+	-->
+	<queries>
+		<intent>
+			<action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+		</intent>
+	</queries>
+
 	<application android:allowBackup="true"
 	             android:supportsRtl="true"
 	             android:icon="@mipmap/appicon"

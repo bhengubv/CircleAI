@@ -28,6 +28,10 @@ public class MarkAgreementTests : TestContext
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
         Services.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+        // MainLayout takes IDispatcher and IState<ConversationState>; a
+        // hand-rolled DI that skips the store fails on a missing dependency
+        // rather than on whatever it was testing.
+        Services.AddConversationStore();
 
         // The bar is hidden on the full-screen stages - loading and setup own the
         // whole screen - so a test that never leaves "/" is testing nothing.

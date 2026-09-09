@@ -35,6 +35,12 @@ public class WakeOpensAConversationTests : TestContext
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
         Services.AddSingleton(new VoiceMark());
         Services.AddSingleton(new CapabilityRegistry([]));
+
+        // MainLayout takes IDispatcher and IState<ConversationState>, and the
+        // conversation loop it drives is exactly what these tests exercise - so
+        // without the store they fail on a missing dependency rather than on the
+        // wake behaviour they were written for.
+        Services.AddConversationStore();
         JSInterop.Mode = JSRuntimeMode.Loose;
         return resident;
     }

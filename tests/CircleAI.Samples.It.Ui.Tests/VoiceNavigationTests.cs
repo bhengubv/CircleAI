@@ -23,6 +23,10 @@ public class VoiceNavigationTests : TestContext
         var talk = new FakeConversation { Heard = heard };
         Services.AddSingleton(new VoiceMark());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+        // MainLayout takes IDispatcher and IState<ConversationState>; a
+        // hand-rolled DI that skips the store fails on a missing dependency
+        // rather than on whatever it was testing.
+        Services.AddConversationStore();
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
         Services.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
@@ -171,6 +175,10 @@ public class HomeVoiceNavigationTests : TestContext
         var talk = new FakeConversation { Heard = heard, Ready = true };
         Services.AddSingleton(new VoiceMark());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+        // MainLayout takes IDispatcher and IState<ConversationState>; a
+        // hand-rolled DI that skips the store fails on a missing dependency
+        // rather than on whatever it was testing.
+        Services.AddConversationStore();
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost { Catalogue = [new VoiceRow("en", 1)] });
         Services.AddSingleton<ISetup>(new FakeSetup());

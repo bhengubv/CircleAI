@@ -21,17 +21,19 @@ public sealed class DeviceConversation : IConversation
     private readonly ISpokenLanguage _spoken;
     private readonly ISettings _settings;
     private readonly IMemoryService _memory;
+    private readonly IRemembers _remembers;
 
     /// <summary>Composed from the app's one brain, one voice host and one memory.</summary>
     public DeviceConversation(
         IBrain brain, IVoiceHost voice, ISpokenLanguage spoken, ISettings settings,
-        IMemoryService memory)
+        IMemoryService memory, IRemembers remembers)
     {
         _brain = brain;
         _voice = voice;
         _spoken = spoken;
         _settings = settings;
         _memory = memory;
+        _remembers = remembers;
     }
 
     // One turn at a time. Two overlapping turns share a microphone and a speaker,
@@ -161,8 +163,13 @@ public sealed class DeviceConversation : IConversation
                 ? fixedTag
                 : LanguageGuess.Detect(heard) ?? _spoken.Current;
 
-            // Spoken words go the same way typed ones do. See HeardAsync.
-            await HeardAsync(heard, ct).ConfigureAwait(false);
+            // NOT WRITTEN TO MEMORY HERE ANY MORE, AND THAT IS THE POINT OF THE
+            // STORE. A spoken turn ends with TurnEnded, whose effect carries the
+            // exchange from the short-term cache through to long-term memory -
+            // one owner, and a caller cannot half-remember by forgetting to also
+            // call Learn. HeardAsync stays for TYPED input, which never becomes a
+            // turn and so never reaches that action; calling it here as well
+            // would record every spoken sentence twice.
 
             updates.Report(new TurnState(TurnPhase.Thinking, Heard: heard, Language: tag));
 
@@ -174,6 +181,41 @@ public sealed class DeviceConversation : IConversation
             // goes to the voice the moment its end is seen, and the voice works
             // through them in order while the model is still writing the next.
             // See SpokenReply for where a sentence is judged to end.
+            // WHAT IT ALREADY KNOWS ABOUT THIS, BEFORE IT ANSWERS.
+            //
+            // THE HALF THE LOOP WAS MISSING. Every utterance has been written to
+            // long-term memory for a long time; nothing ever read one back, so
+            // the phone accumulated everything anybody said and could not tell
+            // them their own name the following morning.
+            //
+            // Time-boxed, because this sits directly in front of an answer
+            // somebody is waiting for: a remembered name is worth having and
+            // never worth making them wait for. Swallowed for the same reason -
+            // a store that could not answer must not fail a turn that otherwise
+            // works.
+            var known = System.Array.Empty<Remembered>() as IReadOnlyList<Remembered>;
+            try
+            {
+                using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                budget.CancelAfter(TimeSpan.FromMilliseconds(250));
+                known = await _remembers.RecallAsync(heard, ct: budget.Token).ConfigureAwait(false);
+            }
+            catch { /* nothing remembered; the answer still happens */ }
+
+            // PUT IN FRONT OF THE QUESTION, NOT INTO THE SYSTEM PROMPT. The
+            // system prompt is cached across turns - see UsePrefixCache - and
+            // changing it every turn would throw that cache away, which is the
+            // 13 second cold prefill this app just finished removing. As part of
+            // the user turn it costs only its own tokens.
+            var asked = known.Count == 0
+                ? heard
+                : "Things you already know about them:" + Environment.NewLine
+                  + string.Join(Environment.NewLine, known.Select(k => "- " + k.Text))
+                  + Environment.NewLine + Environment.NewLine + heard;
+
+            if (known.Count > 0)
+                Android.Util.Log.Info("CircleAI.Turn", $"recalled {known.Count} for this turn");
+
             var reply = "";
 
             // INTERRUPTIBLE. Everything the voice does in this turn runs on a
@@ -199,7 +241,7 @@ public sealed class DeviceConversation : IConversation
             bargeStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
             barge = BargeInAsync(mouth, speaking, bargeStop.Token);
 
-            await _brain.AskAsync(heard, fragment =>
+            await _brain.AskAsync(asked, fragment =>
             {
                 reply += fragment;
                 mouth.Push(fragment);

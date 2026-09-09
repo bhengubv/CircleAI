@@ -9,6 +9,7 @@ using CircleAI.Samples.It;
 using CircleAI.Samples.It.Web.Components;
 using CircleAI.Samples.It.Web.Client.Services;
 using CircleAI.Samples.It.Web.Services;
+using CircleAI.Samples.It.Shared.State;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,12 +27,23 @@ builder.Services.AddSingleton<IBrain, BrowserBrain>();
 
 // What the circle can be asked to DO, as opposed to what Services lists. One
 // instance: every voice button consults it, and two would be two answers.
-builder.Services.AddSingleton(sp => CapabilityRegistry.For(sp.GetService<IBrain>(), sp.GetService<ISettings>()));
+// A BROWSER HAS NO DEVICE TO REACH. Registered rather than omitted so the
+// capability can decline honestly in one place - ReadyAsync says "this can only
+// play music on a phone" instead of the registry silently not offering it.
+builder.Services.AddSingleton<IPlaysMedia, NoMediaPlayer>();
+
+builder.Services.AddSingleton(sp => CapabilityRegistry.For(
+    sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
 builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
 builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 builder.Services.AddSingleton<IWakePhrases, BrowserWakePhrases>();
 builder.Services.AddSingleton<IShareTarget, BrowserShareTarget>();
+
+// THE SAME STORE THE PHONE USES. No IRemembers here: a browser has nowhere to
+// keep anything across sessions, so the store falls back to RemembersNothing
+// and the loop runs with an empty long-term half rather than pretending.
+builder.Services.AddConversationStore();
 builder.Services.AddSingleton<ISettings, BrowserSettings>();
 builder.Services.AddSingleton<ISetup, BrowserSetup>();
 builder.Services.AddSingleton<IConversation, BrowserConversation>();

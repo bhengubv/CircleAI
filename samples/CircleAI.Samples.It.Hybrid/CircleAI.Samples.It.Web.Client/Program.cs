@@ -6,6 +6,7 @@
 
 using CircleAI.Samples.It;
 using CircleAI.Samples.It.Web.Client.Services;
+using CircleAI.Samples.It.Shared.State;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 
@@ -21,13 +22,24 @@ builder.Services.AddSingleton<IBrain, BrowserBrain>();
 
 // What the circle can be asked to DO, as opposed to what Services lists. One
 // instance: every voice button consults it, and two would be two answers.
-builder.Services.AddSingleton(sp => CapabilityRegistry.For(sp.GetService<IBrain>(), sp.GetService<ISettings>()));
+// A BROWSER HAS NO DEVICE TO REACH. Registered rather than omitted so the
+// capability can decline honestly in one place - ReadyAsync says "this can only
+// play music on a phone" instead of the registry silently not offering it.
+builder.Services.AddSingleton<IPlaysMedia, NoMediaPlayer>();
+
+builder.Services.AddSingleton(sp => CapabilityRegistry.For(
+    sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();
 builder.Services.AddSingleton<IJobSpecTailor, BrowserTailor>();
 builder.Services.AddSingleton<IWakeWord, BrowserWakeWord>();
 builder.Services.AddSingleton<IWakePhrases, BrowserWakePhrases>();
 builder.Services.AddSingleton<IShareTarget, BrowserShareTarget>();
 builder.Services.AddSingleton<ISettings, BrowserSettings>();
+
+// AND HERE TOO, BECAUSE THIS HEAD TAKES OVER FROM THE SERVER ONE. A
+// registration present on the server and missing here is exactly how a
+// component works until Blazor switches to WebAssembly and then crashes.
+builder.Services.AddConversationStore();
 builder.Services.AddSingleton<ISetup, BrowserSetup>();
 builder.Services.AddSingleton<IConversation, BrowserConversation>();
 builder.Services.AddSingleton<IProfile, BrowserProfile>();

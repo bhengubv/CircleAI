@@ -29,6 +29,10 @@ public class HomeClaimTests : TestContext
     {
         Services.AddSingleton(new VoiceMark());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
+        // MainLayout takes IDispatcher and IState<ConversationState>; a
+        // hand-rolled DI that skips the store fails on a missing dependency
+        // rather than on whatever it was testing.
+        Services.AddConversationStore();
         Services.AddSingleton<IConversation>(new FakeConversation());
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost
         {

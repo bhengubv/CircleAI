@@ -5,6 +5,17 @@
     assembly, because the entry assembly differs per head - a MAUI app, a web
     server, a WASM client - and only this one holds the pages.
 *@
+@*
+    THE STORE, STARTED ONCE, ABOVE THE ROUTER. Fluxor needs an initialiser
+    somewhere in the tree or the feature states are never seeded: reducers run,
+    the store holds its default, and every screen reads an empty conversation
+    without a word of complaint. Here rather than in each head's own root for
+    the same reason the Router is here - three copies is three chances for one
+    to be forgotten, and the one that forgets is a head that silently has no
+    memory.
+*@
+<Fluxor.Blazor.Web.StoreInitializer />
+
 <Router AppAssembly="typeof(Layout.MainLayout).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />

@@ -7,6 +7,7 @@ using CircleAI.Samples.It;
 using CircleAI.Samples.It.App.Services;
 using Microsoft.Extensions.Logging;
 using CircleAI.Memory;
+using CircleAI.Samples.It.Shared.State;
 
 namespace CircleAI.Samples.It.App;
 
@@ -50,8 +51,13 @@ public static class MauiProgram
         // WHAT THE CIRCLE CAN BE ASKED TO DO. Services is the catalogue you
         // browse; this is the side that acts. One instance, because every voice
         // button consults it and two would be two answers to one sentence.
-        builder.Services.AddSingleton(
-            sp => CapabilityRegistry.For(sp.GetService<IBrain>(), sp.GetService<ISettings>()));
+        // WHAT THE PHONE ITSELF CAN BE ASKED TO DO. Android's standard media
+        // search intent, so whatever music app is installed answers it and no
+        // app is named in code.
+        builder.Services.AddSingleton<IPlaysMedia, AndroidMediaPlayer>();
+
+        builder.Services.AddSingleton(sp => CapabilityRegistry.For(
+            sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
         builder.Services.AddSingleton<IWakePhrases, DeviceWakePhrases>();
@@ -69,6 +75,17 @@ public static class MauiProgram
         // idle. Scoped rather than singleton: on the server head that is one per circuit,
         // and a singleton would show every visitor whoever spoke last.
         builder.Services.AddScoped<VoiceMark>();
+
+        // THE MEMORY LOOP, CLOSED. LearnAsync has been called on every utterance
+        // for a long time and RecallAsync from nowhere but a diagnostic screen,
+        // so the phone accumulated everything anybody said and could not tell
+        // them their own name the next morning. DeviceMemory is the real store
+        // behind the shared contract; the store's effects are what read it back.
+        builder.Services.AddSingleton<IRemembers, DeviceMemory>();
+
+        // ONE OWNER FOR THE CONVERSATION. Registered after IRemembers so the
+        // effects get the real memory rather than the do-nothing fallback.
+        builder.Services.AddConversationStore();
 
         // WHAT IS ACTUALLY WIRED, as opposed to what is offered. The setup census
         // counts downloads; this asks the runtime hooks and the real speech path

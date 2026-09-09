@@ -23,6 +23,11 @@
 @inject VoiceMark Mark
 @inject IResidentAssistant Resident
 @inject CapabilityRegistry Can
+@* The conversation store. VoiceMark still owns what the two brand marks DRAW;
+   this owns what the conversation IS - the transcript, the reply, the short-term
+   cache, and the seam where it reaches long-term memory. See State/. *@
+@inject IDispatcher Dispatch
+@inject IState<ConversationState> Conversation
 
 <div class="app">
     @*
@@ -513,6 +518,13 @@
         var updates = new InlineProgress<TurnState>(t =>
         {
             if (t.Heard is { Length: > 0 }) heard = true;
+
+            // EVERY REPORT REACHES THE STORE, not only the ones a component
+            // happens to care about. The store is what the memory loop and any
+            // future screen read, and a turn that told VoiceMark but not the
+            // store would be a sixth owner of the same conversation.
+            Dispatch.Dispatch(new TurnProgressed(t));
+
             draw.Report(t);
         });
 
@@ -521,7 +533,22 @@
             for (var taken = 0; taken < MaxWakeTurns; taken++)
             {
                 heard = false;
+                Dispatch.Dispatch(new TurnStarted(Woken: keepListening));
+
                 await Talk.TurnAsync(updates, router.Token);
+
+                // THE EXCHANGE IS OVER, WHICH IS WHAT THE MEMORY LOOP HANGS OFF.
+                // The reducer puts it into the short-term cache and the effect
+                // carries it through to long-term memory - so a caller cannot
+                // half-remember by forgetting to also write it down. Read off
+                // the store rather than kept in a local: the reports have
+                // already put the transcript and the reply there, and a second
+                // copy here is a second thing to get wrong.
+                Dispatch.Dispatch(new TurnEnded(
+                    Conversation.Value.Heard,
+                    Conversation.Value.Reply,
+                    Conversation.Value.Language,
+                    Conversation.Value.Detail));
 
                 // ONE TURN UNLESS THE PHONE STARTED IT. Pressing the button is a
                 // deliberate act per turn; hearing its own name is an opening.
