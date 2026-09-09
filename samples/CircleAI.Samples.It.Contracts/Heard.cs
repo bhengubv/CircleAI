@@ -37,13 +37,23 @@ public static class Heard
     {
         if (string.IsNullOrWhiteSpace(heard)) return null;
 
-        // SQUARE BRACKETS ONLY, WHICH IS WHAT THE PROMISE ABOVE ACTUALLY NEEDS.
-        // This matched round brackets too, so "forklift (code 14)" came back as
-        // "forklift" - the doc comment has claimed the opposite since the day it
-        // was written and no test ever asked. Whisper's annotations are square
-        // ([BLANK_AUDIO], [Music], [Applause]); round brackets in a transcript
-        // are far more often somebody actually talking.
-        var stripped = Regex.Replace(heard, @"\[[^\]]*\]", " ").Trim();
+        // THE WHOLE UTTERANCE IN BRACKETS IS AN ANNOTATION, WHATEVER THE
+        // BRACKETS. Two measured facts pull in opposite directions here:
+        //
+        //   "forklift (code 14)"   - a person talking; the brackets are theirs
+        //   "(Bell)"               - Whisper labelling a sound, on a Redmi 12
+        //                            on 2026-09-09, and it was answered with
+        //                            "I am ready for further questions"
+        //
+        // Stripping every bracket ate the first; stripping only square ones let
+        // the second through. What separates them is not the bracket shape but
+        // whether anything was said OUTSIDE the brackets. Square groups are
+        // always the transcriber's ([BLANK_AUDIO], [Music]) and go wherever they
+        // sit; a round group goes only when it is all there is.
+        var trimmed = heard.Trim();
+        if (Regex.IsMatch(trimmed, @"^\([^)]*\)[.!?]*$")) return null;
+
+        var stripped = Regex.Replace(trimmed, @"\[[^\]]*\]", " ").Trim();
 
         // Punctuation on its own is not speech either: silence often comes back
         // as a lone full stop once the tag is gone.
@@ -116,30 +126,11 @@ public static class Heard
         return commonest.Count() >= parts.Count * 0.8;
     }
 
-    /// <summary>The answer without the console marker in front of it.</summary>
-    /// <remarks>
-    /// ItSession prefixes every reply with "IT! &gt; ", which made sense when a
-    /// turn was a line in a console and makes none on a screen that already knows
-    /// who is speaking. It reached the caption AND the voice: measured on a P30 on
-    /// 2026-09-09 the first thing synthesised was a four-character chunk, so the
-    /// assistant opened its mouth and said "IT!" before anything it had actually
-    /// been asked.
-    /// <para>
-    /// Stripped where it is CONSUMED rather than where it is emitted, because the
-    /// native head and the benchmark both parse that marker; a screen and a voice
-    /// are the two places it is simply wrong.
-    /// </para>
-    /// <para>
-    /// Leading only, so an answer that legitimately mentions the app's own name
-    /// mid-sentence keeps it.
-    /// </para>
-    /// </remarks>
-    public const string ConsoleMarker = "IT! > ";
-
-    /// <inheritdoc cref="ConsoleMarker"/>
-    public static string Answer(string? reply) =>
-        reply is null ? ""
-        : reply.StartsWith(ConsoleMarker, System.StringComparison.Ordinal)
-            ? reply[ConsoleMarker.Length..]
-            : reply;
+    // NO MARKER STRIPPING HERE ANY MORE. For a day this also removed an "IT! > "
+    // console marker from the front of every reply, because ItSession put one
+    // there and it was reaching the caption and the voice. That was the wrong
+    // layer: the marker was the OLD BRAND of a product now called Circle AI,
+    // and stripping it downstream left the native head reading it aloud and the
+    // model seeing it in its own history. ItSession no longer emits it, so there
+    // is nothing to strip - one owner, none of it a prompt marker.
 }

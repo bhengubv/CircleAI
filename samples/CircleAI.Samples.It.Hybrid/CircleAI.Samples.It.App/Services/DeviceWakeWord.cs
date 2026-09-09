@@ -255,7 +255,7 @@ public sealed class DeviceWakeWord : IWakeWord
     /// </remarks>
     /// <summary>The phrase this language is currently listened for with.</summary>
     /// <remarks>
-    /// FALLS BACK TO "Hey B" AND SAYS SO ELSEWHERE. A language with no phrase is
+    /// FALLS BACK TO THE FIRST BUILT-IN PHRASE AND SAYS SO ELSEWHERE. A language with no phrase is
     /// the common case - seventy of seventy-five - and the listener still has to
     /// listen for something. The settings screen is where that is confessed and
     /// where a phrase can be added; here it only has to name what the microphone
@@ -267,13 +267,24 @@ public sealed class DeviceWakeWord : IWakeWord
         {
             var options = await _phrases.ForAsync(language, ct).ConfigureAwait(false);
             var chosen = options.FirstOrDefault(o => o.Chosen) ?? options.FirstOrDefault();
-            return chosen?.Text ?? "Hey B";
+            return chosen?.Text ?? Fallback(language);
         }
         catch
         {
-            return "Hey B";
+            return Fallback(language);
         }
     }
+
+    /// <summary>The phrase the listener falls to when nothing was chosen.</summary>
+    /// <remarks>
+    /// THE BUILT-IN LIST'S FIRST ENTRY, NOT A STRING WRITTEN HERE. This said
+    /// "Hey B" - the old product name - so a screen with nothing chosen told
+    /// people to say a phrase that BuiltInWakePhrases had already demoted to
+    /// second. The list is the owner; this reads it.
+    /// </remarks>
+    private static string Fallback(string language)
+        => BuiltInWakePhrases.For(language).FirstOrDefault()
+        ?? BuiltInWakePhrases.For("en").First();
 
     /// <summary>
     /// The keyword file the spotter should read, written to match the chosen phrase.

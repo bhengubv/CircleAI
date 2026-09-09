@@ -271,6 +271,28 @@ public sealed class DeviceWakePhrases : IWakePhrases
     /// phrase, every detection reported the shorter. One at a time is what the
     /// measurement says to do.
     /// </remarks>
+    /// <summary>
+    /// Makes the keyword file on disk say what this store says, before anything
+    /// listens to it.
+    /// </summary>
+    /// <remarks>
+    /// THE FILE AND THE SCREEN HAD DIFFERENT ANSWERS. The file was written only
+    /// when somebody added, removed or chose a phrase, so a phone whose file was
+    /// written by an older build kept that build's default for ever: on
+    /// 2026-09-09 a Redmi 12 showed "Hey Circle AI" on every screen and loaded
+    /// <c>[Hey B]</c> from <c>wake-en.txt</c>, fired on the "Hey" of the real
+    /// phrase, and scored the rest under the gate. The staleness check hashes the
+    /// file against itself, so a file consistent with the WRONG phrase passes.
+    /// <para>
+    /// Called at every start of resident listening. Idempotent and cheap: the
+    /// same phrase writes the same bytes, the hash does not move, and nothing is
+    /// rebuilt. A different phrase moves the hash and the listener follows -
+    /// which is the whole point: whatever the phrase is set to, the ear listens
+    /// for the one the screen tells you to say.
+    /// </para>
+    /// </remarks>
+    public void EnsureCurrent(string language) => WriteKeywordFile(language);
+
     private void WriteKeywordFile(string language)
     {
         try

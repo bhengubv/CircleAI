@@ -437,7 +437,7 @@ public sealed class ItSession : IAsyncDisposable
         await foreach (var chunk in _it.StreamAsync(_history))
             sb.Append(chunk);
 
-        emit($"IT! > {sb}");
+        emit(sb.ToString());
         _history.Add(new ChatTurn("assistant", sb.ToString()));
     }
 
@@ -458,6 +458,14 @@ public sealed class ItSession : IAsyncDisposable
     /// everything Content and this simply stays quiet.
     /// </para>
     /// </param>
+    // NO PROMPT MARKER IN THE STREAM. Every answer used to arrive with "IT! > "
+    // in front of it - the old brand of a product now called Circle AI, put
+    // there when a turn was a line in a console. It reached three places it had
+    // no business being: a screen that already knows who is speaking, a voice
+    // that said "IT!" out loud before the answer (measured on a P30 on
+    // 2026-09-09), and the model's own history via the vision path, so the
+    // model was shown its answers prefixed with a marker it never wrote. A
+    // console that wants a prompt prints one; see Program.cs.
     public async Task<string> RunTurnStreamingAsync(
         string input, Action<string> emitLine, Action<string> onChunk,
         Action<string>? onThinking = null)
@@ -473,7 +481,6 @@ public sealed class ItSession : IAsyncDisposable
 
         if (onThinking is null)
         {
-            onChunk("IT! > ");
             await foreach (var chunk in _it.StreamAsync(_history))
             {
                 sb.Append(chunk);
@@ -496,12 +503,11 @@ public sealed class ItSession : IAsyncDisposable
                 else
                 {
                     if (inThinking) { onThinking("\n"); inThinking = false; }
-                    if (!startedAnswer) { onChunk("IT! > "); startedAnswer = true; }
+                    startedAnswer = true;
                     sb.Append(f.Text);
                     onChunk(f.Text);
                 }
             }
-            if (!startedAnswer) onChunk("IT! > ");
         }
 
         onChunk("\n");
@@ -573,7 +579,7 @@ public sealed class ItSession : IAsyncDisposable
                           "stub mode has no model registry to select a vision model from");
         if (!plan.IsAvailable)
         {
-            var msg = $"IT! > (I can't see images: {plan.Reason})\n";
+            var msg = $"(I can't see images: {plan.Reason})\n";
             onChunk(msg);
             _history.Add(new ChatTurn("user", question + " [image]"));
             _history.Add(new ChatTurn("assistant", msg));
@@ -590,7 +596,6 @@ public sealed class ItSession : IAsyncDisposable
         msgs.Add(new ChatMessage("user", question) { ImageBytes = imageBytes });
 
         var sb = new StringBuilder();
-        onChunk("IT! > ");
         await foreach (var chunk in _brain.StreamAsync(msgs))
         {
             sb.Append(chunk);

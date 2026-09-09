@@ -153,22 +153,24 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Thinking, Heard: heard, Language: tag));
 
+            // SPOKEN AS IT IS WRITTEN, ONE SENTENCE AT A TIME. This waited for
+            // the whole answer, then synthesised the whole of it as one block,
+            // then played it. Measured on 2026-09-09: a Redmi 12 thought for
+            // 4,4 s and then rendered for 11,8 s before a sound; a P30 thought
+            // for 21,7 s first. The owner heard "big gaps". Each sentence now
+            // goes to the voice the moment its end is seen, and the voice works
+            // through them in order while the model is still writing the next.
+            // See SpokenReply for where a sentence is judged to end.
             var reply = "";
+            await using var mouth = new SpokenReply((sentence, tok) => SayAsync(sentence, tag, tok), ct);
+
             await _brain.AskAsync(heard, fragment =>
             {
                 reply += fragment;
+                mouth.Push(fragment);
                 updates.Report(new TurnState(TurnPhase.Thinking,
-                    Heard: heard, Reply: Answer(reply), Language: tag));
+                    Heard: heard, Reply: reply, Language: tag));
             }, ct).ConfigureAwait(false);
-
-            // A TRANSCRIPT MARKER IS NOT PART OF THE ANSWER. ItSession prefixes
-            // every reply with "IT! > ", which made sense when a turn was a line
-            // in a console and makes none on a screen that already knows who is
-            // speaking. It reached the caption AND the voice: measured on a P30
-            // on 2026-09-09, the first thing synthesised was a four-character
-            // chunk, so the assistant opened its mouth and said "IT!" before
-            // anything it had actually been asked.
-            reply = Answer(reply);
 
             // THE TWO HALVES, SEPARATELY TIMED. "It took ages and said something
             // mad" is either a slow transcriber or a slow brain, and either a
@@ -186,7 +188,10 @@ public sealed class DeviceConversation : IConversation
 
             try
             {
-                await SayAsync(reply, tag, ct).ConfigureAwait(false);
+                // The sentences are already in flight; this is only the wait for
+                // the last word to finish, so the mark goes still when the sound
+                // stops rather than when the text did.
+                await mouth.CompleteAsync().ConfigureAwait(false);
             }
             catch (Exception speak) when (speak is not OperationCanceledException)
             {
@@ -356,7 +361,6 @@ public sealed class DeviceConversation : IConversation
     // Android, so while they sat here nothing could pin them. See Heard.
     private static string? Speech(string? heard) => Heard.Speech(heard);
 
-    private static string Answer(string reply) => Heard.Answer(reply);
 
     private async Task<string?> ListenAsync(
         IProgress<TurnState> updates, CancellationToken ct, string? language = null)

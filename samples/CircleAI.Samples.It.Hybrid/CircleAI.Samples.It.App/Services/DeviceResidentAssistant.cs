@@ -37,9 +37,20 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
     private const string Tag = "CircleAI.Resident";
 
     private readonly ISpokenLanguage _spoken;
+    private readonly IServiceProvider _services;
     private bool _wired;
 
-    public DeviceResidentAssistant(ISpokenLanguage spoken) => _spoken = spoken;
+    /// <param name="services">
+    /// RESOLVED LATE, NOT INJECTED. DeviceWakePhrases already depends on this
+    /// class to refresh the listener when a phrase changes; taking IWakePhrases
+    /// here would close a cycle the container refuses to build. Asking the
+    /// provider at start time keeps both singletons and breaks the loop.
+    /// </param>
+    public DeviceResidentAssistant(ISpokenLanguage spoken, IServiceProvider services)
+    {
+        _spoken = spoken;
+        _services = services;
+    }
 
     /// <inheritdoc />
     public bool IsListening => CircleNeuronService.IsListening;
@@ -62,7 +73,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
                 Android.Util.Log.Info(Tag, "not starting: no microphone permission");
                 return new ResidentStatus(ResidentState.NeedsPermission,
                     "Not listening",
-                    "It needs the microphone. Turn on Hey B and allow it there.");
+                    "It needs the microphone. Open Waking and allow it there.");
             }
 
             // Located the same way the wake screen locates it, from the one
@@ -73,7 +84,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
                 Android.Util.Log.Info(Tag, "not starting: no wake bundle on this device");
                 return new ResidentStatus(ResidentState.NotInstalled,
                     "Not listening",
-                    "The wake word is not downloaded yet. Open Hey B to get it.");
+                    "The wake word is not downloaded yet. Open Waking to get it.");
             }
 
             // LISTEN FOR ITS NAME IN THE LANGUAGE THIS PHONE IS SET TO, and for
@@ -87,6 +98,14 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             // "Hey Circle AI" while the microphone reported
             // closest="Hey B" 2/3 tokens.
             var language = _spoken.Current;
+
+            // ONE OWNER FOR THE PHRASE, EVERY TIME. The file the listener reads
+            // is rewritten from the same store the screens read, before it is
+            // read - see DeviceWakePhrases.EnsureCurrent for the Redmi 12 that
+            // showed "Hey Circle AI" and listened for "Hey B".
+            if (_services.GetService(typeof(IWakePhrases)) is DeviceWakePhrases phrases)
+                phrases.EnsureCurrent(language);
+
             var keywords = DeviceWakePhrases.KeywordFile(language);
             if (CircleNeuronService.Listener is not null &&
                 ResidentWakeWord.Built.IsStaleFor(language, keywords))
@@ -100,7 +119,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             {
                 return new ResidentStatus(ResidentState.Failed,
                     "Not listening",
-                    "The wake word would not load. Open Hey B and check it there.");
+                    "The wake word would not load. Open Waking and check it there.");
             }
 
             // Subscribed once for the life of the process. The event is static

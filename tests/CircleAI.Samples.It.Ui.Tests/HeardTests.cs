@@ -87,29 +87,16 @@ public class HeardTests
     }
 
     [Fact]
-    public void The_console_marker_is_not_part_of_the_answer()
+    public void A_round_bracketed_sound_on_its_own_is_not_speech()
     {
-        // It reached the caption AND the voice: the first thing synthesised was a
-        // four-character chunk, so the assistant said "IT!" out loud before
-        // anything it had been asked.
-        Assert.Equal(
-            "I cannot place your cryptocurrency.",
-            Heard.Answer("IT! > I cannot place your cryptocurrency."));
+        // MEASURED ON A REDMI 12 on 2026-09-09: Whisper wrote "(Bell)" for a
+        // sound, the square-brackets-only rule from earlier that day let it
+        // through, and the model answered "I am ready for further questions
+        // when prompted." What separates this from "forklift (code 14)" is not
+        // the bracket shape but that nothing was said outside the brackets.
+        Assert.Null(Heard.Speech("(Bell)"));
+        Assert.Null(Heard.Speech("(laughs)."));
+        Assert.Equal("forklift (code 14)", Heard.Speech("forklift (code 14)"));
     }
 
-    [Fact]
-    public void The_marker_is_stripped_only_from_the_front()
-    {
-        const string mid = "The app is called IT! > and it listens.";
-        Assert.Equal(mid, Heard.Answer(mid));
-    }
-
-    [Fact]
-    public void A_partial_marker_is_left_alone()
-    {
-        // Streaming means the caption is rebuilt from a growing string, so the
-        // marker arrives a character at a time and must not be half-eaten.
-        Assert.Equal("IT!", Heard.Answer("IT!"));
-        Assert.Equal("IT! >", Heard.Answer("IT! >"));
-    }
 }

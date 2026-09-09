@@ -206,7 +206,10 @@
 
     string Prompt => Mark.State switch
     {
-        MarkState.Thinking => "Getting it ready",
+        // "Getting it ready" read as setup, not thought - and it is shown for the
+        // seconds between the last word and the first word back, which on this
+        // phone is exactly when somebody wonders whether it heard them.
+        MarkState.Thinking => "Thinking… please wait…",
         MarkState.Speaking => "Speaking",
         _ when Translating => "Tap to translate",
         _ => Voice.Availability == VoiceAvailability.OnDevice

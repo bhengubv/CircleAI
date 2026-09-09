@@ -289,7 +289,7 @@ public static class CapabilitySweep
     private static ReportDocument SampleReport() => new(
         Title:    "On-device capability report",
         Subtitle: "CircleAI Neuron — generated on the phone",
-        Author:   "IT! sample",
+        Author:   "Circle AI sample",
         Date:     "24 July 2026",
         Sections: new[]
         {

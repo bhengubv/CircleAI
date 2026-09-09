@@ -76,12 +76,13 @@ if (hearWav is not null)
             Console.WriteLine($"  listening to: {hearWav}");
             var heard = await listener.HearAsync(hearWav);
             Console.WriteLine($"\nyou (spoken) > {heard}");
+            Console.Write("Circle AI > ");
             var reply = await session.RunTurnStreamingAsync(heard, Console.WriteLine, Console.Write);
             Console.WriteLine();
             await Say(reply);
         }
     }
-    if (!args.Contains("--demo")) { speaker?.Dispose(); Console.WriteLine("IT out."); return; }
+    if (!args.Contains("--demo")) { speaker?.Dispose(); Console.WriteLine("Circle AI out."); return; }
 }
 
 // --demo: run the scripted conversation and exit (no keyboard needed).
@@ -90,6 +91,7 @@ if (args.Contains("--demo"))
     foreach (var line in ItSession.DemoTurns)
     {
         Console.WriteLine($"\nyou > {line}");
+        Console.Write("Circle AI > ");
         var reply = await session.RunTurnStreamingAsync(line, Console.WriteLine, Console.Write);
         Console.WriteLine();
         await Say(reply);
@@ -99,7 +101,7 @@ if (args.Contains("--demo"))
 }
 
 // Interactive REPL.
-Console.WriteLine("Chat with IT. Try: \"my name is ...\" then \"what's my name?\", or");
+Console.WriteLine("Chat with Circle AI. Try: \"my name is ...\" then \"what's my name?\", or");
 Console.WriteLine("\"solve ... step by step\" to see it route to a specialist. Type /quit to leave.");
 while (true)
 {
@@ -109,12 +111,13 @@ while (true)
     input = input.Trim();
     if (input.Length == 0) continue;
     if (input is "/quit" or "/exit") break;
+    Console.Write("Circle AI > ");
     var reply = await session.RunTurnStreamingAsync(input, Console.WriteLine, Console.Write);
     Console.WriteLine();
     await Say(reply);
 }
 speaker?.Dispose();
-Console.WriteLine("IT out.");
+Console.WriteLine("Circle AI out.");
 
 static void PrintBanner()
 {

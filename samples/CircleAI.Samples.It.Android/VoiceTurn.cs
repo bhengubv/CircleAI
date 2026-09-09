@@ -91,6 +91,8 @@ public sealed class VoiceTurn
         var started = DateTimeOffset.UtcNow;
         DateTimeOffset? lastVoice = null;
         var heardAnything = false;
+        var peakRms = 0.0;
+        var ended = "deadline";
 
         // A DEADLINE THAT DOES NOT DEPEND ON AUDIO ARRIVING.
         //
@@ -107,12 +109,16 @@ public sealed class VoiceTurn
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(MaxLength);
 
+        // Declared outside the try so the log line below can read it on every
+        // exit, including the deadline firing before the floor was ever set.
+        var floorAtEnd = 0.0;
         try
         {
         // The first few frames measure the room rather than the speaker, so the
         // floor is the room's own noise instead of a number chosen at a desk.
         var floorSamples = new List<double>();
         var floor = 0.0;
+        floorAtEnd = 0.0;
 
         await foreach (var chunk in capture.CaptureAsync(deadline.Token).ConfigureAwait(false))
         {
@@ -127,11 +133,13 @@ public sealed class VoiceTurn
                 sum += s * s;
             }
             var rms = n > 0 ? Math.Sqrt(sum / n) : 0;
+            if (rms > peakRms) peakRms = rms;
 
             if (floorSamples.Count < 3)
             {
                 floorSamples.Add(rms);
                 floor = Math.Max(0.002, Average(floorSamples));
+                floorAtEnd = floor;
                 // Still reported, so the circle is alive from the first instant
                 // rather than dead for the first third of a second.
                 Level?.Invoke(this, (float)Math.Clamp(rms * 12, 0, 1));
@@ -147,7 +155,7 @@ public sealed class VoiceTurn
             // Tracking the quietest thing heard so far lets a floor that was set
             // on speech correct itself the moment they pause, instead of staying
             // wrong for the whole turn.
-            if (rms < floor) floor = Math.Max(0.002, rms);
+            if (rms < floor) { floor = Math.Max(0.002, rms); floorAtEnd = floor; }
 
             if (rms > floor * SpeechOverNoise || rms > AbsoluteSpeechLevel)
             {
@@ -157,9 +165,9 @@ public sealed class VoiceTurn
 
             // ONLY silence after speech ends the turn. Ending on silence alone
             // would cut off anyone who pauses to think before they start.
-            if (heardAnything && lastVoice is { } last && now - last > EndOfSpeech) break;
-            if (!heardAnything && now - started > NoSpeechTimeout) break;
-            if (now - started > MaxLength) break;
+            if (heardAnything && lastVoice is { } last && now - last > EndOfSpeech) { ended = "silence after speech"; break; }
+            if (!heardAnything && now - started > NoSpeechTimeout) { ended = "no speech"; break; }
+            if (now - started > MaxLength) { ended = "max length"; break; }
         }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -169,6 +177,17 @@ public sealed class VoiceTurn
             // the question and lost only trailing silence. Throwing here would
             // turn a slow microphone into a lost sentence.
         }
+
+        // SAID OUT LOUD, BECAUSE "heard nothing" HAD NO EVIDENCE BEHIND IT. On a
+        // Redmi 12 on 2026-09-09 a woken turn returned empty after exactly the
+        // no-speech timeout, and nothing recorded whether the room was silent,
+        // the speaker was quiet, or the gate was set too high by a floor taken
+        // on the wrong frames. One line answers all three.
+        Android.Util.Log.Info("CircleAI.Turn",
+            $"listen: {(heardAnything ? "heard" : "nothing")} | ended by {ended} | "
+            + $"{(DateTimeOffset.UtcNow - started).TotalMilliseconds:0} ms | "
+            + $"floor={floorAtEnd:0.0000} peak={peakRms:0.0000} gate={Math.Max(floorAtEnd * SpeechOverNoise, AbsoluteSpeechLevel):0.0000} | "
+            + $"{captured.Count / 32000.0:0.0} s kept");
 
         return heardAnything ? captured.ToArray() : ReadOnlyMemory<byte>.Empty;
     }
