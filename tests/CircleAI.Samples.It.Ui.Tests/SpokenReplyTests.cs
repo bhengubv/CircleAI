@@ -197,4 +197,38 @@ public class SpokenReplyTests
 
         Assert.Equal(["Good.", "Fine."], played);
     }
+
+    [Fact]
+    public async Task Started_does_not_complete_until_a_sentence_is_actually_spoken()
+    {
+        // THE BUG THIS SIGNAL EXISTS FOR. Barge-in armed when the reply object
+        // was created and spent the model's whole 5-13 second think gap
+        // listening with nothing to interrupt, cancelling replies before a word
+        // of them was spoken.
+        var release = new TaskCompletionSource();
+        var reply = new SpokenReply(async (_, _) => await release.Task);
+
+        Assert.False(reply.Started.IsCompleted, "armed before anything was queued");
+
+        reply.Push("Not a whole sentence yet");
+        await Task.Delay(100);
+        Assert.False(reply.Started.IsCompleted, "armed on an unfinished sentence");
+
+        reply.Push(". ");
+        await reply.Started.WaitAsync(TimeSpan.FromSeconds(5));
+
+        release.SetResult();
+        await reply.CompleteAsync();
+    }
+
+    [Fact]
+    public async Task Started_never_completes_when_nothing_is_spoken()
+    {
+        // A reply that produced no audio cannot be interrupted, so the watcher
+        // must never open a microphone for it.
+        var reply = new SpokenReply((_, _) => Task.CompletedTask);
+        await reply.CompleteAsync();
+
+        Assert.False(reply.Started.IsCompleted);
+    }
 }

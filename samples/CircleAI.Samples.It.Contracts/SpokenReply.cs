@@ -46,6 +46,8 @@ public sealed class SpokenReply : IAsyncDisposable
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly StringBuilder _pending = new();
     private readonly Task _speaking;
+    private readonly TaskCompletionSource _started =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _completed;
 
     /// <summary>One stage: each sentence is rendered and played by one call.</summary>
@@ -77,6 +79,20 @@ public sealed class SpokenReply : IAsyncDisposable
         _ct = ct;
         _speaking = Task.Run(() => RenderAheadAsync(render, play, Math.Max(1, lookAhead)), CancellationToken.None);
     }
+
+    /// <summary>Completes when the first sentence actually starts being spoken.</summary>
+    /// <remarks>
+    /// THE SIGNAL BARGE-IN WAS MISSING. A watcher armed when this object is
+    /// CREATED is armed through the whole think gap - measured at 5 to 13
+    /// seconds on 2026-09-09 - during which there is nothing to interrupt, and
+    /// it cancelled replies before they were ever spoken. Waiting on this means
+    /// the microphone only opens once there is sound to talk over.
+    /// <para>
+    /// Never completes if nothing is ever spoken, which is correct: a reply that
+    /// produced no audio cannot be interrupted.
+    /// </para>
+    /// </remarks>
+    public Task Started => _started.Task;
 
     /// <summary>How many sentences have been handed on so far.</summary>
     public int Queued { get; private set; }
@@ -135,6 +151,7 @@ public sealed class SpokenReply : IAsyncDisposable
         {
             await foreach (var sentence in _sentences.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
             {
+                _started.TrySetResult();
                 try { await say(sentence, _ct).ConfigureAwait(false); Spoken++; }
                 catch (OperationCanceledException) { break; }
                 catch
@@ -183,6 +200,7 @@ public sealed class SpokenReply : IAsyncDisposable
         {
             await foreach (var item in rendered.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
             {
+                _started.TrySetResult();
                 try { await play(item, _ct).ConfigureAwait(false); Spoken++; }
                 catch (OperationCanceledException) { break; }
                 catch { /* one bad file must not silence the rest */ }

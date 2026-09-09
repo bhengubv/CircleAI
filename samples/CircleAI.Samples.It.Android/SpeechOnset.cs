@@ -83,7 +83,15 @@ public sealed class SpeechOnset
                 }
                 if (rms < floor) floor = Math.Max(0.002, rms);
 
-                var loud = rms > floor * SpeechOverNoise || rms > AbsoluteSpeechLevel;
+                // BOTH, NOT EITHER. This was an OR, which is right for VoiceTurn -
+                // it wants to catch a quiet speaker in a quiet room - and wrong
+                // here, where a false fire cancels an answer somebody asked for.
+                // Measured on a Redmi 12 on 2026-09-09: the floor fell to 0,0032,
+                // so the floor-relative half fired on room noise at rms 0,0150
+                // while the printed gate said 0,0400 and the interruption looked
+                // impossible. A voice worth stopping for is loud in absolute
+                // terms AND louder than the room.
+                var loud = rms > floor * SpeechOverNoise && rms > AbsoluteSpeechLevel;
                 var now = DateTimeOffset.UtcNow;
 
                 if (!loud) { above = null; continue; }
@@ -91,9 +99,12 @@ public sealed class SpeechOnset
                 above ??= now;
                 if (now - above.Value < Sustain) continue;
 
+                // BOTH HALVES PRINTED. One combined "gate" hid which test fired
+                // and made a real trigger read as impossible.
                 Android.Util.Log.Info("CircleAI.Turn",
                     $"barge-in: a voice for {(now - above.Value).TotalMilliseconds:0} ms | "
-                    + $"rms={rms:0.0000} floor={floor:0.0000} gate={Math.Max(floor * SpeechOverNoise, AbsoluteSpeechLevel):0.0000}");
+                    + $"rms={rms:0.0000} floor={floor:0.0000} "
+                    + $"needs >{floor * SpeechOverNoise:0.0000} and >{AbsoluteSpeechLevel:0.0000}");
                 return true;
             }
         }

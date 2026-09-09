@@ -192,13 +192,12 @@ public sealed class DeviceConversation : IConversation
                     speaking.Token)
                 : new SpokenReply((sentence, tok) => SayAsync(sentence, tag, tok), speaking.Token);
 
-            // LISTENING WHILE IT TALKS. Started a beat late so the "One moment"
-            // above is not heard as the interruption. Its microphone is closed
-            // in TurnAsync's finally on EVERY exit - an early return on an empty
-            // reply included - because the next turn opens its own recorder and
-            // two must never overlap.
+            // LISTENING ONLY WHILE THERE IS SOUND TO TALK OVER. Its microphone is
+            // closed in TurnAsync's finally on EVERY exit - an early return on an
+            // empty reply included - because the next turn opens its own recorder
+            // and two must never overlap.
             bargeStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            barge = BargeInAsync(speaking, bargeStop.Token);
+            barge = BargeInAsync(mouth, speaking, bargeStop.Token);
 
             await _brain.AskAsync(heard, fragment =>
             {
@@ -280,12 +279,24 @@ public sealed class DeviceConversation : IConversation
     /// records what the person says next. Keeping the first second of an
     /// interruption needs a continuous buffer, which is a later step.
     /// </remarks>
-    private static async Task BargeInAsync(CancellationTokenSource speaking, CancellationToken stop)
+    private static async Task BargeInAsync(
+        SpokenReply mouth, CancellationTokenSource speaking, CancellationToken stop)
     {
         try
         {
-            // A beat late, so the acknowledgement just played is not the voice
-            // this hears - the same 700 ms the wake settle uses.
+            // NOT UNTIL IT IS ACTUALLY SPEAKING. This waited a flat 700 ms from
+            // the moment the turn started talking to the model, and the model
+            // takes 5 to 13 seconds on these phones - so the watcher spent the
+            // whole think gap listening with nothing to interrupt, and cancelled
+            // the reply on the asker's own trailing voice before a word of it
+            // had been spoken. Measured on a P30 on 2026-09-09: heard at
+            // 20:52:46, barge-in fired 20:52:48, the model's first token
+            // 20:53:00. Waiting on Started means the microphone opens when there
+            // is sound to talk over, and never otherwise.
+            await mouth.Started.WaitAsync(stop).ConfigureAwait(false);
+
+            // And a beat after that, so the first syllable of its own voice is
+            // not the thing it hears.
             await Task.Delay(TimeSpan.FromMilliseconds(700), stop).ConfigureAwait(false);
 
             await using var mic = new AndroidAudioCapture();

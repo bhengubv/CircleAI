@@ -123,6 +123,45 @@ public sealed class MnnRuntimeConfig
         catch (EntryPointNotFoundException) { return false; }
         catch (DllNotFoundException)        { return false; }
     }
+
+    /// <summary>
+    /// Lets the KV cache live on disk, which is what the prefix cache needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A DIFFERENT FLAG FROM THE WEIGHT MMAP, AND THAT IS THE WHOLE BUG.
+    /// <see cref="MmapWeightLoader"/> sets <c>use_mmap</c>, which pages the
+    /// MODEL off disk; the prefix cache is a disk-backed KV cache and asks for
+    /// <c>kvcache_mmap</c>. Nothing set it, so every attempt to reuse a prefix
+    /// was refused — measured on a P30 on 2026-09-09:
+    /// </para>
+    /// <code>
+    /// E/MNNJNI: setPrefixCacheFile requires kvcache_mmap=true in config.
+    /// I/DOTNET: CIRCLEAI-KV prefix-miss cache=on feeding=457 chars
+    /// </code>
+    /// <para>
+    /// <c>UsePrefixCache = true</c> was set at the caller and honoured nowhere,
+    /// so every turn re-prefilled the whole system prompt from cold. On that turn
+    /// the model's first token arrived 13,4 seconds after the transcript, which
+    /// is most of what somebody experiences as the gap before it speaks.
+    /// </para>
+    /// <para>
+    /// Best-effort, like every other config read here: an older bridge, or a
+    /// store that cannot map, must fall back to cold prefill rather than fail to
+    /// load a model. Send it BEFORE load, and after
+    /// <see cref="MmapWeightLoader.UseScratch"/> — MNN needs a writable
+    /// <c>tmp_path</c> before any mmap flag means anything.
+    /// </para>
+    /// </remarks>
+    public bool TryEnableKvCacheMmap()
+    {
+        try
+        {
+            return MnnInteropRt.mnn_llm_set_config(_handle, "{\"kvcache_mmap\":true}") == 0;
+        }
+        catch (EntryPointNotFoundException) { return false; }
+        catch (DllNotFoundException)        { return false; }
+    }
 }
 
 /// <summary>(3.3.0) RT-03 mmap weight loading control.</summary>

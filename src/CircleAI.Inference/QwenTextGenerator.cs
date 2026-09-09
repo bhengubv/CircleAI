@@ -244,6 +244,14 @@ public sealed class QwenTextGenerator : IChatGenerator
             Directory.CreateDirectory(scratch);
             mmap.UseScratch(scratch);
             mmap.Enable();
+
+            // AND THE KV CACHE, WHICH IS A SEPARATE FLAG. The prefix cache is
+            // disk-backed and refuses to attach without kvcache_mmap, so
+            // UsePrefixCache at the caller was being honoured nowhere and every
+            // turn re-prefilled from cold — 13,4 seconds to the first token on a
+            // P30 on 2026-09-09. Same scratch directory, which is why this sits
+            // after UseScratch rather than beside Enable.
+            new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
 
