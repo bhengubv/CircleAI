@@ -158,8 +158,17 @@ public sealed class DeviceConversation : IConversation
             {
                 reply += fragment;
                 updates.Report(new TurnState(TurnPhase.Thinking,
-                    Heard: heard, Reply: reply, Language: tag));
+                    Heard: heard, Reply: Answer(reply), Language: tag));
             }, ct).ConfigureAwait(false);
+
+            // A TRANSCRIPT MARKER IS NOT PART OF THE ANSWER. ItSession prefixes
+            // every reply with "IT! > ", which made sense when a turn was a line
+            // in a console and makes none on a screen that already knows who is
+            // speaking. It reached the caption AND the voice: measured on a P30
+            // on 2026-09-09, the first thing synthesised was a four-character
+            // chunk, so the assistant opened its mouth and said "IT!" before
+            // anything it had actually been asked.
+            reply = Answer(reply);
 
             // THE TWO HALVES, SEPARATELY TIMED. "It took ages and said something
             // mad" is either a slow transcriber or a slow brain, and either a
@@ -248,6 +257,80 @@ public sealed class DeviceConversation : IConversation
         }
     }
 
+    /// <summary>
+    /// Takes the microphone off the wake listener for the length of a turn, and
+    /// gives it back afterwards.
+    /// </summary>
+    /// <remarks>
+    /// TWO RECORDERS WERE OPEN AT ONCE. The resident listener holds the
+    /// microphone continuously and nothing ever released it, so a turn opened a
+    /// SECOND AudioRecord on top of it. Measured on a P30 on 2026-09-09: the wake
+    /// heartbeat went on printing every five seconds all the way through a turn
+    /// that was supposed to own the microphone, and the same build on a Redmi 12
+    /// produced the same nonsense — so it was never one phone's audio stack.
+    ///
+    /// <para>
+    /// AND THE WAKE FIRES BEFORE THE PHRASE IS FINISHED. The gate is on
+    /// probability, not on completing the keyword: that turn woke on
+    /// <c>3/8 tokens p=0,477</c>, roughly after "Hey Cir…", and the turn opened
+    /// its microphone nine milliseconds later. What it recorded was the REST OF
+    /// THE WAKE PHRASE — "…cle AI" came back as "Placeculeeai." — and the silence
+    /// after it ended the turn before the actual question was ever spoken.
+    /// </para>
+    /// <para>
+    /// So the settle is not politeness, it is the difference between recording
+    /// the question and recording the phrase that asked for it. It runs only when
+    /// the resident listener was actually holding the microphone, which is
+    /// exactly the woken case; pressing the button on a phone that is not
+    /// listening costs nothing.
+    /// </para>
+    /// <para>
+    /// Restoring is in a finally by construction. A turn that threw and left the
+    /// wake word off would be silent until the app was restarted, and nothing
+    /// would say why.
+    /// </para>
+    /// </remarks>
+    private static async Task<IAsyncDisposable> MicrophoneAloneAsync(CancellationToken ct)
+    {
+        if (!global::CircleAI.Device.CircleNeuronService.IsListening) return NotHeld.Instance;
+
+        await global::CircleAI.Device.CircleNeuronService.StopListeningAsync(ct).ConfigureAwait(false);
+
+        // Long enough for the tail of a wake phrase that fired part-way through,
+        // and for the "I heard you" tone not to be recorded as the question.
+        try { await Task.Delay(TimeSpan.FromMilliseconds(700), ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { /* give it back anyway, below */ }
+
+        return new GiveItBack();
+    }
+
+    /// <summary>Nothing was taken, so nothing is given back.</summary>
+    private sealed class NotHeld : IAsyncDisposable
+    {
+        public static readonly NotHeld Instance = new();
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>Starts the wake listener again when the turn is over.</summary>
+    private sealed class GiveItBack : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            // NOT the turn's token: the turn ending - including by cancellation -
+            // is precisely when the wake word has to come back.
+            try
+            {
+                await global::CircleAI.Device.CircleNeuronService
+                    .StartListeningAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn("CircleAI.Turn",
+                    "could not resume the wake word after the turn: " + ex.Message);
+            }
+        }
+    }
+
     /// <summary>One line of it, for the log.</summary>
     /// <remarks>
     /// TRUNCATED AND LOCAL. This writes what somebody said into logcat, which sits
@@ -268,44 +351,13 @@ public sealed class DeviceConversation : IConversation
         return one.Length <= max ? one : one[..max] + "…";
     }
 
-    /// <summary>
-    /// What was actually SAID, or null when the transcriber only heard noise.
-    /// </summary>
-    /// <remarks>
-    /// WHISPER LABELS NON-SPEECH RATHER THAN RETURNING NOTHING. A quiet room
-    /// comes back as "[BLANK_AUDIO]", a radio in the background as "[Music]", and
-    /// those are not empty strings - so they sailed through an
-    /// IsNullOrWhiteSpace check and straight into whatever asked for the text.
-    /// Pressing "Say it" next to a television would have written [Music] onto
-    /// somebody's CV as the kind of work they are looking for.
-    /// <para>
-    /// Only WHOLE bracketed tokens go. Somebody saying "forklift (code 14)" keeps
-    /// their brackets; what is removed is the transcriber talking about the audio
-    /// instead of transcribing it. If nothing survives, nothing was said.
-    /// </para>
-    /// </remarks>
-    private static string? Speech(string? heard)
-    {
-        if (string.IsNullOrWhiteSpace(heard)) return null;
+    // THE THREE RULES THAT DECIDE WHETHER IT ANSWERS AT ALL now live in
+    // Contracts, where a test can reach them - this head only compiles for
+    // Android, so while they sat here nothing could pin them. See Heard.
+    private static string? Speech(string? heard) => Heard.Speech(heard);
 
-        var stripped = System.Text.RegularExpressions.Regex.Replace(
-            heard, @"[\[(][^\])]*[\])]", " ").Trim();
+    private static string Answer(string reply) => Heard.Answer(reply);
 
-        // Punctuation on its own is not speech either: silence often comes back
-        // as a lone full stop once the tag is gone.
-        var hasWords = stripped.Any(char.IsLetterOrDigit);
-        return hasWords ? System.Text.RegularExpressions.Regex.Replace(stripped, @"\s+", " ") : null;
-    }
-
-    /// <summary>
-    /// Open the microphone until the speaker stops, and transcribe what they said.
-    /// </summary>
-    /// <remarks>
-    /// END OF SPEECH IS A SILENCE, NOT A TIMER. Cutting somebody off after a fixed
-    /// number of seconds truncates the slow, the elderly and anybody thinking - the
-    /// people this is most for. The thresholds are VoiceTurn's own: speech is 3x
-    /// the noise floor or an absolute 0.02, and 1.4 seconds of quiet ends the turn.
-    /// </remarks>
     private async Task<string?> ListenAsync(
         IProgress<TurnState> updates, CancellationToken ct, string? language = null)
     {
@@ -327,6 +379,12 @@ public sealed class DeviceConversation : IConversation
         ReadOnlyMemory<byte> audio;
         using var cap = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cap.CancelAfter(TimeSpan.FromSeconds(30));
+
+        // ONE OWNER, AND THE TAIL OF THE WAKE PHRASE LET GO OF. See
+        // MicrophoneAloneAsync: without this the wake listener is still recording
+        // while this opens a second microphone, and what this captures is the end
+        // of "Hey Circle AI" rather than the question after it.
+        await using var alone = await MicrophoneAloneAsync(ct).ConfigureAwait(false);
 
         try
         {
@@ -431,6 +489,10 @@ public sealed class DeviceConversation : IConversation
             // capability: a transcriber that cannot be primed simply is not.
             if (listener.Transcriber is WhisperNetTranscriber primable)
                 primable.Vocabulary = SpokenVocabulary.For(tag);
+
+            // And not shared with the wake listener either - a meeting recorded
+            // alongside a second open recorder is the same fault as a turn.
+            await using var alone = await MicrophoneAloneAsync(ct).ConfigureAwait(false);
 
             // ONE MICROPHONE FOR THE WHOLE MEETING. The screen used to open and
             // close one per sentence, which flickers the microphone indicator,
