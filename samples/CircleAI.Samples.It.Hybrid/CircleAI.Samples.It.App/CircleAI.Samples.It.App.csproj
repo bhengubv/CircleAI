@@ -165,6 +165,11 @@
          in a way that only shows up as "it cuts me off". -->
     <Compile Include="..\..\CircleAI.Samples.It.Android\VoiceTurn.cs"
              Link="Shared\VoiceTurn.cs" />
+    <!-- The other half of VoiceTurn: noticing that a voice has STARTED while the
+         assistant is talking, so a person can interrupt it. Same guard, same
+         reason to link rather than copy. -->
+    <Compile Include="..\..\CircleAI.Samples.It.Android\SpeechOnset.cs"
+             Link="Shared\SpeechOnset.cs" />
     <!--
       The wake detector, LINKED not reimplemented, for the same reason VoiceTurn
       is: it judges a candidate phrase against the bundle's own tokenizer and

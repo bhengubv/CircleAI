@@ -17,7 +17,7 @@ using CircleAI.Samples.It.Voice;
 namespace CircleAI.Samples.It.App.Services;
 
 /// <summary>Speaks on the device, using the catalogued voice for a language.</summary>
-public sealed class DeviceVoiceHost : IVoiceHost
+public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
 {
     // One utterance at a time. Tapping a second language mid-download left two
     // synthesisers racing for the speaker on the native head.
@@ -162,7 +162,7 @@ public sealed class DeviceVoiceHost : IVoiceHost
             }
 
             var audioMs = WavMilliseconds(wav);
-            await PlayAsync(wav, ct).ConfigureAwait(false);
+            await PlayFileAsync(wav, ct).ConfigureAwait(false);
 
             return new SpeakOutcome(
                 true,
@@ -180,6 +180,60 @@ public sealed class DeviceVoiceHost : IVoiceHost
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// NOT UNDER THE SPEAKING LOCK, ON PURPOSE. This is the half that can run
+    /// while the previous sentence is still playing; the lock guards the
+    /// loudspeaker, not the synthesiser. A fresh file per call, because the
+    /// one being played is still being read.
+    /// </remarks>
+    public async Task<string?> RenderAsync(string tag, string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        Directory.CreateDirectory(StorageDir);
+        var wav = Path.Combine(FileSystem.CacheDirectory, $"say-{tag}-{Guid.NewGuid():N}.wav");
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            await Task.Run(
+                () => ItTtsProbe.RunCataloguedAsync(StorageDir, tag, text, wav, log: null, ct: ct),
+                ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Turn", $"render failed: {ex.Message}");
+            return null;
+        }
+
+        if (!File.Exists(wav)) return null;
+        Android.Util.Log.Info("CircleAI.Turn",
+            $"rendered {text.Length} chars -> {WavMilliseconds(wav)} ms audio in {sw.ElapsedMilliseconds} ms");
+        return wav;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The speaking lock lives here: two sentences must never overlap on the
+    /// loudspeaker, and this is the one place they could. The file is deleted
+    /// afterwards - it was rendered for this play and nothing else.
+    /// </remarks>
+    public async Task PlayAsync(string rendered, CancellationToken ct = default)
+    {
+        await _one.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await PlayFileAsync(rendered, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _one.Release();
+            try { File.Delete(rendered); } catch { /* cache; the OS will get it */ }
+        }
+    }
+
     /// <summary>Play the file, and wait for it to finish.</summary>
     /// <remarks>
     /// Awaited rather than fired and forgotten, so the caller can put the mark back
@@ -187,7 +241,7 @@ public sealed class DeviceVoiceHost : IVoiceHost
     /// A mark that goes still while audio is still playing is the small lie that
     /// makes an interface feel broken.
     /// </remarks>
-    private static Task PlayAsync(string wav, CancellationToken ct)
+    private static Task PlayFileAsync(string wav, CancellationToken ct)
         // MAUI ships no first-party audio player, so the platform one is reached
         // through a partial this head owns.
         => PlatformAudio.PlayAsync(wav, ct);

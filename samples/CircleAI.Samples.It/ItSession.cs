@@ -81,10 +81,23 @@ public sealed class ItSession : IAsyncDisposable
     /// may take; the config is the setting.
     /// </para>
     /// </remarks>
+    // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
+    // assistant told it was "IT!", on a product called Circle AI.
+    //
+    // AND THE LENGTH RULE WAS ALREADY HERE, AND IGNORED. "One or two short
+    // sentences" produced 175 characters about cryptocurrency on 2026-09-09 -
+    // in answer to thirteen characters of noise. A small model treats a length
+    // request as a suggestion; what it does obey better is a rule about what
+    // NOT to do. So the prompt now says what Jarvis never does: it never
+    // answers a question it did not hear, and it never invents a law, a price
+    // or a fact to fill a gap. A person hearing "I didn't catch that" can say it
+    // again; a person told that online payments are illegal cannot un-hear it.
     private const string Prompt =
-        "You are IT! - a dry, competent, on-device assistant. " +
-        "Answer the question directly, in one or two short sentences. " +
-        "If you are not sure of a fact, say so in one sentence.";
+        "You are Circle AI - a dry, competent assistant that runs on this phone. " +
+        "Answer in one or two short sentences, the way a person would out loud. " +
+        "If the question is unclear, garbled, or looks mis-heard, do not answer it: " +
+        "ask in one short sentence what they meant. " +
+        "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer.";
 
     private readonly AIService _brain;
     private readonly NeuronNode _it;
@@ -183,7 +196,14 @@ public sealed class ItSession : IAsyncDisposable
         Func<int?>? batteryPercent = null,
         string? pinModelId = null,
         bool lean = false,
-        int maxTokens = 160)
+        // 96, DOWN FROM 160. The prompt's "one or two sentences" was ignored on
+        // 2026-09-09 - 175 characters about cryptocurrency in answer to noise -
+        // and at this phone's synthesis rate every token the model spends is a
+        // fraction of a second the person waits. 96 tokens is about seventy
+        // words, four short sentences: still headroom over the rule, and the
+        // most a listener can be asked to sit through before they can speak.
+        // The CV tailoring path sets its own budget and is not affected.
+        int maxTokens = 96)
     {
         UsingRealModel = !useStubBrain;
         Tools = new ItToolBridge(batteryPercent);

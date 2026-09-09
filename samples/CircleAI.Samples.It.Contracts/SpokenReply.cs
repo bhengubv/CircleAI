@@ -11,10 +11,17 @@
 // shorter gaps."
 //
 // The answer arrives as fragments, and sentences are natural units of speech.
-// So fragments are buffered, each sentence is handed to the voice the moment its
-// end is seen, and the voice works through them in order while the model goes on
+// So fragments are buffered, each sentence is handed on the moment its end is
+// seen, and the voice works through them in order while the model goes on
 // producing the next one. The first sentence is heard after ITS OWN cost, not
 // after the paragraph's.
+//
+// TWO STAGES WHEN THE HOST CAN MANAGE IT. With a single "say" per sentence,
+// sentence two cannot start rendering until sentence one has finished playing,
+// which on a phone that renders slower than real time is a gap between every
+// sentence. Given a render step and a play step separately, rendering runs one
+// sentence ahead of playback, bounded so a long answer does not render itself
+// to the end while the first sentence is still being heard.
 //
 // IN CONTRACTS BECAUSE THE ONLY HARD PART IS PURE TEXT. Deciding where a
 // sentence ends inside a stream that is still growing is the whole difficulty,
@@ -34,25 +41,51 @@ namespace CircleAI.Samples.It;
 /// <summary>Turns a streamed reply into speech, sentence by sentence, in order.</summary>
 public sealed class SpokenReply : IAsyncDisposable
 {
-    private readonly Func<string, CancellationToken, Task> _say;
     private readonly CancellationToken _ct;
-    private readonly Channel<string> _queue = Channel.CreateUnbounded<string>(
+    private readonly Channel<string> _sentences = Channel.CreateUnbounded<string>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly StringBuilder _pending = new();
     private readonly Task _speaking;
     private bool _completed;
 
+    /// <summary>One stage: each sentence is rendered and played by one call.</summary>
     /// <param name="say">Speaks one sentence and returns when it has been said.</param>
     /// <param name="ct">Ends the whole reply — the sentence being spoken and every one queued.</param>
     public SpokenReply(Func<string, CancellationToken, Task> say, CancellationToken ct = default)
     {
-        _say = say;
         _ct = ct;
-        _speaking = Task.Run(SpeakAllAsync, CancellationToken.None);
+        _speaking = Task.Run(() => SayEachAsync(say), CancellationToken.None);
     }
 
-    /// <summary>How many sentences have been handed to the voice so far.</summary>
+    /// <summary>
+    /// Two stages: sentences are rendered one ahead of the one being played.
+    /// </summary>
+    /// <param name="render">Renders one sentence, or returns null if it could not.</param>
+    /// <param name="play">Plays one rendered sentence to the end.</param>
+    /// <param name="ct">Ends the whole reply.</param>
+    /// <param name="lookAhead">
+    /// How many rendered sentences may wait to be played. One is enough to hide
+    /// the render of the next behind the playback of this; more only spends
+    /// work on sentences that will be thrown away if the person interrupts.
+    /// </param>
+    public SpokenReply(
+        Func<string, CancellationToken, Task<string?>> render,
+        Func<string, CancellationToken, Task> play,
+        CancellationToken ct = default,
+        int lookAhead = 1)
+    {
+        _ct = ct;
+        _speaking = Task.Run(() => RenderAheadAsync(render, play, Math.Max(1, lookAhead)), CancellationToken.None);
+    }
+
+    /// <summary>How many sentences have been handed on so far.</summary>
     public int Queued { get; private set; }
+
+    /// <summary>How many sentences have finished rendering (two-stage only).</summary>
+    public int Rendered { get; private set; }
+
+    /// <summary>How many sentences have been played to the end.</summary>
+    public int Spoken { get; private set; }
 
     /// <summary>Adds the next fragment of the reply as it arrives.</summary>
     public void Push(string? fragment)
@@ -73,7 +106,7 @@ public sealed class SpokenReply : IAsyncDisposable
             var rest = _pending.ToString().Trim();
             _pending.Clear();
             if (rest.Length > 0) Enqueue(rest);
-            _queue.Writer.TryComplete();
+            _sentences.Writer.TryComplete();
         }
         return _speaking;
     }
@@ -93,16 +126,16 @@ public sealed class SpokenReply : IAsyncDisposable
     private void Enqueue(string sentence)
     {
         Queued++;
-        _queue.Writer.TryWrite(sentence);
+        _sentences.Writer.TryWrite(sentence);
     }
 
-    private async Task SpeakAllAsync()
+    private async Task SayEachAsync(Func<string, CancellationToken, Task> say)
     {
         try
         {
-            await foreach (var sentence in _queue.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
+            await foreach (var sentence in _sentences.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
             {
-                try { await _say(sentence, _ct).ConfigureAwait(false); }
+                try { await say(sentence, _ct).ConfigureAwait(false); Spoken++; }
                 catch (OperationCanceledException) { break; }
                 catch
                 {
@@ -112,6 +145,52 @@ public sealed class SpokenReply : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) { /* asked to stop */ }
+    }
+
+    private async Task RenderAheadAsync(
+        Func<string, CancellationToken, Task<string?>> render,
+        Func<string, CancellationToken, Task> play,
+        int lookAhead)
+    {
+        // Bounded, so rendering cannot run away from playback: a channel that
+        // is full makes the renderer wait for the player to take one.
+        var rendered = Channel.CreateBounded<string>(new BoundedChannelOptions(lookAhead)
+        {
+            SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait,
+        });
+
+        var renderer = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var sentence in _sentences.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
+                {
+                    string? item;
+                    try { item = await render(sentence, _ct).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
+                    catch { continue; }   // could not render this one; the next may be fine
+
+                    if (item is null) continue;
+                    Rendered++;
+                    await rendered.Writer.WriteAsync(item, _ct).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) { /* asked to stop */ }
+            finally { rendered.Writer.TryComplete(); }
+        }, CancellationToken.None);
+
+        try
+        {
+            await foreach (var item in rendered.Reader.ReadAllAsync(_ct).ConfigureAwait(false))
+            {
+                try { await play(item, _ct).ConfigureAwait(false); Spoken++; }
+                catch (OperationCanceledException) { break; }
+                catch { /* one bad file must not silence the rest */ }
+            }
+        }
+        catch (OperationCanceledException) { /* asked to stop */ }
+
+        try { await renderer.ConfigureAwait(false); } catch { }
     }
 
     /// <summary>

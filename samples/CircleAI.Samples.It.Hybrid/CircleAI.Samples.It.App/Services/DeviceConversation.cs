@@ -62,6 +62,11 @@ public sealed class DeviceConversation : IConversation
     /// <inheritdoc />
     public async Task TurnAsync(IProgress<TurnState> updates, CancellationToken ct = default)
     {
+        // The barge-in watcher's handles, at method scope so the finally below
+        // can close its microphone on every way out of this method.
+        CancellationTokenSource? bargeStop = null;
+        Task? barge = null;
+
         if (!await _one.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
         {
             // SAY SO. This returned in silence, which is indistinguishable from a
@@ -138,7 +143,15 @@ public sealed class DeviceConversation : IConversation
             // and it is not silence. Played here, once there are words: before
             // this, the only sign of life was a caption on a screen the speaker
             // had already turned away from.
-            try { global::CircleAI.Samples.It.Mobile.Earcon.Heard(); } catch { /* a tone is never worth a turn */ }
+            // A VOICE RATHER THAN A TONE, WHEN THE VOICE HAS ONE READY. "One
+            // moment." rendered at warm-up and played from disk costs nothing
+            // now, and says "I'm here" where the tone said "beep". Not awaited:
+            // the model starts thinking underneath it. See AckBank.
+            _ = Task.Run(async () =>
+            {
+                if (!await AckBank.PlayAsync(expect, AckBank.Working, ct).ConfigureAwait(false))
+                    try { global::CircleAI.Samples.It.Mobile.Earcon.Heard(); } catch { /* a tone is never worth a turn */ }
+            }, CancellationToken.None);
 
             // WHAT LANGUAGE THAT WAS, reported rather than chosen. A person who
             // fixed a language in Settings keeps it; otherwise every turn is
@@ -162,7 +175,30 @@ public sealed class DeviceConversation : IConversation
             // through them in order while the model is still writing the next.
             // See SpokenReply for where a sentence is judged to end.
             var reply = "";
-            await using var mouth = new SpokenReply((sentence, tok) => SayAsync(sentence, tag, tok), ct);
+
+            // INTERRUPTIBLE. Everything the voice does in this turn runs on a
+            // token the person can cancel by talking over it - see BargeInAsync.
+            // The turn's own token still ends it from outside.
+            using var speaking = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+            // RENDER ONE AHEAD OF PLAY WHEN THE HOST CAN. DeviceVoiceHost can
+            // render to a file and play it as two acts, so sentence two renders
+            // while sentence one is heard. A host that cannot split them gets
+            // one call per sentence, which still beats waiting for the paragraph.
+            await using var mouth = _voice is ISpeechPipeline pipeline
+                ? new SpokenReply(
+                    (sentence, tok) => pipeline.RenderAsync(tag, sentence, tok),
+                    (rendered, tok) => pipeline.PlayAsync(rendered, tok),
+                    speaking.Token)
+                : new SpokenReply((sentence, tok) => SayAsync(sentence, tag, tok), speaking.Token);
+
+            // LISTENING WHILE IT TALKS. Started a beat late so the "One moment"
+            // above is not heard as the interruption. Its microphone is closed
+            // in TurnAsync's finally on EVERY exit - an early return on an empty
+            // reply included - because the next turn opens its own recorder and
+            // two must never overlap.
+            bargeStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            barge = BargeInAsync(speaking, bargeStop.Token);
 
             await _brain.AskAsync(heard, fragment =>
             {
@@ -192,6 +228,9 @@ public sealed class DeviceConversation : IConversation
                 // the last word to finish, so the mark goes still when the sound
                 // stops rather than when the text did.
                 await mouth.CompleteAsync().ConfigureAwait(false);
+
+                if (speaking.IsCancellationRequested && !ct.IsCancellationRequested)
+                    updates.Report(new TurnState(TurnPhase.Idle, Heard: heard, Detail: "Go on…"));
             }
             catch (Exception speak) when (speak is not OperationCanceledException)
             {
@@ -217,7 +256,47 @@ public sealed class DeviceConversation : IConversation
         }
         finally
         {
+            // ONE RECORDER AT A TIME. Whatever way this turn ended, the watcher's
+            // microphone is closed before the next turn can open its own.
+            if (bargeStop is not null)
+            {
+                bargeStop.Cancel();
+                if (barge is not null) { try { await barge.ConfigureAwait(false); } catch { } }
+                bargeStop.Dispose();
+            }
             _one.Release();
+        }
+    }
+
+    /// <summary>
+    /// Watches for a voice while the reply plays, and cancels the reply if one
+    /// starts.
+    /// </summary>
+    /// <remarks>
+    /// Opens its own capture, so it runs only while the wake listener is stopped
+    /// (it is, for the whole turn) and is stopped before the next turn opens
+    /// its microphone. The interrupting words themselves are not kept: the
+    /// conversation loop starts a fresh turn straight after, and that turn
+    /// records what the person says next. Keeping the first second of an
+    /// interruption needs a continuous buffer, which is a later step.
+    /// </remarks>
+    private static async Task BargeInAsync(CancellationTokenSource speaking, CancellationToken stop)
+    {
+        try
+        {
+            // A beat late, so the acknowledgement just played is not the voice
+            // this hears - the same 700 ms the wake settle uses.
+            await Task.Delay(TimeSpan.FromMilliseconds(700), stop).ConfigureAwait(false);
+
+            await using var mic = new AndroidAudioCapture();
+            var onset = new global::CircleAI.Samples.It.Mobile.SpeechOnset();
+            if (await onset.WaitAsync(mic, stop).ConfigureAwait(false))
+                speaking.Cancel();
+        }
+        catch (OperationCanceledException) { /* the reply finished first */ }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Turn", "barge-in watcher failed: " + ex.Message);
         }
     }
 
@@ -297,17 +376,45 @@ public sealed class DeviceConversation : IConversation
     /// </remarks>
     private static async Task<IAsyncDisposable> MicrophoneAloneAsync(CancellationToken ct)
     {
+        // A HAND-BACK STILL PENDING MEANS THIS IS THE NEXT TURN OF THE SAME
+        // CONVERSATION. The wake listener is already stopped and the microphone
+        // is already ours: cancel the hand-back, skip the settle, and go. This
+        // is what stops every turn after the first paying a stop, a 700 ms
+        // wait and a restart - a second of dead air per exchange.
+        var pending = Interlocked.Exchange(ref _handBack, null);
+        if (pending is not null)
+        {
+            pending.Cancel();
+            pending.Dispose();
+            return new GiveItBack();
+        }
+
         if (!global::CircleAI.Device.CircleNeuronService.IsListening) return NotHeld.Instance;
 
         await global::CircleAI.Device.CircleNeuronService.StopListeningAsync(ct).ConfigureAwait(false);
 
         // Long enough for the tail of a wake phrase that fired part-way through,
-        // and for the "I heard you" tone not to be recorded as the question.
+        // and for the "Yes?" not to be recorded as the question.
         try { await Task.Delay(TimeSpan.FromMilliseconds(700), ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { /* give it back anyway, below */ }
 
         return new GiveItBack();
     }
+
+    /// <summary>The hand-back waiting to happen, or null.</summary>
+    private static CancellationTokenSource? _handBack;
+
+    /// <summary>
+    /// How long after a turn the microphone stays ours before the wake listener
+    /// gets it back.
+    /// </summary>
+    /// <remarks>
+    /// The conversation loop starts its next turn immediately, so a small grace
+    /// bridges turns; anything long is a window in which the wake word is off
+    /// for no reason. Three seconds covers the loop's own overhead and a person
+    /// drawing breath.
+    /// </remarks>
+    private static readonly TimeSpan HandBackGrace = TimeSpan.FromSeconds(3);
 
     /// <summary>Nothing was taken, so nothing is given back.</summary>
     private sealed class NotHeld : IAsyncDisposable
@@ -316,23 +423,39 @@ public sealed class DeviceConversation : IConversation
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    /// <summary>Starts the wake listener again when the turn is over.</summary>
+    /// <summary>Starts the wake listener again once the conversation is over.</summary>
     private sealed class GiveItBack : IAsyncDisposable
     {
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
-            // NOT the turn's token: the turn ending - including by cancellation -
-            // is precisely when the wake word has to come back.
-            try
+            // DEFERRED, NOT IMMEDIATE. If another turn arrives inside the grace
+            // it cancels this and keeps the microphone; if none does, the wake
+            // word comes back on its own. Not the turn's token: the turn ending
+            // - including by cancellation - is precisely when the listener has
+            // to be able to return.
+            var cts = new CancellationTokenSource();
+            var previous = Interlocked.Exchange(ref _handBack, cts);
+            previous?.Cancel();
+            previous?.Dispose();
+
+            _ = Task.Run(async () =>
             {
-                await global::CircleAI.Device.CircleNeuronService
-                    .StartListeningAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Android.Util.Log.Warn("CircleAI.Turn",
-                    "could not resume the wake word after the turn: " + ex.Message);
-            }
+                try
+                {
+                    await Task.Delay(HandBackGrace, cts.Token).ConfigureAwait(false);
+                    if (Interlocked.CompareExchange(ref _handBack, null, cts) != cts) return;
+                    await global::CircleAI.Device.CircleNeuronService
+                        .StartListeningAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { /* the next turn took it */ }
+                catch (Exception ex)
+                {
+                    Android.Util.Log.Warn("CircleAI.Turn",
+                        "could not resume the wake word after the conversation: " + ex.Message);
+                }
+            }, CancellationToken.None);
+
+            return ValueTask.CompletedTask;
         }
     }
 
@@ -619,6 +742,15 @@ public sealed class DeviceConversation : IConversation
             said.Add(opened ? "voice: open" : "voice: could not open");
         }
         catch (Exception ex) { said.Add($"voice: {ex.GetType().Name}: {ex.Message}"); }
+
+        // THE SMALL SPOKEN THINGS, RENDERED NOW SO THEY COST NOTHING LATER.
+        progress?.Report("Learning to say yes");
+        try
+        {
+            var acks = await AckBank.PrepareAsync(StorageDir, _spoken.Current, ct).ConfigureAwait(false);
+            said.Add($"acks: {acks} ready");
+        }
+        catch (Exception ex) { said.Add($"acks: {ex.GetType().Name}: {ex.Message}"); }
 
         var report = string.Join("; ", said) + $"; {Environment.TickCount64 - started} ms";
 

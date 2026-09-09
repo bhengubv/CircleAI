@@ -124,4 +124,77 @@ public class SpokenReplyTests
 
         Assert.Equal(1, said);
     }
+
+    // ── Two stages: render one ahead of play ─────────────────────────────
+
+    [Fact]
+    public async Task The_next_sentence_renders_while_this_one_plays()
+    {
+        // THE POINT OF THE SECOND STAGE. With one call per sentence, sentence
+        // two cannot begin rendering until sentence one has finished playing.
+        // Here rendering of sentence two must have STARTED before playback of
+        // sentence one has ended.
+        var playing = new TaskCompletionSource();     // set when play #1 starts
+        var release = new TaskCompletionSource();     // play #1 waits on this
+        var renderStarts = new List<string>();
+
+        var reply = new SpokenReply(
+            render: async (s, _) => { renderStarts.Add(s); await Task.Yield(); return s + ".wav"; },
+            play: async (item, _) =>
+            {
+                if (item == "One..wav") { playing.TrySetResult(); await release.Task; }
+            });
+
+        reply.Push("One. Two. ");
+        await playing.Task;                            // play #1 is in progress
+
+        // Give the renderer a moment: it should have started on "Two." already.
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (renderStarts.Count < 2 && DateTime.UtcNow < deadline) await Task.Delay(10);
+
+        Assert.Equal(["One.", "Two."], renderStarts);
+        release.SetResult();
+        await reply.CompleteAsync();
+        Assert.Equal(2, reply.Spoken);
+    }
+
+    [Fact]
+    public async Task Rendering_does_not_run_away_from_playback()
+    {
+        // Bounded look-ahead: a long answer must not render itself to the end
+        // while the first sentence is still being heard - if the person
+        // interrupts, everything past the look-ahead is wasted work.
+        var release = new TaskCompletionSource();
+        var renderedCount = 0;
+
+        var reply = new SpokenReply(
+            render: (s, _) => { Interlocked.Increment(ref renderedCount); return Task.FromResult<string?>(s); },
+            play: async (_, _) => await release.Task,
+            lookAhead: 1);
+
+        reply.Push("A. B. C. D. E. F. ");
+        await Task.Delay(300);
+
+        // Play #1 holds; the renderer may finish #2 (into the buffer) and be
+        // blocked on #3 at most - never the whole six.
+        Assert.True(renderedCount <= 3, $"rendered {renderedCount} ahead of a stalled player");
+
+        release.SetResult();
+        await reply.CompleteAsync();
+        Assert.Equal(6, reply.Spoken);
+    }
+
+    [Fact]
+    public async Task A_sentence_that_cannot_be_rendered_is_skipped_not_fatal()
+    {
+        var played = new List<string>();
+        var reply = new SpokenReply(
+            render: (s, _) => Task.FromResult<string?>(s.StartsWith("Bad") ? null : s),
+            play: (item, _) => { played.Add(item); return Task.CompletedTask; });
+
+        reply.Push("Good. Bad. Fine.");
+        await reply.CompleteAsync();
+
+        Assert.Equal(["Good.", "Fine."], played);
+    }
 }

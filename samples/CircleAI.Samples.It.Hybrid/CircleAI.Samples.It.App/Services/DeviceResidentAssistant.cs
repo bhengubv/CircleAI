@@ -275,8 +275,20 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
         // kitchen doorway is not looking at. This tone is the whole of what they
         // get, so it is played here - in the resident path, where it sounds
         // whether or not any screen is watching - rather than from a page.
-        try { Earcon.Woke(); }
-        catch (Exception ex) { Android.Util.Log.Warn(Tag, "earcon failed: " + ex.Message); }
+        // "YES?" IN A VOICE, WHEN THERE IS ONE READY; THE TONE OTHERWISE. Rendered
+        // at warm-up and played from disk, so it is as instant as the tone was
+        // and says "I'm here" where the tone said "beep". It plays inside the
+        // settle before the turn's microphone opens, which is why the line is
+        // short. See AckBank.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (!await AckBank.PlayAsync(_spoken.Current, AckBank.Woke).ConfigureAwait(false))
+                    Earcon.Woke();
+            }
+            catch (Exception ex) { Android.Util.Log.Warn(Tag, "acknowledgement failed: " + ex.Message); }
+        });
 
         Woke?.Invoke(this, phrase);
     }
