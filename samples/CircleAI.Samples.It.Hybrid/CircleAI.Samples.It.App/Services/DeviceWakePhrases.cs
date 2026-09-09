@@ -303,10 +303,46 @@ public sealed class DeviceWakePhrases : IWakePhrases
             var offered = Existing(language).ToList();
             if (offered.Count == 0) return;
 
+            // EVERY PHRASE IT OFFERS, CHOSEN ONE FIRST - NOT ONLY THE CHOSEN ONE.
+            //
+            // This wrote a single phrase, so the ear answered to exactly one name
+            // and the screens offered several. On 2026-09-09 a Redmi 12 had
+            // "Hey B" stored as chosen - by an older build's default, or by a
+            // tap while exploring; the store cannot tell - and the owner said
+            // "Hey Circle AI" to it, which fired on the "Hey" and scored the rest
+            // under the gate. The fix that rewrote the file from the store at
+            // every start faithfully wrote "Hey B" again. Correct, and useless.
+            //
+            // The owner's rule: it should work regardless of what the wake word
+            // is set up to be. So the file carries the whole list this language
+            // offers - built-in and added - with the chosen one first so the
+            // screen and the ear agree about which name is THE name, and the
+            // others fire too. A phrase the book refuses (it is a prefix of
+            // another, or cannot be tokenised) is skipped and said so, never
+            // silently dropped: the book already judges the list as a set, and
+            // its verdicts are what the settings screen shows.
             var chosen = _store.Get(ChosenKey(language)) ?? offered[0];
-            if (!book.TryAdd(chosen, out var phrase))
+            var ordered = new List<string> { chosen };
+            ordered.AddRange(offered.Where(t => !string.Equals(t, chosen, StringComparison.Ordinal)));
+
+            var written = new List<string>();
+            foreach (var text in ordered)
             {
-                VoiceTrace.Write($"kws: '{chosen}' cannot be written for '{language}'");
+                if (book.TryAdd(text, out var phrase))
+                {
+                    written.Add(text);
+                    VoiceTrace.Write($"kws: wrote \"{phrase.Text}\" for '{language}' "
+                                   + $"({phrase.Tokens.Count} tokens, {phrase.Verdict})");
+                }
+                else
+                {
+                    VoiceTrace.Write($"kws: '{text}' cannot be written for '{language}' - skipped");
+                }
+            }
+
+            if (written.Count == 0)
+            {
+                VoiceTrace.Write($"kws: nothing could be written for '{language}'");
                 return;
             }
 
@@ -320,8 +356,8 @@ public sealed class DeviceWakePhrases : IWakePhrases
             // was reporting closest="Hey B", and it was the line that made the
             // fault look like a measurement problem for an hour. The listener
             // says what it listens for; this says what it wrote.
-            VoiceTrace.Write($"kws: wrote \"{phrase.Text}\" for '{language}' "
-                           + $"({phrase.Tokens.Count} tokens, {phrase.Verdict})");
+            VoiceTrace.Write($"kws: file for '{language}' holds {written.Count}: "
+                           + string.Join(" | ", written));
         }
         catch (Exception ex)
         {
