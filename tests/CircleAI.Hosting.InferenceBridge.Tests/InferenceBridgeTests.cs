@@ -121,8 +121,20 @@ public sealed class MockInferenceBridgeTests
         var resp = await bridge.CompleteAsync(req);
         sw.Stop();
 
-        // Allow generous tolerance for timer resolution and CI noise.
-        Assert.InRange(sw.Elapsed.TotalMilliseconds, latency - 30, latency + 750);
+        // THE UPPER BOUND WAS MEASURING THE MACHINE, NOT THE BRIDGE. It was
+        // latency + 750, and "generous tolerance for timer resolution and CI
+        // noise" is the exact phrasing that hid twelve other tests of this shape
+        // (OPEN-GAPS E1) and two more after them (E4). This one surfaced the
+        // moment the project began building a net10 leg as well: seventeen
+        // passed, this failed at about a second while thirteen test projects
+        // built and ran alongside it, and it passes in 178 ms on its own.
+        //
+        // THE LOWER BOUND IS THE ASSERTION. It asks whether the latency
+        // simulation actually delayed, which is the whole behaviour under test.
+        // The upper bound only ever asked whether the thread pool got round to
+        // us, and the honest number for that is one a loaded machine doing the
+        // right thing cannot reach while a genuine hang still fails.
+        Assert.InRange(sw.Elapsed.TotalMilliseconds, latency - 30, 30_000);
         Assert.True(resp.InferenceMillis >= latency - 30,
             $"reported inference {resp.InferenceMillis} ms should be at least {latency - 30} ms");
     }
