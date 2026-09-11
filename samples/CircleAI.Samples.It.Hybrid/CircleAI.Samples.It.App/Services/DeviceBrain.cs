@@ -20,6 +20,18 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private ItSession? _session;
 
+    /// <summary>Set once teardown has begun, so nothing enters a model that is going away.</summary>
+    /// <remarks>
+    /// THE GATE ALONE IS NOT ENOUGH, because AskAsync releases it between
+    /// FINDING the session and USING it - SessionAsync takes the gate to build
+    /// one, hands it back, and AskAsync then takes the gate again to run the
+    /// turn. Teardown fits in that gap: it waits for a gate nobody is holding,
+    /// frees the model, and the turn resumes on a session that no longer exists.
+    /// This flag is checked under the gate, which is where the decision has to
+    /// be made.
+    /// </remarks>
+    private bool _closing;
+
     private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
@@ -74,6 +86,14 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // CHECKED HERE, UNDER THE GATE, because this is the first moment
+            // since the session was found that anything could have taken it
+            // away. Entering a disposed native session is the SIGSEGV this
+            // class was crashing with; a cancellation is how a caller finds
+            // out, and it is the same thing every other turn already handles.
+            if (_closing || _session is null)
+                throw new OperationCanceledException("The model is shutting down.");
+
             // THE TWO CALLBACKS WERE THE WRONG WAY ROUND, and it put the app's
             // own plumbing on screen as its answer. The signature is
             // (input, emitLine, onChunk, onThinking): emitLine is ItSession's
@@ -113,6 +133,11 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // Same guard as AskAsync, same reason: the gate was released between
+            // finding the session and using it, and teardown fits in that gap.
+            if (_closing || _session is null)
+                throw new OperationCanceledException("The model is shutting down.");
+
             // The session asks the selector whether this device can see BEFORE it
             // tries, so "no vision model" comes back as a sentence rather than as
             // an exception from somewhere deep inside.
@@ -134,6 +159,12 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         try
         {
             if (_session is not null) return _session;
+
+            // BUILDING A MODEL FOR AN APP THAT IS CLOSING is hundreds of
+            // megabytes and several seconds spent on something that will be
+            // thrown away - and it would leave a live native session behind the
+            // teardown that has already run.
+            if (_closing) throw new OperationCanceledException("The model is shutting down.");
 
             // THE FIRST ARGUMENT IS THE NATIVE LIBRARY DIRECTORY, not the model
             // store - the session finds its own models but has to be told where
@@ -157,9 +188,58 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// TAKES THE GATE, AND THAT IS THE WHOLE POINT OF THIS METHOD.
+    ///
+    /// It used to tear the session down without it, which meant a generation
+    /// already running had the native model destroyed underneath it. MNN does
+    /// not survive that: the next enqueue onto its thread pool dereferences a
+    /// pointer that is now null and the process dies where it stands.
+    ///
+    /// Measured on a P30 on 2026-09-11, answering "my name is Thabo" typed into
+    /// the chat screen:
+    ///
+    ///     Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0
+    ///     Cause: null pointer dereference
+    ///     tid 11583 (.NET TP Worker)
+    ///     MNN::ThreadPool::enqueue(...)+116
+    ///     MNN::Transformer::Llm::generate(...)
+    ///
+    /// Not out of memory - 1,27 GB was free. A native crash takes the whole app
+    /// with it, with no managed exception and nothing on screen: the answer
+    /// simply stops and the launcher appears.
+    ///
+    /// EVERY OTHER PATH INTO THE MODEL ALREADY WAITED ON THIS GATE. Teardown was
+    /// the one that did not, which is the one that matters most - the others
+    /// interleave tokens, this one frees memory somebody is still reading.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_session is not null) await _session.DisposeAsync().ConfigureAwait(false);
-        _gate.Dispose();
+        // NOT WaitAsync(ct): there is no token here and a disposal that gave up
+        // waiting would be back to freeing a model mid-generation. A turn is
+        // bounded by its own token and its token budget, so this waits for
+        // something that ends.
+        await _gate.WaitAsync().ConfigureAwait(false);
+
+        // Set UNDER the gate, so a turn that is about to start sees it and a
+        // turn already running has finished before this line is reached.
+        _closing = true;
+
+        var session = _session;
+        _session = null;
+
+        try
+        {
+            if (session is not null) await session.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            // RELEASED BEFORE IT IS DISPOSED. Disposing a semaphore that still
+            // has a waiter throws in the waiter rather than in here, and a
+            // caller blocked on the gate would get an ObjectDisposedException
+            // out of AskAsync instead of a clean answer.
+            _gate.Release();
+            _gate.Dispose();
+        }
     }
 }
