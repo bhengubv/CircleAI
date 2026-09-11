@@ -18,6 +18,19 @@
 // six steps is not in the loop either. Each step says what it is doing as it
 // does it.
 //
+// ANNOUNCE. DO NOT CONFIRM. This is the answer to the obvious next question -
+// "shouldn't it ASK before it texts somebody?" - and the answer is no. Somebody
+// spoke the instruction; that IS the authorisation, and a confirmation step
+// re-asks a question they have already answered. On a voice assistant it also
+// doubles the turns for every useful action, and it fails the premise of the
+// product three times over: hands free, phone across the room, screen owned by
+// another app. Being in the loop is what this file does. It is not a prompt.
+//
+// ASKING FOR A MISSING DETAIL IS NOT CONFIRMING, and it stays. "Play music"
+// names nothing and gets "Play what?" - that is a parameter the instruction did
+// not carry. "Shall I play Coldplay?" after somebody said "play Coldplay" is
+// re-asking, and is the thing this paragraph forbids.
+//
 // SPOKEN FIRST, BECAUSE THE SCREEN IS THE ONE THING YOU CANNOT COUNT ON. The
 // premise of the whole product is that the phone is across the room or in a
 // pocket. By the time a hand-off happens the screen belongs to another app
