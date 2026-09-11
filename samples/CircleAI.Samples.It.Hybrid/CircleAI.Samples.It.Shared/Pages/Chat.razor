@@ -13,6 +13,8 @@
 @inject IBrain Brain
 @inject IFormFactor Host
 @inject IConversation Talk
+@* Long-term memory, so the typed path answers with what it already knows. *@
+@inject IRemembers Remembers
 @inject NavigationManager Nav
 
 <div class="chat">
@@ -247,7 +249,19 @@
             // a memory wired only to the microphone remembers half a person.
             await Talk.HeardAsync(text);
 
-            await Brain.AskAsync(text, fragment =>
+            // AND THE SAME DOOR ON THE WAY BACK OUT. The line above has been
+            // here for weeks and the read side had not: typed "my name is
+            // Thabo" was learned, and typed "what is my name?" was asked cold.
+            // That is precisely the half a person the comment above warns
+            // about, in the other direction.
+            //
+            // Recalling owns the budget and the swallow, and composes the same
+            // preamble the spoken turn uses, so the two paths cannot answer the
+            // same question differently.
+            var known = await Recalling.AboutAsync(Remembers, text);
+            var asked = Recalling.Ask(text, known);
+
+            await Brain.AskAsync(asked, fragment =>
             {
                 _turns[at] = _turns[at] with { Text = Strip(_turns[at].Text + fragment) };
                 InvokeAsync(StateHasChanged);

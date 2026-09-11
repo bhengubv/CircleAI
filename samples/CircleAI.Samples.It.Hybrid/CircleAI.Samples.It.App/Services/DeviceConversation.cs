@@ -199,14 +199,11 @@ public sealed class DeviceConversation : IConversation
             // never worth making them wait for. Swallowed for the same reason -
             // a store that could not answer must not fail a turn that otherwise
             // works.
-            var known = System.Array.Empty<Remembered>() as IReadOnlyList<Remembered>;
-            try
-            {
-                using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                budget.CancelAfter(TimeSpan.FromMilliseconds(250));
-                known = await _remembers.RecallAsync(heard, ct: budget.Token).ConfigureAwait(false);
-            }
-            catch { /* nothing remembered; the answer still happens */ }
+            // SHARED WITH THE TYPED PATH, deliberately. Chat asks the same brain
+            // about the same person, and a read side wired only to the
+            // microphone is the "half a person" its own comment warns about.
+            // Recalling owns the budget and the swallow; see Recalling.cs.
+            var known = await Recalling.AboutAsync(_remembers, heard, ct).ConfigureAwait(false);
 
             // THE TURN OWNS THE RECALL, AND THE STORE IS NOT TOLD.
             //
@@ -225,16 +222,9 @@ public sealed class DeviceConversation : IConversation
             // a different hat. If a screen ever needs these facts, they travel
             // out through TurnState like everything else the screen is told.
 
-            // PUT IN FRONT OF THE QUESTION, NOT INTO THE SYSTEM PROMPT. The
-            // system prompt is cached across turns - see UsePrefixCache - and
-            // changing it every turn would throw that cache away, which is the
-            // 13 second cold prefill this app just finished removing. As part of
-            // the user turn it costs only its own tokens.
-            var asked = known.Count == 0
-                ? heard
-                : "Things you already know about them:" + Environment.NewLine
-                  + string.Join(Environment.NewLine, known.Select(k => "- " + k.Text))
-                  + Environment.NewLine + Environment.NewLine + heard;
+            // Composed in one place so the spoken and typed paths cannot drift
+            // into two different preambles. See Recalling.Ask.
+            var asked = Recalling.Ask(heard, known);
 
             // ALWAYS, INCLUDING ZERO. "Recall found nothing" and "recall never
             // ran" are different faults and this line used to print for only one
