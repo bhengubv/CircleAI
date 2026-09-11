@@ -89,18 +89,18 @@
       LINKED, NOT REFERENCED. The sample's contracts are net10.0 only and this
       project builds a net9.0 leg as well, so a ProjectReference is refused
       outright. Compiling the source in is the honest alternative to
-      multi-targeting a sample for a test's convenience - and unlike a copied
+      multi-targeting the product for a test's convenience - and unlike a copied
       file it cannot drift, because it IS the file the app ships.
     -->
-    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\BuiltInWakePhrases.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant\BuiltInWakePhrases.cs"
              Link="Contracts\BuiltInWakePhrases.cs" />
-    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\SampleLanguages.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant\SampleLanguages.cs"
              Link="Contracts\SampleLanguages.cs" />
-    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\ISettings.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant\ISettings.cs"
              Link="Contracts\ISettings.cs" />
-    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\SpokenVocabulary.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant\SpokenVocabulary.cs"
              Link="Contracts\SpokenVocabulary.cs" />
-    <Compile Include="..\..\samples\CircleAI.Samples.It.Contracts\IWakePhrases.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant\IWakePhrases.cs"
              Link="Contracts\IWakePhrases.cs" />
     <!--
       FirstRun decides what a fresh phone downloads and what the loading screen
@@ -109,9 +109,9 @@
       census reading "5 of 5 on this phone" over a handset carrying thirty-two
       voices. VoiceNames comes with it because FirstRun names two voices through it.
     -->
-    <Compile Include="..\..\samples\CircleAI.Samples.It\FirstRun.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant.Runtime\FirstRun.cs"
              Link="Sample\FirstRun.cs" />
-    <Compile Include="..\..\samples\CircleAI.Samples.It\VoiceNames.cs"
+    <Compile Include="..\..\src\CircleAI.Assistant.Runtime\VoiceNames.cs"
              Link="Sample\VoiceNames.cs" />
     <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />

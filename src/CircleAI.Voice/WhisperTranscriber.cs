@@ -243,10 +243,29 @@ public sealed class WhisperTranscriber : IVoiceTranscriber
             }
 
             var textBuilder = new System.Text.StringBuilder();
+
+            // THE TIMESTAMPS WERE ALWAYS RIGHT HERE. t0 and t1 sit beside the
+            // text of every segment and this loop used to read one of the three.
+            // Subtitles that follow speech, automatic captions and cutting the
+            // "ums" all need the other two, and none of them were possible
+            // because the record that left this library carried text only.
+            var segments = new List<TranscriptSegment>(nSegments);
+
             for (int i = 0; i < nSegments; i++)
             {
                 var segText = WhisperInterop.GetSegmentText(ctx, i);
                 textBuilder.Append(segText);
+
+                // CENTISECONDS. whisper.cpp reports hundredths of a second, not
+                // milliseconds - the factor of ten is the whole reason this is
+                // converted here once rather than by every caller.
+                var t0 = WhisperInterop.whisper_full_get_segment_t0(ctx, i);
+                var t1 = WhisperInterop.whisper_full_get_segment_t1(ctx, i);
+
+                segments.Add(new TranscriptSegment(
+                    segText.Trim(),
+                    TimeSpan.FromMilliseconds(t0 * 10),
+                    TimeSpan.FromMilliseconds(t1 * 10)));
             }
 
             // Detect language.
@@ -258,7 +277,7 @@ public sealed class WhisperTranscriber : IVoiceTranscriber
             // so we report 1.0 for non-empty results.
             float confidence = string.IsNullOrWhiteSpace(text) ? 0f : 1f;
 
-            return new TranscriptionResult(text, confidence, langCode);
+            return new TranscriptionResult(text, confidence, langCode, segments);
         }
     }
 

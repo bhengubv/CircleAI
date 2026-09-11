@@ -18,7 +18,7 @@
 // breadth free: sixty tiles need sixty first sentences, not sixty screens, and
 // it is how an assistant works - you ask it, you do not navigate to it.
 
-namespace CircleAI.Assistant;
+namespace CircleAI.Samples.It;
 
 /// <summary>One thing the app can help with.</summary>
 /// <param name="Title">What it is, in the words somebody would use.</param>
@@ -144,7 +144,7 @@ public static class Capabilities
             // src/CircleAI.Languages
             new("Languages", "🌐", "Help me with a language", "languages"),
             // src/CircleAI.Languages.Translation
-            new("Translate", "🔤", "Translate between two languages", "translate"),
+            new("Interpret", "🔤", "Interpret between two languages", "interpret"),
             // src/CircleAI.Research
             new("Research", "🔎", "Help me research something"),
             // src/CircleAI.CodeAgent

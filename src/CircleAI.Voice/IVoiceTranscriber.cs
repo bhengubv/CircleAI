@@ -55,7 +55,52 @@ public interface IVoiceTranscriber : IAsyncDisposable
 /// <param name="LanguageCode">
 /// Detected language as a BCP-47 / ISO 639 code (e.g. "en", "zu", "und" for unknown).
 /// </param>
-public sealed record TranscriptionResult(string Text, float Confidence, string LanguageCode);
+/// <param name="Segments">
+/// What was said and WHEN, in order. Empty when the engine cannot report timing.
+/// </param>
+public sealed record TranscriptionResult(
+    string Text,
+    float Confidence,
+    string LanguageCode,
+    IReadOnlyList<TranscriptSegment>? Segments = null)
+{
+    /// <summary>The timed segments, never null.</summary>
+    /// <remarks>
+    /// A property rather than a required parameter so every existing caller -
+    /// and every other transcriber - keeps compiling and simply reports no
+    /// timing, which is the truth for engines that do not produce any.
+    /// </remarks>
+    public IReadOnlyList<TranscriptSegment> Timed => Segments ?? [];
+}
+
+/// <summary>One stretch of speech, and when it was said.</summary>
+/// <param name="Text">The words in this stretch.</param>
+/// <param name="Start">Offset from the beginning of the audio.</param>
+/// <param name="End">Where this stretch stops.</param>
+/// <remarks>
+/// THE ENGINE ALWAYS KNEW THIS. whisper.cpp reports t0 and t1 for every segment
+/// and the P/Invoke for both has been bound in WhisperInterop from the start;
+/// the loop that built the transcript read the TEXT of each segment and threw
+/// the two timestamps away. So the information was never missing - it was
+/// unreachable, which is a different problem with a much smaller fix.
+/// <para>
+/// SEGMENTS, NOT WORDS, AND THE NAME SAYS SO. whisper.cpp's own unit here is a
+/// segment - a phrase-length run, not a word - and calling it a word timing
+/// would promise a precision the engine is not reporting. Word-level timing is
+/// a further flag (token timestamps) and a further piece of work; this is what
+/// the engine hands over today.
+/// </para>
+/// <para>
+/// TimeSpan rather than the raw centiseconds whisper returns: a caller building
+/// subtitles should not have to know the unit, and centiseconds are exactly the
+/// sort of thing that becomes a factor-of-ten bug in somebody else's code.
+/// </para>
+/// </remarks>
+public sealed record TranscriptSegment(string Text, TimeSpan Start, TimeSpan End)
+{
+    /// <summary>How long this stretch lasted.</summary>
+    public TimeSpan Duration => End - Start;
+}
 
 /// <summary>
 /// Partial or final transcription produced during streaming recognition.

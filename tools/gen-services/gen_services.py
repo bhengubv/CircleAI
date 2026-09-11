@@ -23,7 +23,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SRC = REPO / "src"
-OUT = REPO / "samples" / "CircleAI.Samples.It.Contracts" / "Capabilities.cs"
+OUT = REPO / "src" / "CircleAI.Assistant" / "Capabilities.cs"
 
 # -- what the machine needs, not what a person asks for -----------------------
 #
@@ -31,6 +31,12 @@ OUT = REPO / "samples" / "CircleAI.Samples.It.Contracts" / "Capabilities.cs"
 # Networking.* is plumbing, every Security.* is plumbing. Listing them one by one
 # would be a list nobody maintains.
 INFRASTRUCTURE = (
+    # The assistant itself, and the three libraries it is built from. A person
+    # does not pick "Assistant" off a list the way they pick Charts or Music -
+    # it is the thing DOING the picking. One entry covers Assistant,
+    # Assistant.Runtime, Assistant.Device and Assistant.Sweep, because the
+    # classifier matches a name or a dotted prefix of it.
+    "Assistant",
     "Accessibility", "Aether", "AetherNet", "Agents", "Ambient", "BuildFarm",
     "Cast", "CodeUnderstanding", "ContentPolicy", "Core", "DepBot", "Desktop",
     "Device", "DevTools", "Distribution", "DocAnalytics", "Domain", "Embeddings",

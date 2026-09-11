@@ -232,12 +232,25 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             int segCount = 0;
             string lang = effective == "auto" ? "und" : effective;
 
+            // WHEN EACH STRETCH WAS SAID, NOT JUST WHAT. Whisper has always
+            // reported Start and End for every segment and this loop read three
+            // of the five fields beside them. Subtitles that follow speech,
+            // automatic captions and cutting the "ums" are all the same missing
+            // two numbers, and none of them were possible while the record that
+            // left this library carried text only.
+            var segments = new List<TranscriptSegment>();
+
             await foreach (var seg in processor.ProcessAsync(samples, ct).ConfigureAwait(false))
             {
                 text.Append(seg.Text);
                 probSum += seg.Probability;
                 segCount++;
                 if (!string.IsNullOrWhiteSpace(seg.Language)) lang = seg.Language;
+
+                // Trimmed: whisper pads segment text with a leading space, and a
+                // caption renderer should not have to know that.
+                segments.Add(new TranscriptSegment(seg.Text?.Trim() ?? string.Empty,
+                                                   seg.Start, seg.End));
             }
 
             var result = text.ToString().Trim();
@@ -265,7 +278,7 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
                 $"{result.Length} chars | {segCount} seg");
 
             var confidence = segCount > 0 ? (float)(probSum / segCount) : 0f;
-            return new TranscriptionResult(result, confidence, lang);
+            return new TranscriptionResult(result, confidence, lang, segments);
         }
         finally
         {

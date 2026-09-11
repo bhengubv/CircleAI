@@ -38,7 +38,7 @@ public class ServiceCoverageTests
         => Path.Combine(Repo(), "tools", "gen-services", "gen_services.py");
 
     private static string CapabilitiesPath()
-        => Path.Combine(Repo(), "samples", "CircleAI.Assistant.Contracts", "Capabilities.cs");
+        => Path.Combine(Repo(), "src", "CircleAI.Assistant", "Capabilities.cs");
 
     /// <summary>Every project directory under src/, by short name.</summary>
     private static IReadOnlyList<string> Modules()
