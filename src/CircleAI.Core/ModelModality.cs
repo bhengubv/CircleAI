@@ -114,4 +114,31 @@ public enum ModelModality
     /// </para>
     /// </remarks>
     Phonemizer,
+
+    /// <summary>
+    /// A speaker-embedding model — turns a stretch of speech into a vector that
+    /// identifies the VOICE, consumed by <c>CircleAI.Voice.Diarisation</c> and
+    /// by <c>OnnxSpeakerIdentity</c>.
+    /// </summary>
+    /// <remarks>
+    /// APPENDED LAST, for the reason <see cref="Phonemizer"/> gives: these
+    /// values are persisted, so inserting one mid-enum renumbers every entry
+    /// after it and silently re-labels the catalogue.
+    /// <para>
+    /// NOT <see cref="Asr"/>, though both listen. An ASR model answers "what
+    /// words are these" and a speaker embedder answers "whose voice is this" -
+    /// they share an input and nothing else, and a language-blind
+    /// <c>BestFor(Asr)</c> that could return an embedder would hand a
+    /// transcriber a model that produces no text at all.
+    /// </para>
+    /// <para>
+    /// NOTHING IS CATALOGUED UNDER IT YET, and that is the honest state. The
+    /// diarisation path is complete and tested and has no model to run; adding
+    /// the modality is what makes it possible to catalogue one, and
+    /// <c>ModelChoice.AnyCatalogued</c> already distinguishes "nothing exists
+    /// yet" from "nothing that runs on this phone" so an empty modality is a
+    /// state the app can describe rather than trip over.
+    /// </para>
+    /// </remarks>
+    SpeakerEmbedding,
 }
