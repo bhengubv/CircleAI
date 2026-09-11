@@ -652,6 +652,103 @@ public sealed class CircleAISession : IAsyncDisposable
         return sb.ToString();
     }
 
+    /// <summary>Say something in another language.</summary>
+    /// <param name="text">What was said.</param>
+    /// <param name="fromTag">BCP-47 of the language it is in.</param>
+    /// <param name="toTag">BCP-47 it should come back in.</param>
+    /// <param name="ct">Cancels the turn.</param>
+    /// <returns>The translation only - no preamble, no explanation.</returns>
+    /// <remarks>
+    /// ON THE SESSION BECAUSE BOTH HEADS REACH THE SESSION. The web head goes
+    /// through IConversation, which already had TranslateAsync; the native
+    /// Android head does not use IConversation at all - it holds a
+    /// CircleAISession directly, through CircleAISessionHost. So a translation
+    /// screen there had no door, and adding one would have meant a second copy
+    /// of the engine wiring living inside a screen.
+    /// <para>
+    /// The prompt is still the engine\'s, which was the whole point of closing
+    /// A4: the screen and the engine had been two owners of one prompt, and the
+    /// clause that stops a model ANSWERING the sentence rather than translating
+    /// it - in front of somebody at a hospital desk - must live in one place.
+    /// </para>
+    /// <para>
+    /// The name lookup passed in is SampleLanguages, which offers 78 languages.
+    /// Reaching instead for the nearest table an assembly can see is exactly how
+    /// "translate from English to ja" happened.
+    /// </para>
+    /// </remarks>
+    public async Task<string> TranslateAsync(
+        string text, string fromTag, string toTag, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+        var engine = new CircleAI.Languages.Translation.LlmTranslationEngine(
+            new SessionAsGenerator(this),
+            tag => SampleLanguages.Find(tag)?.Name ?? tag);
+
+        var result = await engine.TranslateAsync(
+            new CircleAI.Languages.Translation.TranslationRequest(
+                text, fromTag, toTag,
+                CircleAI.Languages.Translation.TranslationMode.Conversational), ct)
+            .ConfigureAwait(false);
+
+        return result.TranslatedText;
+    }
+
+    /// <summary>Presents this session as the raw generator the engine expects.</summary>
+    /// <remarks>
+    /// ONE MODEL, BORROWED. The translation engine takes an IChatGenerator
+    /// because it was written to sit directly on one, and this device has
+    /// exactly one loaded. Handing the engine its own would be a second copy of
+    /// several hundred megabytes on a phone with 3,7 GB.
+    /// <para>
+    /// A TRANSLATION IS A SERVICE CALL, NOT A REMEMBERED TURN, and that decides
+    /// which method it uses. AIService.ChatAsync ends with
+    /// <c>TryStoreEpisodeAsync(userQuery, response)</c>, so translating "where
+    /// is the toilet" would write the whole instruction - "Translate the
+    /// following text from English to isiZulu. Mode: Conversational..." - into
+    /// episodic memory as something the person said. That memory is what
+    /// Recalling reads to answer "what is my name"; filling it with translation
+    /// scaffolding degrades the one feature it exists for.
+    /// </para>
+    /// <para>
+    /// StreamAsync does not store, so it is the path taken and the pieces are
+    /// joined here. Nothing is streamed onward: the engine wants one string.
+    /// </para>
+    /// </remarks>
+    private sealed class SessionAsGenerator(CircleAISession session) : IChatGenerator
+    {
+        public async Task<string> GenerateAsync(
+            IReadOnlyList<ChatMessage> messages,
+            GenerationOptions? options = null,
+            CancellationToken ct = default)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+
+            var whole = new StringBuilder();
+            await foreach (var piece in session._brain.StreamAsync(messages, options, ct)
+                                               .ConfigureAwait(false))
+                whole.Append(piece);
+
+            return whole.ToString();
+        }
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            IReadOnlyList<ChatMessage> messages,
+            GenerationOptions? options = null,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+
+            await foreach (var piece in session._brain.StreamAsync(messages, options, ct)
+                                               .ConfigureAwait(false))
+                yield return piece;
+        }
+
+        /// <summary>Nothing to dispose: the model belongs to the session.</summary>
+        public void Dispose() { }
+    }
+
     /// <summary>
     /// Slice 1a: renders a SAMPLE CV to PDF through the offline document engine.
     /// NO model — this proves the RENDERER runs on the device (pure-managed

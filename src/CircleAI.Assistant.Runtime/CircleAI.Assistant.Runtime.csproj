@@ -43,6 +43,12 @@
     <ProjectReference Include="..\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- ONNX TTS, for the speaker. -->
     <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!-- TRANSLATION, SO BOTH HEADS CAN REACH IT. The native Android head holds a
+         CircleAISession rather than an IConversation, so without this the only
+         way to give it a translate screen was a second copy of the engine
+         wiring inside the screen - and the prompt has already been two owners
+         once. Brings CircleAI.Languages with it, a table of language names. -->
+    <ProjectReference Include="..\CircleAI.Languages.Translation\CircleAI.Languages.Translation.csproj" />
     <!-- The contracts and the pure decisions: capabilities, what was heard,
          what is remembered, what is said out loud. -->
     <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />

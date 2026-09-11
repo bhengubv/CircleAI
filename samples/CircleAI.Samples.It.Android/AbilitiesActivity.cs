@@ -84,6 +84,11 @@ public class AbilitiesActivity : Activity
         // nothing installed - which is also why the row has no size beside it.
         new("Music",     "Makes a piece of music, with nothing installed", ModelModality.Music,
             NeedsNoModel: true),
+
+        // TRANSLATION RIDES THE CHAT MODEL, so it is available exactly when
+        // Answering is - there is no separate translation model to download and
+        // none to wait for.
+        new("Translating", "Carries what you say into another language",  ModelModality.Chat),
 #if IT_VOICE_ANDROID
         new("Waking",    "Hears you say \"Hey B\" without being touched", ModelModality.WakeWord),
 #endif
@@ -310,19 +315,33 @@ public class AbilitiesActivity : Activity
     /// list would cheerfully fetch 311 MB for an ability with no screen behind
     /// it. The tick then said On for something a person could not do.
     /// </remarks>
-    static Type? ScreenFor(ModelModality modality) => modality switch
+    /// <remarks>
+    /// KEYED ON THE ABILITY, NOT THE MODALITY, and it had to change the moment a
+    /// second ability shared one. Translating rides the CHAT model - there is no
+    /// translation model to download - so it and Answering are both
+    /// <see cref="ModelModality.Chat"/>, and a modality-keyed lookup would have
+    /// sent "Answering" to the translate screen as well.
+    /// <para>
+    /// A row's identity is what it DOES. The modality is only which models
+    /// serve it, and two things can be served by one model - which is the same
+    /// realisation as NeedsNoModel above: the list kept deriving a row's
+    /// behaviour from its model when the row is the thing a person taps.
+    /// </para>
+    /// </remarks>
+    static Type? ScreenFor(Ability ability) => ability.Title switch
     {
 #if IT_VOICE_ANDROID
-        ModelModality.WakeWord => typeof(WakeWordActivity),
+        "Waking" => typeof(WakeWordActivity),
 #endif
-        ModelModality.Vision => typeof(SeeingActivity),
+        "Seeing" => typeof(SeeingActivity),
 
         // LISTENING WAS THE OTHER DOWNLOAD TO NOWHERE. Whisper has been
         // catalogued and fetchable for as long as this row has existed, and
         // there was nothing behind it - this head could not transcribe a file
         // OR a microphone. TranscribeActivity is what the row now leads to.
-        ModelModality.Asr => typeof(TranscribeActivity),
-        ModelModality.Music => typeof(MusicActivity),
+        "Listening" => typeof(TranscribeActivity),
+        "Music" => typeof(MusicActivity),
+        "Translating" => typeof(TranslateActivity),
 
         _ => null,
     };
@@ -375,7 +394,7 @@ public class AbilitiesActivity : Activity
             // An ability that is ON should be somewhere you can GO, not just a
             // tick. Waking has a screen of its own; the rest do not yet, and a
             // row that looks tappable and does nothing is worse than a plain one.
-            var screen = ScreenFor(ability.Modality);
+            var screen = ScreenFor(ability);
             if (screen is not null)
             {
                 row.AddView(Ui.Label(this, "Try it  ›", 14f, Ui.Blue, bold: true));
