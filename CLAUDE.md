@@ -73,13 +73,28 @@ this paragraph is checked rather than believed.
 **There are SIXTEEN test projects. This file said TWO, and that sentence cost a
 whole day of verification that sounded complete and was not.**
 
+`docs/BUILD.md` says `dotnet test CircleAI.sln` — "everything at once,
+recommended" — and the solution does name **15 of the 16**. **But I could not
+make that command work on this box**, and this file is not going to tell you it
+did: it built for **85 minutes** and produced not one test result, using 48
+seconds of CPU in that time. That is a stall, not a slow build, and it was
+killed. One observation is not proof the command is broken — but it is not
+verified either, and `never-hog-the-dev-workstation` says a heavy build does not
+belong here in the first place.
+
+**What IS verified, project by project, on both legs: all sixteen pass.** Run
+them individually — it is also far faster to iterate on:
+
 ```bash
-dotnet test CircleAI.sln
+dotnet test tests/CircleAI.Tests/CircleAI.Tests.csproj -f net10.0
 ```
 
-That is the one command, and `docs/BUILD.md` has said so all along — "everything
-at once, recommended". It covers **15 of the 16**. The sixteenth is in no
-solution at all:
+```bash
+for p in tests/*/*.csproj; do dotnet test "$p" --nologo -v q; done
+```
+
+The loop is the one that covers everything, because it does not care what any
+solution file contains. The sixteenth project is in no solution at all:
 
 ```bash
 dotnet test tests/CircleAI.Samples.It.Ui.Tests/CircleAI.Samples.It.Ui.Tests.csproj
