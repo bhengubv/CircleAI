@@ -34,7 +34,7 @@
       cannot create a cycle, and it is where the app's language table already
       lives. Restating that table here would be the fifth copy of one fact.
     -->
-    <ProjectReference Include="..\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Assistant\CircleAI.Assistant.csproj" />
     <!-- Capability sweep: every "hands make things" + "systems" library the
          CapabilitySweep exercises end-to-end. All pure-managed / offline. -->
     <ProjectReference Include="..\..\src\CircleAI.Charts\CircleAI.Charts.csproj" />

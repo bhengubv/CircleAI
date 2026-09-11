@@ -379,7 +379,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BVoice.Shared", "samples\BV
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Samples.It.Android", "samples\CircleAI.Samples.It.Android\CircleAI.Samples.It.Android.csproj", "{FF35B1FC-7C58-4E07-ABB8-D0A5A6E55C0C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Samples.It.Contracts", "samples\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj", "{A209A5A6-9921-406D-B4CE-09C65A475E02}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CircleAI.Assistant", "src\CircleAI.Assistant\CircleAI.Assistant.csproj", "{A209A5A6-9921-406D-B4CE-09C65A475E02}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.Hybrid", "{574104FA-1385-C76B-0391-D220CD4D746D}"
 EndProject

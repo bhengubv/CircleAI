@@ -1,0 +1,32 @@
+<!--
+  The Circle AI assistant, in C#.
+
+  THIS IS THE PRODUCT, NOT A SAMPLE'S HELPER LIBRARY. A developer who writes C#
+  references this and has the assistant: the capabilities, the turn contracts,
+  what it remembers, what it says out loud and how it decides what was asked of
+  it. They should never need to open another language, or mine a sample app for
+  the parts that make it work.
+
+  ZERO ProjectReferences, and that is still the point. This is loaded by a
+  WebAssembly client as well as by a phone, so it holds data, interfaces and pure
+  decisions: nothing here touches ONNX, a native library, or a file. A head
+  supplies the rest by implementing these interfaces.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Tells the analyser to flag anything a browser cannot run, here, at build
+         time - rather than in somebody's browser. -->
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+</Project>

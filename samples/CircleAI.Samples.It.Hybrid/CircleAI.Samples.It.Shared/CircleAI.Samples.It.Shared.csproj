@@ -50,7 +50,7 @@
          is an Exe whose CircleAI.Hosting reference drags the whole SDK and the
          ONNX runtime, which cannot load in a WebAssembly client. Each head
          satisfies the interfaces with whatever it actually has. -->
-    <ProjectReference Include="..\..\CircleAI.Samples.It.Contracts\CircleAI.Samples.It.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant\CircleAI.Assistant.csproj" />
   </ItemGroup>
 
 </Project>
