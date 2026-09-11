@@ -43,24 +43,39 @@ public class TranslationPromptTests
     }
 
     [Fact]
-    public async Task The_engines_own_table_is_too_small_and_the_caller_supplies_a_better_one()
+    public async Task The_engines_own_table_now_knows_japanese_too()
     {
-        // THIS IS WHY THE LOOKUP IS AN ARGUMENT. The first version of this
-        // reached for CircleAI.Languages.KnownLanguages because that is the
-        // table this assembly can see. It lists TWENTY languages; the app ships
-        // SEVENTY-FIVE. Japanese is not among the twenty - on an app with a
-        // whole Open JTalk prosody stack for Japanese - so the prompt came out
-        // as "from English to ja" and nothing said so.
+        // THIS TEST USED TO ASSERT THE OPPOSITE, AND THAT WAS THE DEFECT.
+        // KnownLanguages held twenty languages while the app offered
+        // seventy-eight, so reaching for it - which is the natural thing to do,
+        // since it is the table this assembly can see - silently degraded
+        // translation for most of the catalogue. Japanese was not among the
+        // twenty, on a product carrying a whole Open JTalk prosody stack for
+        // Japanese, so the prompt came out as "from English to ja".
+        //
+        // The table has since been filled: all seventy-eight, with script and
+        // direction derived from Unicode and ICU rather than typed. The default
+        // is no longer the poor answer, so the assertion flips.
         var withDefault = new PromptSpy();
         await new LlmTranslationEngine(withDefault).TranslateAsync(
             new TranslationRequest("hello", "en", "ja"));
 
-        var withCallers = new PromptSpy();
-        await new LlmTranslationEngine(withCallers, Names).TranslateAsync(
+        Assert.Contains("Japanese", withDefault.Last);
+    }
+
+    [Fact]
+    public async Task The_lookup_is_still_an_argument_so_a_host_is_never_forced_onto_our_table()
+    {
+        // The reason it is a parameter survives the table being filled: an
+        // assembly cannot know which languages somebody else's app offers, and
+        // a host that names them differently - or offers one we do not - must
+        // be able to say so without editing this library.
+        var spy = new PromptSpy();
+        await new LlmTranslationEngine(spy, _ => "Klingon").TranslateAsync(
             new TranslationRequest("hello", "en", "ja"));
 
-        Assert.DoesNotContain("Japanese", withDefault.Last);
-        Assert.Contains("Japanese", withCallers.Last);
+        Assert.Contains("Klingon", spy.Last);
+        Assert.DoesNotContain("Japanese", spy.Last);
     }
 
     /// <summary>Stands in for the app's own language table.</summary>

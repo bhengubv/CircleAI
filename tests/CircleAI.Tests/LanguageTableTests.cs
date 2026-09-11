@@ -10,16 +10,21 @@
 // than guessed: getting RTL wrong renders somebody's language backwards.
 //
 // So there are two, and the job of this file is to make sure they cannot
-// silently disagree. Measured on 2026-09-11:
+// silently disagree. Re-measured 2026-09-11 after the smaller table was filled:
 //
-//   KnownLanguages   20 entries
-//   SampleLanguages  69 entries
-//   Only in KnownLanguages    es, pt   (Spanish and Portuguese)
-//   Only in SampleLanguages   51, including ja, ko, ru, ur, vi, th, bn
-//   Shared tags whose names disagree:   ZERO
+//   KnownLanguages   78 entries
+//   SampleLanguages  78 entries
+//   Only in one or the other:            NONE
+//   Shared tags whose names disagree:    ZERO
 //
-// That last line is the invariant worth pinning. The counts will move as
-// languages are added; the names of the ones both tables know must not.
+// It started at 20 against 78. The 58 KnownLanguages lacked were SOURCED rather
+// than typed - script from the Unicode of each native name, direction from
+// CultureInfo.TextInfo.IsRightToLeft (ICU/CLDR), region from ICU likely-subtags
+// - and the derivation was checked against the twenty hand-written rows before
+// it was trusted: script 20/20, right-to-left 20/20.
+//
+// The invariant worth pinning is the last line. Counts move as languages are
+// added; the names of the ones both tables know must not.
 //
 // IT ALREADY COST SOMETHING. LlmTranslationEngine reached for KnownLanguages
 // because that is the table it can see, and silently degraded translation for

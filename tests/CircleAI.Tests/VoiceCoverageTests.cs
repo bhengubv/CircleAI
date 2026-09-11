@@ -8,14 +8,22 @@
 // The failure is silent from the inside: selection succeeds, the screen renders,
 // and nothing speaks.
 //
-// Measured 2026-09-11: 72 languages offered, 69 voice entries covering 78 tags,
+// Measured 2026-09-11: 78 languages offered, 69 voice entries covering 78 tags,
 // and ZERO offered languages without a voice. This exists so that stays true -
 // the two lists are edited by different people for different reasons, and
 // nothing else connects them.
 //
-// It went 69 -> 72 the day Spanish, Dutch and Portuguese were added to the
+// IT WENT 75 -> 78 the day Spanish, Dutch and Portuguese were added to the
 // picker: their voices had been catalogued and unreachable all along, so that
 // change added no bytes and unlocked six.
+//
+// AND 75 AND 78 ARE CORRECTIONS. Those counts were first reported as 69 and 72,
+// from a regex matching [a-z-]+ against the dictionary keys - which silently
+// dropped the six regional tags, es-ES, es-MX, nl-BE, nl-NL, pt-BR and pt-PT,
+// because they carry an uppercase region subtag. A case-sensitive pattern
+// undercounting by exactly the entries that are spelled differently is the
+// quietest kind of wrong: every number derived from it looked plausible.
+// Counted from SampleLanguages.All.Count now, which cannot miss one.
 //
 // CATALOGUED, NOT INSTALLED, and the difference matters. This asserts that a
 // voice EXISTS to be fetched for every offered language. What a particular
