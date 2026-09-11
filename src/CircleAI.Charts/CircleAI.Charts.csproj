@@ -25,7 +25,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Description>Offline on-device chart rendering for CircleAI — bar, line and pie charts drawn with PDFsharp XGraphics primitives, embeddable into report/deck PDFs.</Description>
     <PackageTags>circle-ai;charts;graph;pdf;pdfsharp;offline;on-device;bar;line;pie</PackageTags>
   </PropertyGroup>

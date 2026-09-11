@@ -119,6 +119,38 @@ public static class SampleLanguages
     /// <c>(tag, tag, null)</c> for a missing entry produces a screen that names a
     /// language "ko" and offers to speak the word "ko" aloud.
     /// </remarks>
+    /// <remarks>
+    /// TAKES THE TAGS IT IS ACTUALLY HANDED. This was a plain lookup on an
+    /// ordinal dictionary, so it answered only for an exact lowercase primary
+    /// subtag - and the tags that arrive are not that. Android hands back
+    /// "en-US" and "pt-BR"; a model config writes "ZU"; a settings file keeps
+    /// whatever was stored. Every one of those returned null, and null here
+    /// means a screen shows the raw tag as if it were the language's name.
+    /// <para>
+    /// So: exact first, then case-insensitive, then the primary subtag. BCP-47
+    /// says subtags are case-insensitive, and "pt-BR" and "pt" are the same
+    /// language to a picker and to a model being asked to translate.
+    /// </para>
+    /// </remarks>
     public static SampleLanguage? Find(string? tag)
-        => tag is not null && All.TryGetValue(tag, out var l) ? l : null;
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+
+        var t = tag.Trim();
+        if (All.TryGetValue(t, out var exact)) return exact;
+
+        foreach (var (key, value) in All)
+            if (string.Equals(key, t, StringComparison.OrdinalIgnoreCase))
+                return value;
+
+        var dash = t.IndexOf('-');
+        if (dash <= 0) return null;
+
+        var primary = t[..dash];
+        foreach (var (key, value) in All)
+            if (string.Equals(key, primary, StringComparison.OrdinalIgnoreCase))
+                return value;
+
+        return null;
+    }
 }

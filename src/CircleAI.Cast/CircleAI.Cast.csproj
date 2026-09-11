@@ -9,7 +9,7 @@
   <PropertyGroup>
     <!-- Single TFM per task brief; all other quality/identity settings inherited from
          ..\..\Directory.Build.props (SourceLink, analyzers, nullable, doc-file, etc.). -->
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

@@ -297,6 +297,13 @@ public class AbilitiesActivity : Activity
         ModelModality.WakeWord => typeof(WakeWordActivity),
 #endif
         ModelModality.Vision => typeof(SeeingActivity),
+
+        // LISTENING WAS THE OTHER DOWNLOAD TO NOWHERE. Whisper has been
+        // catalogued and fetchable for as long as this row has existed, and
+        // there was nothing behind it - this head could not transcribe a file
+        // OR a microphone. TranscribeActivity is what the row now leads to.
+        ModelModality.Asr => typeof(TranscribeActivity),
+
         _ => null,
     };
 

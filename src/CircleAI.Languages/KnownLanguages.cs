@@ -3,15 +3,26 @@ namespace CircleAI.Languages;
 /// <summary>Static registry of every language Circle AI ships support for.</summary>
 public static class KnownLanguages
 {
+    // TWO NATIVE NAMES WERE ALIGNED TO SampleLanguages, NOT THE OTHER WAY ROUND.
+    // This table said "Hausa" and "Igbo" where the app's own catalogue says
+    // "Harshen Hausa" and "Asụsụ Igbo". Both readings are defensible - the
+    // second spells out "the Hausa language" the way those languages name
+    // themselves - and the deciding factor was not linguistics: SampleLanguages
+    // is the table people SEE, in the picker, today. Changing the unused table
+    // to match the used one cannot make anybody's screen worse.
+    //
+    // A Hausa or Igbo speaker should still be asked which they would rather
+    // read. LanguageTableTests now fails if the two ever disagree again.
+
     // ── Africa ────────────────────────────────────────────────────────────────
     public static readonly LanguageTag IsiZulu     = new("zu", "isiZulu",     "isiZulu",     WritingSystem.Latin,    false, "ZA");
     public static readonly LanguageTag Sesotho     = new("st", "Sesotho",     "Sesotho",     WritingSystem.Latin,    false, "ZA");
     public static readonly LanguageTag Afrikaans   = new("af", "Afrikaans",   "Afrikaans",   WritingSystem.Latin,    false, "ZA");
     public static readonly LanguageTag Swahili     = new("sw", "Swahili",     "Kiswahili",   WritingSystem.Latin,    false, "KE");
-    public static readonly LanguageTag Hausa       = new("ha", "Hausa",       "Hausa",       WritingSystem.Latin,    false, "NG");
+    public static readonly LanguageTag Hausa       = new("ha", "Hausa",       "Harshen Hausa", WritingSystem.Latin,  false, "NG");
     public static readonly LanguageTag Amharic     = new("am", "Amharic",     "አማርኛ",        WritingSystem.Ethiopic, false, "ET");
     public static readonly LanguageTag Yoruba      = new("yo", "Yoruba",      "Yorùbá",      WritingSystem.Latin,    false, "NG");
-    public static readonly LanguageTag Igbo        = new("ig", "Igbo",        "Igbo",        WritingSystem.Latin,    false, "NG");
+    public static readonly LanguageTag Igbo        = new("ig", "Igbo",        "Asụsụ Igbo",  WritingSystem.Latin,    false, "NG");
     public static readonly LanguageTag Xhosa       = new("xh", "isiXhosa",    "isiXhosa",    WritingSystem.Latin,    false, "ZA");
     public static readonly LanguageTag Sepedi      = new("nso","Sepedi",      "Sepedi",      WritingSystem.Latin,    false, "ZA");
     public static readonly LanguageTag Setswana    = new("tn", "Setswana",    "Setswana",    WritingSystem.Latin,    false, "ZA");

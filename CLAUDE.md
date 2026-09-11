@@ -53,9 +53,22 @@ dotnet build src/CircleAI.Memory/CircleAI.Memory.csproj
 dotnet test tests/CircleAI.Tests/CircleAI.Tests.csproj -f net10.0
 ```
 
-Everything multi-targets **net9.0 and net10.0**, and the test project runs both
-legs. Run one framework while iterating; run both before calling it done — a
-green net10 leg has hidden a net9 break before.
+Everything in `src` multi-targets **net9.0 and net10.0** except the two Android
+heads, and the test project runs both legs. Run one framework while iterating;
+run both before calling it done — a green net10 leg has hidden a net9 break
+before.
+
+That sentence was FALSE for a long time and this file asserted it anyway.
+Fourteen libraries were net10.0-only, the three `CircleAI.Assistant` projects
+among them — so a developer on net9.0 could reference 154 libraries and not the
+product. Nothing caught it: a net10-only library builds fine, every consumer
+that can see it is also net10, and the net9 test leg stayed green because the
+test project could not reference those libraries at all. They turned out to need
+nothing from net10; they were net10-only because that is what a new project
+defaults to.
+
+`TargetFrameworkTests` now asserts it against the project files, so the claim in
+this paragraph is checked rather than believed.
 
 **There are TWO test projects and the second one is easy to forget.**
 

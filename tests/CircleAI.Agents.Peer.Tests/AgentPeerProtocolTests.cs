@@ -12,6 +12,17 @@ using CircleAI.Agents.Peer;
 using CircleAI.Security;
 using Xunit;
 
+// A DEADLINE HERE IS A SAFETY NET AGAINST A HANG, NOT A MEASUREMENT.
+// These were one and two seconds, which is a performance assertion wearing a
+// timeout's clothes: none of these tests does real I/O, so the only thing a
+// tight budget measures is whether the thread pool got round to the pump while
+// three thousand other tests were running. Circle34LoopbackRealtimeTests
+// .SendText_CustomTtsDelegate_IsInvoked failed exactly once on the net9 leg of
+// a full run at FOUR seconds, and passed in 8 ms, 88 ms and 165 ms on its own.
+//
+// Thirty seconds still fails a genuine hang - which is the whole job - and
+// cannot be reached by a loaded machine doing the right thing.
+
 namespace CircleAI.Agents.Peer.Tests;
 
 public sealed class AgentMessageTests
@@ -65,7 +76,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         using var bob = CreatePeer("bob", bus);
         using var carol = CreatePeer("carol", bus);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var peers = await alice.DiscoverPeersAsync(cts.Token);
 
         var uhids = peers.Select(p => p.UhidIdentityId).ToHashSet(StringComparer.Ordinal);
@@ -80,7 +91,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         var bus = new AgentBus();
         using var alice = CreatePeer("alice", bus);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var result = await alice.GreetAsync("nobody", cts.Token);
 
         Assert.Null(result);
@@ -94,7 +105,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         using var bob = CreatePeer("bob", bus,
             capabilities: [TranslateCap, PaidNavigateCap]);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var caps = await alice.QueryCapabilitiesAsync("bob", cts.Token);
 
         Assert.Equal(2, caps.Count);
@@ -180,7 +191,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         using var alice = CreatePeer("alice", bus);
         using var bob = CreatePeer("bob", bus);
 
-        using var discCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var discCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var before = (await alice.DiscoverPeersAsync(discCts.Token))
             .Single(p => p.UhidIdentityId == "bob");
 
@@ -193,7 +204,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         // Allow alice's pump to process the heartbeat.
         await Task.Delay(50);
 
-        using var discCts2 = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var discCts2 = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var after = (await alice.DiscoverPeersAsync(discCts2.Token))
             .Single(p => p.UhidIdentityId == "bob");
 
@@ -208,7 +219,7 @@ public sealed class InMemoryAgentPeerProtocolTests
         using var bob = CreatePeer("bob", bus,
             capabilities: [new AgentCapability("diagnose", "2.0.0", 1.5m, "ZAR")]);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var caps = await alice.QueryCapabilitiesAsync("bob", cts.Token);
 
         var diagnose = Assert.Single(caps);
@@ -260,7 +271,7 @@ public sealed class InMemoryAgentPeerProtocolTests
 
         await Task.Delay(20);
 
-        using var greetCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var greetCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await alice.GreetAsync("bob", greetCts.Token);
 
         await SafeWait(task);

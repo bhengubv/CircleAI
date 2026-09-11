@@ -11,7 +11,7 @@
   <!-- .NET 10 for new code (MEMORY: dotnet10-only). The referenced projects
        multi-target net9.0;net10.0, so their net10.0 asset is selected here. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>

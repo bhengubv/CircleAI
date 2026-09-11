@@ -9,6 +9,17 @@ using CircleAI.Security;
 using CircleAI.Security.AetherNet;
 using Xunit;
 
+// A DEADLINE HERE IS A SAFETY NET AGAINST A HANG, NOT A MEASUREMENT.
+// These were one and two seconds, which is a performance assertion wearing a
+// timeout's clothes: none of these tests does real I/O, so the only thing a
+// tight budget measures is whether the thread pool got round to the pump while
+// three thousand other tests were running. Circle34LoopbackRealtimeTests
+// .SendText_CustomTtsDelegate_IsInvoked failed exactly once on the net9 leg of
+// a full run at FOUR seconds, and passed in 8 ms, 88 ms and 165 ms on its own.
+//
+// Thirty seconds still fails a genuine hang - which is the whole job - and
+// cannot be reached by a loaded machine doing the right thing.
+
 namespace CircleAI.Tests;
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -270,7 +281,7 @@ public sealed class NodeTrustRegistryTests
         var reg = Make.Registry();
         reg.ApplyDegradation(Make.Sec("n"), 0.10);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var update = await reg.TrustScoreUpdates.ReadAsync(cts.Token);
         Assert.Equal("n", update.NodeId);
         Assert.Equal(0.90, update.NewScore, precision: 5);
@@ -770,7 +781,7 @@ public sealed class AetherIntelligenceAdapterTests
         reg.ApplyDegradation(Make.Sec("stream-node"), 0.10);
 
         TrustScoreUpdate? update = null;
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await foreach (var u in svc.StreamTrustScoresAsync(cts.Token))
         {
             update = u;

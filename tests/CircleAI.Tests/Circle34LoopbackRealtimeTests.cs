@@ -12,6 +12,17 @@ using System.Threading.Tasks;
 using CircleAI.Realtime;
 using Xunit;
 
+// A DEADLINE HERE IS A SAFETY NET AGAINST A HANG, NOT A MEASUREMENT.
+// These were one and two seconds, which is a performance assertion wearing a
+// timeout's clothes: none of these tests does real I/O, so the only thing a
+// tight budget measures is whether the thread pool got round to the pump while
+// three thousand other tests were running. Circle34LoopbackRealtimeTests
+// .SendText_CustomTtsDelegate_IsInvoked failed exactly once on the net9 leg of
+// a full run at FOUR seconds, and passed in 8 ms, 88 ms and 165 ms on its own.
+//
+// Thirty seconds still fails a genuine hang - which is the whole job - and
+// cannot be reached by a loaded machine doing the right thing.
+
 namespace CircleAI.Tests;
 
 public class Circle34LoopbackRealtimeTests
@@ -93,7 +104,7 @@ public class Circle34LoopbackRealtimeTests
             return ValueTask.FromResult<ReadOnlyMemory<byte>>(new byte[] { 1, 2, 3, 4 });
         });
         await using var s = await svc.StartSessionAsync(NewConfig());
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
         var pump = Task.Run(async () =>
         {
@@ -110,7 +121,7 @@ public class Circle34LoopbackRealtimeTests
     {
         var svc = new LoopbackRealtimeService();
         await using var s = await svc.StartSessionAsync(NewConfig());
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
         var captured = new List<RealtimeAudioFrame>();
         var pump = Task.Run(async () =>

@@ -110,6 +110,29 @@
         }
     </div>
 
+    @*
+        A RECORDING THAT ALREADY EXISTS. Everything above this opens a
+        microphone, and the thing people most often want written down is
+        something they already have - a voice memo, an interview, an episode.
+        Transcribing.FileAsync could do it for a while before any screen could
+        ask for it.
+    *@
+    @if (!_running)
+    {
+        <div class="fromfile">
+            <label class="fromfile-label">
+                <InputFile OnChange="OpenRecording" accept="audio/*,video/*" />
+                <span>or open a recording</span>
+            </label>
+
+            @if (_reading is { } pct)
+            {
+                <progress class="fromfile-bar" max="100" value="@pct"></progress>
+                <span class="fromfile-pct">@pct%</span>
+            }
+        </div>
+    }
+
     @if (_lines.Count > 0)
     {
         <p class="count">@_lines.Count line@(_lines.Count == 1 ? "" : "s")</p>
@@ -129,6 +152,91 @@
     bool _running;
 
     CancellationTokenSource? _cts;
+
+    /// <summary>How far through a file, or null when no file is being read.</summary>
+    int? _reading;
+
+    /// <summary>
+    /// Longest recording this will open, in bytes.
+    /// </summary>
+    /// <remarks>
+    /// InputFile refuses anything over 512 KB unless told otherwise, which is
+    /// roughly thirty seconds of speech - so the default would reject almost
+    /// every real recording with a message about a limit nobody set. Two
+    /// gigabytes is about the largest file a phone will hand over at all.
+    /// </remarks>
+    const long LongestRecording = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>Write down a recording the person already has.</summary>
+    /// <remarks>
+    /// SPOOLED TO A PATH FIRST. The product takes a file path - it has a
+    /// platform decoder behind it that wants one - and a browser file is a
+    /// stream. The copy lands in the temp directory and is deleted afterwards
+    /// whatever happens, because a phone that keeps a copy of every recording
+    /// somebody transcribed fills up without ever saying why.
+    /// </remarks>
+    async Task OpenRecording(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        _trouble = null;
+        _status = "Opening the recording...";
+        _reading = 0;
+        StateHasChanged();
+
+        var spooled = Path.Combine(Path.GetTempPath(),
+            $"transcribe-{Guid.NewGuid():N}{Path.GetExtension(file.Name)}");
+
+        try
+        {
+            await using (var input = file.OpenReadStream(LongestRecording))
+            await using (var output = File.Create(spooled))
+                await input.CopyToAsync(output);
+
+            _status = "Listening to it - this runs at about real time.";
+            StateHasChanged();
+
+            var progress = new Progress<double>(p => InvokeAsync(() =>
+            {
+                _reading = (int)(p * 100);
+                StateHasChanged();
+            }));
+
+            var written = await Talk.TranscribeFileAsync(
+                spooled, Spoken.Current, progress);
+
+            if (string.IsNullOrWhiteSpace(written.Text))
+            {
+                _trouble = "Nothing was said in that recording.";
+            }
+            else
+            {
+                // Line per timed stretch where there are timings, so the
+                // transcript reads as speech rather than as one paragraph.
+                _lines.Clear();
+                if (written.Lines.Count > 0)
+                    foreach (var line in written.Lines) _lines.Add(line.Text);
+                else
+                    _lines.Add(written.Text);
+            }
+
+            _status = null;
+        }
+        catch (Exception ex)
+        {
+            // A message about the BUILD - "no decoder reads .m4a here" - is worth
+            // showing verbatim; it is about us, not about their recording.
+            _trouble = ex.Message;
+            _status = null;
+        }
+        finally
+        {
+            _reading = null;
+            try { File.Delete(spooled); } catch { /* temp is swept anyway */ }
+            StateHasChanged();
+        }
+    }
 
     /// <summary>Start listening, or stop.</summary>
     /// <remarks>
