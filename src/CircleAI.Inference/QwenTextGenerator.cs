@@ -176,6 +176,27 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// hardcoded Qwen ChatML builder. Resolved via DI when registered
     /// through <c>AddCircleAI</c>.
     /// </param>
+    /// <summary>Whether the memory-mapped weight and KV-cache paths are used.</summary>
+    /// <remarks>
+    /// A SWITCH BECAUSE A CRASH IS BEING BISECTED, and the honest way to find a
+    /// cause is to be able to turn the suspect off. Both mmap paths were wired
+    /// recently; since then a typed turn reliably kills the process with
+    ///
+    ///     SIGSEGV, fault addr 0x0, in MNN::ThreadPool::enqueue
+    ///
+    /// on the FIRST generation after launch, with well over a gigabyte free.
+    /// Turning both off answers "is it the mapping" in one build rather than
+    /// three.
+    ///
+    /// ⚠ TEMPORARILY DEFAULTED OFF while the crash is bisected. Set
+    /// CIRCLEAI_MNN_MMAP=1 to turn the mapping back on. If mmap turns out not to
+    /// be the cause this default goes back to on, and if it IS the cause the
+    /// default stays off until the mapping itself is fixed - a process that dies
+    /// mid-answer is worse than a slow first token.
+    /// </remarks>
+    private static bool MmapIsAllowed =>
+        Environment.GetEnvironmentVariable("CIRCLEAI_MNN_MMAP") == "1";
+
     public QwenTextGenerator(
         string                   modelPath,
         uint                     contextSize,
@@ -243,7 +264,7 @@ public sealed class QwenTextGenerator : IChatGenerator
             var scratch = Path.Combine(Path.GetDirectoryName(modelPath) ?? ".", "mmap");
             Directory.CreateDirectory(scratch);
             mmap.UseScratch(scratch);
-            mmap.Enable();
+            if (MmapIsAllowed) mmap.Enable();
 
             // AND THE KV CACHE, WHICH IS A SEPARATE FLAG. The prefix cache is
             // disk-backed and refuses to attach without kvcache_mmap, so
@@ -251,7 +272,8 @@ public sealed class QwenTextGenerator : IChatGenerator
             // turn re-prefilled from cold — 13,4 seconds to the first token on a
             // P30 on 2026-09-09. Same scratch directory, which is why this sits
             // after UseScratch rather than beside Enable.
-            new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
+            if (MmapIsAllowed)
+                new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
 
