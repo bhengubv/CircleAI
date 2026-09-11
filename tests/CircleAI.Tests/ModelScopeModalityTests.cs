@@ -1,16 +1,28 @@
 // ModelScopeModalityTests.cs
 //
-// Pins ModelScopeCatalogClient.InferModality — the load-bearing part of
-// "catalogue a real on-device vision model."
+// Pins ModelScopeCatalogClient.InferModality - the load-bearing part of
+// "catalogue a real on-device model live."
 //
-// The ModelScope listing API does not report modality. Before this method a
-// vision-language bundle discovered live (Qwen2-VL, MiniCPM-V, …) was
-// catalogued as the default Chat modality, so vision selection could never see
-// it and an on-device VLM was, in practice, uncatalogable from the live path.
-// The naming table here IS the fix; if someone loosens it (plain chat models
-// start reading as Vision) or tightens it (a real VLM family stops matching),
-// vision selection silently breaks on a phone rather than failing a build.
-// These tests are what stop that.
+// THE LISTING API DOES NOT REPORT MODALITY. Two things follow from that, and
+// this file pins both.
+//
+// First: a vision-language bundle discovered live (Qwen2-VL, MiniCPM-V, ...)
+// was catalogued as the default Chat modality, so vision selection could never
+// see it and an on-device VLM was, in practice, uncatalogable from the live
+// path. The naming table is the fix.
+//
+// Second, and found later by asking the real API what it actually returns:
+// EVERYTHING UNRECOGNISED FELL THROUGH TO CHAT. Four of the first hundred
+// models this publisher returns are not chat models - a Stable Diffusion
+// checkpoint, two embedding models and a paraformer ASR bundle - and
+// CatalogueMerge lets a live entry ADD, so the first successful refresh would
+// have put a diffusion checkpoint in the ladder of models to talk to.
+//
+// The rule is what this product can LOAD, not what the model is. If someone
+// loosens it (plain chat models start reading as Vision), tightens it (a real
+// VLM family stops matching), or reopens the fall-through (an ASR bundle
+// becomes catalogable again and outranks the ggml Whisper that works), the
+// failure is on a phone rather than in a build. These tests are what stop that.
 
 using CircleAI.Core;
 using CircleAI.Core.Models;
@@ -68,5 +80,58 @@ public sealed class ModelScopeModalityTests
             repo: "MNN/Qwen2.5-VL-3B-Instruct-MNN");
 
         Assert.Equal(ModelModality.Vision, modality);
+    }
+
+    // ── what this product cannot load is not catalogued at all ───────────────
+
+    [Theory]
+    // THE FOUR REAL ONES. Every name here was returned by the live listing on
+    // 2026-09-11, not invented, and every one of them read as Chat before.
+    [InlineData("stable-diffusion-v1-5-mnn-opencl")]
+    [InlineData("speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-mnn")]
+    // ...and the families that would arrive next from the same publisher.
+    [InlineData("bge-reranker-base-MNN")]
+    [InlineData("whisper-large-v3-MNN")]
+    [InlineData("SenseVoiceSmall-MNN")]
+    [InlineData("CosyVoice2-0.5B-MNN")]
+    [InlineData("bert-vits2-MNN")]
+    [InlineData("FLUX.1-schnell-mnn")]
+    public void WhatNothingHereCanLoad_IsNotCatalogued(string name)
+    {
+        // NULL, NOT Asr/Tts/ImageGen. Cataloguing one of these under its true
+        // modality would be a truthful entry and a broken download - and for
+        // ASR it is actively destructive, because PlanFor(Asr) would rank a
+        // large fresh MNN bundle above the 78 MB ggml Whisper that works and
+        // the phone would lose hearing it already had.
+        Assert.Null(ModelScopeCatalogClient.InferModality(name));
+    }
+
+    [Fact]
+    public void Rerankers_AreRefusedBeforeTheEmbeddingRuleCanClaimThem()
+    {
+        // "bge-reranker-base" matches the bge family AND is not an embedder.
+        // Order is the whole fix, so it is pinned rather than assumed.
+        Assert.Null(ModelScopeCatalogClient.InferModality("bge-reranker-large-MNN"));
+        Assert.Equal(ModelModality.Embedding,
+            ModelScopeCatalogClient.InferModality("bge-large-zh-MNN"));
+    }
+
+    // ── embedding models read as Embedding ───────────────────────────────────
+
+    [Theory]
+    [InlineData("bge-large-zh-MNN")]                                // live, Apache-2.0
+    [InlineData("gte_sentence-embedding_multilingual-base-MNN")]    // live, Apache-2.0
+    [InlineData("Qwen3-Embedding-0.6B-MNN")]
+    public void EmbeddingModels_ReadAsEmbedding(string name)
+    {
+        Assert.Equal(ModelModality.Embedding, ModelScopeCatalogClient.InferModality(name));
+    }
+
+    [Theory]
+    [InlineData("Magtek-7B-MNN")]       // "gte" bounded by letters, inside "Magtek"
+    [InlineData("Clubgear-3B-MNN")]     // "bge" bounded by letters, inside "Clubgear"
+    public void EmbeddingFamilyLetters_InsideAWord_DoNotFalsePositive(string name)
+    {
+        Assert.Equal(ModelModality.Chat, ModelScopeCatalogClient.InferModality(name));
     }
 }

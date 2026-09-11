@@ -178,13 +178,62 @@ public class CatalogueListingTests
     }
 
     [Fact]
-    public void An_empty_licence_list_means_any_licence()
+    public void An_empty_licence_list_means_any_licence_the_denylist_does_not_refuse()
     {
+        // THIS TEST USED TO EXPECT Restricted-4B AS WELL, AND IT WAS RIGHT ABOUT
+        // THE CONTRACT AND WRONG ABOUT THE CONSEQUENCE. "Empty means any" is
+        // deliberate - a host pointing this client at its OWN models has a real
+        // reason to switch the allowlist off - and an unstated licence still
+        // rides through on it, which is what the second assertion keeps.
+        //
+        // But Restricted-4B carries "CC BY-NC 4.0", and an ALLOWLIST being empty
+        // is not a host asking for NonCommercial content. The allowlist answers
+        // "which licences may we ship against"; RefusedLicences answers "which
+        // must we NEVER ship against", and only the first of those is what an
+        // empty list switches off. A host that genuinely means ANY empties
+        // RefusedLicences too - explicit, rather than as a side effect of
+        // configuring something else.
         var found = ModelScopeCatalogClient
             .ParseModelListing(RealShape, Options(licences: []))
             .ToList();
 
-        Assert.Contains(found, f => f.Name == "Restricted-4B");
         Assert.Contains(found, f => f.Name == "Unstated-3B-MNN");
+        Assert.DoesNotContain(found, f => f.Name == "Restricted-4B");
+    }
+
+    [Fact]
+    public void A_host_that_truly_means_any_licence_can_still_say_so()
+    {
+        // The escape hatch, so the tightening above is a default and not a wall.
+        var found = ModelScopeCatalogClient
+            .ParseModelListing(
+                RealShape,
+                new ModelScopeCatalogOptions
+                {
+                    Publishers      = ["MNN"],
+                    Licences        = [],
+                    RefusedLicences = [],
+                })
+            .ToList();
+
+        Assert.Contains(found, f => f.Name == "Restricted-4B");
+    }
+
+    [Fact]
+    public void The_restricted_fixture_was_being_refused_by_accident()
+    {
+        // WORTH PINNING, BECAUSE IT IS WHY NOBODY NOTICED. The fixture spells it
+        // "CC BY-NC 4.0" WITH SPACES, and the old gate was String.Contains over
+        // an allowlist holding "cc-by". A spaced spelling contains no "cc-by",
+        // so A_restricted_licence_is_refused passed for a reason that had
+        // nothing to do with NC - and the same fixture written "cc-by-nc-4.0",
+        // which is the commoner spelling by far, would have been CATALOGUED.
+        //
+        // Both spellings are refused now, which is the actual claim that test
+        // was always meant to be making.
+        var options = Options();
+
+        Assert.False(ModelScopeCatalogClient.LicenceAllowed("CC BY-NC 4.0", options));
+        Assert.False(ModelScopeCatalogClient.LicenceAllowed("cc-by-nc-4.0", options));
     }
 }

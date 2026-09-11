@@ -74,7 +74,13 @@ public class AbilitiesActivity : Activity
     /// </remarks>
     static readonly Ability[] Abilities =
     {
-        new("Talking",   "Reads things out loud, in 10 plus languages",        ModelModality.Tts),
+        // COUNTED, NOT TYPED. This said "in 10 plus languages" while the
+        // picker offered seventy-eight and every one of them had a voice
+        // catalogued - true, and so far under the truth that it reads as a
+        // different product. A number a person can see is the one that must not
+        // go stale, so it is read from the same table the picker is built from
+        // rather than written down a second time.
+        new("Talking",   $"Reads things out loud, in {SampleLanguages.All.Count} languages", ModelModality.Tts),
         new("Listening", "Understands you when you speak",                ModelModality.Asr),
         new("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         new("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
@@ -89,6 +95,13 @@ public class AbilitiesActivity : Activity
         // Answering is - there is no separate translation model to download and
         // none to wait for.
         new("Translating", "Carries what you say into another language",  ModelModality.Chat),
+
+        // SEARCH NEEDS NOTHING EITHER. Lexical ranking is arithmetic, and
+        // memory searches itself - so this works on a phone with no model
+        // downloaded at all, like Music. The semantic half waits on an
+        // embedding model nobody has catalogued.
+        new("Finding",   "Looks through what you said and what it wrote down", ModelModality.Chat,
+            NeedsNoModel: true),
 #if IT_VOICE_ANDROID
         new("Waking",    "Hears you say \"Hey B\" without being touched", ModelModality.WakeWord),
 #endif
@@ -342,6 +355,7 @@ public class AbilitiesActivity : Activity
         "Listening" => typeof(TranscribeActivity),
         "Music" => typeof(MusicActivity),
         "Translating" => typeof(TranslateActivity),
+        "Finding" => typeof(SearchActivity),
 
         _ => null,
     };

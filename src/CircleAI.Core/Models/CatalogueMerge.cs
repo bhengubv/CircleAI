@@ -13,7 +13,10 @@
 // voices, the Whisper ASR, the "Hey B" wake word and the Open JTalk dictionary
 // sit on Hugging Face buckets and GitHub releases; so does the entire curated
 // chat ladder. The live query asks ModelScope for MNN bundles, and InferModality
-// returns only Chat or Vision.
+// answers Chat, Vision, Embedding — or null, meaning nothing here can open the
+// file, in which case it is not catalogued at all. That last answer is newer
+// than this file: the fall-through used to be Chat, so a Stable Diffusion
+// checkpoint and a paraformer ASR bundle both qualified as models to TALK to.
 //
 // So a refresh that WORKED would not have updated the catalogue - it would have
 // SWAPPED it for a different one, and left no trace of why the phone had stopped

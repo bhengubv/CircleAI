@@ -86,33 +86,27 @@
     <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
     <!--
-      LINKED, NOT REFERENCED. The sample's contracts are net10.0 only and this
-      project builds a net9.0 leg as well, so a ProjectReference is refused
-      outright. Compiling the source in is the honest alternative to
-      multi-targeting the product for a test's convenience - and unlike a copied
-      file it cannot drift, because it IS the file the app ships.
+      REFERENCED NOW, NOT COMPILED IN BY PATH.
+
+      Seven files used to be listed here individually - BuiltInWakePhrases,
+      SampleLanguages, ISettings, SpokenVocabulary, IWakePhrases, FirstRun and
+      VoiceNames - and the comment that stood here gave the reason:
+
+        "The sample's contracts are net10.0 only and this project builds a net9.0
+         leg as well, so a ProjectReference is refused outright."
+
+      That reason is gone. The three CircleAI.Assistant projects were among the
+      fourteen libraries that were net10.0-only while CLAUDE.md claimed everything
+      multi-targeted; they needed nothing from net10 and now build both legs.
+
+      SO THE WORKAROUND OUTLIVED ITS CAUSE, and it had a cost the original comment
+      did not see: a compile-by-path reaches only the files somebody REMEMBERED TO
+      LIST. It cannot drift in content, but it drifts by OMISSION - the transcript
+      store could not be tested at all until this changed, and every future type
+      would have needed another two lines here before a test could see it.
     -->
-    <Compile Include="..\..\src\CircleAI.Assistant\BuiltInWakePhrases.cs"
-             Link="Contracts\BuiltInWakePhrases.cs" />
-    <Compile Include="..\..\src\CircleAI.Assistant\SampleLanguages.cs"
-             Link="Contracts\SampleLanguages.cs" />
-    <Compile Include="..\..\src\CircleAI.Assistant\ISettings.cs"
-             Link="Contracts\ISettings.cs" />
-    <Compile Include="..\..\src\CircleAI.Assistant\SpokenVocabulary.cs"
-             Link="Contracts\SpokenVocabulary.cs" />
-    <Compile Include="..\..\src\CircleAI.Assistant\IWakePhrases.cs"
-             Link="Contracts\IWakePhrases.cs" />
-    <!--
-      FirstRun decides what a fresh phone downloads and what the loading screen
-      says it already has, and it had NO TESTS - while its own header said it was
-      moved into the shared sample precisely so that it could have them. It cost a
-      census reading "5 of 5 on this phone" over a handset carrying thirty-two
-      voices. VoiceNames comes with it because FirstRun names two voices through it.
-    -->
-    <Compile Include="..\..\src\CircleAI.Assistant.Runtime\FirstRun.cs"
-             Link="Sample\FirstRun.cs" />
-    <Compile Include="..\..\src\CircleAI.Assistant.Runtime\VoiceNames.cs"
-             Link="Sample\VoiceNames.cs" />
+    <ProjectReference Include="..\..\src\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />

@@ -106,6 +106,18 @@ public class CircleAIApplication : Application
         // VoiceWiring.Install, so each assignment added later landed outside it.
 #endif
 
+        // WHERE A TRANSCRIPT LIVES, AND WHY THAT IS NOT THE SIDELOAD FOLDER.
+        // FilesDir is the app's PRIVATE storage - not readable by other apps,
+        // not on the shared card, and removed when the app is uninstalled. A
+        // transcript is the most private thing this app produces: a meeting, a
+        // clinic appointment, somebody's interview. It does not belong in the
+        // external directory the voices use, which any file manager can read.
+        //
+        // Nothing syncs it and nothing backs it up. Forgetting one deletes it.
+        CircleAI.Assistant.CircleAISession.Transcripts =
+            new CircleAI.Assistant.Voice.FileTranscriptStore(
+                System.IO.Path.Combine(AppPaths.Data, "Transcripts"));
+
         Log.Info(Tag, "process wiring installed");
     }
 }

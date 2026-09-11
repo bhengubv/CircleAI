@@ -194,6 +194,33 @@ public class TranscribeActivity : Activity
 
                     _result = result;
 
+                    // KEPT, NOT JUST SHOWN. Until there was somewhere for a
+                    // transcript to live, "search across everything" searched
+                    // only memory - a transcript was displayed, optionally
+                    // written out as an .srt to a location the person chose, and
+                    // then discarded. Somebody who recorded a clinic appointment
+                    // could not find it again an hour later.
+                    //
+                    // App-private storage, nothing synced, and forgetting one
+                    // deletes it. Failing to keep it must not lose the transcript
+                    // already on the screen, so this is best-effort and said out
+                    // loud rather than thrown.
+                    try
+                    {
+                        await CircleAI.Assistant.CircleAISession.Transcripts
+                            .KeepAsync(_sourceName, new CircleAI.Assistant.Transcript(
+                                result.Text,
+                                [.. result.Timed.Select(x => new CircleAI.Assistant.TranscriptLine(
+                                    x.Text, x.Start, x.End, x.Speaker))],
+                                result.LanguageCode,
+                                result.Confidence), ct)
+                            .ConfigureAwait(false);
+                    }
+                    catch (Exception keep)
+                    {
+                        Log.Warn(Tag, $"could not keep the transcript: {keep.Message}");
+                    }
+
                     RunOnUiThread(() =>
                     {
                         _bar.Visibility = ViewStates.Gone;

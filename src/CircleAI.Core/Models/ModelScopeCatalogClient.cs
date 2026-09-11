@@ -108,7 +108,10 @@ public sealed class ModelScopeCatalogOptions
     public IReadOnlyList<string> Publishers { get; init; } = ["MNN"];
 
     /// <summary>
-    /// Licences a discovered model may carry. Empty means any.
+    /// Licences a discovered model may carry. Empty means any that
+    /// <see cref="RefusedLicences"/> does not refuse — a private catalogue may
+    /// legitimately want "anything we publish ourselves", but no configuration
+    /// should be able to mean "including the ones that forbid this".
     /// </summary>
     /// <remarks>
     /// <c>fully-free-opensource-always</c> is a hard rule on this product and
@@ -121,7 +124,39 @@ public sealed class ModelScopeCatalogOptions
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> Licences { get; init; } =
-        ["apache", "mit", "bsd", "openrail", "cc0", "cc-by", "public domain", "unlicense"];
+        ["apache", "mit", "bsd", "cc0", "cc-by", "public domain", "unlicense"];
+
+    /// <summary>
+    /// Licence markers that REFUSE a model outright, checked before the
+    /// allowlist and overriding it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>"openrail" WAS ON THE ALLOWLIST ABOVE.</b> It is not a free licence -
+    /// OpenRAIL carries behavioural use restrictions, is not OSI-approved, and
+    /// is exactly what <c>stable-diffusion-v1-5</c> ships under - so a rule
+    /// whose own comment cites <c>fully-free-opensource-always</c> was admitting
+    /// the licence family that rule exists to exclude.
+    /// </para>
+    /// <para>
+    /// <b>AND THE ALLOWLIST IS MATCHED AS SUBSTRINGS, WHICH LEAKS.</b> Measured
+    /// against the shipped matcher: <c>cc-by-nc-4.0</c> passed, because it
+    /// contains <c>cc-by</c> - a NonCommercial licence admitted by a gate for
+    /// free software. So did <c>cc-by-nd-4.0</c>. So did
+    /// <c>Limited Commercial Licence</c>, because <b>li-MIT-ed</b> contains
+    /// <c>mit</c>. A denylist is the half that cannot be expressed as a longer
+    /// allowlist, because NC and ND are SUFFIXES on a licence whose stem is
+    /// genuinely allowed.
+    /// </para>
+    /// <para>
+    /// The allowlist is also matched on token boundaries now, which is what
+    /// stops the <c>limited</c> case; the denylist is what stops the rest.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> RefusedLicences { get; init; } =
+        ["openrail", "rail-m", "noncommercial", "non-commercial", "-nc-", "-nc",
+         "noderiv", "no-deriv", "-nd-", "-nd", "research-only", "research-purposes",
+         "acceptable-use", "community-license", "llama-license"];
 
     /// <summary>User-Agent header. ModelScope CDN rejects requests without one.</summary>
     public string UserAgent { get; init; } =
@@ -454,25 +489,102 @@ public sealed class ModelScopeCatalogClient : IDisposable
 
     /// <summary>Whether a model's licence is one this product may ship against.</summary>
     /// <remarks>
+    /// <para>
     /// UNSTATED IS NOT PERMISSIVE. Three of the first hundred models returned
     /// carried no licence at all, and that is the case where nobody can tell you
     /// what you are allowed to do - a reason to skip it, not a reason to assume
     /// the best. <c>fully-free-opensource-always</c> says licence FIRST, and a
     /// catalogue that adds whatever it finds breaks that rule on device, without
     /// anybody choosing to.
+    /// </para>
+    /// <para>
+    /// REFUSE FIRST, THEN ALLOW - see <see cref="ModelScopeCatalogOptions.RefusedLicences"/>
+    /// for why a longer allowlist cannot do this job.
+    /// </para>
     /// </remarks>
     public static bool LicenceAllowed(JsonElement model, ModelScopeCatalogOptions options)
     {
-        if (options.Licences is not { Count: > 0 }) return true;
-
         var licence =
             (model.TryGetProperty("License", out var l) ? l.GetString() : null)
             ?? (model.TryGetProperty("LicenseName", out var ln) ? ln.GetString() : null);
 
-        if (string.IsNullOrWhiteSpace(licence)) return false;
+        return LicenceAllowed(licence, options);
+    }
 
-        return options.Licences.Any(
-            allowed => licence.Contains(allowed, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// The licence decision on a bare string, so it is testable without a
+    /// <see cref="JsonElement"/>.
+    /// </summary>
+    public static bool LicenceAllowed(string? licence, ModelScopeCatalogOptions options)
+    {
+        // "EMPTY MEANS ANY" IS A DOCUMENTED CONTRACT AND IT KEEPS ITS MEANING
+        // FOR THE ALLOWLIST, including for an unstated licence. Narrowing that
+        // silently was wrong: a host pointing this client at its OWN models has
+        // a real reason to switch the allowlist off, and CatalogueListingTests
+        // has said so since before the denylist existed.
+        var anyAllowed = options.Licences is not { Count: > 0 };
+
+        // Unstated is not permissive - unless the host has said "any", which is
+        // exactly what an empty allowlist says.
+        if (string.IsNullOrWhiteSpace(licence)) return anyAllowed;
+
+        // NORMALISED FIRST, so "CC BY-NC-SA 4.0" and "cc-by-nc-sa-4.0" get the
+        // same answer. They did not before: the spaced spelling was refused only
+        // because it failed to contain the literal "cc-by", which is an accident
+        // rather than a decision, and the same accident would have ADMITTED a
+        // spaced spelling of something worse.
+        var norm = Normalise(licence!);
+
+        if (options.RefusedLicences is { Count: > 0 }
+            && options.RefusedLicences.Any(bad => Matches(norm, Normalise(bad))))
+        {
+            return false;
+        }
+
+        // THE DENYLIST IS NOT PART OF THAT CONTRACT, AND DELIBERATELY SO. The
+        // allowlist answers "which licences may we ship against"; this answers
+        // "which must we NEVER ship against", and they are different questions.
+        // A host that empties the allowlist is saying "I am not filtering by
+        // allowlist" - it is not asking for NonCommercial content. The escape
+        // hatch for a host that genuinely means ANY is to empty
+        // RefusedLicences too, which is explicit rather than a side effect.
+        if (anyAllowed) return true;
+
+        return options.Licences.Any(allowed => Matches(norm, Normalise(allowed)));
+
+        static string Normalise(string raw)
+        {
+            var sb = new StringBuilder(raw.Length);
+            foreach (var c in raw.Trim().ToLowerInvariant())
+                sb.Append(char.IsLetterOrDigit(c) || c == '.' ? c : '-');
+            return sb.ToString();
+        }
+
+        // A marker matches when it sits on token boundaries - which is what
+        // stops "mit" matching "li-MIT-ed". A marker that already begins or ends
+        // with the separator (e.g. "-nc") carries its own boundary and is
+        // matched as written, so "cc-by-nc-4.0" is caught and "concise" is not.
+        static bool Matches(string norm, string marker)
+        {
+            if (marker.Length == 0) return false;
+
+            var i = 0;
+            while ((i = norm.IndexOf(marker, i, StringComparison.Ordinal)) >= 0)
+            {
+                var beforeOk = marker[0] == '-'
+                    || i == 0
+                    || !char.IsLetterOrDigit(norm[i - 1]);
+
+                var after = i + marker.Length;
+                var afterOk = marker[^1] == '-'
+                    || after >= norm.Length
+                    || !char.IsLetterOrDigit(norm[after]);
+
+                if (beforeOk && afterOk) return true;
+                i = after;
+            }
+            return false;
+        }
     }
 
     private async Task<ModelEntry?> BuildEntryAsync(string repo, string name, CancellationToken ct)
@@ -507,7 +619,13 @@ public sealed class ModelScopeCatalogClient : IDisposable
 
         if (bundle.Count == 0) return null;
 
+        // A MODALITY THIS PRODUCT CANNOT LOAD IS NOT CATALOGUED AT ALL. Returning
+        // null here is the same "skip it" path an empty bundle already takes -
+        // and skipping is the correct outcome, not a lossy one: an entry nothing
+        // can open is a download that ends in a load failure, and one ranked
+        // into the wrong ladder is worse than absent.
         var modality = InferModality(name, repo);
+        if (modality is null) return null;
 
         // A VLM is only usable if vision selection can SEE it. Tag the vision
         // capability so a caller asking "can this build understand an image"
@@ -534,7 +652,7 @@ public sealed class ModelScopeCatalogClient : IDisposable
             Repo            = repo,
             TotalBytes      = total,
             BundleFiles     = bundle,
-            Modality        = modality,
+            Modality        = modality.Value,
             Capabilities    = capabilities,
             MemoryHintBytes = memoryHint,
             MinRamGb        = minRamGb,
@@ -543,23 +661,89 @@ public sealed class ModelScopeCatalogClient : IDisposable
     }
 
     /// <summary>
-    /// Infer a discovered repo's <see cref="ModelModality"/> from its name.
-    /// The ModelScope listing API does not report modality, so a
-    /// vision-language bundle (Qwen2-VL, Qwen2.5-VL, MiniCPM-V, SmolVLM,
-    /// InternVL, LLaVA) would otherwise be catalogued as the default
-    /// <see cref="ModelModality.Chat"/> and be invisible to vision selection —
-    /// the one thing that makes an on-device VLM usable. Anything not
-    /// recognised as a VLM stays <see cref="ModelModality.Chat"/>, exactly as
-    /// before this method existed.
+    /// Infer a discovered repo's <see cref="ModelModality"/> from its name, or
+    /// <c>null</c> when this product has no runtime that could load it.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The ModelScope listing API does not report modality, so a vision-language
+    /// bundle (Qwen2-VL, Qwen2.5-VL, MiniCPM-V, SmolVLM, InternVL, LLaVA) would
+    /// otherwise be catalogued as the default <see cref="ModelModality.Chat"/>
+    /// and be invisible to vision selection - the one thing that makes an
+    /// on-device VLM usable.
+    /// </para>
+    /// <para>
+    /// <b>AND EVERYTHING ELSE FELL THROUGH TO CHAT, WHICH IS WORSE THAN NOT
+    /// CATALOGUING IT.</b> Of the first hundred models this publisher actually
+    /// returns - checked against the live API on 2026-09-11, not assumed - four
+    /// are not chat models at all: <c>stable-diffusion-v1-5-mnn-opencl</c>,
+    /// <c>bge-large-zh-MNN</c>,
+    /// <c>gte_sentence-embedding_multilingual-base-MNN</c> and
+    /// <c>speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online-mnn</c>.
+    /// </para>
+    /// <para>
+    /// Every one of them would have joined the CHAT LADDER under the code this
+    /// replaces, and <see cref="CatalogueMerge"/> lets a live entry ADD - so the
+    /// first successful refresh would have offered somebody a diffusion
+    /// checkpoint as a model to talk to. It would download, it would be
+    /// selected, and it would answer noise. The Stable Diffusion row also
+    /// carries <c>apache-2.0</c> in the listing, which SD 1.5 is not (it is
+    /// CreativeML OpenRAIL-M), so the licence allowlist does not stop it either.
+    /// The modality gate is the one that has to.
+    /// </para>
+    /// <para>
+    /// <b>THE RULE IS WHAT THIS PRODUCT CAN LOAD, NOT WHAT THE MODEL IS.</b> An
+    /// MNN bundle is loadable here by exactly three things: the MNN LLM runtime
+    /// (chat), the same runtime with an image encoder (vision), and
+    /// <c>MnnEmbeddingBackend</c> (embedding). The ears are Whisper.net over
+    /// ggml <c>.bin</c> and the voice is ONNX, so an MNN ASR or TTS bundle is
+    /// not a missing feature - it is a file nothing here can open. Cataloguing
+    /// one under its TRUE modality would be a truthful entry and a broken
+    /// download, and worse than the mislabelling it fixes: <c>PlanFor(Asr)</c>
+    /// would rank a large fresh paraformer above the 78 MB ggml Whisper that
+    /// works, so the phone would lose hearing it already had. Those return
+    /// <c>null</c>, and <see cref="ModelModality.Asr"/> / <see cref="ModelModality.Tts"/>
+    /// stay curated-only until a runtime exists to make them otherwise.
+    /// </para>
+    /// <para>
     /// Deliberately public + static so it is unit-testable offline without an
-    /// HTTP round-trip — the VLM-naming table is the load-bearing part of
-    /// cataloguing a vision model and must be pinned by a test.
+    /// HTTP round-trip - this naming table is the load-bearing part of
+    /// cataloguing anything live and must be pinned by a test.
+    /// </para>
     /// </remarks>
-    public static ModelModality InferModality(string name, string? repo = null)
+    public static ModelModality? InferModality(string name, string? repo = null)
     {
         var hay = $"{name} {repo}";
+
+        // NOTHING HERE CAN RUN THESE, and order matters: they come FIRST so a
+        // later family rule cannot claim them. "bge-reranker-*" is precisely why
+        // rerankers are tested BEFORE embeddings rather than after.
+        if (hay.Contains("stable-diffusion", StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("stable_diffusion", StringComparison.OrdinalIgnoreCase)
+            || ContainsToken(hay, "sdxl")
+            || ContainsToken(hay, "flux"))
+        {
+            return null;   // no diffusion runtime - OPEN-GAPS B2
+        }
+
+        if (hay.Contains("rerank", StringComparison.OrdinalIgnoreCase))
+            return null;   // no reranker seam, and a reranker is not an embedder
+
+        if (hay.Contains("whisper",    StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("paraformer", StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("sensevoice", StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("fireredasr", StringComparison.OrdinalIgnoreCase)
+            || ContainsToken(hay, "asr"))
+        {
+            return null;   // the ears read ggml, not MNN
+        }
+
+        if (ContainsToken(hay, "tts")
+            || hay.Contains("cosyvoice", StringComparison.OrdinalIgnoreCase)
+            || hay.Contains("vits",      StringComparison.OrdinalIgnoreCase))
+        {
+            return null;   // the voice reads ONNX, not MNN
+        }
 
         // "VL" as a delimited token is MNN's own VLM marker
         // (Qwen2-VL-2B-Instruct-MNN, Qwen2.5-VL-3B-Instruct-MNN). The named
@@ -573,6 +757,17 @@ public sealed class ModelScopeCatalogClient : IDisposable
             || hay.Contains("Vision",    StringComparison.OrdinalIgnoreCase))
         {
             return ModelModality.Vision;
+        }
+
+        // "embedding" as a substring catches the self-labelled ones; bge and gte
+        // are the two families that name themselves and nothing else. Both are
+        // matched as TOKENS so a chat model with those letters inside a word is
+        // not swept up.
+        if (hay.Contains("embedding", StringComparison.OrdinalIgnoreCase)
+            || ContainsToken(hay, "bge")
+            || ContainsToken(hay, "gte"))
+        {
+            return ModelModality.Embedding;
         }
 
         return ModelModality.Chat;

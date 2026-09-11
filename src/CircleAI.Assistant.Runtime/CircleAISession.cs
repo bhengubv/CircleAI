@@ -652,6 +652,184 @@ public sealed class CircleAISession : IAsyncDisposable
         return sb.ToString();
     }
 
+    /// <summary>Where transcripts are kept on this device.</summary>
+    /// <remarks>
+    /// Settable so a host points it at its own storage, and defaulted to a
+    /// no-op so a head that cannot write files - a browser tab has no
+    /// app-private folder to put somebody\'s meeting in - declines rather than
+    /// appearing to save and losing it.
+    /// </remarks>
+    public static IKeepsTranscripts Transcripts { get; set; } = KeepsNoTranscripts.Instance;
+
+    /// <summary>The memory this device keeps, when a head has wired one.</summary>
+    /// <remarks>
+    /// A SETTABLE STATIC, matching CircleAISpeaker.MobilePhonemizerFactory and
+    /// SideloadFolder, because the session is constructed deep inside a warm-up
+    /// path that has no memory to hand it. Null on a head with no store, and
+    /// SearchAsync then searches only what it can.
+    /// </remarks>
+    public static IRemembers? Remembers { get; set; }
+
+    /// <summary>Look for something across what this device holds.</summary>
+    /// <param name="query">What was typed.</param>
+    /// <param name="take">How many results.</param>
+    /// <param name="ct">Cancels the search.</param>
+    /// <remarks>
+    /// EACH STORE SEARCHES ITSELF, AND THAT IS DELIBERATE. Memory is NOT run
+    /// through the lexical index, because memory\'s own recall knows things BM25
+    /// cannot: which atoms have been corrected, which have gone stale, which
+    /// have faded with wear, and which match the subject rather than the words.
+    /// Flattening it to a bag of tokens would throw all of that away to make the
+    /// code look symmetrical.
+    /// <para>
+    /// Transcripts have none of that, so they get BM25 - which needs no model
+    /// and therefore works on a handset with nothing downloaded. That was the
+    /// point of building it: the semantic path waits on an embedding model
+    /// nobody has catalogued.
+    /// </para>
+    /// <para>
+    /// MEMORY FIRST WHEN BOTH ANSWER. A remembered fact is something the person
+    /// told this app on purpose; a transcript line is something a microphone
+    /// happened to catch. The two are not equally likely to be the answer, and
+    /// the scores are not on one scale anyway - comparing a recall rank against
+    /// a BM25 score would be arithmetic on two different units.
+    /// </para>
+    /// <para>
+    /// <b>FIRST, NOT INSTEAD - AND IT USED TO MEAN INSTEAD.</b> The two lists
+    /// were concatenated memory-then-transcripts and the whole thing capped at
+    /// <paramref name="take"/>, so a memory that answered with twenty hits left
+    /// room for NO transcript at all. The half this method exists for
+    /// disappeared exactly when the other half was doing well, silently, and
+    /// the screen that renders "you told me this" and "a microphone caught
+    /// this" as different kinds of answer would only ever have shown the first.
+    /// <see cref="Merge"/> is the fix and the reason it is a separate, public,
+    /// static function: a list that starves one of its two sources looks
+    /// identical to a list that had nothing to show.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<Found>> SearchAsync(
+        string query, int take = 20, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(query) || take <= 0) return [];
+
+        // KEPT APART UNTIL THE MERGE, so neither can eat the other's room.
+        var fromMemory      = new List<Found>();
+        var fromTranscripts = new List<Found>();
+
+        // ── Memory, through its own recall ──────────────────────────────
+        if (Remembers is { } memory)
+        {
+            try
+            {
+                foreach (var remembered in await memory.RecallAsync(query, take, ct).ConfigureAwait(false))
+                    fromMemory.Add(new Found("memory", "", "Remembered", remembered.Text));
+            }
+            catch (OperationCanceledException) { throw; }
+            catch
+            {
+                // A store that cannot answer is not a reason to fail the search
+                // in front of it - the transcripts may still hold the answer.
+            }
+        }
+
+        // ── Transcripts, through BM25 ───────────────────────────────────
+        try
+        {
+            var kept = await Transcripts.AllAsync(ct).ConfigureAwait(false);
+            if (kept.Count > 0)
+            {
+                var index = new CircleAI.Search.LexicalIndex();
+
+                // A LINE AT A TIME, NOT A TRANSCRIPT AT A TIME. Indexing a
+                // forty-minute meeting as one document buries the sentence
+                // somebody is looking for in ten thousand words, and BM25 length
+                // normalisation cannot rescue a needle that size. A line is also
+                // what a result should SHOW.
+                foreach (var t in kept)
+                {
+                    if (t.Transcript.Lines.Count > 0)
+                    {
+                        foreach (var line in t.Transcript.Lines)
+                            index.Add(new CircleAI.Search.SearchDocument(
+                                new CircleAI.Search.SearchOrigin("transcript", t.Id),
+                                line.Speaker is null ? line.Text : $"{line.Speaker}: {line.Text}",
+                                t.When));
+                    }
+                    else
+                    {
+                        // An engine that reported no timings still produced text.
+                        index.Add(new CircleAI.Search.SearchDocument(
+                            new CircleAI.Search.SearchOrigin("transcript", t.Id),
+                            t.Transcript.Text, t.When));
+                    }
+                }
+
+                var titles = kept.ToDictionary(t => t.Id, t => t.Title, StringComparer.Ordinal);
+
+                foreach (var hit in index.Search(query, take))
+                    fromTranscripts.Add(new Found(
+                        "transcript",
+                        hit.Document.Origin.Id,
+                        titles.GetValueOrDefault(hit.Document.Origin.Id, "Recording"),
+                        hit.Document.Text,
+                        hit.Document.When));
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch
+        {
+            // Same reasoning: a search that found the memory is still useful.
+        }
+
+        return Merge(fromMemory, fromTranscripts, take);
+    }
+
+    /// <summary>
+    /// Fold two ranked lists into one without letting either starve the other.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// PUBLIC AND STATIC SO IT CAN BE TESTED WITHOUT A SESSION, for the same
+    /// reason <c>ModelScopeCatalogClient.InferModality</c> is: this is the part
+    /// that is easy to get wrong and impossible to see going wrong. Building a
+    /// session means a model, so the combining step went untested while the
+    /// store beneath it had thirteen tests - and the bug was in the combining
+    /// step.
+    /// </para>
+    /// <para>
+    /// THE RULE. One source answering alone fills the list. When both answer,
+    /// memory keeps the top - that argument is in <see cref="SearchAsync"/> and
+    /// it stands - but it is capped at about half so transcripts are always
+    /// represented, and whatever either side does not use is handed to the
+    /// other. So a person with a busy memory and one recording still sees the
+    /// recording, and a person with no memories still gets a full list.
+    /// </para>
+    /// <para>
+    /// NOT INTERLEAVED ONE-FOR-ONE, and not score-sorted. Alternating would
+    /// bury a strong memory hit under a weak transcript line, and sorting needs
+    /// one scale - a recall rank and a BM25 score are different units, so any
+    /// comparison between them would be arithmetic that means nothing.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<Found> Merge(
+        IReadOnlyList<Found> memory, IReadOnlyList<Found> transcripts, int take)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        ArgumentNullException.ThrowIfNull(transcripts);
+
+        if (take <= 0) return [];
+        if (memory.Count == 0) return [.. transcripts.Take(take)];
+        if (transcripts.Count == 0) return [.. memory.Take(take)];
+
+        // Both answered. Memory is capped at half, rounded up so it still wins
+        // the odd one - and at least one, so a take of 1 is memory's.
+        var share      = Math.Max(1, (take + 1) / 2);
+        var transcript = Math.Min(transcripts.Count, take - Math.Min(memory.Count, share));
+        var remembered = Math.Min(memory.Count, take - transcript);
+
+        return [.. memory.Take(remembered), .. transcripts.Take(transcript)];
+    }
+
     /// <summary>Say something in another language.</summary>
     /// <param name="text">What was said.</param>
     /// <param name="fromTag">BCP-47 of the language it is in.</param>

@@ -18,11 +18,11 @@ public sealed record LanguageChoices(
 /// </summary>
 /// <remarks>
 /// THE APP DEFAULTED EVERY PERSON ON EARTH TO ENGLISH. Not the catalogue - that
-/// holds seventy-five languages and English is one row of it - but the code
+/// holds seventy-eight languages and English is one row of it - but the code
 /// around it: StoredSpokenLanguage.Default was the constant "en", and seven more
 /// screens each carried their own `?? "en"`. Nothing anywhere read the device
 /// locale. A phone set to isiZulu, bought in Soweto, opened in English and
-/// invited its owner to go and find their own language in a list of seventy-five.
+/// invited its owner to go and find their own language in a list of seventy-eight.
 ///
 /// <para>
 /// THE PHONE'S OWN SETTING COMES FIRST, because it is not a guess: Android

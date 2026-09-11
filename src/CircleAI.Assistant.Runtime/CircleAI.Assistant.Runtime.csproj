@@ -43,6 +43,10 @@
     <ProjectReference Include="..\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- ONNX TTS, for the speaker. -->
     <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!-- Lexical search over transcripts. Arithmetic only - no model, no network
+         - which is why it can run on a handset with nothing downloaded while
+         the semantic path waits on an embedding model nobody has catalogued. -->
+    <ProjectReference Include="..\CircleAI.Search\CircleAI.Search.csproj" />
     <!-- TRANSLATION, SO BOTH HEADS CAN REACH IT. The native Android head holds a
          CircleAISession rather than an IConversation, so without this the only
          way to give it a translate screen was a second copy of the engine

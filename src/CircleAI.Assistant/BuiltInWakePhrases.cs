@@ -2,10 +2,21 @@
 //
 // The wake phrases that ship with the app, by language.
 //
-// FIVE OF SEVENTY-FIVE. The app speaks seventy-five languages and arrives
-// knowing how to be woken in five of them, because a wake phrase is not a
-// translation - it is a name with an honorific around it, chosen so the model
-// can actually hear it, and each one had to be measured.
+// THIRTY-TWO ENTRIES, THIRTY-EIGHT OF SEVENTY-EIGHT LANGUAGES. The two numbers
+// differ because this table keys on the LANGUAGE and the picker offers regional
+// tags as well - es-ES, es-MX, nl-BE, nl-NL, pt-BR and pt-PT all inherit their
+// root's phrase, so six picker rows are covered by three entries here.
+//
+// A wake phrase is not a translation - it is a
+// name with an honorific around it, chosen so the model can actually hear it,
+// and each one had to be measured. So the table grows slower than the language
+// list and will always lag it.
+//
+// THIS HEADER SAID "FIVE OF SEVENTY-FIVE" AND BOTH NUMBERS WERE WRONG. The
+// table had grown to thirty-two and the picker to seventy-eight, and a comment
+// is the one place a count can rot without any test going red. WakePhraseCountTests
+// now fails when either number moves, and names this paragraph, because the
+// alternative is finding out from a third stale figure in six weeks.
 //
 // This is a plain table rather than a call into the engine because it is read by
 // the shared UI, which is loaded by a browser as well as by a phone and

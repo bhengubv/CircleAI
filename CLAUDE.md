@@ -81,7 +81,11 @@ so when it stopped COMPILING it simply stopped running, and stayed that way with
 every other suite green. It was found by accident. Run both, or a whole axis of
 coverage goes quiet without a single red line anywhere.
 
-The main suite is around 3,100 tests and takes two to three minutes per leg.
+The main suite is around 3,200 tests and takes **six to nine minutes per leg**,
+not the two to three this file used to claim — measured, cold build included, on
+the Windows box. Budget twenty minutes for both legs plus the UI suite, and do
+not read a quiet terminal at minute five as a hang.
+
 Serialise heavy builds rather than running two at once.
 
 ## Where things are
