@@ -107,6 +107,10 @@
     <!-- AndroidDeviceMemory. Without it DeviceProbe reads the GC heap limit rather
          than the phone's RAM, every model fails its fit check, and the abilities
          screen reports "Needs more memory" for all of them. -->
+    <!-- The assistant runtime. These types used to be LINKED into this project
+         as loose source files; they are a library now, so this head takes an
+         assembly reference instead of a copy compiled by path. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
     <!-- The CV interview: its script, its profile store and the renderer. The
          screen only maps an answer onto a field - the questions and the document
@@ -131,27 +135,15 @@
     file and its reference deliberately, which is the point.
   -->
   <ItemGroup>
-    <Compile Include="..\..\CircleAI.Samples.It\Voice\*.cs"
-             Link="Shared\Voice\%(Filename)%(Extension)" />
-    <Compile Include="..\..\CircleAI.Samples.It\DeviceDiagnostics.cs"
-             Link="Shared\DeviceDiagnostics.cs" />
     <!-- ItSpeaker asks it which language a reply is in, to pick a voice. -->
-    <Compile Include="..\..\CircleAI.Samples.It\LanguageGuess.cs"
-             Link="Shared\LanguageGuess.cs" />
     <!-- The brain: the conversation session and what it needs to run a turn.
          CapabilitySweep and Program are still excluded - the sweep drags a dozen
          library references for code no screen here calls. -->
-    <Compile Include="..\..\CircleAI.Samples.It\ItSession.cs" Link="Shared\ItSession.cs" />
-    <Compile Include="..\..\CircleAI.Samples.It\ItGenerator.cs" Link="Shared\ItGenerator.cs" />
-    <Compile Include="..\..\CircleAI.Samples.It\ItToolBridge.cs" Link="Shared\ItToolBridge.cs" />
-    <Compile Include="..\..\CircleAI.Samples.It\WebSearch.cs" Link="Shared\WebSearch.cs" />
-    <Compile Include="..\..\CircleAI.Samples.It\FirstRun.cs" Link="Shared\FirstRun.cs" />
     <!-- The voice CATALOGUE IDS, which FirstRun names while listing what a first
          run should fetch. They are not the engine: ItSpeaker is compiled only
          where voice is on, and a setup screen needs the name, not the player.
          Listed explicitly because this head does not glob the shared root — a
          new shared file is invisible here until it is named. -->
-    <Compile Include="..\..\CircleAI.Samples.It\VoiceNames.cs" Link="Shared\VoiceNames.cs" />
   </ItemGroup>
 
   <!-- The microphone. Android-only by nature, and taken from the native head

@@ -1,0 +1,54 @@
+<!--
+  The assistant's runtime, in C#: the session that answers, the voice that reads
+  it out, and the tools it can reach for.
+
+  WHY THIS PROJECT EXISTS AT ALL. Every type in here used to be a LOOSE SOURCE
+  FILE compiled into three different applications by path:
+
+      the console head   owned them
+      the MAUI head      <Compile Include="..\..\CircleAI.Samples.It\ItSession.cs" />
+      the native head    <Compile Include="..\CircleAI.Samples.It\*.cs" />
+
+  So there was no assembly to reference, and a developer who wanted the
+  assistant could not have it - there was nothing to take. The only way to reuse
+  any of it was to copy the same <Compile Include> trick into a fourth project
+  and inherit whatever the glob happened to pick up that week.
+
+  That is not a sample being thin. That is the product having no distributable
+  form.
+
+  REFERENCES ARE DELIBERATELY NARROW. The console head pulls Charts, Music,
+  Mesh, CodeAgent and both Security libraries for its capability sweep; none of
+  that belongs in a phone build, and the <Compile Include> arrangement was the
+  only thing keeping them out of the APK. Naming the four things the runtime
+  actually needs does the same job honestly, and the APK carries exactly what it
+  carried before.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- The namespace does NOT change in this commit. Moving and renaming in one
+         pass makes the diff unreadable, and this is a move where a quietly
+         dropped file would not surface until a demo. -->
+    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK: the neuron, the model host, the selector. -->
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- Offline document generation - the session reaches for it by name. -->
+    <ProjectReference Include="..\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- ONNX TTS, for the speaker. -->
+    <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <!-- The contracts and the pure decisions: capabilities, what was heard,
+         what is remembered, what is said out loud. -->
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+  </ItemGroup>
+
+</Project>

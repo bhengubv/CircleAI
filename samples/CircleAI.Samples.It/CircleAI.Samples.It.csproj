@@ -20,6 +20,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The assistant runtime, which now owns the session, the tools and the
+         voice. It brings Hosting, Documents, Voice and Assistant with it. -->
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <!-- Offline document generation — shared with the Android head (ItSession uses it). -->
     <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />

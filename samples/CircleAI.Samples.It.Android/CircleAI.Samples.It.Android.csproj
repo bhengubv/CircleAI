@@ -130,7 +130,6 @@
   <!-- Voice/ is normally excluded (the *.cs glob below is non-recursive);
        pull it in only when Android voice is switched on. -->
   <ItemGroup Condition="'$(ItVoiceOnAndroid)' == 'true'">
-    <Compile Include="..\CircleAI.Samples.It\Voice\*.cs" Link="Shared\Voice\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!--
@@ -165,9 +164,12 @@
     the Android head has its own (MainActivity). It cannot be globbed in.
   -->
   <ItemGroup>
-    <Compile Include="..\CircleAI.Samples.It\*.cs"
-             Exclude="..\CircleAI.Samples.It\Program.cs"
-             Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Was a glob over the console sample's *.cs. Those types live in a
+         library now, so this is a reference. -->
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
   </ItemGroup>
 
 </Project>
