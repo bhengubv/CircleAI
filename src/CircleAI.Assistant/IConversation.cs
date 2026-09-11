@@ -155,6 +155,76 @@ public interface IConversation
         IProgress<TurnState> updates, CancellationToken ct = default,
         string? language = null, double silenceMs = 5000);
 
+    /// <summary>Write down a recording that already exists.</summary>
+    /// <param name="path">The audio file.</param>
+    /// <param name="language">BCP-47 code, or <c>null</c> to let the engine detect.</param>
+    /// <param name="progress">
+    /// Fraction done, 0 to 1. NOT OPTIONAL IN PRACTICE: transcription runs at
+    /// about real time on a P30, so a forty-minute recording is a forty-minute
+    /// wait, and a wait with no number is indistinguishable from a hang.
+    /// </param>
+    /// <param name="ct">Cancels between chunks, so stopping costs one chunk.</param>
+    /// <returns>
+    /// What was said, when, and - where a speaker model is present - by whom.
+    /// </returns>
+    /// <remarks>
+    /// THE MICROPHONE WAS THE ONLY DOOR. DictateAsync and SessionAsync are both
+    /// live capture, so a screen had no way to hand over a recording somebody
+    /// already had - a voice memo, an interview, an episode - which is most of
+    /// what people reach for a transcriber to do. The library could do it for
+    /// some time before anything could ask.
+    /// <para>
+    /// A head that cannot read files - a browser tab - returns
+    /// <see cref="Transcript.Nothing"/> rather than throwing, the same way it
+    /// declines a microphone it may not hold.
+    /// </para>
+    /// <para>
+    /// NON-WAV NEEDS A PLATFORM DECODER. A voice memo is .m4a and decoding one
+    /// means a codec, so a build without <c>IAudioDecoder</c> wired says so in a
+    /// sentence about the build rather than failing with a parse error about
+    /// RIFF headers, which tells the person nothing about their perfectly good
+    /// recording.
+    /// </para>
+    /// </remarks>
+    Task<Transcript> TranscribeFileAsync(
+        string path,
+        string? language = null,
+        IProgress<double>? progress = null,
+        CancellationToken ct = default);
+
+    /// <summary>Say this in another language.</summary>
+    /// <param name="text">What was said.</param>
+    /// <param name="fromTag">BCP-47 of the language it is in.</param>
+    /// <param name="toTag">BCP-47 of the language it should come back in.</param>
+    /// <param name="ct">Cancels the turn.</param>
+    /// <returns>The translation only — no preamble, no explanation.</returns>
+    /// <remarks>
+    /// THE ENGINE EXISTED AND NOTHING CALLED IT. CircleAI.Languages.Translation
+    /// has had ITranslationEngine and LlmTranslationEngine for a long time with
+    /// ZERO consumers anywhere in src or samples, while the Translate screen
+    /// built its own prompt against the raw brain. Two owners of one fact, and
+    /// the screen's version was the better of the two — it named the languages
+    /// where the engine used tags.
+    /// <para>
+    /// So the engine took the screen's prompt and this is the door. A head asks
+    /// for a translation; it does not compose one, because composing one is
+    /// where "give only the translation" gets forgotten and the model starts
+    /// ANSWERING the sentence instead — in front of somebody at a hospital desk.
+    /// </para>
+    /// </remarks>
+    Task<string> TranslateAsync(
+        string text, string fromTag, string toTag, CancellationToken ct = default);
+
+    /// <summary>Render a transcript as a subtitle file.</summary>
+    /// <remarks>
+    /// ON THE CONVERSATION RATHER THAN ON <see cref="Transcript"/> so there stays
+    /// ONE owner of the format. The rendering lives beside the transcriber in
+    /// CircleAI.Voice, which this assembly deliberately cannot see; a copy here
+    /// would be a second owner of a format whose two dialects already differ by
+    /// a single punctuation mark that no player complains about.
+    /// </remarks>
+    string AsSubtitles(Transcript transcript, SubtitleFormat format = SubtitleFormat.SubRip);
+
     /// <summary>Say something aloud, without listening first.</summary>
     /// <remarks>
     /// What the chat screen's speaker control uses, and the greeting the circle

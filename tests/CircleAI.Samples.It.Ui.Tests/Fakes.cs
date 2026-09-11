@@ -269,6 +269,34 @@ internal sealed class FakeConversation : IConversation
     public Task<string?> SeeAsync(
         string prompt, byte[] image, Action<string>? onToken = null, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
+
+    public Task<Transcript> TranscribeFileAsync(
+        string path, string? language = null,
+        IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        progress?.Report(1.0);
+        return Task.FromResult(Transcribed);
+    }
+
+    /// <summary>What TranscribeFileAsync hands back. Nothing, unless a test sets it.</summary>
+    public Transcript Transcribed { get; set; } = Transcript.Nothing;
+
+    public string AsSubtitles(Transcript transcript, SubtitleFormat format = SubtitleFormat.SubRip)
+        => string.Join("\n", transcript.Lines.Select(l => l.Text));
+
+    /// <summary>Echoes the ask, so a test can see the pair it was given.</summary>
+    public Task<string> TranslateAsync(
+        string text, string fromTag, string toTag, CancellationToken ct = default)
+    {
+        Translated.Add((text, fromTag, toTag));
+        return Task.FromResult(TranslatesTo ?? $"[{toTag}] {text}");
+    }
+
+    /// <summary>Every translation asked for, in order.</summary>
+    public List<(string Text, string From, string To)> Translated { get; } = [];
+
+    /// <summary>What TranslateAsync returns, when a test wants a fixed answer.</summary>
+    public string? TranslatesTo { get; set; }
 }
 
 /// <summary>Nothing was shared into the app.</summary>

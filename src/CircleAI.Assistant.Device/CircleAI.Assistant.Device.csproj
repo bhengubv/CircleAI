@@ -52,6 +52,13 @@
     <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
     <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
     <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <!-- TRANSLATION, WHICH THE APP USED TO DO BY HAND. The engine had zero
+         consumers while Translate.razor built its own prompt against the raw
+         brain; this reference is what lets the product own that prompt. It
+         brings CircleAI.Languages with it - a table of language names and
+         writing systems, which the head needed anyway to label its own
+         pickers. -->
+    <ProjectReference Include="..\CircleAI.Languages.Translation\CircleAI.Languages.Translation.csproj" />
     <!-- The resident foreground service, the memory probe and the notification
          the microphone is disclosed through. -->
     <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" />

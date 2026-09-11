@@ -18,7 +18,7 @@
 // breadth free: sixty tiles need sixty first sentences, not sixty screens, and
 // it is how an assistant works - you ask it, you do not navigate to it.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One thing the app can help with.</summary>
 /// <param name="Title">What it is, in the words somebody would use.</param>

@@ -3,6 +3,7 @@
 // Listen, think, answer aloud - on this phone.
 
 using CircleAI.Voice;
+using CircleAI.Languages.Translation;
 using CircleAI.Assistant.Voice;
 
 // The capture class lives in the native head's namespace; from inside
@@ -856,6 +857,101 @@ public sealed class DeviceConversation : IConversation
             .ConfigureAwait(false);
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    /// <remarks>
+    /// NO MICROPHONE IS OPENED AND NO PERMISSION IS ASKED FOR. A file is not
+    /// capture, so this does not take <c>_one</c> and does not go through
+    /// MicrophoneAloneAsync - a transcription of a recording can run while the
+    /// wake word is still listening, and making it wait behind a live turn would
+    /// be a lock held for forty minutes.
+    /// </remarks>
+    public async Task<Transcript> TranscribeFileAsync(
+        string path,
+        string? language = null,
+        IProgress<double>? progress = null,
+        CancellationToken ct = default)
+    {
+        var listener = _listener ??= (await CircleAIListener
+            .TryCreateAsync(StorageDir, ct: ct).ConfigureAwait(false)).listener;
+
+        // NOTHING RATHER THAN A THROW, matching how every other capability on
+        // this surface declines: a phone without the speech models is a phone
+        // that cannot do this yet, which is a sentence for a screen to show, not
+        // an exception for it to catch.
+        if (listener is null) return Transcript.Nothing;
+
+        var tag = language ?? _spoken.Current;
+        if (listener.Transcriber is WhisperNetTranscriber primable)
+            primable.Vocabulary = SpokenVocabulary.For(tag);
+
+        var result = await listener
+            .TranscribeFileAsync(path, AndroidAudioDecoder.Instance, tag, progress, ct)
+            .ConfigureAwait(false);
+
+        return new Transcript(
+            result.Text,
+            [.. result.Timed.Select(s => new TranscriptLine(s.Text, s.Start, s.End, s.Speaker))],
+            result.LanguageCode,
+            result.Confidence);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// STRAIGHT TO THE ENGINE, NOT THROUGH A PROMPT BUILT HERE. The whole point
+    /// of closing this gap was to stop the screen and the engine being two
+    /// owners of one prompt; writing the prompt in this class again would just
+    /// move the second owner one layer down.
+    /// <para>
+    /// The engine is built per call rather than held. It is a few bytes wrapping
+    /// a reference to the brain - no model, no native state - and holding one
+    /// would mean deciding what happens to it when the brain idle-unloads.
+    /// </para>
+    /// </remarks>
+    public async Task<string> TranslateAsync(
+        string text, string fromTag, string toTag, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+        // FULLY QUALIFIED BECAUSE THE NAME IS TAKEN. CircleAI.Assistant has its
+        // own TranslationRequest - the parser for "how do you say X in Zulu",
+        // a spoken INTENT rather than a translation job - and this namespace
+        // sits inside CircleAI.Assistant, so the unqualified name resolves to
+        // that one. Both names are right for what they describe; only one of
+        // them can be the short one here.
+        // THE FULLER TABLE, NOT THE ENGINE'S DEFAULT. SampleLanguages lists the
+        // seventy-five languages this app actually offers; CircleAI.Languages'
+        // KnownLanguages lists twenty, and does not include Japanese - which
+        // this app has a whole Open JTalk prosody stack for. Passing the right
+        // one is the difference between "from English to Japanese" and "from
+        // English to ja" for most of the catalogue.
+        var engine = new LlmTranslationEngine(
+            new BrainAsGenerator(_brain),
+            tag => SampleLanguages.Find(tag)?.Name ?? tag);
+        var result = await engine.TranslateAsync(
+            new CircleAI.Languages.Translation.TranslationRequest(
+                text, fromTag, toTag, TranslationMode.Conversational), ct)
+            .ConfigureAwait(false);
+
+        return result.TranslatedText;
+    }
+
+    /// <inheritdoc />
+    public string AsSubtitles(Transcript transcript, SubtitleFormat format = SubtitleFormat.SubRip)
+    {
+        ArgumentNullException.ThrowIfNull(transcript);
+
+        // Back across the boundary. CircleAI.Assistant cannot see
+        // TranscriptSegment and CircleAI.Voice owns the format, so the mapping
+        // happens here - which is the whole job of this class.
+        var segments = transcript.Lines
+            .Select(l => new TranscriptSegment(l.Text, l.Start, l.End) { Speaker = l.Speaker })
+            .ToList();
+
+        return format == SubtitleFormat.WebVtt
+            ? Subtitles.ToVtt(segments)
+            : Subtitles.ToSrt(segments);
+    }
+
     public Task<string> SeeAsync(
         string question, byte[] image, Action<string>? token = null, CancellationToken ct = default)
         => _brain.SeeAsync(question, image, token, ct);

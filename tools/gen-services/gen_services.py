@@ -177,7 +177,15 @@ def render():
         "// breadth free: sixty tiles need sixty first sentences, not sixty screens, and",
         "// it is how an assistant works - you ask it, you do not navigate to it.",
         "",
-        "namespace CircleAI.Samples.It;",
+        # THE NAMESPACE FOLLOWED THE FILE ONE MOVE TOO LATE. This file now lives
+        # in src/CircleAI.Assistant and kept saying CircleAI.Samples.It, so
+        # Capabilities resolved only for code whose OWN namespace happened to
+        # sit under CircleAI.Samples.It and walk up into it. Services.razor did
+        # (CircleAI.Samples.It.Shared.Pages); the bUnit test project did not
+        # (CircleAI.Samples.Ui.Tests) - so tests/CircleAI.Samples.It.Ui.Tests
+        # stopped compiling and the UI tests stopped running, silently, because
+        # nothing else builds that project.
+        "namespace CircleAI.Assistant;",
         "",
         "/// <summary>One thing the app can help with.</summary>",
         "/// <param name=\"Title\">What it is, in the words somebody would use.</param>",

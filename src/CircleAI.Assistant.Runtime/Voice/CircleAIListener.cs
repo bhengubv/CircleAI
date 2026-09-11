@@ -215,78 +215,50 @@ public sealed class CircleAIListener : IAsyncDisposable
         return (new EnergyWakeWordDetector(capture, _transcriber, phrases), plan.Reason);
     }
 
-    /// <summary>Transcribes a WAV file to text (any rate/channels → 16 kHz mono).</summary>
+    /// <summary>Transcribes an audio file to text.</summary>
+    /// <remarks>
+    /// THE THIRD PRIVATE WAV READER LIVED HERE. This class carried its own RIFF
+    /// walker, downmix and resampler - beside WavIo, which had all three and
+    /// four more sample formats, and beside a fourth copy in tools/stt-hear.
+    /// Three owners of one fact, and this one was the most limited: it threw on
+    /// anything that was not 16-bit, so a 24-bit recording failed here while the
+    /// same file read fine everywhere else.
+    /// <para>
+    /// It also read the WHOLE file into one buffer and one decode. An hour of
+    /// audio is 230 MB of float samples on a phone that is already holding a
+    /// model, and not one word reached the caller until the last one was
+    /// decoded. <see cref="Transcribing.FileAsync"/> chunks it.
+    /// </para>
+    /// </remarks>
     public async Task<string> HearAsync(string wavPath, CancellationToken ct = default)
-    {
-        var pcm = LoadWavAsPcm16Mono16k(wavPath);
-        var result = await _transcriber.TranscribeAsync(pcm, ct).ConfigureAwait(false);
-        return result.Text;
-    }
+        => (await TranscribeFileAsync(wavPath, ct: ct).ConfigureAwait(false)).Text;
+
+    /// <summary>
+    /// Transcribes an audio file and keeps everything the engine reported.
+    /// </summary>
+    /// <param name="path">The recording. WAV needs no decoder.</param>
+    /// <param name="decoder">
+    /// Reads anything that is not a WAV (Android: MediaExtractor + MediaCodec).
+    /// <c>null</c> means WAV only, and a voice memo then comes back as a clear
+    /// sentence about the build rather than a parse error about RIFF headers.
+    /// </param>
+    /// <param name="language">BCP-47 code, or null to detect.</param>
+    /// <param name="progress">Fraction done, 0 to 1, after each chunk.</param>
+    /// <param name="ct">Cancels between chunks.</param>
+    /// <remarks>
+    /// SEPARATE FROM <see cref="HearAsync"/> BECAUSE HearAsync THREW MOST OF IT
+    /// AWAY. It returned result.Text and discarded the timings, the detected
+    /// language and the confidence - so a caller wanting subtitles, or wanting
+    /// to know whether to trust the transcript, had no way to ask.
+    /// </remarks>
+    public Task<TranscriptionResult> TranscribeFileAsync(
+        string path,
+        IAudioDecoder? decoder = null,
+        string? language = null,
+        IProgress<double>? progress = null,
+        CancellationToken ct = default)
+        => Transcribing.FileAsync(_transcriber, path, decoder, language, progress, ct);
 
     public ValueTask DisposeAsync() => _transcriber.DisposeAsync();
 
-    // ── WAV → PCM16 16 kHz mono (what IVoiceTranscriber wants) ───────────────
-
-    private static ReadOnlyMemory<byte> LoadWavAsPcm16Mono16k(string path)
-    {
-        var bytes = File.ReadAllBytes(path);
-        int rate = 16000, ch = 1, bits = 16, dataOff = -1, dataLen = 0;
-        int pos = 12;
-        while (pos + 8 <= bytes.Length)
-        {
-            var id = System.Text.Encoding.ASCII.GetString(bytes, pos, 4);
-            int sz = BitConverter.ToInt32(bytes, pos + 4);
-            var body = pos + 8;
-            if (id == "fmt ")
-            {
-                ch = BitConverter.ToInt16(bytes, body + 2);
-                rate = BitConverter.ToInt32(bytes, body + 4);
-                bits = BitConverter.ToInt16(bytes, body + 14);
-            }
-            else if (id == "data") { dataOff = body; dataLen = sz; }
-            pos = body + sz + (sz & 1);
-        }
-        if (dataOff < 0 || bits != 16)
-            throw new InvalidOperationException($"unsupported WAV (bits={bits})");
-
-        int frames = dataLen / (2 * ch);
-        // Downmix to mono float first.
-        var mono = new float[frames];
-        for (int i = 0; i < frames; i++)
-        {
-            int acc = 0;
-            for (int c = 0; c < ch; c++)
-                acc += BitConverter.ToInt16(bytes, dataOff + (i * ch + c) * 2);
-            mono[i] = acc / (float)ch;
-        }
-
-        // Resample to 16 kHz if needed.
-        float[] outF;
-        if (rate == 16000) outF = mono;
-        else
-        {
-            int outLen = (int)((long)frames * 16000 / rate);
-            outF = new float[outLen];
-            double stepR = (double)frames / outLen;
-            for (int i = 0; i < outLen; i++)
-            {
-                double src = i * stepR;
-                int i0 = (int)src;
-                double frac = src - i0;
-                float a = mono[i0];
-                float b = i0 + 1 < frames ? mono[i0 + 1] : a;
-                outF[i] = (float)(a + (b - a) * frac);
-            }
-        }
-
-        // Back to little-endian PCM16 bytes.
-        var pcm = new byte[outF.Length * 2];
-        for (int i = 0; i < outF.Length; i++)
-        {
-            short s = (short)Math.Clamp(outF[i], short.MinValue, short.MaxValue);
-            pcm[i * 2] = (byte)(s & 0xFF);
-            pcm[i * 2 + 1] = (byte)((s >> 8) & 0xFF);
-        }
-        return pcm;
-    }
 }

@@ -340,18 +340,26 @@
             return;
         }
 
-        var fromName = Name(LangOf(speaker));
-        var toName = Name(LangOf(Other(speaker)));
+        var fromTag = LangOf(speaker);
+        var toTag = LangOf(Other(speaker));
 
         try
         {
-            // Asked as a translation, not as a conversation: without "give only
-            // the translation" the model ANSWERS the sentence, which is a very
-            // different thing to put in front of somebody at a hospital desk.
+            // THE PROMPT USED TO BE WRITTEN HERE, and it was the better of the
+            // two that existed. CircleAI.Languages.Translation had an engine
+            // with ZERO consumers whose prompt named languages by BCP tag, while
+            // this screen asked in language NAMES - and a 0.6B model has seen
+            // the word Japanese a great many times and "ja" mostly as the German
+            // for yes. The engine took this screen's wording; the screen now
+            // asks the product rather than composing its own.
+            //
+            // Why that matters beyond tidiness: "give only the translation" is
+            // the clause that stops the model ANSWERING the sentence instead of
+            // translating it, which is a very different thing to put in front of
+            // somebody at a hospital desk. A clause that lives in a screen is a
+            // clause the next screen forgets.
             clock.Restart();
-            var rendered = (await Brain.AskAsync(
-                $"Translate this from {fromName} to {toName}. "
-              + $"Give only the translation, nothing else:\n\n{said}")).Trim();
+            var rendered = (await Talk.TranslateAsync(said, fromTag, toTag)).Trim();
             var translateMs = clock.ElapsedMilliseconds;
 
             _lines.Add(new Line(Other(speaker), rendered, Mine: false));

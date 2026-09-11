@@ -29,6 +29,20 @@ have caught the same locale bug five times was in one of them.
 [MEMORY.md](MEMORY.md) is the short version; [AGENT.md](AGENT.md) is the
 contract. If `memory` is not on PATH, the two install lines are in AGENT.md.
 
+## What is NOT done
+
+[docs/OPEN-GAPS.md](docs/OPEN-GAPS.md) is the register of what is built and
+unreachable, what is blocked at the native layer, and what has never run on a
+phone. **Read it before claiming any capability works.**
+
+The repo's most common defect by a wide margin is a library that was written,
+tested, committed, and then had no way in from the app. Vision was catalogued
+with two models and full hashes, the bridge could encode an image, the session
+method was complete - and the abilities screen offered a 311 MB download to a
+screen that did not exist. Translation has an engine with zero consumers while
+the app hand-rolls its own prompt. A grep for callers is worth more than a
+green test run when the question is "does this work".
+
 ## Building and testing
 
 ```bash
@@ -43,8 +57,19 @@ Everything multi-targets **net9.0 and net10.0**, and the test project runs both
 legs. Run one framework while iterating; run both before calling it done — a
 green net10 leg has hidden a net9 break before.
 
-The suite is around 2,700 tests and takes about 45 seconds per leg. Serialise
-heavy builds rather than running two at once.
+**There are TWO test projects and the second one is easy to forget.**
+
+```bash
+dotnet test tests/CircleAI.Samples.It.Ui.Tests/CircleAI.Samples.It.Ui.Tests.csproj
+```
+
+That is 308 bUnit tests over the screens, and nothing else builds that project —
+so when it stopped COMPILING it simply stopped running, and stayed that way with
+every other suite green. It was found by accident. Run both, or a whole axis of
+coverage goes quiet without a single red line anywhere.
+
+The main suite is around 3,100 tests and takes two to three minutes per leg.
+Serialise heavy builds rather than running two at once.
 
 ## Where things are
 

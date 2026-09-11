@@ -76,4 +76,40 @@ public sealed class BrowserConversation : IConversation
     public Task<string> SeeAsync(
         string question, byte[] image, Action<string>? token = null, CancellationToken ct = default)
         => Task.FromResult("Reading an image happens on the phone.");
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A browser tab has no file path to be handed. It has a File object from an
+    /// input element, which is a different thing entirely - so this declines
+    /// the same way the microphone and the camera do rather than pretending a
+    /// path means anything here.
+    /// </remarks>
+    public Task<Transcript> TranscribeFileAsync(
+        string path,
+        string? language = null,
+        IProgress<double>? progress = null,
+        CancellationToken ct = default)
+        => Task.FromResult(Transcript.Nothing);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Nothing to translate with. A WASM head has no model, which is the same
+    /// reason it cannot chat - and saying so beats returning the original text,
+    /// which would look like a translation into the language it was already in.
+    /// </remarks>
+    public Task<string> TranslateAsync(
+        string text, string fromTag, string toTag, CancellationToken ct = default)
+        => Task.FromResult("Translating happens on the phone.");
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// PURE STRING WORK, SO THE BROWSER CAN DO IT. Unlike everything else on
+    /// this class this needs no microphone, no model and no native library -
+    /// it is a transcript turned into text - so declining would be declining
+    /// something that works. The format lives in CircleAI.Voice, which a WASM
+    /// head cannot load, so the two dialects are spelled out here; the tests
+    /// pin both against the library's own output.
+    /// </remarks>
+    public string AsSubtitles(Transcript transcript, SubtitleFormat format = SubtitleFormat.SubRip)
+        => BrowserSubtitles.Render(transcript, format);
 }
