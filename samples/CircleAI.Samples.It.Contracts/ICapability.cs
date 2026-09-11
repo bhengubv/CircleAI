@@ -33,13 +33,41 @@ public enum Cost
 /// <summary>What somebody asked for, and anything they said with it.</summary>
 /// <param name="Heard">The transcript, as it arrived. Never cleaned up.</param>
 /// <param name="Language">What they were speaking, when the turn could tell.</param>
-public sealed record Ask(string Heard, string? Language = null);
+/// <param name="Announce">
+/// Where to say, out loud and on the shade, what is being done — one sentence
+/// per step, BEFORE that step happens. Defaults to nothing, so a capability that
+/// only opens one of this app's own screens need not think about it: the person
+/// is looking at the app when it happens. A capability that acts on the PHONE or
+/// on somebody ELSE — a calendar entry, a text message, each item of a task list
+/// — has no such excuse, because the screen will belong to another app or be in
+/// a pocket. See <see cref="IAnnounces"/>.
+/// </param>
+public sealed record Ask(
+    string Heard,
+    string? Language = null,
+    IAnnounces? Announce = null)
+{
+    /// <summary>Somewhere to announce to, always — the null object when none was given.</summary>
+    public IAnnounces Announcer => Announce ?? Nothing;
+
+    private static readonly AnnouncesNothing Nothing = new();
+}
 
 /// <summary>What happened, in words the circle can say back.</summary>
 /// <param name="Done">False when it could not, and Say explains.</param>
 /// <param name="Say">One line, spoken and shown. Never a stack trace.</param>
 /// <param name="Route">Where to go afterwards, or null to stay put.</param>
-public sealed record Did(bool Done, string Say, string? Route = null);
+/// <param name="Announced">
+/// True when the capability already said this out loud through
+/// <see cref="IAnnounces"/>, so the caller does not say it a second time.
+/// </param>
+/// <remarks>
+/// THE FLAG EXISTS BECAUSE THE ALTERNATIVE IS STUTTERING. A capability that
+/// announces "Playing coldplay" before handing off and then returns the same
+/// sentence would have it spoken twice — once usefully, once over the top of the
+/// app that just launched.
+/// </remarks>
+public sealed record Did(bool Done, string Say, string? Route = null, bool Announced = false);
 
 /// <summary>One thing this app can be asked to do.</summary>
 /// <remarks>

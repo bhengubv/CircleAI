@@ -35,6 +35,15 @@ public static class ConversationStore
     {
         services.AddFluxor(o => o.ScanAssemblies(typeof(ConversationState).Assembly));
         services.TryAddSingleton<IRemembers, RemembersNothing>();
+
+        // SAME REASON AS IRemembers, AND THE SAME TryAdd. A head that can speak
+        // and has a notification shade registers its own announcer BEFORE this
+        // and keeps it; a browser gets the null object. Registered here rather
+        // than left absent because MainLayout and Home both @inject it, and a
+        // missing registration is not a quiet degradation - it is a component
+        // that throws the moment Blazor renders it.
+        services.TryAddSingleton<IAnnounces, AnnouncesNothing>();
+
         return services;
     }
 }

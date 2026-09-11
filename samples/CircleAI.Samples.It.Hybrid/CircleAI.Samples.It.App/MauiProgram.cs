@@ -56,6 +56,12 @@ public static class MauiProgram
         // app is named in code.
         builder.Services.AddSingleton<IPlaysMedia, AndroidMediaPlayer>();
 
+        // KEEPING THE PERSON IN THE LOOP WHILE IT ACTS. Anything that hands off
+        // to another app, or acts on somebody else's behalf, says so out loud and
+        // leaves it on the shade - one sentence per step, before the step. The
+        // browser head has neither a voice nor a shade and gets AnnouncesNothing.
+        builder.Services.AddSingleton<IAnnounces, AndroidAnnouncer>();
+
         builder.Services.AddSingleton(sp => CapabilityRegistry.For(
             sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();

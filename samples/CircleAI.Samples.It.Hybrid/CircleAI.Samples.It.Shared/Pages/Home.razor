@@ -21,6 +21,8 @@
 @inject ISpokenLanguage Spoken
 @inject IWhereAmI Where
 @inject CapabilityRegistry Can
+@* Where a capability narrates each step it takes - see IAnnounces. *@
+@inject IAnnounces Announcer
 @implements IDisposable
 
 <div class="home">
@@ -421,7 +423,8 @@
             catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
             finally { _turn = null; Mark.Clear(); }
 
-            await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _detail = line; StateHasChanged(); });
+            await router.GoAsync(Nav, line => Talk.SayAsync(line),
+                line => { _detail = line; StateHasChanged(); }, Announcer);
             return;
         }
 

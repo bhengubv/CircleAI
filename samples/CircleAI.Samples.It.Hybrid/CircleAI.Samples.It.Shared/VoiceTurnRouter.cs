@@ -187,8 +187,17 @@ public sealed class VoiceTurnRouter : IDisposable
     /// IT MOVES WHETHER OR NOT IT MANAGES TO SPEAK. A voice that will not play is
     /// a reason to be quiet, never a reason to ignore what was asked.
     /// </remarks>
+    /// <param name="announce">
+    /// Where a capability narrates each step as it takes it — see
+    /// <see cref="IAnnounces"/>. Handed IN rather than used here, because only
+    /// the capability knows what its steps are: playing music is one, putting an
+    /// appointment in a calendar and then texting somebody about it is two, and
+    /// a task list is as many as it has items. This method only speaks the
+    /// OUTCOME, and skips even that when the capability already said it.
+    /// </param>
     public async Task GoAsync(
-        NavigationManager nav, Func<string, Task>? say = null, Action<string>? show = null)
+        NavigationManager nav, Func<string, Task>? say = null, Action<string>? show = null,
+        IAnnounces? announce = null)
     {
         // DO THE THING, IF SOMETHING CAN. The capability decides whether that
         // means acting on what was said or opening the screen that would - and
@@ -199,7 +208,7 @@ public sealed class VoiceTurnRouter : IDisposable
             try
             {
                 did = await capability.DoAsync(
-                    new Ask(Asked ?? string.Empty)).ConfigureAwait(true);
+                    new Ask(Asked ?? string.Empty, Announce: announce)).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
@@ -213,7 +222,11 @@ public sealed class VoiceTurnRouter : IDisposable
             Outcome = did;
             show?.Invoke(did.Say);
 
-            if (say is not null)
+            // NOT TWICE. A capability that announced its own step has already
+            // said this out loud, at the only moment it was useful - before the
+            // thing happened. Repeating it here would land on top of whatever
+            // app just took the screen.
+            if (say is not null && !did.Announced)
             {
                 try { await say(did.Say).ConfigureAwait(true); }
                 catch { /* it still shows, and still moves */ }

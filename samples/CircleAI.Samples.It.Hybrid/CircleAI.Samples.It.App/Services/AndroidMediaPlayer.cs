@@ -23,6 +23,11 @@ namespace CircleAI.Samples.It.App.Services;
 /// <inheritdoc />
 public sealed class AndroidMediaPlayer : IPlaysMedia
 {
+    // NO ANNOUNCEMENT HERE. It belongs one level up, in PlayMediaCapability,
+    // where the STEP is known - this class only knows how to fire an intent, and
+    // a capability that plays music after adding a calendar entry has two steps
+    // to narrate, not one. See IAnnounces.
+
     /// <inheritdoc />
     /// <remarks>
     /// AN EMPTY QUERY IS A PROBE, NOT A REQUEST. ReadyAsync asks whether this

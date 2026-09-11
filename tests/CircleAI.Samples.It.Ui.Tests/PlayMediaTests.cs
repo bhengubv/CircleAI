@@ -63,6 +63,76 @@ public class PlayMediaTests
     }
 
     [Fact]
+    public async Task It_says_what_it_is_doing_BEFORE_it_hands_off()
+    {
+        // THE WHOLE POINT, AND THE ORDER IS THE POINT. One instruction later a
+        // music app owns the screen and probably the audio focus. An
+        // announcement made after that explains an app which has already
+        // appeared, to somebody who has spent two seconds wondering why their
+        // phone opened Spotify on its own.
+        var order = new List<string>();
+        var player = new StubPlayer(PlayResult.Playing, order);
+        var heard = new RecordingAnnouncer(order);
+
+        await new PlayMediaCapability(player).DoAsync(new Ask("play Coldplay", Announce: heard));
+
+        Assert.Equal(["said: Playing coldplay", "played: coldplay"], order);
+    }
+
+    [Fact]
+    public async Task It_does_not_say_the_same_line_twice()
+    {
+        // Having announced, the outcome must not be spoken again on top of the
+        // app that just launched. Announced is how the router is told.
+        var did = await new PlayMediaCapability(new StubPlayer(PlayResult.Playing))
+            .DoAsync(new Ask("play Coldplay", Announce: new RecordingAnnouncer([])));
+
+        Assert.True(did.Announced);
+    }
+
+    [Fact]
+    public async Task Nothing_is_claimed_when_there_was_no_player()
+    {
+        // It announced "Playing coldplay" and then found nothing to play it.
+        // Leaving that on the shade would be the assistant claiming to have done
+        // something it did not do.
+        var heard = new RecordingAnnouncer([]);
+
+        var did = await new PlayMediaCapability(new StubPlayer(PlayResult.NoPlayer))
+            .DoAsync(new Ask("play Coldplay", Announce: heard));
+
+        Assert.True(heard.Cleared);
+        Assert.False(did.Announced);
+        Assert.Contains("no music app", did.Say);
+    }
+
+    [Fact]
+    public async Task A_capability_with_nowhere_to_announce_still_works()
+    {
+        // The browser, and every caller that predates announcing. Announcing is
+        // a courtesy on top of an action and never a condition of it.
+        var did = await new PlayMediaCapability(new StubPlayer(PlayResult.Playing))
+            .DoAsync(new Ask("play Coldplay"));
+
+        Assert.True(did.Done);
+    }
+
+    [Fact]
+    public async Task It_asks_before_announcing_anything()
+    {
+        // "Play what?" is a question, not an action. Announcing a step that is
+        // not about to happen is noise, and on the shade it is a lie.
+        var heard = new RecordingAnnouncer([]);
+
+        var did = await new PlayMediaCapability(new StubPlayer(PlayResult.Playing))
+            .DoAsync(new Ask("play music", Announce: heard));
+
+        Assert.False(did.Done);
+        Assert.Equal("Play what?", did.Say);
+        Assert.Empty(heard.Said);
+    }
+
+    [Fact]
     public async Task It_hands_the_words_over_unparsed()
     {
         // The player's own search understands its own catalogue. Splitting
@@ -115,7 +185,13 @@ public class PlayMediaTests
     private sealed class StubPlayer : IPlaysMedia
     {
         private readonly PlayResult _result;
-        public StubPlayer(PlayResult result) => _result = result;
+        private readonly List<string>? _order;
+
+        public StubPlayer(PlayResult result, List<string>? order = null)
+        {
+            _result = result;
+            _order = order;
+        }
 
         /// <summary>What it was last asked to play.</summary>
         public string Asked { get; private set; } = string.Empty;
@@ -123,7 +199,27 @@ public class PlayMediaTests
         public Task<PlayResult> PlayAsync(string what, CancellationToken ct = default)
         {
             Asked = what;
+            _order?.Add("played: " + what);
             return Task.FromResult(_result);
         }
+    }
+
+    /// <summary>An announcer that remembers what it was told, and when.</summary>
+    private sealed class RecordingAnnouncer : IAnnounces
+    {
+        private readonly List<string> _order;
+        public RecordingAnnouncer(List<string> order) => _order = order;
+
+        public List<string> Said { get; } = [];
+        public bool Cleared { get; private set; }
+
+        public Task SayingAsync(string what, CancellationToken ct = default)
+        {
+            Said.Add(what);
+            _order.Add("said: " + what);
+            return Task.CompletedTask;
+        }
+
+        public void Done() => Cleared = true;
     }
 }

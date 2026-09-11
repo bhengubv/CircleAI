@@ -23,6 +23,8 @@
 @inject VoiceMark Mark
 @inject IResidentAssistant Resident
 @inject CapabilityRegistry Can
+@* Where a capability narrates each step it takes - see IAnnounces. *@
+@inject IAnnounces Announcer
 @* The conversation store. VoiceMark still owns what the two brand marks DRAW;
    this owns what the conversation IS - the transcript, the reply, the short-term
    cache, and the seam where it reaches long-term memory. See State/. *@
@@ -568,7 +570,8 @@
         catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
         finally { _turn = null; Mark.Clear(); StateHasChanged(); }
 
-        await router.GoAsync(Nav, line => Talk.SayAsync(line), line => { _says = line; StateHasChanged(); });
+        await router.GoAsync(Nav, line => Talk.SayAsync(line),
+            line => { _says = line; StateHasChanged(); }, Announcer);
     }
 
     /// <summary>Put the assistant back on, if that is how it was left.</summary>

@@ -137,11 +137,22 @@ public sealed class PlayMediaCapability : ICapability
         if (what.Length == 0)
             return new Did(false, "Play what?");
 
+        // SAID BEFORE IT HAPPENS, NOT AFTER. One line below, a music app takes
+        // the screen and probably the audio focus, and this app is behind it. An
+        // announcement made afterwards is explaining something that has already
+        // happened to somebody who has been wondering for two seconds why their
+        // phone opened Spotify.
+        await ask.Announcer.SayingAsync($"Playing {what}", ct).ConfigureAwait(false);
+
         var result = await _player.PlayAsync(what, ct).ConfigureAwait(false);
+
+        if (result != PlayResult.Playing) ask.Announcer.Done();
 
         return result switch
         {
-            PlayResult.Playing => new Did(true, $"Playing {what}"),
+            // Announced: true - the sentence has already been spoken, and saying
+            // it again over the top of the player would be a stutter.
+            PlayResult.Playing => new Did(true, $"Playing {what}", Announced: true),
             PlayResult.NoPlayer => new Did(false, "There is no music app on this phone to play it."),
             _ => new Did(false, "This can only play music on a phone."),
         };

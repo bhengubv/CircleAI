@@ -213,6 +213,52 @@ public sealed partial class CircleNeuronService : Service
         catch { /* a notification is never worth taking the service down for */ }
     }
 
+    // ── what the assistant is doing to this phone ────────────────────────────
+    //
+    // WHY THIS EXISTS. A capability that acts on the device hands off to another
+    // app - "play Coldplay" starts whatever plays music here - and the moment it
+    // does, Circle AI is behind that app with nothing on screen. From the
+    // outside a music player simply opened on its own, and there is no way to
+    // tell the assistant did it from a bug, a mis-tap, or somebody else driving
+    // the phone over adb. Announced here because the shade is the one surface
+    // that survives another app coming to the front.
+
+    private static string? _doing;
+    private static DateTimeOffset _doingUntil;
+
+    /// <summary>How long an announcement stands before the shade stops repeating it.</summary>
+    /// <remarks>
+    /// SELF-HEALING ON PURPOSE. A caller that announces and then never clears -
+    /// because it threw, or was cancelled, or somebody added a return - would
+    /// otherwise leave the shade claiming something the phone is not doing, and
+    /// a stale claim is worse than no claim. Thirty seconds outlives the hand-off
+    /// it describes and expires long before anybody could be misled by it.
+    /// </remarks>
+    private static readonly TimeSpan AnnouncementLasts = TimeSpan.FromSeconds(30);
+
+    /// <summary>Say on the shade what the assistant is doing to this phone, or null to stop.</summary>
+    /// <remarks>
+    /// IT GOES IN THE TITLE, NOT OVER THE TEXT. The content line is the
+    /// microphone disclosure - "Listening for ... - nothing is kept or sent" -
+    /// and replacing it would hide that this app holds the microphone in order
+    /// to announce something far less important. The title is the honest place:
+    /// prominent, short, and it costs the disclosure nothing.
+    /// </remarks>
+    public static void Announce(string? what)
+    {
+        _doing = string.IsNullOrWhiteSpace(what) ? null : what!.Trim();
+        _doingUntil = _doing is null ? default : DateTimeOffset.UtcNow + AnnouncementLasts;
+        RefreshNotification();
+    }
+
+    /// <summary>The title line: the app, plus what it is doing when it is doing something.</summary>
+    private static string NotificationTitle()
+    {
+        if (_doing is null) return "Circle AI";
+        if (DateTimeOffset.UtcNow > _doingUntil) { _doing = null; return "Circle AI"; }
+        return "Circle AI · " + _doing;
+    }
+
     public override IBinder OnBind(Intent? intent) => new CircleNeuronBinder(this);
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
@@ -427,7 +473,7 @@ public sealed partial class CircleNeuronService : Service
     private Notification BuildNotification(string text)
     {
         var builder = new Notification.Builder(this, ChannelId)
-            .SetContentTitle("Circle AI")
+            .SetContentTitle(NotificationTitle())
             .SetContentText(text)
             .SetSmallIcon(global::Android.Resource.Drawable.IcMenuManage)
             .SetOngoing(true);
