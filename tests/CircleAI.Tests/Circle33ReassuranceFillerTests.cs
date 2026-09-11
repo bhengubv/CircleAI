@@ -18,7 +18,18 @@ public class Circle33ReassuranceFillerTests
     public async Task FastWork_SkipsFiller()
     {
         var filler = new DefaultReassuranceFiller(new ReassuranceFillerOptions(
-            ShortFillerAfter: TimeSpan.FromSeconds(5)));
+            // SIXTY, NOT FIVE, AND THE GAP IS THE TEST. The work below is a
+            // 20 ms delay and the claim is "work that finishes first skips the
+            // filler" - so the threshold only has to be comfortably longer than
+            // the work. At five seconds it was comfortably longer than 20 ms on
+            // an idle machine and NOT longer than 20 ms scheduled behind three
+            // thousand other tests: this failed on the net9 leg of a full run
+            // having taken NINE SECONDS, and passed in 91 ms, 93 ms and 59 ms
+            // run on its own.
+            //
+            // A threshold a loaded thread pool can outrun is measuring the
+            // machine, not the branch.
+            ShortFillerAfter: TimeSpan.FromSeconds(60)));
         var session = new FakeCallSession();
         var ttsCalls = new ConcurrentBag<string>();
         BriefingSynthesiser tts = (text, ct) =>

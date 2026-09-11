@@ -72,6 +72,57 @@ public sealed class ModelScopeCatalogOptions
     /// <summary>How many models to request per page. Default 100.</summary>
     public int PageSize { get; init; } = 100;
 
+    /// <summary>
+    /// How many discovered models to actually catalogue. Default 25.
+    /// </summary>
+    /// <remarks>
+    /// BECAUSE EACH ONE COSTS AN HTTP ROUND TRIP. BuildEntryAsync asks for a
+    /// repo's file list to get the names, sizes and SHA-256s, and there is no
+    /// bulk form - so cataloguing a page of 100 is 100 requests, on a phone, for
+    /// a list nobody has scrolled. ModelScope reported 519 MNN models the day
+    /// this was measured; fetching all of them would be 519.
+    /// <para>
+    /// Twenty-five is past what a handset can run several times over. The
+    /// listing is ordered by the API, and the filters below run BEFORE this cap,
+    /// so the twenty-five are twenty-five usable ones rather than the first
+    /// twenty-five of anything.
+    /// </para>
+    /// </remarks>
+    public int MaxModels { get; init; } = 25;
+
+    /// <summary>
+    /// Publishers whose models may be catalogued automatically. Empty means any.
+    /// </summary>
+    /// <remarks>
+    /// A DISCOVERED MODEL IS CODE THIS APP WILL DOWNLOAD AND RUN. Of the first
+    /// hundred MNN models returned, ninety-four were the official <c>MNN</c>
+    /// organisation and six were personal accounts - and "a model called
+    /// Qwen3-4B-MNN from an account nobody has heard of" is a supply-chain
+    /// question, not a catalogue question.
+    /// <para>
+    /// So the default is the official organisation only. An operator who wants
+    /// a wider net can set this, and one who wants their own mirror does not
+    /// come through here at all - see <c>ModelCatalogue.Offer</c>.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> Publishers { get; init; } = ["MNN"];
+
+    /// <summary>
+    /// Licences a discovered model may carry. Empty means any.
+    /// </summary>
+    /// <remarks>
+    /// <c>fully-free-opensource-always</c> is a hard rule on this product and
+    /// it says licence FIRST. A catalogue that adds whatever it finds would
+    /// break it silently, on device, without anybody choosing to.
+    /// <para>
+    /// A model with NO stated licence is skipped, not allowed. Three of the
+    /// first hundred had none, and "unstated" is not "permissive" - it is the
+    /// case where nobody can tell you what you are allowed to do.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> Licences { get; init; } =
+        ["apache", "mit", "bsd", "openrail", "cc0", "cc-by", "public domain", "unlicense"];
+
     /// <summary>User-Agent header. ModelScope CDN rejects requests without one.</summary>
     public string UserAgent { get; init; } =
         "Mozilla/5.0 (Circle AI SDK) CircleAI/1.3";
@@ -269,18 +320,40 @@ public sealed class ModelScopeCatalogClient : IDisposable
 
     private async Task<ModelRegistry> FetchLiveAsync(CancellationToken ct)
     {
-        var listingUrl =
-            $"{_options.BaseUri.TrimEndSlash()}/api/v1/models?Name={Uri.EscapeDataString(_options.Filter)}&PageSize={_options.PageSize}";
+        // A PUT WITH A BODY, NOT A GET WITH A QUERY STRING. This asked
+        // GET /api/v1/models?Name=... and had done since it was written; the
+        // endpoint returns 404 and always has, so the live catalogue could never
+        // load. Measured against the real API on 2026-09-11:
+        //
+        //     GET  /api/v1/models?Name=MNN            404
+        //     GET  /api/v1/dolphin/models?Name=MNN    404
+        //     PUT  /api/v1/dolphin/models  {body}     200
+        //
+        // Nothing caught it because nothing ever called the refresh. The failure
+        // is also invisible from inside the app BY DESIGN - a failed fetch keeps
+        // the shipped catalogue, which is a working app - so this would have sat
+        // at 404 indefinitely, quietly doing nothing.
+        var listingUrl = $"{_options.BaseUri.TrimEndSlash()}/api/v1/dolphin/models";
 
-        using var listingReq = new HttpRequestMessage(HttpMethod.Get, listingUrl);
+        var body =
+            "{\"Name\":" + JsonSerializer.Serialize(_options.Filter) +
+            ",\"PageNumber\":1,\"PageSize\":" + _options.PageSize + "}";
+
+        using var listingReq = new HttpRequestMessage(HttpMethod.Put, listingUrl)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+
         using var listingResp = await _http.SendAsync(listingReq, ct).ConfigureAwait(false);
         listingResp.EnsureSuccessStatusCode();
         var listingJson = await listingResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        // ModelScope's catalog shape:
-        //   { "Code": 200, "Data": { "Models": [ { "Path": "MNN", "Name": "Qwen3-4B-MNN", ... }, ... ] } }
-        // Names are returned without the "MNN/" prefix; combine Path + Name to form the repo.
-        var modelList = ParseModelListing(listingJson);
+        // FILTERED BEFORE THE CAP, AND CAPPED BEFORE THE FILE LISTINGS. Each
+        // surviving repo costs one more HTTP request, so the order here is the
+        // difference between twenty-five requests and five hundred.
+        var modelList = ParseModelListing(listingJson, _options)
+            .Take(Math.Max(1, _options.MaxModels))
+            .ToList();
 
         var entries = new List<ModelEntry>();
         foreach (var (repo, name) in modelList)
@@ -304,21 +377,102 @@ public sealed class ModelScopeCatalogClient : IDisposable
             Models:      entries);
     }
 
-    private static IEnumerable<(string Repo, string Name)> ParseModelListing(string json)
+    /// <summary>The repos worth asking about, from a listing response.</summary>
+    /// <remarks>
+    /// THE SHAPE WAS WRONG BY ONE LEVEL, AND THAT FAILED SILENTLY. This read
+    /// <c>Data.Models</c>; the API returns <c>Data.Model.Models</c>. A missing
+    /// property here is a <c>yield break</c> - an empty catalogue, no exception,
+    /// nothing logged - so even with the URL corrected this would have fetched a
+    /// page of five hundred models and catalogued none of them.
+    /// <para>
+    /// Two independent faults on one code path, neither reachable from a test
+    /// that does not hit the network, on a method nothing ever called.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// PUBLIC FOR THE SAME REASON <see cref="InferModality"/> IS, and the
+    /// argument is stronger here: the shape of this reply is the load-bearing
+    /// part of loading a catalogue at all, it was WRONG for the life of the
+    /// class, and it failed by returning nothing rather than by throwing. A
+    /// fault that quiet is only ever caught by a test that pins the shape, and
+    /// a test that pins it by calling the network is a flake.
+    /// </remarks>
+    public static IEnumerable<(string Repo, string Name)> ParseModelListing(
+        string json, ModelScopeCatalogOptions options)
     {
         using var doc = JsonDocument.Parse(json);
         if (!doc.RootElement.TryGetProperty("Data", out var data)) yield break;
-        if (!data.TryGetProperty("Models", out var models) || models.ValueKind != JsonValueKind.Array)
+
+        // Data.Model.Models, with a bare Data.Models accepted too so a shape
+        // change in either direction keeps working.
+        JsonElement models;
+        if (data.TryGetProperty("Model", out var model) &&
+            model.TryGetProperty("Models", out var nested) &&
+            nested.ValueKind == JsonValueKind.Array)
+        {
+            models = nested;
+        }
+        else if (data.TryGetProperty("Models", out var flat) && flat.ValueKind == JsonValueKind.Array)
+        {
+            models = flat;
+        }
+        else
+        {
             yield break;
+        }
 
         foreach (var m in models.EnumerateArray())
         {
             var name = m.TryGetProperty("Name", out var n) ? n.GetString() : null;
             var path = m.TryGetProperty("Path", out var p) ? p.GetString() : null;
             if (string.IsNullOrWhiteSpace(name)) continue;
+
+            if (!PublisherAllowed(path, options)) continue;
+            if (!LicenceAllowed(m, options)) continue;
+
             var repo = string.IsNullOrWhiteSpace(path) ? name : $"{path}/{name}";
             yield return (repo!, name!);
         }
+    }
+
+    /// <summary>Whether a model's publisher is one we catalogue automatically.</summary>
+    /// <remarks>
+    /// A DISCOVERED MODEL IS CODE THIS APP WILL DOWNLOAD AND RUN. Of the first
+    /// hundred MNN models returned, ninety-four were the official organisation
+    /// and six were personal accounts - and "a model called Qwen3-4B-MNN from an
+    /// account nobody has heard of" is a supply-chain question, not a catalogue
+    /// question.
+    /// </remarks>
+    public static bool PublisherAllowed(string? path, ModelScopeCatalogOptions options)
+    {
+        if (options.Publishers is not { Count: > 0 }) return true;
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        return options.Publishers.Any(
+            p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Whether a model's licence is one this product may ship against.</summary>
+    /// <remarks>
+    /// UNSTATED IS NOT PERMISSIVE. Three of the first hundred models returned
+    /// carried no licence at all, and that is the case where nobody can tell you
+    /// what you are allowed to do - a reason to skip it, not a reason to assume
+    /// the best. <c>fully-free-opensource-always</c> says licence FIRST, and a
+    /// catalogue that adds whatever it finds breaks that rule on device, without
+    /// anybody choosing to.
+    /// </remarks>
+    public static bool LicenceAllowed(JsonElement model, ModelScopeCatalogOptions options)
+    {
+        if (options.Licences is not { Count: > 0 }) return true;
+
+        var licence =
+            (model.TryGetProperty("License", out var l) ? l.GetString() : null)
+            ?? (model.TryGetProperty("LicenseName", out var ln) ? ln.GetString() : null);
+
+        if (string.IsNullOrWhiteSpace(licence)) return false;
+
+        return options.Licences.Any(
+            allowed => licence.Contains(allowed, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<ModelEntry?> BuildEntryAsync(string repo, string name, CancellationToken ct)

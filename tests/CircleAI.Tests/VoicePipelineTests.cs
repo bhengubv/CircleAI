@@ -130,7 +130,15 @@ public sealed class VoicePipelineTests
         wake.FireWakeWord();
 
         // Give the background Task time to complete
-        var deadline = DateTime.UtcNow.AddSeconds(3);
+        // THIRTY, NOT THREE. The loop exits the moment the event arrives, so a
+        // longer deadline costs a passing run nothing and buys a loaded one the
+        // room it needs - this failed on the net9 leg of a full run at three
+        // seconds and passes in about 90 ms on its own.
+        //
+        // Same rule as the twelve CancellationTokenSource deadlines raised in
+        // this suite: a deadline here is a safety net against a hang, and a hang
+        // still fails at thirty.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (received is null && DateTime.UtcNow < deadline)
             await Task.Delay(20);
 
