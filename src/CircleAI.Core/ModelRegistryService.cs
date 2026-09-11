@@ -502,6 +502,31 @@ namespace CircleAI.Core.Models
         /// language-specific request does NOT match.
         /// </summary>
         public string? Language { get; init; }
+
+        /// <summary>
+        /// The model family this entry is, e.g. <c>vits</c>, <c>vits-espnet</c>,
+        /// <c>whisper</c>, <c>qwen2.5-vl</c>.
+        /// </summary>
+        /// <remarks>
+        /// IT WAS IN THE REGISTRY AND NOT ON THIS RECORD, so every entry's
+        /// architecture was read from the JSON and thrown away on deserialise.
+        /// The cost was not theoretical: CircleAITtsProbe needs to know that a
+        /// voice is Open JTalk-driven in order to fetch the dictionary it cannot
+        /// speak without, could not ask, and had to test the entry NAME instead -
+        /// its own comment says so, and says what it wanted instead:
+        /// <para>
+        /// "Keyed on the architecture rather than on the language: vits-espnet IS
+        /// the statement this voice is driven by Open JTalk phonemes, so a future
+        /// ESPnet voice in any language pulls the right prerequisite without
+        /// anyone remembering to add it here. ModelEntry carries no Architecture
+        /// field, so the marker is the entry name."
+        /// </para>
+        /// <para>
+        /// Now it does. A name prefix is a convention nobody is obliged to
+        /// follow; an architecture is a fact about what the file is.
+        /// </para>
+        /// </remarks>
+        public string? Architecture { get; init; }
     }
 
     /// <summary>

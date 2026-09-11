@@ -333,15 +333,20 @@ public static class CircleAITtsProbe
         // worked only on a phone that had received the dictionary over a cable. A
         // registry entry nothing downloads is decorative.
         //
-        // Keyed on the architecture rather than on the language: "vits-espnet" IS
-        // the statement "this voice is driven by Open JTalk phonemes", so a future
-        // ESPnet voice in any language pulls the right prerequisite without anyone
-        // remembering to add it here.
-        // ModelEntry carries no Architecture field, so the marker is the entry
-        // name. JSUT is the only ESPnet voice catalogued; when a second arrives
-        // this becomes a real capability flag rather than a name test.
-        if (entry.Name.StartsWith("JSUT", StringComparison.OrdinalIgnoreCase))
-            await EnsurePrerequisiteAsync(registry, storageDir, "OpenJTalk-Dic-ja", log, ct)
+        // ASKED, NOT DECIDED HERE. This used to test the entry NAME, because
+        // ModelEntry dropped the registry's Architecture field on deserialise and
+        // there was nothing better to key on - the comment that stood here said
+        // exactly that, and said what it wanted instead. ModelEntry carries
+        // Architecture now, so "vits-espnet" IS the statement "driven by Open
+        // JTalk phonemes" and a future ESPnet voice in any language pulls the
+        // right prerequisite without anybody coming back here.
+        //
+        // And it is asked rather than answered, because this was the ONLY path
+        // that knew. CircleAISpeaker - the thing that actually speaks - fetched
+        // the voice and not the dictionary, so this diagnostic could speak
+        // Japanese and the app could not.
+        foreach (var needed in ModelPrerequisites.For(entry))
+            await EnsurePrerequisiteAsync(registry, storageDir, needed, log, ct)
                 .ConfigureAwait(false);
 
         // A BUNDLE ALREADY ON THE DEVICE BEATS A DOWNLOAD, and this path had no

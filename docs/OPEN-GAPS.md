@@ -58,6 +58,30 @@ model, pin its real SHA-256, and add it to the registry — `fully-free-opensour
 says licence FIRST, and `model-cataloguing-via-browser-pane` says a real hash,
 not a guessed one.
 
+## A‴. Voices: every offered language has one, and one of them could not speak
+
+Audited 2026-09-11 against the shipped catalogue.
+
+| Question | Answer |
+|---|---|
+| Languages the app offers | **69** |
+| Voice entries catalogued | **69**, covering **78** tags |
+| **Offered with no voice** | **ZERO** — `VoiceCoverageTests` now keeps it that way |
+| Voices for languages never offered | **3** — Spanish, Dutch, Portuguese (6 Piper voices: es_ES, es_MX, nl_BE, nl_NL, pt_BR, pt_PT). Catalogued, downloadable, **unreachable from the picker**. Portuguese is Angola and Mozambique. Joins up with A′1: `KnownLanguages` has `es`/`pt`, `SampleLanguages` does not. |
+
+**And Japanese could not speak on the path that speaks.** `JSUT-VITS` is an ESPnet
+VITS: it consumes Open JTalk phoneme ids, so it needs the 104 MB naist-jdic
+dictionary, catalogued separately because every Japanese voice shares it.
+`CircleAITtsProbe` fetched it; **`CircleAISpeaker` mentioned it nowhere**. So the
+speaker downloaded 144 MB, asked `OpenJTalkPhonemizer.Open` for a phonemiser and
+got `null` — the diagnostic screen could speak Japanese and the app could not,
+and the error named a missing phonemiser rather than a missing download.
+
+Fixed: the rule lives in `ModelPrerequisites`, both paths ask it, and it keys on
+**architecture** rather than an entry-name prefix — which the probe's own comment
+had asked for and could not have, because `ModelEntry` **dropped the registry's
+`Architecture` field on deserialise**. It no longer does.
+
 ## B. Blocked or unbuilt — not a wiring job
 
 | # | Item | State |

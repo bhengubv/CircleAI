@@ -502,6 +502,47 @@ public sealed class CircleAISpeaker : IDisposable
             log?.Invoke($"  {p.Describe()}");
         });
 
+        // WHAT THE VOICE CANNOT SPEAK WITHOUT, FETCHED BEFORE THE VOICE.
+        //
+        // This path downloaded a bundle and stopped. For every voice but one
+        // that is correct; for JSUT-VITS it is 144 MB of weights that cannot
+        // phonemise a sentence, because an ESPnet VITS speaks Open JTalk
+        // phoneme ids and the 104 MB naist-jdic dictionary is catalogued
+        // separately - shared by every Japanese voice, so catalogued once
+        // rather than duplicated into each.
+        //
+        // CircleAITtsProbe already fetched it and this did not, so the
+        // DIAGNOSTIC screen could speak Japanese and the SPEAKER could not.
+        // OpenJTalkPhonemizer.Open returns null when the dictionary directory is
+        // absent, so the failure arrived as "no phonemiser" rather than as
+        // anything naming a missing download.
+        //
+        // The rule now lives in ModelPrerequisites, where both callers ask it.
+        foreach (var needed in ModelPrerequisites.Resolve(entry, registry.AllModels))
+        {
+            if (needed.BundleFiles is null || string.IsNullOrWhiteSpace(needed.Repo)) continue;
+
+            Report(log, $"needs   : {needed.Name} ({needed.TotalBytes / 1_000_000} MB) - {entry.Name} cannot speak without it");
+
+            var needSpecs = needed.BundleFiles
+                .Select(f => new BundleFileSpec(f.Name, f.Sha256, f.SizeBytes))
+                .ToList();
+
+            try
+            {
+                await downloads.EnsureBundleAsync(
+                    needed.Name, needed.Repo!, needed.Source, needSpecs, progress, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // SAID, NOT SWALLOWED, AND NOT FATAL EITHER. The voice may still
+                // load and produce something; what must not happen is the
+                // silence this whole block exists to end.
+                Report(log, $"needs   : {needed.Name} did not download - {ex.Message}");
+            }
+        }
+
         var dir = await downloads.EnsureBundleAsync(entry.Name, entry.Repo!, entry.Source, specs, progress, ct)
             .ConfigureAwait(false);
 
