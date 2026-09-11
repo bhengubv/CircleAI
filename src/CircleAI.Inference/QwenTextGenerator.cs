@@ -194,8 +194,47 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// default stays off until the mapping itself is fixed - a process that dies
     /// mid-answer is worse than a slow first token.
     /// </remarks>
-    private static bool MmapIsAllowed =>
-        Environment.GetEnvironmentVariable("CIRCLEAI_MNN_MMAP") == "1";
+    /// <summary>
+    /// Whether MNN may memory-map weights and the prefix cache. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// A SETTING, NOT JUST AN ENVIRONMENT VARIABLE, AND THAT WAS THE REAL
+    /// PROBLEM. This read <c>CIRCLEAI_MNN_MMAP</c> and nothing else - and an
+    /// Android app cannot set an environment variable for itself. So on the one
+    /// platform this product ships to, the flag was not "off by default": it was
+    /// off with no way on, and no way to test either branch on the device where
+    /// the fault was found.
+    /// <para>
+    /// WHY IT IS OFF. <c>use_mmap</c> and <c>kvcache_mmap</c> were the proven
+    /// cause of an MNN SIGSEGV - v7 and v8 died, v9 survived twice with them
+    /// disabled. A process that dies mid-answer is worse than a slow first
+    /// token, so off is the right default until the mapping itself is fixed.
+    /// </para>
+    /// <para>
+    /// The environment variable still works and still wins, because a desktop
+    /// or CI run has no other way in and that is where an A/B of the crash gets
+    /// done. A host that wants it sets this instead.
+    /// </para>
+    /// </remarks>
+    public static bool AllowMemoryMapping { get; set; }
+
+    /// <summary>
+    /// The environment override, or <c>null</c> when it is not set.
+    /// </summary>
+    /// <remarks>
+    /// Read on every check rather than cached: a test that sets the variable and
+    /// a process that inherits it must both be honoured, and caching a static on
+    /// first touch makes the result depend on which test ran first.
+    /// </remarks>
+    private static bool? MmapOverride => Environment.GetEnvironmentVariable("CIRCLEAI_MNN_MMAP") switch
+    {
+        "1" => true,
+        "0" => false,
+        _   => null,
+    };
+
+    /// <summary>Whether memory mapping is on for this process, right now.</summary>
+    internal static bool MmapIsAllowed => MmapOverride ?? AllowMemoryMapping;
 
     public QwenTextGenerator(
         string                   modelPath,
