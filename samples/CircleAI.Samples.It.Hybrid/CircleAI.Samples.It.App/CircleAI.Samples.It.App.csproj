@@ -39,7 +39,12 @@
          up on every cut; the display version is what somebody says out loud.
          Settings > Phone prints both, so anybody can read it off the screen. -->
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>2</ApplicationVersion>
+    <!-- BUMPED EVERY CUT, BECAUSE IT IS THE ONLY HONEST DEPLOY SIGNAL.
+         lastUpdateTime stayed frozen across confirmed installs on two different
+         phones, so "did my build actually land" was unanswerable from adb. This
+         number is in the manifest, `dumpsys package` reads it back, and it moves
+         only when somebody changes it here. -->
+    <ApplicationVersion>3</ApplicationVersion>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->

@@ -81,11 +81,6 @@ public static class ConversationReducers
         };
     }
 
-    /// <summary>What long-term memory had to offer this turn.</summary>
-    [ReducerMethod]
-    public static ConversationState OnRecalled(ConversationState s, Recalled a) =>
-        s with { Recalled = a.Facts };
-
     /// <summary>
     /// A new conversation. The cache goes; long-term memory is untouched.
     /// </summary>
@@ -99,6 +94,5 @@ public static class ConversationReducers
             Reply = null,
             Detail = null,
             Recent = [],
-            Recalled = [],
         };
 }

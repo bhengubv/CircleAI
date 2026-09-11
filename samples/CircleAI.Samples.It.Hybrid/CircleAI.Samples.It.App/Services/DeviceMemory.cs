@@ -32,6 +32,13 @@ public sealed class DeviceMemory : IRemembers
     {
         if (string.IsNullOrWhiteSpace(said)) return;
         await _memory.LearnAsync(said, ct: ct).ConfigureAwait(false);
+
+        // BOTH HALVES OF THE LOOP LEAVE A MARK. This is the one seam the write
+        // and the read both cross, and until now neither said anything: "does
+        // this phone actually remember me" was a question nobody could answer
+        // from outside without speaking to it twice a day apart. One line each
+        // way turns the claim into something a logcat settles.
+        Android.Util.Log.Info("CircleAI.Memory", $"learn: {Excerpt(said)}");
     }
 
     /// <inheritdoc />
@@ -63,18 +70,42 @@ public sealed class DeviceMemory : IRemembers
                 .RecallAsync(new Situation(Text: about), ct: ct)
                 .ConfigureAwait(false);
 
-            return result.Atoms
+            var kept = result.Atoms
                 .Where(a => a.IsCurrent && !a.IsStale)
                 .Take(limit)
                 .Select(a => new Remembered(a.Text))
                 .ToList();
+
+            // OFFERED AND KEPT, NOT JUST KEPT. A store that returned nine atoms
+            // and had eight of them superseded reads identically to a store with
+            // one atom in it unless both numbers are here - and those are
+            // different problems with different fixes.
+            Android.Util.Log.Info("CircleAI.Memory",
+                $"recall: {result.Atoms.Count} offered, {kept.Count} kept for \"{Excerpt(about)}\"");
+
+            return kept;
         }
         catch (OperationCanceledException) { throw; }
-        catch
+        catch (Exception ex)
         {
             // A store that could not answer is not a reason to fail the turn in
-            // front of it. Nothing remembered, and the answer still happens.
+            // front of it. Nothing remembered, and the answer still happens -
+            // but SAID so, because a swallowed failure and an empty store looked
+            // the same from outside and only one of them needs fixing.
+            Android.Util.Log.Warn("CircleAI.Memory", "recall failed: " + ex.Message);
             return [];
         }
+    }
+
+    /// <summary>Enough of an utterance to recognise it in a log, and no more.</summary>
+    /// <remarks>
+    /// Truncated because this is somebody's conversation. A log that is useful
+    /// for a week is worth having; a verbatim transcript of everything anybody
+    /// ever said to their phone, sitting in logcat, is not.
+    /// </remarks>
+    private static string Excerpt(string text)
+    {
+        var tidy = text.Trim();
+        return tidy.Length <= 48 ? tidy : tidy[..48] + "...";
     }
 }

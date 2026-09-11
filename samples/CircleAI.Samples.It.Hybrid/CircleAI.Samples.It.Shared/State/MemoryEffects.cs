@@ -31,42 +31,19 @@ public sealed class MemoryEffects
 
     public MemoryEffects(IRemembers memory) => _memory = memory;
 
-    /// <summary>How long recall may take before the turn goes on without it.</summary>
-    /// <remarks>
-    /// A budget rather than a timeout on the store: the store may be perfectly
-    /// healthy and simply slower than the moment allows. Measured against the
-    /// rest of a turn — several seconds of transcription and thinking — a fifth
-    /// of a second is affordable and a second is not.
-    /// </remarks>
-    private static readonly TimeSpan RecallBudget = TimeSpan.FromMilliseconds(250);
-
-    /// <summary>Ask what is worth knowing, and say so even when the answer is nothing.</summary>
-    /// <remarks>
-    /// ALWAYS DISPATCHES Recalled, including with an empty list. A turn that
-    /// silently kept the PREVIOUS turn's recalled facts would answer this
-    /// question with last question's memory, which is worse than answering it
-    /// with none.
-    /// </remarks>
-    [EffectMethod]
-    public async Task OnRecallWanted(RecallWanted action, IDispatcher dispatcher)
-    {
-        try
-        {
-            using var budget = new CancellationTokenSource(RecallBudget);
-            var facts = await _memory.RecallAsync(action.About, ct: budget.Token)
-                .ConfigureAwait(false);
-            dispatcher.Dispatch(new Recalled(facts));
-        }
-        catch (OperationCanceledException)
-        {
-            // Too slow for this turn. Answer without it rather than late with it.
-            dispatcher.Dispatch(new Recalled([]));
-        }
-        catch
-        {
-            dispatcher.Dispatch(new Recalled([]));
-        }
-    }
+    // ONLY THE WRITE LIVES HERE NOW.
+    //
+    // There was a read here too - an OnRecallWanted effect with its own 250 ms
+    // budget - and nothing in the app ever dispatched the action that ran it.
+    // The recall that actually reaches the model has always been inline in
+    // DeviceConversation, because the prompt is built on the line after it and
+    // an effect cannot hand a value back to code that is mid-await.
+    //
+    // So there were two owners of one question, one of them dead, and the state
+    // field they were supposed to fill was permanently empty on the phone. The
+    // turn now recalls once and dispatches Recalled with what it got; the budget
+    // lives with the call it bounds. This file keeps the half that genuinely
+    // belongs to an event: an exchange ending, written through afterwards.
 
     /// <summary>
     /// A finished exchange goes through to the long-term store.

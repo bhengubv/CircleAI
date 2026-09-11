@@ -43,10 +43,16 @@ public sealed record Exchange(string Said, string? Replied, string? Language, Sy
 /// <param name="Recent">
 /// The short-term cache, newest last. Bounded on purpose — see <see cref="Keep"/>.
 /// </param>
-/// <param name="Recalled">
-/// What long-term memory offered for the turn in progress, so the prompt and the
-/// screen read the same list rather than each asking separately.
-/// </param>
+/// <remarks>
+/// WHAT LONG-TERM MEMORY OFFERED IS NOT HERE, THOUGH IT ONCE WAS. A Recalled
+/// field sat in this record claiming "the prompt and the screen read the same
+/// list", and on the phone it was empty every turn: the only action that filled
+/// it was dispatched by nothing. The recall lives in the turn, which needs it
+/// inline to build the prompt and cannot push it back here — that code is a
+/// singleton and this store is scoped, so the dispatch would reach a different
+/// store than the screen reads. A field that cannot be filled honestly is worse
+/// than no field, because the next person to read it believes it.
+/// </remarks>
 [FeatureState]
 public sealed record ConversationState(
     TurnPhase Phase,
@@ -55,8 +61,7 @@ public sealed record ConversationState(
     string? Reply,
     string? Language,
     string? Detail,
-    IReadOnlyList<Exchange> Recent,
-    IReadOnlyList<Remembered> Recalled)
+    IReadOnlyList<Exchange> Recent)
 {
     /// <summary>
     /// How many exchanges the short-term cache holds before the oldest falls out.
@@ -74,7 +79,7 @@ public sealed record ConversationState(
 
     /// <summary>Fluxor needs a parameterless constructor to seed the feature.</summary>
     private ConversationState() : this(
-        TurnPhase.Idle, 0, null, null, null, null, [], []) { }
+        TurnPhase.Idle, 0, null, null, null, null, []) { }
 
     /// <summary>Whether a turn is under way, from wherever it was started.</summary>
     public bool Busy => Phase != TurnPhase.Idle;

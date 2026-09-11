@@ -34,11 +34,23 @@ public sealed record TurnProgressed(TurnState Turn);
 /// </remarks>
 public sealed record TurnEnded(string? Said, string? Replied, string? Language, string? Detail);
 
-/// <summary>Ask long-term memory what is worth knowing before answering this.</summary>
-public sealed record RecallWanted(string About);
-
-/// <summary>What long-term memory offered, or an empty list when it had nothing.</summary>
-public sealed record Recalled(System.Collections.Generic.IReadOnlyList<Remembered> Facts);
+// THERE IS NO RECALL ACTION HERE ANY MORE, AND THAT IS THE FIX.
+//
+// RecallWanted and Recalled both lived here, with an effect behind the first and
+// a state field behind the second, and nothing in the app ever dispatched
+// either. The recall that reaches the model has always been inline in
+// DeviceConversation, because the prompt is built on the next line and an effect
+// cannot hand a value back to code that is mid-await.
+//
+// Pushing the result in from there does not work either: DeviceConversation is a
+// singleton and this store is SCOPED - AddFluxor registers IDispatcher, IStore
+// and IState<T> as Scoped, checked rather than assumed - so a dispatch from the
+// turn would land in the root scope's store and never reach the screen's. That
+// is the same invisibility as the dead effect, one layer down.
+//
+// So the turn owns recall and says so in the log, and this store owns what it
+// can honestly own. A screen that one day wants to show remembered facts gets
+// them through TurnState, which already crosses that boundary every turn.
 
 /// <summary>Start again: a new conversation, nothing carried over but long-term memory.</summary>
 public sealed record ConversationCleared;

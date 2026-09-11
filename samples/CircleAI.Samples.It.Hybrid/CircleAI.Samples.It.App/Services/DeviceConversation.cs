@@ -23,6 +23,12 @@ public sealed class DeviceConversation : IConversation
     private readonly IMemoryService _memory;
     private readonly IRemembers _remembers;
 
+    // NO IDispatcher HERE, AND THAT IS DELIBERATE - see the recall block in
+    // TurnAsync. This class is a SINGLETON and Fluxor's store is SCOPED, so a
+    // dispatcher injected here would be the root scope's, not the one the screen
+    // reads. Measured, not assumed: AddFluxor with no lifetime registers
+    // IDispatcher, IStore and IState<T> as Scoped.
+
     /// <summary>Composed from the app's one brain, one voice host and one memory.</summary>
     public DeviceConversation(
         IBrain brain, IVoiceHost voice, ISpokenLanguage spoken, ISettings settings,
@@ -202,6 +208,23 @@ public sealed class DeviceConversation : IConversation
             }
             catch { /* nothing remembered; the answer still happens */ }
 
+            // THE TURN OWNS THE RECALL, AND THE STORE IS NOT TOLD.
+            //
+            // Two things make this the right seam rather than a compromise.
+            //
+            // The turn cannot ask the store to fetch it: an effect is
+            // fire-and-forget and the prompt below needs the answer NOW, so
+            // there is nothing to await a value out of. There WAS a RecallWanted
+            // action and an effect behind it; nothing ever dispatched it.
+            //
+            // And the turn cannot push the answer INTO the store either. This
+            // class is a singleton; Fluxor's store is scoped. A dispatcher
+            // resolved here belongs to the root scope, not to the scope the
+            // screen reads, so the dispatch would land in a different store and
+            // be just as invisible as the dead effect was - the same bug wearing
+            // a different hat. If a screen ever needs these facts, they travel
+            // out through TurnState like everything else the screen is told.
+
             // PUT IN FRONT OF THE QUESTION, NOT INTO THE SYSTEM PROMPT. The
             // system prompt is cached across turns - see UsePrefixCache - and
             // changing it every turn would throw that cache away, which is the
@@ -213,8 +236,10 @@ public sealed class DeviceConversation : IConversation
                   + string.Join(Environment.NewLine, known.Select(k => "- " + k.Text))
                   + Environment.NewLine + Environment.NewLine + heard;
 
-            if (known.Count > 0)
-                Android.Util.Log.Info("CircleAI.Turn", $"recalled {known.Count} for this turn");
+            // ALWAYS, INCLUDING ZERO. "Recall found nothing" and "recall never
+            // ran" are different faults and this line used to print for only one
+            // of them, so the log could not tell them apart.
+            Android.Util.Log.Info("CircleAI.Turn", $"recalled {known.Count} for this turn");
 
             var reply = "";
 
