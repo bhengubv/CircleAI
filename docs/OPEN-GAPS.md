@@ -22,8 +22,8 @@ section was written, tested, committed, and then had no way in from the app.
 | A2 | **Subtitles** | **CLOSED on the deployed head.** `IConversation.AsSubtitles` renders SRT/WebVTT, and `TranscribeActivity` saves an `.srt` through `ActionCreateDocument` — the person chooses where, and the app needs no storage permission. |
 | A3 | **Diarisation** | **Not reachable, and cannot run.** `Diarisation` is complete and tested; `ModelModality.SpeakerEmbedding` exists and **is empty**, so there is no model to embed with. Cataloguing one is the next real step. |
 | A4 | **Translation** | **CLOSED.** `IConversation.TranslateAsync` → `LlmTranslationEngine`; `Translate.razor` now asks the product instead of hand-rolling a prompt. The engine took the screen's better wording (language *names*, and "give only the translation"). Native head still has no translation screen. |
-| A5 | **Search across everything** | Unwired. `CircleAI.Search`, `CircleAI.Embeddings` and `CircleAI.Memory` exist; no screen searches across them. `Recalling` reaches memory for a single turn only. |
-| A6 | **Music generation** | Unwired. `ProceduralMusicBedGenerator` works on any device; no screen. No `Music` model catalogued, so the neural path is an empty seam. |
+| A5 | **Search across everything** | **Unbuilt, not unwired — this entry was wrong before.** `CircleAI.Search` is *primitives*: `SearchTokenisation`, `SearchScoring`, `SimdOps`, `VectorMath`. There is no index, no store of embeddings over memory/documents/transcripts, and no query API. `CircleAI.Embeddings.TextEmbedder` is real (MNN-backed) but needs a model, and **no embedding modality is catalogued** — the same gap as A3. Wiring a screen would wire it to nothing. |
+| A6 | **Music generation** | **Procedural path CLOSED.** `MusicActivity` on the native head: nine moods, thirty seconds, plays it and saves a WAV through the system picker. It is the only capability that works on a phone with **nothing installed** — arithmetic, not a download — which needed a `NeedsNoModel` flag on the abilities row, because that list decides a row's state by whether a MODEL is present and would have rendered the one always-available capability as unavailable. **The NEURAL path is still an empty seam**: no `Music` model is catalogued, and a procedural chord bed is a bed, not music generation. The screen says bed. |
 
 ## A′. Two owners of one fact — found while closing the above
 
@@ -32,6 +32,27 @@ section was written, tested, committed, and then had no way in from the app.
 | A′1 | **Which languages exist** | Two tables, and they cannot easily become one: `CircleAI.Assistant` has zero ProjectReferences so a WASM head can load it, and the richer `LanguageTag` (writing system, RTL, region) lives in `CircleAI.Languages`. Measured 2026-09-11 — `KnownLanguages` **20**, `SampleLanguages` **69**; only in Known: **es, pt** (Spanish and Portuguese, which the app therefore does not offer); only in Sample: **51**, including ja, ko, ru, ur, vi, th, bn; names that disagree on shared tags: **zero**. `LanguageTableTests` now pins that zero, so drift cannot grow silently. **Merging properly needs a writing system and an RTL flag for 51 languages — those must be SOURCED, not guessed: a wrong RTL flag renders somebody's language backwards.** |
 | A′2 | **Where WAV is read** | Was three: `WavIo`, `tools/stt-hear`, and `CircleAIListener`. Now one (`WavIo`). `BrowserSubtitles` is a deliberate second owner of the subtitle formats — a WASM head cannot load `CircleAI.Voice` — and `SubtitleParityTests` asserts the two produce byte-identical output. |
 | A′3 | **Where `Capabilities` lives** | The generated `Capabilities.cs` moved to `src/CircleAI.Assistant/` during the rename and kept `namespace CircleAI.Samples.It;`. It resolved only for code whose own namespace walked up into that one — `Services.razor` did, the bUnit project did not — so **`tests/CircleAI.Samples.It.Ui.Tests` stopped compiling and its 308 tests stopped running**, silently, because no other command builds it. Generator fixed, namespace is now `CircleAI.Assistant`, 308 passing. `CLAUDE.md` now names both test projects. |
+
+## A″. One blocker, three capabilities: the catalogue has no model for the modality
+
+Diarisation, search and neural music are not three separate problems. Each has
+working managed code and **nothing catalogued to run it with** — and until this
+pass, two of them had no modality to be catalogued *under*.
+
+| Modality | Consumer | Catalogued |
+|---|---|---|
+| `SpeakerEmbedding` | `CircleAI.Voice.Diarisation` | **nothing** (modality added 2026-09-11) |
+| `Embedding` | `CircleAI.Embeddings.TextEmbedder` (MNN-backed, real) | **nothing** (modality added 2026-09-11) |
+| `Music` | `CircleAI.Music` neural path | **nothing** (modality already existed) |
+
+`ModelChoice.AnyCatalogued` already distinguishes "nothing exists yet" from
+"nothing that runs on this phone", so an empty modality is a state the app can
+describe rather than trip over.
+
+**The next step for all three is the same**: source a permissively-licensed
+model, pin its real SHA-256, and add it to the registry — `fully-free-opensource-always`
+says licence FIRST, and `model-cataloguing-via-browser-pane` says a real hash,
+not a guessed one.
 
 ## B. Blocked or unbuilt — not a wiring job
 

@@ -45,7 +45,20 @@ public class AbilitiesActivity : Activity
     /// <param name="Title">What it is. A verb, not a noun — "Talking", not "TTS".</param>
     /// <param name="Blurb">What it means for you, in one sentence.</param>
     /// <param name="Modality">Which models serve it.</param>
-    sealed record Ability(string Title, string Blurb, ModelModality Modality);
+    /// <param name="NeedsNoModel">
+    /// True for an ability that is arithmetic rather than a download.
+    /// <para>
+    /// WITHOUT THIS THE ROW IS UNREACHABLE, and I wrote it that way first. The
+    /// state of a row is driven by whether a MODEL is present, and the "Try it"
+    /// link is only offered when one is - which is exactly right for Seeing and
+    /// Listening and exactly wrong for Music, where the generator is managed
+    /// code and there is nothing to install. The row would have rendered as
+    /// unavailable, with no size, no button and no way in: a fourth dead row
+    /// added while fixing the first three.
+    /// </para>
+    /// </param>
+    sealed record Ability(
+        string Title, string Blurb, ModelModality Modality, bool NeedsNoModel = false);
 
     /// <remarks>
     /// WAKING IS LISTED ONLY WHEN THE BUILD CAN ACTUALLY WAKE. The chat-only APK
@@ -65,6 +78,12 @@ public class AbilitiesActivity : Activity
         new("Listening", "Understands you when you speak",                ModelModality.Asr),
         new("Answering", "Answers questions and helps you write",         ModelModality.Chat),
         new("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
+
+        // THE ONE THAT NEEDS NOTHING. Every other row waits on a download;
+        // this is arithmetic, so it works on a phone with no network and
+        // nothing installed - which is also why the row has no size beside it.
+        new("Music",     "Makes a piece of music, with nothing installed", ModelModality.Music,
+            NeedsNoModel: true),
 #if IT_VOICE_ANDROID
         new("Waking",    "Hears you say \"Hey B\" without being touched", ModelModality.WakeWord),
 #endif
@@ -303,6 +322,7 @@ public class AbilitiesActivity : Activity
         // there was nothing behind it - this head could not transcribe a file
         // OR a microphone. TranscribeActivity is what the row now leads to.
         ModelModality.Asr => typeof(TranscribeActivity),
+        ModelModality.Music => typeof(MusicActivity),
 
         _ => null,
     };
@@ -312,6 +332,12 @@ public class AbilitiesActivity : Activity
     {
         var candidates = _registry!.AllModels.Where(m => m.Modality == ability.Modality).ToList();
         var installed  = candidates.FirstOrDefault(m => Installed(m.Name));
+
+        // AN ABILITY THAT NEEDS NO MODEL IS ALWAYS ON. Everything below decides
+        // a row's state by whether a model is on disk, which cannot answer for
+        // something synthesised in managed code - it would report "unavailable"
+        // for the one capability that works on a phone with nothing on it.
+        var alwaysOn = ability.NeedsNoModel;
 
 #if IT_VOICE_ANDROID
         // A bundle the owner copied onto the phone counts as installed. Without
@@ -334,7 +360,7 @@ public class AbilitiesActivity : Activity
 
         var text = new LinearLayout(this) { Orientation = Orientation.Vertical };
         text.AddView(Ui.Label(this, ability.Title, 16f, Ui.Blue, bold: true));
-        var sub = installed is not null
+        var sub = installed is not null || alwaysOn
             ? ability.Blurb
             : best is not null
                 ? $"{ability.Blurb}  ·  {Size(best.TotalBytes)}"
@@ -344,7 +370,7 @@ public class AbilitiesActivity : Activity
         text.AddView(blurb);
         row.AddView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        if (installed is not null)
+        if (installed is not null || alwaysOn)
         {
             // An ability that is ON should be somewhere you can GO, not just a
             // tick. Waking has a screen of its own; the rest do not yet, and a
@@ -358,7 +384,7 @@ public class AbilitiesActivity : Activity
             }
             else row.AddView(Ui.Label(this, "✓ On", 14f, Ui.Blue, bold: true));
         }
-        else if (best is not null)
+        else if (best is not null && !alwaysOn)
         {
             var get = Compact("Turn on");
             var bar = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal)

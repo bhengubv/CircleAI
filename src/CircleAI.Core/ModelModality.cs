@@ -141,4 +141,29 @@ public enum ModelModality
     /// </para>
     /// </remarks>
     SpeakerEmbedding,
+
+    /// <summary>
+    /// A text-embedding model — turns a passage into a vector so passages can be
+    /// compared, consumed by <c>CircleAI.Embeddings.TextEmbedder</c> through
+    /// <c>MnnEmbeddingBackend</c>.
+    /// </summary>
+    /// <remarks>
+    /// NOT <see cref="Chat"/>, though both read text. A chat model is asked what
+    /// to SAY; an embedder is asked what a passage MEANS, as a vector, and
+    /// returns no text at all. A selection that could hand one to the other
+    /// would give a search index a model that cannot embed and a conversation a
+    /// model that cannot talk.
+    /// <para>
+    /// NOTHING IS CATALOGUED UNDER IT YET. <c>TextEmbedder</c> is real and
+    /// MNN-backed and has never had a model to load, which is why "search across
+    /// everything" is unbuilt rather than unwired - there is nothing to index
+    /// with. Adding the modality is what makes it possible to catalogue one.
+    /// </para>
+    /// <para>
+    /// Appended last, for the reason <see cref="Phonemizer"/> gives: these
+    /// values are persisted, so inserting one mid-enum renumbers every entry
+    /// after it and silently re-labels the catalogue.
+    /// </para>
+    /// </remarks>
+    Embedding,
 }
