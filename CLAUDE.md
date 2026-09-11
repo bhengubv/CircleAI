@@ -70,16 +70,36 @@ defaults to.
 `TargetFrameworkTests` now asserts it against the project files, so the claim in
 this paragraph is checked rather than believed.
 
-**There are TWO test projects and the second one is easy to forget.**
+**There are SIXTEEN test projects. This file said TWO, and that sentence cost a
+whole day of verification that sounded complete and was not.**
+
+```bash
+dotnet test CircleAI.sln
+```
+
+That is the one command, and `docs/BUILD.md` has said so all along — "everything
+at once, recommended". It covers **15 of the 16**. The sixteenth is in no
+solution at all:
 
 ```bash
 dotnet test tests/CircleAI.Samples.It.Ui.Tests/CircleAI.Samples.It.Ui.Tests.csproj
 ```
 
-That is 308 bUnit tests over the screens, and nothing else builds that project —
-so when it stopped COMPILING it simply stopped running, and stayed that way with
-every other suite green. It was found by accident. Run both, or a whole axis of
-coverage goes quiet without a single red line anywhere.
+308 bUnit tests over the screens, and **nothing builds that project** — so when
+it stopped COMPILING it simply stopped running, and stayed that way with every
+other suite green. It was found by accident. No solution would have missed it if
+any solution contained it.
+
+`tests/CircleAI.Tests` is the big one (~3,270 over both legs) and it is the one
+people mean by "the tests". The other fourteen hold 527 more, and this
+file's "TWO" is why a session ran two projects, reported "3271 passed", and
+believed it.
+
+**IGNORE `CircleAI.slnx`.** Two solution files disagree about what this product
+is. `CircleAI.sln` has 195 projects and 15 test projects and was updated today;
+`CircleAI.slnx` has **17 and 2**, was created in the May rebrand, and has not
+been touched since 24 July. Tooling increasingly prefers the newer `.slnx`
+format, so the stale one is the one a fresh checkout is most likely to open.
 
 The main suite is around 3,200 tests and takes **six to nine minutes per leg**,
 not the two to three this file used to claim — measured, cold build included, on
