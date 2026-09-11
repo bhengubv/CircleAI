@@ -29,7 +29,7 @@ section was written, tested, committed, and then had no way in from the app.
 
 | # | Fact | The disagreement |
 |---|---|---|
-| A′1 | **Which languages exist** | Two tables, and they cannot easily become one: `CircleAI.Assistant` has zero ProjectReferences so a WASM head can load it, and the richer `LanguageTag` (writing system, RTL, region) lives in `CircleAI.Languages`. Measured 2026-09-11 — `KnownLanguages` **20**, `SampleLanguages` **69**; only in Known: **es, pt** (Spanish and Portuguese, which the app therefore does not offer); only in Sample: **51**, including ja, ko, ru, ur, vi, th, bn; names that disagree on shared tags: **zero**. `LanguageTableTests` now pins that zero, so drift cannot grow silently. **Merging properly needs a writing system and an RTL flag for 51 languages — those must be SOURCED, not guessed: a wrong RTL flag renders somebody's language backwards.** |
+| A′1 | **Which languages exist** | Two tables that cannot easily become one: `CircleAI.Assistant` has zero ProjectReferences so a WASM head can load it, and the richer `LanguageTag` (writing system, RTL, region) lives in `CircleAI.Languages`. **Re-measured after adding es/nl/pt** — `KnownLanguages` **20**, `SampleLanguages` **72**, names disagreeing on shared tags **zero**, and `KnownLanguages` is now a strict SUBSET (it was two-directional: `es` and `pt` were in the library's table and not the app's, which is what surfaced the six unreachable voices). `LanguageTableTests` pins the agreement. **Merging still needs a writing system and an RTL flag for 52 languages — SOURCED, not guessed: a wrong RTL flag renders somebody's language backwards.** |
 | A′2 | **Where WAV is read** | Was three: `WavIo`, `tools/stt-hear`, and `CircleAIListener`. Now one (`WavIo`). `BrowserSubtitles` is a deliberate second owner of the subtitle formats — a WASM head cannot load `CircleAI.Voice` — and `SubtitleParityTests` asserts the two produce byte-identical output. |
 | A′3 | **Where `Capabilities` lives** | The generated `Capabilities.cs` moved to `src/CircleAI.Assistant/` during the rename and kept `namespace CircleAI.Samples.It;`. It resolved only for code whose own namespace walked up into that one — `Services.razor` did, the bUnit project did not — so **`tests/CircleAI.Samples.It.Ui.Tests` stopped compiling and its 308 tests stopped running**, silently, because no other command builds it. Generator fixed, namespace is now `CircleAI.Assistant`, 308 passing. `CLAUDE.md` now names both test projects. |
 
@@ -60,14 +60,14 @@ not a guessed one.
 
 ## A‴. Voices: every offered language has one, and one of them could not speak
 
-Audited 2026-09-11 against the shipped catalogue.
+Audited 2026-09-11 against the shipped catalogue. **Both directions are clean.**
 
 | Question | Answer |
 |---|---|
-| Languages the app offers | **69** |
+| Languages the app offers | **72** |
 | Voice entries catalogued | **69**, covering **78** tags |
-| **Offered with no voice** | **ZERO** — `VoiceCoverageTests` now keeps it that way |
-| Voices for languages never offered | **3** — Spanish, Dutch, Portuguese (6 Piper voices: es_ES, es_MX, nl_BE, nl_NL, pt_BR, pt_PT). Catalogued, downloadable, **unreachable from the picker**. Portuguese is Angola and Mozambique. Joins up with A′1: `KnownLanguages` has `es`/`pt`, `SampleLanguages` does not. |
+| **Offered with no voice** | **ZERO** — `VoiceCoverageTests` keeps it that way |
+| **Voices for languages never offered** | **ZERO.** Was 3 — Spanish, Dutch and Portuguese had six Piper voices catalogued (es_ES, es_MX, nl_BE, nl_NL, pt_BR, pt_PT) and were absent from the picker, so ~380 MB of voices were downloadable and unselectable. All three added; the change cost no new bytes and unlocked six voices. Portuguese is Angola and Mozambique. |
 
 **And Japanese could not speak on the path that speaks.** `JSUT-VITS` is an ESPnet
 VITS: it consumes Open JTalk phoneme ids, so it needs the 104 MB naist-jdic

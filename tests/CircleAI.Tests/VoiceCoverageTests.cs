@@ -8,10 +8,14 @@
 // The failure is silent from the inside: selection succeeds, the screen renders,
 // and nothing speaks.
 //
-// Measured 2026-09-11, when this file was written: 69 languages offered, 69
-// voice entries covering 78 tags, and ZERO offered languages without a voice.
-// This exists so that stays true - the two lists are edited by different people
-// for different reasons, and nothing else connects them.
+// Measured 2026-09-11: 72 languages offered, 69 voice entries covering 78 tags,
+// and ZERO offered languages without a voice. This exists so that stays true -
+// the two lists are edited by different people for different reasons, and
+// nothing else connects them.
+//
+// It went 69 -> 72 the day Spanish, Dutch and Portuguese were added to the
+// picker: their voices had been catalogued and unreachable all along, so that
+// change added no bytes and unlocked six.
 //
 // CATALOGUED, NOT INSTALLED, and the difference matters. This asserts that a
 // voice EXISTS to be fetched for every offered language. What a particular
@@ -72,15 +76,16 @@ public class VoiceCoverageTests
         // broken promise; a voice for a language nobody can choose is bytes in
         // the catalogue that no screen can reach.
         //
-        // KNOWN AND ACCEPTED TODAY: Spanish, Dutch and Portuguese. Six Piper
-        // voices are catalogued for them (es_ES, es_MX, nl_BE, nl_NL, pt_BR,
-        // pt_PT) and SampleLanguages lists none of the three - so the voices are
-        // unreachable from the picker. Portuguese is the one that stings on a
-        // product aimed at this continent: it is Angola and Mozambique.
+        // THE LIST IS EMPTY NOW AND THAT IS THE POINT. It held Spanish, Dutch
+        // and Portuguese: six Piper voices were catalogued (es_ES, es_MX, nl_BE,
+        // nl_NL, pt_BR, pt_PT) and SampleLanguages offered none of the three, so
+        // 380 MB of voices were downloadable and unselectable. All three are in
+        // the picker now, so there is nothing left to exempt.
         //
-        // Listed rather than ignored so that adding a voice for a fourth
-        // unreachable language fails here and has to be a decision.
-        string[] acceptedUnreachable = ["es", "nl", "pt"];
+        // Kept as an empty list rather than deleted, because the next voice for
+        // an unoffered language should fail HERE and have to be a decision -
+        // and an author reading a failure needs somewhere obvious to record it.
+        string[] acceptedUnreachable = [];
 
         var offered = SampleLanguages.All.Values
             .Select(l => Root(l.Tag))
@@ -99,17 +104,22 @@ public class VoiceCoverageTests
             "so nothing can select them:\n  " + string.Join("\n  ", unreachable));
     }
 
-    [Fact]
-    public void The_accepted_unreachable_languages_really_do_still_have_voices()
+    [Theory]
+    [InlineData("es", "Spanish")]
+    [InlineData("nl", "Dutch")]
+    [InlineData("pt", "Portuguese")]
+    public void The_three_newly_offered_languages_reach_the_voices_that_were_already_there(
+        string tag, string name)
     {
-        // An exemption for something that no longer exists is an exemption that
-        // silently covers nothing - the same trap as a stale PlatformOnly entry.
+        // These were catalogued and unreachable: the voices shipped, the picker
+        // did not list the language, and nothing could select them. Pinned by
+        // tag AND by picker entry, because either half alone leaves the other
+        // free to drift back.
         var covered = VoiceLanguages();
 
-        foreach (var tag in new[] { "es", "nl", "pt" })
-            Assert.True(covered.ContainsKey(tag),
-                $"'{tag}' is listed as an accepted unreachable language but has no voice; " +
-                "remove it from the exemption list.");
+        Assert.True(covered.ContainsKey(tag), $"'{tag}' has no voice catalogued");
+        Assert.NotNull(SampleLanguages.Find(tag));
+        Assert.Equal(name, SampleLanguages.Find(tag)!.Name);
     }
 
     // ── Reading the catalogue ───────────────────────────────────────────
