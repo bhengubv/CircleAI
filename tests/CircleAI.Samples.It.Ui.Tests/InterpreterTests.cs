@@ -9,11 +9,11 @@
 // when a translation fails, and that the pair is never invented.
 
 using Bunit;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using CircleAI.Samples.It.Shared.Pages;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class InterpreterTests : TestContext
 {

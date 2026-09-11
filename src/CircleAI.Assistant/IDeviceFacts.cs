@@ -8,7 +8,7 @@
 // of it belongs in the shared UI - the screen renders rows, it does not decide
 // what a row says.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What state an ability is in on this device.</summary>
 public enum AbilityState

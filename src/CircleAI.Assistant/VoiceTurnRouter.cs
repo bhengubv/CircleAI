@@ -2,7 +2,7 @@
 // NavigationManager, and GoAsync takes a callback instead - see its param doc.
 // That is what lets this class live in the product rather than in a UI library.
 
-namespace CircleAI.Samples.It.Shared;
+namespace CircleAI.Assistant;
 
 /// <summary>
 /// Watches a turn for "take me somewhere", and takes them there.

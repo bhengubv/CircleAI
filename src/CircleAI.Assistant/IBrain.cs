@@ -2,7 +2,7 @@
 //
 // The thing that answers.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One line of a conversation.</summary>
 /// <param name="Mine">True when the person said it, false when the phone did.</param>

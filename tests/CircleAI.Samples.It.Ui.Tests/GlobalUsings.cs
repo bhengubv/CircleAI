@@ -1,2 +1,2 @@
 global using Xunit;
-global using CircleAI.Samples.It.Shared.State;
+global using CircleAI.Assistant;

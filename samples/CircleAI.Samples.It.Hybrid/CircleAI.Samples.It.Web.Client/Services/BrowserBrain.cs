@@ -2,7 +2,7 @@
 //
 // The answering model runs on the device, not here.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

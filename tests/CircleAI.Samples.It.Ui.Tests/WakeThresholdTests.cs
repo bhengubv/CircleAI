@@ -17,7 +17,7 @@
 
 using CircleAI.Voice;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class WakeThresholdTests
 {

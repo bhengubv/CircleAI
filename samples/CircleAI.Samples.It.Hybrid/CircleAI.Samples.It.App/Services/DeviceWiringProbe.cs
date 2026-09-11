@@ -3,7 +3,7 @@
 // What this phone can actually do, asked of the phone.
 //
 // WRITTEN THE DAY THE HYBRID TURNED OUT TO BE MUTE. It had shipped able to hear
-// and translate and never speak, because ItSpeaker.MobilePhonemizerFactory was
+// and translate and never speak, because CircleAISpeaker.MobilePhonemizerFactory was
 // never set: the head linked five files from the native app and not VoiceWiring,
 // and shipped no espeak at all. Nothing could have reported that. The setup
 // census counts DOWNLOADS, and a phonemizer is not a download - it is a csproj
@@ -12,16 +12,16 @@
 // sentence under a translation somebody had already stopped trusting.
 //
 // EVERY ANSWER HERE COMES FROM THE REAL PATH. Voices are judged by asking
-// ItSpeaker.TryCreateAsync to build the speaker the app would build, and
+// CircleAISpeaker.TryCreateAsync to build the speaker the app would build, and
 // reporting the status string it hands back - the same string that reached the
 // screen. Re-deriving "can this speak" would be a second implementation of that
 // rule, free to drift from the one that runs, which is the exact shape of the
 // bug this file exists to catch.
 
-using CircleAI.Samples.It.App.Services;
-using CircleAI.Samples.It.Voice;
+using CircleAI.Assistant.Device;
+using CircleAI.Assistant.Voice;
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceWiringProbe : IWiringProbe
@@ -97,32 +97,32 @@ public sealed class DeviceWiringProbe : IWiringProbe
     {
         const string title = "Phonemizer (text to sounds)";
 
-        if (ItSpeaker.MobilePhonemizerFactory is null)
+        if (CircleAISpeaker.MobilePhonemizerFactory is null)
             return new WiringRow(title, "hook", WiringStage.Absent,
-                "ItSpeaker.MobilePhonemizerFactory is null — VoiceWiring.Install was never called. "
+                "CircleAISpeaker.MobilePhonemizerFactory is null — VoiceWiring.Install was never called. "
                 + "Every voice that needs espeak G2P will refuse.",
                 Where: null,
-                Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install in MainApplication");
+                Who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install in MainApplication");
 
         try
         {
-            var symbols = ItSpeaker.MobilePhonemizerFactory("en-us").Phonemize("test");
+            var symbols = CircleAISpeaker.MobilePhonemizerFactory("en-us").Phonemize("test");
             return symbols.Count > 0
                 ? new WiringRow(title, "hook", WiringStage.Wired,
                     $"espeak G2P answered with {symbols.Count} symbols for \"test\"",
                     Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
-                    Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install")
+                    Who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install")
                 : new WiringRow(title, "hook", WiringStage.Broken,
                     "the phonemizer is wired and returned NO symbols — set, but useless",
                     Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
-                    Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
+                    Who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
         }
         catch (Exception ex)
         {
             return new WiringRow(title, "hook", WiringStage.Broken,
                 $"the phonemizer is wired and threw — {ex.GetType().Name}: {ex.Message}",
                 Where: CircleAI.Voice.NativeEspeakPhonemizer.DataPath,
-                Who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
+                Who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
         }
     }
 
@@ -277,7 +277,7 @@ public sealed class DeviceWiringProbe : IWiringProbe
 
         try
         {
-            var (speaker, status) = await ItSpeaker
+            var (speaker, status) = await CircleAISpeaker
                 .TryCreateAsync(ModelStore.Path, log: null, ct, languageCode: tag)
                 .ConfigureAwait(false);
 

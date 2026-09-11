@@ -20,7 +20,7 @@
 // with a phrase, and what is it", and when the answer is no the screen offers to
 // let the owner add one rather than quietly listening in English.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What the app knows how to be woken with, before anybody adds theirs.</summary>
 public static class BuiltInWakePhrases

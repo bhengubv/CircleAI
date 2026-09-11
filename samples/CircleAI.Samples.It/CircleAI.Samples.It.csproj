@@ -14,7 +14,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <RootNamespace>CircleAI.Assistant</RootNamespace>
     <AssemblyName>it</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
@@ -24,11 +24,11 @@
          voice. It brings Hosting, Documents, Voice and Assistant with it. -->
     <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
-    <!-- Offline document generation — shared with the Android head (ItSession uses it). -->
+    <!-- Offline document generation — shared with the Android head (CircleAISession uses it). -->
     <ProjectReference Include="..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- Voice (ONNX TTS) is referenced by the CONSOLE head only. The Android
          head has its own csproj that links this project's *.cs non-recursively,
-         so Voice/ItSpeaker.cs and this reference never reach the APK. -->
+         so Voice/CircleAISpeaker.cs and this reference never reach the APK. -->
     <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
     <!--
       For SampleLanguages, so first-run can NAME the language it is fetching a
@@ -50,6 +50,13 @@
     <ProjectReference Include="..\..\src\CircleAI.CodeAgent\CircleAI.CodeAgent.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security.Defense\CircleAI.Security.Defense.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security.Antibodies\CircleAI.Security.Antibodies.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The capability sweep and the ten libraries it exercises. Its own
+         project so that graph is a decision rather than an accident of
+         which files a glob happened to pick up. -->
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Sweep\CircleAI.Assistant.Sweep.csproj" />
   </ItemGroup>
 
 </Project>

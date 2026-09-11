@@ -21,7 +21,7 @@
 // personal thing it holds. Being able to see it and change it is the other half
 // of promising it never leaves.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One fact the app holds about the person using it.</summary>
 /// <param name="Key">Stable identifier, for reading and writing it back.</param>

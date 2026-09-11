@@ -2,7 +2,7 @@
 //
 // First run: what this phone still needs, and fetching it.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>How ready the app is, coarsely.</summary>
 public enum ReadyStage

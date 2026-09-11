@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>
 /// Translating what was said, rather than opening the screen that translates.

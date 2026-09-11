@@ -20,7 +20,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Whether the microphone may be opened, and asking if it may not.</summary>
 public interface IMicrophoneAccess

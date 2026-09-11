@@ -19,7 +19,7 @@
          rather than a platform. Adding one is a csproj line plus a Platforms
          folder, and the shared UI needs no change. -->
     <OutputType>Exe</OutputType>
-    <RootNamespace>CircleAI.Samples.It.App</RootNamespace>
+    <RootNamespace>CircleAI.Samples.App</RootNamespace>
     <UseMaui>true</UseMaui>
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -115,7 +115,7 @@
          voice, the wake word and the capabilities that act on the phone.
          Was a folder of Services here plus eight files linked by path out
          of the native head. -->
-    <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Android\CircleAI.Assistant.Android.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
     <!-- The CV interview: its script, its profile store and the renderer. The
          screen only maps an answer onto a field - the questions and the document
@@ -135,17 +135,17 @@
     touches. This head speaks and lists languages; dragging that graph into the APK
     would cost megabytes to compile code no screen here calls.
 
-    So: the Voice folder, plus DeviceDiagnostics, which ItTtsProbe uses to report
+    So: the Voice folder, plus DeviceDiagnostics, which CircleAITtsProbe uses to report
     what the phone actually is. Adding a screen that needs more means adding the
     file and its reference deliberately, which is the point.
   -->
   <ItemGroup>
-    <!-- ItSpeaker asks it which language a reply is in, to pick a voice. -->
+    <!-- CircleAISpeaker asks it which language a reply is in, to pick a voice. -->
     <!-- The brain: the conversation session and what it needs to run a turn.
          CapabilitySweep and Program are still excluded - the sweep drags a dozen
          library references for code no screen here calls. -->
     <!-- The voice CATALOGUE IDS, which FirstRun names while listing what a first
-         run should fetch. They are not the engine: ItSpeaker is compiled only
+         run should fetch. They are not the engine: CircleAISpeaker is compiled only
          where voice is on, and a setup screen needs the name, not the player.
          Listed explicitly because this head does not glob the shared root — a
          new shared file is invisible here until it is named. -->
@@ -183,12 +183,12 @@
       is shared with the native head. That name is only an identifier inside
       whichever APK declares it, so both heads can carry it without colliding.
     -->
-    <!-- THE PHONEMIZER, WITHOUT WHICH THIS APP CANNOT SPEAK. ItSpeaker asks
+    <!-- THE PHONEMIZER, WITHOUT WHICH THIS APP CANNOT SPEAK. CircleAISpeaker asks
          MobilePhonemizerFactory for a G2P and this is the only file that sets
-         it - the native head calls VoiceWiring.Install from ItApplication, and
+         it - the native head calls VoiceWiring.Install from CircleAIApplication, and
          the hybrid linked five files from that head but not this one. The
          symptom is exact and on screen: "No English voice: on-device
-         phonemizer not wired (ItSpeaker.MobilePhonemizerFactory)". Japanese
+         phonemizer not wired (CircleAISpeaker.MobilePhonemizerFactory)". Japanese
          still spoke, because OpenJTalk is wired separately in MainApplication,
          which is what made it look like a language problem rather than a
          missing wire. -->

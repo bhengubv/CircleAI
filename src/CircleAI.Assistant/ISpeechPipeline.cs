@@ -16,7 +16,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>A voice host that can render speech ahead of playing it.</summary>
 public interface ISpeechPipeline

@@ -12,7 +12,7 @@
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Turning a raw transcript into something worth answering.</summary>
 public static class Heard
@@ -127,10 +127,10 @@ public static class Heard
     }
 
     // NO MARKER STRIPPING HERE ANY MORE. For a day this also removed an "IT! > "
-    // console marker from the front of every reply, because ItSession put one
+    // console marker from the front of every reply, because CircleAISession put one
     // there and it was reaching the caption and the voice. That was the wrong
     // layer: the marker was the OLD BRAND of a product now called Circle AI,
     // and stripping it downstream left the native head reading it aloud and the
-    // model seeing it in its own history. ItSession no longer emits it, so there
+    // model seeing it in its own history. CircleAISession no longer emits it, so there
     // is nothing to strip - one owner, none of it a prompt marker.
 }

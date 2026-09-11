@@ -5,9 +5,9 @@
 // paragraph is.
 
 using System.Text;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class SpokenReplyTests
 {

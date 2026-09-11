@@ -20,7 +20,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Long-term memory, on the way in to an answer.</summary>
 public static class Recalling
@@ -39,7 +39,7 @@ public static class Recalling
     /// <remarks>
     /// Every one of these is tokens the model must read before it reaches the
     /// actual question, on a phone that decodes about seven tokens a second. The
-    /// session's history is bounded for the same reason - see ItSession - and a
+    /// session's history is bounded for the same reason - see CircleAISession - and a
     /// preamble that grows without bound would undo it.
     /// </remarks>
     public const int Keep = 4;

@@ -42,7 +42,7 @@ using Android.Util;
 using Android.Views;
 using Android.Widget;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "Bench", Exported = true)]
 public class BenchActivity : Activity
@@ -274,14 +274,14 @@ public class BenchActivity : Activity
         // and the second number means only what it says.
         await FetchAsync(model);
 
-        ItSession session;
+        CircleAISession session;
         var load = Stopwatch.StartNew();
         var freeBeforeLoad = FreeGb();
         try
         {
             session = await Task.Run(async () =>
             {
-                var s = new ItSession(
+                var s = new CircleAISession(
                     ApplicationInfo?.NativeLibraryDir,
                     batteryPercent: () => 100,
                     pinModelId: model,
@@ -486,7 +486,7 @@ public class BenchActivity : Activity
             // Graded by the same detector the product uses to pick a reply
             // language. A model that answers an isiZulu question in English has
             // failed at the thing this exists for, however fast it was.
-            var got = CircleAI.Samples.It.LanguageGuess.Detect(answer);
+            var got = CircleAI.Assistant.LanguageGuess.Detect(answer);
             if (got != p.Lang)
                 return (false, $"wanted {p.Lang}, answered in {got ?? "something unrecognised"}");
 

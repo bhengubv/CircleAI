@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It.App;
+namespace CircleAI.Samples.App;
 
 /// <summary>Hosts the shared UI in a web view.</summary>
 public partial class MainPage : ContentPage

@@ -4,7 +4,7 @@
 //
 // WHY A STORE AT ALL. Turn state was scattered: a phase in VoiceMark for the
 // animation, a transcript in a component field, a reply in another, history
-// inside ItSession where no screen can see it, and the conversation loop in
+// inside CircleAISession where no screen can see it, and the conversation loop in
 // MainLayout reading a bool it set through a Progress<T> that does not run
 // inline. Five owners of one conversation, which is how a turn came to report
 // "heard" to one place and nothing to another.
@@ -24,7 +24,7 @@
 using System.Collections.Generic;
 using Fluxor;
 
-namespace CircleAI.Samples.It.Shared.State;
+namespace CircleAI.Assistant;
 
 /// <summary>One completed exchange, as the store remembers it.</summary>
 /// <param name="Said">What the person said.</param>
@@ -70,7 +70,7 @@ public sealed record ConversationState(
     /// SMALL, BECAUSE IT IS SHORT-TERM MEMORY AND NOT A TRANSCRIPT. Everything
     /// here is a candidate for the model's context, and this phone decodes about
     /// seven tokens a second — a cache that grows without bound is a prompt that
-    /// grows without bound, which is the latency bug ItSession's own history
+    /// grows without bound, which is the latency bug CircleAISession's own history
     /// bound was added to prevent. What falls out of here is not lost: it has
     /// already been flushed to the long-term store, which is the whole point of
     /// the loop.

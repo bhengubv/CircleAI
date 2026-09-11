@@ -2,7 +2,7 @@
 //
 // Rearranging a CV to face a particular advert.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What the tailoring produced, for the screen to show.</summary>
 /// <param name="Ok">Whether it ran.</param>

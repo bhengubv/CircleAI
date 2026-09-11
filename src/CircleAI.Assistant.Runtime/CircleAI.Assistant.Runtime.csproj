@@ -31,10 +31,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- The namespace does NOT change in this commit. Moving and renaming in one
-         pass makes the diff unreadable, and this is a move where a quietly
-         dropped file would not surface until a demo. -->
-    <RootNamespace>CircleAI.Samples.It</RootNamespace>
+    <RootNamespace>CircleAI.Assistant</RootNamespace>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

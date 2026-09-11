@@ -2,18 +2,18 @@
 //
 // The catalogue IDs of the voices this sample asks for, and nothing else.
 //
-// They lived on ItSpeaker, which is the speech ENGINE and is compiled only when
+// They lived on CircleAISpeaker, which is the speech ENGINE and is compiled only when
 // voice is switched on. FirstRun — shared with the console head, always
 // compiled — names those voices while listing what a first run should fetch, so
 // the chat-only Android build failed with "the type or namespace name 'Voice'
-// does not exist in the namespace 'CircleAI.Samples.It'". That error reads as a
+// does not exist in the namespace 'CircleAI.Assistant'". That error reads as a
 // missing using; it was a missing Compile item, for a dependency that should
 // never have existed. A screen naming a download does not need the engine that
 // plays it.
 //
-// ItSpeaker takes its constants from here, so each name is still defined once.
+// CircleAISpeaker takes its constants from here, so each name is still defined once.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Catalogue IDs of the voices this sample asks for.</summary>
 public static class VoiceNames

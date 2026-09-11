@@ -3,13 +3,12 @@
 // Registers this device's answers to the shared UI's questions and hands it a
 // BlazorWebView to render in.
 
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.App.Services;
+using CircleAI.Assistant;
+using CircleAI.Assistant.Device;
 using Microsoft.Extensions.Logging;
 using CircleAI.Memory;
-using CircleAI.Samples.It.Shared.State;
 
-namespace CircleAI.Samples.It.App;
+namespace CircleAI.Samples.App;
 
 /// <summary>Builds the app.</summary>
 public static class MauiProgram

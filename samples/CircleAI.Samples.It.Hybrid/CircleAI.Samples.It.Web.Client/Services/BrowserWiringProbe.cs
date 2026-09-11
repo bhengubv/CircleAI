@@ -8,7 +8,7 @@
 // works, so the web head answers the same questions the phone does and gives the
 // platform reason for each - which is a fact about the browser, not a fault.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserWiringProbe : IWiringProbe

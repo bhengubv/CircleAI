@@ -27,7 +27,7 @@
 // contract exists so they reach the person at the moment they type, rather than
 // three weeks later when the phone will not answer.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>How well a phrase is expected to work.</summary>
 public enum WakePhraseQuality

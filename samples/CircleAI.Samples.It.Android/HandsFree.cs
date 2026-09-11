@@ -31,7 +31,7 @@ using System.Threading.Tasks;
 using Android.Util;
 using CircleAI.Voice;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Listens for the wake phrase while the screen is up.</summary>
 public sealed class HandsFree : IAsyncDisposable

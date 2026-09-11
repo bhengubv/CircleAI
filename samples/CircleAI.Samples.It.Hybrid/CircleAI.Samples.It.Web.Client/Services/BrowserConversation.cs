@@ -2,7 +2,7 @@
 //
 // A browser tab does not hold a conversation.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

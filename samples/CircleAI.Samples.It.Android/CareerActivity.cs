@@ -40,7 +40,7 @@ using Android.Widget;
 using CircleAI.Career;
 using CircleAI.Documents;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "Your CV", Exported = false)]
 public class CareerActivity : Activity
@@ -372,7 +372,7 @@ public class CareerActivity : Activity
 
             if (audio.Length == 0) { _speak.Text = "I did not catch that"; return; }
 
-            var (listener, status) = await CircleAI.Samples.It.Voice.ItListener
+            var (listener, status) = await CircleAI.Assistant.Voice.CircleAIListener
                 .TryCreateAsync(store, _ => { });
             if (listener is null) { _speak.Text = status; return; }
             await using var ears = listener;

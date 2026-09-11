@@ -11,12 +11,12 @@
 // draws for a turn it did not start. On the broken build it drew idle.
 
 using Bunit;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using CircleAI.Samples.It.Shared.Layout;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class MarkAgreementTests : TestContext
 {

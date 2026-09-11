@@ -11,12 +11,12 @@
 // This screen exists to absorb exactly that wait. These pin it to doing so.
 
 using Bunit;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using CircleAI.Samples.It.Shared.Pages;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class LoadingGateTests : TestContext
 {

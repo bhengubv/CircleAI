@@ -11,9 +11,9 @@
 // OUT_OF_SERVICE and every network and SIM reading was blank, while
 // persist.sys.timezone said Asia/Tokyo the whole time.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class WhereAmIPairTests
 {

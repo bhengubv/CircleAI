@@ -13,7 +13,7 @@
 // looks identical to the working one and does nothing, which is worse than a
 // button that explains itself.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Why a head cannot speak, when it cannot.</summary>
 public enum VoiceAvailability

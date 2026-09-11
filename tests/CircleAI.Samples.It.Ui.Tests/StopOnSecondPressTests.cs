@@ -12,13 +12,13 @@
 // STOP - and the hybrid argued instead.
 
 using Bunit;
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Shared;
+using CircleAI.Assistant;
+using CircleAI.Assistant;
 using CircleAI.Samples.It.Shared.Layout;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class StopOnSecondPressTests : TestContext
 {

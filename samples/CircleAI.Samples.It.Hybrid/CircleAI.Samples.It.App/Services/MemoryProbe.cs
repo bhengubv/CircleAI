@@ -24,7 +24,7 @@
 using System.Diagnostics;
 using CircleAI.Memory;
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Runs the memory end to end on the device and says what happened.</summary>
 public static class MemoryProbe

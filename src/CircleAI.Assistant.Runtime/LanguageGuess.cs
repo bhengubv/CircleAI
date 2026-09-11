@@ -38,7 +38,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Guesses which South African language a piece of text is in.</summary>
 public static class LanguageGuess

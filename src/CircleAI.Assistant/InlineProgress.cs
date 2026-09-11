@@ -24,7 +24,7 @@
 
 using System;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Reports synchronously, on the caller's thread.</summary>
 /// <param name="report">

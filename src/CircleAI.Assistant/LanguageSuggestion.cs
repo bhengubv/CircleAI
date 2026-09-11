@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What to offer somebody who has not chosen yet, and why.</summary>
 /// <param name="Tags">Best first. Empty only when nothing at all is supported.</param>

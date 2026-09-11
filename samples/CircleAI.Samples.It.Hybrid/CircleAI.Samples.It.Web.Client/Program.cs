@@ -4,9 +4,8 @@
 // am I, and can you speak - and hands the same Routes component the phone uses to
 // the browser's renderer.
 
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Web.Client.Services;
-using CircleAI.Samples.It.Shared.State;
+using CircleAI.Assistant;
+using CircleAI.Samples.Web.Client.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 

@@ -2,7 +2,7 @@
 //
 // What the app is set up to do, kept across launches.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceSettings : ISettings

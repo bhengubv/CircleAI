@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Somewhere the app can take you when you ask out loud.</summary>
 /// <param name="Route">Where it goes. The same route the bar and the links use.</param>

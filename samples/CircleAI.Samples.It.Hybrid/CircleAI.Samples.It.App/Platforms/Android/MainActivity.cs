@@ -2,9 +2,9 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
-using CircleAI.Samples.It.App.Services;
+using CircleAI.Assistant.Device;
 
-namespace CircleAI.Samples.It.App;
+namespace CircleAI.Samples.App;
 
 /// <summary>The Android entry activity.</summary>
 /// <remarks>

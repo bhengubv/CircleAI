@@ -30,7 +30,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Words worth priming the recogniser with, per language.</summary>
 public static class SpokenVocabulary

@@ -7,7 +7,7 @@
 // shows you what the app does", and one nobody has asked for. Saying no is
 // honest; the job screen prints the WhatsApp sentence only where it is true.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserShareTarget : IShareTarget

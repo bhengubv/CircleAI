@@ -2,7 +2,7 @@
 //
 // IT! on Android — the sample a developer actually drives. Type a message, watch
 // the concierge pick which organ answers, watch the reply stream in word by word.
-// The whole brain is the shared ItSession (same C# the desktop console runs).
+// The whole brain is the shared CircleAISession (same C# the desktop console runs).
 
 using System.Linq;
 using Android.App;
@@ -12,9 +12,9 @@ using Android.OS;
 using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 // The chat screen. No longer the launcher — HomeActivity is, because this one
 // opens by downloading 433 MB and then showing a log, which is the wrong first
@@ -38,7 +38,7 @@ namespace CircleAI.Samples.It.Mobile;
           WindowSoftInputMode = SoftInput.AdjustResize)]
 public class MainActivity : Activity
 {
-    ItSession? _session;
+    CircleAISession? _session;
     ChatView _chat = null!;
 
     /// <summary>Intent extra: open straight into listening rather than typing.</summary>
@@ -64,7 +64,7 @@ public class MainActivity : Activity
         base.OnCreate(savedInstanceState);
 
         // The device memory probe and the espeak phonemizer factory are both
-        // installed in ItApplication.OnCreate now. They used to be installed HERE,
+        // installed in CircleAIApplication.OnCreate now. They used to be installed HERE,
         // and this is not the launcher: opening the app normally meant the probe
         // measured the GC heap instead of the phone, and the home screen could not
         // speak a word of English. Process-wide statics belong at the process
@@ -87,7 +87,7 @@ public class MainActivity : Activity
                     var warmLang = System.IO.File.Exists(warmLangFile)
                         ? (await System.IO.File.ReadAllTextAsync(warmLangFile)).Trim()
                         : "zul";
-                    CircleAI.Samples.It.Voice.ItTtsProbe.PreloadToucan(
+                    CircleAI.Assistant.Voice.CircleAITtsProbe.PreloadToucan(
                         warmDir, System.IO.Path.Combine(warmDir, "nchlt"), warmLang);
                     Append("[tts] warming ToucanTTS in the background…\n");
                 }
@@ -123,13 +123,13 @@ public class MainActivity : Activity
 
             // The download and the native model load are heavy (and the load is
             // a blocking native call) — keep them off the UI thread or Android ANRs.
-            // ONE BRAIN PER PROCESS. This built its own ItSession, so opening
+            // ONE BRAIN PER PROCESS. This built its own CircleAISession, so opening
             // the chat screen while the home screen was already warm loaded a
             // SECOND copy of the model — measured on the P30 as a second
             // config dump and a second warm-up, two ~550 MB models on a phone
             // with about 1.6 GB free. Shared now; whichever screen asks first
             // pays the load and the rest wait on it.
-            _session = await ItSessionHost.GetAsync(this);
+            _session = await CircleAISessionHost.GetAsync(this);
 
             Append($"status: {_session.StatusLine}\n\n");
 
@@ -488,16 +488,16 @@ public class MainActivity : Activity
                 var stateDir = System.IO.Path.Combine(ext, "vut");
 
                 // Every diagnostic lands here, wherever the failing asset lives.
-                CircleAI.Samples.It.DeviceDiagnostics.DiagnosticsDirectory = stateDir;
+                CircleAI.Assistant.DeviceDiagnostics.DiagnosticsDirectory = stateDir;
 
-                var died = CircleAI.Samples.It.DeviceDiagnostics.PreviousCrash(stateDir);
+                var died = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(stateDir);
                 if (died is not null)
                 {
                     Append($"\n⚠ THE PREVIOUS RUN DIED — no handler ran.\n" +
                            $"  it was in: {died}\n" +
                            $"  that means a stack overflow, an out-of-memory kill, or a native crash;\n" +
                            $"  none of those are catchable, so this note is the only record.\n\n");
-                    CircleAI.Samples.It.DeviceDiagnostics.EndRisky(stateDir);
+                    CircleAI.Assistant.DeviceDiagnostics.EndRisky(stateDir);
                 }
             }
         }
@@ -732,8 +732,8 @@ public class MainActivity : Activity
         // Per turn, never remembered. A person types a question in English and the
         // next one in isiZulu because that is how the sentence came to them; the
         // reply follows each one rather than the first.
-        var lang    = CircleAI.Samples.It.LanguageGuess.Detect(text);
-        var replyIn = CircleAI.Samples.It.LanguageGuess.InstructionNameFor(lang);
+        var lang    = CircleAI.Assistant.LanguageGuess.Detect(text);
+        var replyIn = CircleAI.Assistant.LanguageGuess.InstructionNameFor(lang);
         var asked   = replyIn is null ? text : $"{text}\n\n(Reply only in {replyIn}.)";
         Android.Util.Log.Info("CircleAI.It", $"typed language: {lang ?? "unsure"}");
 
@@ -808,7 +808,7 @@ public class MainActivity : Activity
             await Task.Run(() => _session!.RunTurnAsync("what can you do?", l => Append(l + "\n")));
 
             Append("\n[4] tool calling\n");
-            foreach (var probe in ItSession.ToolProbes)
+            foreach (var probe in CircleAISession.ToolProbes)
             {
                 Append($"you > {probe}\n");
                 var turn = await Task.Run(() => _session!.RunToolTurnAsync(probe));
@@ -879,7 +879,7 @@ public class MainActivity : Activity
     /// </remarks>
     CircleAI.Voice.IPhonemizer? TryEnglishPhonemizer()
     {
-        try { return CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
+        try { return CircleAI.Assistant.Voice.CircleAISpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
         catch { return null; }
     }
 
@@ -924,8 +924,8 @@ public class MainActivity : Activity
     }
     // Held as fields, not locals: these own native ONNX/whisper handles that
     // must outlive the setup method and be disposed deterministically.
-    CircleAI.Samples.It.Voice.ItSpeaker?  _speaker;
-    CircleAI.Samples.It.Voice.ItListener? _listener;
+    CircleAI.Assistant.Voice.CircleAISpeaker?  _speaker;
+    CircleAI.Assistant.Voice.CircleAIListener? _listener;
 
     /// <summary>
     /// Hands-free mode: wake word -> VAD -> Whisper -> IT! -> Piper -> speaker,
@@ -1006,11 +1006,11 @@ public class MainActivity : Activity
             var store = System.IO.Path.Combine(
                 System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "Circle AI", "Models");
 
-            var (speaker, sStatus) = await CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(store, s => Append(s + "\n"));
+            var (speaker, sStatus) = await CircleAI.Assistant.Voice.CircleAISpeaker.TryCreateAsync(store, s => Append(s + "\n"));
             if (speaker is null) { Append($"[voice] OFF: {sStatus}\n"); return; }
             _speaker = speaker;
 
-            var (listener, lStatus) = await CircleAI.Samples.It.Voice.ItListener.TryCreateAsync(store, s => Append(s + "\n"));
+            var (listener, lStatus) = await CircleAI.Assistant.Voice.CircleAIListener.TryCreateAsync(store, s => Append(s + "\n"));
             if (listener is null) { Append($"[voice] OFF: {lStatus}\n"); return; }
             _listener = listener;
 
@@ -1032,7 +1032,7 @@ public class MainActivity : Activity
 
             _voiceLoop = new CircleAI.Voice.VoiceLoop(
                 pipeline,
-                // The brain: same ItSession the typed UI uses, so voice turns
+                // The brain: same CircleAISession the typed UI uses, so voice turns
                 // land in the same memory and see the same tools.
                 async (heard, ct) =>
                 {
@@ -1148,7 +1148,7 @@ public class MainActivity : Activity
                 if (engSpeaker is not null) Append($"[tts] English spoken by speaker {engSpeaker}\n");
 
                 Append($"[tts] catalogue proof: '{catalogueLang}' — select, download, speak\n");
-                var crep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                var crep = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunCataloguedAsync(
                     store, catalogueLang!, catPhrase, wavPath, s => Append("  " + s + "\n"),
                     default, speaker, forcedLangId, engSpeaker);
                 var extOut = GetExternalFilesDir(null)?.AbsolutePath;
@@ -1183,7 +1183,7 @@ public class MainActivity : Activity
                         ? (await System.IO.File.ReadAllTextAsync(phraseF)).Trim()
                         : "Sawubona umhlaba.";
                     Append($"[tts] ToucanTTS assets found — proving {lang} on the phone\n");
-                    var trep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunToucanAsync(
+                    var trep = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunToucanAsync(
                         toucanDir, System.IO.Path.Combine(toucanDir, "nchlt"), lang,
                         wavPath, toucanPhrase, s => Append("  " + s + "\n"));
                     try { await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(toucanDir, "result.txt"), trep); }
@@ -1280,7 +1280,7 @@ public class MainActivity : Activity
                 // links it. Absent (the separate app not installed), respelling
                 // simply falls back to the language-switch path.
                 CircleAI.Voice.IPhonemizer? engG2p = null;
-                try { engG2p = CircleAI.Samples.It.Voice.ItSpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
+                try { engG2p = CircleAI.Assistant.Voice.CircleAISpeaker.MobilePhonemizerFactory?.Invoke("en-us"); }
                 catch { /* no G2P app: the curated table still works */ }
 
                 // Drive the learning from the command line, so adoption can be
@@ -1340,7 +1340,7 @@ public class MainActivity : Activity
                         $"{w.Word}={w.Spelling ?? "-"}({w.State}," +
                         $"{string.Join("/", w.Candidates.Select(c => $"{c.Key}:{c.Value}"))})")));
 
-                var vrep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
+                var vrep = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunLocalAsync(
                     // "respelt X as Y" is the line that says which spelling the
                     // voice was actually handed, and it was going to the screen
                     // only. The summary underneath reports byte counts, which look
@@ -1410,7 +1410,7 @@ public class MainActivity : Activity
                 return;
             }
 
-            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunAsync(
+            var report = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunAsync(
                 store, wavPath, s => Append("  " + s + "\n"));
 
             var txtPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.txt");
@@ -1504,7 +1504,7 @@ public class MainActivity : Activity
             // Refuse input too large to synthesise safely rather than discovering
             // the limit as a crash. Unbounded input is how a phone dies without a
             // catchable exception.
-            if (CircleAI.Samples.It.DeviceDiagnostics.TooLargeToSynthesise(phrase, out var why))
+            if (CircleAI.Assistant.DeviceDiagnostics.TooLargeToSynthesise(phrase, out var why))
             {
                 Append($"\n▶ {code} — REFUSED: {why}\n");
                 log.Append($"--- {code} --- refused: {why}\n");
@@ -1517,10 +1517,10 @@ public class MainActivity : Activity
             // the process is simply gone. Writing down what we are about to attempt
             // is the only way the next launch can say what killed the last one.
             var stateDir = System.IO.Path.GetDirectoryName(vut)!;
-            CircleAI.Samples.It.DeviceDiagnostics.BeginRisky(stateDir, $"{code} ({langId}) — {model}");
+            CircleAI.Assistant.DeviceDiagnostics.BeginRisky(stateDir, $"{code} ({langId}) — {model}");
             try
             {
-                var rep = await CircleAI.Samples.It.Voice.ItTtsProbe.RunLocalAsync(
+                var rep = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunLocalAsync(
                     model, wavPath, phrase, s => Append("  " + s + "\n"), default, langId);
                 log.Append($"--- {code} ---\n{rep}\n");
 
@@ -1539,7 +1539,7 @@ public class MainActivity : Activity
                 // can and keep going — one language must not end the run.
                 Append($"  {code} OUT OF MEMORY — releasing and continuing\n");
                 log.Append($"--- {code} --- OOM\n{ex}\n");
-                CircleAI.Samples.It.DeviceDiagnostics.WriteDetail(
+                CircleAI.Assistant.DeviceDiagnostics.WriteDetail(
                     System.IO.Path.GetDirectoryName(vut)!, $"OOM during {code}", ex);
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
@@ -1549,14 +1549,14 @@ public class MainActivity : Activity
                 // Concise on screen, complete in a file. Printing the exception
                 // verbatim fills a phone screen with runtime frames and reads like
                 // a crash even when the failure was handled.
-                Append($"  {code} FAILED\n  {CircleAI.Samples.It.DeviceDiagnostics.Summarise(ex)}");
+                Append($"  {code} FAILED\n  {CircleAI.Assistant.DeviceDiagnostics.Summarise(ex)}");
                 log.Append($"--- {code} --- FAILED\n{ex}\n");
-                CircleAI.Samples.It.DeviceDiagnostics.WriteDetail(
+                CircleAI.Assistant.DeviceDiagnostics.WriteDetail(
                     System.IO.Path.GetDirectoryName(vut)!, $"failure during {code}", ex);
             }
             finally
             {
-                CircleAI.Samples.It.DeviceDiagnostics.EndRisky(System.IO.Path.GetDirectoryName(vut)!);
+                CircleAI.Assistant.DeviceDiagnostics.EndRisky(System.IO.Path.GetDirectoryName(vut)!);
             }
         }
 

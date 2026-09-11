@@ -1,0 +1,44 @@
+<!--
+  The capability sweep: every "hands make things" library, exercised end to end.
+
+  ITS OWN PROJECT BECAUSE OF WHAT IT DRAGS. Charts, Presentations, Music, Media,
+  BusinessOps, Cast, Mesh, CodeAgent and both Security libraries - ten
+  references, for one 311-line diagnostic that proves each of them actually runs
+  on the device rather than merely compiling.
+
+  That graph has no business in a phone build, and for a long time the only
+  thing keeping it out was an accident of packaging: the sweep was a loose source
+  file that the console and native heads globbed and the MAUI head did not. An
+  accident is not a boundary. This project is the boundary, and it is one a
+  reader can see.
+
+  Two heads reference it. The MAUI head does not, and its APK is unchanged.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CircleAI.Assistant</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <ProjectReference Include="..\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
+    <ProjectReference Include="..\CircleAI.Charts\CircleAI.Charts.csproj" />
+    <ProjectReference Include="..\CircleAI.Presentations\CircleAI.Presentations.csproj" />
+    <ProjectReference Include="..\CircleAI.Music\CircleAI.Music.csproj" />
+    <ProjectReference Include="..\CircleAI.Media\CircleAI.Media.csproj" />
+    <ProjectReference Include="..\CircleAI.BusinessOps\CircleAI.BusinessOps.csproj" />
+    <ProjectReference Include="..\CircleAI.Cast\CircleAI.Cast.csproj" />
+    <ProjectReference Include="..\CircleAI.Mesh\CircleAI.Mesh.csproj" />
+    <ProjectReference Include="..\CircleAI.CodeAgent\CircleAI.CodeAgent.csproj" />
+    <ProjectReference Include="..\CircleAI.Security.Defense\CircleAI.Security.Defense.csproj" />
+    <ProjectReference Include="..\CircleAI.Security.Antibodies\CircleAI.Security.Antibodies.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -10,9 +10,9 @@
 //
 // So most of what is worth testing here is restraint: what it refuses to do.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 file sealed class Fake(string id, string title, string[] phrases,
                        Cost cost = Cost.Free, bool ready = true) : ICapability

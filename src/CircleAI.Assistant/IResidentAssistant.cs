@@ -8,7 +8,7 @@
 // away, and the notification is not an apology for holding it — it is the
 // honest disclosure that we are.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Where the resident listener is, in one word.</summary>
 public enum ResidentState

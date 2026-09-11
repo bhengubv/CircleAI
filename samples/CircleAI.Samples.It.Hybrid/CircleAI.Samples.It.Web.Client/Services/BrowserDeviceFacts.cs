@@ -2,7 +2,7 @@
 //
 // A browser is not a device, and says so.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <summary>
 /// The abilities screen in a browser: the list, with no state and no numbers.

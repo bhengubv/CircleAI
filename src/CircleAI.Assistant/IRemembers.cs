@@ -21,7 +21,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One thing worth remembering, and how sure we are of it.</summary>
 /// <param name="Text">The fact, in the words it can be read back in.</param>

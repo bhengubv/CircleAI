@@ -13,7 +13,7 @@
 // simply never given anywhere to live, and "This phone" is a diagnostics readout
 // wearing a settings tab's clothes: it reports, it configures nothing.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What the app is being used for.</summary>
 /// <remarks>

@@ -21,9 +21,9 @@
 // zero installed voices; it reports null on every row and is counted as its whole
 // catalogue, which is the honest answer for it.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class HomeCountsInstalledVoicesTests
 {

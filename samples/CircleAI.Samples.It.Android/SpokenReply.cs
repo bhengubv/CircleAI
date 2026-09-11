@@ -46,7 +46,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Android.Util;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Streams a generated answer into speech, a sentence at a time.</summary>
 public sealed class SpokenReply : IAsyncDisposable
@@ -84,7 +84,7 @@ public sealed class SpokenReply : IAsyncDisposable
     /// <summary>Whether anything has been handed to the mouth yet.</summary>
     bool _firstTaken;
 
-    readonly Task<(CircleAI.Samples.It.Voice.ItSpeaker? Speaker, string Status)> _voice;
+    readonly Task<(CircleAI.Assistant.Voice.CircleAISpeaker? Speaker, string Status)> _voice;
     readonly Queue<string> _queue = new();
     readonly SemaphoreSlim _ready = new(0);
     readonly StringBuilder _pending = new();
@@ -121,7 +121,7 @@ public sealed class SpokenReply : IAsyncDisposable
     /// is voiced in the same one. Null or unknown leaves the voice at its default.
     /// </param>
     public SpokenReply(
-        Task<(CircleAI.Samples.It.Voice.ItSpeaker?, string)> voice,
+        Task<(CircleAI.Assistant.Voice.CircleAISpeaker?, string)> voice,
         Action<float>? onLevel,
         CancellationToken ct,
         string? languageCode = null)
@@ -245,7 +245,7 @@ public sealed class SpokenReply : IAsyncDisposable
     {
         // Whatever is left of the voice load happens here, once, off the caller's
         // path — by now it has usually finished during the thinking.
-        CircleAI.Samples.It.Voice.ItSpeaker? speaker;
+        CircleAI.Assistant.Voice.CircleAISpeaker? speaker;
         string status;
         try
         {

@@ -2,7 +2,7 @@
 //
 // The CV interview: one question at a time, and the document it builds.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Where the interview has got to.</summary>
 /// <param name="Question">What to ask now, or the closing line when done.</param>

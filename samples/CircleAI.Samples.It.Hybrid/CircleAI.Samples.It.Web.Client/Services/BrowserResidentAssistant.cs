@@ -6,7 +6,7 @@
 // that will never do anything, and a browser refusing this is a property of the
 // platform, not a fault to be fixed.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserResidentAssistant : IResidentAssistant

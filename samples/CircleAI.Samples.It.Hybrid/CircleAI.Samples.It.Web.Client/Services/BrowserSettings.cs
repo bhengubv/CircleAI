@@ -2,7 +2,7 @@
 //
 // Settings in a browser: the choices are real, the documents are not here.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

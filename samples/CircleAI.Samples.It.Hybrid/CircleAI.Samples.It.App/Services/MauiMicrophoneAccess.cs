@@ -13,7 +13,7 @@
 // could only be compiled inside a MAUI application while this call was a static
 // buried in the middle of them.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class MauiMicrophoneAccess : IMicrophoneAccess

@@ -2,7 +2,7 @@
 //
 // The chosen language, kept across launches.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 /// <remarks>

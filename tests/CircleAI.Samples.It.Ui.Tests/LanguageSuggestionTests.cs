@@ -12,9 +12,9 @@
 // own setting is honoured before any guess, that a guess is labelled as one, and
 // that English is reached only after asking twice.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class LanguageSuggestionTests
 {

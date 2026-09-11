@@ -23,7 +23,7 @@ using Android.Widget;
 using CircleAI.Inference;
 using CircleAI.Core.Models;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "Languages", ParentActivity = typeof(HomeActivity))]
 public class LanguagePickerActivity : Activity
@@ -481,13 +481,13 @@ public class LanguagePickerActivity : Activity
 
             var report = usePocket
                 ? await Task.Run(
-                    () => CircleAI.Samples.It.Voice.ItTtsProbe.RunPocketAsync(
+                    () => CircleAI.Assistant.Voice.CircleAITtsProbe.RunPocketAsync(
                         pocketDir, System.IO.Path.Combine(pocketDir, "loona.wav"),
                         row.Phrase, wav,
                         line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
                     cts.Token)
                 : await Task.Run(
-                    () => CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+                    () => CircleAI.Assistant.Voice.CircleAITtsProbe.RunCataloguedAsync(
                         store, row.Tag, row.Phrase, wav,
                         line => RunOnUiThread(() => Phase(row, Summarise(line))), cts.Token),
                     cts.Token);

@@ -13,7 +13,7 @@
 // a prompt is a BIAS and the ways it can go wrong are all about scope.
 
 using System.Linq;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using Xunit;
 
 namespace CircleAI.Tests;

@@ -8,7 +8,7 @@
 // that types back is a demo of a language model; this is what makes it an
 // assistant somebody can use without reading.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What a voice turn is doing right now.</summary>
 public enum TurnPhase

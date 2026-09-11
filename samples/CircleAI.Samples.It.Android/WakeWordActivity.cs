@@ -47,7 +47,7 @@ using IOPath = System.IO.Path;
 using SysEnv = System.Environment;
 using Cancelled = System.OperationCanceledException;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "Hey B", Exported = false)]
 public class WakeWordActivity : Activity

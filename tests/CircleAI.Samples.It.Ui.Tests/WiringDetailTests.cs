@@ -12,9 +12,9 @@
 // visible: Took summing to zero across a report that shows timings would read as
 // "everything was instant" rather than "nothing was measured".
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class WiringDetailTests
 {
@@ -76,11 +76,11 @@ public class WiringDetailTests
     public void Where_is_allowed_to_be_absent_and_that_is_information()
     {
         // A HOOK THAT WAS NEVER SET HAS NO PLACE TO POINT AT, and that is the
-        // whole finding: ItSpeaker.MobilePhonemizerFactory being null is not a
+        // whole finding: CircleAISpeaker.MobilePhonemizerFactory being null is not a
         // file in the wrong folder, it is a line of code nobody ran. Forcing a
         // path here would mean inventing one.
         var unset = Row("Phonemizer", WiringStage.Absent,
-            who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
+            who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install");
 
         Assert.Null(unset.Where);
         Assert.NotNull(unset.Who);
@@ -95,7 +95,7 @@ public class WiringDetailTests
         var report = new WiringReport(
             [
                 Row("Phonemizer", WiringStage.Absent,
-                    who: "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install"),
+                    who: "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install"),
                 Row("Japanese", WiringStage.Wired, where: "/data/openjtalk",
                     who: "OpenJTalkPhonemizer.ModelStoreFolder, set in MainApplication.OnCreate"),
             ], 1, 2);

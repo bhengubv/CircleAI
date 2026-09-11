@@ -20,7 +20,7 @@
 
 using System.Linq;
 using CircleAI.Core.Models;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using Xunit;
 
 namespace CircleAI.Tests;

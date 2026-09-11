@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Changing what the app is for, by saying so.</summary>
 /// <remarks>

@@ -720,7 +720,7 @@ else
         try
         {
             _resumeModule = await JS.InvokeAsync<IJSObjectReference>(
-                "import", "./_content/CircleAI.Samples.It.Shared/resume.js");
+                "import", "./_content/CircleAI.Assistant/resume.js");
             _self = DotNetObjectReference.Create(this);
             _resumeWatch = await _resumeModule.InvokeAsync<IJSObjectReference>(
                 "watch", _self, nameof(CameBack));

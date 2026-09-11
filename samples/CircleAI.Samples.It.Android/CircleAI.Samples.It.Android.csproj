@@ -2,7 +2,7 @@
 
   <!--
     IT — Android head. The SAME C# as the desktop console: it links IT's shared
-    core (ItSession + ItGenerator) and drives it from a MainActivity. Build the
+    core (CircleAISession + CircleAIGenerator) and drives it from a MainActivity. Build the
     ecosystem's standard way:  dotnet build -f net10.0-android -c Debug -m:1
     then  adb install  the APK. This is "C# IT running on the phone."
   -->
@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
 
-    <RootNamespace>CircleAI.Samples.It.Mobile</RootNamespace>
+    <RootNamespace>CircleAI.Assistant.Device</RootNamespace>
     <ApplicationId>com.bhengubv.circleai</ApplicationId>
     <!-- ApplicationVersion is Android's versionCode: it MUST increase on every
          build a user could install over, or the install is refused. It sat at 1
@@ -156,8 +156,8 @@
     Share IT's core source with the console head — one invention, two faces.
 
     Globbed, not listed file by file. The previous explicit list silently
-    dropped any newly added shared file: adding ItToolBridge.cs broke this
-    build with "type or namespace not found" pointing at ItSession.cs, which
+    dropped any newly added shared file: adding CircleAIToolBridge.cs broke this
+    build with "type or namespace not found" pointing at CircleAISession.cs, which
     reads as a missing using rather than a missing Compile item.
 
     Program.cs is EXCLUDED deliberately — it is the console's entry point, and
@@ -177,7 +177,14 @@
          the MAUI head by path. They are the Android half of the
          assistant, so they are a library now and both heads reference
          it. -->
-    <ProjectReference Include="..\..\src\CircleAI.Assistant.Android\CircleAI.Assistant.Android.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The capability sweep and the ten libraries it exercises. Its own
+         project so that graph is a decision rather than an accident of
+         which files a glob happened to pick up. -->
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Sweep\CircleAI.Assistant.Sweep.csproj" />
   </ItemGroup>
 
 </Project>

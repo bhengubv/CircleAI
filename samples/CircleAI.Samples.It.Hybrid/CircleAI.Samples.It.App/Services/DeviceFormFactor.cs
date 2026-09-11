@@ -2,7 +2,7 @@
 //
 // What this head is: a real device, with the models on it.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceFormFactor : IFormFactor

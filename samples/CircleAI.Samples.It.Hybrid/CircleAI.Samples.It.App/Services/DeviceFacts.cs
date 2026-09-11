@@ -7,7 +7,7 @@ using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceFacts : IDeviceFacts

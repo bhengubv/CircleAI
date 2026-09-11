@@ -35,7 +35,7 @@ using Android.Text;
 using Android.Views;
 using Android.Widget;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>The conversation area: bubbles, a status line, and nothing else.</summary>
 public sealed class ChatView : LinearLayout

@@ -2,7 +2,7 @@
 //
 // There is nothing to set up in a browser.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

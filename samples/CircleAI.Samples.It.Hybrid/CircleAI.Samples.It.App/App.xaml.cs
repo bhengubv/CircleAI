@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It.App;
+namespace CircleAI.Samples.App;
 
 /// <summary>The application.</summary>
 public partial class App : Application

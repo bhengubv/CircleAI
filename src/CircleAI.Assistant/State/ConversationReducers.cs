@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Fluxor;
 
-namespace CircleAI.Samples.It.Shared.State;
+namespace CircleAI.Assistant;
 
 public static class ConversationReducers
 {

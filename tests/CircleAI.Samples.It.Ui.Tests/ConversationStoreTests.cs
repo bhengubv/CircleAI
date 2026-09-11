@@ -22,7 +22,7 @@ using System.Threading.Tasks;
 using Fluxor;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class ConversationStoreTests
 {

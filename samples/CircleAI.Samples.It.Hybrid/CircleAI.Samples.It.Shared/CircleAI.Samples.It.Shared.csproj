@@ -32,7 +32,7 @@
       ONE OWNER FOR THE CONVERSATION, AND THE SEAM THE MEMORY LOOP HANGS OFF.
       Turn state was spread across VoiceMark, two component fields, a bool set
       through a Progress<T> that does not run inline, and a history inside
-      ItSession no screen can see. Fluxor gives one place to read it, one place
+      CircleAISession no screen can see. Fluxor gives one place to read it, one place
       to change it, and an effect boundary where the long-term store is reached
       without a component knowing it exists - see State/MemoryEffects.
 

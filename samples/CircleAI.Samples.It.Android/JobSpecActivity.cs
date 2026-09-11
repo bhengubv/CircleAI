@@ -33,7 +33,7 @@ using Android.Views;
 using Android.Widget;
 using CircleAI.Career;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "Aim at a job", Exported = true)]
 [IntentFilter(new[] { Intent.ActionSend }, Categories = new[] { Intent.CategoryDefault }, DataMimeType = "text/plain")]
@@ -143,7 +143,7 @@ public class JobSpecActivity : Activity
             // here called that deliberate, on the grounds that a resident
             // second copy would cost RAM; the answer to two copies is one copy,
             // not a copy loaded and thrown away each time.
-            var brain = await ItSessionHost.GetAsync(this);
+            var brain = await CircleAISessionHost.GetAsync(this);
             var answer = await brain.RunTurnStreamingAsync(prompt, _ => { }, _ => { }, _ => { });
 
             var choice  = ProfileTailoring.Parse(answer, profile);

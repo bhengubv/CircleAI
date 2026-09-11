@@ -17,7 +17,7 @@ using Android.Util;
 using Android.Views;
 using Android.Widget;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 internal static class Ui
 {

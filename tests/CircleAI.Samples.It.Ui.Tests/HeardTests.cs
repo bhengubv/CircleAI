@@ -12,9 +12,9 @@
 // inside an Android-only class and therefore untestable, which is how a
 // fabricated legal claim reached a speaker.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class HeardTests
 {

@@ -26,7 +26,7 @@
 
 using System.Linq;
 using CircleAI.Core;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using Xunit;
 
 namespace CircleAI.Tests;

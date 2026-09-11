@@ -20,9 +20,9 @@
 // SENTENCE, so the sentence is what is pinned here — the event plumbing is only
 // worth having if the words at the end of it are the right words.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class NearMissWordsTests
 {

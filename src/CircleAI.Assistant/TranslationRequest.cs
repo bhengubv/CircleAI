@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>
 /// Something to translate and what to translate it into, recognised from

@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>A capability whose whole job is to open a screen.</summary>
 /// <remarks>

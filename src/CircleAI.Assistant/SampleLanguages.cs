@@ -18,7 +18,7 @@
 
 using System.Collections.Generic;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One language the sample can speak.</summary>
 /// <param name="Tag">BCP-47 tag, as the model registry spells it.</param>

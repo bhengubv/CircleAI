@@ -7,7 +7,7 @@
 // text do not otherwise meet: the activity exists before the web view does, and
 // an intent can arrive while the app is already running.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class AndroidShareTarget : IShareTarget

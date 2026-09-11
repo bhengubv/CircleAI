@@ -9,11 +9,10 @@
 // where that becomes a compile-or-fail-fast problem instead.
 
 using Bunit;
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Shared.State;
+using CircleAI.Assistant;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 internal sealed class FakeCareer : ICareerInterview
 {

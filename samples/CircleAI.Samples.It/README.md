@@ -32,7 +32,7 @@ No model download, no native libraries — it runs anywhere .NET runs.
 ## How it's wired (the whole point)
 
 ```
-ItGenerator (placeholder brain)          <-- the ONLY stand-in
+CircleAIGenerator (placeholder brain)          <-- the ONLY stand-in
         |
    new AIService(options, _ => it)       <-- the on-device brain
         |
@@ -42,11 +42,11 @@ ItGenerator (placeholder brain)          <-- the ONLY stand-in
 ```
 
 Three files: [`Program.cs`](Program.cs) (compose + chat loop),
-[`ItGenerator.cs`](ItGenerator.cs) (the placeholder brain), and this README.
+[`CircleAIGenerator.cs`](CircleAIGenerator.cs) (the placeholder brain), and this README.
 
 ## Make it real
 
-1. **Real thinking** — replace `new ItGenerator()` in `Program.cs` with a real
+1. **Real thinking** — replace `new CircleAIGenerator()` in `Program.cs` with a real
    generator, e.g. `new QwenTextGenerator(modelPath, …)` (MNN). That's the only
    change needed; everything else already goes through the brain.
 2. **True two-slot routing** — set `AIOptions.Router = new HeuristicNeuronRouter()`

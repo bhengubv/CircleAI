@@ -2,7 +2,7 @@
 //
 // The CV lives on the device with its SQLite store.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

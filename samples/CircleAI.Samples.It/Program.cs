@@ -1,16 +1,16 @@
 // Program.cs
 //
 // IT — desktop console face of the sample. All the real work lives in the shared
-// ItSession (composed Neuron + concierge + placeholder brain); this file is just
+// CircleAISession (composed Neuron + concierge + placeholder brain); this file is just
 // a console loop over it. The Android app (MainActivity) drives the exact same
-// ItSession — one invention, two faces.
+// CircleAISession — one invention, two faces.
 //
-// Run:   dotnet run --project samples/CircleAI.Samples.It
-//        dotnet run --project samples/CircleAI.Samples.It -- --demo   (scripted, no input)
+// Run:   dotnet run --project samples/CircleAI.Assistant
+//        dotnet run --project samples/CircleAI.Assistant -- --demo   (scripted, no input)
 
 using CircleAI.Core;
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Voice;
+using CircleAI.Assistant;
+using CircleAI.Assistant.Voice;
 
 PrintBanner();
 
@@ -23,7 +23,7 @@ if (!useStub)
     Console.WriteLine("  and downloads it (~433 MB). Pass --stub to skip the model entirely.");
 }
 
-await using var session = new ItSession(useStubBrain: useStub);
+await using var session = new CircleAISession(useStubBrain: useStub);
 await session.StartAsync();
 Console.WriteLine($"  status: {session.StatusLine}");
 
@@ -31,13 +31,13 @@ Console.WriteLine($"  status: {session.StatusLine}");
 // (select voice by modality → download from HF → OnnxTtsEngine + espeak). Each
 // reply is written to a playable WAV. Degrades to text-only, out loud, if the
 // voice or espeak-ng is unavailable — never silently.
-ItSpeaker? speaker = null;
+CircleAISpeaker? speaker = null;
 var wavDir = Path.Combine(Path.GetTempPath(), "circleai-it-voice");
 if (args.Contains("--speak"))
 {
     Console.WriteLine("  --speak: setting up voice…");
-    var voiceStore = ModelPaths.Default;   // see ItSession
-    var (sp, status) = await ItSpeaker.TryCreateAsync(voiceStore, Console.WriteLine);
+    var voiceStore = ModelPaths.Default;   // see CircleAISession
+    var (sp, status) = await CircleAISpeaker.TryCreateAsync(voiceStore, Console.WriteLine);
     speaker = sp;
     Console.WriteLine(speaker is null ? $"  voice OFF: {status}" : $"  voice ON: WAVs → {wavDir}");
 }
@@ -63,8 +63,8 @@ var hearWav = hearIdx >= 0 && hearIdx + 1 < args.Length ? args[hearIdx + 1] : nu
 if (hearWav is not null)
 {
     Console.WriteLine("  --hear: setting up ears…");
-    var earStore = ModelPaths.Default;   // see ItSession
-    var (listener, lstatus) = await ItListener.TryCreateAsync(earStore, Console.WriteLine);
+    var earStore = ModelPaths.Default;   // see CircleAISession
+    var (listener, lstatus) = await CircleAIListener.TryCreateAsync(earStore, Console.WriteLine);
     if (listener is null)
     {
         Console.WriteLine($"  ears OFF: {lstatus}");
@@ -88,7 +88,7 @@ if (hearWav is not null)
 // --demo: run the scripted conversation and exit (no keyboard needed).
 if (args.Contains("--demo"))
 {
-    foreach (var line in ItSession.DemoTurns)
+    foreach (var line in CircleAISession.DemoTurns)
     {
         Console.WriteLine($"\nyou > {line}");
         Console.Write("Circle AI > ");

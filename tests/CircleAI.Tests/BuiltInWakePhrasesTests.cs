@@ -15,14 +15,14 @@
 // survives is the table of phrases that SHIP, which the shared UI reads to
 // answer "does this language arrive with one, and what is it".
 //
-// The table lives in CircleAI.Samples.It.Contracts, which by design references
+// The table lives in CircleAI.Assistant.Contracts, which by design references
 // nothing - it is loaded by a browser as well as by a phone - so it cannot read
 // WakePhraseBook directly. A hand-kept copy of somebody else's table is a lie
 // waiting for the next commit, and this is what stops it.
 
 using System;
 using System.Linq;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using CircleAI.Voice;
 using Xunit;
 

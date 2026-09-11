@@ -43,7 +43,7 @@ using System.Threading.Tasks;
 using Android.Content;
 using CircleAI.Device;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Starts and stops the always-on assistant.</summary>
 public static class ResidentAssistant

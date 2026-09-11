@@ -11,7 +11,7 @@
 // What it can do honestly is list the phrases that ship with the app, because
 // that table is plain data, and let somebody read them before they install.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserWakePhrases : IWakePhrases

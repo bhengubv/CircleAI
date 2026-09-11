@@ -41,7 +41,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Tells the person what the assistant is doing to their phone, as it does it.</summary>
 public interface IAnnounces

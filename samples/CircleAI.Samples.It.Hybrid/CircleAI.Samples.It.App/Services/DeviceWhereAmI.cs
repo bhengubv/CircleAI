@@ -20,7 +20,7 @@
 using Android.Content;
 using Android.Telephony;
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceWhereAmI : IWhereAmI

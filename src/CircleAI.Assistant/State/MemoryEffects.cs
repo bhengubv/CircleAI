@@ -23,7 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fluxor;
 
-namespace CircleAI.Samples.It.Shared.State;
+namespace CircleAI.Assistant;
 
 public sealed class MemoryEffects
 {

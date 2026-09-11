@@ -2,7 +2,7 @@
 //
 // Hearing "Hey B" without being touched.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Where the wake listener stands.</summary>
 public enum WakeState

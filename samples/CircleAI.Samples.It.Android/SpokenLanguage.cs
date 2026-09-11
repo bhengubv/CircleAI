@@ -38,7 +38,7 @@
 using System;
 using Android.Content;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>The eleven languages the voice speaks, and which one is chosen.</summary>
 public static class SpokenLanguage
@@ -124,10 +124,10 @@ public static class SpokenLanguage
 
     /// <summary>The display name for a code, for putting on the screen.</summary>
     /// <remarks>
-    /// ONE TABLE, NOT THREE. The endonyms lived here, again in ItSpeaker, and were
+    /// ONE TABLE, NOT THREE. The endonyms lived here, again in CircleAISpeaker, and were
     /// about to be copied a third time for the typed screen — three lists of the
     /// same eleven facts, each free to drift. They now sit with the detector, which
     /// is the thing that produces the codes and is compiled into every build.
     /// </remarks>
-    public static string NameOf(string? code) => CircleAI.Samples.It.LanguageGuess.NameOf(code);
+    public static string NameOf(string? code) => CircleAI.Assistant.LanguageGuess.NameOf(code);
 }

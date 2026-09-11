@@ -8,7 +8,7 @@
 // refuses to suggest a second language from a Locale source, so a browser
 // offers no partner rather than a wrong one.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserWhereAmI : IWhereAmI

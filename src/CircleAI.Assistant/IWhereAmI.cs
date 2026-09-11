@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>How a country was worked out, so a wrong answer can be traced.</summary>
 /// <remarks>

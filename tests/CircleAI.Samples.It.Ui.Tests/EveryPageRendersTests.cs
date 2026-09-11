@@ -14,7 +14,7 @@
 using Bunit;
 using CircleAI.Samples.It.Shared.Pages;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class EveryPageRendersTests : TestContext
 {

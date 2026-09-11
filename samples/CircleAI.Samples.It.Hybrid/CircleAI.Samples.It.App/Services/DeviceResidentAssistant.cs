@@ -27,9 +27,9 @@
 // DeviceSetup.AllowBackgroundAsync asks the owner to exempt.
 
 using CircleAI.Device;
-using CircleAI.Samples.It.Mobile;
+using CircleAI.Assistant.Device;
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <inheritdoc />
 public sealed class DeviceResidentAssistant : IResidentAssistant

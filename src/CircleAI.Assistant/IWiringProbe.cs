@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>How far along a capability actually is, on THIS device, right now.</summary>
 /// <remarks>
@@ -7,7 +7,7 @@ namespace CircleAI.Samples.It;
 /// and unopenable, and a hook that nothing ever set, both read as ready.
 /// <para>
 /// That is not hypothetical. The hybrid shipped for weeks able to hear and
-/// translate and never speak, because <c>ItSpeaker.MobilePhonemizerFactory</c>
+/// translate and never speak, because <c>CircleAISpeaker.MobilePhonemizerFactory</c>
 /// was null: no catalogue row covered it - espeak is a csproj link and a line in
 /// OnCreate, not a download - so nothing could have reported it. It surfaced as
 /// one sentence under a translation somebody had already given up on.
@@ -45,7 +45,7 @@ public enum WiringStage
 /// </param>
 /// <param name="Who">
 /// What in the build holds this: the static that has to be set, the class that
-/// sets it. "ItSpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install".
+/// sets it. "CircleAISpeaker.MobilePhonemizerFactory, set by VoiceWiring.Install".
 /// </param>
 /// <param name="Took">How long the check itself took.</param>
 /// <remarks>

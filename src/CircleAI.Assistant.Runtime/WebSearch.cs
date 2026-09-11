@@ -28,7 +28,7 @@ using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Looks things up on the web, keylessly, and reports honestly when it cannot.</summary>
 public static class WebSearch

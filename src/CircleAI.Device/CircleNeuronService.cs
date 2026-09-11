@@ -361,7 +361,7 @@ public sealed partial class CircleNeuronService : Service
                 // working perfectly.
                 //
                 // The hybrid head hosts its brain in the app process - DeviceBrain
-                // owns an ItSession - and uses this service for ONE thing: holding
+                // owns an CircleAISession - and uses this service for ONE thing: holding
                 // the microphone open while the screen is off. It never sets a
                 // factory because it never wants a node. The native head does want
                 // one and sets it. So a null factory is a caller saying "just hold

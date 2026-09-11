@@ -2,7 +2,7 @@
 //
 // What the browser head is.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 public sealed class BrowserFormFactor : IFormFactor

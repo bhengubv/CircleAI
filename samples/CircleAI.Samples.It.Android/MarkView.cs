@@ -21,7 +21,7 @@ using Android.Graphics;
 using Android.Views;
 using Android.Views.Animations;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 
 /// <summary>

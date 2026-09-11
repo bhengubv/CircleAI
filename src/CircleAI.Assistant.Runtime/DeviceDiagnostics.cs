@@ -23,7 +23,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>On-device failure reporting for a machine with no debugger attached.</summary>
 public static class DeviceDiagnostics

@@ -12,11 +12,11 @@
 // both of them are easy to get wrong in a way no compiler notices.
 
 using Bunit;
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 using CircleAI.Samples.It.Shared.Pages;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class TranscribeSessionTests : TestContext
 {

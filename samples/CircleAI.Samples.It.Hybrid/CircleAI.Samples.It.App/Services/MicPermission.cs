@@ -23,7 +23,7 @@
 // so the rule was known in this project - just not written down anywhere the
 // other four call sites could follow it. Now it is written once.
 
-namespace CircleAI.Samples.It.App.Services;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Asks for the microphone, on the thread Android insists on.</summary>
 internal static class MicPermission

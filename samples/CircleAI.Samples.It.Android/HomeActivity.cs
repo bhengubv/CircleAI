@@ -38,7 +38,7 @@ using Android.Views;
 using Android.Views.Animations;
 using Android.Widget;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>Which part of an exchange the mark is showing.</summary>
 /// <remarks>
@@ -124,7 +124,7 @@ public class HomeActivity : Activity
         base.OnCreate(savedInstanceState);
         ActionBar?.Hide();
         // The process wiring — the phonemizer factory AND the platform memory probe
-        // — now happens in ItApplication.OnCreate, which runs before any activity on
+        // — now happens in CircleAIApplication.OnCreate, which runs before any activity on
         // every entry path. This screen used to install the voice half itself and
         // never knew about the memory half, so the launcher was measuring the GC
         // heap and concluding the phone could not run anything.
@@ -192,7 +192,7 @@ public class HomeActivity : Activity
                 // what stops the auto-finish below from looping: setup ends by
                 // re-running this check, and a version that asked "is there a plan?"
                 // by calling setup would call setup forever once the plan was empty.
-                var pending = CircleAI.Samples.It.FirstRun.Plan(
+                var pending = CircleAI.Assistant.FirstRun.Plan(
                     registry, loader, CircleAI.Core.DeviceProbe.Snapshot(),
                     speech, declined.Contains).Count;
 
@@ -373,7 +373,7 @@ public class HomeActivity : Activity
 
             // The same path the greeting carousel uses, so there is one way to
             // make this phone speak and not two that drift apart.
-            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+            var report = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunCataloguedAsync(
                 store, tag, line, wav, _ => { }, _setup?.Token ?? CancellationToken.None);
 
             if (System.IO.File.Exists(wav) &&
@@ -674,7 +674,7 @@ public class HomeActivity : Activity
             var probe = CircleAI.Core.DeviceProbe.Snapshot();
             var declined = SetupPrefs.Declined(this);
             var steps = await Task.Run(
-                () => CircleAI.Samples.It.FirstRun.Plan(
+                () => CircleAI.Assistant.FirstRun.Plan(
                     registry, loader, probe, speech, declined.Contains), cts.Token);
 
             if (steps.Count == 0)
@@ -698,7 +698,7 @@ public class HomeActivity : Activity
 
             var lastStep = -1;
             var lastOffered = -1;
-            var progress = new Progress<CircleAI.Samples.It.SetupProgress>(p => RunOnUiThread(() =>
+            var progress = new Progress<CircleAI.Assistant.SetupProgress>(p => RunOnUiThread(() =>
             {
                 // The whole line: what is arriving, how fast, and when it ends.
                 // See SetupProgress.Describe — the wait is minutes on one phone
@@ -735,7 +735,7 @@ public class HomeActivity : Activity
                 }
             }));
 
-            await CircleAI.Samples.It.FirstRun.RunAsync(loader, steps, progress, cts.Token);
+            await CircleAI.Assistant.FirstRun.RunAsync(loader, steps, progress, cts.Token);
         }
         catch (System.OperationCanceledException)
         {
@@ -1041,7 +1041,7 @@ public class HomeActivity : Activity
             // First press of a language fetches its voice, which is not instant on
             // a cheap phone. Say what is happening in words, not a spinner alone —
             // an unexplained wait is where people leave.
-            var report = await CircleAI.Samples.It.Voice.ItTtsProbe.RunCataloguedAsync(
+            var report = await CircleAI.Assistant.Voice.CircleAITtsProbe.RunCataloguedAsync(
                 store, tag, phrase, wav,
                 line => RunOnUiThread(() =>
                 {
@@ -1212,7 +1212,7 @@ public class HomeActivity : Activity
                 $"heard: ears={loadMs} ms | transcribe={transcribeMs} ms " +
                 $"| {audio.Length / 32000.0:F1} s of audio | “{heard}”");
 
-            var guess      = CircleAI.Samples.It.LanguageGuess.Detect(heard);
+            var guess      = CircleAI.Assistant.LanguageGuess.Detect(heard);
             var spokenLang = guess ?? SpokenLanguage.Current(this);
             if (guess is not null) SpokenLanguage.Set(this, guess);
             Android.Util.Log.Info("CircleAI.It",
@@ -1262,12 +1262,12 @@ public class HomeActivity : Activity
             // the other. A held voice from the previous turn is reused only when
             // it is still the right family.
             // BRACKETING A SILENT GAP. A Japanese turn stops dead between the
-            // language line and ItSpeaker's first log line — process alive, no CPU,
+            // language line and CircleAISpeaker's first log line — process alive, no CPU,
             // no exception, nothing for minutes. Two guesses have already been
             // wrong about it (graph optimisation, then a download), so this stops
             // guessing and marks each step instead.
             Android.Util.Log.Info("CircleAI.It", "voice: choosing family");
-            var wantFamily = CircleAI.Samples.It.Voice.ItSpeaker.FamilyFor(spokenLang);
+            var wantFamily = CircleAI.Assistant.Voice.CircleAISpeaker.FamilyFor(spokenLang);
             Android.Util.Log.Info("CircleAI.It",
                 $"voice: want={wantFamily} held={(_voice is null ? "none" : _voice.Status.ToString())}");
             if (_voice is { IsCompletedSuccessfully: true } held &&
@@ -1280,7 +1280,7 @@ public class HomeActivity : Activity
             }
 
             Android.Util.Log.Info("CircleAI.It", "voice: calling TryCreateAsync");
-            _voice ??= CircleAI.Samples.It.Voice.ItSpeaker.TryCreateAsync(
+            _voice ??= CircleAI.Assistant.Voice.CircleAISpeaker.TryCreateAsync(
                 store, _ => { }, default, spokenLang);
             var voice = _voice;
             Android.Util.Log.Info("CircleAI.It", "voice: TryCreateAsync started (not awaited here)");
@@ -1329,7 +1329,7 @@ public class HomeActivity : Activity
             // And the MODEL is told, in the turn itself, to reply in that language:
             // setting the voice alone would produce English words spoken with Zulu
             // phonetics, which is worse than either.
-            var replyIn = CircleAI.Samples.It.Voice.ItSpeaker.NameForLanguage(spokenLang);
+            var replyIn = CircleAI.Assistant.Voice.CircleAISpeaker.NameForLanguage(spokenLang);
             var asked   = replyIn is null
                 ? heard
                 : $"{heard}\n\n(Reply only in {replyIn}.)";
@@ -1507,7 +1507,7 @@ public class HomeActivity : Activity
         return stripped.Length >= 2 && stripped.Any(char.IsLetter);
     }
 
-    CircleAI.Samples.It.ItSession? _session;
+    CircleAI.Assistant.CircleAISession? _session;
 
     // ── hands free ───────────────────────────────────────────────────────────
 
@@ -1572,9 +1572,9 @@ public class HomeActivity : Activity
 
     // ── the ears, held open ──────────────────────────────────────────────────
 
-    CircleAI.Samples.It.Voice.ItListener? _ears;
+    CircleAI.Assistant.Voice.CircleAIListener? _ears;
     string _earsStatus = "";
-    Task<CircleAI.Samples.It.Voice.ItListener?>? _earsLoading;
+    Task<CircleAI.Assistant.Voice.CircleAIListener?>? _earsLoading;
 
     /// <summary>
     /// The transcriber, loaded once and kept.
@@ -1597,19 +1597,19 @@ public class HomeActivity : Activity
     /// to build two copies of whisper on a phone that cannot hold two.
     /// </para>
     /// </remarks>
-    Task<CircleAI.Samples.It.Voice.ItListener?> EnsureEarsAsync(string store)
+    Task<CircleAI.Assistant.Voice.CircleAIListener?> EnsureEarsAsync(string store)
     {
-        if (_ears is not null) return Task.FromResult<CircleAI.Samples.It.Voice.ItListener?>(_ears);
+        if (_ears is not null) return Task.FromResult<CircleAI.Assistant.Voice.CircleAIListener?>(_ears);
         if (_earsLoading is not null) return _earsLoading;
 
         _earsLoading = Load();
         return _earsLoading;
 
-        async Task<CircleAI.Samples.It.Voice.ItListener?> Load()
+        async Task<CircleAI.Assistant.Voice.CircleAIListener?> Load()
         {
             try
             {
-                var (listener, status) = await CircleAI.Samples.It.Voice.ItListener
+                var (listener, status) = await CircleAI.Assistant.Voice.CircleAIListener
                     .TryCreateAsync(store, _ => { });
                 _earsStatus = status;
                 _ears = listener;
@@ -1619,10 +1619,10 @@ public class HomeActivity : Activity
         }
     }
 
-    Task<CircleAI.Samples.It.ItSession?>? _brainLoading;
+    Task<CircleAI.Assistant.CircleAISession?>? _brainLoading;
 
     /// <summary>The synthesiser, started once and reused across turns.</summary>
-    Task<(CircleAI.Samples.It.Voice.ItSpeaker?, string)>? _voice;
+    Task<(CircleAI.Assistant.Voice.CircleAISpeaker?, string)>? _voice;
 
     /// <summary>
     /// The brain, loaded once and kept — started before anybody speaks.
@@ -1639,25 +1639,25 @@ public class HomeActivity : Activity
     /// 3.7 GB phone survives.
     /// </para>
     /// </remarks>
-    Task<CircleAI.Samples.It.ItSession?> WarmBrainAsync()
+    Task<CircleAI.Assistant.CircleAISession?> WarmBrainAsync()
     {
-        if (_session is not null) return Task.FromResult<CircleAI.Samples.It.ItSession?>(_session);
+        if (_session is not null) return Task.FromResult<CircleAI.Assistant.CircleAISession?>(_session);
         if (_brainLoading is not null) return _brainLoading;
 
         _brainLoading = Load();
         return _brainLoading;
 
-        async Task<CircleAI.Samples.It.ItSession?> Load()
+        async Task<CircleAI.Assistant.CircleAISession?> Load()
         {
             try
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                // One brain per process, not per screen — see ItSessionHost.
-                var alreadyWarm = ItSessionHost.IsWarm;
-                var s = await ItSessionHost.GetAsync(this);
+                // One brain per process, not per screen — see CircleAISessionHost.
+                var alreadyWarm = CircleAISessionHost.IsWarm;
+                var s = await CircleAISessionHost.GetAsync(this);
                 _session = s;
 
-                // SAYS WHAT IT MEASURES, which is not what ItSessionHost measures.
+                // SAYS WHAT IT MEASURES, which is not what CircleAISessionHost measures.
                 // Both printed "brain warm in N ms" and they are different
                 // quantities — that one is how long the model took to load, this
                 // one is how long THIS caller waited for it. Two identical

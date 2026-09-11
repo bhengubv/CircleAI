@@ -49,7 +49,7 @@ using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>One thing first-run will fetch, in the words the screen will use.</summary>
 /// <param name="Title">What this gives the person — "the voice", not "MMS TTS".</param>
@@ -176,7 +176,7 @@ public static class FirstRun
         // measured 0.17 word error rate against Piper lessac's 0.00 because
         // English spelling cannot be sounded out letter by letter.
         //
-        // Named from ItSpeaker's own constants so setup cannot fetch one voice
+        // Named from CircleAISpeaker's own constants so setup cannot fetch one voice
         // while the speaker asks for another. Together they are about 185 MB, or
         // 95 MB once the quantised SA voice is published — next to a 22 GB brain,
         // the English voice is rounding error and it is the difference between an
@@ -632,7 +632,7 @@ public static class FirstRun
     /// <remarks>
     /// Identical to the abilities screen's rule, and it depends on the platform
     /// memory probe being installed — unwired, DeviceProbe reports the GC heap
-    /// (~100 MB) and this says no to everything. See ItApplication.
+    /// (~100 MB) and this says no to everything. See CircleAIApplication.
     /// </remarks>
     static bool Fits(ModelEntry m, DeviceProbe probe) =>
         m.MinRamGb <= probe.UsableRamGb + 0.0001 &&

@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>A capability and how well it matched what was said.</summary>
 /// <param name="Capability">What would be done.</param>

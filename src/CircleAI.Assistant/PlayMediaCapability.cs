@@ -22,7 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Plays what somebody asked for, through whatever this phone has.</summary>
 public sealed class PlayMediaCapability : ICapability

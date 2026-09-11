@@ -7,9 +7,9 @@
 // catalogue count while the true number was one. A report that only carried the
 // working figure would be as unfalsifiable as the claim it replaced.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class WiringReportTests
 {

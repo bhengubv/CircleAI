@@ -2,7 +2,7 @@
 //
 // The browser cannot speak, and says so.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <summary>
 /// The web head's voice: none. Declared rather than faked.

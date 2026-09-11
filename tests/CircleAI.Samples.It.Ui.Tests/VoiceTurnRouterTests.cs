@@ -6,10 +6,10 @@
 // where a component cannot obscure them: routes once, cancels the turn, and
 // tells a cancellation it caused apart from one it did not.
 
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Shared;
+using CircleAI.Assistant;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class VoiceTurnRouterTests
 {

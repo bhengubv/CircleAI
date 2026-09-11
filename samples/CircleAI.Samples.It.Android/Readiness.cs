@@ -30,7 +30,7 @@
 
 using System;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>How far along the assistant is, coarsely, for the person watching.</summary>
 public enum ReadyStage

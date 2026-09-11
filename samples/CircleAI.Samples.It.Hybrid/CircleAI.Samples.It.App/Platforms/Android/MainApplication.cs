@@ -1,7 +1,7 @@
 using Android.App;
 using Android.Runtime;
 
-namespace CircleAI.Samples.It.App;
+namespace CircleAI.Samples.App;
 
 /// <summary>The Android application object.</summary>
 /// <remarks>
@@ -39,18 +39,18 @@ public class MainApplication : MauiApplication
 
         // AND THE PHONEMIZER, or this app can hear and translate but never
         // speak. The native head has always called this; the hybrid never did,
-        // so ItSpeaker.MobilePhonemizerFactory stayed null and every voice that
+        // so CircleAISpeaker.MobilePhonemizerFactory stayed null and every voice that
         // needs espeak G2P - all of them but Japanese - refused with "on-device
         // phonemizer not wired". Same call, same file, same order as
-        // ItApplication.OnCreate.
-        CircleAI.Samples.It.Mobile.VoiceWiring.Install(this);
+        // CircleAIApplication.OnCreate.
+        CircleAI.Assistant.Device.VoiceWiring.Install(this);
 
         // Where the phonemiser looks for Open JTalk's dictionary once it has been
         // downloaded. The model store, not the sideload folder: the catalogued
         // entry unpacks into the store, and a registry entry nothing can find is
         // decorative.
         CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder =
-            CircleAI.Samples.It.App.Services.ModelStore.Path;
+            CircleAI.Assistant.Device.ModelStore.Path;
 
         // Managed voice logging reaches nothing through ILogger on Android, so it
         // goes to logcat directly - the one place it is actually readable.
@@ -60,7 +60,7 @@ public class MainApplication : MauiApplication
         // a session's routing decisions are one grep, and it logs the MISSES too:
         // the matcher is tuned against typed guesses until real Whisper output
         // is written down somewhere.
-        CircleAI.Samples.It.Shared.VoiceTurnRouter.Trace =
+        CircleAI.Assistant.VoiceTurnRouter.Trace =
             line => Android.Util.Log.Info("CircleAI.Route", line);
 
         // AND NOW SAY WHAT IS ACTUALLY WIRED. Last, so the trace sink above is
@@ -70,12 +70,12 @@ public class MainApplication : MauiApplication
         // missing - it had to be inferred from a translation that never spoke,
         // days later. Five lines at startup make the next missing wire a grep
         // instead of a day.
-        CircleAI.Samples.It.App.Services.DeviceWiringProbe.LogHooks();
+        CircleAI.Assistant.Device.DeviceWiringProbe.LogHooks();
 
         // And a full voice sweep, only when somebody has asked for one. Not
         // awaited: it takes minutes, and startup is not allowed to wait on a
         // diagnostic.
-        _ = CircleAI.Samples.It.App.Services.DeviceWiringProbe.SweepVoicesIfRequestedAsync();
+        _ = CircleAI.Assistant.Device.DeviceWiringProbe.SweepVoicesIfRequestedAsync();
     }
 
     /// <inheritdoc />

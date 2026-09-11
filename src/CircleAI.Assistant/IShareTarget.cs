@@ -18,7 +18,7 @@
 // Android Intent is: the head catches the share and parks the text, the screen
 // takes it.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Text handed to this app by another one.</summary>
 public interface IShareTarget

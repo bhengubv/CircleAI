@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Which country an IANA timezone is in.</summary>
 /// <remarks>

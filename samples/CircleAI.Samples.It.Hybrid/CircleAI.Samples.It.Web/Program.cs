@@ -5,11 +5,10 @@
 // make the button work by sending the text off the device, which is the promise
 // the sample exists to demonstrate keeping.
 
-using CircleAI.Samples.It;
-using CircleAI.Samples.It.Web.Components;
-using CircleAI.Samples.It.Web.Client.Services;
-using CircleAI.Samples.It.Web.Services;
-using CircleAI.Samples.It.Shared.State;
+using CircleAI.Assistant;
+using CircleAI.Assistant.Web.Components;
+using CircleAI.Samples.Web.Client.Services;
+using CircleAI.Assistant.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -94,7 +93,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(
-        typeof(CircleAI.Samples.It.Shared._Imports).Assembly,
-        typeof(CircleAI.Samples.It.Web.Client._Imports).Assembly);
+        typeof(CircleAI.Assistant._Imports).Assembly,
+        typeof(CircleAI.Samples.Web.Client._Imports).Assembly);
 
 app.Run();

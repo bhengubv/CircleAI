@@ -7,9 +7,9 @@
 // that mentions a screen without asking to go there must fall through to a
 // normal answer. So most of this file is things that must NOT match.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class VoiceDestinationTests
 {

@@ -36,7 +36,7 @@ using CircleAI.Core.Models;
 using CircleAI.Device;
 using CircleAI.Inference;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 [Activity(Label = "What it can do", Exported = false)]
 public class AbilitiesActivity : Activity

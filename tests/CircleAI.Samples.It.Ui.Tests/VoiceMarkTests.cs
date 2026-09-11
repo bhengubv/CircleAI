@@ -12,9 +12,9 @@
 // None of that needed a phone to catch. It needed one assertion that two
 // readers of one state agree, which is what this file is.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class VoiceMarkTests
 {

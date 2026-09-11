@@ -485,7 +485,7 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
         // phone as a hard process kill:
         //
         //   AndroidRuntime: at WhisperNetTranscriber.DisposeAsync
-        //                   at ItListener.DisposeAsync
+        //                   at CircleAIListener.DisposeAsync
         //                   at HomeActivity.OnDestroy
         //
         // Every Japanese turn died there, which read as a slow turn rather than a

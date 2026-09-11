@@ -8,7 +8,7 @@
 // those claims are TRUE ON ONE HEAD AND FALSE ON ANOTHER. A page that cannot
 // tell which head it is in will print the wrong one.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>The host this UI is currently rendering in.</summary>
 public interface IFormFactor

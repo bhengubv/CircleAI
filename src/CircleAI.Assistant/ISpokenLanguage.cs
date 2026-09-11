@@ -2,7 +2,7 @@
 //
 // Which language the assistant answers in.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Remembers the language of the conversation.</summary>
 /// <remarks>

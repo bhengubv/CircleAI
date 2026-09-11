@@ -12,7 +12,7 @@ using Fluxor;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-namespace CircleAI.Samples.It.Shared.State;
+namespace CircleAI.Assistant;
 
 public static class ConversationStore
 {

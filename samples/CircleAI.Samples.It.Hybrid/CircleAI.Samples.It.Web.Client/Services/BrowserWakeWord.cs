@@ -2,7 +2,7 @@
 //
 // A web page does not sit listening for a wake phrase.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

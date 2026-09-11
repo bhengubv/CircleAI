@@ -1,4 +1,4 @@
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Where a screen appears, if anywhere.</summary>
 /// <remarks>

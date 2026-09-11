@@ -8,9 +8,9 @@
 // mean" throws somebody off the screen they were using, and nothing in a log
 // says so.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class PlayMediaTests
 {

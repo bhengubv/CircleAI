@@ -7,9 +7,9 @@
 // answers: set the answer, render, read the markup. A mock framework would put
 // a second language between the question and the assertion.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 /// <summary>A voice host that offers exactly the catalogue it was handed.</summary>
 internal sealed class FakeVoiceHost : IVoiceHost

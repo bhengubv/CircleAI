@@ -13,7 +13,7 @@
 // "I am answering" all looked like the same glowing circle. The one moment a
 // person most needs feedback - the long wait - was the least legible.
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>What the brand mark is currently saying without words.</summary>
 public enum MarkState

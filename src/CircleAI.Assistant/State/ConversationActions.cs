@@ -7,7 +7,7 @@
 // turn, and an effect can hang off "this exchange finished" without every caller
 // having to remember to also write it down.
 
-namespace CircleAI.Samples.It.Shared.State;
+namespace CircleAI.Assistant;
 
 /// <summary>A turn has begun — from a press, or from the phone hearing its name.</summary>
 /// <param name="Woken">

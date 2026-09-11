@@ -1,0 +1,60 @@
+<!--
+  The assistant on Android, in C#.
+
+  NOT A MAUI LIBRARY, AND THAT IS THE WHOLE POINT. Everything in here used to
+  live inside a MAUI application project, and the only thing holding it there was
+  a handful of calls to MAUI's FileSystem helper - twelve of them, all resolving
+  to two directories that Android hands out itself:
+
+      FileSystem.AppDataDirectory   ->  Context.FilesDir
+      FileSystem.CacheDirectory     ->  Context.CacheDir
+
+  MAUI wraps those and nothing more, so the dependency bought nothing and cost
+  the turn loop, the model host, the voice and the wake word their portability:
+  the repo's OWN native head is plain .NET Android, and could not have used a
+  line of it.
+
+  A head supplies the screens and the DI wiring. This supplies the assistant.
+
+  NAMED .Device, NOT .Android, AND THAT IS NOT A PREFERENCE. A namespace ending
+  in Android SHADOWS the platform's own Android namespace from inside its own
+  files: a bare Android.Util.Log then resolves to
+  CircleAI.Assistant.Android.Util.Log, which does not exist. It was tried, and
+  it produced seventy errors reading "the type or namespace name 'Util' does
+  not exist in the namespace 'CircleAI.Assistant.Android'" - which reads as a
+  missing assembly reference and is nothing of the sort.
+
+  The alternative was global:: on every platform call forever. Device is the
+  word this codebase already uses for exactly this layer - DeviceConversation,
+  DeviceBrain, CircleAI.Device - so it costs nothing and reads better.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CircleAI.Assistant.Device</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The linked Android sources are guarded by this, as in every head that
+         compiles them - without it AndroidAudio.cs compiles to an empty file and
+         the type reads as a missing namespace rather than a missing definition. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <ProjectReference Include="..\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <!-- The resident foreground service, the memory probe and the notification
+         the microphone is disclosed through. -->
+    <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" />
+  </ItemGroup>
+
+</Project>

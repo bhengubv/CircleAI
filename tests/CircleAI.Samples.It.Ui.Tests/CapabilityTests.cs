@@ -9,9 +9,9 @@
 // anybody holding the phone. These tests exist against real implementations, so
 // "the circle does the work" is a thing that can be checked instead of claimed.
 
-using CircleAI.Samples.It;
+using CircleAI.Assistant;
 
-namespace CircleAI.Samples.It.Ui.Tests;
+namespace CircleAI.Samples.Ui.Tests;
 
 public class CapabilityTests
 {

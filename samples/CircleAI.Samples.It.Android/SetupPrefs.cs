@@ -25,7 +25,7 @@
 using System.Collections.Generic;
 using Android.Content;
 
-namespace CircleAI.Samples.It.Mobile;
+namespace CircleAI.Assistant.Device;
 
 /// <summary>What the person has explicitly turned off.</summary>
 public static class SetupPrefs

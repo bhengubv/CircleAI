@@ -2,7 +2,7 @@
 //
 // In a browser the choice lasts as long as the tab.
 
-namespace CircleAI.Samples.It.Web.Client.Services;
+namespace CircleAI.Samples.Web.Client.Services;
 
 /// <inheritdoc />
 /// <remarks>

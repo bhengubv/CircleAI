@@ -36,7 +36,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-namespace CircleAI.Samples.It;
+namespace CircleAI.Assistant;
 
 /// <summary>Turns a streamed reply into speech, sentence by sentence, in order.</summary>
 public sealed class SpokenReply : IAsyncDisposable
