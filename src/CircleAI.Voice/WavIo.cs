@@ -20,8 +20,29 @@ public static class WavIo
     /// Read a WAV file as mono float samples at 24 kHz, resampling if needed.
     /// </summary>
     public static float[] ReadMono24k(string path, int maxSeconds = 30)
+        => ReadMono(path, TargetRate, maxSeconds);
+
+    /// <summary>
+    /// Read a WAV file as mono float samples at <paramref name="targetRate"/>,
+    /// resampling and downmixing as needed.
+    /// </summary>
+    /// <param name="path">A RIFF/WAVE file.</param>
+    /// <param name="targetRate">
+    /// Samples per second the caller needs. 24 kHz for the TTS speaker
+    /// embedding, 16 kHz for Whisper — the two rates in this stack, and neither
+    /// belongs baked into the reader.
+    /// </param>
+    /// <param name="maxSeconds">
+    /// Hard cap, or zero for none. THE CAP BELONGS TO THE CALLER, NOT HERE.
+    /// Thirty seconds is right for a voice-cloning reference and catastrophic
+    /// for transcription: a truncated recording produces a transcript that
+    /// simply stops, which reads as the recogniser giving up rather than as the
+    /// reader having thrown the rest away.
+    /// </param>
+    public static float[] ReadMono(string path, int targetRate, int maxSeconds = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(targetRate);
         var (samples, rate, channels) = Read(path);
 
         if (channels > 1)
@@ -36,11 +57,37 @@ public static class WavIo
             samples = mono;
         }
 
-        if (rate != TargetRate) samples = Resample(samples, rate, TargetRate);
+        if (rate != targetRate) samples = Resample(samples, rate, targetRate);
 
-        var cap = maxSeconds * TargetRate;
-        if (samples.Length > cap) samples = samples[..cap];
+        if (maxSeconds > 0)
+        {
+            var cap = maxSeconds * targetRate;
+            if (samples.Length > cap) samples = samples[..cap];
+        }
         return samples;
+    }
+
+    /// <summary>Whether <paramref name="path"/> starts with a RIFF/WAVE header.</summary>
+    /// <remarks>
+    /// Reads twelve bytes rather than the file, because the caller asking is
+    /// deciding whether it needs a decoder at all and a recording can be
+    /// hundreds of megabytes. The EXTENSION IS NOT THE ANSWER: phones write
+    /// .wav from recorders that produce ADPCM, and .m4a is the default on most
+    /// of them.
+    /// </remarks>
+    public static bool IsWave(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        try
+        {
+            using var f = File.OpenRead(path);
+            Span<byte> head = stackalloc byte[12];
+            return f.ReadAtLeast(head, 12, throwOnEndOfStream: false) == 12
+                && BinaryPrimitives.ReadUInt32BigEndian(head) == 0x52494646          // "RIFF"
+                && BinaryPrimitives.ReadUInt32BigEndian(head[8..]) == 0x57415645;    // "WAVE"
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     /// <summary>Pack float samples in [-1,1] as little-endian signed 16-bit PCM.</summary>

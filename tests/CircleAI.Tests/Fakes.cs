@@ -165,8 +165,18 @@ internal sealed class FakeToolBridge : IToolBridge
         _result = result ?? new ToolResult { ToolName = "fake", Success = true, Result = "ok" };
     }
 
+    // IT ADVERTISED ONE TOOL AND SERVED ANOTHER. This was hardcoded to "fake"
+    // while the agentic test constructed it with a ToolResult for
+    // "tgn.test.ping", so the bridge listed a tool it never ran and ran a tool
+    // it never listed. Nothing noticed, because nothing checked a call's name
+    // against the registry until ToolCallReader.IsRunnable did - and then the
+    // test failed for the right reason against a fake that was wrong.
+    //
+    // Advertising what it actually serves keeps the fake honest, and keeps the
+    // test testing what it says it tests: that the loop runs a tool and carries
+    // on, not that an unregistered name slips through.
     public IReadOnlyList<ToolDefinition> AvailableTools =>
-        new[] { new ToolDefinition { Name = "fake", Description = "Fake tool", Parameters = new Dictionary<string, ToolParameter>(), RequiredParameters = Array.Empty<string>() } };
+        new[] { new ToolDefinition { Name = _result.ToolName, Description = "Fake tool", Parameters = new Dictionary<string, ToolParameter>(), RequiredParameters = Array.Empty<string>() } };
 
     public int InvokeCallCount { get; private set; }
     public ToolInvocation? LastInvocation { get; private set; }

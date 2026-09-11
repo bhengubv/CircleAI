@@ -611,6 +611,15 @@ public sealed class CircleAISession : IAsyncDisposable
         emitLine($"   -> concierge routes to: {organ}   [{d.Reason}]");
         emitLine($"   -> vision: {plan.Reason}");
 
+        // WHAT THE IMAGE COSTS, SAID OUT LOUD. A vision turn that takes four
+        // minutes and one that takes four seconds differ by the size of the
+        // picture and by nothing else visible - the model, the prompt and the
+        // device are identical - so without this line a slow turn looks like a
+        // slow model. Measuring reads the header only; no pixels are decoded.
+        emitLine($"   -> image: {ImageBudget.Describe(imageBytes)}");
+        if (ImageBudget.NeedsShrinking(imageBytes))
+            emitLine("   -> image is over budget; the host should subsample before sending");
+
         TrimHistory();
         var msgs = _history.Select(t => new ChatMessage(t.Role, t.Content)).ToList();
         msgs.Add(new ChatMessage("user", question) { ImageBytes = imageBytes });

@@ -305,7 +305,56 @@ public static class CapabilitySweep
             }),
             new ReportSection("What the models need", new[]
             {
-                "Speech (Whisper ASR, Piper TTS) fits this phone. Vision needs a 4 GB+ device — the 3B VLM is catalogued but gated off smaller phones, which is the honest verdict, not a crash.",
+                ModelVerdict(),
             }),
         });
+
+    /// <summary>
+    /// What this phone can actually run, asked of the selector.
+    /// </summary>
+    /// <remarks>
+    /// THIS SENTENCE USED TO BE TYPED IN, AND IT WENT STALE. It read "Vision
+    /// needs a 4 GB+ device - the 3B VLM is catalogued but gated off smaller
+    /// phones", which was true when only Qwen2.5-VL-3B was catalogued and became
+    /// false the day SmolVLM-256M was added at 0,5 GB. So the report generated
+    /// ON the phone told its reader that the phone could not see, while the
+    /// abilities screen on the same phone correctly offered vision.
+    /// <para>
+    /// One fact with two owners always ends up with two answers, and a hardcoded
+    /// verdict in a document nobody rereads is the owner that loses quietly.
+    /// Asking the selector costs a registry read and cannot drift.
+    /// </para>
+    /// </remarks>
+    internal static string ModelVerdict()
+    {
+        try
+        {
+            var registry = new ModelRegistryService();
+            var probe    = DeviceProbe.Snapshot();
+            var selector = new SpeechModelSelector(registry);
+
+            var parts = new List<string>();
+            foreach (var (modality, name) in new[]
+            {
+                (ModelModality.Asr,    "Hearing"),
+                (ModelModality.Tts,    "Speaking"),
+                (ModelModality.Vision, "Seeing"),
+            })
+            {
+                var pick = selector.BestFor(probe, modality);
+                parts.Add(pick is null
+                    ? $"{name}: nothing catalogued that runs on this phone."
+                    : $"{name}: {pick.ModelId}.");
+            }
+
+            return string.Join(" ", parts) +
+                   $" Judged against {probe.UsableRamGb:0.#} GB of usable RAM, on the device, from the catalogue.";
+        }
+        catch (Exception ex)
+        {
+            // A report that cannot reach the registry must still render. Saying
+            // so is worth more than a sentence that might be wrong.
+            return $"The model selector could not be consulted on this device ({ex.GetType().Name}).";
+        }
+    }
 }

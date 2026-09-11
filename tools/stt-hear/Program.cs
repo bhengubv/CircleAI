@@ -2,16 +2,27 @@
 //
 // Proves Whisper ASR actually runs — the input half of IT!'s voice loop, and the
 // close of the "no whisper native lib ships" gap. Downloads the catalogued
-// ggml-tiny model, transcribes a real speech WAV, and prints what it heard.
+// ggml-tiny model, transcribes a real speech file, prints what it heard AND
+// WHEN, and writes a subtitle file beside it.
 //
-//   dotnet run --project tools/stt-hear -- [wavPath]
+//   dotnet run --project tools/stt-hear -- [audioPath] [language]
 //
-// With no wav, it fetches JFK's line (the canonical whisper.cpp sample, 16 kHz)
-// and asserts the transcript contains "country". Whisper.net ships the native
-// library via NuGet, so there is no DllNotFoundException to hit.
+// With no file, it fetches JFK's line (the canonical whisper.cpp sample, 16 kHz)
+// and asserts the transcript contains "country".
+//
+// IT NOW RUNS THE PRODUCT'S OWN PATH. This tool used to carry its own RIFF
+// parser, its own downmix and its own resampler — fifty lines sitting beside
+// WavIo, which already had all three and handled four more sample formats than
+// the copy did. Two owners for one fact, which is this repo's documented
+// anti-pattern, and the copy was the worse of the two: it rejected any WAV that
+// was not 16-bit, so a 24-bit recording failed here while the app read it fine.
+//
+// Going through CircleAI.Voice means a pass here is evidence about the SHIPPING
+// code rather than about a parallel implementation that happens to live in the
+// same repo.
 
 using System.Security.Cryptography;
-using Whisper.net;
+using CircleAI.Voice;
 
 var modelDir = Path.Combine(Path.GetTempPath(), "circleai-stt");
 Directory.CreateDirectory(modelDir);
@@ -26,28 +37,24 @@ await Ensure(modelPath,
     "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21");
 
 // The audio to transcribe.
-string wavPath;
+string audioPath;
 string? expectWord = null;
 if (args.Length > 0 && File.Exists(args[0]))
 {
-    wavPath = args[0];
+    audioPath = args[0];
 }
 else
 {
     // The canonical whisper.cpp JFK sample (16 kHz mono WAV, clear speech).
-    wavPath = Path.Combine(modelDir, "jfk.wav");
-    await Ensure(wavPath,
+    audioPath = Path.Combine(modelDir, "jfk.wav");
+    await Ensure(audioPath,
         "https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav", null);
     expectWord = "country";
 }
 
 Console.WriteLine($"model : {modelPath}");
-Console.WriteLine($"wav   : {wavPath}");
+Console.WriteLine($"audio : {audioPath}");
 
-var samples = LoadWav16kMono(wavPath, out var srcRate, out var srcChannels);
-Console.WriteLine($"audio : {srcRate} Hz {srcChannels}ch → 16000 Hz mono, {samples.Length} samples ({samples.Length / 16000.0:F1} s)");
-
-var sw = System.Diagnostics.Stopwatch.StartNew();
 // LANGUAGE IS AN ARGUMENT, NOT A CONSTANT. Hard-coded to "en" this tool will
 // happily "transcribe" Japanese into English-looking nonsense and report success,
 // which makes it useless for testing any other language — the failure looks like
@@ -56,18 +63,53 @@ var sw = System.Diagnostics.Stopwatch.StartNew();
 var language = args.Length > 1 ? args[1] : "auto";
 Console.WriteLine($"lang  : {language}");
 
-using var factory = WhisperFactory.FromPath(modelPath);
-using var processor = factory.CreateBuilder().WithLanguage(language).Build();
+var sw = System.Diagnostics.Stopwatch.StartNew();
 
-var heard = new System.Text.StringBuilder();
-await foreach (var seg in processor.ProcessAsync(samples))
-    heard.Append(seg.Text);
+await using var transcriber = new WhisperNetTranscriber(modelPath, language);
+
+// Progress matters here for the same reason it matters in the app: tiny runs at
+// about real time, so a long recording is a long wait, and a wait with no number
+// looks like a hang.
+var lastShown = -1;
+var progress = new Progress<double>(p =>
+{
+    var pct = (int)(p * 100);
+    if (pct / 10 == lastShown / 10) return;
+    lastShown = pct;
+    Console.WriteLine($"      : {pct,3}%");
+});
+
+var result = await Transcribing.FileAsync(
+    transcriber, audioPath, decoder: null, language: language, progress: progress);
+
 sw.Stop();
 
-var text = heard.ToString().Trim();
+var text = result.Text;
 Console.WriteLine();
 Console.WriteLine($"HEARD : \"{text}\"");
+Console.WriteLine($"lang  : {result.LanguageCode}   confidence: {result.Confidence:0.00}");
 Console.WriteLine($"time  : {sw.Elapsed.TotalSeconds:F1} s");
+
+// WHEN, NOT JUST WHAT. The timings are the half that was being thrown away, so
+// a tool that proves ASR runs should show them rather than take them on trust.
+if (result.Timed.Count > 0)
+{
+    Console.WriteLine();
+    Console.WriteLine($"timed : {result.Timed.Count} segment(s)");
+    foreach (var seg in result.Timed.Take(10))
+        Console.WriteLine($"        [{seg.Start:hh\\:mm\\:ss\\.ff} -> {seg.End:hh\\:mm\\:ss\\.ff}] {seg.Text}");
+    if (result.Timed.Count > 10) Console.WriteLine($"        ... and {result.Timed.Count - 10} more");
+
+    var srtPath = Path.ChangeExtension(audioPath, ".srt");
+    await File.WriteAllTextAsync(srtPath, Subtitles.ToSrt(result.Timed));
+    Console.WriteLine($"srt   : {srtPath}");
+}
+else
+{
+    Console.WriteLine();
+    Console.WriteLine("timed : NONE — the engine reported no segment timings.");
+}
+
 Console.WriteLine();
 
 if (string.IsNullOrWhiteSpace(text))
@@ -81,8 +123,13 @@ if (expectWord is not null &&
     Console.Error.WriteLine($"FAIL: expected the transcript to contain '{expectWord}'.");
     return 1;
 }
+if (result.Timed.Count == 0)
+{
+    Console.Error.WriteLine("FAIL: transcript carried no timings.");
+    return 1;
+}
 
-Console.WriteLine("PASS: Whisper ASR ran and produced real text. IT! can hear.");
+Console.WriteLine("PASS: Whisper ASR ran, produced real text, and timed it. IT! can hear.");
 return 0;
 
 async Task Ensure(string path, string url, string? sha)
@@ -112,57 +159,4 @@ static async Task<string> Sha(string p)
     await using var s = File.OpenRead(p);
     using var sha = SHA256.Create();
     return Convert.ToHexString(await sha.ComputeHashAsync(s)).ToLowerInvariant();
-}
-
-// Minimal WAV reader → 16 kHz mono float[-1,1], resampling by linear
-// interpolation when the source rate differs (Piper is 22050; JFK is 16000).
-static float[] LoadWav16kMono(string path, out int srcRate, out int channels)
-{
-    var bytes = File.ReadAllBytes(path);
-    // Walk chunks to find "fmt " and "data" (some WAVs carry LIST/fact chunks).
-    int fmtRate = 16000, ch = 1, bits = 16, dataOff = -1, dataLen = 0;
-    int pos = 12; // skip RIFF....WAVE
-    while (pos + 8 <= bytes.Length)
-    {
-        var id = System.Text.Encoding.ASCII.GetString(bytes, pos, 4);
-        int sz = BitConverter.ToInt32(bytes, pos + 4);
-        var body = pos + 8;
-        if (id == "fmt ")
-        {
-            ch = BitConverter.ToInt16(bytes, body + 2);
-            fmtRate = BitConverter.ToInt32(bytes, body + 4);
-            bits = BitConverter.ToInt16(bytes, body + 14);
-        }
-        else if (id == "data") { dataOff = body; dataLen = sz; }
-        pos = body + sz + (sz & 1);
-    }
-    srcRate = fmtRate; channels = ch;
-    if (dataOff < 0 || bits != 16)
-        throw new InvalidOperationException($"unsupported WAV (bits={bits}, data={dataOff})");
-
-    int frames = dataLen / (2 * ch);
-    var mono = new float[frames];
-    for (int i = 0; i < frames; i++)
-    {
-        int acc = 0;
-        for (int c = 0; c < ch; c++)
-            acc += BitConverter.ToInt16(bytes, dataOff + (i * ch + c) * 2);
-        mono[i] = acc / (float)ch / 32768f;
-    }
-    if (fmtRate == 16000) return mono;
-
-    // Linear resample to 16 kHz.
-    int outLen = (int)((long)frames * 16000 / fmtRate);
-    var outBuf = new float[outLen];
-    double step = (double)frames / outLen;
-    for (int i = 0; i < outLen; i++)
-    {
-        double src = i * step;
-        int i0 = (int)src;
-        double frac = src - i0;
-        float a = mono[i0];
-        float b = i0 + 1 < frames ? mono[i0 + 1] : a;
-        outBuf[i] = (float)(a + (b - a) * frac);
-    }
-    return outBuf;
 }

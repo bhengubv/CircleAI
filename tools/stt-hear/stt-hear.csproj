@@ -11,11 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Whisper.net wraps whisper.cpp AND ships its native libs per-RID via
-         NuGet — the same way Microsoft.ML.OnnxRuntime ships ONNX natives. This
-         is the whole point: it closes the "no whisper.dll anywhere" gap by
-         construction, on Windows/Linux/Android/iOS, with no hand-built native. -->
-    <PackageReference Include="Whisper.net" Version="1.8.1" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
+    <!-- THE PRODUCT, NOT A COPY OF IT. This tool used to carry its own WAV
+         reader and call Whisper.net directly, so a pass proved that the TOOL
+         could hear - which is not the claim anybody wanted. Referencing the
+         shipping library means the transcriber, the file reader, the chunking
+         and the subtitle writer under test here are the ones on the phone.
+
+         Whisper.net and its per-RID natives come through CircleAI.Voice. -->
+    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
   </ItemGroup>
 </Project>

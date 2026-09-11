@@ -358,6 +358,27 @@ public sealed class WhisperNetTranscriber : IVoiceTranscriber
             // wants to judge.
             .WithTemperatureInc(0f)
 
+            // CONFIDENCE WAS ZERO ON EVERY RESULT, INCLUDING PERFECT ONES.
+            //
+            // SegmentData.Probability is only populated when the processor was
+            // built asking for it; unasked, whisper.net leaves the field at its
+            // default and every segment reports 0,00. This class then averaged
+            // those zeroes into TranscriptionResult.Confidence, so the number
+            // the interface promises as "engine-reported confidence in [0,1]"
+            // was a constant zero for the life of the library.
+            //
+            // Caught by tools/stt-hear on 2026-09-11, which transcribed the JFK
+            // sample VERBATIM and printed "confidence: 0,00" underneath it. Any
+            // caller that had gated on confidence - to decide whether to ask
+            // somebody to repeat themselves, say - would have rejected every
+            // transcript it ever produced, and the transcripts were fine.
+            //
+            // It is not free: whisper accumulates per-token probabilities to
+            // produce it. Measured on the JFK sample it did not move the decode
+            // out of its normal spread, and a confidence figure that is real is
+            // worth more than one that is a zero-shaped placeholder.
+            .WithProbabilities()
+
             ;
 
         // NAMES AND MONEY, WHICH IS WHAT A SMALL MODEL ACTUALLY GETS WRONG. See

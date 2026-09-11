@@ -717,27 +717,68 @@ public sealed class AIService : IAIService
                 new AIChatEvent(Guid.NewGuid(), prepared, response, sw.Elapsed, DateTimeOffset.UtcNow),
                 ct), ct).ConfigureAwait(false);
 
-            // Try to extract a tool call from the response.
-            var invocation = ParseToolCall(response);
-            if (invocation is null) break; // No tool call — we're done.
+            // EVERY CALL IN THE REPLY, NOT JUST THE FIRST. Asked to do two
+            // things a model emits two blocks; running one and re-prompting
+            // threw the other away, so "remind me at six and text Sipho"
+            // quietly became just the reminder.
+            var invocations = ToolCallReader.ReadAll(response);
+            if (invocations.Count == 0) break; // No tool call — we're done.
 
             if (_options.ToolBridge is null)
             {
                 // No bridge — append an error result and re-prompt so the model
                 // can respond without the tool (graceful degradation).
-                history.Add(new ChatMessage("tool",
-                    $"{{\"tool\": \"{invocation.ToolName}\", \"error\": \"No tool bridge configured.\"}}"));
+                foreach (var call in invocations)
+                    history.Add(new ChatMessage("tool",
+                        $"{{\"tool\": \"{call.ToolName}\", \"error\": \"No tool bridge configured.\"}}"));
                 continue;
             }
 
-            // Execute the tool and append the result.
-            var toolResult = await InvokeToolAsync(invocation, linked.Token).ConfigureAwait(false);
-            var toolContent = toolResult.Success
-                ? $"{{\"tool\": \"{toolResult.ToolName}\", \"result\": {JsonSerializer.Serialize(toolResult.Result)}}}"
-                : $"{{\"tool\": \"{toolResult.ToolName}\", \"error\": {JsonSerializer.Serialize(toolResult.Error)}}}";
+            var available = await AvailableToolsAsync(linked.Token).ConfigureAwait(false);
 
-            history.Add(new ChatMessage("tool", toolContent));
-            // Loop back to re-prompt with tool result in history.
+            foreach (var invocation in invocations)
+            {
+                // A CALL THAT CANNOT RUN IS A SENTENCE, NOT SILENCE. A tool name
+                // that does not exist, or a required argument left out, used to
+                // vanish - the loop saw no runnable call and finished, and the
+                // model never learned it had got the name wrong. Handed back as
+                // a tool result naming the real tools, the next attempt is
+                // usually right.
+                // AN EMPTY REGISTRY MEANS "UNKNOWN", NOT "NOTHING EXISTS", and
+                // gating on it would have disarmed tool calling for a whole
+                // class of bridge. IToolBridge documents that an implementation
+                // MAY return an empty list from GetAvailableToolsAsync, and
+                // AvailableToolsAsync returns empty when the bridge throws - so
+                // a bridge that lists nothing and serves everything, or one
+                // having a bad minute, would have had every call refused with
+                // "No tools are available" while InvokeAsync would have run them
+                // perfectly well.
+                //
+                // Same rule as ImageBudget.Measure returning null: not knowing
+                // is not grounds for refusing. Validate when there is something
+                // to validate against; otherwise pass it to the bridge, which is
+                // what happened before any of this existed.
+                if (available.Count > 0 &&
+                    !ToolCallReader.IsRunnable(invocation, available, out var problem))
+                {
+                    _logger.LogInformation(
+                        "Tool call \"{Tool}\" rejected: {Problem}", invocation.ToolName, problem);
+
+                    history.Add(new ChatMessage("tool",
+                        $"{{\"tool\": {JsonSerializer.Serialize(invocation.ToolName)}, " +
+                        $"\"error\": {JsonSerializer.Serialize(problem)}}}"));
+                    continue;
+                }
+
+                // Execute the tool and append the result.
+                var toolResult = await InvokeToolAsync(invocation, linked.Token).ConfigureAwait(false);
+                var toolContent = toolResult.Success
+                    ? $"{{\"tool\": \"{toolResult.ToolName}\", \"result\": {JsonSerializer.Serialize(toolResult.Result)}}}"
+                    : $"{{\"tool\": \"{toolResult.ToolName}\", \"error\": {JsonSerializer.Serialize(toolResult.Error)}}}";
+
+                history.Add(new ChatMessage("tool", toolContent));
+            }
+            // Loop back to re-prompt with tool results in history.
         }
 
         // Store the entire agentic exchange as a single episode.
@@ -1813,55 +1854,23 @@ public sealed class AIService : IAIService
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Attempts to parse a tool call from Qwen3's native
-    /// <c>&lt;tool_call&gt;...&lt;/tool_call&gt;</c> format.
-    /// Returns <c>null</c> when no tool call is present.
+    /// The first tool call in a response, or <c>null</c> when there is none.
     /// </summary>
+    /// <remarks>
+    /// KEPT AS A NAME, NOT AS AN IMPLEMENTATION. The parser that lived here read
+    /// strict JSON out of a strictly-closed tag pair and returned null for every
+    /// near miss - and a 0.6B model's tool calls are made of near misses. The
+    /// reader it now calls accepts the spellings those models actually produce
+    /// and, crucially, no longer invokes a tool with an EMPTY argument list when
+    /// the arguments arrived as a JSON string rather than an object.
+    /// <para>
+    /// The agentic loop calls <see cref="ToolCallReader.ReadAll"/> directly,
+    /// because a reply can carry more than one call and only the first was ever
+    /// run. This remains for callers that want just the first.
+    /// </para>
+    /// </remarks>
     internal static ToolInvocation? ParseToolCall(string response)
-    {
-        if (string.IsNullOrWhiteSpace(response)) return null;
-
-        var start = response.IndexOf(ToolCallOpen, StringComparison.Ordinal);
-        if (start < 0) return null;
-
-        var contentStart = start + ToolCallOpen.Length;
-        var end = response.IndexOf(ToolCallClose, contentStart, StringComparison.Ordinal);
-        if (end < 0) return null;
-
-        var json = response[contentStart..end].Trim();
-        if (string.IsNullOrWhiteSpace(json)) return null;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            // Support both {"name":...} and {"tool_name":...} spellings.
-            var toolName = root.TryGetProperty("name", out var nameProp)
-                ? nameProp.GetString()
-                : root.TryGetProperty("tool_name", out var tnProp)
-                    ? tnProp.GetString()
-                    : null;
-
-            if (string.IsNullOrWhiteSpace(toolName)) return null;
-
-            var args = new Dictionary<string, object?>();
-            if (root.TryGetProperty("arguments", out var argsProp) &&
-                argsProp.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var prop in argsProp.EnumerateObject())
-                    args[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                        ? prop.Value.GetString()
-                        : (object?)prop.Value.GetRawText();
-            }
-
-            return new ToolInvocation { ToolName = toolName!, Arguments = args };
-        }
-        catch
-        {
-            return null;
-        }
-    }
+        => ToolCallReader.Read(response);
 
     // ------------------------------------------------------------------
     // Private — observer

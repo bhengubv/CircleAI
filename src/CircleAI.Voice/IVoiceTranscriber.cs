@@ -100,6 +100,28 @@ public sealed record TranscriptSegment(string Text, TimeSpan Start, TimeSpan End
 {
     /// <summary>How long this stretch lasted.</summary>
     public TimeSpan Duration => End - Start;
+
+    /// <summary>Who said it, or <c>null</c> when that is not known.</summary>
+    /// <remarks>
+    /// A LABEL, NOT A NAME. <see cref="Diarisation"/> fills this with
+    /// "Speaker 1", "Speaker 2" and so on - it can tell voices apart without
+    /// having any idea who they belong to, which is the whole point for a
+    /// recording of people who never enrolled. Putting a real name here is
+    /// <see cref="ISpeakerIdentity"/>'s job and needs enrolment.
+    /// <para>
+    /// A PROPERTY RATHER THAN A FOURTH POSITIONAL PARAMETER, so every existing
+    /// construction site keeps compiling and simply reports no speaker - which
+    /// is the truth for a transcript nobody has diarised.
+    /// </para>
+    /// <para>
+    /// Null is a real answer and must stay one. A stretch too short to
+    /// characterise cannot be attributed, and the tempting repair - give it the
+    /// previous speaker - is wrong often enough to matter: a one-word "yeah" in
+    /// the middle of somebody's turn is usually the other person. An unlabelled
+    /// line is honest; a wrongly labelled one is a quote in the wrong mouth.
+    /// </para>
+    /// </remarks>
+    public string? Speaker { get; init; }
 }
 
 /// <summary>

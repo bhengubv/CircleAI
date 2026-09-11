@@ -284,11 +284,19 @@ public class AbilitiesActivity : Activity
     }
 
     /// <summary>The screen that demonstrates an ability, where one exists.</summary>
+    /// <remarks>
+    /// SEEING WAS THE ROW THAT OFFERED A DOWNLOAD TO NOWHERE. Every other part
+    /// of vision was built - two models catalogued with their hashes, the bridge
+    /// able to encode an image, RunImageTurnAsync complete - and the abilities
+    /// list would cheerfully fetch 311 MB for an ability with no screen behind
+    /// it. The tick then said On for something a person could not do.
+    /// </remarks>
     static Type? ScreenFor(ModelModality modality) => modality switch
     {
 #if IT_VOICE_ANDROID
         ModelModality.WakeWord => typeof(WakeWordActivity),
 #endif
+        ModelModality.Vision => typeof(SeeingActivity),
         _ => null,
     };
 

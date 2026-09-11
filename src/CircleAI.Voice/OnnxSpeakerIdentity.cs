@@ -60,7 +60,15 @@ public sealed record SpeakerIdentityConfig(
     int                       MaxUtteranceMs   = 8_000,
     double                    MatchThreshold   = 0.55);
 
-public sealed class OnnxSpeakerIdentity : ISpeakerIdentity
+/// <remarks>
+/// ALSO AN <see cref="ISpeakerEmbedder"/>, WHICH IT ALWAYS COULD HAVE BEEN. The
+/// vector this class compares against enrolled people is exactly what
+/// diarisation needs to tell strangers apart, and it was private - so the only
+/// question the class could answer was "which enrolled person is this", which
+/// nobody in a meeting recording has an answer for. Exposing the embedding
+/// costs nothing and makes the model already on the device do both jobs.
+/// </remarks>
+public sealed class OnnxSpeakerIdentity : ISpeakerIdentity, ISpeakerEmbedder
 {
     private readonly SpeakerIdentityConfig _config;
     private readonly InferenceSession      _session;
@@ -152,6 +160,21 @@ public sealed class OnnxSpeakerIdentity : ISpeakerIdentity
         _session.Dispose();
         _storeGate.Dispose();
         await ValueTask.CompletedTask.ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public ValueTask<float[]?> EmbedAsync(
+        ReadOnlyMemory<byte> pcm16, int sampleRateHz, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ct.ThrowIfCancellationRequested();
+
+        // NULL RATHER THAN A ZERO VECTOR when the stretch is too short. A zero
+        // vector has a cosine similarity of zero with everything, which reads as
+        // a voice unlike any other and invents a speaker for every short "mm".
+        return ValueTask.FromResult(pcm16.IsEmpty
+            ? null
+            : ComputeEmbedding(pcm16.Span, sampleRateHz));
     }
 
     // ── Embedding extraction ─────────────────────────────────────────────

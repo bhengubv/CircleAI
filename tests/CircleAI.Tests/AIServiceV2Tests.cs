@@ -85,10 +85,20 @@ public sealed class ParseToolCallTests
     }
 
     [Fact]
-    public void MissingCloseTag_ReturnsNull()
+    public void MissingCloseTag_RecoversTheCallTheModelHadAlreadyDecidedOn()
     {
+        // THIS TEST USED TO ASSERT NULL, AND NULL WAS THE DEFECT. An unclosed
+        // tag is what a reply looks like when it hits the token ceiling
+        // mid-call: the model chose the tool and wrote the JSON, and only the
+        // closing tag is missing. Dropping it made the agentic loop conclude
+        // that no tool was wanted, so the user got an answer with none of the
+        // information they asked for and nothing said why.
         const string response = "<tool_call>{\"name\":\"foo\"}";
-        Assert.Null(AIService.ParseToolCall(response));
+
+        var inv = AIService.ParseToolCall(response);
+
+        Assert.NotNull(inv);
+        Assert.Equal("foo", inv!.ToolName);
     }
 
     [Fact]
