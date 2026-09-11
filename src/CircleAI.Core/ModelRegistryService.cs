@@ -86,7 +86,17 @@ namespace CircleAI.Core.Models
                 var registry = await _catalogClient
                     .GetCachedCatalogAsync(acceptStaleOnError: true, ct)
                     .ConfigureAwait(false);
-                if (registry is not null) _remoteRegistry = registry;
+
+                if (registry is not null)
+                {
+                    _remoteRegistry = registry;
+
+                    // AND TO EVERYONE ELSE. This used to set an instance field
+                    // on a service that is overwhelmingly constructed per-call
+                    // and disposed, so the refresh died with the object that
+                    // asked for it.
+                    Publish(registry);
+                }
             }
             catch
             {
@@ -152,8 +162,49 @@ namespace CircleAI.Core.Models
         /// </para>
         /// </summary>
         public virtual IReadOnlyList<ModelEntry> AllModels =>
-            (_remoteRegistry ?? _embeddedRegistry)?.Models
-                ?? (IReadOnlyList<ModelEntry>)Array.Empty<ModelEntry>();
+            CatalogueMerge.Combine(
+                _embeddedRegistry?.Models,
+                (_remoteRegistry ?? Live)?.Models);
+
+        // ── The live catalogue is process-wide ──────────────────────────────
+        //
+        // TWENTY PLACES DO `new ModelRegistryService()` AND EACH GOT ITS OWN
+        // EVERYTHING. DeviceBrain, DeviceSetup (six times), CircleAISession,
+        // CircleAIListener, CircleAISpeaker, the TTS probe, the sweep,
+        // BundleModelLoader, DeviceAwareModelSelector, the abilities screen -
+        // most of them `using var`, built for one question and thrown away.
+        //
+        // A refresh held in an instance field therefore reached exactly one of
+        // them, for as long as that one lived, which is nobody. Keeping the
+        // fetched catalogue in a static means one refresh updates every reader,
+        // including the ones constructed afterwards - which is what "keep the
+        // model options updated" has to mean when the reader is disposable.
+        //
+        // An instance-level _remoteRegistry still wins when it is set, so a
+        // caller that primes its own client explicitly is unaffected.
+
+        private static ModelRegistry? _live;
+
+        /// <summary>The catalogue fetched this process, shared by every instance.</summary>
+        internal static ModelRegistry? Live => Volatile.Read(ref _live);
+
+        /// <summary>
+        /// Publish a freshly-fetched catalogue to every registry in the process.
+        /// </summary>
+        /// <remarks>
+        /// REFUSES AN EMPTY ONE. A catalogue with no models is what a partial
+        /// fetch, an API change or a rate-limit page parses to, and publishing
+        /// it would merge nothing over everything - harmless today because the
+        /// curated list is the spine, and a silent lie about what was fetched.
+        /// </remarks>
+        internal static void Publish(ModelRegistry? registry)
+        {
+            if (registry is null || registry.Models is null || registry.Models.Count == 0) return;
+            Volatile.Write(ref _live, registry);
+        }
+
+        /// <summary>Forget the live catalogue. For tests, and for a host that wants offline.</summary>
+        internal static void ForgetLive() => Volatile.Write(ref _live, null);
 
         /// <summary>
         /// Compare every installed model under <paramref name="storageDirectory"/>

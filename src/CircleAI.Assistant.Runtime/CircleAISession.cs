@@ -241,6 +241,21 @@ public sealed class CircleAISession : IAsyncDisposable
             var modelDir = ModelPaths.Default;
 
             _registry = new ModelRegistryService();
+
+            // WHAT MODELS EXIST, ASKED RATHER THAN ASSUMED. Every registry in
+            // this process reads the catalogue that was compiled into the APK,
+            // which freezes the model options at build time - a model published
+            // next month is invisible until somebody ships a new app.
+            //
+            // Started here and NOT awaited. This constructor runs on the way to
+            // loading several hundred megabytes of weights; a catalogue refresh
+            // is the least important thing happening and must never be something
+            // a person waits through. RefreshAsync cannot throw and cannot make
+            // the app worse offline - the curated catalogue is the spine and a
+            // refresh only ever adds to it - so fire-and-forget is safe here in
+            // a way it usually is not.
+            ModelCatalogue.RefreshInBackground();
+
             _loader   = new BundleModelLoader(modelDir, _registry);
             _speech   = new SpeechModelSelector(_registry);
             var selector = new DeviceAwareModelSelector(_registry);
