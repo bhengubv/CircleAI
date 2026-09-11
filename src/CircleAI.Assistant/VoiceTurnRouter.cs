@@ -1,4 +1,6 @@
-using Microsoft.AspNetCore.Components;
+// NO BLAZOR. The last Microsoft.AspNetCore.Components dependency here was
+// NavigationManager, and GoAsync takes a callback instead - see its param doc.
+// That is what lets this class live in the product rather than in a UI library.
 
 namespace CircleAI.Samples.It.Shared;
 
@@ -195,10 +197,20 @@ public sealed class VoiceTurnRouter : IDisposable
     /// a task list is as many as it has items. This method only speaks the
     /// OUTCOME, and skips even that when the capability already said it.
     /// </param>
+    /// <param name="go">
+    /// How this head moves to a route. A CALLBACK, NOT A NavigationManager: that
+    /// was the one Blazor type in this whole class, and it was enough to pin the
+    /// routing decision - which is product - inside a UI library, where a console
+    /// or a service head could not reach it. Deciding WHERE to go belongs here;
+    /// the going belongs to whoever has a screen. The same shape as say and show
+    /// directly above, for the same reason.
+    /// </param>
     public async Task GoAsync(
-        NavigationManager nav, Func<string, Task>? say = null, Action<string>? show = null,
+        Action<string> go, Func<string, Task>? say = null, Action<string>? show = null,
         IAnnounces? announce = null)
     {
+        ArgumentNullException.ThrowIfNull(go);
+
         // DO THE THING, IF SOMETHING CAN. The capability decides whether that
         // means acting on what was said or opening the screen that would - and
         // either way what comes back is one line a person can hear.
@@ -232,7 +244,7 @@ public sealed class VoiceTurnRouter : IDisposable
                 catch { /* it still shows, and still moves */ }
             }
 
-            if (did.Route is { Length: > 0 } route) nav.NavigateTo(route);
+            if (did.Route is { Length: > 0 } route) go(route);
             return;
         }
 
@@ -247,7 +259,7 @@ public sealed class VoiceTurnRouter : IDisposable
             catch { /* it moves anyway */ }
         }
 
-        nav.NavigateTo(Routed.Route);
+        go(Routed.Route);
     }
 
     public void Dispose() => _cts.Dispose();

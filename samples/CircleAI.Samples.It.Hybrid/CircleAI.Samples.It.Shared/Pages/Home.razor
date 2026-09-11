@@ -423,7 +423,7 @@
             catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
             finally { _turn = null; Mark.Clear(); }
 
-            await router.GoAsync(Nav, line => Talk.SayAsync(line),
+            await router.GoAsync(route => Nav.NavigateTo(route), line => Talk.SayAsync(line),
                 line => { _detail = line; StateHasChanged(); }, Announcer);
             return;
         }

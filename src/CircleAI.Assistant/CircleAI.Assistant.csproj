@@ -29,4 +29,22 @@
     <SupportedPlatform Include="browser" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      THE CONVERSATION STORE, AND FLUXOR CORE ONLY.
+
+      Not Fluxor.Blazor.Web: the store, the reducers and the effect that carries
+      a finished exchange through to long-term memory have no Blazor in them at
+      all - they are a state machine over a conversation, and they were sitting
+      in a Razor library purely because that is where they were written. A head
+      with no screen needs them just as much.
+
+      MIT, pure managed, and it loads in a browser - which is the bar everything
+      in this assembly has to clear. It is still a dependency imposed on anyone
+      referencing the assistant, and that is the price of the store being part
+      of the product rather than part of one app.
+    -->
+    <PackageReference Include="Fluxor" Version="6.9.0" />
+  </ItemGroup>
+
 </Project>
