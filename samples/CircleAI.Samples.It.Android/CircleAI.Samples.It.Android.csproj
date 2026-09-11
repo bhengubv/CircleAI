@@ -172,4 +172,12 @@
     <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- These eight files used to live in this folder and be linked into
+         the MAUI head by path. They are the Android half of the
+         assistant, so they are a library now and both heads reference
+         it. -->
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Android\CircleAI.Assistant.Android.csproj" />
+  </ItemGroup>
+
 </Project>

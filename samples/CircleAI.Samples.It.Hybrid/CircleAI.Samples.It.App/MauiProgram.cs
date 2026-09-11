@@ -70,6 +70,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<IShareTarget, AndroidShareTarget>();
         builder.Services.AddSingleton<IWakeWord, DeviceWakeWord>();
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
+        // MAY THIS APP LISTEN. The assistant asks; this head knows how to get
+        // the answer, because it is the thing with a screen. See IMicrophoneAccess.
+        builder.Services.AddSingleton<IMicrophoneAccess, MauiMicrophoneAccess>();
         builder.Services.AddSingleton<ISetup, DeviceSetup>();
         builder.Services.AddSingleton<IConversation, DeviceConversation>();
         builder.Services.AddSingleton<IProfile, DeviceProfile>();

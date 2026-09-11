@@ -22,7 +22,13 @@ using CircleAI.Inference;
 namespace CircleAI.Samples.It.App.Services;
 
 /// <summary>Picks the model this device should use for a modality.</summary>
-internal static class ModelChoice
+/// <remarks>
+/// PUBLIC BECAUSE A HEAD LEGITIMATELY ASKS. The diagnostics screen names which
+/// model was chosen and why; that is the product answering a question about
+/// itself, not internals leaking. It was internal only because it used to live
+/// in the same assembly as the screen.
+/// </remarks>
+public static class ModelChoice
 {
     /// <summary>Whether a phone can run it at all.</summary>
     /// <remarks>

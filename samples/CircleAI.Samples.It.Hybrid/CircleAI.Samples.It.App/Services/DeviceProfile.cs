@@ -15,7 +15,7 @@ namespace CircleAI.Samples.It.App.Services;
 public sealed class DeviceProfile : IProfile
 {
     private static string StorePath
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "career.db");
+        => Path.Combine(AppPaths.Data, "CircleAI", "career.db");
 
     private static SqliteCareerStore Store()
     {

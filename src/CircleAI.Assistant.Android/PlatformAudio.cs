@@ -1,12 +1,18 @@
-// PlatformAudio.Android.cs
+// PlatformAudio.cs
 //
 // Android playback.
+//
+// WAS A PARTIAL CLASS IN TWO FILES, and it did not need to be. The split
+// exists so a MAUI app can compile one implementation per platform; this
+// library targets Android and nothing else, so the declaration half was pure
+// ceremony - and it was the half that kept the assistant inside a MAUI
+// project, because a partial cannot be completed across an assembly boundary.
 
 using Android.Media;
 
 namespace CircleAI.Samples.It.App.Services;
 
-internal static partial class PlatformAudio
+internal static class PlatformAudio
 {
     /// <summary>
     /// Play through the MUSIC stream, and wait for completion.
@@ -23,7 +29,7 @@ internal static partial class PlatformAudio
     /// sound stops rather than when the file was written.
     /// </para>
     /// </remarks>
-    public static partial async Task PlayAsync(string wavPath, CancellationToken ct)
+    public static async Task PlayAsync(string wavPath, CancellationToken ct)
     {
         var done = new TaskCompletionSource();
         MediaPlayer? player = null;

@@ -22,7 +22,12 @@ using CircleAI.Samples.It.Voice;
 
 namespace CircleAI.Samples.It.App.Services;
 
-internal static class AckBank
+/// <remarks>
+/// PUBLIC BECAUSE THE RESIDENT ASSISTANT SPEAKS THROUGH IT. A head running the
+/// wake word off-screen needs the same acknowledgements the in-app turn uses,
+/// or the two answer in different voices.
+/// </remarks>
+public static class AckBank
 {
     /// <summary>What it says when it hears its name.</summary>
     public const string Woke = "woke";
@@ -48,7 +53,7 @@ internal static class AckBank
         => (tag ?? "").Split('-', '_')[0].ToLowerInvariant();
 
     private static string PathFor(string tag, string key)
-        => System.IO.Path.Combine(FileSystem.CacheDirectory, $"ack-{Root(tag)}-{key}.wav");
+        => System.IO.Path.Combine(AppPaths.Cache, $"ack-{Root(tag)}-{key}.wav");
 
     /// <summary>
     /// Renders every line for the language once, at warm-up. Returns how many

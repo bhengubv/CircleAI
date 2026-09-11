@@ -35,11 +35,15 @@ public sealed class DeviceWakeWord : IWakeWord
     /// fixed by SHOWING the phrase on the settings screen, not by detaching it.
     /// </para>
     /// </remarks>
-    public DeviceWakeWord(ISettings settings, IWakePhrases phrases)
+    public DeviceWakeWord(ISettings settings, IWakePhrases phrases, IMicrophoneAccess microphone)
     {
         _settings = settings;
         _phrases = phrases;
+        _microphone = microphone;
     }
+
+    /// <summary>May this app listen. See IMicrophoneAccess.</summary>
+    private readonly IMicrophoneAccess _microphone;
 
     private const string ModelName = "KWS-Zipformer-HeyB";
 
@@ -48,7 +52,7 @@ public sealed class DeviceWakeWord : IWakeWord
     /// <inheritdoc />
     public async Task<bool> RequestMicrophoneAsync()
     {
-        return await MicPermission.GrantedAsync().ConfigureAwait(false);
+        return await _microphone.GrantedAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -330,7 +334,8 @@ public sealed class DeviceWakeWord : IWakeWord
     /// a half-finished download leaves a directory with no model in it, and that
     /// must read as "not installed" rather than crash the listener.
     /// </remarks>
-    internal static string? FindBundle()
+    /// <remarks>Public: a head asks where the wake model is to report readiness.</remarks>
+    public static string? FindBundle()
     {
         try
         {

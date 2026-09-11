@@ -16,7 +16,7 @@ namespace CircleAI.Samples.It.App.Services;
 public sealed class CareerInterviewHost : ICareerInterview
 {
     private static string StorePath
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "career.db");
+        => Path.Combine(AppPaths.Data, "CircleAI", "career.db");
 
     private SqliteCareerStore Store()
     {
@@ -174,7 +174,7 @@ public sealed class CareerInterviewHost : ICareerInterview
             // Plain text, into the app's own documents folder. A CV somebody
             // cannot open is not a CV; text opens everywhere, including on a
             // phone with no office app installed.
-            var path = Path.Combine(FileSystem.AppDataDirectory, $"{name}.txt");
+            var path = Path.Combine(AppPaths.Data, $"{name}.txt");
             var body = string.Join(Environment.NewLine,
                 PreviewAsync(ct).GetAwaiter().GetResult()
                     .Select(l => l.Kind == CvLineKind.Gap ? "" : l.Text));

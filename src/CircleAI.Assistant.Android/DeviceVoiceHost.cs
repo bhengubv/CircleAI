@@ -142,7 +142,7 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
         try
         {
             Directory.CreateDirectory(StorageDir);
-            var wav = Path.Combine(FileSystem.CacheDirectory, $"say-{tag}.wav");
+            var wav = Path.Combine(AppPaths.Cache, $"say-{tag}.wav");
 
             var sw = Stopwatch.StartNew();
             var report = await Task.Run(
@@ -192,7 +192,7 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
         if (string.IsNullOrWhiteSpace(text)) return null;
 
         Directory.CreateDirectory(StorageDir);
-        var wav = Path.Combine(FileSystem.CacheDirectory, $"say-{tag}-{Guid.NewGuid():N}.wav");
+        var wav = Path.Combine(AppPaths.Cache, $"say-{tag}-{Guid.NewGuid():N}.wav");
 
         var sw = Stopwatch.StartNew();
         try

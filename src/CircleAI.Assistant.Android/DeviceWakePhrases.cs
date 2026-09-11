@@ -258,8 +258,9 @@ public sealed class DeviceWakePhrases : IWakePhrases
     }
 
     /// <summary>Where the spotter reads its keywords for a language.</summary>
-    internal static string KeywordFile(string language)
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", $"wake-{Root(language)}.txt");
+    /// <remarks>Public: the resident wake service reads the same file the app writes.</remarks>
+    public static string KeywordFile(string language)
+        => Path.Combine(AppPaths.Data, "CircleAI", $"wake-{Root(language)}.txt");
 
     /// <summary>
     /// Write the chosen phrase out in the format the spotter reads.

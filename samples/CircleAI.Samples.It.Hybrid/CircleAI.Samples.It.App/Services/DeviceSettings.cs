@@ -26,7 +26,7 @@ public sealed class DeviceSettings : ISettings
     private const string FixedKey = "app.language.fixed";
     private const string WakeOnKey = "app.wake.enabled";
 
-    private static string DocumentsDir => FileSystem.AppDataDirectory;
+    private static string DocumentsDir => AppPaths.Data;
 
     /// <inheritdoc />
     public Task<AppSettings> LoadAsync(CancellationToken ct = default)

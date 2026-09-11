@@ -44,8 +44,14 @@ public static class ModelStore
         {
             if (_resolved is not null) return _resolved;
 
+            // ANDROID'S OWN FILES DIRECTORY. This was FileSystem.AppDataDirectory,
+            // which on Android returns exactly this - MAUI wraps Context.FilesDir
+            // and nothing more. Eight classes read this one property, so that
+            // single call was what made the model store, the brain, the voice
+            // host and the wake word all require MAUI to compile.
             var dir = System.IO.Path.Combine(
-                FileSystem.AppDataDirectory, "CircleAI", "Models");
+                global::Android.App.Application.Context.FilesDir!.AbsolutePath,
+                "CircleAI", "Models");
             System.IO.Directory.CreateDirectory(dir);
             return _resolved = dir;
         }

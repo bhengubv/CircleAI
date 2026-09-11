@@ -309,7 +309,7 @@ public sealed class DeviceWiringProbe : IWiringProbe
     /// left switched on cannot quietly cost every launch after it.
     /// </remarks>
     public static string SweepMarker =>
-        System.IO.Path.Combine(FileSystem.AppDataDirectory, "sweep-voices");
+        System.IO.Path.Combine(AppPaths.Data, "sweep-voices");
 
     /// <summary>Runs the voice sweep to logcat, if the marker asked for one.</summary>
     public static async Task SweepVoicesIfRequestedAsync()

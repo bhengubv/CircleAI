@@ -23,6 +23,11 @@ public sealed class DeviceConversation : IConversation
     private readonly IMemoryService _memory;
     private readonly IRemembers _remembers;
 
+    // MAY I LISTEN, ASKED OF THE HEAD. This was a static call into MAUI's
+    // permission API, and that one static was enough to keep the whole turn
+    // loop inside a MAUI application project. See IMicrophoneAccess.
+    private readonly IMicrophoneAccess _microphone;
+
     // NO IDispatcher HERE, AND THAT IS DELIBERATE - see the recall block in
     // TurnAsync. This class is a SINGLETON and Fluxor's store is SCOPED, so a
     // dispatcher injected here would be the root scope's, not the one the screen
@@ -32,7 +37,7 @@ public sealed class DeviceConversation : IConversation
     /// <summary>Composed from the app's one brain, one voice host and one memory.</summary>
     public DeviceConversation(
         IBrain brain, IVoiceHost voice, ISpokenLanguage spoken, ISettings settings,
-        IMemoryService memory, IRemembers remembers)
+        IMemoryService memory, IRemembers remembers, IMicrophoneAccess microphone)
     {
         _brain = brain;
         _voice = voice;
@@ -40,6 +45,7 @@ public sealed class DeviceConversation : IConversation
         _settings = settings;
         _memory = memory;
         _remembers = remembers;
+        _microphone = microphone;
     }
 
     // One turn at a time. Two overlapping turns share a microphone and a speaker,
@@ -95,9 +101,9 @@ public sealed class DeviceConversation : IConversation
                 return;
             }
 
-            var mic = await MicPermission.EnsureAsync().ConfigureAwait(false);
+            var mic = await _microphone.GrantedAsync(ct).ConfigureAwait(false);
 
-            if (mic != PermissionStatus.Granted)
+            if (!mic)
             {
                 // Without it AudioRecord does not fail - it hands back silence,
                 // which looks exactly like a microphone that does not work.
@@ -384,9 +390,9 @@ public sealed class DeviceConversation : IConversation
             // NO BRAIN CHECK. This is the whole point of the method: writing down
             // what somebody said needs the ears, not the answering model, and the
             // screen that uses it was demanding - and naming - the wrong one.
-            var mic = await MicPermission.EnsureAsync().ConfigureAwait(false);
+            var mic = await _microphone.GrantedAsync(ct).ConfigureAwait(false);
 
-            if (mic != PermissionStatus.Granted)
+            if (!mic)
             {
                 updates.Report(new TurnState(TurnPhase.Idle,
                     Detail: "It needs permission to hear you."));
@@ -655,7 +661,7 @@ public sealed class DeviceConversation : IConversation
 
         try
         {
-            if (await MicPermission.EnsureAsync().ConfigureAwait(false) != PermissionStatus.Granted)
+            if (!await _microphone.GrantedAsync(ct).ConfigureAwait(false))
             {
                 updates.Report(new TurnState(TurnPhase.Idle,
                     Detail: "It needs permission to hear you."));
@@ -800,7 +806,16 @@ public sealed class DeviceConversation : IConversation
         progress?.Report("Opening the voice");
         try
         {
-            var wav = System.IO.Path.Combine(FileSystem.CacheDirectory, "warm.wav");
+            // ANDROID'S OWN CACHE DIRECTORY, NOT MAUI'S WRAPPER OVER IT. This was
+            // FileSystem.CacheDirectory, and it was the ONLY thing in the entire
+            // turn loop that needed MAUI - one path, holding the whole class
+            // inside a MAUI app. On Android the two are the same directory;
+            // MAUI's FileSystem.CacheDirectory returns exactly this. So the
+            // dependency bought nothing and cost the turn loop its portability:
+            // the native head is plain .NET Android and could not have used it.
+            var cache = global::Android.App.Application.Context.CacheDir?.AbsolutePath
+                        ?? System.IO.Path.GetTempPath();
+            var wav = System.IO.Path.Combine(cache, "warm.wav");
             await Task.Run(() => ItTtsProbe.RunCataloguedAsync(
                 StorageDir, _spoken.Current, "ready", wav, log: null, ct: ct), ct)
                 .ConfigureAwait(false);

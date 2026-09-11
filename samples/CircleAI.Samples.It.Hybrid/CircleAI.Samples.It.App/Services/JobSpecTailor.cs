@@ -20,7 +20,7 @@ public sealed class JobSpecTailor : IJobSpecTailor
     public JobSpecTailor(IBrain brain) => _brain = brain;
 
     private static string StorePath
-        => Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "career.db");
+        => Path.Combine(AppPaths.Data, "CircleAI", "career.db");
 
     /// <inheritdoc />
     public async Task<TailorResult> TailorAsync(

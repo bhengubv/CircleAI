@@ -42,7 +42,38 @@ public sealed class DeviceSetup : ISetup
     /// means "no opinion", and the plan falls back to the two fixed voices -
     /// exactly the behaviour that existed before this parameter.
     /// </remarks>
-    public DeviceSetup(ISpokenLanguage? spoken = null) => _spoken = spoken;
+    /// <summary>May this app listen. See IMicrophoneAccess.</summary>
+    private readonly IMicrophoneAccess _microphone;
+
+    public DeviceSetup(IMicrophoneAccess microphone, ISpokenLanguage? spoken = null)
+    {
+        _microphone = microphone;
+        _spoken = spoken;
+    }
+
+    /// <summary>Run something on the UI thread and wait for it.</summary>
+    /// <remarks>
+    /// WAS MainThread.InvokeOnMainThreadAsync, which is MAUI. Android's own main
+    /// looper does the same job and is already here - starting an Activity has
+    /// to happen on the UI thread either way, and this library has no reason to
+    /// require a UI framework to find that thread.
+    /// </remarks>
+    private static Task<T> OnMainThreadAsync<T>(Func<T> work)
+    {
+        var done = new TaskCompletionSource<T>();
+        var main = new global::Android.OS.Handler(global::Android.OS.Looper.MainLooper!);
+
+        main.Post(() =>
+        {
+            // The work is already wrapped by its caller; this guards the POST,
+            // so a throw completes the task instead of being lost on a looper
+            // thread where nothing is waiting to catch it.
+            try { done.TrySetResult(work()); }
+            catch (Exception ex) { done.TrySetException(ex); }
+        });
+
+        return done.Task;
+    }
 
     /// <summary>The phone's language, for fetching a voice it can answer in.</summary>
     /// <remarks>
@@ -219,7 +250,7 @@ public sealed class DeviceSetup : ISetup
     /// <inheritdoc />
     public async Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
     {
-        return await MicPermission.GrantedAsync().ConfigureAwait(false);
+        return await _microphone.GrantedAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -257,7 +288,7 @@ public sealed class DeviceSetup : ISetup
     /// than one that quietly cannot.
     /// </remarks>
     public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
-        => MainThread.InvokeOnMainThreadAsync(() =>
+        => OnMainThreadAsync(() =>
         {
             var context = Android.App.Application.Context;
             var package = context.PackageName!;
