@@ -311,6 +311,12 @@ public sealed partial class CircleNeuronService : Service
             return StartCommandResult.Sticky;
         }
 
+        // ONLY ONCE THE SERVICE IS ACTUALLY IN THE FOREGROUND. Renewing a
+        // notification for a service that failed to start would keep the shade
+        // claiming a microphone that was refused - the same lie this mechanism
+        // exists to end, told from the other direction.
+        KeepNotificationAlive();
+
         // The probe before the brain. Everything the Neuron decides about which
         // models fit is read off DeviceProbe, so measuring the phone has to happen
         // before anything asks — otherwise the first answers are made on the GC
@@ -449,6 +455,20 @@ public sealed partial class CircleNeuronService : Service
         // torn-down service posting about a microphone it no longer holds.
         _running = null;
 
+        // Stop renewing BEFORE removing, or a timer that fires between the two
+        // re-posts the notification this line is about to take away - and it
+        // would then sit there with a fresh lease and nothing behind it, which
+        // is precisely the bug.
+        _renew?.Dispose();
+        _renew = null;
+        _doing = null;
+
+        // AN ORDERLY STOP TAKES THE NOTICE DOWN ITSELF, so the alarm has nothing
+        // left to do. Left armed it would wake a process two minutes later to
+        // look at a notification that is already gone - harmless, and still
+        // waste nobody asked for.
+        DisarmReaper(this);
+
         StopForeground(StopForegroundFlags.Remove);
         base.OnDestroy();
     }
@@ -470,6 +490,171 @@ public sealed partial class CircleNeuronService : Service
             });
     }
 
+    // ── the dead-man's switch ────────────────────────────────────────────────
+    //
+    // THE SHADE OUTLIVED THE PROCESS, AND SAID THE MICROPHONE WAS OPEN.
+    //
+    // Measured on a P30 on 2026-09-11: no process, no service record, nothing in
+    // ActivityManager - and this notification still sitting on the shade saying
+    // "Listening for Hey Circle AI - nothing is kept or sent". The phone was
+    // telling its owner an app held the microphone when no such app existed.
+    //
+    // Android is supposed to take a foreground-service notification away with
+    // the service. EMUI did not, and the same four vendors that kill these
+    // services on their own schedule are the ones least likely to tidy up after
+    // doing it. OnDestroy's StopForeground(Remove) only runs on an ORDERLY stop;
+    // a process killed by lowmemorykiller never reaches it.
+    //
+    // A FALSE DISCLOSURE IS WORSE THAN A MISSING ONE. Every other notice in this
+    // app can be late. This one is the microphone disclosure, and a phone that
+    // claims to be listening when it is not teaches its owner that the notice
+    // means nothing - which is exactly the habit that makes a real one useless.
+    //
+    // SO SOMETHING OUTSIDE THE PROCESS HOLDS THE STOPWATCH.
+    //
+    // THE FIRST ATTEMPT AT THIS DID NOT WORK, AND IT IS WORTH SAYING WHY. It put
+    // the lease on the notification itself - SetTimeoutAfter, renewed every
+    // thirty seconds by the live service - on the reasoning that a dead process
+    // stops renewing and the platform reaps it. Measured on a P30 on 2026-09-11:
+    // force-stopped, no pid, no service record, and the notice still on the
+    // shade three minutes into a two-minute lease.
+    //
+    // Android does not apply timeoutAfter to a notification carrying
+    // FLAG_FOREGROUND_SERVICE. It holds those for as long as the service runs,
+    // deliberately - so the one mechanism that could have expired this is the
+    // one that flag switches off, and an orphaned record keeps the flag.
+    //
+    // AN ALARM IS THE ONLY CLOCK THAT OUTLIVES THE PROCESS. AlarmManager keeps
+    // the schedule in the system and starts a fresh process to deliver the
+    // broadcast. The living service pushes the alarm forward on every heartbeat
+    // so it never fires; when nothing is left to push it, NotificationReaper
+    // runs and takes the notice down. The absence of a heartbeat is still the
+    // signal - what changed is who is holding the stopwatch.
+
+    /// <summary>How long the shade may stand without the service pushing the alarm out.</summary>
+    /// <remarks>
+    /// Two minutes is the window in which the shade may be wrong after an
+    /// unannounced kill. Shorter would narrow it; it would also mean a phone
+    /// that briefly deprioritises this service drops the microphone disclosure
+    /// while the microphone is still open, which is the opposite failure and the
+    /// worse one. The reaper re-checks rather than trusting the alarm, so a
+    /// premature firing costs nothing.
+    /// </remarks>
+    private static readonly TimeSpan NotificationLifetime = TimeSpan.FromMinutes(2);
+
+    /// <summary>Whether a service is alive in THIS process. The reaper's liveness test.</summary>
+    internal static bool IsRunning => _running is not null;
+
+    /// <summary>Pushes the dead-man's alarm out by one full lease.</summary>
+    /// <remarks>
+    /// ONE PendingIntent, UpdateCurrent, so every call REPLACES the pending
+    /// alarm rather than stacking another. A service renewing every thirty
+    /// seconds therefore has exactly one alarm outstanding at all times, always
+    /// two minutes out, and it only ever arrives if the renewals stop.
+    /// <para>
+    /// INEXACT AND NON-WAKING, both on purpose. `Set` needs no permission -
+    /// exact alarms are gated from Android 12 and this does not need to be
+    /// exact. ElapsedRealtime rather than the wakeup variants because nobody is
+    /// misled by a shade they are not looking at: firing the moment the phone is
+    /// next awake is both soon enough and free.
+    /// </para>
+    /// </remarks>
+    internal static void ArmReaper(Context context)
+    {
+        try
+        {
+            if (context.GetSystemService(AlarmService) is not AlarmManager alarms) return;
+
+            var intent = new Intent(context.ApplicationContext ?? context, typeof(NotificationReaper))
+                .SetAction(NotificationReaper.Action);
+
+            var flags = Build.VERSION.SdkInt >= BuildVersionCodes.S
+                ? PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable
+                : PendingIntentFlags.UpdateCurrent;
+
+            var pending = PendingIntent.GetBroadcast(
+                context.ApplicationContext ?? context, ReaperRequestCode, intent, flags);
+            if (pending is null) return;
+
+            alarms.Set(
+                AlarmType.ElapsedRealtime,
+                (long)(SystemClock.ElapsedRealtime() + NotificationLifetime.TotalMilliseconds),
+                pending);
+        }
+        catch { /* a missing dead-man's switch must never take the service down */ }
+    }
+
+    /// <summary>Cancels the dead-man's alarm, for an ORDERLY stop that removes the notice itself.</summary>
+    private static void DisarmReaper(Context context)
+    {
+        try
+        {
+            if (context.GetSystemService(AlarmService) is not AlarmManager alarms) return;
+
+            var intent = new Intent(context.ApplicationContext ?? context, typeof(NotificationReaper))
+                .SetAction(NotificationReaper.Action);
+
+            var flags = Build.VERSION.SdkInt >= BuildVersionCodes.S
+                ? PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable
+                : PendingIntentFlags.UpdateCurrent;
+
+            var pending = PendingIntent.GetBroadcast(
+                context.ApplicationContext ?? context, ReaperRequestCode, intent, flags);
+            if (pending is not null) alarms.Cancel(pending);
+        }
+        catch { /* nothing here is worth failing a shutdown for */ }
+    }
+
+    /// <summary>Request code for the reaper alarm. Fixed, so one alarm is ever outstanding.</summary>
+    private const int ReaperRequestCode = 0xC1A3;
+
+    /// <summary>How often a living service renews it.</summary>
+    /// <remarks>
+    /// A QUARTER OF THE LIFETIME, NOT HALF. Three renewals may be missed - to a
+    /// busy phone, a doze transition, a slow main thread - before the disclosure
+    /// is at risk. Re-posting a notification is cheap and this service already
+    /// holds a wake lock, so the margin costs nothing worth counting.
+    /// </remarks>
+    private static readonly TimeSpan NotificationRenewal = TimeSpan.FromSeconds(30);
+
+    // Fully qualified: Android.OS and System.Timers both have a Timer, and
+    // this file imports Android.OS.
+    private System.Threading.Timer? _renew;
+
+    /// <summary>What was last posted, so a renewal repeats it rather than guessing.</summary>
+    /// <remarks>
+    /// The renewal must not decide what the notification SAYS. During model
+    /// loading the text is "loading the model…"; a renewal that rebuilt the line
+    /// from listening state would overwrite it with something else halfway
+    /// through. Its only job is to reset the clock on whatever is true now.
+    /// </remarks>
+    private string _lastText = "starting…";
+
+    /// <summary>Starts the heartbeat that keeps the reaper away while this lives.</summary>
+    /// <remarks>
+    /// TWO JOBS, AND THE SECOND IS THE ONE THAT WORKS. Re-posting keeps the
+    /// shade's text current; pushing the alarm out is what actually makes the
+    /// notice mortal. Armed once immediately as well as on the interval, so the
+    /// dead-man's switch is live from the moment the service goes foreground
+    /// rather than thirty seconds later.
+    /// </remarks>
+    private void KeepNotificationAlive()
+    {
+        _renew?.Dispose();
+        ArmReaper(this);
+        _renew = new System.Threading.Timer(
+            _ =>
+            {
+                try
+                {
+                    Notify(_lastText);
+                    ArmReaper(this);
+                }
+                catch { /* never take the service down for a notice */ }
+            },
+            null, NotificationRenewal, NotificationRenewal);
+    }
+
     private Notification BuildNotification(string text)
     {
         var builder = new Notification.Builder(this, ChannelId)
@@ -477,6 +662,13 @@ public sealed partial class CircleNeuronService : Service
             .SetContentText(text)
             .SetSmallIcon(global::Android.Resource.Drawable.IcMenuManage)
             .SetOngoing(true);
+
+        // NO SetTimeoutAfter HERE, AND THAT IS A MEASUREMENT RATHER THAN A
+        // PREFERENCE. It was here, it looked right, and it does nothing: Android
+        // does not apply a timeout to a notification carrying
+        // FLAG_FOREGROUND_SERVICE. Verified on a P30 - the notice sat on the
+        // shade three minutes into a two-minute lease with no process behind it.
+        // The lease lives in AlarmManager instead; see ArmReaper.
 
         // TAPPABLE, BECAUSE THE DESIGN ALREADY DEPENDED ON IT. After a reboot the
         // microphone cannot restart itself - from Android 14 a microphone-typed
@@ -527,6 +719,9 @@ public sealed partial class CircleNeuronService : Service
     {
         try
         {
+            // Remembered so a renewal can repeat it rather than re-deriving it.
+            _lastText = text;
+
             if (GetSystemService(NotificationService) is NotificationManager nm)
                 nm.Notify(NotificationId, BuildNotification(text));
         }
