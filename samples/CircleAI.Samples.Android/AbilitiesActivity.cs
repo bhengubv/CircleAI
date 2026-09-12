@@ -41,71 +41,39 @@ namespace CircleAI.Assistant.Device;
 [Activity(Label = "What it can do", Exported = false)]
 public class AbilitiesActivity : Activity
 {
-    /// <summary>One thing the phone can do, in the words a person would use.</summary>
-    /// <param name="Title">What it is. A verb, not a noun — "Talking", not "TTS".</param>
-    /// <param name="Blurb">What it means for you, in one sentence.</param>
-    /// <param name="Modality">Which models serve it.</param>
-    /// <param name="NeedsNoModel">
-    /// True for an ability that is arithmetic rather than a download.
-    /// <para>
-    /// WITHOUT THIS THE ROW IS UNREACHABLE, and I wrote it that way first. The
-    /// state of a row is driven by whether a MODEL is present, and the "Try it"
-    /// link is only offered when one is - which is exactly right for Seeing and
-    /// Listening and exactly wrong for Music, where the generator is managed
-    /// code and there is nothing to install. The row would have rendered as
-    /// unavailable, with no size, no button and no way in: a fourth dead row
-    /// added while fixing the first three.
-    /// </para>
-    /// </param>
-    sealed record Ability(
-        string Title, string Blurb, ModelModality Modality, bool NeedsNoModel = false);
-
+    /// <summary>The abilities this head has a screen for.</summary>
     /// <remarks>
-    /// WAKING IS LISTED ONLY WHEN THE BUILD CAN ACTUALLY WAKE. The chat-only APK
-    /// ships without the speech stack, so HandsFree and the wake screen are
-    /// compiled out — but the wake MODEL can still be sitting on disk from an
-    /// earlier install. This list is driven by modality, and the row's state is
-    /// driven by whether a model is present, so the lean build cheerfully
-    /// advertised "Waking ✓ On" on a phone that cannot wake at all. Seen on the
-    /// P30: Waking read On while the home screen correctly said "Tap and talk".
+    /// THE ONLY THING THIS SCREEN STILL DECIDES. The list of abilities, which
+    /// model serves each one, whether it is on this phone and whether it is
+    /// actually running are all DeviceFacts' answers now - the same ones
+    /// Settings gives in the Blazor head, which is the point.
     /// <para>
-    /// Files on disk are not an ability. An ability is code that runs.
+    /// What genuinely differs between the two heads is which screens exist. This
+    /// one has an activity for every ability with a route; the Blazor head has a
+    /// page only for waking. A row that looks tappable and does nothing is worse
+    /// than a plain one, so the head that knows says so.
     /// </para>
     /// </remarks>
-    static readonly Ability[] Abilities =
+    static readonly string[] Screens =
     {
-        // COUNTED, NOT TYPED. This said "in 10 plus languages" while the
-        // picker offered seventy-eight and every one of them had a voice
-        // catalogued - true, and so far under the truth that it reads as a
-        // different product. A number a person can see is the one that must not
-        // go stale, so it is read from the same table the picker is built from
-        // rather than written down a second time.
-        new("Talking",   $"Reads things out loud, in {SampleLanguages.All.Count} languages", ModelModality.Tts),
-        new("Listening", "Understands you when you speak",                ModelModality.Asr),
-        new("Answering", "Answers questions and helps you write",         ModelModality.Chat),
-        new("Seeing",    "Looks at a photo and tells you what is in it",  ModelModality.Vision),
-
-        // THE ONE THAT NEEDS NOTHING. Every other row waits on a download;
-        // this is arithmetic, so it works on a phone with no network and
-        // nothing installed - which is also why the row has no size beside it.
-        new("Music",     "Makes a piece of music, with nothing installed", ModelModality.Music,
-            NeedsNoModel: true),
-
-        // TRANSLATION RIDES THE CHAT MODEL, so it is available exactly when
-        // Answering is - there is no separate translation model to download and
-        // none to wait for.
-        new("Translating", "Carries what you say into another language",  ModelModality.Chat),
-
-        // SEARCH NEEDS NOTHING EITHER. Lexical ranking is arithmetic, and
-        // memory searches itself - so this works on a phone with no model
-        // downloaded at all, like Music. The semantic half waits on an
-        // embedding model nobody has catalogued.
-        new("Finding",   "Looks through what you said and what it wrote down", ModelModality.Chat,
-            NeedsNoModel: true),
+        "Listening", "Seeing", "Music", "Translating", "Finding",
 #if IT_VOICE_ANDROID
-        new("Waking",    "Hears you say \"Hey B\" without being touched", ModelModality.WakeWord),
+        // WAKING IS LISTED ONLY WHEN THE BUILD CAN ACTUALLY WAKE. The chat-only
+        // APK ships without the speech stack, so HandsFree and the wake screen
+        // are compiled out - but the wake MODEL can still be sitting on disk
+        // from an earlier install, and a list driven by what is on disk
+        // cheerfully advertised "Waking ✓ On" on a phone that cannot wake at
+        // all. Seen on the P30: Waking read On while the home screen correctly
+        // said "Tap and talk".
+        //
+        // Files on disk are not an ability. An ability is code that runs.
+        "Waking",
 #endif
     };
+
+    DeviceFacts?               _facts;
+    IReadOnlyList<AbilityRow>? _rows;
+    PhoneFacts?                _phone;
 
     ModelRegistryService? _registry;
     BundleModelLoader?    _loader;
@@ -135,11 +103,22 @@ public class AbilitiesActivity : Activity
         ActionBar?.Hide();      // it repeated the title, and it is system-themed
         AndroidDeviceMemory.Install(this);
 
-        _modelDir = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-            "CircleAI", "Models");
+        // MODELSTORE, NOT SpecialFolder.ApplicationData, AND THEY ARE NOT THE
+        // SAME DIRECTORY ON A PHONE. ModelPaths found this by looking at a disk:
+        //
+        //     files directory                 ->  /data/user/0/<pkg>/files
+        //     SpecialFolder.ApplicationData   ->  /data/user/0/<pkg>/files/.config
+        //
+        // The second is a subdirectory of the first, so both exist, both are
+        // writable and both look right in a log - which is how a 523 MB model
+        // was downloaded twice onto a phone with 890 MB of app data. The session
+        // reads ModelPaths.Default and says in its own comment that "the library
+        // loaders were fixed and this sample was not": this screen was reporting
+        // on, and downloading into, a directory the assistant never opens.
+        _modelDir = ModelStore.Path;
         _registry = new ModelRegistryService();
         _loader   = new BundleModelLoader(_modelDir, _registry);
+        _facts    = new DeviceFacts(Screens);
 
         BuildUi();
         Refresh();
@@ -177,7 +156,63 @@ public class AbilitiesActivity : Activity
         SetContentView(root);
     }
 
-    void Refresh()
+    /// <summary>Redraw, fetching the phone's answers off the UI thread.</summary>
+    /// <remarks>
+    /// ASYNC BECAUSE THE ANSWER COSTS DISK. It used to be synchronous and cheap
+    /// only by accident - it asked the registry directly and called ModelExists,
+    /// which hashes a 470 MB anchor file at 9.4 s a go, ON THE UI THREAD, once
+    /// per ability. DeviceFacts does the work on a worker and the tabs paint
+    /// immediately, so the screen is responsive while the answer arrives.
+    /// </remarks>
+    /// <summary>The shared answer, corrected for what THIS build and phone have.</summary>
+    /// <remarks>
+    /// TWO THINGS THE SHARED ANSWER CANNOT KNOW, and both are about this head
+    /// rather than about the assistant.
+    /// <para>
+    /// A WAKE BUNDLE THE OWNER COPIED ONTO THE PHONE counts as installed.
+    /// DeviceFacts asks the model loader, which only knows about downloads -
+    /// so without this the list offers to fetch something already sitting on
+    /// the device, which is precisely the wrong answer for somebody who
+    /// side-loaded it because they have no data to spend.
+    /// </para>
+    /// <para>
+    /// AND THE CHAT-ONLY APK HAS NO SPEECH STACK AT ALL. Waking is compiled out
+    /// of it, so the row must not be there - a list driven by what is on disk
+    /// advertised "Waking &#x2713; On" on a phone that could not wake, which is
+    /// the oldest lie on this screen.
+    /// </para>
+    /// </remarks>
+    IReadOnlyList<AbilityRow> ThisBuild(IReadOnlyList<AbilityRow> rows)
+    {
+#if IT_VOICE_ANDROID
+        var sideloaded = false;
+        try { sideloaded = WakeWordActivity.SideloadedBundle(this) is not null; }
+        catch { /* an absent bundle is the normal case, not an error */ }
+        if (!sideloaded) return rows;
+
+        return [.. rows.Select(r => r.Title == "Waking" && r.State is
+                    AbilityState.Available or AbilityState.TooBig or AbilityState.NotCatalogued
+            ? r with { State = AbilityState.Ready, Bytes = null }
+            : r)];
+#else
+        return [.. rows.Where(r => r.Title != "Waking")];
+#endif
+    }
+
+    /// <summary>Throw away the cached answers and redraw.</summary>
+    /// <remarks>
+    /// A DOWNLOAD CHANGES THE ANSWER AND NOTHING ELSE DOES. Refresh holds the
+    /// rows between redraws so flipping a tab does not re-walk the disk; this is
+    /// the one event that invalidates them.
+    /// </remarks>
+    void Reread()
+    {
+        _rows  = null;
+        _phone = null;
+        Refresh();
+    }
+
+    async void Refresh()
     {
         if (_list is null || _registry is null || _tabs is null) return;
         _list.RemoveAllViews();
@@ -199,12 +234,32 @@ public class AbilitiesActivity : Activity
             _tabs.AddView(tab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         }
 
-        var probe = DeviceProbe.Snapshot();
-        if (_tab == 0) ShowAbilities(probe);
-        else           ShowPhone(probe);
+        // Held between redraws so flipping tabs or toggling the technical list
+        // does not re-walk the disk - the answer has not changed in the time it
+        // takes to tap.
+        try
+        {
+            if (_tab == 0)
+            {
+                _rows ??= ThisBuild(await _facts!.AbilitiesAsync());
+                if (_list is null || _tab != 0) return;
+                ShowAbilities(_rows);
+            }
+            else
+            {
+                _phone ??= await _facts!.PhoneAsync();
+                if (_list is null || _tab != 1) return;
+                ShowPhone(_phone);
+            }
+        }
+        catch (Exception ex)
+        {
+            // A screen that says nothing is indistinguishable from a crash.
+            _list?.AddView(Ui.Label(this, ex.Message, 13f, Ui.InkSoft), Ui.Fill());
+        }
     }
 
-    void ShowAbilities(DeviceProbe probe)
+    void ShowAbilities(IReadOnlyList<AbilityRow> rows)
     {
         // ONE bordered panel with hairline-separated rows, not five fat cards.
         //
@@ -221,10 +276,10 @@ public class AbilitiesActivity : Activity
         panel.Background = Ui.Outlined(this, Ui.Blue, 14f);
         panel.SetPadding(0, Ui.Dp(this, 2), 0, Ui.Dp(this, 2));
 
-        for (var i = 0; i < Abilities.Length; i++)
+        for (var i = 0; i < rows.Count; i++)
         {
             if (i > 0) panel.AddView(Divider(), Ui.Fill());
-            panel.AddView(Row(Abilities[i], probe), Ui.Fill());
+            panel.AddView(Row(rows[i]), Ui.Fill());
         }
 
         _list!.AddView(panel, Ui.Fill());
@@ -244,7 +299,7 @@ public class AbilitiesActivity : Activity
     }
 
     /// <summary>The device tab: what this phone is and what CircleAI does about it.</summary>
-    void ShowPhone(DeviceProbe probe)
+    void ShowPhone(PhoneFacts facts)
     {
         var card = new LinearLayout(this) { Orientation = Orientation.Vertical };
         card.Background = Ui.Rounded(this, Ui.Surface, 14f);
@@ -258,15 +313,11 @@ public class AbilitiesActivity : Activity
             card.AddView(v);
         }
 
-        Line("Space free", $"{probe.StorageFreeGb:0.#} GB");
-        Line("Memory", probe.MeasurementWarning is null
-            ? $"{probe.RamAvailableBytes / 1_000_000_000.0:0.#} GB free of " +
-              $"{probe.RamTotalBytes / 1_000_000_000.0:0.#} GB"
-            : "Can't be read on this phone");
-        Line("Frees memory after",
-            $"{AndroidMemoryPressure.IdleWindowFor(probe.Classify()).TotalMinutes:0} minutes unused, " +
-            "or straight away if the phone needs it");
-        Line("Where it runs", "On this phone. Nothing is sent anywhere.");
+        // THE SAME LINES SETTINGS SHOWS IN THE OTHER HEAD, from the same place.
+        // Both screens built this list themselves, so this one carried "Frees
+        // memory after", the other carried the build number, and neither had the
+        // other's. Both have both now.
+        foreach (var f in facts.Facts) Line(f.Title, f.Value);
 
         _list!.AddView(card, Ui.Fill());
 
@@ -286,18 +337,13 @@ public class AbilitiesActivity : Activity
             ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
         tlp2.TopMargin = Ui.Dp(this, 10);
 
-        foreach (var ability in Abilities)
+        // A READOUT THAT NAMED A DIFFERENT MODEL FROM THE ROW ABOVE IT. This
+        // ordered by "installed, then best quality" while the row itself used
+        // ModelChoice - so a diagnostics screen actively misled whoever came to
+        // it to diagnose something. One rule, and it is not this file's.
+        foreach (var line in facts.Technical)
         {
-            var m = _registry!.AllModels
-                .Where(x => x.Modality == ability.Modality)
-                .OrderByDescending(x => Installed(x.Name))
-                .ThenByDescending(x => x.QualityRank)
-                .FirstOrDefault();
-            if (m is null) continue;
-
-            tech.AddView(Ui.Label(this,
-                $"{ability.Title}: {m.Name}\n{Size(m.TotalBytes)} · needs {m.MinRamGb:0.#} GB · {m.Repo}",
-                11.5f, Ui.InkSoft));
+            tech.AddView(Ui.Label(this, line, 11.5f, Ui.InkSoft));
             tech.AddView(new View(this), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MatchParent, Ui.Dp(this, 10)));
         }
@@ -341,129 +387,160 @@ public class AbilitiesActivity : Activity
     /// behaviour from its model when the row is the thing a person taps.
     /// </para>
     /// </remarks>
-    static Type? ScreenFor(Ability ability) => ability.Title switch
+    /// <remarks>
+    /// KEYED ON THE ROUTE THE SHARED CATALOGUE GAVE, not on a title spelled here
+    /// a second time. The route only reaches a row at all if Screens above
+    /// declared this head has the screen, so the two lists cannot disagree
+    /// without one of them being edited.
+    /// </remarks>
+    static Type? ScreenFor(string? route) => route switch
     {
 #if IT_VOICE_ANDROID
-        "Waking" => typeof(WakeWordActivity),
+        "wake" => typeof(WakeWordActivity),
 #endif
-        "Seeing" => typeof(SeeingActivity),
+        "seeing" => typeof(SeeingActivity),
 
         // LISTENING WAS THE OTHER DOWNLOAD TO NOWHERE. Whisper has been
         // catalogued and fetchable for as long as this row has existed, and
         // there was nothing behind it - this head could not transcribe a file
         // OR a microphone. TranscribeActivity is what the row now leads to.
-        "Listening" => typeof(TranscribeActivity),
-        "Music" => typeof(MusicActivity),
-        "Translating" => typeof(TranslateActivity),
-        "Finding" => typeof(SearchActivity),
+        "transcribe" => typeof(TranscribeActivity),
+        "music" => typeof(MusicActivity),
+        "translate" => typeof(TranslateActivity),
+        "find" => typeof(SearchActivity),
 
         _ => null,
     };
 
     /// <summary>One compact row: what it does on the left, its state on the right.</summary>
-    View Row(Ability ability, DeviceProbe probe)
+    /// <remarks>
+    /// IT DECIDES NOTHING NOW, AND THAT IS THE CHANGE. This method used to scan
+    /// the registry by modality, call ModelExists on every candidate and apply
+    /// its own idea of what fits - a rule that had drifted from the one Settings
+    /// uses in the other head and from the one the chat screen uses in this one.
+    /// It is handed a row and draws it.
+    /// </remarks>
+    View Row(AbilityRow ability)
     {
-        var candidates = _registry!.AllModels.Where(m => m.Modality == ability.Modality).ToList();
-        var installed  = candidates.FirstOrDefault(m => Installed(m.Name));
-
-        // AN ABILITY THAT NEEDS NO MODEL IS ALWAYS ON. Everything below decides
-        // a row's state by whether a model is on disk, which cannot answer for
-        // something synthesised in managed code - it would report "unavailable"
-        // for the one capability that works on a phone with nothing on it.
-        var alwaysOn = ability.NeedsNoModel;
-
-#if IT_VOICE_ANDROID
-        // A bundle the owner copied onto the phone counts as installed. Without
-        // this the list offers to download something that is already sitting on
-        // the device, which is precisely the wrong answer for someone who
-        // side-loaded it because they have no data to spend.
-        if (installed is null && ability.Modality == ModelModality.WakeWord &&
-            WakeWordActivity.SideloadedBundle(this) is not null)
-            installed = candidates.FirstOrDefault();
-#endif
-        var best       = installed
-                      ?? candidates.Where(m => Fits(m, probe))
-                                   .OrderByDescending(m => m.QualityRank)
-                                   .ThenBy(m => m.MinRamGb)
-                                   .FirstOrDefault();
-
         var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         row.SetGravity(GravityFlags.CenterVertical);
         row.SetPadding(Ui.Dp(this, 16), Ui.Dp(this, 12), Ui.Dp(this, 14), Ui.Dp(this, 12));
 
         var text = new LinearLayout(this) { Orientation = Orientation.Vertical };
         text.AddView(Ui.Label(this, ability.Title, 16f, Ui.Blue, bold: true));
-        var sub = installed is not null || alwaysOn
-            ? ability.Blurb
-            : best is not null
-                ? $"{ability.Blurb}  ·  {Size(best.TotalBytes)}"
-                : ability.Blurb;
+
+        // The size belongs to a row that is offering a download and to no other.
+        var sub = ability.Bytes is { } bytes
+            ? ability.Blurb + "  " + Dot + "  " + ModelChoice.Size(bytes)
+            : ability.Blurb;
         var blurb = Ui.Label(this, sub, 12.5f, Ui.InkSoft);
         blurb.SetPadding(0, Ui.Dp(this, 2), 0, 0);
         text.AddView(blurb);
         row.AddView(text, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
 
-        if (installed is not null || alwaysOn)
-        {
-            // An ability that is ON should be somewhere you can GO, not just a
-            // tick. Waking has a screen of its own; the rest do not yet, and a
-            // row that looks tappable and does nothing is worse than a plain one.
-            var screen = ScreenFor(ability);
-            if (screen is not null)
-            {
-                row.AddView(Ui.Label(this, "Try it  ›", 14f, Ui.Blue, bold: true));
-                row.Clickable = true;
-                row.Click += (_, _) => StartActivity(new Intent(this, screen));
-            }
-            else row.AddView(Ui.Label(this, "✓ On", 14f, Ui.Blue, bold: true));
-        }
-        else if (best is not null && !alwaysOn)
-        {
-            var get = Compact("Turn on");
-            var bar = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal)
-            { Max = 1000, Visibility = ViewStates.Gone };
-            var pct = Ui.Label(this, "", 11.5f, Ui.Blue);
-            pct.Visibility = ViewStates.Gone;
-            row.AddView(get);
+        var screen = ScreenFor(ability.TryRoute);
 
-            // Progress lives UNDER the row so starting a download does not reflow
-            // the list and shove the next ability off the screen mid-tap.
-            var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
-            wrap.AddView(row, Ui.Fill());
-            var meta = new LinearLayout(this)
-            {
-                Orientation = Orientation.Vertical,
-                // Gone, not Invisible: a hidden-but-laid-out box still spends its
-                // padding, which made every row with a button taller than the rows
-                // without one and left the list looking carelessly spaced.
-                Visibility = ViewStates.Gone,
-            };
-            meta.SetPadding(Ui.Dp(this, 16), 0, Ui.Dp(this, 16), Ui.Dp(this, 10));
-            meta.AddView(bar, Ui.Fill());
-            meta.AddView(pct, Ui.Fill());
-            wrap.AddView(meta, Ui.Fill());
+        switch (ability.State)
+        {
+            case AbilityState.On:
+                // An ability that is ON should be somewhere you can GO, not just
+                // a tick - but a row that looks tappable and does nothing is
+                // worse than a plain one.
+                if (screen is not null) Go(row, "Try it  " + Chevron, screen);
+                else row.AddView(Ui.Label(this, "\u2713 On", 14f, Ui.Blue, bold: true));
+                break;
 
-            // Wired here, once meta exists: tapping reveals the progress area and
-            // starts the download.
-            get.Click += (_, _) => { meta.Visibility = ViewStates.Visible; Turn(best, get, bar, pct); };
-            return wrap;
-        }
-        else if (candidates.Count == 0)
-        {
-            // NOTHING CATALOGUED. Different from "will not fit", and the screen
-            // must not confuse them: "needs more memory" tells a person their
-            // phone is the problem and invites them to go buy a better one, for a
-            // model that does not exist on any phone yet. That is our gap and it
-            // should read like our gap.
-            row.AddView(Ui.Label(this, "Not ready yet", 12f, Ui.InkSoft));
-        }
-        else
-        {
-            row.AddView(Ui.Label(this, "Needs more memory", 12f, Ui.InkSoft));
+            case AbilityState.Ready:
+                // READY IS NOT ON, AND THIS ROW USED TO PRINT A TICK FOR IT.
+                // Everything is downloaded and nothing is running: what that
+                // calls for is a switch, not a size and not a tick. The screen
+                // behind the route is the one that starts it.
+                if (screen is not null) Go(row, "Turn on  " + Chevron, screen);
+                else row.AddView(Ui.Label(this, "Ready", 12f, Ui.InkSoft));
+                break;
+
+            case AbilityState.Available:
+                // Returns the WRAPPER, not the row: the progress area has to sit
+                // under it and the caller adds one view to the panel.
+                return Download(row, ability);
+
+            case AbilityState.TooBig:
+                row.AddView(Ui.Label(this, "Needs more memory", 12f, Ui.InkSoft));
+                break;
+
+            default:
+                // NOTHING CATALOGUED. Different from "will not fit", and the
+                // screen must not confuse them: "needs more memory" tells a
+                // person their phone is the problem and invites them to go buy a
+                // better one, for a model that does not exist on any phone yet.
+                // That is our gap and it should read like our gap.
+                row.AddView(Ui.Label(this, "Not ready yet", 12f, Ui.InkSoft));
+                break;
         }
 
         return row;
     }
+
+    const string Dot     = "\u00b7";
+    const string Chevron = "\u203a";
+
+    /// <summary>Make the whole row open a screen.</summary>
+    void Go(LinearLayout row, string label, Type screen)
+    {
+        row.AddView(Ui.Label(this, label, 14f, Ui.Blue, bold: true));
+        row.Clickable = true;
+        row.Click += (_, _) => StartActivity(new Intent(this, screen));
+    }
+
+    /// <summary>The row, its Turn on button, and the progress area beneath.</summary>
+    View Download(LinearLayout row, AbilityRow ability)
+    {
+        var get = Compact("Turn on");
+        var bar = new ProgressBar(this, null, global::Android.Resource.Attribute.ProgressBarStyleHorizontal)
+        { Max = 1000, Visibility = ViewStates.Gone };
+        var pct = Ui.Label(this, "", 11.5f, Ui.Blue);
+        pct.Visibility = ViewStates.Gone;
+
+        // Progress lives UNDER the row so starting a download does not reflow the
+        // list and shove the next ability off the screen mid-tap.
+        var wrap = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        wrap.AddView(row, Ui.Fill());
+        var meta = new LinearLayout(this)
+        {
+            Orientation = Orientation.Vertical,
+            // Gone, not Invisible: a hidden-but-laid-out box still spends its
+            // padding, which made every row with a button taller than the rows
+            // without one and left the list looking carelessly spaced.
+            Visibility = ViewStates.Gone,
+        };
+        meta.SetPadding(Ui.Dp(this, 16), 0, Ui.Dp(this, 16), Ui.Dp(this, 10));
+        meta.AddView(bar, Ui.Fill());
+        meta.AddView(pct, Ui.Fill());
+        wrap.AddView(meta, Ui.Fill());
+        row.AddView(get);
+
+        get.Click += (_, _) =>
+        {
+            // WHICH MODEL THIS ROW MEANS, ASKED OF THE SHARED CATALOGUE. Asked
+            // here rather than carried on the row because it is only needed the
+            // moment somebody taps, and because a size on a row and a different
+            // model in the download is the one mistake in this screen that
+            // actually spends a person's data.
+            var model = DeviceFacts.ChoiceFor(
+                ability.Title, _registry!, _loader!, DeviceProbe.Snapshot());
+            if (model is null)
+            {
+                pct.Visibility = ViewStates.Visible;
+                pct.Text = "Nothing that fits this phone.";
+                return;
+            }
+            meta.Visibility = ViewStates.Visible;
+            Turn(model, get, bar, pct);
+        };
+
+        return wrap;
+    }
+
 
     /// <summary>A small button. Full-size Ui.Action is a third of a row on its own.</summary>
     Button Compact(string text)
@@ -519,11 +596,11 @@ public class AbilitiesActivity : Activity
             });
 
             await Task.Run(() => _loader!.DownloadModelAsync(model.Name, progress), cts.Token);
-            RunOnUiThread(Refresh);
+            RunOnUiThread(Reread);
         }
         catch (System.OperationCanceledException)
         {
-            RunOnUiThread(Refresh);
+            RunOnUiThread(Reread);
         }
         catch (Exception ex)
         {
@@ -541,7 +618,7 @@ public class AbilitiesActivity : Activity
     void Remove(ModelEntry model) =>
         new AlertDialog.Builder(this)
             .SetTitle("Turn this off?")
-            .SetMessage($"Frees {Size(model.TotalBytes)}. Turning it back on downloads it again.")
+            .SetMessage($"Frees {ModelChoice.Size(model.TotalBytes)}. Turning it back on downloads it again.")
             .SetNegativeButton("Keep it", (s, e) => { })
             .SetPositiveButton("Turn off", (s, e) =>
             {
@@ -565,15 +642,12 @@ public class AbilitiesActivity : Activity
 
     // ── plain language ───────────────────────────────────────────────────────
 
-    bool Installed(string name) => _loader?.ModelExists(name) == true;
-
-    static bool Fits(ModelEntry m, DeviceProbe probe) =>
-        m.MinRamGb <= probe.UsableRamGb + 0.0001 &&
-        (probe.StorageFreeGb <= 0 || m.MinStorageGb <= probe.StorageFreeGb + 0.0001);
-
-
-    static string Size(long bytes) =>
-        bytes >= 1_000_000_000 ? $"{bytes / 1_000_000_000.0:0.#} GB" : $"{bytes / 1_000_000.0:0} MB";
+    // Installed, Fits and Size were here. All three are ModelChoice's now, and
+    // all three had drifted: Installed hashed a 470 MB file to answer "is it
+    // there" (9.4 s a candidate, on the UI thread), Fits was a second copy of a
+    // rule that also lives in ModelChoice, and Size was a third copy of a
+    // formatter. The screen that shows an answer should not be a place the
+    // answer is decided.
 
     static string Human(TimeSpan t) =>
         t.TotalSeconds < 90 ? $"{t.TotalSeconds:0} seconds" : $"{t.TotalMinutes:0} minutes";

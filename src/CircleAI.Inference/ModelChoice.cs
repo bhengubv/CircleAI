@@ -14,12 +14,20 @@
 //
 // So the choice lives here and both callers use it. The rule is not complicated;
 // what it needed was to exist once.
+//
+// AND IT MOVED HERE FROM THE ANDROID ASSEMBLY SO IT COULD BE TESTED. It had no
+// Android in it - a registry, a loader and a device probe, all of which
+// multi-target net9 and net10 - but it sat in a net10.0-android library, and not
+// one of the sixteen test projects can reference one of those. The rule that
+// decides which model a phone downloads had zero tests for that reason alone,
+// which is precisely how the native head drifted away from it without anything
+// going red. It lives beside DeviceAwareModelSelector now, which is the other
+// half of the same question.
 
 using CircleAI.Core;
 using CircleAI.Core.Models;
-using CircleAI.Inference;
 
-namespace CircleAI.Assistant.Device;
+namespace CircleAI.Inference;
 
 /// <summary>Picks the model this device should use for a modality.</summary>
 /// <remarks>
@@ -85,6 +93,27 @@ public static class ModelChoice
             .ThenBy(m => m.MinRamGb)
             .FirstOrDefault();
     }
+
+    /// <summary>What is on this phone for this job, or null.</summary>
+    /// <remarks>
+    /// THE QUESTION FOUR SCREENS ASKED AND ALL FOUR ANSWERED WITH A HASH. Home
+    /// asked it three times - for the voice, the ears and the brain - and the
+    /// abilities screen asked it once per row, every one of them through
+    /// ModelExists, which proves every byte of a 470 MB anchor file: 9.4 s a
+    /// candidate on the P30, MEASURED. Nobody was asking whether the bytes were
+    /// right; they were asking whether the thing was there.
+    /// <para>
+    /// Distinct from <see cref="For"/>, which answers "what should this phone
+    /// use" and falls back to the best thing that would FIT. Null here means
+    /// nothing is downloaded, which is what a setup census and a readiness check
+    /// actually want to know.
+    /// </para>
+    /// </remarks>
+    public static ModelEntry? Installed(
+        ModelModality modality, ModelRegistryService registry, BundleModelLoader loader)
+        => registry.AllModels
+            .Where(m => m.Modality == modality)
+            .FirstOrDefault(m => loader.ModelPresent(m.Name));
 
     /// <summary>Whether anything for this job is catalogued at all.</summary>
     /// <remarks>

@@ -161,16 +161,21 @@ public class HomeActivity : Activity
 
             var next = await Task.Run(() =>
             {
-                var store = System.IO.Path.Combine(
-                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                    "CircleAI", "Models");
+                // MODELSTORE, NOT SpecialFolder.ApplicationData: on Android the
+                // second is ".config" UNDERNEATH the first, and the session reads
+                // the first. See AbilitiesActivity.OnCreate and ModelPaths.
+                var store = CircleAI.Assistant.Device.ModelStore.Path;
 
                 using var registry = new CircleAI.Core.Models.ModelRegistryService();
                 using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
 
-                bool Has(CircleAI.Core.ModelModality m) => registry.AllModels
-                    .Where(e => e.Modality == m)
-                    .Any(e => loader.ModelExists(e.Name));
+                // ModelPresent, NOT ModelExists, AND THE DIFFERENCE IS NINE
+                // SECONDS A MODEL. ModelExists hashes the anchor file to prove
+                // every byte - 470 MB for chat, 9.4 s on the P30, measured - and
+                // this ran it for three modalities on the way to drawing the home
+                // screen. The question being asked is "is it there".
+                bool Has(CircleAI.Core.ModelModality m) =>
+                    CircleAI.Inference.ModelChoice.Installed(m, registry, loader) is not null;
 
                 var voice = Has(CircleAI.Core.ModelModality.Tts);
                 var ears  = Has(CircleAI.Core.ModelModality.Asr);
@@ -345,9 +350,7 @@ public class HomeActivity : Activity
 
         try
         {
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
 
             // Only once the voice is genuinely on disk. Asking it to speak
             // before then produces silence, which reads as broken at exactly
@@ -356,9 +359,8 @@ public class HomeActivity : Activity
             {
                 using var registry = new CircleAI.Core.Models.ModelRegistryService();
                 using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
-                return registry.AllModels
-                    .Where(e => e.Modality == CircleAI.Core.ModelModality.Tts)
-                    .Any(e => loader.ModelExists(e.Name));
+                return CircleAI.Inference.ModelChoice.Installed(
+                    CircleAI.Core.ModelModality.Tts, registry, loader) is not null;
             });
             if (!ready) return;
 
@@ -501,6 +503,20 @@ public class HomeActivity : Activity
         Apply(_ready);
     }
 
+    /// <summary>The pitch bullet about languages, from the one place that counts.</summary>
+    /// <remarks>
+    /// Falls back to the catalogue inside DeviceFacts when nothing is installed
+    /// yet, which is the honest promise on a phone that has not set up - and
+    /// becomes the fact the moment it has.
+    /// </remarks>
+    static string SpokenLanguagesLine()
+    {
+        var n = CircleAI.Assistant.Device.DeviceFacts.SpokenLanguages();
+        return n == 1
+            ? "1 language, spoken out loud"
+            : $"{(n > 0 ? n : SampleLanguages.All.Count)} languages, spoken out loud";
+    }
+
     /// <summary>Which speech parts are on disk right now.</summary>
     /// <remarks>
     /// Asked of the filesystem, not of readiness: readiness also weighs the
@@ -511,16 +527,13 @@ public class HomeActivity : Activity
     {
         try
         {
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
 
             using var registry = new CircleAI.Core.Models.ModelRegistryService();
             using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
 
-            var voice = registry.AllModels
-                .Where(e => e.Modality == CircleAI.Core.ModelModality.Tts)
-                .Any(e => loader.ModelExists(e.Name));
+            var voice = CircleAI.Inference.ModelChoice.Installed(
+                CircleAI.Core.ModelModality.Tts, registry, loader) is not null;
 
 #if IT_VOICE_ANDROID
             var wake = WakeWordActivity.FindBundle(this) is not null;
@@ -655,9 +668,7 @@ public class HomeActivity : Activity
 
         try
         {
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
 
             using var registry = new CircleAI.Core.Models.ModelRegistryService();
             using var loader = new CircleAI.Inference.BundleModelLoader(store, registry);
@@ -935,7 +946,19 @@ public class HomeActivity : Activity
                      // row was fixed first and the phone found the rest: a fix
                      // that corrects one owner of a fact and leaves four is not a
                      // fix, it is a fifth answer.
-                     $"{SampleLanguages.All.Count} languages, spoken out loud",
+                     //
+                     // AND IT WAS STILL A FIFTH ANSWER, because this went on
+                     // reading the CATALOGUE. Measured on a P30, 2026-09-12: this
+                     // line said "78 languages, spoken out loud" while the
+                     // abilities screen two taps away said "in 1 language", on a
+                     // phone with one voice installed. Both were honestly
+                     // computed. They had different owners.
+                     //
+                     // SampleLanguages.All.Count is what the phone COULD speak
+                     // once everything is downloaded - right for the picker this
+                     // screen links to, wrong for a bullet describing what it
+                     // does now.
+                     SpokenLanguagesLine(),
                      "Runs on the phone — works with no signal",
                      "Free, no account — only searches leave the phone",
                  })
@@ -1038,9 +1061,7 @@ public class HomeActivity : Activity
         try
         {
 #if IT_VOICE_ANDROID
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
             var wav = System.IO.Path.Combine(FilesDir!.AbsolutePath, $"home-{tag}.wav");
 
             // First press of a language fetches its voice, which is not instant on
@@ -1123,9 +1144,7 @@ public class HomeActivity : Activity
         var cts = new CancellationTokenSource();
         _turn = cts;
 
-        var store = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-            "CircleAI", "Models");
+        var store = CircleAI.Assistant.Device.ModelStore.Path;
 
         try
         {
@@ -1696,9 +1715,7 @@ public class HomeActivity : Activity
     {
         if (_ears is not null || _earsLoading is not null) return;
 
-        var store = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-            "CircleAI", "Models");
+        var store = CircleAI.Assistant.Device.ModelStore.Path;
 
         _ = Task.Run(async () =>
         {

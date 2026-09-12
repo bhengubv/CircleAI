@@ -808,9 +808,7 @@ public class BenchActivity : Activity
 
     // System.Environment, spelled out: Android.OS.Environment is also in scope
     // here and the two are not interchangeable.
-    static string ModelDir() => System.IO.Path.Combine(
-        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-        "CircleAI", "Models");
+    static string ModelDir() => CircleAI.Assistant.Device.ModelStore.Path;
 
     /// <summary>
     /// Deletes a model bundle once it has been measured.

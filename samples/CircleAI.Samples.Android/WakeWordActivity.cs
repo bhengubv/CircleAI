@@ -390,9 +390,7 @@ public class WakeWordActivity : Activity
     {
         try
         {
-            var stored = IOPath.Combine(
-                SysEnv.GetFolderPath(SysEnv.SpecialFolder.ApplicationData),
-                "CircleAI", "Models", ModelName);
+            var stored = IOPath.Combine(CircleAI.Assistant.Device.ModelStore.Path, ModelName);
 
             foreach (var dir in new[] { stored, SideloadedBundle(c) })
             {

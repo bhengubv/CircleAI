@@ -33,11 +33,30 @@ public static class ModelPaths
     /// </summary>
     /// <remarks>
     /// PERSONAL, NOT APPLICATIONDATA, and the difference only shows on a phone.
-    /// On .NET for Android SpecialFolder.Personal is the app's files directory -
-    /// the same one MAUI calls AppDataDirectory - while ApplicationData is
-    /// ".config" underneath it. Everywhere else the two agree, so this changes
-    /// nothing on desktop or server and stops a phone keeping two copies of
-    /// every model.
+    /// <para>
+    /// THIS PARAGRAPH USED TO SAY "SpecialFolder.Personal is the app's files
+    /// directory - the same one MAUI calls AppDataDirectory". THAT IS FALSE, and
+    /// it was measured false on a P30 on 2026-09-12 by printing all three:
+    /// </para>
+    /// <code>
+    /// Context.FilesDir                ->  /data/user/0/&lt;pkg&gt;/files
+    /// SpecialFolder.Personal          ->  /data/user/0/&lt;pkg&gt;/files/Documents
+    /// SpecialFolder.ApplicationData   ->  /data/user/0/&lt;pkg&gt;/files/.config
+    /// </code>
+    /// <para>
+    /// Personal is "Documents" UNDERNEATH the files directory, not the files
+    /// directory. All three are real, writable, and look right in a log, which is
+    /// why one handset ended up with models in THREE of them at once: the session
+    /// downloading through here into Documents, nineteen call sites in the native
+    /// head building their own path into .config, and ModelStore pointing at the
+    /// files directory itself.
+    /// </para>
+    /// <para>
+    /// The sentence that was here is the reason the fix stopped halfway - a
+    /// reader who believed it had no reason to check ModelStore, which was the
+    /// third copy. Everywhere off a phone the two still agree, so none of this
+    /// changes desktop or server.
+    /// </para>
     /// </remarks>
     public static string Default => Path.Combine(Root, "CircleAI", "Models");
 

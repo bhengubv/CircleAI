@@ -97,9 +97,7 @@ public class CircleAIApplication : Application
         // And where a DOWNLOADED one lands, which is a different place: the
         // catalogue entry (OpenJTalk-Dic-ja) unpacks into the model store, not
         // into the sideload folder.
-        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = System.IO.Path.Combine(
-            System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-            "CircleAI", "Models");
+        CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = CircleAI.Assistant.Device.ModelStore.Path;
         // The guard ends HERE, not three statements ago. Everything above it
         // touches CircleAI.Voice or CircleAISpeaker, neither of which is compiled
         // into the chat-only APK; the #endif used to sit right after

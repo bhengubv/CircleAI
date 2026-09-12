@@ -362,9 +362,7 @@ public class CareerActivity : Activity
             _speak.Enabled = false;
             _speak.Text = "Listening…";
 
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
 
             var turn = new VoiceTurn();
             await using var mic = new AndroidAudioCapture();

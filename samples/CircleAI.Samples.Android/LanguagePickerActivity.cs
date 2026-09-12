@@ -445,8 +445,7 @@ public class LanguagePickerActivity : Activity
         try
         {
 #if IT_VOICE_ANDROID
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "CircleAI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
             // Written to the EXTERNAL files dir when there is one. Same app-private
             // storage as far as the user is concerned, but adb can read it without
             // run-as — and run-as refuses on a Release build ("package not

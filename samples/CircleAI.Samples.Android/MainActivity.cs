@@ -225,9 +225,7 @@ public class MainActivity : Activity
         var sb = new System.Text.StringBuilder();
         try
         {
-            var root = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                "Circle AI", "Models");
+            var root = CircleAI.Assistant.Device.ModelStore.Path;
             sb.AppendLine($"root: {root}");
             if (!System.IO.Directory.Exists(root)) return sb.AppendLine("  (does not exist)").ToString();
 
@@ -543,9 +541,7 @@ public class MainActivity : Activity
             // ONE process owns it, not that this particular brain is special.
             CircleAI.Device.CircleNeuronService.OptionsFactory ??= () => new CircleAI.Hosting.AIOptions
             {
-                ModelStorageDirectory = System.IO.Path.Combine(
-                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                    "Circle AI", "Models"),
+                ModelStorageDirectory = CircleAI.Assistant.Device.ModelStore.Path,
             };
 
             Say("[service] starting + binding…");
@@ -1003,8 +999,7 @@ public class MainActivity : Activity
         Append("\n[voice] setting up ears and mouth…\n");
         try
         {
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "Circle AI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
 
             var (speaker, sStatus) = await CircleAI.Assistant.Voice.CircleAISpeaker.TryCreateAsync(store, s => Append(s + "\n"));
             if (speaker is null) { Append($"[voice] OFF: {sStatus}\n"); return; }
@@ -1093,8 +1088,7 @@ public class MainActivity : Activity
         Append("[tts] selecting a voice, downloading it, loading it, then synthesising…\n");
         try
         {
-            var store = System.IO.Path.Combine(
-                System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData), "Circle AI", "Models");
+            var store = CircleAI.Assistant.Device.ModelStore.Path;
             var wavPath = System.IO.Path.Combine(FilesDir!.AbsolutePath, "tts-result.wav");
 
             // Voice-under-test: if a model was sideloaded to files/vut/model.onnx
