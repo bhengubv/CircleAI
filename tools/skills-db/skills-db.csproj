@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>skills-db</AssemblyName>
+    <RootNamespace>CircleAI.Tools.SkillsDb</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    NOT PackAsTool, unlike tools/memory.
+
+    memory is a command every machine and every model needs on PATH. This runs
+    once, by one person, when the skill library changes - and its output is what
+    ships. Putting it on PATH would advertise it as something to run, and running
+    it against a directory that is not the curated library produces a database
+    that looks right and is not.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -286,7 +286,7 @@ public sealed class CircleAISession : IAsyncDisposable
                 // every turn — which on a phone is paid for in prefill, before the
                 // person hears a single word. Worth knowing what it costs before
                 // deciding it is worth it.
-                SkillStore            = lean ? null : CapabilityManifestSkillStore.Default,
+                SkillStore            = lean ? null : Skills(),
                 // Router set => AIService becomes the two-slot Neuron: warm
                 // generalist plus one admission-gated specialist. Left null it
                 // is byte-identical to single-slot, which is why the two-slot
@@ -687,6 +687,41 @@ public sealed class CircleAISession : IAsyncDisposable
     /// appearing to save and losing it.
     /// </remarks>
     public static IKeepsTranscripts Transcripts { get; set; } = KeepsNoTranscripts.Instance;
+
+    /// <summary>A library of how-to skills, when a head has wired one.</summary>
+    /// <remarks>
+    /// A SETTABLE STATIC, matching <see cref="Remembers"/> and
+    /// <see cref="Transcripts"/>, because the session is constructed deep inside
+    /// a warm-up path with nothing to hand it. The skill database is a 20 MB file
+    /// unpacked from an APK asset on first launch; only a head knows where that
+    /// landed, and a browser tab has no such file at all.
+    /// </remarks>
+    public static ISkillStore? Library { get; set; }
+
+    /// <summary>What answers a skill lookup: the manifest, plus the library.</summary>
+    /// <remarks>
+    /// COMPOSED, NOT REPLACED, AND THIS IS THE WHOLE CARE POINT OF THE CHANGE.
+    /// AIOptions.SkillStore is a single reference, so the obvious way to wire a
+    /// library of 1,405 community skills in is to assign over
+    /// CapabilityManifestSkillStore - which is not a set of skills at all. It is
+    /// the assistant's honesty about itself, every entry carrying a [status], and
+    /// its own header says why: "a capability catalogue that let the assistant
+    /// claim planned features would be a machine for confident lying".
+    /// <para>
+    /// EVERY ONE OF ITS TESTS WOULD HAVE STAYED GREEN THROUGH THAT SWAP, because
+    /// they test the store rather than who is wired to this seam. A community
+    /// skill called "voice" would then have been what the phone said about its
+    /// own voice support.
+    /// </para>
+    /// <para>
+    /// So the manifest goes first and the library second. "What can you do" is
+    /// answered by this build; "how do I do X" is answered by the library.
+    /// </para>
+    /// </remarks>
+    private static ISkillStore Skills()
+        => Library is null
+            ? CapabilityManifestSkillStore.Default
+            : new CompositeSkillStore(CapabilityManifestSkillStore.Default, Library);
 
     /// <summary>The memory this device keeps, when a head has wired one.</summary>
     /// <remarks>

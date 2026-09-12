@@ -134,6 +134,33 @@ public class CircleAIApplication : Application
             new CircleAI.Assistant.Voice.FileTranscriptStore(
                 System.IO.Path.Combine(AppPaths.Data, "Transcripts"));
 
+        // THE SKILL LIBRARY - 1,378 skills, shipped as an asset and unpacked
+        // once. Another seam with no producer until now: ISkillStore has been
+        // injected into the system prompt since the capability manifest landed,
+        // and the only thing ever wired to it was that manifest.
+        //
+        // COMPOSED, NOT ASSIGNED OVER. CircleAISession.Skills() puts the manifest
+        // first and this second, because "what can you do" must be answered by
+        // what this build ships and not by a community skill that happens to be
+        // called "voice". Setting Library null-safe: Open returns null when the
+        // asset is absent, and the manifest then answers alone exactly as before.
+        //
+        // OFF THE UI THREAD. The first call unpacks 20 MB out of the APK, and
+        // Application.OnCreate runs before any activity - blocking it is a launch
+        // that looks hung. Nothing needs the library until the first turn.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                CircleAI.Assistant.CircleAISession.Library =
+                    CircleAI.Assistant.Device.SkillLibrary.Open(this);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn(Tag, $"skill library: {ex.GetType().Name}: {ex.Message}");
+            }
+        });
+
         Log.Info(Tag, "process wiring installed");
     }
 }

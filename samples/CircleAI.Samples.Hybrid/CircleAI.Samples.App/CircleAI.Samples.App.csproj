@@ -210,6 +210,19 @@
   </ItemGroup>
 
   <!--
+    THE SKILL LIBRARY, LINKED RATHER THAN COPIED - the same 5.1 MB file the
+    native head ships, by relative path, exactly as espeak above.
+
+    Two heads, one artefact. A second copy in this directory would be 5 MB of
+    duplicate binary in git and, far worse, two libraries that drift: regenerate
+    one and the other phone quietly keeps last month's skills.
+  -->
+  <ItemGroup>
+    <AndroidAsset Include="..\..\CircleAI.Samples.Android\Assets\skills.db.zip"
+                  Link="skills.db.zip" />
+  </ItemGroup>
+
+  <!--
     ============================================================================
     InstallKeepingData - deploy WITHOUT throwing away the 817 MB of models.
 

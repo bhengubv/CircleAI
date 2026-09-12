@@ -15,6 +15,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <!--
+      SqliteSkillStore. The same package CircleAI.Memory already ships to every
+      Android head, at the same version - so on a phone this adds no native
+      payload that is not already in the APK.
+
+      It does NOT reach the browser: the WASM client references only
+      CircleAI.Samples.Shared -> CircleAI.Assistant, which has zero project
+      references by design and stays that way.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
   <!--

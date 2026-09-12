@@ -71,9 +71,14 @@ public sealed class SkillContextBuilder
             var all = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
             if (all.Count == 0) return string.Empty;
 
-            var names = all.Take(_maxSkills).Select(s => s.Id);
+            var names = all.Take(_maxSkills).Select(s => s.Id).ToList();
+            Console.WriteLine($"CIRCLEAI-SKILLS compact q=\"{userQuery}\" "
+                            + $"store={all.Count} names={string.Join(",", names)}");
             return "## Available Skills (names only; ask to expand)\n" + string.Join(", ", names) + "\n";
         }
+
+        Console.WriteLine($"CIRCLEAI-SKILLS full q=\"{userQuery}\" hits={matches.Count} "
+                        + $"chosen={string.Join(",", candidates.Select(c => c.Id))}");
 
         // Load full detail so we can include instructions.
         var sb = new StringBuilder();
