@@ -1,0 +1,18 @@
+<!--
+  The hybrid sample: one shared UI, three heads.
+
+  Kept as its own solution rather than folded into CircleAI.sln, which carries
+  190-odd projects. Opening that to work on four is slow, and the MAUI head needs
+  the android workload, which nothing else in the tree does.
+
+  Deploy is on the app only. The web heads are run, not deployed.
+-->
+<Solution>
+  <Project Path="..\CircleAI.Samples.Contracts\CircleAI.Samples.Contracts.csproj" />
+  <Project Path="CircleAI.Samples.Shared\CircleAI.Samples.Shared.csproj" />
+  <Project Path="CircleAI.Samples.Web.Client\CircleAI.Samples.Web.Client.csproj" />
+  <Project Path="CircleAI.Samples.Web\CircleAI.Samples.Web.csproj" />
+  <Project Path="CircleAI.Samples.App\CircleAI.Samples.App.csproj">
+    <Deploy />
+  </Project>
+</Solution>

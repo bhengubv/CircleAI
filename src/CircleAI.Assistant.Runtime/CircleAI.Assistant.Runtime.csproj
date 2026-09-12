@@ -6,8 +6,8 @@
   FILE compiled into three different applications by path:
 
       the console head   owned them
-      the MAUI head      <Compile Include="..\..\CircleAI.Samples.It\ItSession.cs" />
-      the native head    <Compile Include="..\CircleAI.Samples.It\*.cs" />
+      the MAUI head      <Compile Include="..\..\CircleAI.Samples.Console\ItSession.cs" />
+      the native head    <Compile Include="..\CircleAI.Samples.Console\*.cs" />
 
   So there was no assembly to reference, and a developer who wanted the
   assistant could not have it - there was nothing to take. The only way to reuse

@@ -178,11 +178,11 @@ def render():
         "// it is how an assistant works - you ask it, you do not navigate to it.",
         "",
         # THE NAMESPACE FOLLOWED THE FILE ONE MOVE TOO LATE. This file now lives
-        # in src/CircleAI.Assistant and kept saying CircleAI.Samples.It, so
+        # in src/CircleAI.Assistant and kept saying CircleAI.Samples.Console, so
         # Capabilities resolved only for code whose OWN namespace happened to
-        # sit under CircleAI.Samples.It and walk up into it. Services.razor did
-        # (CircleAI.Samples.It.Shared.Pages); the bUnit test project did not
-        # (CircleAI.Samples.Ui.Tests) - so tests/CircleAI.Samples.It.Ui.Tests
+        # sit under CircleAI.Samples.Console and walk up into it. Services.razor did
+        # (CircleAI.Samples.Shared.Pages); the bUnit test project did not
+        # (CircleAI.Samples.Ui.Tests) - so tests/CircleAI.Samples.Ui.Tests
         # stopped compiling and the UI tests stopped running, silently, because
         # nothing else builds that project.
         "namespace CircleAI.Assistant;",

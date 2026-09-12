@@ -156,9 +156,9 @@ def svg(canvas, safe_fraction, colour, background, note):
 
 def outputs():
     """Every file this script owns, as {path: content}."""
-    hyb = REPO / "samples" / "CircleAI.Samples.It.Hybrid" / "CircleAI.Samples.It.App"
+    hyb = REPO / "samples" / "CircleAI.Samples.Hybrid" / "CircleAI.Samples.App"
     return {
-        REPO / "samples" / "CircleAI.Samples.It.Android" / "Resources" / "drawable"
+        REPO / "samples" / "CircleAI.Samples.Android" / "Resources" / "drawable"
              / "ic_launcher_foreground.xml": android_vector(),
 
         # MauiIcon: appicon.svg is the plate, appiconfg.svg the mark laid over it.

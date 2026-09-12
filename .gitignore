@@ -262,8 +262,20 @@ ServiceFabricBackup/
 *.rptproj.bak
 
 # Recalibrator tool backups — registry.json.bak / embedded_registry.json.bak
-src/CircleAI.Core/*.json.bak
-src/CircleAI.Core/Models/*.json.bak
+#
+# THE TRAILING * IS THE POINT. These rules existed and nine .bak files were
+# tracked anyway, for two reasons worth remembering:
+#
+#   1. gitignore only governs UNTRACKED files. The nine were committed before
+#      the rule was written, so git went on tracking them and the rule never
+#      applied to the very files it names.
+#   2. The pattern stopped at ".bak" and the tool's output does not: the repo
+#      held .bak2 through .bak5 as well, and those matched nothing here.
+#
+# 576 KB of stale catalogue snapshots sat in the product's source directory
+# until 2026-09-12. tools/recalibrate-registry-sha writes them on every run.
+src/CircleAI.Core/*.json.bak*
+src/CircleAI.Core/Models/*.json.bak*
 
 # SQL Server files
 *.mdf

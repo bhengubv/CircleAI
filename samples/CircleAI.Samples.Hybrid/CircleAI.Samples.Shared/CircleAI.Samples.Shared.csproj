@@ -1,0 +1,56 @@
+<!--
+  The UI, written once.
+
+  Razor SDK, no platform target: this project is rendered by all three heads -
+  the MAUI app through a BlazorWebView, the Blazor Web App on the server, and the
+  WebAssembly client in a browser. Anything that cannot run in all three belongs
+  behind an interface in Services/, not in a component.
+
+  SupportedPlatform browser makes the analyser tell us when we reach for
+  something WASM does not have, at build time rather than at runtime in someone
+  else's browser.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- A Razor class library ships no docs and pack validation would demand a
+         README for something that is never packed. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.9" />
+    <!--
+      ONE OWNER FOR THE CONVERSATION, AND THE SEAM THE MEMORY LOOP HANGS OFF.
+      Turn state was spread across VoiceMark, two component fields, a bool set
+      through a Progress<T> that does not run inline, and a history inside
+      CircleAISession no screen can see. Fluxor gives one place to read it, one place
+      to change it, and an effect boundary where the long-term store is reached
+      without a component knowing it exists - see State/MemoryEffects.
+
+      HERE RATHER THAN IN CONTRACTS: Contracts is loaded by a WebAssembly client
+      and holds data and interfaces only. Fluxor is managed and WASM-safe, but
+      the store is UI state and belongs beside the UI. MIT licensed, which the
+      licence rule requires.
+    -->
+    <PackageReference Include="Fluxor" Version="6.9.0" />
+    <PackageReference Include="Fluxor.Blazor.Web" Version="6.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Data and interfaces ONLY, and deliberately not CircleAI.Samples.Console: that
+         is an Exe whose CircleAI.Hosting reference drags the whole SDK and the
+         ONNX runtime, which cannot load in a WebAssembly client. Each head
+         satisfies the interfaces with whatever it actually has. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+  </ItemGroup>
+
+</Project>

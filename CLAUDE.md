@@ -105,7 +105,7 @@ The loop is the one that covers everything, because it does not care what any
 solution file contains. The sixteenth project is in no solution at all:
 
 ```bash
-dotnet test tests/CircleAI.Samples.It.Ui.Tests/CircleAI.Samples.It.Ui.Tests.csproj
+dotnet test tests/CircleAI.Samples.Ui.Tests/CircleAI.Samples.Ui.Tests.csproj
 ```
 
 308 bUnit tests over the screens, and **nothing builds that project** — so when
@@ -139,7 +139,7 @@ Serialise heavy builds rather than running two at once.
 | `src/CircleAI.Memory` | episodes, atoms, recall, the append-only log |
 | `src/CircleAI.Memory.Sql` | the same store on PostgreSQL, SQL Server, MySQL, Oracle |
 | `tools/` | small runnable programs — `memory`, `voice-audit`, `tts-speak`, `stt-hear` |
-| `samples/CircleAI.Samples.It.Hybrid` | the IT! sample: MAUI Blazor hybrid and web off one shared Razor library |
+| `samples/CircleAI.Samples.Hybrid` | the IT! sample: MAUI Blazor hybrid and web off one shared Razor library |
 | `tests/CircleAI.Tests` | one project, both frameworks |
 
 `tools/` projects are not in the solution. Run them with

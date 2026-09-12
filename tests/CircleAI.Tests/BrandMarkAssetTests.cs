@@ -138,19 +138,19 @@ public class BrandMarkAssetTests
     [Fact]
     public void The_native_launcher_icon_is_the_live_mark()
         => AssertMarkShape(
-            Asset("samples", "CircleAI.Samples.It.Android", "Resources", "drawable",
+            Asset("samples", "CircleAI.Samples.Android", "Resources", "drawable",
                   "ic_launcher_foreground.xml"), canvas: 108);
 
     [Fact]
     public void The_maui_launcher_foreground_is_the_live_mark()
         => AssertMarkShape(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                   "Resources", "AppIcon", "appiconfg.svg"), canvas: 456);
 
     [Fact]
     public void The_splash_is_the_live_mark()
         => AssertMarkShape(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                   "Resources", "Splash", "splash.svg"), canvas: 456);
 
     [Fact]
@@ -175,7 +175,7 @@ public class BrandMarkAssetTests
         // app.css means the test cannot go stale: it enforces that every owner
         // agrees, rather than that they all equal one number somebody typed here.
         var css = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.Shared",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.Shared",
                   "wwwroot", "app.css"));
 
         // The FIRST --page is the one on bare :root - the dark theme. The light
@@ -188,13 +188,13 @@ public class BrandMarkAssetTests
         // colour is a visible jump, and the default it replaced was #FAFAFA
         // flashing white into a dark app.
         var splash = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                   "Resources", "Splash", "splash.svg"));
         Assert.Contains(expected, splash, StringComparison.OrdinalIgnoreCase);
 
         var csproj = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
-                  "CircleAI.Samples.It.App.csproj"));
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
+                  "CircleAI.Samples.App.csproj"));
         // MauiSplashScreen's Color is what actually paints the window; the svg's
         // own rect only shows if that is wrong. Both must say the same thing.
         var declared = Regex.Match(csproj,
@@ -206,7 +206,7 @@ public class BrandMarkAssetTests
         // gap after the splash goes and before the page paints. It was the owner
         // most easily forgotten, so it is the one most worth asserting.
         var appXaml = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App", "App.xaml"));
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App", "App.xaml"));
         var window = Regex.Match(appXaml,
             @"PageBackgroundColor""\s*>\s*(#[0-9A-Fa-f]{6})");
         Assert.True(window.Success, "App.xaml declares no PageBackgroundColor");
@@ -226,7 +226,7 @@ public class BrandMarkAssetTests
         // that failed to render, and sent this investigation down that path for a
         // long time. A grep is cheap; that afternoon was not.
         var main = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                   "Platforms", "Android", "MainApplication.cs"));
 
         Assert.Contains("MauiApplication", main, StringComparison.Ordinal);
@@ -243,7 +243,7 @@ public class BrandMarkAssetTests
         // The same class of failure one layer down: no MainLauncher means the app
         // installs and appears nowhere.
         var activity = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
                   "Platforms", "Android", "MainActivity.cs"));
         Assert.Contains("MauiAppCompatActivity", activity, StringComparison.Ordinal);
         Assert.Contains("MainLauncher = true", activity, StringComparison.Ordinal);
@@ -258,8 +258,8 @@ public class BrandMarkAssetTests
         // it declares no theme, so Android draws its own #FAFAFA preview window;
         // a MAUI head without MauiSplashScreen would reproduce that exactly.
         var csproj = File.ReadAllText(
-            Asset("samples", "CircleAI.Samples.It.Hybrid", "CircleAI.Samples.It.App",
-                  "CircleAI.Samples.It.App.csproj"));
+            Asset("samples", "CircleAI.Samples.Hybrid", "CircleAI.Samples.App",
+                  "CircleAI.Samples.App.csproj"));
         Assert.Contains("MauiSplashScreen", csproj, StringComparison.Ordinal);
         Assert.Contains("MauiIcon", csproj, StringComparison.Ordinal);
     }

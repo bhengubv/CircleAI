@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/samples/">
-    <Project Path="samples/ConsoleTest/ConsoleTest.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/CircleAI.Aether/CircleAI.Aether.csproj" />

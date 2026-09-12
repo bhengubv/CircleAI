@@ -8,7 +8,7 @@
       "runtimeArgs": [
         "run",
         "--project",
-        "samples/CircleAI.Samples.It.Hybrid/CircleAI.Samples.It.Web/CircleAI.Samples.It.Web.csproj",
+        "samples/CircleAI.Samples.Hybrid/CircleAI.Samples.Web/CircleAI.Samples.Web.csproj",
         "--urls",
         "http://localhost:5183"
       ],

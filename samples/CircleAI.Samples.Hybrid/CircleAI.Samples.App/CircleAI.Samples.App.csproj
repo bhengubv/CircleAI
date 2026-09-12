@@ -1,0 +1,259 @@
+<!--
+  The MAUI head - the app, and the only head with a splash.
+
+  THIS IS WHERE THE SPLASH COMES FROM. <MauiSplashScreen> below is the whole
+  mechanism, and it is why the native Android head has none: a splash is a MAUI
+  concept, and that head is plain .NET Android with no theme declared at all, so
+  Android drew its default preview window - a #FAFAFA rectangle - which flashed
+  white before a #080B0E app.
+
+  One svg feeds it, MAUI generates every density, and the Color below is the app's
+  own page colour, so there is no flash and no colour jump into Home.
+-->
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <!-- iOS/MacCatalyst/Windows are deliberately not built here yet: this head is
+         verified on a Huawei P30 Lite, and a target nobody has run is a claim
+         rather than a platform. Adding one is a csproj line plus a Platforms
+         folder, and the shared UI needs no change. -->
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CircleAI.Samples.App</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <ApplicationTitle>Circle AI</ApplicationTitle>
+    <!-- A DIFFERENT PACKAGE ID FROM THE NATIVE HEAD. com.bhengubv.circleai is
+         installed on the test phone; sharing the id would make deploying this one
+         an upgrade that replaces it, and the two are meant to be comparable side
+         by side. -->
+    <ApplicationId>com.bhengubv.circleai.hybrid</ApplicationId>
+    <!-- THE BUILD HAS TO BE NAMEABLE. Every build made while this was written was
+         1.0 (1), so three phones on a table could not be told apart and "did you
+         deploy the latest version?" had no answer but a file hash. The code goes
+         up on every cut; the display version is what somebody says out loud.
+         Settings > Phone prints both, so anybody can read it off the screen. -->
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <!-- BUMPED EVERY CUT, BECAUSE IT IS THE ONLY HONEST DEPLOY SIGNAL.
+         lastUpdateTime stayed frozen across confirmed installs on two different
+         phones, so "did my build actually land" was unanswerable from adb. This
+         number is in the manifest, `dumpsys package` reads it back, and it moves
+         only when somebody changes it here. -->
+    <ApplicationVersion>9</ApplicationVersion>
+
+    <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
+         vector path is API 24+. -->
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+
+    <!-- THE LINKED SOURCES ARE GUARDED BY THIS. AndroidAudio.cs is wrapped in
+         #if IT_VOICE_ANDROID from end to end, so without the symbol it compiles
+         to an empty file and the type simply is not there - which reads as a
+         missing namespace rather than as a missing definition. This head speaks
+         and listens, so the symbol is on. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- App icon: ONE svg for the plate, one for the mark. MAUI generates every
+         density, which is why this head has no mipmap folders. Both are generated
+         from MarkView's geometry by tools/brand-mark/gen_mark.py. -->
+    <MauiIcon Include="Resources\AppIcon\appicon.svg"
+              ForegroundFile="Resources\AppIcon\appiconfg.svg"
+              Color="#2196F3" />
+
+    <!-- The splash. Color is the page colour from app.css - Shade(#2c3e50, 0.18), the
+         near-black the dark theme moved to. Matching it is the point: the splash
+         is the bridge into Home, so it wears Home's background, and when the page
+         went from #121A21 to near-black and this did not, the launch ended in a
+         visible step onto a darker screen.
+
+         ONE COLOUR, FIVE OWNERS: this, splash.svg's rect, App.xaml's
+         PageBackgroundColor, index.html's flash guard, and the page token itself
+         in app.css. tools/brand-mark/gen_mark.py regenerates the svg, so its PAGE
+         constant is the source for that one - change it there or the next run
+         puts the old charcoal back.
+
+         DARK ONLY, and it cannot be otherwise: a splash is a static Android
+         drawable chosen before any code runs, while Light appearance is an in-app
+         choice living in the WebView. A light-mode launch therefore still opens
+         on this dark plate. -->
+    <!-- 256dp, not 128. BaseSize is the size the mark is DRAWN at, centred on the
+         colour above; at 128 it was a small logo adrift in a dark screen, and on
+         a 360dp phone it used barely a third of the width. 256 fills the space a
+         splash is for while still clearing the narrowest handset we support. -->
+    <MauiSplashScreen Include="Resources\Splash\splash.svg"
+                      Color="#080B0E"
+                      BaseSize="256,256" />
+
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Samples.Shared\CircleAI.Samples.Shared.csproj" />
+
+    <!-- The real voice stack. This head speaks, so it carries what speaking needs:
+         the registry and selector (Core, via Hosting), the bundle downloader
+         (Inference), and the ONNX engine plus phonemisers (Voice). The web heads
+         reference none of this, which is exactly why the shared UI talks to
+         IVoiceHost instead of to these directly. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- AndroidDeviceMemory. Without it DeviceProbe reads the GC heap limit rather
+         than the phone's RAM, every model fails its fit check, and the abilities
+         screen reports "Needs more memory" for all of them. -->
+    <!-- The assistant runtime. These types used to be LINKED into this project
+         as loose source files; they are a library now, so this head takes an
+         assembly reference instead of a copy compiled by path. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
+    <!-- The assistant on Android: the turn loop, the model host, memory,
+         voice, the wake word and the capabilities that act on the phone.
+         Was a folder of Services here plus eight files linked by path out
+         of the native head. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
+    <!-- The CV interview: its script, its profile store and the renderer. The
+         screen only maps an answer onto a field - the questions and the document
+         are this library's, so both apps run one interview. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Career\CircleAI.Career.csproj" />
+  </ItemGroup>
+
+  <!--
+    LINKED, NOT REFERENCED, and for the same reason the native head links them:
+    CircleAI.Samples.Console is an Exe whose Program.cs is a console entry point. Only
+    the voice probe and the sample's own helpers are wanted, so they are compiled
+    in directly.
+
+    THE SET IS DELIBERATELY NARROW. The native head links the whole root glob and
+    therefore references Charts, Presentations, Music, Media, BusinessOps, Cast,
+    Mesh, CodeAgent and both Security libraries - everything CapabilitySweep
+    touches. This head speaks and lists languages; dragging that graph into the APK
+    would cost megabytes to compile code no screen here calls.
+
+    So: the Voice folder, plus DeviceDiagnostics, which CircleAITtsProbe uses to report
+    what the phone actually is. Adding a screen that needs more means adding the
+    file and its reference deliberately, which is the point.
+  -->
+  <ItemGroup>
+    <!-- CircleAISpeaker asks it which language a reply is in, to pick a voice. -->
+    <!-- The brain: the conversation session and what it needs to run a turn.
+         CapabilitySweep and Program are still excluded - the sweep drags a dozen
+         library references for code no screen here calls. -->
+    <!-- The voice CATALOGUE IDS, which FirstRun names while listing what a first
+         run should fetch. They are not the engine: CircleAISpeaker is compiled only
+         where voice is on, and a setup screen needs the name, not the player.
+         Listed explicitly because this head does not glob the shared root — a
+         new shared file is invisible here until it is named. -->
+  </ItemGroup>
+
+  <!-- The microphone. Android-only by nature, and taken from the native head
+       rather than rewritten: the PCM16-to-float conversion in the wake listener
+       has to match what this produces, and a second copy is a second chance to
+       scale the samples wrong - which made the wake word deaf for a day. -->
+  <ItemGroup>
+    <!-- Linked into Shared\, NOT Platforms\Android\: MAUI's single-project
+         convention filters items by their Platforms path, so a file linked there
+         is excluded from the build and the type simply is not there. -->
+    <!-- End-of-speech detection. Its thresholds were tuned on the P30 - speech at
+         3x the noise floor or an absolute 0.02, and 1.4 s of quiet to end a turn -
+         and a second implementation would be a second set of numbers to get wrong
+         in a way that only shows up as "it cuts me off". -->
+    <!-- The other half of VoiceTurn: noticing that a voice has STARTED while the
+         assistant is talking, so a person can interrupt it. Same guard, same
+         reason to link rather than copy. -->
+    <!--
+      The wake detector, LINKED not reimplemented, for the same reason VoiceTurn
+      is: it judges a candidate phrase against the bundle's own tokenizer and
+      falls back to English when the model cannot hear it. It takes the language
+      as a PARAMETER and carries no store, so it ports cleanly. Its caller does
+      not - see the note at the top of DeviceResidentAssistant.
+    -->
+    <!--
+      The two sounds a person across the room actually gets, and the receiver
+      that brings the models back after a restart. Both are platform-only -
+      ToneGenerator, a BroadcastReceiver and a SharedPreferences flag - so they
+      link cleanly, like VoiceTurn above.
+
+      BootReceiver's [BroadcastReceiver(Name = "com.bhengubv.itsample.BootReceiver")]
+      is shared with the native head. That name is only an identifier inside
+      whichever APK declares it, so both heads can carry it without colliding.
+    -->
+    <!-- THE PHONEMIZER, WITHOUT WHICH THIS APP CANNOT SPEAK. CircleAISpeaker asks
+         MobilePhonemizerFactory for a G2P and this is the only file that sets
+         it - the native head calls VoiceWiring.Install from CircleAIApplication, and
+         the hybrid linked five files from that head but not this one. The
+         symptom is exact and on screen: "No English voice: on-device
+         phonemizer not wired (CircleAISpeaker.MobilePhonemizerFactory)". Japanese
+         still spoke, because OpenJTalk is wired separately in MainApplication,
+         which is what made it look like a language problem rather than a
+         missing wire. -->
+    <!-- The fallback VoiceWiring falls back TO, so linking one without the
+         other does not compile. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- espeak-ng, THE SAME COPY THE NATIVE HEAD SHIPS. Every voice trained on
+         espeak IPA needs it, which is every language here except Japanese.
+         arm64 only: the x86_64 .so would need the NDK recipe run again, and on
+         that ABI VoiceWiring falls through to the out-of-process app. The lib
+         and the data are version-locked - both espeak-ng 1.52.0 - so they move
+         together or not at all. -->
+    <AndroidNativeLibrary Include="../../CircleAI.Samples.Android/native/arm64-v8a/libespeak-ng.so"
+                          Abi="arm64-v8a" />
+    <AndroidAsset Include="..\..\CircleAI.Samples.Android\Assets\espeak-ng-data.zip"
+                  Link="espeak-ng-data.zip" />
+  </ItemGroup>
+
+  <!--
+    ============================================================================
+    InstallKeepingData - deploy WITHOUT throwing away the 817 MB of models.
+
+    WHY THIS EXISTS. "dotnet build -t:Install" wipes this app's data on every
+    deploy. AndroidPreserveUserData defaults to True and is passed to the
+    FastDeploy task, but fast deployment is off here - EmbedAssembliesIntoApk is
+    true, because that is what makes a Release build load its assemblies from
+    inside the APK - so the task falls back to a plain install, which cannot
+    replace an installed package and uninstalls it first. Every build log in this
+    repo carries the evidence: "warning XAAADB0000: Failure
+    [DELETE_FAILED_INTERNAL_ERROR]" is that uninstall being attempted.
+
+    What gets thrown away is not a preference. Setup fetches 817 MB - two voices,
+    the ears, the wake word and a 548 MB answering model - onto a phone where
+    that is most of ten minutes, and it lives in app-private storage because it
+    has to: this app must not assume the phone has an SD card, and a model the
+    app cannot function without is not optional media. So a one-line UI change
+    cost a full re-download, three times in one afternoon, and no behaviour that
+    needs an installed model could be tested twice in a row.
+
+    "adb install -r" replaces the package in place and keeps the data directory.
+    It is deliberately NOT the default: -r also retains the old permission
+    grants, so it is the wrong tool for verifying a first run, which is exactly
+    what "-t:Install" is right for. Two targets, two jobs, and the choice is
+    made on purpose rather than by whichever one somebody typed.
+
+        dotnet build -t:InstallKeepingData -p:AdbTarget="-s SERIAL"    iterate
+        dotnet build -t:Install            -p:AdbTarget="-s SERIAL"    first run
+    ============================================================================
+  -->
+  <Target Name="InstallKeepingData" DependsOnTargets="SignAndroidPackage">
+    <PropertyGroup>
+      <_Adb Condition=" '$(_Adb)' == '' ">$(_AndroidPlatformToolsDirectory)adb</_Adb>
+    </PropertyGroup>
+
+    <Message Importance="high"
+             Text="Installing over the existing package, keeping its data: $(ApkFileSigned)" />
+
+    <Exec Command="&quot;$(_Adb)&quot; $(AdbTarget) install -r &quot;$(ApkFileSigned)&quot;" />
+
+    <!-- lastUpdateTime is the only proof an install actually happened: this
+         toolchain can report success without having installed anything. -->
+    <Exec Command="&quot;$(_Adb)&quot; $(AdbTarget) shell dumpsys package $(_AndroidPackage) | findstr lastUpdateTime"
+          ContinueOnError="true" />
+  </Target>
+
+</Project>

@@ -75,7 +75,7 @@ PHRASES = {
     "ko":  "좋은 아침이야 친구",
 }
 
-PICKER = (REPO / "samples" / "CircleAI.Samples.It.Android" / "LanguagePickerActivity.cs")
+PICKER = (REPO / "samples" / "CircleAI.Samples.Android" / "LanguagePickerActivity.cs")
 
 
 def picker_phrases() -> dict[str, str]:

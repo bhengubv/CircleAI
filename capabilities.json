@@ -116,7 +116,7 @@
       },
       "Requires": [
         "Model weights — none ship; smallest catalogued bundle is 433 MB.",
-        "CRITICAL for .NET Android hosts using a ProjectReference: the native libs live under src/CircleAI.Inference/runtimes/<rid>/native/, which is the NuGet PACKAGE convention. They do NOT flow across a ProjectReference, so the APK ships with zero MNN libraries and the first inference throws 'System.DllNotFoundException: mnnbridge'. The host must add explicit <AndroidNativeLibrary Include=\"...runtimes/android-arm64/native/*.so\"><Abi>arm64-v8a</Abi></AndroidNativeLibrary> items. See samples/CircleAI.Samples.It.Android for the pattern.",
+        "CRITICAL for .NET Android hosts using a ProjectReference: the native libs live under src/CircleAI.Inference/runtimes/<rid>/native/, which is the NuGet PACKAGE convention. They do NOT flow across a ProjectReference, so the APK ships with zero MNN libraries and the first inference throws 'System.DllNotFoundException: mnnbridge'. The host must add explicit <AndroidNativeLibrary Include=\"...runtimes/android-arm64/native/*.so\"><Abi>arm64-v8a</Abi></AndroidNativeLibrary> items. See samples/CircleAI.Samples.Android for the pattern.",
         "On Android: AIOptions.NativeLibDir set to ApplicationInfo.NativeLibraryDir."
       ],
       "Limits": [
