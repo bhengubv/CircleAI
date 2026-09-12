@@ -122,8 +122,13 @@ public class SearchActivity : Activity
         {
             try
             {
-                var session = await CircleAISessionHost.GetAsync(this).ConfigureAwait(false);
-                var found = await session.SearchAsync(asked!, ct: ct).ConfigureAwait(false);
+                // NO SESSION. Searching needs the transcript store and the
+                // memory, both of which are process-wide and already wired by
+                // CircleAIApplication - it does not need a model, a device probe
+                // or a catalogue refresh, and asking for a session got all three.
+                // This screen hung for ninety seconds on a P30 doing exactly that.
+                var found = await CircleAISession
+                    .SearchAsync(asked!, ct: ct).ConfigureAwait(false);
 
                 RunOnUiThread(() =>
                 {

@@ -76,11 +76,19 @@ whole day of verification that sounded complete and was not.**
 `docs/BUILD.md` says `dotnet test CircleAI.sln` — "everything at once,
 recommended" — and the solution does name **15 of the 16**. **But I could not
 make that command work on this box**, and this file is not going to tell you it
-did: it built for **85 minutes** and produced not one test result, using 48
-seconds of CPU in that time. That is a stall, not a slow build, and it was
-killed. One observation is not proof the command is broken — but it is not
-verified either, and `never-hog-the-dev-workstation` says a heavy build does not
-belong here in the first place.
+did: it ran for **85 minutes and produced not one test result** before it was
+killed.
+
+Whether that was a stall or just a very slow build of 195 projects, I do not
+know. An earlier version of this paragraph called it a stall on the evidence
+that the parent `dotnet` process had used only 48 seconds of CPU — **that
+inference was wrong.** A Release Android build in its AOT phase shows the same
+signature (23 s of parent CPU over 10 minutes) while writing a thousand files a
+minute, because the work is in child `clang`/`llvm` processes. If you need to
+tell the two apart, watch `obj/` for recent writes, not CPU.
+
+Either way it is unverified, and `never-hog-the-dev-workstation` says a build
+that size does not belong on this box in the first place.
 
 **What IS verified, project by project, on both legs: all sixteen pass.** Run
 them individually — it is also far faster to iterate on:

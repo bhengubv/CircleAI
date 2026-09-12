@@ -707,7 +707,23 @@ public sealed class CircleAISession : IAsyncDisposable
     /// identical to a list that had nothing to show.
     /// </para>
     /// </remarks>
-    public async Task<IReadOnlyList<Found>> SearchAsync(
+    /// <remarks>
+    /// <b>STATIC, BECAUSE IT NEEDS NOTHING FROM A SESSION - AND THE PHONE HAD TO
+    /// TELL ME THAT.</b> Both sources it reads are static (<see cref="Transcripts"/>
+    /// and <see cref="Remembers"/>) and this method touches no instance field,
+    /// but it was an INSTANCE method, so <c>SearchActivity</c> had to get a
+    /// session to call it - and getting one runs the full
+    /// <c>StartAsync</c>: device probe, model selection, model load.
+    /// <para>
+    /// On a P30 that search never came back. Ninety seconds on "Looking...",
+    /// the process alive, a .NET thread-pool worker enumerating network
+    /// interfaces - because the screen whose own header says it "needs no model
+    /// and so works on a handset with nothing downloaded" was waiting on
+    /// everything a model needs. The code was right and the feature did not
+    /// work, which is the entire argument for OPEN-GAPS section D.
+    /// </para>
+    /// </remarks>
+    public static async Task<IReadOnlyList<Found>> SearchAsync(
         string query, int take = 20, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query) || take <= 0) return [];

@@ -930,7 +930,12 @@ public class HomeActivity : Activity
         claims.SetPadding(pad, 0, pad, Ui.Dp(this, 16));
         foreach (var line in new[]
                  {
-                     "10 plus languages, spoken out loud",
+                     // COUNTED, NOT TYPED - and this was the FIFTH place saying
+                     // "10 plus" over a catalogue of seventy-eight. The abilities
+                     // row was fixed first and the phone found the rest: a fix
+                     // that corrects one owner of a fact and leaves four is not a
+                     // fix, it is a fifth answer.
+                     $"{SampleLanguages.All.Count} languages, spoken out loud",
                      "Runs on the phone — works with no signal",
                      "Free, no account — only searches leave the phone",
                  })
@@ -1010,7 +1015,7 @@ public class HomeActivity : Activity
             nav.AddView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
         }
 
-        Quiet("10 plus languages", typeof(LanguagePickerActivity));
+        Quiet($"{SampleLanguages.All.Count} languages", typeof(LanguagePickerActivity));
         Quiet("What it can do", typeof(AbilitiesActivity));
 
         root.AddView(nav, Ui.Fill());

@@ -162,7 +162,7 @@ public class LanguagePickerActivity : Activity
         _status.SetPadding(0, Ui.Dp(this, 6), 0, 0);
         head.AddView(_status);
 
-        _search = new EditText(this) { Hint = "Search 10 plus languages" };
+        _search = new EditText(this) { Hint = $"Search {SampleLanguages.All.Count} languages" };
         _search.SetTextColor(Ui.Ink);
         _search.SetHintTextColor(Ui.InkSoft);
         _search.SetSingleLine(true);
