@@ -59,6 +59,41 @@ public sealed class CueExtractor : IAtomExtractor
 
     private static readonly Cue[] Cues =
     [
+        // ASKED FOR IN SO MANY WORDS. These outrank everything below because
+        // they are the only cues where the person is not being interpreted at
+        // all - they have said "remember this", and every other cue in this
+        // table is a guess next to that.
+        //
+        // THEY WERE MISSING, AND IT SHOWED ON A PHONE. "Remember that my clinic
+        // appointment moved to Friday" was the first thing ever said to the
+        // deployed app; the store recorded nothing and a search for "clinic"
+        // came back empty. That was this table behaving exactly as written -
+        // forty-three cues for rules, preferences, decisions and failures, and
+        // not one for being asked outright. A bare "use " counted as a decision
+        // while "remember that" counted as nothing.
+        //
+        // Fact, not Ruling: "my appointment moved to Friday" is something that
+        // is TRUE, not something the person wants done differently in future.
+        //
+        // NOT AtStart, unlike "never" and "always". Those are narration
+        // mid-sentence ("the house always wins"); this is not - "oh, and
+        // remember that the clinic moved" is as explicit in the middle as at
+        // the beginning.
+        //
+        // NO BARE "remember " ON PURPOSE. It would swallow "I don't remember
+        // where I put it" and "do you remember the film" - neither of which is
+        // an instruction to store anything, and both of which would put
+        // somebody's idle sentence into a memory they never asked for. Precision
+        // matters more than recall when the false positive is a private
+        // sentence kept forever. The cost is that "Remember my appointment
+        // moved" - no "that" - is still missed.
+        new("remember that ",    AtomKind.Fact,       0.96),
+        new("remember to ",      AtomKind.Fact,       0.96),
+        new("don't forget ",     AtomKind.Fact,       0.95),
+        new("dont forget ",      AtomKind.Fact,       0.95),
+        new("keep in mind ",     AtomKind.Fact,       0.94),
+        new("note that ",        AtomKind.Fact,       0.93),
+
         // A rule, stated. The least ambiguous thing a person says - as long as
         // it is the sentence's first word. See Cue.AtStart.
         new("never ",            AtomKind.Ruling,     0.92, AtStart: true),

@@ -114,6 +114,24 @@ public class CircleAIApplication : Application
         // external directory the voices use, which any file manager can read.
         //
         // Nothing syncs it and nothing backs it up. Forgetting one deletes it.
+        // WHERE MEMORY LIVES ON THIS HEAD, WHICH WAS NOWHERE.
+        //
+        // CircleAISession.Remembers was a seam with no producer: DeviceMemory -
+        // the real IRemembers, complete and logging both halves of the loop -
+        // was never constructed ANYWHERE in src or samples, so "does this phone
+        // remember me" answered no and search could only ever return
+        // transcripts. The Blazor heads get theirs through DI; this one does not
+        // use DI, so it wires its own.
+        //
+        // Beside the transcripts and for the same reason: FilesDir is
+        // app-private, off the shared card, and gone on uninstall. What somebody
+        // tells their phone is at least as private as what its microphone
+        // caught.
+        CircleAI.Assistant.CircleAISession.Remembers =
+            new CircleAI.Assistant.Device.DeviceMemory(
+                new CircleAI.Memory.MemoryService(
+                    System.IO.Path.Combine(AppPaths.Data, "Memory")));
+
         CircleAI.Assistant.CircleAISession.Transcripts =
             new CircleAI.Assistant.Voice.FileTranscriptStore(
                 System.IO.Path.Combine(AppPaths.Data, "Transcripts"));

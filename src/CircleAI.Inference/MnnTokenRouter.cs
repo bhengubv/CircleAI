@@ -215,9 +215,50 @@ internal static class MnnTokenRouter
             }
             else
             {
-                var searchEnd = Math.Min(src.Length, upTo + ThinkOpen.Length);
-                var openIdx = IndexOfIn(src, ThinkOpen, sink.FlushedChars, searchEnd);
-                if (openIdx >= 0 && openIdx + ThinkOpen.Length <= src.Length)
+                // A CLOSING TAG WITH NO OPENING ONE MEANS WE STARTED INSIDE THE
+                // BLOCK. Qwen3's chat template pre-fills "<think>" at the end of
+                // the prompt, so the model GENERATES the reasoning and the
+                // closing tag but never the opening one. This branch only ever
+                // looked for "<think>", so it stayed in Content mode and streamed
+                // the whole monologue - and the literal "</think>" - to the
+                // screen.
+                //
+                // Seen on a P30, versionCode 7, in the first message ever typed
+                // into the deployed app. "Remember that my clinic appointment
+                // moved to Friday" came back as:
+                //
+                //     What was your original appointment time?
+                //     </think>
+                //
+                //     I don't need information about who the user is because I
+                //     am just running the app.
+                //
+                // Every answer the phone gives is shaped like that. So whichever
+                // tag comes FIRST decides: an open tag starts reasoning, a close
+                // tag means everything up to it already WAS reasoning.
+                var searchEnd  = Math.Min(src.Length, upTo + ThinkOpen.Length);
+                var openIdx    = IndexOfIn(src, ThinkOpen, sink.FlushedChars, searchEnd);
+                var closeEnd   = Math.Min(src.Length, upTo + ThinkClose.Length);
+                var strayClose = IndexOfIn(src, ThinkClose, sink.FlushedChars, closeEnd);
+
+                var openUsable  = openIdx    >= 0 && openIdx    + ThinkOpen.Length  <= src.Length;
+                var closeUsable = strayClose >= 0 && strayClose + ThinkClose.Length <= src.Length;
+
+                if (closeUsable && (!openUsable || strayClose < openIdx))
+                {
+                    // Everything before it was reasoning, whatever this router
+                    // assumed. Route it as such so IncludeReasoning still governs
+                    // whether anybody sees it, and swallow the tag itself.
+                    if (strayClose > sink.FlushedChars && sink.IncludeReasoning)
+                    {
+                        var text = src.ToString(sink.FlushedChars, strayClose - sink.FlushedChars);
+                        sink.Writer.TryWrite(new ChatFragment(ChatFragmentKind.Reasoning, text));
+                    }
+                    sink.FlushedChars = strayClose + ThinkClose.Length;
+                    continue;   // stays OUT of think mode: the block just ended
+                }
+
+                if (openUsable)
                 {
                     if (openIdx > sink.FlushedChars)
                     {

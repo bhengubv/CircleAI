@@ -547,6 +547,33 @@ public sealed class CircleAISession : IAsyncDisposable
 
         onChunk("\n");
         _history.Add(new ChatTurn("assistant", sb.ToString()));
+
+        // KEPT, IF IT IS WORTH KEEPING - AND NOTHING DID THIS BEFORE.
+        //
+        // "Remember that my clinic appointment moved to Friday" was the first
+        // message ever typed into the deployed app. Searching "clinic" a minute
+        // later found nothing, and that was CORRECT: the store was empty,
+        // because no code on this head ever wrote to it. AIService has a
+        // TryStoreEpisodeAsync, but it returns early unless AIOptions.EpisodicMemory
+        // is set and nothing assigns that either, so the turn went nowhere by two
+        // separate routes.
+        //
+        // WHAT IS WORTH KEEPING IS NOT THIS METHOD'S CALL. IRemembers.LearnAsync
+        // hands the whole utterance to the store, which decides - the turn does
+        // not know an address from a pleasantry, and filtering here would be this
+        // file inventing a judgement the memory library already owns.
+        //
+        // Fire-and-forget and swallowed: a store that cannot write must not cost
+        // somebody the answer already on their screen.
+        if (Remembers is { } remembers && !string.IsNullOrWhiteSpace(input))
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await remembers.LearnAsync(input).ConfigureAwait(false); }
+                catch { /* remembering is a bonus; answering was the job */ }
+            });
+        }
+
         return sb.ToString();
     }
 
