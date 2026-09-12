@@ -211,6 +211,40 @@ public class SeeingActivity : Activity
 
         if (bitmap is null) return null;
 
+        // AND THEN SCALE IT EXACTLY, BECAUSE inSampleSize CANNOT FINISH THE JOB.
+        //
+        // SampleFor only offers powers of two and refuses to undershoot, so a
+        // 540x1156 picture gets a factor of 1 - halving would land at 578, below
+        // the 1024 budget - and the full-size bitmap goes to the model unchanged.
+        // The session noticed ("image is over budget; the host should subsample
+        // before sending") and then sent it anyway, because that line only warns.
+        //
+        // FOUND ON A P30, and it is why Seeing answered "Can I get clearer
+        // context first?" over a picture it had been given. Every long edge
+        // between 1024 and 2048 was affected, which is most phone screenshots
+        // and every portrait photo off this camera.
+        //
+        // inSampleSize still does the cheap bulk of the work - it is what keeps
+        // a twelve-megapixel photo from being decoded in full - and this only
+        // closes the last factor-of-under-two that it structurally cannot.
+        var longest = Math.Max(bitmap.Width, bitmap.Height);
+        if (longest > ImageBudget.MaxEdge)
+        {
+            var scale = (double)ImageBudget.MaxEdge / longest;
+            var w = Math.Max(1, (int)Math.Round(bitmap.Width  * scale));
+            var h = Math.Max(1, (int)Math.Round(bitmap.Height * scale));
+
+            Log.Info(Tag, $"scaling {bitmap.Width}x{bitmap.Height} -> {w}x{h} for the {ImageBudget.MaxEdge} budget");
+
+            var scaled = Bitmap.CreateScaledBitmap(bitmap, w, h, filter: true);
+            if (scaled is not null && !ReferenceEquals(scaled, bitmap))
+            {
+                bitmap.Recycle();
+                bitmap.Dispose();
+                bitmap = scaled;
+            }
+        }
+
         try
         {
             using var ms = new MemoryStream();

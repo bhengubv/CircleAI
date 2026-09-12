@@ -288,6 +288,13 @@ public static class FirstRun
         }
         wanted.Add(new("the brain", ModelModality.Chat, null));
 
+        // EVERY ABILITY THE SCREEN OFFERS ARRIVES BY ITSELF. Vision was the one
+        // capability this list never asked for, so Seeing sat behind a "Turn on"
+        // button on a phone that had already fetched the voice, the ears, the
+        // wake word and the brain without being asked. A list of abilities where
+        // one of them is a chore is a list with a hole in it.
+        wanted.Add(new("the eyes", ModelModality.Vision, null));
+
         return wanted;
     }
 

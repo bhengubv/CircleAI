@@ -50,7 +50,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         ArgumentNullException.ThrowIfNull(probe);
 
         var tier = probe.Classify();
-        var entries = EnumerateEntries().ToList();
+        var entries = EnumerateEntries(required).ToList();
         if (entries.Count == 0)
             throw new InvalidOperationException(
                 "Model registry is empty. Cannot select a model.");
@@ -68,8 +68,12 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
             // No entry declares the requested capabilities. Treat this as
             // "no model available" rather than silently dropping the
             // capability requirement.
+            // SAY HOW MANY WERE LOOKED AT. The old wording sent a reader to the
+            // registry to add a capability that was already there - the entries
+            // had been filtered out by modality before this gate ever saw them.
             throw new InvalidOperationException(
-                $"No model in the registry satisfies required capabilities '{required}'. " +
+                $"No model in the registry satisfies required capabilities '{required}' " +
+                $"({entries.Count} candidate(s) considered). " +
                 "Refresh the registry or relax the capability requirement.");
         }
 
@@ -150,6 +154,44 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
     // separately.
     private IEnumerable<ModelEntry> EnumerateEntries()
         => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat);
+
+    /// <summary>
+    /// Candidates for a specific capability.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>THE VISION SELECTOR EXCLUDED VISION MODELS.</b> Candidates were
+    /// filtered to <c>Modality == Chat</c> before the capability gate ran, so
+    /// the two entries that declare <c>["Default","Vision"]</c> - Qwen2.5-VL-3B
+    /// and SmolVLM-256M - were dropped one line before anything asked which
+    /// capabilities they had. <c>BestFit(probe, Vision)</c> then threw "No model
+    /// in the registry satisfies required capabilities 'Vision'" over a registry
+    /// containing exactly two models that do.
+    /// </para>
+    /// <para>
+    /// FOUND ON A P30, AFTER THREE BUILDS SPENT FIXING THINGS UPSTREAM. The
+    /// image was decoded, scaled to 478x1024, attached and carried intact - and
+    /// the throw happened before any of that mattered, was swallowed by a
+    /// <c>catch { return generalist; }</c>, and the TEXT model answered about a
+    /// picture it had never been given. It said so, politely, every time.
+    /// </para>
+    /// <para>
+    /// Chat stays in the set for a vision request because a VLM may be
+    /// catalogued either way: the embedded entries carry
+    /// <c>Modality = Vision</c>, while a live ModelScope entry that
+    /// <c>InferModality</c> recognises as a VLM also carries Chat-shaped
+    /// metadata. Filtering to Vision alone would trade this bug for its mirror.
+    /// </para>
+    /// <para>
+    /// Every non-vision request keeps the old candidate set exactly, so chat and
+    /// the speech selectors are untouched.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<ModelEntry> EnumerateEntries(ChatCapability required)
+        => required.HasFlag(ChatCapability.Vision)
+            ? _registry.AllModels.Where(e => e.Modality is ModelModality.Chat
+                                                        or ModelModality.Vision)
+            : EnumerateEntries();
 
     /// <inheritdoc/>
     public IReadOnlyList<string> ChainFor(string headModelId)

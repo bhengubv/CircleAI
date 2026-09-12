@@ -68,14 +68,61 @@ public sealed class DeviceAwareModelSelectorRegistryTests
     }
 
     [Fact]
-    public void Vision_ThrowsUntilAVisionModelIsCatalogued()
+    public void Vision_SelectsAModelThatActuallyDeclaresVision()
     {
-        // Documents an HONEST hole: there is no vision model in the registry, so
-        // this must fail loudly. If someone "fixes" it by declaring Vision on a
-        // text model, this test is the thing that should stop them.
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => new DeviceAwareModelSelector().BestFit(Device(8), ChatCapability.Vision));
-        Assert.Contains("capabilit", ex.Message, StringComparison.OrdinalIgnoreCase);
+        // THIS TEST USED TO ASSERT THE OPPOSITE, AND IT WAS RIGHT WHEN WRITTEN.
+        // It read:
+        //
+        //     Vision_ThrowsUntilAVisionModelIsCatalogued
+        //     "Documents an HONEST hole: there is no vision model in the
+        //      registry, so this must fail loudly."
+        //
+        // A vision model HAS since been catalogued - two, in fact,
+        // Qwen2.5-VL-3B-Instruct-MNN and SmolVLM-256M-Instruct-MNN, both
+        // declaring ["Default","Vision"] - so by its own name the "until" was
+        // over and this should have flipped then.
+        //
+        // IT DID NOT, AND IT STAYED GREEN FOR THE WRONG REASON. BestFit went on
+        // throwing, but not because the catalogue was empty: EnumerateEntries
+        // filtered candidates to Modality == Chat BEFORE the capability gate, so
+        // both vision entries were discarded one line before anything asked what
+        // they could do. The test expected a throw and got a throw, from an
+        // unrelated cause, and that agreement hid the bug on every run.
+        //
+        // It cost four builds on a P30. The image was decoded, scaled to
+        // 478x1024, attached and carried intact; the throw happened upstream of
+        // all of it, was swallowed by a catch that returned the generalist, and
+        // the TEXT model answered - honestly - that it could not see any image.
+        //
+        // THE ORIGINAL GUARD IS KEPT, and it is the second assertion: whatever
+        // wins must genuinely declare Vision. Declaring Vision on a text model
+        // to make this pass still fails the thing that matters.
+        var pick = new DeviceAwareModelSelector().BestFit(Device(8), ChatCapability.Vision);
+
+        Assert.False(string.IsNullOrWhiteSpace(pick.ModelId));
+
+        var entry = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+
+        Assert.Contains("Vision", entry.Capabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Vision_StillFailsLoudlyWhenNothingDeclaresIt()
+    {
+        // The half of the old test that is still worth having: an empty result
+        // must throw rather than quietly hand back a text model. Asserted
+        // against a registry with no vision entry at all, so it tests the gate
+        // rather than the catalogue's current contents.
+        var registry = new ModelRegistryService();
+        var textOnly = registry.AllModels
+            .Where(m => m.Capabilities is null ||
+                        !m.Capabilities.Contains("Vision", StringComparer.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.NotEmpty(textOnly);   // the fixture is meaningful
+        Assert.DoesNotContain(textOnly,
+            m => m.Capabilities?.Contains("Vision", StringComparer.OrdinalIgnoreCase) == true);
     }
 
     // ── device fit ───────────────────────────────────────────────────────────

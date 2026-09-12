@@ -160,9 +160,26 @@ public static class ImageBudget
 
         var (w, h) = size.Value;
         var sample = SampleFor(w, h, maxEdge);
-        return sample == 1
-            ? $"{w}x{h}, within {maxEdge} - unchanged"
-            : $"{w}x{h} -> about {w / sample}x{h / sample} (1/{sample}) for a {maxEdge} budget";
+
+        // "WITHIN 1024 - UNCHANGED" WAS PRINTED OVER A 540x1156 IMAGE, which is
+        // not within 1024 by any reading. SampleFor deliberately undershoots -
+        // it will not halve 1156 to 578 because that is below the budget - so it
+        // returns 1 for EVERY long edge between maxEdge and 2*maxEdge, and this
+        // sentence then reported no change as though no change were needed.
+        //
+        // Seen on a P30: the very next line of the same trace said "image is
+        // over budget", so the log contradicted itself about one picture. Phone
+        // screenshots and portrait photos land in that band constantly.
+        if (sample == 1)
+        {
+            var edge = Math.Max(w, h);
+            return edge <= maxEdge
+                ? $"{w}x{h}, within {maxEdge} - unchanged"
+                : $"{w}x{h}, OVER the {maxEdge} budget - too small to halve without going under, "
+                  + "so the host must scale it exactly";
+        }
+
+        return $"{w}x{h} -> about {w / sample}x{h / sample} (1/{sample}) for a {maxEdge} budget";
     }
 
     /// <summary>Width and height from a JPEG's first start-of-frame marker.</summary>

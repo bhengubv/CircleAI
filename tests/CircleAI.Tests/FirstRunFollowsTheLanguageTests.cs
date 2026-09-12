@@ -137,8 +137,23 @@ public class FirstRunFollowsTheLanguageTests
     {
         // speech:false is the chat-only APK, which cannot open a voice at all.
         // Threading a language through must not start it downloading one.
-        var titles = FirstRun.WantedFor(speech: false, "ja").Select(w => w.Title).ToArray();
+        var wanted = FirstRun.WantedFor(speech: false, "ja");
+        var titles = wanted.Select(w => w.Title).ToArray();
 
-        Assert.Equal(["the brain"], titles);
+        // THE EYES JOINED THE LIST AND THIS EXPECTATION MOVED WITH THEM. Vision
+        // was the one ability the setup never fetched, so Seeing sat behind a
+        // "Turn on" button on a phone that had already pulled the brain without
+        // being asked. It belongs in a chat-only build too: the eyes are the MNN
+        // runtime with an image encoder, not a voice, so an APK with no speech
+        // natives can still run them.
+        //
+        // The assertion stays EXACT rather than being relaxed to "contains the
+        // brain" - this test's whole job is to catch something new being
+        // downloaded onto somebody's phone without a decision, and a loosened
+        // assertion would stop doing that.
+        Assert.Equal(["the brain", "the eyes"], titles);
+
+        // And the thing the name actually promises, checked directly.
+        Assert.DoesNotContain(wanted, w => w.Modality == ModelModality.Tts);
     }
 }

@@ -1057,7 +1057,42 @@ public sealed class AIService : IAIService
     /// Build a fresh generator for a specific model id via the loader + factory.
     /// Shared by the RT-04 brownout swap and the Neuron specialist slot.
     /// </summary>
-    private async Task<IChatGenerator> BuildGeneratorAsync(string modelId, CancellationToken ct)
+    /// <remarks>
+    /// The capability-less overload keeps the brownout swap's call site, which
+    /// re-builds the GENERALIST and so is text by definition.
+    /// </remarks>
+    private Task<IChatGenerator> BuildGeneratorAsync(string modelId, CancellationToken ct)
+        => BuildGeneratorAsync(modelId, ChatCapability.None, ct);
+
+    /// <summary>
+    /// Build a generator suited to what the model was CHOSEN FOR.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>THIS IS WHY SEEING DID NOT SEE.</b> The specialist slot called the
+    /// overload above, which builds a <see cref="QwenTextGenerator"/> for
+    /// whatever id it is handed - and <c>QwenTextGenerator</c> does not contain
+    /// the string <c>ImageBytes</c> anywhere. So a vision model was loaded into
+    /// a text generator and the picture was discarded without a word.
+    /// </para>
+    /// <para>
+    /// Everything ahead of this point was already right, which is what made it
+    /// hard to see: on a P30 the concierge routed to the vision specialist, the
+    /// selector best-fit SmolVLM-256M, the bundle downloaded, the bitmap was
+    /// decoded and scaled to 478x1024, and the bytes rode a ChatMessage intact
+    /// all the way down. The model then answered "I am not actually able to
+    /// access external images" - and it was telling the truth.
+    /// </para>
+    /// <para>
+    /// <c>KimiVlGenerator</c> is the vision-capable one and it was complete the
+    /// whole time; it was simply only ever constructed on the DI path in
+    /// <c>ServiceCollectionExtensions</c>, which the native Android head does
+    /// not use. The branch below is the same test that path already makes, so
+    /// the two now agree instead of disagreeing silently.
+    /// </para>
+    /// </remarks>
+    private async Task<IChatGenerator> BuildGeneratorAsync(
+        string modelId, ChatCapability capability, CancellationToken ct)
     {
         if (_modelLoader is null)
             throw new InvalidOperationException(
@@ -1078,12 +1113,30 @@ public sealed class AIService : IAIService
         var contextSize = _options.ContextSize
             ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
 
-        return _generatorFactory is not null
-            ? _generatorFactory(modelPath)
-            : new QwenTextGenerator(
+        // A HOST-SUPPLIED FACTORY STILL WINS. Overriding it here would take a
+        // decision away from a host that made one deliberately.
+        if (_generatorFactory is not null)
+        {
+            Console.WriteLine($"CIRCLEAI-SLOT built=host-factory model={modelId} cap={capability}");
+            return _generatorFactory(modelPath);
+        }
+
+        Console.WriteLine(
+            $"CIRCLEAI-SLOT built={(capability.HasFlag(ChatCapability.Vision) ? "KimiVl" : "QwenText")} " +
+            $"model={modelId} cap={capability}");
+
+        if (capability.HasFlag(ChatCapability.Vision))
+        {
+            return new KimiVlGenerator(
                 modelPath,
                 contextSize: (uint)Math.Max(1, contextSize),
                 threads: _options.ThreadCount);
+        }
+
+        return new QwenTextGenerator(
+            modelPath,
+            contextSize: (uint)Math.Max(1, contextSize),
+            threads: _options.ThreadCount);
     }
 
     /// <summary>
@@ -1102,17 +1155,31 @@ public sealed class AIService : IAIService
             ?? throw new InvalidOperationException("Butler is not ready.");
 
         var router = _options.Router;
-        if (router is null) return generalist;
+        if (router is null)
+        {
+            Console.WriteLine("CIRCLEAI-SLOT generalist: no router configured");
+            return generalist;
+        }
 
         Neuron.RouteDecision decision;
         try { decision = router.Route(new Neuron.RouteContext(userQuery ?? string.Empty, hasImage)); }
         catch { return generalist; }   // a router fault must never break generation
 
-        if (decision.Organ != Neuron.Organ.Specialist) return generalist;
+        if (decision.Organ != Neuron.Organ.Specialist)
+        {
+            Console.WriteLine($"CIRCLEAI-SLOT generalist: router chose {decision.Organ}");
+            return generalist;
+        }
 
         // Specialists need a selector (to best-fit the capability) and a loader
         // (to fetch/build the bundle). Absent either, the generalist answers.
-        if (_modelSelector is null || _modelLoader is null) return generalist;
+        if (_modelSelector is null || _modelLoader is null)
+        {
+            Console.WriteLine(
+                $"CIRCLEAI-SLOT generalist: selector={_modelSelector is not null} " +
+                $"loader={_modelLoader is not null} - a specialist needs both");
+            return generalist;
+        }
 
         try
         {
@@ -1120,17 +1187,41 @@ public sealed class AIService : IAIService
 
             // Best-fit resolved to the generalist itself — no second slot needed.
             if (string.Equals(selection.ModelId, _resolvedModelId, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine(
+                    $"CIRCLEAI-SLOT generalist: best-fit for {decision.Capability} IS the generalist " +
+                    $"({selection.ModelId})");
                 return generalist;
+            }
 
             _slots ??= new Neuron.ResidentSlotManager(_generalistReservedBytes, ProbeDevice);
-            var admission = await _slots.EnsureSpecialistAsync(selection, BuildGeneratorAsync, ct)
+            // THE CAPABILITY WAS KNOWN HERE AND THROWN AWAY ONE LINE LATER. The
+            // slot manager's callback takes only an id, so passing the method
+            // group dropped decision.Capability at exactly the point that
+            // decides which generator gets built.
+            var admission = await _slots.EnsureSpecialistAsync(
+                    selection,
+                    (id, token) => BuildGeneratorAsync(id, decision.Capability, token),
+                    ct)
                 .ConfigureAwait(false);
 
             // Denied / failed → generalist; admitted / already-resident → specialist.
+            // AND IT SAYS WHICH, because both outcomes looked identical from
+            // outside: a denied admission answers perfectly well, in text, about
+            // a picture it never got.
+            Console.WriteLine(
+                $"CIRCLEAI-SLOT admission={(admission.Generator is not null ? "granted" : "DENIED")} " +
+                $"cap={decision.Capability} model={selection.ModelId}");
             return admission.Generator ?? generalist;
         }
         catch (OperationCanceledException) { throw; }
-        catch { return generalist; }
+        catch (Exception ex)
+        {
+            // THIS SWALLOWED THE REASON. A specialist that throws on load is
+            // indistinguishable from one that was never asked for.
+            Console.WriteLine($"CIRCLEAI-SLOT generalist: {ex.GetType().Name}: {ex.Message}");
+            return generalist;
+        }
     }
 
     /// <summary>
