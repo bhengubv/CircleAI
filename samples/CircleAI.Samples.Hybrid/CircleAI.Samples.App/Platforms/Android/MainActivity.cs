@@ -112,6 +112,32 @@ public class MainActivity : MauiAppCompatActivity
             Android.Util.Log.Info("CircleAI.Mem",
                 $"OS memory pressure ({level}) - evicting the specialist, keeping the generalist");
             CircleAI.Assistant.AppLifecycle.RaiseMemoryIsShort();
+
+            // AND SHED THE DISPOSABLE CACHE. The eviction above frees RAM; this
+            // frees the regenerable scratch on disk - the same brownout, one tier
+            // down, and free to rebuild. The worse the pressure, the more we let
+            // go: a severe signal clears all of it, a milder one only what the
+            // standing policy would (aged-out and over-cap). Never the models or
+            // the person's memory - TrimCache and ReclaimCaches touch the cache
+            // alone. Off the main thread, because this callback runs on it and the
+            // work is disk I/O.
+            var severe = level is TrimMemory.RunningCritical or TrimMemory.Complete;
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    var manager = new CircleAI.Assistant.Device.MemoryManager(
+                        new CircleAI.Assistant.Device.DeviceResourcesReader());
+                    var freed = severe ? manager.ReclaimCaches() : manager.TrimCache();
+                    if (freed > 0)
+                        Android.Util.Log.Info("CircleAI.Mem",
+                            $"pressure cache tidy ({level}): freed {CircleAI.Assistant.MemoryBudget.Human(freed)}");
+                }
+                catch (System.Exception ex)
+                {
+                    Android.Util.Log.Warn("CircleAI.Mem", "pressure cache tidy failed: " + ex.Message);
+                }
+            });
         }
     }
 
