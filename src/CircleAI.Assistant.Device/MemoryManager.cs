@@ -39,11 +39,15 @@ public sealed class MemoryManager
     /// it starts, so a phone is never filled and then apologised to.
     /// </summary>
     /// <remarks>
-    /// The reclaimable figure comes from the footprint, so "reclaim first" is a
-    /// real option the caller can act on rather than a hope.
+    /// The reclaimable figure is the CACHE — exactly what <see cref="ReclaimCaches"/>
+    /// frees without a say-so — so a "reclaim first" verdict is one the caller can
+    /// actually make good on, not a hope. Skills and espeak data are reclaimable too
+    /// (see <see cref="Footprint.ReclaimableBytes"/>) but they re-unpack with a
+    /// visible pause, so they need a say-so and are NOT counted toward what fits
+    /// automatically.
     /// </remarks>
     public BudgetDecision CanDownload(long bytes)
-        => MemoryBudget.ForDownload(_resources.Read(), bytes, DeviceFootprint.Measure().ReclaimableBytes);
+        => MemoryBudget.ForDownload(_resources.Read(), bytes, DeviceFootprint.Measure().CacheBytes);
 
     /// <summary>
     /// Free what costs the person nothing - the regenerable cache - and report

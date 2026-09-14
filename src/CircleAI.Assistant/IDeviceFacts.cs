@@ -82,6 +82,33 @@ public sealed record PhoneFacts(
     IReadOnlyList<PhoneFact> Facts,
     IReadOnlyList<string> Technical);
 
+/// <summary>One category of Circle AI's storage, ready to render.</summary>
+/// <param name="Label">What it is, in a person's words — "Downloaded models".</param>
+/// <param name="Size">How big, human-readable — "2.0 GB".</param>
+/// <param name="Regenerable">
+/// True when it comes back for free (skills, voice data, scratch); false for the
+/// precious things that cost data to replace or cannot be got back at all —
+/// downloaded models and what the phone remembers.
+/// </param>
+public sealed record StorageLine(string Label, string Size, bool Regenerable);
+
+/// <summary>What Circle AI is using on this phone, for a storage screen.</summary>
+/// <param name="Lines">The breakdown by category.</param>
+/// <param name="Total">Everything Circle AI holds — "2.1 GB".</param>
+/// <param name="Freeable">
+/// What one tap can free right now at no cost to the person — the regenerable
+/// scratch — human-readable, or empty when there is nothing to free.
+/// </param>
+public sealed record StorageReport(
+    IReadOnlyList<StorageLine> Lines, string Total, string Freeable)
+{
+    /// <summary>The answer for a head that cannot measure its own footprint (the
+    /// browser): an empty breakdown, so its storage screen shows nothing rather
+    /// than a fabricated number.</summary>
+    public static StorageReport None { get; } =
+        new(System.Array.Empty<StorageLine>(), string.Empty, string.Empty);
+}
+
 /// <summary>Answers the "what can it do, and on what" questions for a head.</summary>
 public interface IDeviceFacts
 {
@@ -104,4 +131,22 @@ public interface IDeviceFacts
     /// <returns>What happened, for the row to show.</returns>
     Task<string> TurnOnAsync(
         string title, IProgress<string>? progress = null, CancellationToken ct = default);
+
+    /// <summary>What Circle AI is using on disk, broken down for a storage screen.</summary>
+    /// <remarks>
+    /// A DEFAULT so only the head that can measure a real footprint (the phone,
+    /// via the Memory Manager) implements it; the browser inherits
+    /// <see cref="StorageReport.None"/> and its storage screen simply shows nothing.
+    /// This is the Memory Manager's footprint made visible — distinct from
+    /// <see cref="PhoneAsync"/>'s "Space free", which is the DEVICE's free space
+    /// from a different reader. The two measure different things and must never be
+    /// shown as one number.
+    /// </remarks>
+    Task<StorageReport> StorageAsync(CancellationToken ct = default)
+        => Task.FromResult(StorageReport.None);
+
+    /// <summary>Free the regenerable scratch and say what came back, in a sentence.</summary>
+    /// <remarks>Default: nothing to free — only a real footprint can be reclaimed.</remarks>
+    Task<string> ReclaimStorageAsync(CancellationToken ct = default)
+        => Task.FromResult(string.Empty);
 }

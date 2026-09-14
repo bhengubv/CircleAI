@@ -45,9 +45,18 @@ public sealed class DeviceSetup : ISetup
     /// means "no opinion", and the plan falls back to the two fixed voices -
     /// exactly the behaviour that existed before this parameter.
     /// </remarks>
-    public DeviceSetup(IMicrophoneAccess microphone, ISpokenLanguage? spoken = null)
+    /// <summary>The footprint budget, so the first-run download can ask before it
+    /// spends data and fills the disk. Optional so a non-DI head can still new this
+    /// up — the gate is simply skipped when it is absent.</summary>
+    private readonly MemoryManager? _memory;
+
+    public DeviceSetup(
+        IMicrophoneAccess microphone,
+        MemoryManager? memory = null,
+        ISpokenLanguage? spoken = null)
     {
         _microphone = microphone;
+        _memory = memory;
         _spoken = spoken;
     }
 
@@ -225,6 +234,20 @@ public sealed class DeviceSetup : ISetup
                 // costs them megabytes rather than only a wrong list.
                 var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
                                           declined: DeclinedModels.Is, language: Language);
+
+                // PREVENTION FOR THE ESSENTIALS TOO. First run is the largest
+                // download Circle AI ever asks for; refusing upfront with the
+                // reason beats filling the disk and dying on the last file. Cache
+                // is cleared if that alone makes room; if the phone cannot hold the
+                // essentials even then, the run stops with the shortfall named.
+                if (_memory is { } mm && steps.Count > 0)
+                {
+                    var total = steps.Sum(s => s.Model.TotalBytes);
+                    var budget = mm.CanDownload(total);
+                    if (budget.Verdict == FootprintVerdict.ReclaimFirst) mm.ReclaimCaches();
+                    else if (budget.Verdict == FootprintVerdict.WontFit)
+                        throw new System.IO.IOException(budget.Message);
+                }
 
                 var inner = new Progress<SetupProgress>(p =>
                 {

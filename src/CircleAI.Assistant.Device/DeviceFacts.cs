@@ -177,11 +177,29 @@ public sealed class DeviceFacts : IDeviceFacts
     /// link in Settings would have quietly disappeared. Nothing would have
     /// thrown and no test would have gone red.
     /// </remarks>
-    public DeviceFacts() : this(BlazorScreens) { }
+    /// <summary>What Circle AI uses and whether a download fits — same-assembly, so
+    /// the ability download can ask BEFORE it spends data or fills the disk.</summary>
+    private readonly MemoryManager _memory;
+
+    /// <summary>The constructor DI resolves: the Blazor head's screens, plus the
+    /// Memory Manager the download gate consults.</summary>
+    public DeviceFacts(MemoryManager memory) : this(BlazorScreens, memory) { }
 
     /// <param name="screens">The ability titles this head can actually open.</param>
-    public DeviceFacts(IEnumerable<string> screens)
-        => _screens = new HashSet<string>(screens, StringComparer.Ordinal);
+    /// <param name="memory">The footprint budget the download path asks first.</param>
+    /// <remarks>
+    /// PRIVATE on purpose. Microsoft's container special-cases
+    /// <c>IEnumerable&lt;T&gt;</c> to an EMPTY set, so a public screens+memory
+    /// constructor would out-arity the memory-only one and DI would build this head
+    /// with no screens — the silent "every Try it link vanished" bug this class
+    /// already warns about above. Kept private so DI only ever sees the memory-only
+    /// ctor and always gets the Blazor screens.
+    /// </remarks>
+    private DeviceFacts(IEnumerable<string> screens, MemoryManager memory)
+    {
+        _screens = new HashSet<string>(screens, StringComparer.Ordinal);
+        _memory = memory;
+    }
 
     /// <summary>Every ability title, in order. A head naming its screens needs them.</summary>
     public static IReadOnlyList<string> Titles => [.. Catalogue.Select(a => a.Title)];
@@ -417,6 +435,22 @@ public sealed class DeviceFacts : IDeviceFacts
         var best = ModelChoice.For(entry.Modality, registry, loader, probe);
         if (best is null) return "Nothing that fits this phone.";
 
+        // PREVENTION, NOT CURE — the Memory Manager is asked BEFORE the download,
+        // so Circle AI is never the reason a phone fills up. It fits: go. It fits
+        // only after clearing regenerable cache: clear it and go. It will not fit
+        // even then: refuse with the shortfall named, rather than let the fetch
+        // die halfway with "Not enough space."
+        var budget = _memory.CanDownload(best.TotalBytes);
+        if (budget.Verdict == FootprintVerdict.ReclaimFirst)
+        {
+            progress?.Report("Making room…");
+            _memory.ReclaimCaches();
+        }
+        else if (budget.Verdict == FootprintVerdict.WontFit)
+        {
+            return budget.Message;
+        }
+
         try
         {
             // ASKING FOR IT AGAIN IS THE CLEAREST WITHDRAWAL OF A REFUSAL.
@@ -443,6 +477,47 @@ public sealed class DeviceFacts : IDeviceFacts
             };
         }
     }
+
+    /// <inheritdoc />
+    public Task<StorageReport> StorageAsync(CancellationToken ct = default)
+        => Task.Run(() =>
+        {
+            var f = _memory.Footprint;
+            string H(long b) => MemoryBudget.Human(b);
+
+            // Precious first (what costs data to replace or cannot be got back),
+            // then the regenerable, so the eye lands on what matters. Zero-size
+            // rows are dropped: an empty "Skills — 0 MB" is noise on a phone that
+            // has not unpacked them yet.
+            var lines = new List<StorageLine>();
+            void Add(string label, long bytes, bool regen)
+            {
+                if (bytes > 0) lines.Add(new StorageLine(label, H(bytes), regen));
+            }
+
+            Add("Downloaded models", f.ModelsBytes, false);
+            Add("What it remembers", f.MemoryBytes, false);
+            Add("Skills", f.SkillsBytes, true);
+            Add("Voice data", f.VoiceDataBytes, true);
+            Add("Scratch & audio", f.CacheBytes, true);
+
+            // Freeable is the CACHE alone — exactly what ReclaimStorageAsync frees
+            // without a say-so. Skills and voice data are regenerable too but
+            // re-unpack with a visible pause, so they are shown, not offered to a
+            // one-tap button.
+            return new StorageReport(lines, H(f.TotalBytes),
+                f.CacheBytes > 0 ? H(f.CacheBytes) : string.Empty);
+        }, ct);
+
+    /// <inheritdoc />
+    public Task<string> ReclaimStorageAsync(CancellationToken ct = default)
+        => Task.Run(() =>
+        {
+            var freed = _memory.ReclaimCaches();
+            return freed > 0
+                ? $"Freed {MemoryBudget.Human(freed)}."
+                : "Nothing to free right now.";
+        }, ct);
 
     // Fits and Size moved to ModelChoice, which is now the one place that
     // decides which model this phone should use for a job. Four copies of that

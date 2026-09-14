@@ -53,6 +53,21 @@ internal sealed class FakeDeviceFacts : IDeviceFacts
     public Task<string> TurnOnAsync(
         string title, IProgress<string>? progress = null, CancellationToken ct = default)
         => Task.FromResult("nothing to turn on in a test");
+
+    /// <summary>What the storage screen should report. None by default, so the
+    /// footprint block is absent unless a test opts in.</summary>
+    public StorageReport Storage { get; init; } = StorageReport.None;
+
+    /// <summary>How many times the cache was asked to be freed.</summary>
+    public int Reclaims { get; private set; }
+
+    public Task<StorageReport> StorageAsync(CancellationToken ct = default)
+        => Task.FromResult(Storage);
+    public Task<string> ReclaimStorageAsync(CancellationToken ct = default)
+    {
+        Reclaims++;
+        return Task.FromResult("Freed 40 MB.");
+    }
 }
 
 internal sealed class FakeWakePhrases : IWakePhrases

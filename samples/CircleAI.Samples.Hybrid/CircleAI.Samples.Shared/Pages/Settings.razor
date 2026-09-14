@@ -481,6 +481,48 @@ else
             </div>
 
             @*
+                WHAT CIRCLE AI ITSELF USES — the Memory Manager's footprint made
+                visible. NOT the same as "Space free" above: that is the whole
+                phone's free space, this is only Circle AI's own files, split into
+                what is precious (downloaded models, memory) and what comes back for
+                free (skills, voice, scratch). Empty on the browser, which cannot
+                measure a footprint, so the block simply does not appear there.
+            *@
+            @if (_storage is { Lines.Count: > 0 })
+            {
+                <div class="row">
+                    <span class="row-text">
+                        <span class="row-title">What Circle AI uses</span>
+                        <span class="row-sub">@_storage.Total in all</span>
+                    </span>
+                </div>
+
+                @foreach (var line in _storage.Lines)
+                {
+                    <div class="row" @key="line.Label">
+                        <span class="row-text">
+                            <span class="row-title">@line.Label</span>
+                            <span class="row-sub">@line.Size@(line.Regenerable ? " · frees for free" : null)</span>
+                        </span>
+                    </div>
+                }
+
+                @if (_storage.Freeable.Length > 0)
+                {
+                    <div class="row">
+                        <button class="compact" disabled="@_freeing" @onclick="FreeStorage">
+                            @(_freeing ? "Freeing…" : $"Free up {_storage.Freeable}")
+                        </button>
+                    </div>
+                }
+
+                @if (_freedHint is { Length: > 0 })
+                {
+                    <div class="row"><span class="row-sub">@_freedHint</span></div>
+                }
+            }
+
+            @*
                 THE MODEL-BY-MODEL DETAIL, BEHIND A TAP.
                 PhoneFacts carries Technical as well as Facts - which model each
                 ability chose, its size, the RAM it wants, the repo it came from -
@@ -701,6 +743,9 @@ else
     IReadOnlyList<AbilityRow> _abilities = [];
     IReadOnlyList<WakePhraseOption> _wake = [];
     PhoneFacts _phone = new([], []);
+    StorageReport? _storage;
+    bool _freeing;
+    string? _freedHint;
     string? _turning;
 
     /// <summary>Whether the light appearance is on, read from theme.js after render.</summary>
@@ -824,11 +869,31 @@ else
         {
             _abilities = await Facts.AbilitiesAsync();
             _phone = await Facts.PhoneAsync();
+            _storage = await Facts.StorageAsync();
         }
         catch (Exception ex) { _trouble = $"Reading what is installed: {Trouble.Say(ex)}"; }
     }
 
     void Open(int index) => _open = _open == index ? -1 : index;
+
+    /// <summary>Free the regenerable scratch, say what came back, and re-measure.</summary>
+    /// <remarks>
+    /// Only the cache — no say-so needed and nothing precious touched. The
+    /// footprint is read again afterwards so the numbers move the moment the space
+    /// does, rather than waiting for the next time the screen opens.
+    /// </remarks>
+    async Task FreeStorage()
+    {
+        if (_freeing) return;
+        _freeing = true;
+        try
+        {
+            _freedHint = await Facts.ReclaimStorageAsync();
+            _storage = await Facts.StorageAsync();
+        }
+        catch (Exception ex) { _freedHint = Trouble.Say(ex); }
+        finally { _freeing = false; }
+    }
 
     /// <summary>
     /// Change the language the app works in, and everything that reads off it.
