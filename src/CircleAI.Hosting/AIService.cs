@@ -665,24 +665,8 @@ public sealed class AIService : IAIService
     // ------------------------------------------------------------------
 
     /// <inheritdoc />
-    public Task<string> AgenticChatAsync(
+    public async Task<string> AgenticChatAsync(
         string prompt, GenerationOptions? options = null, CancellationToken ct = default)
-        => RunAgenticAsync(prompt, options, ct, seed: null);
-
-    /// <summary>
-    /// The agentic turn, seeded with a tool the ENGINE chose (see ToolIntent) for a
-    /// question the 0.6B will not call a tool for itself — a battery reading, a live
-    /// web search. The seed runs first and the model answers from its result.
-    /// </summary>
-    public Task<string> AgenticChatAsync(
-        string prompt, ToolInvocation? seed, CancellationToken ct = default)
-        => RunAgenticAsync(prompt, options: null, ct, seed);
-
-    private async Task<string> RunAgenticAsync(
-        string prompt,
-        GenerationOptions? options,
-        CancellationToken ct,
-        ToolInvocation? seed)
     {
         ArgumentException.ThrowIfNullOrEmpty(prompt);
         await EnsureStartedAsync(ct).ConfigureAwait(false);
@@ -707,21 +691,6 @@ public sealed class AIService : IAIService
         };
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
-
-        // A TOOL THE ENGINE CHOSE, NOT ONE THE MODEL EMITTED. A 0.6B will not emit
-        // <tool_call>, so when the engine has already recognised the intent (a
-        // battery question, a live-web question — see ToolIntent) it runs the tool
-        // HERE and hands the model the result to answer from — the same landing
-        // place a model-emitted call would reach, one step earlier. The model can
-        // still emit further calls in the loop below; this only seeds the first.
-        if (seed is not null && _options.ToolBridge is not null)
-        {
-            var seeded = await InvokeToolAsync(seed, linked.Token).ConfigureAwait(false);
-            history.Add(new ChatMessage("tool",
-                seeded.Success
-                    ? $"{{\"tool\": \"{seeded.ToolName}\", \"result\": {JsonSerializer.Serialize(seeded.Result)}}}"
-                    : $"{{\"tool\": \"{seeded.ToolName}\", \"error\": {JsonSerializer.Serialize(seeded.Error)}}}"));
-        }
 
         string lastResponse = string.Empty;
         for (int iteration = 0; iteration < maxIter; iteration++)
