@@ -93,6 +93,23 @@ public static class BrainToolFlow
         if (!string.IsNullOrEmpty(question) && ArithmeticIntent.TryAnswer(question, out var sum))
             return new ToolAwareReply(sum, UsedTools: true);
 
+        // THE ENGINE'S OTHER DETERMINISTIC PATHS. A plain battery or live-web
+        // question is one the 0.6B will not emit a tool call for either, so — like
+        // the sum above — the ENGINE decides, not the model. It cannot run those
+        // tools from this browser-safe layer (the reading is the phone's, the
+        // search leaves the phone), so it goes straight to the executor with the
+        // RAW question, which seeds the right tool. Streaming is skipped: there is
+        // nothing true to say until the tool has run.
+        if (!string.IsNullOrEmpty(question) && ToolIntent.Classify(question) != ToolNeed.None)
+        {
+            onToolStarted?.Invoke();
+            var byTool = await brain.AskWithToolsAsync(asked, question, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(byTool))
+                return new ToolAwareReply(byTool, UsedTools: true);
+            // Empty means the head has no tools wired (the browser); fall through
+            // and stream rather than answer with nothing.
+        }
+
         var streamed = new StringBuilder();
         var watch = new StringBuilder();
         var calling = false;

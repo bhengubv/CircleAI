@@ -203,6 +203,32 @@ public sealed class AgenticChatTests : IDisposable
     }
 
     [Fact]
+    public async Task AgenticChatAsync_WithSeed_RunsTheSeededToolThoughTheModelEmitsNone()
+    {
+        // The engine seeds a tool the model never asks for (a 0.6B won't). The
+        // generator emits NO tool call, yet the tool must run and the answer come
+        // from its result — the deterministic route for battery / live web.
+        var bridge = new FakeToolBridge(
+            new ToolResult { ToolName = "get_battery_level", Success = true, Result = 82 });
+
+        var gen = new FakeChatGenerator("Your battery is at 82%.");   // plain, no tool call
+
+        await using var svc = new AIService(
+            Opts(bridge: bridge), generatorFactory: _ => gen);
+
+        var seed = new ToolInvocation
+        {
+            ToolName = "get_battery_level",
+            Arguments = new Dictionary<string, object?>(),
+        };
+
+        var result = await svc.AgenticChatAsync("what's my battery", seed);
+
+        Assert.Equal("Your battery is at 82%.", result);
+        Assert.Equal(1, bridge.InvokeCallCount);   // ran despite the model emitting nothing
+    }
+
+    [Fact]
     public async Task AgenticChatAsync_ToolCallNobridge_AppendsErrorAndContinues()
     {
         // AgenticFakeChatGenerator emits tool call on first call, plain on second.

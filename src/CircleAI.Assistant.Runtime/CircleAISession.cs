@@ -18,6 +18,7 @@ using CircleAI.Hosting.Chat;
 using CircleAI.Hosting.Neuron;
 using CircleAI.Inference;
 using CircleAI.Skills;
+using CircleAI.Tools;
 
 namespace CircleAI.Assistant;
 
@@ -606,13 +607,37 @@ public sealed class CircleAISession : IAsyncDisposable
     /// exactly the failure mode a fake generator cannot reveal.
     /// </para>
     /// </summary>
-    public async Task<CircleAIToolTurn> RunToolTurnAsync(string input)
+    public async Task<CircleAIToolTurn> RunToolTurnAsync(string input, string? question = null)
     {
+        // THE ENGINE'S OWN TOOL CALL, when the model will not make one. A plain
+        // battery or live-web question is recognised from the RAW words (not the
+        // composed prompt, which carries memory facts) and seeded into the agentic
+        // turn, so the 0.6B answers from a real reading or a real search result
+        // rather than guessing. None leaves the choice to the model, as before.
+        // See ToolIntent and circleai-06b-wont-toolcall.
         var before = Tools.InvocationLog.Count;
-        var answer = await _brain.AgenticChatAsync(input);
+        var answer = await _brain.AgenticChatAsync(input, seed: SeedFor(question));
         var called = Tools.InvocationLog.Skip(before).ToList();
         return new CircleAIToolTurn(answer, called);
     }
+
+    /// <summary>The tool the engine runs itself for a plainly tool-needing question,
+    /// or null to leave the choice to the model.</summary>
+    private static ToolInvocation? SeedFor(string? question)
+        => ToolIntent.Classify(question) switch
+        {
+            ToolNeed.Battery => new ToolInvocation
+            {
+                ToolName = "get_battery_level",
+                Arguments = new Dictionary<string, object?>(),
+            },
+            ToolNeed.Web => new ToolInvocation
+            {
+                ToolName = "web_search",
+                Arguments = new Dictionary<string, object?> { ["query"] = question! },
+            },
+            _ => null,
+        };
 
     /// <param name="Answer">IT!'s final text.</param>
     /// <param name="ToolsCalled">

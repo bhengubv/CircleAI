@@ -87,6 +87,19 @@ public interface IBrain
     /// </remarks>
     Task<string> AskWithToolsAsync(string prompt, CancellationToken ct = default);
 
+    /// <summary>
+    /// The tool pass, told the RAW question (not the composed prompt) so the engine
+    /// can run a tool the 0.6B will not ask for itself — a battery or live-web
+    /// question, recognised by <see cref="ToolIntent"/>.
+    /// </summary>
+    /// <remarks>
+    /// A DEFAULT that ignores the question and behaves exactly like the pass above,
+    /// so a head that does not route deterministically — and every test fake —
+    /// needs no change; the phone (DeviceBrain) overrides it.
+    /// </remarks>
+    Task<string> AskWithToolsAsync(string prompt, string? question, CancellationToken ct = default)
+        => AskWithToolsAsync(prompt, ct);
+
     /// <remarks>
     /// ASKED, NOT ASSUMED, BECAUSE A SECOND COPY OF THIS NUMBER IS THE BUG THIS
     /// REPO KEEPS FINDING. The value belongs to the inference side - MNN logs the

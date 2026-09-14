@@ -62,6 +62,16 @@ public class BrainToolFlowTests
             return Task.FromResult(_tooled);
         }
 
+        /// <summary>The RAW question the engine routed to the tool path, or null.</summary>
+        public string? ToolQuestion { get; private set; }
+
+        public Task<string> AskWithToolsAsync(string prompt, string? question, CancellationToken ct = default)
+        {
+            ToolQuestion = question;
+            ToolCalls++;
+            return Task.FromResult(_tooled);
+        }
+
         public int MaxImageEdge => 0;
     }
 
@@ -172,5 +182,56 @@ public class BrainToolFlowTests
         Assert.False(reply.UsedTools);
         Assert.Equal("A joke.", reply.Text);
         Assert.Equal(1, brain.AskCalls);      // the model ran, as before
+    }
+
+    [Fact]
+    public async Task A_battery_question_runs_the_tool_and_never_streams()
+    {
+        // The engine recognises the intent (ToolIntent) and hands the RAW question
+        // to the executor, which seeds get_battery_level — the 0.6B is not asked to
+        // emit a call it will not emit.
+        var brain = new FakeBrain(new[] { "should never stream" }, tooled: "Your battery is at 82%.");
+        var shown = new List<string>();
+        var toolStarted = 0;
+
+        var reply = await brain.AskMaybeToolsAsync(
+            "composed prompt", shown.Add,
+            onToolStarted: () => toolStarted++, question: "what's my battery");
+
+        Assert.True(reply.UsedTools);
+        Assert.Equal("Your battery is at 82%.", reply.Text);
+        Assert.Empty(shown);                          // nothing streamed
+        Assert.Equal(0, brain.AskCalls);              // the raw generator never ran
+        Assert.Equal(1, brain.ToolCalls);             // the executor did
+        Assert.Equal("what's my battery", brain.ToolQuestion);  // the RAW question, not the composed prompt
+        Assert.Equal(1, toolStarted);
+    }
+
+    [Fact]
+    public async Task A_weather_question_routes_to_the_tool()
+    {
+        var brain = new FakeBrain(new[] { "x" }, tooled: "It's 24 degrees in Durban.");
+        var reply = await brain.AskMaybeToolsAsync(
+            "composed", _ => { }, question: "what's the weather like today");
+
+        Assert.True(reply.UsedTools);
+        Assert.Equal("It's 24 degrees in Durban.", reply.Text);
+        Assert.Equal(1, brain.ToolCalls);
+    }
+
+    [Fact]
+    public async Task A_tool_question_on_a_head_with_no_tools_falls_back_to_streaming()
+    {
+        // The executor returns empty (a browser has no tools). Rather than answer a
+        // battery question with nothing, stream the model as normal.
+        var brain = new FakeBrain(new[] { "A ", "joke." }, tooled: "");
+        var shown = new List<string>();
+
+        var reply = await brain.AskMaybeToolsAsync(
+            "composed", shown.Add, question: "what's my battery");
+
+        Assert.False(reply.UsedTools);
+        Assert.Equal("A joke.", reply.Text);
+        Assert.Equal(1, brain.AskCalls);   // fell through to streaming
     }
 }

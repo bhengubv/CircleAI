@@ -124,11 +124,20 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     }
 
     /// <inheritdoc />
+    public Task<string> AskWithToolsAsync(string prompt, CancellationToken ct = default)
+        => AskWithToolsAsync(prompt, question: null, ct);
+
+    /// <inheritdoc />
     /// <remarks>
     /// THE SECOND PASS. RunToolTurnAsync goes through AgenticChatAsync, which
     /// actually executes the call and answers from its result - where
     /// RunTurnStreamingAsync above is the raw generator and emits the call as
     /// text. That difference is why a person asking for the weather heard JSON.
+    /// <para>
+    /// AND THE RAW QUESTION, so the engine can run a tool the 0.6B will not ask
+    /// for itself - a battery or live-web question, recognised by ToolIntent and
+    /// seeded in RunToolTurnAsync. See circleai-06b-wont-toolcall.
+    /// </para>
     /// <para>
     /// SERIALISED ON THE SAME GATE as AskAsync, because it is the same model:
     /// two turns overlapping interleave their tokens into one unreadable answer,
@@ -136,7 +145,7 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     /// </para>
     /// </remarks>
     public async Task<string> AskWithToolsAsync(
-        string prompt, CancellationToken ct = default)
+        string prompt, string? question, CancellationToken ct = default)
     {
         var session = await SessionAsync(ct).ConfigureAwait(false);
 
@@ -146,7 +155,7 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
             if (_closing || _session is null)
                 throw new OperationCanceledException("The model is shutting down.");
 
-            var turn = await session.RunToolTurnAsync(prompt).ConfigureAwait(false);
+            var turn = await session.RunToolTurnAsync(prompt, question).ConfigureAwait(false);
 
             // WHICH TOOLS RAN, NOT JUST THE TEXT. An answer with an EMPTY tool
             // list means the model invented the number rather than calling
@@ -263,7 +272,7 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
 #else
                 null;
 #endif
-            var session = new CircleAISession(nativeLibDir, batteryPercent: () => 100);
+            var session = new CircleAISession(nativeLibDir, batteryPercent: ReadBatteryPercent);
             await session.StartAsync().ConfigureAwait(false);
             _session = session;
             return session;
@@ -272,6 +281,38 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>The phone's real battery charge, 0-100, or null when it cannot be
+    /// read — so a battery question answers from the truth, not a constant.</summary>
+    /// <remarks>
+    /// WAS () => 100, A LIE. The battery tool always returned full, so the ONE tool
+    /// whose whole value is that a person cannot know the answer any other way
+    /// reported a number that was never real. Read from the sticky
+    /// ACTION_BATTERY_CHANGED intent — level over scale — which needs no permission
+    /// and no MAUI, so the library keeps its own battery. See ToolIntent and
+    /// circleai-06b-wont-toolcall.
+    /// </remarks>
+    private static int? ReadBatteryPercent()
+    {
+#if ANDROID
+        try
+        {
+            var ctx = Android.App.Application.Context;
+            using var filter = new Android.Content.IntentFilter(Android.Content.Intent.ActionBatteryChanged);
+            using var battery = ctx.RegisterReceiver(null, filter);
+            if (battery is null) return null;
+
+            var level = battery.GetIntExtra(Android.OS.BatteryManager.ExtraLevel, -1);
+            var scale = battery.GetIntExtra(Android.OS.BatteryManager.ExtraScale, -1);
+            if (level < 0 || scale <= 0) return null;
+
+            return (int)System.Math.Round(level * 100.0 / scale);
+        }
+        catch { return null; }
+#else
+        return null;
+#endif
     }
 
     /// <inheritdoc />

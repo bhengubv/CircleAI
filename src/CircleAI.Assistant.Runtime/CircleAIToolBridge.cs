@@ -1,17 +1,17 @@
 // CircleAIToolBridge.cs
 //
-// IT!'s tools. Deliberately chosen so a correct answer PROVES the tool ran.
+// Circle AI's tools. The 0.6B will not EMIT a <tool_call> (measured — see
+// circleai-06b-wont-toolcall), so the ENGINE decides and seeds these itself for
+// the questions whose intent is plain (ToolIntent):
 //
-// A tool like add_numbers would be useless as evidence: a model can do
-// arithmetic in its head, so a right answer would not distinguish "called the
-// tool" from "ignored the tool and guessed correctly". Both tools here return
-// values the model cannot possibly know:
-//
-//   get_battery_level  — real device state, supplied by the host. On the phone
-//                        this is checkable against the actual battery.
-//   lookup_price       — an arbitrary in-memory table. R249.99 for SKU-1001 is
-//                        unguessable; if it appears in the answer, the tool ran
-//                        AND the argument was passed correctly.
+//   get_battery_level  — real device state the model cannot know; the host reads
+//                        the actual battery, so a battery question answers from
+//                        the truth rather than the constant it used to return.
+//   web_search         — the one tool that LEAVES THE PHONE: a live search for
+//                        something true right now that training cannot hold.
+//   calculate          — arithmetic the model gets wrong; a hand-written evaluator,
+//                        so a correct sum is proof it ran (ArithmeticIntent answers
+//                        most sums before the model, but the tool remains).
 //
 // Host-neutral by design: the battery reading arrives as a Func so the shared
 // project never references Android APIs (same pattern as nativeLibDir).
@@ -21,20 +21,12 @@ using CircleAI.Tools;
 namespace CircleAI.Assistant;
 
 /// <summary>
-/// A minimal <see cref="IToolBridge"/> for the sample — two tools whose results
-/// a model cannot fabricate.
+/// Circle AI's <see cref="IToolBridge"/> — the tools the engine runs for a
+/// question whose intent is plain, since the 0.6B will not call them itself.
 /// </summary>
 public sealed class CircleAIToolBridge : IToolBridge
 {
     private readonly Func<int?>? _batteryPercent;
-
-    /// <summary>Unguessable by construction — that is the point.</summary>
-    private static readonly Dictionary<string, decimal> Prices = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["SKU-1001"] = 249.99m,
-        ["SKU-2002"] = 1849.50m,
-        ["SKU-3003"] = 79.00m,
-    };
 
     /// <param name="batteryPercent">
     /// Host-supplied battery reading (0-100), or <c>null</c> when the host cannot
@@ -57,26 +49,12 @@ public sealed class CircleAIToolBridge : IToolBridge
         },
         new ToolDefinition
         {
-            Name        = "lookup_price",
-            Description = "Looks up the retail price in rand for a product SKU.",
-            Parameters  = new Dictionary<string, ToolParameter>
-            {
-                ["sku"] = new()
-                {
-                    Type        = "string",
-                    Description = "The product SKU, for example SKU-1001",
-                },
-            },
-            RequiredParameters = new[] { "sku" },
-        },
-        new ToolDefinition
-        {
             // A CALCULATOR, BECAUSE THE MODEL ON THE PHONE CANNOT ADD. Measured
             // on a P30 2026-09-14: the 0.6B answered "what is 12 times 8" with
             // "6". The header of this file calls add_numbers useless as evidence
             // - true of a GOOD model, which would guess right. On this one a
             // correct sum is proof the tool ran, and the only way the person gets
-            // a right answer at all. The evaluator (CircleAI.Tools.Arithmetic) is
+            // a right answer at all. The evaluator (CircleAI.Assistant.Arithmetic) is
             // a hand-written parser over + - * / and brackets: no code escapes it.
             //
             // The description names the operations in the words the Maths tool-cue
@@ -152,17 +130,6 @@ public sealed class CircleAIToolBridge : IToolBridge
                     return ToolResult.Failure("calculate", $"'{text}' is not a sum I can work out.");
 
                 return ToolResult.Ok("calculate", Arithmetic.Format(value));
-            }
-
-            case "lookup_price":
-            {
-                if (!invocation.Arguments.TryGetValue("sku", out var raw) || raw is null)
-                    return ToolResult.Failure("lookup_price", "Missing required argument 'sku'.");
-
-                var sku = raw.ToString()!.Trim().Trim('"');
-                return Prices.TryGetValue(sku, out var price)
-                    ? ToolResult.Ok("lookup_price", price)
-                    : ToolResult.Failure("lookup_price", $"Unknown SKU '{sku}'.");
             }
 
             case "web_search":
