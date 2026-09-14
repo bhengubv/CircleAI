@@ -507,6 +507,15 @@ else
                     </div>
                 }
 
+                @* The standing rule that keeps the scratch in bounds on its own,
+                   so a background tidy-up is shown here, never a surprise. The
+                   text and its numbers come from the engine (CacheEviction), not
+                   retyped in the view. *@
+                @if (_storage.Policy.Length > 0)
+                {
+                    <div class="row"><span class="row-sub">@_storage.Policy</span></div>
+                }
+
                 @if (_storage.Freeable.Length > 0)
                 {
                     <div class="row">

@@ -90,6 +90,60 @@ public sealed class MemoryManager
     }
 
     /// <summary>
+    /// Keep the regenerable cache within its age window and size cap, deleting
+    /// only what the pure policy names, and report what came back.
+    /// </summary>
+    /// <remarks>
+    /// THE AUTOMATIC SIBLING OF <see cref="ReclaimCaches"/>. Reclaim frees the
+    /// whole cache on a person's say-so; this runs unattended - at launch and when
+    /// the model unloads - and touches only what has aged out or spilled past the
+    /// cap, so nobody is surprised by a purge of something they wanted a moment
+    /// ago. Like Reclaim, it is the CACHE ALONE: models and memory are never
+    /// enumerated (see <see cref="DeviceFootprint.CacheFiles"/>), so the person's
+    /// irreplaceable store can never be reached from here.
+    /// <para>
+    /// The window and the cap default to <see cref="CacheEviction"/>'s, which is
+    /// where those numbers live - they are not retyped here.
+    /// </para>
+    /// </remarks>
+    public long TrimCache(long? maxBytes = null, System.TimeSpan? keep = null)
+    {
+        long freed = 0;
+        try
+        {
+            var files = DeviceFootprint.CacheFiles();
+            if (files.Count == 0) return 0;
+
+            var plan = CacheEviction.Plan(
+                files,
+                maxBytes ?? CacheEviction.MaxCacheDefaultBytes,
+                keep ?? CacheEviction.KeepDefault,
+                System.DateTime.UtcNow);
+
+            if (plan.Delete.Count == 0) return 0;
+
+            foreach (var path in plan.Delete)
+            {
+                try
+                {
+                    var size = new FileInfo(path).Length;
+                    File.Delete(path);
+                    freed += size;
+                }
+                catch { /* a file in use is skipped, not fatal */ }
+            }
+
+            if (freed > 0)
+                Log.Info(Tag, $"trimmed {MemoryBudget.Human(freed)} of cache ({plan.Reason})");
+        }
+        catch (System.Exception ex)
+        {
+            Log.Warn(Tag, "could not trim cache: " + ex.Message);
+        }
+        return freed;
+    }
+
+    /// <summary>
     /// Print the real numbers on launch - the same discipline as the models
     /// census, so a claim about disk is checkable against logcat rather than
     /// believed.

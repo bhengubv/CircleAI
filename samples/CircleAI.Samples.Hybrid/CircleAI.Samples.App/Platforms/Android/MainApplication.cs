@@ -72,8 +72,22 @@ public class MainApplication : MauiApplication
         // tested; this is where the real numbers enter it.
         try
         {
-            new CircleAI.Assistant.Device.MemoryManager(
-                new CircleAI.Assistant.Device.DeviceResourcesReader()).LogCensus();
+            var manager = new CircleAI.Assistant.Device.MemoryManager(
+                new CircleAI.Assistant.Device.DeviceResourcesReader());
+            manager.LogCensus();
+
+            // AND TIDY THE CACHE, ON LAUNCH. The self-managing half of the footprint
+            // budget: age out scratch past its window and cap what remains, so the
+            // regenerable cache cannot creep up across sessions on a phone that is
+            // already full. The CACHE ALONE - models and the person's memory are
+            // never enumerated (see MemoryManager.TrimCache), so the irreplaceable
+            // store can never be reached from here. Logged either way, so the launch
+            // tidy-up is visible in logcat rather than silent.
+            var trimmed = manager.TrimCache();
+            Android.Util.Log.Info("CircleAI.Memory",
+                trimmed > 0
+                    ? $"launch cache tidy: freed {CircleAI.Assistant.MemoryBudget.Human(trimmed)}"
+                    : "launch cache tidy: nothing to remove");
         }
         catch (System.Exception ex)
         {

@@ -92,4 +92,19 @@ public class StorageViewTests : TestContext
             Assert.DoesNotContain("Free up", screen.Markup);
         });
     }
+
+    [Fact]
+    public void The_self_management_rule_is_shown_so_the_tidy_up_is_no_surprise()
+    {
+        // The standing rule that ages out old scratch and caps what remains runs
+        // unattended; the fold states it, so a background deletion is never a
+        // surprise. The sentence comes from the engine, verbatim.
+        var (screen, _) = PhoneStorage(new StorageReport(
+            [new StorageLine("Scratch & audio", "40 MB", true)],
+            Total: "40 MB", Freeable: "40 MB",
+            Policy: "Clears scratch older than 30 days · caps it at 256 MB."));
+
+        screen.WaitForAssertion(() =>
+            Assert.Contains("Clears scratch older than 30 days", screen.Markup));
+    }
 }

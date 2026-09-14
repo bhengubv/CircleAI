@@ -11,6 +11,7 @@
 // all three come back for free, so they are what the budget may reclaim.
 
 using System.IO;
+using CircleAI.Assistant;
 
 namespace CircleAI.Assistant.Device;
 
@@ -50,6 +51,47 @@ public static class DeviceFootprint
         var cache  = DirSize(AppPaths.Cache);
 
         return new Footprint(models, memory, skills, voice, cache);
+    }
+
+    /// <summary>
+    /// The cache as individual files, for the evictor to age out or cap.
+    /// </summary>
+    /// <remarks>
+    /// ONLY THE CACHE ROOT, <see cref="AppPaths.Cache"/> - never the models or the
+    /// memory store, which live under different roots and are precious. That is the
+    /// invariant the pure <see cref="CacheEviction"/> leans on: it can only drop
+    /// what it is handed, and it is only ever handed this. Privacy-first means
+    /// there is no copy of memory anywhere, so memory is not a cache and is never
+    /// enumerated here.
+    /// <para>
+    /// LastUsedUtc is the later of last-access and last-write. Android usually does
+    /// not track access time (noatime/relatime), so in practice this is last-write
+    /// - the right clock for write-once generated audio; see <see cref="CacheFile"/>.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<CacheFile> CacheFiles()
+    {
+        var dir = AppPaths.Cache;
+        var files = new List<CacheFile>();
+        try
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return files;
+
+            foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var fi = new FileInfo(file);
+                    var used = fi.LastAccessTimeUtc > fi.LastWriteTimeUtc
+                        ? fi.LastAccessTimeUtc
+                        : fi.LastWriteTimeUtc;
+                    files.Add(new CacheFile(file, fi.Length, used));
+                }
+                catch { /* a file that vanished or cannot be stat'd is skipped */ }
+            }
+        }
+        catch { /* enumeration itself failed - empty, never throws */ }
+        return files;
     }
 
     /// <summary>Sum of a directory tree, or 0 - never throws on one bad file.</summary>
