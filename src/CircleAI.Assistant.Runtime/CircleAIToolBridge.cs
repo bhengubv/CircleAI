@@ -148,10 +148,10 @@ public sealed class CircleAIToolBridge : IToolBridge
                 // a crafted string is refused, not run. The failure text is a
                 // sentence the model can relay - "that is not a sum I can work
                 // out" - rather than a stack trace.
-                if (!CircleAI.Tools.Arithmetic.TryEvaluate(text, out var value))
+                if (!Arithmetic.TryEvaluate(text, out var value))
                     return ToolResult.Failure("calculate", $"'{text}' is not a sum I can work out.");
 
-                return ToolResult.Ok("calculate", CircleAI.Tools.Arithmetic.Format(value));
+                return ToolResult.Ok("calculate", Arithmetic.Format(value));
             }
 
             case "lookup_price":

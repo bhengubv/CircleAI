@@ -316,7 +316,8 @@
                     // shows the thinking dots again while the second pass runs.
                     _turns[at] = _turns[at] with { Text = "" };
                     InvokeAsync(StateHasChanged);
-                });
+                },
+                question: text);
 
             // A tool ran: what streamed was the void call, so replace the bubble
             // with the tool-grounded answer.

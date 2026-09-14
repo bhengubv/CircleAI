@@ -141,4 +141,36 @@ public class BrainToolFlowTests
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             brain.AskMaybeToolsAsync("q", null!));
     }
+
+    [Fact]
+    public async Task A_plain_sum_is_answered_by_the_engine_without_the_model()
+    {
+        // The head would stream and would run a tool, but neither should happen:
+        // a plain sum is worked out deterministically and the model is not asked.
+        var brain = new FakeBrain(new[] { "the model should never run" }, tooled: "nor the tool");
+        var shown = new List<string>();
+
+        var reply = await brain.AskMaybeToolsAsync(
+            "composed prompt with memory facts", shown.Add, question: "what is 347 times 89");
+
+        Assert.True(reply.UsedTools);
+        Assert.Equal("30883", reply.Text);   // exact, where the 0.6B answered "30621"
+        Assert.Empty(shown);                  // nothing streamed
+        Assert.Equal(0, brain.AskCalls);      // the model was never consulted
+        Assert.Equal(0, brain.ToolCalls);
+    }
+
+    [Fact]
+    public async Task A_question_that_is_not_a_sum_still_streams_from_the_model()
+    {
+        var brain = new FakeBrain(new[] { "A ", "joke." });
+        var shown = new List<string>();
+
+        var reply = await brain.AskMaybeToolsAsync(
+            "composed", shown.Add, question: "tell me a joke");
+
+        Assert.False(reply.UsedTools);
+        Assert.Equal("A joke.", reply.Text);
+        Assert.Equal(1, brain.AskCalls);      // the model ran, as before
+    }
 }

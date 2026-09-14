@@ -306,6 +306,7 @@ public sealed class DeviceConversation : IConversation
             },
             onToolStarted: () => updates.Report(new TurnState(TurnPhase.Thinking,
                 Heard: heard, Detail: "Looking it up", Language: tag)),
+            question: heard,
             ct: ct).ConfigureAwait(false);
 
             // A TOOL RAN, so what streamed was a void call: replace what was

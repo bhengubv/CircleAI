@@ -1,28 +1,33 @@
 using System;
 using System.Globalization;
 
-namespace CircleAI.Tools
+namespace CircleAI.Assistant
 {
     // Arithmetic.cs
     //
     // A calculator, because the model on the phone cannot do sums.
     //
-    // WHY A TOOL AT ALL, when this file's neighbour (CircleAIToolBridge) says an
-    // add_numbers tool is "useless as evidence" - a capable model would guess the
-    // answer and you could not tell whether the tool ran. That reasoning is about
-    // a GOOD model. Measured on a P30 2026-09-14, the 0.6B answered "what is 12
-    // times 8" with "6". On a model that cannot add, a CORRECT answer is proof the
-    // tool ran, and - more to the point - it is the only way the person gets a
-    // right answer at all.
+    // IT LIVES IN CircleAI.Assistant, the browser-safe core with zero project
+    // references, and that move is the point: ArithmeticIntent recognises a sum
+    // in a question and answers it HERE, before the model, and BrainToolFlow (the
+    // one turn both heads share) calls that. All of it is pure BCL, so the web
+    // head and the phone get the same exact answer from the same code. It was in
+    // CircleAI.Tools - the API-bridge assembly, which a browser cannot load - and
+    // from there the shared turn could not reach it.
+    //
+    // WHY A TOOL AT ALL, when an add_numbers tool is "useless as evidence" - a
+    // capable model would guess the answer and you could not tell whether the tool
+    // ran. That reasoning is about a GOOD model. Measured on a P30 2026-09-14, the
+    // 0.6B answered "what is 12 times 8" with "6", and "347 times 89" with "30621"
+    // (real: 30883) - and, offered a calculate tool, it did NOT call it either
+    // time. On a model that cannot add and will not delegate, the only way the
+    // person gets a right answer is for the engine to recognise the sum and work
+    // it out itself. That is ArithmeticIntent; this is the evaluator behind it.
     //
     // SAFE BY CONSTRUCTION. No Eval, no reflection, no code path a crafted string
     // can escape into. A hand-written recursive-descent parser over exactly five
     // operators and parentheses, on doubles. The worst a malicious expression can
     // do is be rejected.
-    //
-    // The MODEL builds the expression: it turns "12 times 8" into "12 * 8" and
-    // "half of 40" into "40 / 2" before calling. This only has to evaluate the
-    // ordinary notation that comes back, which is why the grammar is small.
 
     /// <summary>Evaluates a plain arithmetic expression. No code, only sums.</summary>
     public static class Arithmetic

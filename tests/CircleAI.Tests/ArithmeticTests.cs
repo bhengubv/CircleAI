@@ -6,7 +6,7 @@
 // rejected rather than run.
 
 using System;
-using CircleAI.Tools;
+using CircleAI.Assistant;
 using Xunit;
 
 namespace CircleAI.Tests;

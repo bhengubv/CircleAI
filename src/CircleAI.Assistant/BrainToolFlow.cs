@@ -58,6 +58,11 @@ public static class BrainToolFlow
     /// surface can say "looking it up" before the slower second pass and clear the
     /// partial head it may already have shown. Optional.
     /// </param>
+    /// <param name="question">
+    /// The RAW question the person asked (not the composed prompt), so a plain sum
+    /// can be worked out by the engine before the model is consulted. Null skips
+    /// that and always streams.
+    /// </param>
     /// <param name="ct">Cancellation for the whole turn.</param>
     /// <remarks>
     /// WHY WATCH THE STREAM RATHER THAN ALWAYS TAKE THE AGENTIC PATH: streaming is
@@ -72,10 +77,21 @@ public static class BrainToolFlow
         string asked,
         Action<string> onFragment,
         Action? onToolStarted = null,
+        string? question = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(brain);
         ArgumentNullException.ThrowIfNull(onFragment);
+
+        // THE DETERMINISTIC PATH, FIRST. A question that is plainly a sum is worked
+        // out by the engine and never reaches the model: measured, a 0.6B gets
+        // "347 times 89" wrong AND will not call the calculator it is offered, so
+        // the only way to be right is not to ask it. Nothing streams - the answer
+        // is instant - and the caller replaces what it was about to show with it,
+        // exactly as it does for a tool result. Needs the RAW question, not the
+        // composed prompt, so callers pass what the person actually said.
+        if (!string.IsNullOrEmpty(question) && ArithmeticIntent.TryAnswer(question, out var sum))
+            return new ToolAwareReply(sum, UsedTools: true);
 
         var streamed = new StringBuilder();
         var watch = new StringBuilder();
