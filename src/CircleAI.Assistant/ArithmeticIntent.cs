@@ -92,6 +92,10 @@ public static class ArithmeticIntent
     private static readonly Regex Gate = new(
         @"^[\d\s+\-*/().]+$", RegexOptions.CultureInvariant);
 
+    // "forty-seven" -> "forty seven", but "5-3" (digits either side) is a minus.
+    private static readonly Regex HyphenBetweenWords = new(
+        @"(?<=[a-z])-(?=[a-z])", RegexOptions.CultureInvariant);
+
     private static string? ToExpression(string question)
     {
         var s = question.Trim().ToLowerInvariant();
@@ -104,6 +108,14 @@ public static class ArithmeticIntent
 
         s = StripPhrases(s, LeadIns, atStart: true);
         s = StripPhrases(s, LeadOuts, atStart: false);
+
+        // "forty-seven" -> "forty seven" for the parser; "5-3" stays a minus.
+        s = HyphenBetweenWords.Replace(s, " ");
+
+        // Spoken numbers to digits: "three hundred forty seven" -> "347". After
+        // the lead-ins so "what is" is already gone, and before the operator words
+        // so "eighty nine" becomes 89 before "times" becomes *.
+        s = NumberWords.Digitise(s);
 
         s = PercentOf.Replace(s, m => $"({m.Groups[1].Value}/100)*{m.Groups[2].Value}");
 
