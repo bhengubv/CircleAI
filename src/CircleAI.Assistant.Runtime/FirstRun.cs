@@ -71,7 +71,23 @@ public readonly record struct CapabilityRow(string Title, bool Present, long Byt
 /// <param name="Rows">Every capability, present or not, in a fixed order.</param>
 /// <param name="Present">How many are here.</param>
 /// <param name="Total">How many there are.</param>
-public readonly record struct Capabilities(
+/// <remarks>
+/// RENAMED OFF A COLLISION. This was called Capabilities, in namespace
+/// CircleAI.Assistant - and CircleAI.Assistant already has a public static
+/// Capabilities, the catalogue of what this product can do. Two unrelated
+/// concepts, one name, one namespace: the compiler picked whichever was nearer
+/// and said CS0436 only where both happened to be visible, which is a warning
+/// nobody reads in a build with hundreds of files.
+/// <para>
+/// This is the same mechanism that let a sample's types silently shadow the
+/// SDK's for weeks. It is worth a rename even when nothing is currently broken,
+/// because the failure mode is code that compiles and means something else.
+/// </para>
+/// <para>
+/// And the new name is the right one anyway: this is what CensusAsync returns.
+/// </para>
+/// </remarks>
+public readonly record struct CapabilityCensus(
     IReadOnlyList<CapabilityRow> Rows, int Present, int Total);
 
 /// <summary>How far setup has got, for showing on the home screen.</summary>
@@ -357,7 +373,7 @@ public static class FirstRun
     /// point is the same here: on a cheap phone more is missing, and the people
     /// most likely to be missing something are exactly who this is for.
     /// </remarks>
-    public static Capabilities Census(
+    public static CapabilityCensus Census(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
         bool speech, Func<string, bool>? declined = null, string? language = null)
     {
@@ -417,7 +433,7 @@ public static class FirstRun
                 rows.Add(surplus);
         }
 
-        return new Capabilities(rows, rows.Count(r => r.Present), rows.Count);
+        return new CapabilityCensus(rows, rows.Count(r => r.Present), rows.Count);
     }
 
     /// <summary>The row for voices that are here but were never in the plan.</summary>

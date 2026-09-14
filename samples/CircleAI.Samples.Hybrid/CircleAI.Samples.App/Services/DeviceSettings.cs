@@ -14,10 +14,18 @@ public sealed class DeviceSettings : ISettings
     /// Takes the language store, because saving has to apply as well, and the one
     /// SQLite file the whole app keeps its state in.
     /// </summary>
-    public DeviceSettings(ISpokenLanguage spoken, SqliteAppStore store)
+    private readonly IResidentAssistant? _resident;
+
+    public DeviceSettings(ISpokenLanguage spoken, SqliteAppStore store,
+                          IResidentAssistant? resident = null)
     {
         _spoken = spoken;
         _store = store;
+
+        // OPTIONAL, because a head without an always-on listener is a real head -
+        // the browser has no resident at all - and this class must not require
+        // one in order to save a setting.
+        _resident = resident;
     }
 
     private const string ModeKey = "app.mode";
@@ -94,6 +102,25 @@ public sealed class DeviceSettings : ISettings
             _spoken.Choose(tag);
         else if (settings.Policy == LanguagePolicy.FollowTheSpeaker)
             _spoken.ClearChoice();
+
+        // AND THE RUNNING WAKE WORD IS REBUILT FOR THE NEW LANGUAGE.
+        //
+        // Saving the language left the live detector listening for the OLD
+        // phrase: the settings screen said one thing and the microphone was doing
+        // another, which is indistinguishable from a wake word that has stopped
+        // working. The other head tore the detector down and reinstalled it;
+        // this one navigated away.
+        //
+        // RefreshAsync already does exactly the right thing - it returns Off
+        // untouched when nothing is listening, and rebuilds only when the keyword
+        // file is genuinely stale - and it had ZERO callers in this head. The
+        // code was right; nothing invoked it.
+        //
+        // Not awaited into the save: a person changing a setting should not wait
+        // on a model reload, and a listener that fails to come back says so
+        // through its own status rather than by failing the save.
+        if (_resident is not null)
+            _ = _resident.RefreshAsync(ct);
 
         return Task.CompletedTask;
     }

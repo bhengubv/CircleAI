@@ -34,6 +34,9 @@ public sealed class DeviceSetup : ISetup
 
     private readonly ISpokenLanguage? _spoken;
 
+    /// <summary>May this app listen. See IMicrophoneAccess.</summary>
+    private readonly IMicrophoneAccess _microphone;
+
     /// <param name="spoken">
     /// The language this phone is set to, so first run can fetch a voice for it.
     /// </param>
@@ -42,9 +45,6 @@ public sealed class DeviceSetup : ISetup
     /// means "no opinion", and the plan falls back to the two fixed voices -
     /// exactly the behaviour that existed before this parameter.
     /// </remarks>
-    /// <summary>May this app listen. See IMicrophoneAccess.</summary>
-    private readonly IMicrophoneAccess _microphone;
-
     public DeviceSetup(IMicrophoneAccess microphone, ISpokenLanguage? spoken = null)
     {
         _microphone = microphone;
@@ -125,9 +125,25 @@ public sealed class DeviceSetup : ISetup
             // never comes, with no way from that screen to make it come.
             //
             // IsRunning is what makes the sentence checkable rather than hopeful.
+            //
+            // TWO SENTENCES WHILE IT RUNS, NOT ONE. This branch returned "Getting
+            // ready - you can talk to it in a moment" for the whole download, and
+            // handed back CanTalk: true halfway through it. So from the moment
+            // the voice and the ears had landed the circle worked and the screen
+            // was still telling the person to wait - advertising the slower half
+            // of the interface for the forty minutes the brain takes.
+            //
+            // The other head's Readiness.From says "Tap and talk" the instant
+            // those two are present, and it is the thing worth copying: the plan
+            // is ordered voice-then-ears-then-brain precisely so that this moment
+            // arrives early.
             if (IsRunning)
-                return new Readiness(ReadyStage.Waking, "Getting ready",
-                    "You can talk to it in a moment.", CanTalk: voice && ears);
+                return voice && ears
+                    ? new Readiness(ReadyStage.CanListen, lead,
+                        "Still waking up - the first answer may take a moment.",
+                        CanTalk: true)
+                    : new Readiness(ReadyStage.Waking, "Getting ready",
+                        "You can talk to it in a moment.", CanTalk: false);
 
             // CAN TALK BEFORE IT CAN THINK. As soon as it can hear and speak,
             // pressing the circle does something useful even though the brain is
@@ -159,7 +175,12 @@ public sealed class DeviceSetup : ISetup
             // speech: true, because this head compiles the voice stack in. The
             // chat-only APK passes false so setup does not spend somebody's data
             // on 140 MB no line of that binary can open.
-            return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language)
+            // declined: WHAT THE OWNER TURNED OFF STAYS OFF. This argument has
+            // been on Plan the whole time and only the native sample passed it,
+            // so on this head - the one that ships - removing an ability and
+            // reopening the app quietly downloaded it again.
+            return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
+                                 declined: DeclinedModels.Is, language: Language)
                 .Select(s => new SetupItem(s.Title, s.Model.TotalBytes))
                 .ToList();
         }, ct);
@@ -199,7 +220,11 @@ public sealed class DeviceSetup : ISetup
             {
                 using var registry = new ModelRegistryService();
                 using var loader = new BundleModelLoader(StorageDir, registry);
-                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language);
+                // declined, for the same reason as above: this is the call that
+                // actually spends somebody's data, so a forgotten refusal here
+                // costs them megabytes rather than only a wrong list.
+                var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
+                                          declined: DeclinedModels.Is, language: Language);
 
                 var inner = new Progress<SetupProgress>(p =>
                 {

@@ -17,6 +17,15 @@ namespace CircleAI.Assistant.Device;
 /// </remarks>
 public sealed class DeviceBrain : IBrain, IAsyncDisposable
 {
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE ONE OWNER OF THIS NUMBER IS THE INFERENCE SIDE. MNN prints the
+    /// bundle's own image_size as it loads a visual model; ImageBudget is where
+    /// that lives, and this property is how a screen that cannot reference
+    /// CircleAI.Inference still gets the right answer.
+    /// </remarks>
+    public int MaxImageEdge => ImageBudget.VisionMaxEdge;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CircleAISession? _session;
 
@@ -74,6 +83,84 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
                     $"Answering needs a {ModelChoice.Size(chat.TotalBytes)} download. "
                   + "Turn it on under Settings › Phone.");
         }, ct);
+
+    /// <summary>
+    /// Subscribe the brownout to the OS's own memory warning.
+    /// </summary>
+    /// <remarks>
+    /// A BROWNOUT BEATS BEING KILLED. When Android reports pressure, evicting
+    /// the admitted specialist and keeping the warm generalist makes the
+    /// assistant worse at one thing; doing nothing makes the low-memory killer
+    /// take the whole process mid-sentence, which on a 1.4 GB handset is the
+    /// common ending.
+    /// <para>
+    /// IN THE CONSTRUCTOR, NOT IN A HEAD. The session is this class's to protect
+    /// and no screen should have to remember to wire it - the head that ships
+    /// ignored `onTrimMemory` entirely, and a screen-level subscription would
+    /// have been one more thing to forget.
+    /// </para>
+    /// <para>
+    /// Nothing to do when there is no session: an unstarted brain is already
+    /// holding nothing.
+    /// </para>
+    /// </remarks>
+    public DeviceBrain()
+    {
+        AppLifecycle.MemoryIsShort += OnMemoryIsShort;
+    }
+
+    private void OnMemoryIsShort()
+    {
+        var session = _session;
+        if (session is null || _closing) return;
+
+        // NOT AWAITED AND NEVER THROWN. This arrives on a platform callback
+        // where an escaping exception is a crash, and the caller is the OS.
+        _ = Task.Run(async () =>
+        {
+            try { await session.SignalCriticalMemoryAsync().ConfigureAwait(false); }
+            catch { /* the killer takes it or it does not; nothing more to do */ }
+        });
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE SECOND PASS. RunToolTurnAsync goes through AgenticChatAsync, which
+    /// actually executes the call and answers from its result - where
+    /// RunTurnStreamingAsync above is the raw generator and emits the call as
+    /// text. That difference is why a person asking for the weather heard JSON.
+    /// <para>
+    /// SERIALISED ON THE SAME GATE as AskAsync, because it is the same model:
+    /// two turns overlapping interleave their tokens into one unreadable answer,
+    /// and this one runs immediately after a streamed turn was abandoned.
+    /// </para>
+    /// </remarks>
+    public async Task<string> AskWithToolsAsync(
+        string prompt, CancellationToken ct = default)
+    {
+        var session = await SessionAsync(ct).ConfigureAwait(false);
+
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_closing || _session is null)
+                throw new OperationCanceledException("The model is shutting down.");
+
+            var turn = await session.RunToolTurnAsync(prompt).ConfigureAwait(false);
+
+            // WHICH TOOLS RAN, NOT JUST THE TEXT. An answer with an EMPTY tool
+            // list means the model invented the number rather than calling
+            // anything - the one failure a plausible-sounding reply hides.
+            Android.Util.Log.Info("CircleAI.Turn",
+                $"tool turn ran: [{string.Join(", ", turn.ToolsCalled)}]");
+
+            return turn.Answer;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <inheritdoc />
     public async Task<string> AskAsync(
@@ -215,6 +302,12 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
+        // OFF THE STATIC FIRST. AppLifecycle outlives this object - it is a
+        // process-wide event - so a brain that disposed without unsubscribing
+        // would be held alive by it and would keep answering pressure warnings
+        // about a session it had already freed.
+        AppLifecycle.MemoryIsShort -= OnMemoryIsShort;
+
         // NOT WaitAsync(ct): there is no token here and a disposal that gave up
         // waiting would be back to freeing a model mid-generation. A turn is
         // bounded by its own token and its token budget, so this waits for

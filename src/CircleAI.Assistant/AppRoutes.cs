@@ -182,6 +182,37 @@ public static class AppRoutes
         new("abilities", "What it can do", Surface.Voice,
             ["what can you do", "what it can do", "abilities", "features"]),
 
+        // THREE SCREENS THE NATIVE SAMPLE HAD AND THIS ONE DID NOT.
+        //
+        // Audited 2026-09-13: SeeingActivity, MusicActivity and SearchActivity
+        // existed in samples/CircleAI.Samples.Android with no counterpart here,
+        // and PARITY.md - the document whose whole job is catching exactly this -
+        // had no row for any of them while stating "Nothing is missing". The
+        // native head is being retired, so without these three the features go
+        // with it.
+        //
+        // Services rather than TabBar: the bar is four places and it is the
+        // product's opinion about itself. These are things the app DOES, which is
+        // what the Services grid is for.
+
+        // Vision had a screen in the native head and only an attach button here,
+        // inside Chat. A picture is a thing you come to the app WITH.
+        new("seeing", "Read a picture", Surface.Services | Surface.Voice,
+            ["read a picture", "look at this", "what is this", "see this",
+             "read an image", "describe this picture"]),
+
+        // NEEDS NOTHING INSTALLED, which is most of why it is worth offering: it
+        // works on a phone with no model downloaded and no signal.
+        new("music", "Make music", Surface.Services | Surface.Voice,
+            ["make music", "play something", "write a tune", "background music"]),
+
+        // THE ONLY CONSUMER OF THE RECALL HALF. LearnAsync has run on every
+        // utterance for a long time; until the native head got this screen there
+        // was nowhere to read any of it back.
+        new("find", "Find", Surface.Services | Surface.Voice,
+            ["find", "search", "look for", "what did I say about",
+             "search my memory"]),
+
         // Stages, not destinations: each owns the whole screen and leaves on its
         // own. Offering them in a menu would be offering somewhere to go before
         // there is anywhere worth going.

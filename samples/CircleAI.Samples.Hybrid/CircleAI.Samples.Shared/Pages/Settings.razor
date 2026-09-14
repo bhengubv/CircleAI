@@ -422,14 +422,14 @@ else
                     {
                         <button class="compact" disabled="@(_turning is not null)"
                                 @onclick="() => TurnOn(row)">
-                            @(_turning == row.Title ? "..." : "Turn on")
+                            @(_turning == row.Title ? (_turningDetail ?? "Starting...") : "Turn on")
                         </button>
                     }
                     else if (row.State == AbilityState.Available)
                     {
                         <button class="compact" disabled="@(_turning is not null)"
                                 @onclick="() => TurnOn(row)">
-                            @(_turning == row.Title ? "..." : "Turn on")
+                            @(_turning == row.Title ? (_turningDetail ?? "Starting...") : "Turn on")
                         </button>
                     }
                     else if (row.State == AbilityState.On)
@@ -479,6 +479,34 @@ else
                     <span class="row-sub">@Voice.Provenance</span>
                 </span>
             </div>
+
+            @*
+                THE MODEL-BY-MODEL DETAIL, BEHIND A TAP.
+                PhoneFacts carries Technical as well as Facts - which model each
+                ability chose, its size, the RAM it wants, the repo it came from -
+                and this screen rendered only Facts, so the property had no reader
+                in the head that ships.
+
+                TWO AUDIENCES, AND ONLY ONE OF THEM WANTS THIS: the owner wants to
+                turn something on, the developer wants to know what it costs. So
+                it is one tap down rather than on the page, which is the same
+                order of priority the other head used.
+            *@
+            @if (_phone is { Technical.Count: > 0 })
+            {
+                <button class="fold @(_showTechnical ? "fold-on" : null)"
+                        @onclick="() => _showTechnical = !_showTechnical">
+                    @(_showTechnical ? "Hide technical details" : "Show technical details")
+                </button>
+
+                @if (_showTechnical)
+                {
+                    @foreach (var line in _phone.Technical)
+                    {
+                        <div class="row"><span class="row-tech">@line</span></div>
+                    }
+                }
+            }
         }
     </section>
 }
@@ -487,6 +515,10 @@ else
     // What the last attempt said. Null until somebody touches the control -
     // there is nothing honest to report before then.
     string? _residentHint;
+
+    /// <summary>Whether the model-by-model readout is open.</summary>
+    bool _showTechnical;
+
     bool _residentBusy;
     bool? _residentOn;
 
@@ -778,7 +810,7 @@ else
             _docs = await Store.DocumentsAsync();
             _wake = await Phrases.ForAsync(_s.Language);
         }
-        catch (Exception ex) { _trouble = $"Settings: {ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _trouble = $"Settings: {Trouble.Say(ex)}"; }
 
         // ITS OWN try, for the same reason: a phone that cannot answer whether it
         // will keep the assistant running must not take the rest of the screen
@@ -793,7 +825,7 @@ else
             _abilities = await Facts.AbilitiesAsync();
             _phone = await Facts.PhoneAsync();
         }
-        catch (Exception ex) { _trouble = $"Reading what is installed: {ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _trouble = $"Reading what is installed: {Trouble.Say(ex)}"; }
     }
 
     void Open(int index) => _open = _open == index ? -1 : index;
@@ -902,10 +934,14 @@ else
     /// copy here is how the wake phrase ended up written to two different files.
     /// </para>
     /// </remarks>
+    /// <summary>What the running download is saying about itself.</summary>
+    string? _turningDetail;
+
     async Task TurnOn(AbilityRow row)
     {
         if (_turning is not null) return;
         _turning = row.Title;
+        _turningDetail = null;
         try
         {
             string? why = null;
@@ -922,7 +958,40 @@ else
             }
             else
             {
-                await Facts.TurnOnAsync(row.Title);
+                // THE PROGRESS THE CONTRACT ALREADY OFFERS, AND NOBODY PASSED.
+                //
+                // IDeviceFacts.TurnOnAsync takes an IProgress<string> and reports
+                // "Getting Qwen3.5-0.8B-MNN…" then "12%", "34%" - and this call
+                // dropped it. A 548 MB download on a slow link showed "..." for
+                // three quarters of an hour, which is indistinguishable from a
+                // button that did nothing.
+                //
+                // The other head drew a bar and a time remaining. This shows the
+                // words, which is what a row has space for; the important half is
+                // that SOMETHING moves.
+                var report = new Progress<string>(line => InvokeAsync(() =>
+                {
+                    _turningDetail = line;
+                    StateHasChanged();
+                }));
+
+                // AND WHAT IT SAYS WHEN IT FAILS. TurnOnAsync returns the reason
+                // as words - "Could not reach the internet.", "Not enough space."
+                // - and this discarded the return value, so a failed download
+                // looked exactly like a finished one.
+                var outcome = await Facts.TurnOnAsync(row.Title, report);
+                if (!string.Equals(outcome, "On", StringComparison.Ordinal))
+                    why = outcome;
+
+                // A WAKE BUNDLE THAT HAS JUST LANDED IS A LISTENER THAT CAN NOW
+                // START. Nothing retried after a download - ResumeAsync ran once
+                // at firstRender, long before this - so turning Waking on left it
+                // installed and silent until the app was killed and reopened.
+                else if (string.Equals(row.Title, "Waking", StringComparison.Ordinal))
+                {
+                    try { _ = Resident.ResumeAsync(); }
+                    catch { /* the toggle below reads IsListening live */ }
+                }
             }
 
             // AFTER THE RELOAD, NOT BEFORE. Reload clears _trouble - so setting
@@ -931,7 +1000,7 @@ else
             await Reload();
             if (why is { Length: > 0 }) _trouble = why;
         }
-        finally { _turning = null; }
+        finally { _turning = null; _turningDetail = null; }
     }
 
     /// <summary>
@@ -983,7 +1052,15 @@ else
             // The reason belongs where the switch is. A phone that refuses to
             // start listening says so here rather than on the tab that happens
             // to hold the other control.
-            _trouble = status.State == ResidentState.Failed ? status.Hint : null;
+            // SCREEN-ONLY IS NOT A FAILURE AND STILL HAS TO BE SAID. On a phone
+            // whose vendor stops foreground services the switch is on and the
+            // microphone IS open - but only while the app is. Somebody who
+            // turned this on to be answered from the kitchen doorway has to know
+            // that, and the state that says so is the one state where the hint
+            // is information rather than an error.
+            _trouble = status.State is ResidentState.Failed or ResidentState.ScreenOnly
+                ? status.Hint
+                : null;
         }
         catch (Exception ex)
         {

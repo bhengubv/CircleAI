@@ -26,6 +26,15 @@ builder.Services.AddSingleton<IBrain, BrowserBrain>();
 // play music on a phone" instead of the registry silently not offering it.
 builder.Services.AddSingleton<IPlaysMedia, NoMediaPlayer>();
 
+// Music is synthesised by CircleAI.Music, which a browser does not load. The
+// screen reads Available and says so rather than offering a dead button.
+builder.Services.AddSingleton<IMakesMusic, NoMusic>();
+
+// A browser tab has no app-private folder to put somebody's meeting in, so it
+// declines rather than appearing to save and losing it. Same reasoning as the
+// default on CircleAISession.Transcripts.
+builder.Services.AddSingleton<IKeepsTranscripts>(KeepsNoTranscripts.Instance);
+
 builder.Services.AddSingleton(sp => CapabilityRegistry.For(
     sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
 builder.Services.AddSingleton<ICareerInterview, BrowserCareer>();

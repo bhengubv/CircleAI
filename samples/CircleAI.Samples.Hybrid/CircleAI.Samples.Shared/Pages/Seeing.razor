@@ -1,0 +1,130 @@
+@*
+    Read a picture.
+
+    VISION HAD A SCREEN IN THE NATIVE HEAD AND ONLY AN ATTACH BUTTON HERE. A
+    picture is usually the thing somebody came to the app WITH - they have a
+    label, a form, a sign in a language they do not read - and burying it as a
+    paperclip inside a chat makes it something you find only if you were already
+    typing.
+
+    AND IT RESIZES, WHICH THE CHAT PATH DOES NOT.
+
+    Chat.razor reads the file with an 8 MB cap and sends it at whatever size the
+    camera produced. MNN loads these bundles and logs their own configuration -
+    "is_visual":true, image_size:512 - so a 12 megapixel photo is not merely
+    wasteful, it is the first of the three named candidates for the native -6
+    this work has been chasing (OPEN-GAPS B4).
+
+    RequestImageFileAsync does it in the browser layer before a byte is read, so
+    the resize costs nothing on the managed side and the phone never holds the
+    full image at all. That is the same job BitmapFactory's inSampleSize did in
+    the native screen, done by the platform this head actually runs on.
+*@
+@page "/seeing"
+@inject IBrain Brain
+
+<div class="seeing">
+
+    @if (_answer.Length == 0 && !_busy)
+    {
+        <p class="seeing-lead">
+            Point it at a photo and it will tell you what is in it.
+            Everything happens on this phone.
+        </p>
+    }
+
+    <label class="seeing-pick">
+        <InputFile OnChange="OnImage" accept="image/*" disabled="@_busy" />
+        <span>@(_busy ? "Looking…" : "Choose a picture")</span>
+    </label>
+
+    @if (_chosen is { Length: > 0 })
+    {
+        <p class="seeing-chosen">@_chosen</p>
+    }
+
+    <div class="seeing-ask">
+        <input class="seeing-question" @bind="_question"
+               placeholder="What is in this picture?" disabled="@_busy" />
+    </div>
+
+    @if (_answer is { Length: > 0 })
+    {
+        <p class="seeing-answer">@_answer</p>
+    }
+
+    @if (_status is { Length: > 0 })
+    {
+        <p class="seeing-status" role="status">@_status</p>
+    }
+
+</div>
+
+@code {
+    string _question = "";
+    string _answer = "";
+    string _status = "";
+    string _chosen = "";
+    bool _busy;
+
+    /// <summary>Answer a question about a picture.</summary>
+    async Task OnImage(InputFileChangeEventArgs e)
+    {
+        if (_busy) return;
+
+        _busy = true;
+        _answer = "";
+        _status = "Looking at it…";
+        _chosen = e.File.Name;
+
+        try
+        {
+            // RESIZED BEFORE IT IS READ, TO WHATEVER THE BRAIN SAYS IT WANTS.
+            //
+            // The number is not typed here: this library cannot reference
+            // CircleAI.Inference - it is loaded by a browser - so the limit comes
+            // through IBrain.MaxImageEdge, which the device head answers from
+            // ImageBudget and a tab answers with 0.
+            //
+            // The browser layer does the resizing, so a 12 MP photo never becomes
+            // 12 MP of managed memory on a 1.4 GB phone - which is how a screen
+            // dies rather than answers.
+            var edge = Brain.MaxImageEdge;
+            var source = edge > 0
+                ? await e.File.RequestImageFileAsync("image/jpeg", edge, edge)
+                : e.File;
+
+            await using var stream = source.OpenReadStream(8 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            var asked = string.IsNullOrWhiteSpace(_question)
+                ? "What is in this picture?"
+                : _question.Trim();
+
+            _status = "";
+
+            await Brain.SeeAsync(asked, buffer.ToArray(), fragment =>
+            {
+                _answer += fragment;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (_answer.Length == 0)
+                _status = "It had nothing to say about that one.";
+        }
+        catch (Exception ex)
+        {
+            // SAY WHICH WALL IT HIT. Vision on this phone currently fails inside
+            // MNN with code -6 (OPEN-GAPS B4), and a generic "that did not work"
+            // is indistinguishable from a model that simply has nothing to say -
+            // which is exactly how the text model answering about a picture it
+            // never received went unnoticed for four builds.
+            _status = Trouble.Say(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

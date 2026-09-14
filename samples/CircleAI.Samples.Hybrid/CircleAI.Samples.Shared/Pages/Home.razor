@@ -73,6 +73,39 @@
     }
 
     @*
+        THE REST OF THE DOWNLOAD, ON A SCREEN YOU CAN ACTUALLY USE.
+
+        The loading screen hands over the moment the voice and the ears have
+        landed, so the brain - which is most of the bundle - arrives while
+        somebody is here, with the bottom bar under them and a circle that
+        works. This is the SAME run: ISetup owns it and RunAsync attaches to one
+        already in flight, so nothing is started twice.
+
+        Determinate, unlike the warm-up bar above it. This one has a fraction.
+    *@
+    @if (_setup is { } s)
+    {
+        <div class="bar bar-known">
+            <span style="width:@($"{Math.Clamp(s.Fraction, 0, 1) * 100:0}%")"></span>
+        </div>
+
+        @* WHAT THERE IS TIME FOR. On a slow link this is forty minutes somebody
+           has to spend anyway; offering something to do with it is the
+           difference between a progress bar and an app. *@
+        @if (_tour is { } step)
+        {
+            <div class="tour">
+                <div class="tour-title">@step.Title</div>
+                <div class="tour-body">@step.Body</div>
+                @if (step.Action is { Length: > 0 } act && step.Route is { Length: > 0 } route)
+                {
+                    <a class="tour-action" href="@route">@act</a>
+                }
+            </div>
+        }
+    }
+
+    @*
         NOT A SETTING. A READ-OUT.
 
         This was a picker once: one tap, eleven languages, remembered - the wrong
@@ -129,14 +162,31 @@
     string? _detail;
     string? _spokenIn;
 
+    /// <summary>The setup run this screen was handed, or null when none is going.</summary>
+    SetupProgressReport? _setup;
+
+    /// <summary>Something worth doing while it downloads, or null.</summary>
+    TourStep? _tour;
+    IReadOnlyList<TourStep> _tourSteps = [];
+    int _tourAt = -1;
+
+    /// <summary>Set on dispose, so a run that outlives this page never paints it.</summary>
+    bool _gone;
+
     /*
         THE GREETING CYCLE, deliberately not English first. The point being made is
         that this thing speaks languages other assistants do not, so the very first
         sound it makes should say so.
     */
-    static readonly string[] Greetings = ["zu", "af", "st", "sw", "en"];
+    @* THE ORDER IS NOT THIS SCREEN'S TO DECIDE. It lived here as five tags,
+       in another head as six different ones, and in Welcome as a third set -
+       three opinions about what this product leads with, overlapping on two
+       entries. CircleAI.Assistant.Greetings is the one owner now. *@
     int _greetIndex;
-    string _greetIn => Greetings[_greetIndex];
+
+    /// <summary>Whether the welcome sentence has already been said this session.</summary>
+    bool _welcomed;
+    string _greetIn => Greetings.At(_greetIndex);
 
     static string LanguageName(string tag) => SampleLanguages.Find(tag)?.Name ?? tag;
 
@@ -225,6 +275,7 @@
     /// people - and it is the fact the old flow buried behind a settings link.
     /// </summary>
     string Caption => _detail
+        ?? _setup?.Describe()
         ?? _progress
         ?? (Translating
                 ? $"{LanguageName(_pairFrom)} and {LanguageName(_pairTo)}, spoken both ways"
@@ -237,13 +288,132 @@
     // thread - the audio loop and the wake service both report from their own.
     void OnMarkChanged() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Mark.Changed -= OnMarkChanged;
+    public void Dispose()
+    {
+        _gone = true;
+        Mark.Changed -= OnMarkChanged;
+        AppLifecycle.Resumed -= OnResumed;
+    }
+
+    /// <summary>Follow the download the loading screen left running.</summary>
+    /// <remarks>
+    /// ATTACHES, NEVER STARTS. RunAsync is idempotent by contract - "calling it
+    /// while a run is in flight ATTACHES to that run rather than starting
+    /// another" - which is what makes it safe to call from a screen somebody can
+    /// arrive at twice. Guarded by IsRunning anyway, so a phone with everything
+    /// already on it never asks.
+    /// </remarks>
+    async Task FollowSetupAsync()
+    {
+        var lastIndex = -1;
+
+        var progress = new Progress<SetupProgressReport>(report =>
+        {
+            if (_gone) return;
+            _setup = report;
+
+            // Each finished part makes the phone able to do something new, so the
+            // headline is re-read on the boundary rather than every report - and
+            // the tour card is offered there too, where it cannot flicker as the
+            // estimate wobbles.
+            if (report.Index != lastIndex)
+            {
+                lastIndex = report.Index;
+                _ = OnPartLandedAsync(report.Remaining);
+            }
+
+            InvokeAsync(StateHasChanged);
+        });
+
+        try { await Setup.RunAsync(progress); }
+        catch { /* whatever landed stays; the census and the headline still tell the truth */ }
+
+        if (_gone) return;
+
+        _setup = null;
+        _tour = null;
+        try { _ready = await Setup.ReadinessAsync(); } catch { /* keep the last headline */ }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>A part of the bundle arrived: re-read the headline, move the tour on.</summary>
+    async Task OnPartLandedAsync(TimeSpan left)
+    {
+        try
+        {
+            var fresh = await Setup.ReadinessAsync();
+
+            // ASKED ONCE, WITH THE TIME THERE ACTUALLY IS. The steps are chosen
+            // for how long is left, so asking again every boundary would shorten
+            // the list under somebody mid-read.
+            if (_tourSteps.Count == 0 && left > TimeSpan.Zero)
+                _tourSteps = await Setup.TourAsync(left);
+
+            if (_gone) return;
+
+            if (_tourSteps.Count > 0)
+            {
+                _tourAt = (_tourAt + 1) % _tourSteps.Count;
+                _tour = _tourSteps[_tourAt];
+            }
+
+            await InvokeAsync(() =>
+            {
+                _ready = fresh;
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            // A tour that cannot be built is not a reason to stop a download, and
+            // a readiness read that fails leaves the headline where it was.
+        }
+    }
+
+    /// <summary>
+    /// The app came back, so the headline may be stale.
+    /// </summary>
+    /// <remarks>
+    /// READINESS WAS COMPUTED ONCE AND NEVER AGAIN. Grant the microphone from
+    /// the bar and come back and Home still said it needed granting; finish a
+    /// download in Settings and Home still said "Let's set it up". The only way
+    /// to move it was to kill the app.
+    ///
+    /// The other head re-ran exactly this on every OnResume, and wrote down why:
+    /// without it "the person granted permission and then had to work out for
+    /// themselves that the screen would only change if they left it and came
+    /// back".
+    /// </remarks>
+    async void OnResumed()
+    {
+        try
+        {
+            var fresh = await Setup.ReadinessAsync();
+            await InvokeAsync(() =>
+            {
+                _ready = fresh;
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            // A readiness read that fails leaves the old headline, which is
+            // where it already was. Never fatal to a resume.
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         Mark.Changed += OnMarkChanged;
+        AppLifecycle.Resumed += OnResumed;
 
         _ready = await Setup.ReadinessAsync();
+
+        // HANDED A RUNNING DOWNLOAD. The loading screen leaves as soon as the
+        // phone can hold a conversation, which on a fresh install is long before
+        // the bundle is done - so this screen, not that one, is where the rest of
+        // it is watched. Not awaited: the whole point is that Home renders now.
+        if (Setup.IsRunning) _ = FollowSetupAsync();
 
         // Which app this is, and - if it is the interpreter - between whom.
         // Guarded: a settings read that fails must not take Home down with it.
@@ -420,7 +590,7 @@
 
             try { await Talk.TurnAsync(updates, router.Token); }
             catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
-            catch (Exception ex) { _detail = $"{ex.GetType().Name}: {ex.Message}"; }
+            catch (Exception ex) { _detail = Trouble.Say(ex); }
             finally { _turn = null; Mark.Clear(); }
 
             await router.GoAsync(route => Nav.NavigateTo(route), line => Talk.SayAsync(line),
@@ -431,24 +601,53 @@
         Mark.Report(MarkState.Speaking);
         _detail = brain.Detail;
 
+        // IN WORDS, NOT THE ENGINE'S OWN LOG. The pipeline reports to whoever is
+        // debugging it - "voice-under-test=af_ZA-google-nasional", "engine WARM
+        // in 812ms", "phones=41" - and this put those straight on screen.
         var progress = new Progress<string>(line =>
         {
-            _progress = line;
+            _progress = PlainProgress.Say(line);
             StateHasChanged();
         });
 
         try
         {
-            var outcome = await Voice.SpeakAsync(_greetIn, progress);
-            _detail = outcome.Detail;
-            // THROUGH THE CATALOGUE, one language per press. The point is that it
-            // speaks languages other assistants do not, so the first sound it makes
-            // should not always be English.
-            _greetIndex = (_greetIndex + 1) % Greetings.Length;
+            // THE FIRST SOUND IT MAKES SAYS WHAT IS HAPPENING, NOT JUST HELLO.
+            //
+            // This used to go straight to the greeting carousel: one checked
+            // phrase per press, cycling languages. That is a demonstration of the
+            // voice, and it left somebody watching a download with no idea they
+            // could already start talking.
+            //
+            // The other head spoke a sentence instead - "I am still downloading
+            // the rest, but you can talk to me now" - in the phone's own
+            // language, and that is the behaviour that was deployed and watched
+            // to work. One implementation of it now lives in Welcome; this is the
+            // head that speaks it.
+            //
+            // ONCE, THEN THE CAROUSEL. The sentence is what a new person needs;
+            // pressing again is somebody exploring what it can say, which is what
+            // the per-language greetings are for.
+            if (!_welcomed)
+            {
+                _welcomed = true;
+                var said = await Voice.SayAsync(Welcome.LineFor(Spoken.Current),
+                                                Welcome.TagFor(Spoken.Current));
+                _detail = said.Detail;
+            }
+            else
+            {
+                var outcome = await Voice.SpeakAsync(_greetIn, progress);
+                _detail = outcome.Detail;
+                // THROUGH THE CATALOGUE, one language per press. The point is that
+                // it speaks languages other assistants do not, so the first sound
+                // it makes should not always be English.
+                _greetIndex = Greetings.Next(_greetIndex);
+            }
         }
         catch (Exception ex)
         {
-            _detail = $"{ex.GetType().Name}: {ex.Message}";
+            _detail = Trouble.Say(ex);
         }
         finally
         {

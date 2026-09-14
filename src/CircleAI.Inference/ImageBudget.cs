@@ -57,6 +57,32 @@ public static class ImageBudget
     public const int MaxEdge = 1024;
 
     /// <summary>
+    /// The longest edge a VISION model will actually accept.
+    /// </summary>
+    /// <remarks>
+    /// 1024 IS THE GENERAL BUDGET AND IT IS NOT WHAT THE MODEL ASKED FOR. MNN
+    /// loads the SmolVLM bundle and logs its own configuration - "is_visual":true,
+    /// <c>image_size:512</c>, vision_start:49189, image_pad:49190 - and the
+    /// managed side then sent it 478x1024, because 1024 is the budget for "an
+    /// image a phone should not bother sending more of" rather than anything the
+    /// model declared.
+    /// <para>
+    /// `mnn_llm_generate_with_image_stream_ex` returns -6 on that input (recorded
+    /// as B4). The image dimension against image_size is the first of the three
+    /// candidates named there and the only one reachable from managed code, so it
+    /// is the one to eliminate first.
+    /// </para>
+    /// <para>
+    /// A CONSTANT, NOT THE MODEL'S OWN NUMBER, AND THAT IS A STOPGAP. The right
+    /// answer is to read image_size out of the bundle's config.json - it is
+    /// sitting on disk next to the weights and nothing in managed code opens it.
+    /// This value matches every vision bundle currently catalogued, so it is
+    /// correct today and a trap the day one declares something else.
+    /// </para>
+    /// </remarks>
+    public const int VisionMaxEdge = 512;
+
+    /// <summary>
     /// The pixel dimensions of an encoded image, or <c>null</c> when the format
     /// is not recognised.
     /// </summary>

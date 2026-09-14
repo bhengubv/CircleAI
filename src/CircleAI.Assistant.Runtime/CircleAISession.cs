@@ -88,15 +88,27 @@ public sealed class CircleAISession : IAsyncDisposable
     // sentences" produced 175 characters about cryptocurrency on 2026-09-09 -
     // in answer to thirteen characters of noise. A small model treats a length
     // request as a suggestion; what it does obey better is a rule about what
-    // NOT to do. So the prompt now says what Jarvis never does: it never
-    // answers a question it did not hear, and it never invents a law, a price
-    // or a fact to fill a gap. A person hearing "I didn't catch that" can say it
-    // again; a person told that online payments are illegal cannot un-hear it.
+    // NOT to do.
+    //
+    // THE CLARIFICATION RULE THEN OVER-FIRED, AND IT MADE THE APP WORTHLESS.
+    // "If the question is unclear, garbled, or looks mis-heard, do not answer
+    // it: ask what they meant" was written for garbled VOICE, but a 0.6B applied
+    // it to CLEAR questions. Measured on a P30 2026-09-14 with a completely empty
+    // enrichment (nothing but this prompt and the question): "What is the capital
+    // of France" came back "What did you mean?" - not "Paris". Every version
+    // showed the same tell ("Which capital is being asked?", "I need
+    // clarification"). An assistant that will not answer a plain question is
+    // worth nothing, whatever else is clean underneath.
+    //
+    // So answering is now the DEFAULT and stated first, and clarification is
+    // scoped to genuinely garbled or empty input - the case it was actually for.
+    // The invention guard (never make up a law, price, date, fact) stays: that
+    // is the one a person cannot un-hear.
     private const string Prompt =
         "You are Circle AI - a dry, competent assistant that runs on this phone. " +
-        "Answer in one or two short sentences, the way a person would out loud. " +
-        "If the question is unclear, garbled, or looks mis-heard, do not answer it: " +
-        "ask in one short sentence what they meant. " +
+        "Answer the question directly in one or two short sentences, the way a person would out loud. " +
+        "A clear question always gets an answer. " +
+        "Only if the message is genuinely garbled or empty, ask in one short sentence what they meant. " +
         "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer.";
 
     private readonly AIService _brain;
@@ -287,6 +299,12 @@ public sealed class CircleAISession : IAsyncDisposable
                 // person hears a single word. Worth knowing what it costs before
                 // deciding it is worth it.
                 SkillStore            = lean ? null : Skills(),
+                // WHAT TO SEARCH FOR, AS OPPOSED TO WHAT TO SAY. Recalling.Ask
+                // puts remembered facts about the PERSON in front of a question
+                // about a SUBJECT, and without this the skill store and the RAG
+                // index were handed the lot as search terms. This assembly owns
+                // that format, so it is the one that hands back the question.
+                RetrievalQuery        = Recalling.Question,
                 // Router set => AIService becomes the two-slot Neuron: warm
                 // generalist plus one admission-gated specialist. Left null it
                 // is byte-identical to single-slot, which is why the two-slot

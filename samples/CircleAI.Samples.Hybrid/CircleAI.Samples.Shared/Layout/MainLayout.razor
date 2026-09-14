@@ -567,7 +567,7 @@
             }
         }
         catch (Exception ex) when (router.Ended(ex)) { /* routed, not failed */ }
-        catch (Exception ex) { _says = $"{ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _says = Trouble.Say(ex); }
         finally { _turn = null; Mark.Clear(); StateHasChanged(); }
 
         await router.GoAsync(route => Nav.NavigateTo(route), line => Talk.SayAsync(line),

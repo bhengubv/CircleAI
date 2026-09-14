@@ -26,6 +26,15 @@ public class TranscribeSessionTests : TestContext
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<ISpokenLanguage>(new FakeSpokenLanguage());
         Services.AddSingleton(new VoiceMark());
+
+        // TRANSCRIBE GAINED A SEAM AND THIS FILE BUILDS ITS OWN CONTAINER, so
+        // adding the registration to WireEverything did nothing for it: the page
+        // simply stopped being constructible and four tests failed on the
+        // injection rather than on anything they were testing.
+        //
+        // The real null object. A test does not want a meeting written anywhere,
+        // and this is the honest answer a browser gives for the same reason.
+        Services.AddSingleton<IKeepsTranscripts>(KeepsNoTranscripts.Instance);
         JSInterop.Mode = JSRuntimeMode.Loose;
         return talk;
     }

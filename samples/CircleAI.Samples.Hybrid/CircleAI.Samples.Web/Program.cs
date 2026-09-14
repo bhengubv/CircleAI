@@ -6,9 +6,9 @@
 // the sample exists to demonstrate keeping.
 
 using CircleAI.Assistant;
-using CircleAI.Assistant.Web.Components;
+using CircleAI.Samples.Web.Components;
 using CircleAI.Samples.Web.Client.Services;
-using CircleAI.Assistant.Web.Services;
+using CircleAI.Samples.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +30,15 @@ builder.Services.AddSingleton<IBrain, BrowserBrain>();
 // capability can decline honestly in one place - ReadyAsync says "this can only
 // play music on a phone" instead of the registry silently not offering it.
 builder.Services.AddSingleton<IPlaysMedia, NoMediaPlayer>();
+
+// Music is synthesised by CircleAI.Music, which a browser does not load. The
+// screen reads Available and says so rather than offering a dead button.
+builder.Services.AddSingleton<IMakesMusic, NoMusic>();
+
+// A browser tab has no app-private folder to put somebody's meeting in, so it
+// declines rather than appearing to save and losing it. Same reasoning as the
+// default on CircleAISession.Transcripts.
+builder.Services.AddSingleton<IKeepsTranscripts>(KeepsNoTranscripts.Instance);
 
 builder.Services.AddSingleton(sp => CapabilityRegistry.For(
     sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
@@ -93,7 +102,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(
-        typeof(CircleAI.Assistant._Imports).Assembly,
+        typeof(CircleAI.Samples.Shared._Imports).Assembly,
         typeof(CircleAI.Samples.Web.Client._Imports).Assembly);
 
 app.Run();

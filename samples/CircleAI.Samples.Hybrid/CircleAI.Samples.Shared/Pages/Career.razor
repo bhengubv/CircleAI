@@ -223,7 +223,7 @@
         // a full turn would have taken the name as a question and said something
         // back, when all that was wanted was the words written down.
         try { await Talk.DictateAsync(updates); }
-        catch (Exception ex) { _saved = $"{ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _saved = Trouble.Say(ex); }
         finally { _busy = false; }
     }
 }

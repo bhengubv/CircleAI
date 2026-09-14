@@ -164,21 +164,62 @@ public sealed class CareerInterviewHost : ICareerInterview
         }, ct);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A REAL PDF, WHERE SOMETHING ELSE CAN OPEN IT.
+    /// <para>
+    /// This wrote a plain .txt into app-private storage and returned its path.
+    /// Two things were wrong with that. A CV is a document somebody SENDS - to an
+    /// employer, to an agency, from WhatsApp - and a .txt in a folder no other
+    /// app may read cannot be sent at all. And the engine that renders the real
+    /// thing, PdfSharpDocumentEngine, was already referenced by this project and
+    /// had no caller: the other head rendered a PDF, recorded the approval and
+    /// opened a share sheet, and this one produced a file nobody could reach.
+    /// </para>
+    /// <para>
+    /// EXTERNAL FILES DIR, not AppPaths.Data. Still this app's own directory and
+    /// still removed on uninstall, but readable by the share sheet without a
+    /// content provider - which is the difference between a document and a demo.
+    /// </para>
+    /// </remarks>
     public Task<string> SaveAsync(CancellationToken ct = default)
-        => Task.Run(() =>
+        => Task.Run(async () =>
         {
             using var store = Store();
-            var cv = ProfileToCv.Render(store.Load());
+            var profile = store.Load();
+            var cv = ProfileToCv.Render(profile);
             var name = string.IsNullOrWhiteSpace(cv.FullName) ? "cv" : cv.FullName.Replace(' ', '-');
 
-            // Plain text, into the app's own documents folder. A CV somebody
-            // cannot open is not a CV; text opens everywhere, including on a
-            // phone with no office app installed.
-            var path = Path.Combine(AppPaths.Data, $"{name}.txt");
-            var body = string.Join(Environment.NewLine,
-                PreviewAsync(ct).GetAwaiter().GetResult()
-                    .Select(l => l.Kind == CvLineKind.Gap ? "" : l.Text));
-            File.WriteAllText(path, body);
+            var rendered = await new CircleAI.Documents.PdfSharpDocumentEngine()
+                .RenderAsync(new CircleAI.Documents.DocumentRequest(
+                    CircleAI.Documents.DocumentKind.Cv, cv), ct)
+                .ConfigureAwait(false);
+
+            // RECORDED, so the CV that was sent is the one the app can show
+            // again. The other head does this on the same line.
+            store.Approve(specId: null, rendered.Bytes, []);
+
+            var folder = global::Android.App.Application.Context
+                .GetExternalFilesDir(null)?.AbsolutePath ?? AppPaths.Data;
+            var path = Path.Combine(folder, $"CV-{name}.pdf");
+            await File.WriteAllBytesAsync(path, rendered.Bytes, ct).ConfigureAwait(false);
+
+            // AND HANDED TO THE PERSON. Saving without offering to send it is
+            // where the old version stopped, and it is the half that matters.
+            try
+            {
+                await Microsoft.Maui.ApplicationModel.DataTransfer.Share.RequestAsync(
+                    new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFileRequest
+                    {
+                        Title = "Your CV",
+                        File = new Microsoft.Maui.ApplicationModel.DataTransfer.ShareFile(path),
+                    }).ConfigureAwait(false);
+            }
+            catch
+            {
+                // A phone with no app that takes a PDF still has the file. The
+                // sheet failing is not the save failing.
+            }
+
             return $"Saved to {path}";
         }, ct);
 

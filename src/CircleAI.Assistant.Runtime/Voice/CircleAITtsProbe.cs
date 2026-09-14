@@ -34,6 +34,54 @@ namespace CircleAI.Assistant.Voice;
 /// <summary>Runs on-device TTS synthesis once and returns a pull-able report.</summary>
 public static class CircleAITtsProbe
 {
+    /// <summary>The folder name a side-loaded Pocket-TTS bundle is unpacked into.</summary>
+    public const string PocketFolder = "pocket-tts";
+
+    /// <summary>The reference clip the bundle ships, which the voice is cloned from.</summary>
+    public const string PocketReference = "loona.wav";
+
+    /// <summary>Which tags a side-loaded Pocket-TTS bundle can speak.</summary>
+    /// <remarks>
+    /// EIGHT TAGS, SIX LANGUAGES, AND NOT ALL OF THEM EUROPEAN - es-MX and pt-BR
+    /// are in here. It has been written down as "eight European languages" more
+    /// than once and that is wrong twice over; the list is the list.
+    /// <para>
+    /// Here rather than in a screen because it is a fact about the engine, and
+    /// the last time a fact like this lived in a screen there were three copies
+    /// of it that disagreed. The other head kept it in an Activity, which is why
+    /// only that head could use it.
+    /// </para>
+    /// </remarks>
+    public static readonly IReadOnlySet<string> PocketLanguages =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "en", "fr", "es-ES", "es-MX", "pt-BR", "pt-PT", "de", "it" };
+
+    /// <summary>
+    /// Whether a side-loaded Pocket-TTS bundle can speak this tag, and where it is.
+    /// </summary>
+    /// <remarks>
+    /// IT ONLY EVER RUNS WHEN SOMEBODY DELIBERATELY PUT THE BUNDLE THERE. No
+    /// download offers it and the catalogue does not know about it, so the
+    /// ordinary behaviour is unchanged for everyone who has not done that.
+    /// </remarks>
+    /// <param name="sideloadRoot">
+    /// Where a person can copy files to without root - the same folder
+    /// <see cref="CircleAISpeaker.SideloadFolder"/> names. Null when the head
+    /// never set one, in which case there is nothing to find.
+    /// </param>
+    /// <returns>The bundle directory, or null when this tag is not a Pocket one
+    /// or nothing has been side-loaded.</returns>
+    public static string? PocketBundleFor(string? sideloadRoot, string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(sideloadRoot) || string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        if (!PocketLanguages.Contains(tag)) return null;
+
+        var dir = Path.Combine(sideloadRoot, PocketFolder);
+        return Directory.Exists(dir) ? dir : null;
+    }
+
     /// <summary>
     /// Run the Pocket-TTS pipeline on this device and report what it cost.
     /// </summary>

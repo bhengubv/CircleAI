@@ -111,7 +111,52 @@ public enum SetupPhase
 /// </param>
 public sealed record SetupProgressReport(
     int Index, int Count, string Title, double Fraction, TimeSpan Remaining,
-    SetupPhase Phase = SetupPhase.Fetching);
+    SetupPhase Phase = SetupPhase.Fetching)
+{
+    /// <summary>The whole line: what is arriving, how far in, and when it ends.</summary>
+    /// <remarks>
+    /// ON THE RECORD RATHER THAN IN A PAGE, because two screens show this now -
+    /// the loading screen and Home, once the loading screen stopped holding
+    /// somebody hostage for the whole download - and the last time one fact had
+    /// two screens formatting it they disagreed.
+    /// <para>
+    /// CHECKING GETS NO ESTIMATE, AND THAT IS THE POINT OF THE PHASE. Measured on
+    /// a Redmi Note 12 Pro+ on 2026-09-05: the 1.3 GB brain finished arriving,
+    /// the phone went to 267% CPU hashing it with the network idle, and the
+    /// screen sat on "about 20 sec left" for over a minute without moving. The
+    /// enum was added to fix exactly that and the page still rendered the stale
+    /// countdown, because nothing read it.
+    /// </para>
+    /// <para>
+    /// MINUTES, NOT SECONDS. Nobody waiting on a download is counting seconds,
+    /// and "43 min left" is a thing somebody can act on - put the phone down, or
+    /// stop and come back on wifi.
+    /// </para>
+    /// </remarks>
+    public string Describe()
+    {
+        var what = string.IsNullOrWhiteSpace(Title) ? "Setting it up" : Title.Trim();
+
+        if (Phase == SetupPhase.Done) return $"{what} — done";
+
+        var pct = $"{Math.Clamp(Fraction, 0, 1) * 100:0}%";
+
+        // No estimate survives the switch to hashing, so none is offered.
+        if (Phase == SetupPhase.Checking) return $"{what} — checking what arrived";
+
+        // A remaining time of zero means "not known yet", and one over twelve
+        // hours means the rate is still settling. Either way the percentage is
+        // the only half worth printing.
+        if (Remaining <= TimeSpan.Zero || Remaining > TimeSpan.FromHours(12))
+            return $"{what} — {pct}";
+
+        var left = Remaining.TotalMinutes >= 1
+            ? $"{Remaining.TotalMinutes:0} min left"
+            : "less than a minute left";
+
+        return $"{what} — {pct} · {left}";
+    }
+}
 
 /// <summary>Something worth doing while setup runs.</summary>
 /// <param name="Title">The invitation.</param>

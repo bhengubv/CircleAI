@@ -151,6 +151,49 @@
 }
 
 /*
+    THE WAIT MADE VISIBLE. Three dots that rise in sequence — the messenger idiom
+    for "a reply is coming" — shown only in an empty assistant bubble while the
+    first token is still ten-plus seconds away on this phone. currentColor, so
+    the dots are the bubble's own ink and need no separate palette.
+*/
+.typing {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 0;
+}
+
+.typing .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.35;
+    animation: typing-bounce 1.2s infinite ease-in-out;
+}
+
+.typing .dot:nth-child(2) { animation-delay: 0.15s; }
+.typing .dot:nth-child(3) { animation-delay: 0.30s; }
+
+@keyframes typing-bounce {
+    0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+    40%           { opacity: 1;    transform: translateY(-3px); }
+}
+
+/*
+    Motion turned off still needs to say "working", so the dots stay and only
+    their opacity breathes — no travel.
+*/
+@media (prefers-reduced-motion: reduce) {
+    .typing .dot { animation: typing-fade 1.4s infinite ease-in-out; transform: none; }
+
+    @keyframes typing-fade {
+        0%, 100% { opacity: 0.30; }
+        50%      { opacity: 0.90; }
+    }
+}
+
+/*
     NO SAFE-AREA PADDING HERE. The body already pays it, and the gesture bar is
     below the tab bar rather than below this - so adding it again put a second
     inset inside the app and left the composer floating above its own rule.

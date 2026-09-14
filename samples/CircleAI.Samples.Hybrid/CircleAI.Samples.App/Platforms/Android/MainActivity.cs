@@ -55,6 +55,66 @@ public class MainActivity : MauiAppCompatActivity
 #endif
     }
 
+    /// <summary>
+    /// The app came back to the front, so anything that read the device once is
+    /// now possibly wrong.
+    /// </summary>
+    /// <remarks>
+    /// THIS ACTIVITY HAD NO LIFECYCLE HOOK AT ALL - OnCreate and OnNewIntent and
+    /// nothing else - so a page that computed readiness in OnInitializedAsync
+    /// kept that answer forever. Grant the microphone from the bar and come back
+    /// and the headline still says it needs granting; finish a download in
+    /// Settings and Home still says "Let's set it up".
+    ///
+    /// The other head re-ran its readiness check on every OnResume and again
+    /// after a permission result, and said so in its own comment: without it
+    /// "the person granted permission and then had to work out for themselves
+    /// that the screen would only change if they left it and came back".
+    /// </remarks>
+    /// <summary>The app went off screen.</summary>
+    /// <remarks>
+    /// THE MICROPHONE IS THE WHOLE REASON. On a phone whose vendor kills the
+    /// foreground service the wake word falls back to a loop that runs in this
+    /// process, and a loop nobody stops is a microphone left open behind the
+    /// next app somebody opens.
+    /// </remarks>
+    protected override void OnPause()
+    {
+        base.OnPause();
+        CircleAI.Assistant.AppLifecycle.RaisePaused();
+    }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        CircleAI.Assistant.AppLifecycle.RaiseResumed();
+    }
+
+    /// <summary>
+    /// The OS is short of memory and would rather this process gave some back.
+    /// </summary>
+    /// <remarks>
+    /// A BROWNOUT BEATS BEING KILLED. Answering this evicts the admitted
+    /// specialist and keeps the warm generalist serving, so the assistant gets
+    /// worse at one thing instead of vanishing mid-sentence - which is what the
+    /// low-memory killer does instead, on the 1.4 GB handsets this is for.
+    ///
+    /// The other head has answered onTrimMemory since it was written. This one
+    /// ignored it entirely.
+    /// </remarks>
+    public override void OnTrimMemory([Android.Runtime.GeneratedEnum] TrimMemory level)
+    {
+        base.OnTrimMemory(level);
+
+        if (level is TrimMemory.RunningLow or TrimMemory.RunningCritical
+                  or TrimMemory.Complete or TrimMemory.Background)
+        {
+            Android.Util.Log.Info("CircleAI.Mem",
+                $"OS memory pressure ({level}) - evicting the specialist, keeping the generalist");
+            CircleAI.Assistant.AppLifecycle.RaiseMemoryIsShort();
+        }
+    }
+
     /// <summary>A share that arrived while the app was already open.</summary>
     /// <remarks>
     /// SetIntent as well as parking it: without that, Intent still returns the

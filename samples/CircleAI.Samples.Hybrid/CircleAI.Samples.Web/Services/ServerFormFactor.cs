@@ -3,7 +3,9 @@
 // The server head's answer. Reports the browser as the form factor, because that
 // is where the person is - the server is only rendering for them.
 
-namespace CircleAI.Assistant.Web.Services;
+using CircleAI.Assistant;
+
+namespace CircleAI.Samples.Web.Services;
 
 /// <inheritdoc />
 public sealed class ServerFormFactor : IFormFactor

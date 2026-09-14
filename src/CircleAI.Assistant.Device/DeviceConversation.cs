@@ -186,6 +186,19 @@ public sealed class DeviceConversation : IConversation
 
             updates.Report(new TurnState(TurnPhase.Thinking, Heard: heard, Language: tag));
 
+            // THE LEARNING SEAM, AND IT COSTS THE PERSON NOTHING. This transcript
+            // is already here, written in their own spelling - so a borrowed word
+            // like "WiFi" or "WhatsApp" arrives spelt the way THEY say it without
+            // anybody correcting anything or filling in a form. They asked their
+            // phone to do something; the answer to "how do you say WiFi" came
+            // with it. See PersonalSpeech, and DeviceVoiceHost for the half that
+            // says it back that way - without both halves this changes nothing
+            // anyone hears.
+            //
+            // Off the turn: it may write a small file, and nothing downstream
+            // waits on it.
+            _ = Task.Run(() => PersonalSpeech.LearnFrom(heard, tag));
+
             // SPOKEN AS IT IS WRITTEN, ONE SENTENCE AT A TIME. This waited for
             // the whole answer, then synthesised the whole of it as one block,
             // then played it. Measured on 2026-09-09: a Redmi 12 thought for
@@ -233,6 +246,19 @@ public sealed class DeviceConversation : IConversation
             // into two different preambles. See Recalling.Ask.
             var asked = Recalling.Ask(heard, known);
 
+            // AND THE MODEL IS TOLD WHICH LANGUAGE TO ANSWER IN.
+            //
+            // The tag above follows the voice, so isiZulu in means isiZulu out
+            // from the same speaker. Setting the VOICE alone produces English
+            // words spoken with Zulu phonetics, which is worse than either - the
+            // other head appended this instruction to the turn and this one never
+            // did, so CircleAISpeaker.NameForLanguage had exactly one caller in
+            // the repo and it was in a sample being retired.
+            var replyIn = CircleAI.Assistant.Voice.CircleAISpeaker.NameForLanguage(tag);
+            if (replyIn is not null)
+                asked = asked + Environment.NewLine + Environment.NewLine
+                      + $"(Reply only in {replyIn}.)";
+
             // ALWAYS, INCLUDING ZERO. "Recall found nothing" and "recall never
             // ran" are different faults and this line used to print for only one
             // of them, so the log could not tell them apart.
@@ -263,13 +289,56 @@ public sealed class DeviceConversation : IConversation
             bargeStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
             barge = BargeInAsync(mouth, speaking, bargeStop.Token);
 
+            // NEVER READ A TOOL CALL ALOUD.
+            //
+            // AskAsync streams from the raw generator, which does not execute
+            // tools - so when the model decides to search, the call arrives here
+            // as ordinary text. This head pushed every fragment straight to the
+            // speaker, so somebody who asked for the weather heard a line of JSON
+            // read out at them.
+            var watch = new System.Text.StringBuilder();
+            var calling = false;
+
             await _brain.AskAsync(asked, fragment =>
             {
+                watch.Append(fragment);
+                if (!calling && ToolCall.Looks(watch)) calling = true;
+
+                // NOTHING AFTER THE CALL IS STARTED IS SPOKEN. What is already
+                // out has been heard and cannot be taken back, which is why the
+                // detector only reads the head of the stream - see ToolCall.Head.
+                if (calling) return;
+
                 reply += fragment;
                 mouth.Push(fragment);
                 updates.Report(new TurnState(TurnPhase.Thinking,
                     Heard: heard, Reply: reply, Language: tag));
             }, ct).ConfigureAwait(false);
+
+            // THE FAST PATH CANNOT USE TOOLS, SO EARN IT BACK ONLY WHEN NEEDED.
+            // Streaming is what gets sound out early and is right for the great
+            // majority of turns, which need no tool at all. When the model asks
+            // for one, that whole answer is void: re-run through the agentic
+            // path, which executes the call, feeds the result back, and answers
+            // from it. Two passes, and only for the turns that reach the world.
+            if (calling)
+            {
+                updates.Report(new TurnState(TurnPhase.Thinking,
+                    Heard: heard, Detail: "Looking it up", Language: tag));
+
+                var tooled = await _brain.AskWithToolsAsync(asked, ct).ConfigureAwait(false);
+
+                // EMPTY MEANS THE HEAD HAS NO TOOLS. Replacing a real answer with
+                // nothing would turn a head that cannot search into a head that
+                // says nothing at all.
+                if (!string.IsNullOrWhiteSpace(tooled))
+                {
+                    reply = tooled;
+                    mouth.Push(tooled);
+                    updates.Report(new TurnState(TurnPhase.Thinking,
+                        Heard: heard, Reply: reply, Language: tag));
+                }
+            }
 
             // THE TWO HALVES, SEPARATELY TIMED. "It took ages and said something
             // mad" is either a slow transcriber or a slow brain, and either a

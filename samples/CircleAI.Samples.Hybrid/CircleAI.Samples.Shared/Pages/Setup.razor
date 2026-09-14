@@ -12,6 +12,7 @@
 *@
 @page "/setup"
 @inject ISetup Wizard
+@inject IResidentAssistant Resident
 @inject NavigationManager Nav
 
 <div class="setup">
@@ -50,7 +51,7 @@
         </div>
 
         <button class="start" @onclick="Start" disabled="@(_plan.Count == 0)">
-            @(_plan.Count == 0 ? "Nothing to fetch" : "Start")
+            @(_plan.Count == 0 ? (TooSmall ? "Nothing fits this phone" : "Nothing to fetch") : "Start")
         </button>
     }
     else
@@ -115,6 +116,17 @@
 
 @code {
     IReadOnlyList<SetupItem> _plan = [];
+
+    /// <summary>
+    /// What is actually on the phone, read alongside the plan.
+    /// </summary>
+    /// <remarks>
+    /// NEEDED TO TELL TWO EMPTY PLANS APART - see TooSmall. Nothing planned and
+    /// nothing present is a handset that can run none of the catalogue; nothing
+    /// planned and everything present is a finished setup. They had the same
+    /// wording.
+    /// </remarks>
+    Census? _census;
     IReadOnlyList<TourStep> _tour = [];
     SetupProgressReport _progress = new(0, 0, "", 0, TimeSpan.Zero);
     bool _running;
@@ -127,8 +139,26 @@
             : _running
             ? Remaining
             : _plan.Count == 0
-                ? "Everything it needs is already here."
+                ? (TooSmall
+                    ? "Nothing in the catalogue fits this phone's memory."
+                    : "Everything it needs is already here.")
                 : "It needs a few things first. They stay on this phone.");
+
+    /// <summary>
+    /// An empty plan with an empty phone: everything was refused by the fit check.
+    /// </summary>
+    /// <remarks>
+    /// TWO CAUSES, ONE EMPTY LIST, AND THE WRONG ONE WAS ASSUMED. A plan with no
+    /// steps means either "it is all already here" or "not one model in the
+    /// catalogue will run on this handset" - and this screen said "Everything it
+    /// needs is already here" for BOTH. A person whose phone can run nothing was
+    /// congratulated on being fully provisioned.
+    /// <para>
+    /// The census is what separates them: nothing planned AND nothing present.
+    /// The other head has said this since it was written; this one never did.
+    /// </para>
+    /// </remarks>
+    bool TooSmall => _plan.Count == 0 && _census is { Present: 0, Total: > 0 };
 
     /// <summary>
     /// How long the WHOLE of setup has left, not the current file.
@@ -178,6 +208,7 @@
     {
         _lead = (await Wizard.ReadinessAsync()).Headline;
         _plan = await Wizard.PlanAsync();
+        _census = await Wizard.CensusAsync();
 
         // ALREADY GOING. Tapping Home on the bar during an 817 MB download kills
         // this component; coming back built a fresh one that knew nothing, showed
@@ -240,6 +271,27 @@
         {
             await Wizard.RunAsync(progress);
             _done = true;
+
+            // AND NOW THE WAKE BUNDLE EXISTS, SO TRY TO LISTEN.
+            //
+            // MainLayout calls ResumeAsync ONCE, on firstRender - which happens
+            // while the loading screen is still painting, before a single byte of
+            // the wake bundle has arrived. StartAsync returns NotInstalled, and
+            // nothing ever retried: hands-free worked only after the app had been
+            // killed and reopened.
+            //
+            // The other head started the listener the moment readiness saw the
+            // bundle, including mid-download. This is the same moment, at the one
+            // point in this head where a download is known to have finished.
+            //
+            // Not awaited and never fatal: loading a wake bundle is seconds, and
+            // a listener that will not come up is a line on the settings screen
+            // rather than a reason setup failed.
+            if (Resident is not null)
+            {
+                try { _ = Resident.ResumeAsync(); }
+                catch { /* the toggle in Settings reads IsListening live */ }
+            }
         }
         catch (Exception ex)
         {
@@ -250,6 +302,7 @@
                    + "starting again picks up where it left off.";
             _running = false;
             _plan = await Wizard.PlanAsync();
+            _census = await Wizard.CensusAsync();
         }
     }
 

@@ -42,12 +42,32 @@
 
                 @if (_ready)
                 {
-                    <div class="empty-line">Ask it something</div>
+                    <div class="empty-line">What can I help you with?</div>
                     @* TAP, NOT HOLD. It said "hold the button to talk", and the
                        button takes one turn on a single press - describing a
                        gesture the app does not have is how somebody decides the
                        microphone is broken. *@
-                    <div class="empty-sub">Type below, or tap the circle to talk.</div>
+                    <div class="empty-sub">Tap one to start, or type your own.</div>
+
+                    @*
+                        SOMETHING TO PRESS. "Ask it something" on an empty screen
+                        asks a person to invent an example before they have seen
+                        the thing work - and the commonest reason somebody closes
+                        an assistant in the first ten seconds is not knowing what
+                        to say to it.
+
+                        Three, covering the three kinds of thing it does: a fact,
+                        a piece of writing, and one that is deliberately playful,
+                        because a child opening this should find something for
+                        them in the first three seconds.
+                    *@
+                    <div class="suggestions">
+                        @foreach (var example in Examples)
+                        {
+                            <button class="suggestion" @onclick="() => Suggest(example)"
+                                    disabled="@_busy">@example</button>
+                        }
+                    </div>
                 }
                 else
                 {
@@ -94,7 +114,25 @@
         @foreach (var (turn, i) in _turns.Select((t, i) => (t, i)))
         {
             <div class="row @(turn.Mine ? "row-mine" : "row-its")" @key="i">
-                <div class="bubble @(turn.Mine ? "mine" : "its")">@turn.Text</div>
+                <div class="bubble @(turn.Mine ? "mine" : "its")">
+                    @if (!turn.Mine && string.IsNullOrEmpty(turn.Text))
+                    {
+                        @* WAITING FOR THE FIRST TOKEN. The reply bubble is added
+                           empty and streamed into, and the first token on a 0.6B
+                           on a P30 is ten seconds or more away - a blank bubble
+                           reads as a hang. Three rising dots, the way every
+                           messenger signals the same wait; replaced by the text
+                           the instant a fragment lands. The voice path already
+                           shows this on the circle. *@
+                        <span class="typing" role="status" aria-label="Thinking">
+                            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                        </span>
+                    }
+                    else
+                    {
+                        @turn.Text
+                    }
+                </div>
             </div>
         }
     </div>
@@ -269,7 +307,7 @@
         }
         catch (Exception ex)
         {
-            _turns[at] = _turns[at] with { Text = $"{ex.GetType().Name}: {ex.Message}" };
+            _turns[at] = _turns[at] with { Text = Trouble.Say(ex) };
         }
         finally
         {
@@ -294,7 +332,7 @@
         if (LastReply is not { Length: > 0 } text) return;
         _busy = true;
         try { await Talk.SayAsync(text); }
-        catch (Exception ex) { _status = $"{ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _status = Trouble.Say(ex); }
         finally { _busy = false; }
     }
 
@@ -330,8 +368,28 @@
         });
 
         try { await Talk.TurnAsync(updates); }
-        catch (Exception ex) { _status = $"{ex.GetType().Name}: {ex.Message}"; }
+        catch (Exception ex) { _status = Trouble.Say(ex); }
         finally { _busy = false; }
+    }
+
+    /// <summary>What to offer somebody who has not typed anything yet.</summary>
+    /// <remarks>
+    /// PUT IN THE BOX, NOT SENT BLIND. Suggest fills the input and sends, so the
+    /// question appears as theirs - a suggestion that fires invisibly leaves
+    /// somebody unsure what was actually asked when the answer arrives.
+    /// </remarks>
+    static readonly string[] Examples =
+    [
+        "What is the weather like today?",
+        "Write a short thank-you message",
+        "Tell me a joke",
+    ];
+
+    async Task Suggest(string example)
+    {
+        if (_busy) return;
+        _draft = example;
+        await Send();
     }
 
     /// <summary>Answer a question about a picture.</summary>
@@ -365,7 +423,7 @@
         }
         catch (Exception ex)
         {
-            _status = $"{ex.GetType().Name}: {ex.Message}";
+            _status = Trouble.Say(ex);
         }
         finally
         {

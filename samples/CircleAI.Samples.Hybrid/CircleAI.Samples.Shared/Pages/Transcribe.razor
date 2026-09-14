@@ -31,6 +31,7 @@
 @page "/transcribe"
 @inject IConversation Talk
 @inject ISpokenLanguage Spoken
+@inject IKeepsTranscripts Kept
 @inject VoiceMark Mark
 @implements IDisposable
 
@@ -135,12 +136,81 @@
 
     @if (_lines.Count > 0)
     {
-        <p class="count">@_lines.Count line@(_lines.Count == 1 ? "" : "s")</p>
+        @*
+            HOW GOOD IT IS, NOT JUST HOW LONG.
+            A line count says nothing about whether the transcript can be
+            trusted. The language it decided on and the confidence it reports are
+            what tell somebody whether to read it again - and Whisper getting the
+            language wrong is the failure that produces fluent nonsense, which a
+            count of lines hides completely.
+        *@
+        <p class="count">
+            @_lines.Count line@(_lines.Count == 1 ? "" : "s")
+            @if (_transcript is { } t)
+            {
+                @* "und" is Whisper saying it does not know, which is not a language. *@
+                @if (t.Language is { Length: > 0 } lang && lang != "und")
+                {
+                    <span> &middot; @lang</span>
+                }
+                @if (t.Confidence > 0)
+                {
+                    <span> &middot; confidence @t.Confidence.ToString("0.00")</span>
+                }
+            }
+        </p>
+    }
+
+    @*
+        SUBTITLES, WHICH THE SDK COULD ALWAYS RENDER AND NO SCREEN HERE ASKED FOR.
+        IConversation.AsSubtitles has been on the interface the whole time; the
+        native head had a "Save subtitles" button and this one had nothing, so a
+        transcribed meeting could not leave the phone in any form.
+
+        Only with TIMINGS. A recording transcribed in one pass has start and end
+        per line; a live session that produced only text would render every
+        caption at 00:00, which is a file that looks right and is useless.
+    *@
+    @if (_transcript is { Lines.Count: > 0 } && !_running)
+    {
+        <div class="subtitles">
+            <button class="subtitles-save" @onclick="() => Subtitles(SubtitleFormat.SubRip)">
+                Save subtitles
+            </button>
+
+            @if (_subtitles is { Length: > 0 })
+            {
+                <textarea class="subtitles-text" readonly rows="10">@_subtitles</textarea>
+                <p class="subtitles-note">
+                    Copy this into a .srt beside your recording.
+                    @if (_savedId is { Length: > 0 })
+                    {
+                        <span> The transcript is kept on this phone too.</span>
+                    }
+                </p>
+            }
+        </div>
     }
 </div>
 
 @code {
     readonly List<string> _lines = [];
+
+    /// <summary>
+    /// The transcript WITH its timings, which _lines does not carry.
+    /// </summary>
+    /// <remarks>
+    /// AsSubtitles needs start and end per line. _lines is the words only - it is
+    /// what the screen shows - so rendering subtitles from it would produce a
+    /// file where every caption sits at 00:00.
+    /// </remarks>
+    Transcript? _transcript;
+
+    /// <summary>Where the store filed it, or null if filing failed.</summary>
+    string? _savedId;
+
+    /// <summary>The rendered subtitle file, once asked for.</summary>
+    string? _subtitles;
 
     /// <summary>What is being heard right now, before the utterance closes.</summary>
     string? _partial;
@@ -219,6 +289,22 @@
                     foreach (var line in written.Lines) _lines.Add(line.Text);
                 else
                     _lines.Add(written.Text);
+
+                // KEPT, WHICH THIS SCREEN NEVER DID. It produced a meeting and
+                // discarded it the moment you left - so subtitles had nothing to
+                // render and Find had half a corpus. Held in memory too, because
+                // AsSubtitles needs the TIMINGS and _lines is only the words.
+                _transcript = written;
+                try
+                {
+                    _savedId = await Kept.KeepAsync(file.Name, written);
+                }
+                catch
+                {
+                    // A transcript that could not be filed is still on screen and
+                    // still exportable. Losing the save is not losing the work.
+                    _savedId = null;
+                }
             }
 
             _status = null;
@@ -336,7 +422,7 @@
         {
             // THE LINES SO FAR ARE KEPT. Losing an hour of a meeting because the
             // closing pass threw would be the worst possible answer.
-            _trouble = $"Stopped: {ex.GetType().Name}: {ex.Message}";
+            _trouble = $"Stopped: {Trouble.Say(ex)}";
         }
     }
 
@@ -351,5 +437,30 @@
     {
         _cts?.Cancel();
         _cts?.Dispose();
+    }
+
+    /// <summary>
+    /// Render what was transcribed as a subtitle file.
+    /// </summary>
+    /// <remarks>
+    /// SHOWN RATHER THAN DOWNLOADED, DELIBERATELY. A Blazor page cannot write to
+    /// the phone's filesystem where a person would look for it, and a browser
+    /// download from inside a WebView lands somewhere neither of us chose. A
+    /// selectable block they can copy is honest about what this screen can
+    /// actually do; the native head wrote a file because it was an Activity with
+    /// a document picker.
+    /// </remarks>
+    void Subtitles(SubtitleFormat format)
+    {
+        if (_transcript is null) return;
+
+        try
+        {
+            _subtitles = Talk.AsSubtitles(_transcript, format);
+        }
+        catch (Exception ex)
+        {
+            _trouble = $"Could not make subtitles: {ex.Message}";
+        }
     }
 }

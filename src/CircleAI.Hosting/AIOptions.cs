@@ -462,6 +462,30 @@ public sealed class AIOptions
     public ISkillStore? SkillStore { get; init; }
 
     /// <summary>
+    /// Turns a prompt into the thing retrieval should actually search for.
+    /// </summary>
+    /// <remarks>
+    /// RETRIEVAL IS NOT PROMPTING, AND ONE STRING WAS DOING BOTH. The prompt a
+    /// head builds can carry material that belongs to the MODEL and not to a
+    /// search: CircleAI.Assistant's Recalling.Ask puts "Things you already know
+    /// about them:" and a few remembered facts in front of the question, and
+    /// every one of those words was being fed to the skill store and the RAG
+    /// index as a search term.
+    /// <para>
+    /// Measured on a P30 on 2026-09-13: a phone that had remembered one note
+    /// about deploying searched 1,378 skills for that note alongside the real
+    /// question.
+    /// </para>
+    /// <para>
+    /// Null means "search the prompt", which is what every caller did before and
+    /// is right for a head that composes nothing. A head that composes sets this
+    /// to its own decomposer - the only code entitled to know the format - so
+    /// this assembly never has to.
+    /// </para>
+    /// </remarks>
+    public Func<string, string>? RetrievalQuery { get; init; }
+
+    /// <summary>
     /// Maximum number of skills injected per inference call. Default 5.
     /// Only used when <see cref="SkillStore"/> is non-null.
     /// </summary>

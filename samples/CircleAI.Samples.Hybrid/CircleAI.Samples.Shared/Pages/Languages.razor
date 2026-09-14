@@ -202,9 +202,13 @@
         _busy = row.Tag;
         _detail[row.Tag] = "preparing…";
 
+        // IN WORDS. Somebody choosing a language watched their phone print
+        // "voice-under-test=af_ZA-google-nasional" and "phones=41" at them for
+        // forty seconds. Those lines are for whoever is debugging the pipeline
+        // and they still go to logcat; this is what the row says.
         var progress = new Progress<string>(line =>
         {
-            _detail[row.Tag] = line;
+            _detail[row.Tag] = PlainProgress.Say(line);
             StateHasChanged();
         });
 
@@ -215,7 +219,7 @@
         }
         catch (Exception ex)
         {
-            _detail[row.Tag] = $"{ex.GetType().Name}: {ex.Message}";
+            _detail[row.Tag] = Trouble.Say(ex);
         }
         finally
         {

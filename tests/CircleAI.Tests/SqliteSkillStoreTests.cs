@@ -191,6 +191,29 @@ public sealed class SqliteSkillStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Identifying_match_ignores_a_word_that_is_only_in_the_description()
+    {
+        // OPTION 3, THE LIBRARY'S MODE (2026-09-14). The default store matches
+        // description - Search_finds_a_skill_by_its_description proves it, and it
+        // stays true. The LIBRARY is opened with identifyingMatchOnly: true, so a
+        // skill is matched by what it IS (name, tags), not a word buried in its
+        // prose. This is what stops "What is the capital of France" pulling
+        // hunt-ssrf ("capital" Porter-stems into "capitalize" in its body).
+        using var store = new SqliteSkillStore(Db, identifyingMatchOnly: true);
+
+        await store.UpsertAsync("prose-only", Draft(
+            "Aaa barely related", "mentions docker once in passing"));
+        await store.UpsertAsync("named", Draft(
+            "Docker deployment", "how to deploy with docker", "steps", "docker"));
+
+        var hits = await store.SearchAsync("docker");
+
+        // Only the skill named/tagged for docker; the prose-only one is gone.
+        Assert.Single(hits);
+        Assert.Equal("named", hits[0].Id);
+    }
+
+    [Fact]
     public async Task Editing_a_skill_stops_the_old_text_being_findable()
     {
         // THE STALE-INDEX FAILURE. The FTS5 table holds its OWN copy of the text,

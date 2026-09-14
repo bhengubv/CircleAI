@@ -575,11 +575,16 @@ public sealed class SqliteAtomStore : IAtomStore, IDisposable
     /// which in a recall means returning noise ahead of the one atom that
     /// mattered.
     /// </remarks>
+    // STOPWORDS REMOVED, WHICH THEY WERE NOT BEFORE. This filtered only on
+    // length > 1, so "the", "is", "of", "on", "it", "this" all reached the OR
+    // match - and a lone fact was offered for any question that happened to
+    // share one. "Never deploy with -t:Install..." came back for "What is the
+    // capital of France" (shares "the") and "What is 12 times 8" (shares
+    // "time"), and on a 0.6B that noise is what made the answer ramble.
+    // Measured on a P30 2026-09-14. The list is CircleAI.Core.SearchTerms, the
+    // one the skill store also uses, so the two cannot drift.
     private static IEnumerable<string> Terms(string query) =>
-        query.Split(new[] { ' ', '\t', '\n', '\r', ',', ';', '(', ')', '"', '\'' },
-                    StringSplitOptions.RemoveEmptyEntries)
-             .Select(t => t.Trim())
-             .Where(t => t.Length > 1);
+        CircleAI.Core.SearchTerms.Significant(query);
 
     /// <summary>An FTS5 MATCH expression that cannot be a syntax error.</summary>
     /// <remarks>

@@ -52,8 +52,21 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
         _services = services;
     }
 
+    /// <summary>
+    /// The screen-up loop, built only on a phone whose vendor refused the
+    /// service the microphone.
+    /// </summary>
+    private ScreenUpWakeWord? _screenUp;
+
     /// <inheritdoc />
-    public bool IsListening => CircleNeuronService.IsListening;
+    /// <remarks>
+    /// EITHER WAY OF LISTENING COUNTS. Settings reads this straight into the
+    /// switch - `_residentOn = Resident.IsListening` - so a phone running on the
+    /// fallback would have shown the control off while the microphone was open,
+    /// which is the worst of the three possible answers.
+    /// </remarks>
+    public bool IsListening
+        => CircleNeuronService.IsListening || _screenUp is { IsListening: true };
 
     /// <inheritdoc />
     public event EventHandler<string>? Woke;
@@ -151,16 +164,39 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             // restart. A consent record rather than a cache: it is the difference
             // between restoring something somebody chose and helping ourselves to
             // a foreground service on every boot.
-            if (listening) ResidentPrefs.SetRunning(context, true);
+            if (listening)
+            {
+                ResidentPrefs.SetRunning(context, true);
 
-            return listening
-                ? new ResidentStatus(ResidentState.Listening,
+                // The service has it. Anything this process was holding has to go
+                // or the two fight over one AudioRecord.
+                await StopScreenUpAsync().ConfigureAwait(false);
+
+                return new ResidentStatus(ResidentState.Listening,
                     "Listening",
-                    "It answers to its name with the screen off.")
-                : new ResidentStatus(ResidentState.Failed,
-                    "Not listening",
-                    "The service started but could not open the microphone. "
-                    + "Something else may be holding it.");
+                    "It answers to its name with the screen off.");
+            }
+
+            // THE SERVICE COULD NOT HOLD THE MICROPHONE, WHICH ON THIS PHONE MAY
+            // SIMPLY BE THE ANSWER. Huawei, Xiaomi, Oppo and Vivo stop foreground
+            // services on their own schedule whatever the notification says. This
+            // used to return Failed and stop, so the product's headline feature
+            // was absent on a large share of exactly the handsets it is for.
+            var fallback = await StartScreenUpAsync(bundle, keywords).ConfigureAwait(false);
+            if (fallback)
+            {
+                ResidentPrefs.SetRunning(context, true);
+
+                return new ResidentStatus(ResidentState.ScreenOnly,
+                    "Listening while the app is open",
+                    "This phone stops background listening. It still answers to "
+                    + "its name while the app is on screen.");
+            }
+
+            return new ResidentStatus(ResidentState.Failed,
+                "Not listening",
+                "The service started but could not open the microphone. "
+                + "Something else may be holding it.");
         }
         catch (Exception ex)
         {
@@ -179,6 +215,7 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
             // the next time somebody speaks, which nobody asked for by turning
             // listening off.
             await CircleNeuronService.StopListeningAsync().ConfigureAwait(false);
+            await StopScreenUpAsync().ConfigureAwait(false);
 
             // Turned off deliberately, so it stays off across a reboot.
             ResidentPrefs.SetRunning(Android.App.Application.Context, false);
@@ -265,6 +302,110 @@ public sealed class DeviceResidentAssistant : IResidentAssistant
 
         Android.Util.Log.Info(Tag, "resuming: the owner had the assistant on");
         return await StartAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Open the microphone in this process, for as long as the app is up.</summary>
+    /// <remarks>
+    /// TIED TO THE SCREEN, DELIBERATELY. A microphone that is always open is a
+    /// promise about privacy, and this fallback exists because the phone refused
+    /// the one form of always-open Android sanctions - a foreground service with
+    /// a notification somebody can see. Holding the mic silently after the app
+    /// goes away would be quietly doing the thing the notification exists to
+    /// declare.
+    /// </remarks>
+    private async Task<bool> StartScreenUpAsync(string bundle, string? keywords)
+    {
+        try
+        {
+            if (_screenUp is null)
+            {
+                _screenUp = new ScreenUpWakeWord(bundle, keywords);
+                _screenUp.Woke += OnWoke;
+
+                // Subscribed once, for the life of this singleton. Unsubscribed in
+                // StopScreenUpAsync along with the listener itself.
+                AppLifecycle.Paused += OnWentAway;
+                AppLifecycle.Resumed += OnCameBack;
+            }
+
+            _screenUp.Start();
+
+            // START IS NOT LISTENING. It spawns the loop, and the loop opens the
+            // microphone - so asking immediately reports the task, not the
+            // device. A phone that will not give this process the mic either
+            // fails inside that first moment, and saying "listening" for it would
+            // be the same lie the service just told.
+            await Task.Delay(250).ConfigureAwait(false);
+
+            var up = _screenUp.IsListening;
+            Android.Util.Log.Info(Tag, up
+                ? "the service could not hold the microphone; listening on screen instead"
+                : "neither the service nor this process could open the microphone");
+
+            return up;
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Error(Tag, "screen-up wake word would not start: " + ex);
+            return false;
+        }
+    }
+
+    /// <summary>Close the in-process microphone and forget the loop.</summary>
+    private async Task StopScreenUpAsync()
+    {
+        var loop = _screenUp;
+        if (loop is null) return;
+        _screenUp = null;
+
+        AppLifecycle.Paused -= OnWentAway;
+        AppLifecycle.Resumed -= OnCameBack;
+        loop.Woke -= OnWoke;
+
+        try { await loop.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn(Tag, "screen-up wake word would not stop: " + ex.Message);
+        }
+    }
+
+    /// <summary>Off screen: give the microphone back.</summary>
+    /// <remarks>
+    /// THE LOOP IS KEPT, THE CAPTURE IS NOT. Rebuilding the spotter on every
+    /// resume would reload the Zipformer models, which is seconds; stopping the
+    /// capture is what actually releases AudioRecord.
+    /// </remarks>
+    private void OnWentAway()
+    {
+        var loop = _screenUp;
+        if (loop is null) return;
+
+        _ = Task.Run(async () =>
+        {
+            try { await loop.StopAsync().ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn(Tag, "could not release the microphone: " + ex.Message);
+            }
+        });
+    }
+
+    /// <summary>Back on screen: take it again, unless the service has it now.</summary>
+    private void OnCameBack()
+    {
+        var loop = _screenUp;
+        if (loop is null) return;
+
+        // THE SERVICE MAY HAVE COME BACK WHILE WE WERE AWAY - the owner may have
+        // granted the battery exemption in the settings screen they just left to.
+        // Two things holding one AudioRecord is one of them getting silence.
+        if (CircleNeuronService.IsListening) return;
+
+        try { loop.Start(); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn(Tag, "could not reopen the microphone: " + ex.Message);
+        }
     }
 
     private void OnWoke(object? sender, string phrase)

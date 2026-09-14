@@ -63,7 +63,12 @@ public static class SkillLibrary
 
             if (!System.IO.File.Exists(db) && !Unpack(app, dir)) return null;
 
-            var store = new SqliteSkillStore(db);
+            // IDENTIFYING MATCH ONLY. The library is injected into the system
+            // prompt on every chat turn, so a skill earns its place by being
+            // ABOUT what was asked - its name and tags - not by a word buried in
+            // the body of its guide. Without this a P30 got hunt-ssrf for "What
+            // is the capital of France". See SqliteSkillStore's constructor.
+            var store = new SqliteSkillStore(db, identifyingMatchOnly: true);
             Log.Info(Tag, store.FullTextAvailable
                 ? $"skill library open at {db} (FTS5)"
                 : $"skill library open at {db} (LIKE fallback - no FTS5 in this build)");

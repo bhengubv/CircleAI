@@ -144,13 +144,41 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
             Directory.CreateDirectory(StorageDir);
             var wav = Path.Combine(AppPaths.Cache, $"say-{tag}.wav");
 
+            // HOW THIS PERSON SAYS BORROWED WORDS, applied to the text on its way
+            // to the synthesiser. The other head wrapped an ITtsEngine to do this
+            // and the wrapper did nothing but rewrite the text; this head speaks
+            // through the probe, so the same rewrite happens here. Unchanged for
+            // every language the spellings do not fit.
+            var spoken = PersonalSpeech.Rewrite(tag, text);
+
+            // POCKET-TTS, WHEN SOMEBODY HAS SIDE-LOADED IT. A different engine -
+            // five graphs and an autoregressive loop, not one VITS graph - so it
+            // takes its own entry point rather than a branch inside the
+            // catalogued path. It covers eight tags and only ever runs when the
+            // bundle has deliberately been copied onto the phone, so nothing
+            // changes for anybody who has not done that.
+            //
+            // The other head had the only call to RunPocketAsync in the repo. On
+            // this head the five-second voice cloning that is the whole point of
+            // the engine was unreachable.
+            var pocket = CircleAITtsProbe.PocketBundleFor(
+                CircleAI.Assistant.Voice.CircleAISpeaker.SideloadFolder, tag);
+
             var sw = Stopwatch.StartNew();
-            var report = await Task.Run(
-                () => CircleAITtsProbe.RunCataloguedAsync(
-                    StorageDir, tag, text, wav,
-                    log: line => progress?.Report(line),
-                    ct: ct),
-                ct).ConfigureAwait(false);
+            var report = pocket is not null
+                ? await Task.Run(
+                    () => CircleAITtsProbe.RunPocketAsync(
+                        pocket, Path.Combine(pocket, CircleAITtsProbe.PocketReference),
+                        spoken, wav,
+                        log: line => progress?.Report(line),
+                        ct: ct),
+                    ct).ConfigureAwait(false)
+                : await Task.Run(
+                    () => CircleAITtsProbe.RunCataloguedAsync(
+                        StorageDir, tag, spoken, wav,
+                        log: line => progress?.Report(line),
+                        ct: ct),
+                    ct).ConfigureAwait(false);
             sw.Stop();
 
             if (!File.Exists(wav))
@@ -194,11 +222,16 @@ public sealed class DeviceVoiceHost : IVoiceHost, ISpeechPipeline
         Directory.CreateDirectory(StorageDir);
         var wav = Path.Combine(AppPaths.Cache, $"say-{tag}-{Guid.NewGuid():N}.wav");
 
+        // The same rewrite as SayAsync - this is the path a spoken REPLY takes,
+        // sentence by sentence, so leaving it out here would mean the phone
+        // respelt greetings and not conversation.
+        var spoken = PersonalSpeech.Rewrite(tag, text);
+
         var sw = Stopwatch.StartNew();
         try
         {
             await Task.Run(
-                () => CircleAITtsProbe.RunCataloguedAsync(StorageDir, tag, text, wav, log: null, ct: ct),
+                () => CircleAITtsProbe.RunCataloguedAsync(StorageDir, tag, spoken, wav, log: null, ct: ct),
                 ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }

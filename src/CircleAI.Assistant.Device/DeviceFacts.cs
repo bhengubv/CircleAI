@@ -419,6 +419,12 @@ public sealed class DeviceFacts : IDeviceFacts
 
         try
         {
+            // ASKING FOR IT AGAIN IS THE CLEAREST WITHDRAWAL OF A REFUSAL.
+            // Without this the ability is turned on here and removed again by the
+            // next auto-finish, which still believes the old no - and the only
+            // thing the owner learns is that the switch does not work.
+            DeclinedModels.Allow(best.Name);
+
             progress?.Report($"Getting {best.Name}…");
             await loader.DownloadModelAsync(best.Name,
                 new Progress<float>(f => progress?.Report($"{f * 100:0}%")))

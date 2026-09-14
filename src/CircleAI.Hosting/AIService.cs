@@ -1391,8 +1391,18 @@ public sealed class AIService : IAIService
 
         if (all.Count > 0)
         {
+            // NULL-GUARDED, AND THE LINE BELOW ALREADY WAS. RelevantTools skips
+            // nulls on its way through, so the guess path was safe - but
+            // forceTools hands `all` straight back, and AvailableToolsAsync only
+            // guards the LIST being null, never its elements. A bridge that
+            // yields one null entry then threw here, before the prompt was even
+            // assembled, and a person saw "Object reference not set to an
+            // instance of an object" in the chat. Measured on a P30 on
+            // 2026-09-13: every question carrying a tool cue - "weather" among
+            // them - died on this line.
             var wanted = forceTools ? all : RelevantTools(all, userQuery);
-            foreach (var t in wanted) _latchedTools.Add(t.Name);
+            foreach (var t in wanted)
+                if (t is not null) _latchedTools.Add(t.Name);
         }
 
         if (_latchedTools.Count > 0) _toolsLatched = true;
@@ -1609,6 +1619,34 @@ public sealed class AIService : IAIService
     /// </remarks>
     private readonly record struct ToolCue(string Phrase, string[] Serves);
 
+    // ------------------------------------------------------------------
+    // THESE FIVE MUST STAY ABOVE ToolCues. NOT STYLE - CORRECTNESS.
+    //
+    // C# runs static field initialisers in TEXTUAL ORDER. They used to sit
+    // BELOW ToolCues, so every cue was built while all five were still null,
+    // every ToolCue got Serves = null, and RelevantTools threw
+    // NullReferenceException on `cue.Serves.Length` for EVERY question carrying
+    // a tool cue.
+    //
+    // It compiled, it had no warning, and it was invisible to every test -
+    // nothing in the suite asked a tool-cue question through a real AIService.
+    // On a P30 it meant "What is the weather like today?" - the first of the
+    // three suggestions the chat screen offers - answered with "Object
+    // reference not set to an instance of an object", every time, and the whole
+    // agentic path was dead behind it. Measured 2026-09-13.
+    //
+    // ToolCuesAreUsableTests asserts no cue has a null Serves, so moving these
+    // back fails a test rather than shipping.
+    // ------------------------------------------------------------------
+
+    private static readonly string[] Web    = { "search", "web", "internet", "news", "weather", "online" };
+    private static readonly string[] Lookup = { "price", "lookup", "look up", "product", "sku", "catalog" };
+    private static readonly string[] Device = { "device", "battery", "charge", "signal", "storage", "wifi", "volume", "phone" };
+    private static readonly string[] Maths  = { "calculat", "math", "arithmetic", "convert", "sum", "multipl" };
+
+    /// <summary>Matches every tool — used when the intent does not narrow it.</summary>
+    private static readonly string[] Any = System.Array.Empty<string>();
+
     /// <summary>Words that mean the answer is not in the model's weights.</summary>
     /// <remarks>
     /// Reaching OUTWARD is the common thread — at live facts, at the device's
@@ -1647,14 +1685,6 @@ public sealed class AIService : IAIService
         new("check ",  Any), new("find out", Any),
         new("tell me the time", Any), new("what time", Any),
     };
-
-    private static readonly string[] Web    = { "search", "web", "internet", "news", "weather", "online" };
-    private static readonly string[] Lookup = { "price", "lookup", "look up", "product", "sku", "catalog" };
-    private static readonly string[] Device = { "device", "battery", "charge", "signal", "storage", "wifi", "volume", "phone" };
-    private static readonly string[] Maths  = { "calculat", "math", "arithmetic", "convert", "sum", "multipl" };
-
-    /// <summary>Matches every tool — used when the intent does not narrow it.</summary>
-    private static readonly string[] Any = System.Array.Empty<string>();
 
     /// <summary>Joins two prompt fragments, tolerating either being empty.</summary>
     private static string Combine(string? first, string? second)
@@ -1809,14 +1839,29 @@ public sealed class AIService : IAIService
             }
         }
 
+        // WHAT TO SEARCH FOR, AS OPPOSED TO WHAT TO SAY. See
+        // AIOptions.RetrievalQuery: a head may compose a prompt that carries
+        // material meant for the model and not for an index - remembered facts
+        // about the person, in front of a question about something else - and
+        // both retrieval steps below were searching the lot.
+        //
+        // Guarded, because a hook that throws must not take the turn down: the
+        // worst case is retrieving on the prompt, which is what happened before.
+        var lookFor = userQuery;
+        if (_options.RetrievalQuery is not null)
+        {
+            try { lookFor = _options.RetrievalQuery(userQuery) ?? userQuery; }
+            catch (Exception ex) { EnrichmentFailed("retrieval-query", ex); }
+        }
+
         // 3. RAG context (relevant past exchanges).
         if (_options.EpisodicMemory is not null && _options.RagTopK > 0 &&
-            !string.IsNullOrWhiteSpace(userQuery))
+            !string.IsNullOrWhiteSpace(lookFor))
         {
             try
             {
                 var builder = EnsureRagBuilder();
-                var ragBlock = await builder.BuildContextAsync(userQuery, ct)
+                var ragBlock = await builder.BuildContextAsync(lookFor, ct)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(ragBlock))
                 {
@@ -1828,12 +1873,12 @@ public sealed class AIService : IAIService
         }
 
         // 4. Skill context (relevant capability definitions).
-        if (_options.SkillStore is not null && !string.IsNullOrWhiteSpace(userQuery))
+        if (_options.SkillStore is not null && !string.IsNullOrWhiteSpace(lookFor))
         {
             try
             {
                 var skillBuilder = EnsureSkillContextBuilder();
-                var skillBlock = await skillBuilder.BuildContextAsync(userQuery, ct)
+                var skillBlock = await skillBuilder.BuildContextAsync(lookFor, ct)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(skillBlock))
                 {

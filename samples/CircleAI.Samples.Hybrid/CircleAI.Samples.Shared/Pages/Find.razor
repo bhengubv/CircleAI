@@ -1,0 +1,138 @@
+@*
+    Find — everything the phone has been told, read back.
+
+    THE HALF OF MEMORY NOBODY COULD REACH. LearnAsync has run on every utterance
+    for a long time: typed input through DeviceConversation.HeardAsync, spoken
+    turns through MemoryEffects.OnTurnEnded. RecallAsync had exactly one caller
+    in the whole repo, and it was in the native sample that is being retired. So
+    the phone accumulated everything anybody said to it and had no screen that
+    could tell them any of it back.
+
+    IRemembers DIRECTLY, NOT CircleAISession.SearchAsync.
+
+    The native screen called the static SearchAsync, which merges memory with
+    kept transcripts by reading CircleAISession.Remembers and .Transcripts. Both
+    of those statics are deliberately NULL in this head - setting Remembers here
+    would add a third writer to the same store and record every turn twice, which
+    DeviceConversation says in as many words: "calling it here as well would
+    record every spoken sentence twice."
+
+    So this page asks the injected IRemembers, which IS the store the app writes
+    to, and does not go near the session.
+
+    TRANSCRIPTS ARE NOT SEARCHED HERE, AND THAT IS AN HONEST GAP RATHER THAN A
+    DESIGN. This head never registers IKeepsTranscripts at all: Transcribe
+    transcribes a recording and throws the text away when you leave the screen.
+    The native head kept them. Until this head keeps them there is nothing to
+    search, and a second empty source would only make the result look thin for a
+    reason nobody could see.
+*@
+@page "/find"
+@inject IRemembers Remembers
+
+<div class="find">
+
+    <label class="find-label" for="find-q">What are you looking for?</label>
+
+    <div class="find-row">
+        <input id="find-q" class="find-input" type="search" @bind="_query"
+               @bind:event="oninput" @onkeydown="OnKey"
+               placeholder="Anything you have told it"
+               disabled="@_busy" />
+        <button class="find-go" @onclick="Search" disabled="@(_busy || Blank)">
+            @(_busy ? "Looking…" : "Find")
+        </button>
+    </div>
+
+    <p class="find-note">
+        Looks through what you have told it. Everything stays on this phone.
+    </p>
+
+    @if (_status is { Length: > 0 })
+    {
+        <p class="find-status" role="status">@_status</p>
+    }
+
+    @if (_hits.Count > 0)
+    {
+        <ul class="find-hits">
+            @foreach (var hit in _hits)
+            {
+                <li class="find-hit">
+                    <span class="find-hit-text">@hit.Text</span>
+                    @*
+                        HOW SURE, NOT WHEN. Remembered carries Text and Confidence
+                        and no timestamp, so a date here would be invented. The
+                        confidence is real and it is the thing that separates
+                        something the person stated outright from something the
+                        extractor inferred.
+                    *@
+                    @if (hit.Confidence < 0.95)
+                    {
+                        <span class="find-hit-sure">about @(hit.Confidence * 100)% sure</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+
+</div>
+
+@code {
+    string _query = "";
+    string _status = "";
+    bool _busy;
+
+    readonly List<Hit> _hits = [];
+
+    bool Blank => string.IsNullOrWhiteSpace(_query);
+
+    /// <summary>One thing found, flattened so the markup needs no store types.</summary>
+    sealed record Hit(string Text, double Confidence);
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "NumpadEnter") await Search();
+    }
+
+    /// <summary>
+    /// Ask the store, and say plainly when it has nothing.
+    /// </summary>
+    /// <remarks>
+    /// AN EMPTY RESULT IS NOT AN ERROR AND MUST NOT READ LIKE ONE. A phone that
+    /// has been talked to twice has almost nothing to recall, and "nothing
+    /// matched" on a blank screen reads as broken. The line says what the store
+    /// is FOR, so an empty answer teaches rather than alarms.
+    /// </remarks>
+    async Task Search()
+    {
+        if (_busy || Blank) return;
+
+        _busy = true;
+        _status = "";
+        _hits.Clear();
+
+        try
+        {
+            var found = await Remembers.RecallAsync(_query.Trim(), 20);
+
+            foreach (var r in found)
+                _hits.Add(new Hit(r.Text, r.Confidence));
+
+            _status = _hits.Count == 0
+                ? "Nothing matched yet. Things you tell it show up here."
+                : $"{_hits.Count} found";
+        }
+        catch (Exception ex)
+        {
+            // The reason, not a generic failure - a store that cannot be opened
+            // and a store with nothing in it are different problems.
+            _status = Trouble.Say(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+}

@@ -54,4 +54,54 @@ public interface IBrain
     Task<string> SeeAsync(
         string question, byte[] image,
         Action<string>? token = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// The longest edge a picture should have before it is handed to SeeAsync.
+    /// </summary>
+    /// <summary>
+    /// Answer a question that needs a tool, running the tool and answering from
+    /// its result.
+    /// </summary>
+    /// <remarks>
+    /// THE SECOND PASS, AND WITHOUT IT THE PHONE READS JSON ALOUD.
+    /// <para>
+    /// AskAsync streams from the raw generator, which does NOT execute tools - so
+    /// when the model decides to search, the call arrives as ordinary text and is
+    /// spoken verbatim. Somebody asked for the weather and heard a line of JSON.
+    /// </para>
+    /// <para>
+    /// Streaming is still right for the great majority of turns, which need no
+    /// tool at all: it is what gets sound out early. So the caller streams,
+    /// notices a tool call with <see cref="ToolCall.Looks(string)"/>, says none of
+    /// it, and re-runs the turn through here. Two passes, but only for the turns
+    /// that genuinely reach the world.
+    /// </para>
+    /// <para>
+    /// NOT STREAMED, deliberately: the tool has to run before there is anything
+    /// true to say, so there is nothing to emit early.
+    /// </para>
+    /// <para>
+    /// A head with no tools may return the empty string, which tells the caller
+    /// to keep whatever the first pass produced.
+    /// </para>
+    /// </remarks>
+    Task<string> AskWithToolsAsync(string prompt, CancellationToken ct = default);
+
+    /// <remarks>
+    /// ASKED, NOT ASSUMED, BECAUSE A SECOND COPY OF THIS NUMBER IS THE BUG THIS
+    /// REPO KEEPS FINDING. The value belongs to the inference side - MNN logs the
+    /// bundle's own <c>image_size</c> when it loads one - and the shared UI cannot
+    /// reference that assembly: CircleAI.Assistant has zero project references
+    /// on purpose, because a browser loads it.
+    /// <para>
+    /// So the contract carries the question and each head answers from what it
+    /// actually has. A screen that resizes to a number typed into its own markup
+    /// is a screen that will still be sending 1024 the day the models want 512.
+    /// </para>
+    /// <para>
+    /// A head with no vision may return 0, which means "do not resize" - there is
+    /// nothing to resize FOR.
+    /// </para>
+    /// </remarks>
+    int MaxImageEdge { get; }
 }

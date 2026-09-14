@@ -89,7 +89,7 @@
         }
         catch (Exception ex)
         {
-            _out = $"Could not read that advert. ({ex.GetType().Name})";
+            _out = $"Could not read that advert. {Trouble.Say(ex)}";
             _action = "Try again";
         }
         finally

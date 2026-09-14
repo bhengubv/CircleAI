@@ -298,36 +298,56 @@ public sealed class SkillContextBuilderTests
     }
 
     [Fact]
-    public async Task BuildContextAsync_NoMatch_ListsNamesOnly_RatherThanEverything()
+    public async Task BuildContextAsync_OverviewQuestion_ListsNamesOnly_RatherThanEverything()
     {
-        // The behaviour the two tests above were silently relying on, now asserted
-        // on purpose. A no-match must NOT dump every skill in full: on a 4096-token
-        // window a few verbose skills crowd out the conversation itself, which is
-        // how this block quietly degraded both answer quality and speed on-device.
+        // Compact mode is for a SELF / OVERVIEW question — one with no significant
+        // terms, like "what can you do", where a short list of skill handles is
+        // the most useful thing. It must NOT dump every skill in full: on a
+        // 4096-token window a few verbose skills crowd out the conversation.
         var store = new InMemorySkillStore();
         await store.UpsertAsync("calendar-summariser",
             new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
         var builder = new SkillContextBuilder(store);
 
-        var result = await builder.BuildContextAsync("something else entirely");
+        var result = await builder.BuildContextAsync("what can you do");
 
         Assert.Contains("calendar-summariser", result);          // the handle is offered
         Assert.DoesNotContain("Call the calendar tool", result); // the body is not
     }
 
     [Fact]
-    public async Task BuildContextAsync_TheCompactListingsIdsCanBeLookedBackUp()
+    public async Task BuildContextAsync_TopicalMissInjectsNothing()
     {
-        // Closes the loop the compact listing opens. It prints ids and invites the
-        // model to "ask to expand" — so asking BY THAT ID has to return the body.
-        // Search covered name, description and tags but not the id, so the only
-        // handle on offer was the one thing that retrieved nothing.
+        // OPTION 3 (2026-09-14). A question with real terms that matches no skill
+        // is about a topic no skill covers - "What is the capital of France". The
+        // no-match path used to list capability names at it anyway, and on a P30
+        // that 131-char list of "model.selection, model.catalogue…" was enough to
+        // make a 0.6B answer "I need clarification" instead of "Paris". Nothing
+        // injected is the right amount; the overview path above still serves a
+        // genuine "what can you do".
         var store = new InMemorySkillStore();
         await store.UpsertAsync("calendar-summariser",
             new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
         var builder = new SkillContextBuilder(store);
 
-        var listing = await builder.BuildContextAsync("nothing matches this");
+        var result = await builder.BuildContextAsync("what is the capital of France");
+
+        Assert.Equal(string.Empty, result);
+    }
+
+    [Fact]
+    public async Task BuildContextAsync_TheCompactListingsIdsCanBeLookedBackUp()
+    {
+        // Closes the loop the compact listing opens. An overview question prints
+        // ids and invites the model to "ask to expand" — so asking BY THAT ID has
+        // to return the body. Search covered name, description and tags but not
+        // the id, so the only handle on offer once retrieved nothing.
+        var store = new InMemorySkillStore();
+        await store.UpsertAsync("calendar-summariser",
+            new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
+        var builder = new SkillContextBuilder(store);
+
+        var listing = await builder.BuildContextAsync("what can you do");
         Assert.Contains("calendar-summariser", listing);
 
         var expanded = await builder.BuildContextAsync("calendar-summariser");

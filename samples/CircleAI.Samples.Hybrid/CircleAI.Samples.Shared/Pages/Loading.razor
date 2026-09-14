@@ -16,7 +16,18 @@
         person does not press a button to make their phone useful.
       - It gets OUT OF THE WAY. On the fifth launch everything is present, the
         census is all ticks, and this is a half-second receipt on the way to Home.
-        On the first it is doing real work and takes as long as the work takes.
+
+    IT DOES NOT HOLD YOU UNTIL THE LAST BYTE. This screen used to sit on a fresh
+    install for the whole of ~800 MB - full screen, no bottom bar, no circle, no
+    tour - because it awaited the entire plan before navigating. There was no way
+    out of it and nothing to do in it.
+
+    The plan is ordered so the phone becomes useful soonest: the voice and the
+    ears come before the brain. The moment those two have landed the phone can
+    hold a conversation, and that is the moment this screen leaves. The download
+    is not cancelled and not restarted - ISetup owns the run, RunAsync attaches
+    to one already in flight, and IsRunning exists for exactly this. Home shows
+    the rest of it coming down with the bar under it.
 *@
 @page "/"
 @inject ISetup Wizard
@@ -66,10 +77,10 @@
            fetched, so a phone that has everything shows a clean census and no
            bar rather than a full one that reads as stuck. *@
         <div class="loading-bar"><span style="width:@($"{p.Fraction * 100:0}%")"></span></div>
-        <p class="loading-step">
-            @p.Title
-            <span class="loading-of">@Remaining(p.Remaining)</span>
-        </p>
+        @* ONE FORMATTER, ON THE RECORD. This screen and Home both show the same
+           run now, and Describe is also the only thing that notices the Checking
+           phase - which this page used to render as a frozen countdown. *@
+        <p class="loading-step">@p.Describe()</p>
     }
 </div>
 
@@ -82,6 +93,9 @@
     string? _warming;
     bool _left;
     bool _started;
+
+    /// <summary>When the census first painted, so every exit holds equally long.</summary>
+    DateTimeOffset _shownAt;
 
     // HOW LONG THE CENSUS IS ON SCREEN, from first paint. Long enough to read a
     // short list and take it in - Aether's honesty screen is meant to be sat on,
@@ -123,7 +137,7 @@
         // null. The hold only means anything once there is something to hold.
         await _censusReady.Task;
 
-        var shownAt = DateTimeOffset.UtcNow;
+        var shownAt = _shownAt = DateTimeOffset.UtcNow;
 
         // Nothing missing: a receipt. Hold it long enough to read, then warm.
         if (_census is null || _census is { Total: > 0 } c && c.Present >= c.Total)
@@ -144,6 +158,7 @@
         try
         {
             var fresh = await Wizard.CensusAsync();
+            if (_left) return;
             _census = fresh;
             await InvokeAsync(StateHasChanged);
         }
@@ -168,6 +183,11 @@
         var lastIndex = -1;
         var progress = new Progress<SetupProgressReport>(report =>
         {
+            // THE RUN OUTLIVES THIS PAGE NOW. Once the handover has happened the
+            // component is disposed and StateHasChanged on it throws - which,
+            // on the server head, takes the circuit down rather than the page.
+            if (_left) return;
+
             _progress = report;
 
             if (report.Index != lastIndex)
@@ -175,6 +195,9 @@
                 lastIndex = report.Index;
                 // An item finished; re-census off the UI thread, then repaint.
                 _ = RefreshCensusAsync();
+
+                // ...and it may have been the one that made the phone usable.
+                _ = HandOverIfTalkableAsync();
             }
 
             InvokeAsync(StateHasChanged);
@@ -182,6 +205,9 @@
 
         try { await Wizard.RunAsync(progress); }
         catch { /* a failed fetch leaves the census truthful: it is still missing */ }
+
+        // Somebody is already on Home watching the rest of this arrive.
+        if (_left) return;
 
         // The download is done, whatever it managed to get. Re-read the census
         // so the last tick is current, then go.
@@ -191,6 +217,43 @@
         // last thing worth seeing before Home.
         await HoldAtLeast(shownAt, ReadableMs);
         await LeaveAsync();
+    }
+
+    /// <summary>Leave the moment the phone can hold a conversation.</summary>
+    /// <remarks>
+    /// CanTalk, NOT Stage. Waiting for ReadyStage.Ready would wait for the
+    /// BRAIN, which is most of the download and none of the reason somebody can
+    /// start using the phone. CanTalk is the part that tracks what has actually
+    /// landed - voice present AND ears present - and it is true from the moment
+    /// those two arrive, which the plan orders first on purpose.
+    /// <para>
+    /// It is also the one field every head answers the same way. The stage a
+    /// running setup reports is a judgement about wording; CanTalk is a fact
+    /// about bytes.
+    /// </para>
+    /// <para>
+    /// The same readable hold as every other exit. Handing over the instant a
+    /// row ticks would make the census a flash on a fast connection, and the
+    /// census is the screen.
+    /// </para>
+    /// </remarks>
+    async Task HandOverIfTalkableAsync()
+    {
+        if (_left) return;
+
+        try
+        {
+            var now = await Wizard.ReadinessAsync();
+            if (!now.CanTalk || _left) return;
+
+            await HoldAtLeast(_shownAt, ReadableMs);
+            await LeaveAsync();
+        }
+        catch
+        {
+            // A readiness read that fails is not a reason to hold somebody on a
+            // loading screen; the fetch carries on and the normal exit still runs.
+        }
     }
 
     /// <summary>
@@ -283,13 +346,6 @@
         < 1024L * 1024 => $"{bytes / 1024.0:0} KB",
         < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0} MB",
         _ => $"{bytes / (1024.0 * 1024 * 1024):0.0} GB",
-    };
-
-    static string Remaining(TimeSpan left) => left switch
-    {
-        { TotalSeconds: < 1 } => "almost there",
-        { TotalMinutes: >= 1 } => $"about {left.TotalMinutes:0} min left",
-        _ => $"about {left.TotalSeconds:0} sec left",
     };
 
     public void Dispose() => _left = true;

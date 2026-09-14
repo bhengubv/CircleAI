@@ -44,7 +44,7 @@
          phones, so "did my build actually land" was unanswerable from adb. This
          number is in the manifest, `dumpsys package` reads it back, and it moves
          only when somebody changes it here. -->
-    <ApplicationVersion>9</ApplicationVersion>
+    <ApplicationVersion>20</ApplicationVersion>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->
@@ -104,6 +104,10 @@
     <ProjectReference Include="..\..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
+    <!-- ProceduralMusicBedGenerator, behind IMakesMusic. Pure managed arithmetic:
+         no model, no download, no network, which is most of why it is worth
+         offering on a phone that has just been unboxed. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Music\CircleAI.Music.csproj" />
     <!-- AndroidDeviceMemory. Without it DeviceProbe reads the GC heap limit rather
          than the phone's RAM, every model fails its fit check, and the abilities
          screen reports "Needs more memory" for all of them. -->
@@ -203,22 +207,27 @@
          that ABI VoiceWiring falls through to the out-of-process app. The lib
          and the data are version-locked - both espeak-ng 1.52.0 - so they move
          together or not at all. -->
-    <AndroidNativeLibrary Include="../../CircleAI.Samples.Android/native/arm64-v8a/libespeak-ng.so"
+    <AndroidNativeLibrary Include="../../../src/CircleAI.Voice/runtimes/android-arm64/native/libespeak-ng.so"
                           Abi="arm64-v8a" />
-    <AndroidAsset Include="..\..\CircleAI.Samples.Android\Assets\espeak-ng-data.zip"
+    <AndroidAsset Include="../../../src/CircleAI.Voice/assets/espeak-ng-data.zip"
                   Link="espeak-ng-data.zip" />
   </ItemGroup>
 
   <!--
-    THE SKILL LIBRARY, LINKED RATHER THAN COPIED - the same 5.1 MB file the
-    native head ships, by relative path, exactly as espeak above.
+    THE SKILL LIBRARY, FROM THE LIBRARY THAT OWNS IT.
 
-    Two heads, one artefact. A second copy in this directory would be 5 MB of
-    duplicate binary in git and, far worse, two libraries that drift: regenerate
-    one and the other phone quietly keeps last month's skills.
+    This used to reach into the other sample's Assets folder, because that is
+    where the espeak payload happened to land first and this head copied the
+    habit. A sample sourcing binaries for another sample is not a dependency with
+    a contract - it is one working tree depending on another's folder layout, and
+    moving a directory breaks a build that never declared a relationship.
+
+    It lives in CircleAI.Skills now, beside capabilities.json which is already an
+    EmbeddedResource there. Assets belong to the library that cannot work without
+    them.
   -->
   <ItemGroup>
-    <AndroidAsset Include="..\..\CircleAI.Samples.Android\Assets\skills.db.zip"
+    <AndroidAsset Include="../../../src/CircleAI.Skills/assets/skills.db.zip"
                   Link="skills.db.zip" />
   </ItemGroup>
 

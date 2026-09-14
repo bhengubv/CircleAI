@@ -135,11 +135,10 @@ public class BrandMarkAssetTests
         }
     }
 
-    [Fact]
-    public void The_native_launcher_icon_is_the_live_mark()
-        => AssertMarkShape(
-            Asset("samples", "CircleAI.Samples.Android", "Resources", "drawable",
-                  "ic_launcher_foreground.xml"), canvas: 108);
+    // The_native_launcher_icon_is_the_live_mark was here. It asserted the launcher
+    // foreground of samples/CircleAI.Samples.Android, which was retired on
+    // 2026-09-13 - both heads were samples of this SDK and only one of them is
+    // kept. The MAUI equivalent below covers the head that ships.
 
     [Fact]
     public void The_maui_launcher_foreground_is_the_live_mark()

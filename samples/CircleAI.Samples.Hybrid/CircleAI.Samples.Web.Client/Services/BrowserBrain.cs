@@ -14,6 +14,22 @@ namespace CircleAI.Samples.Web.Client.Services;
 public sealed class BrowserBrain : IBrain
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// NO TOOLS IN A TAB. The empty string tells the caller to keep whatever the
+    /// streamed pass produced, rather than replacing a real answer with nothing.
+    /// </remarks>
+    public Task<string> AskWithToolsAsync(string prompt, CancellationToken ct = default)
+        => Task.FromResult(string.Empty);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// ZERO MEANS DO NOT RESIZE, because there is nothing to resize FOR: a tab
+    /// has no vision model. Returning 512 here would have the screen shrink a
+    /// picture to fit a model that is not there.
+    /// </remarks>
+    public int MaxImageEdge => 0;
+
+    /// <inheritdoc />
     public Task<BrainState> StateAsync(CancellationToken ct = default)
         => Task.FromResult(new BrainState(false,
             "Answering runs on the phone. Install the app to have a conversation."));

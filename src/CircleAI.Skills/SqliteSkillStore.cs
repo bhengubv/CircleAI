@@ -42,19 +42,38 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
 
     private readonly SqliteConnection _conn;
     private readonly bool _fts;
+    private readonly bool _identifyingOnly;
     private bool _disposed;
 
     /// <summary>Whether full-text search is available, or LIKE is standing in.</summary>
     public bool FullTextAvailable => _fts;
 
     /// <summary>Open or create the database at <paramref name="path"/>.</summary>
-    public SqliteSkillStore(string path)
+    /// <param name="identifyingMatchOnly">
+    /// WHAT COUNTS AS A MATCH, AND IT IS A PRODUCT DECISION, NOT A STORE ONE.
+    /// <para>
+    /// Default false: a query matches a skill's name, tags OR description - the
+    /// store's general contract, and what Search_finds_a_skill_by_its_description
+    /// and the edit/punctuation/scale tests rely on.
+    /// </para>
+    /// <para>
+    /// True narrows a match to name and tags - what a skill IS, not what its
+    /// prose happens to say. The LIBRARY is opened this way, because its only
+    /// runtime path is turn-time injection into every chat turn, and a P30 got
+    /// hunt-ssrf injected for "What is the capital of France" - "capital"
+    /// Porter-stems into "capitalize" inside that skill's description. A general
+    /// question names no skill's task, so under this mode it pulls nothing.
+    /// Measured 2026-09-14.
+    /// </para>
+    /// </param>
+    public SqliteSkillStore(string path, bool identifyingMatchOnly = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         var dir = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
+        _identifyingOnly = identifyingMatchOnly;
         _conn = new SqliteConnection($"Data Source={path}");
         _conn.Open();
         Tune();
@@ -219,6 +238,25 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         if (terms.Count == 0)
             return Task.FromResult<IReadOnlyList<SkillSummary>>([]);
 
+        // A WORD IN FOUR SKILLS OUT OF FIVE IS NOT A SEARCH TERM.
+        //
+        // Stopwords is a fixed list and cannot know this corpus. "name" is on no
+        // stopword list anywhere and appears in 79% of these 1,378 skills, so
+        // "Name three colours" matched 1,082 of them and a P30 was handed
+        // ui-ux-design, threejs and inspira-ui - 1,593 characters of web
+        // development dropped into a 4096-token window on a 0.6B model. The
+        // answer came back "Here is my name as an AI and the current weather as
+        // shown on your screen." Measured 2026-09-13.
+        //
+        // NOT A RANKING CHANGE. bm25 already weights a rare term far above a
+        // common one and gets the order right - OPEN-GAPS E15 is the scar from
+        // "fixing" the ranker instead, and SkillRelevanceMeasure keeps that exact
+        // query as a guard. This drops terms that carry no information BEFORE
+        // the match, so the hit SET means something; what survives is ranked
+        // exactly as it was.
+        terms = Discriminating(terms);
+
+
         if (_fts)
         {
             // OR, RANKED BY bm25, AND NOT "AND" - WHICH I TRIED AND HAD TO BACK OUT.
@@ -282,8 +320,11 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         if (terms.Count == 0) return [];
 
         using var cmd = _conn.CreateCommand();
-        var where = string.Join(" OR ", terms.Select((_, i) =>
-            $"name LIKE $t{i} OR description LIKE $t{i} OR tags LIKE $t{i}"));
+        // Same scope as the FTS path — see Identifying — so relevance does not
+        // depend on whether this build has FTS5.
+        var where = string.Join(" OR ", terms.Select((_, i) => _identifyingOnly
+            ? $"name LIKE $t{i} OR tags LIKE $t{i}"
+            : $"name LIKE $t{i} OR description LIKE $t{i} OR tags LIKE $t{i}"));
         cmd.CommandText =
             $"SELECT id, name, description, tags, source FROM skills WHERE {where} ORDER BY name;";
         for (var i = 0; i < terms.Count; i++)
@@ -313,26 +354,121 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     /// linguistics, and dropping a real word costs one term of an OR.
     /// </para>
     /// </remarks>
-    private static readonly HashSet<string> Stopwords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "a", "an", "and", "any", "are", "as", "at", "be", "by", "can", "could",
-        "did", "do", "does", "for", "from", "get", "give", "had", "has", "have",
-        "how", "i", "if", "in", "is", "it", "its", "make", "may", "me", "my", "of",
-        "on", "or", "please", "should", "show", "so", "some", "tell", "that", "the",
-        "their", "them", "then", "there", "these", "they", "this", "to", "us",
-        "was", "we", "were", "what", "when", "where", "which", "who", "why",
-        "will", "with", "would", "you", "your",
-    };
+    // Stopwords and Separators MOVED TO CircleAI.Core.SearchTerms. They used to
+    // live here as a private list; then the memory store hit the same spurious-
+    // match problem from the other side and needed the same list, and a copied
+    // stopword list is a second owner that drifts. One owner now, in the
+    // assembly both stores reference. See Terms below.
+    /// <summary>
+    /// Below this many skills, how often a word appears says nothing.
+    /// </summary>
+    /// <remarks>
+    /// Not tuned against the shipping library - chosen so that a share is a
+    /// share. The library is 1,378; a hand-built store in a test is one or two,
+    /// and a manifest is a few dozen.
+    /// </remarks>
+    private const int SmallestCorpusWorthCounting = 100;
 
-    private static readonly char[] Separators =
-        [' ', '\t', '\n', '\r', ',', '.', ';', ':', '?', '!', '(', ')', '"', '*', '\''];
+    /// <summary>How common a term is in this corpus, counted once and kept.</summary>
+    /// <remarks>
+    /// CACHED FOR THE LIFE OF THE STORE because the library is shipped read-only
+    /// and this is the hot path - it runs on every turn, before the person hears
+    /// anything. Cleared by a write, since a write can change the answer.
+    /// </remarks>
+    private readonly Dictionary<string, int> _seenIn = new(StringComparer.OrdinalIgnoreCase);
+    private int _corpus = -1;
+
+    /// <summary>Terms worth searching for: the ones not in most of the library.</summary>
+    /// <remarks>
+    /// NEVER RETURNS EMPTY WHEN IT WAS GIVEN SOMETHING. A question whose every
+    /// word is common is still a question, and answering it with nothing would
+    /// be strictly worse than the flooding this exists to stop - so the rarest
+    /// term survives. That keeps the floor at today's behaviour.
+    /// </remarks>
+    private List<string> Discriminating(List<string> terms)
+    {
+        if (terms.Count <= 1) return terms;
+
+        var total = Corpus();
+
+        // A SHARE OF NOTHING IS NOT A FREQUENCY, AND THREE TESTS CAUGHT THIS.
+        //
+        // The first cut applied the threshold whatever the corpus size. In a
+        // store holding one skill, every word that matches it is in 100% of the
+        // library and was dropped as noise - so "how do I docker compose things"
+        // threw away "docker" and "compose", kept "things", and found nothing.
+        // In a store of two, "threat" and "modeling" sat at 50% and went the
+        // same way.
+        //
+        // 79% of 1,378 is evidence. 50% of two is an accident of there being two.
+        // Below this floor the filter is off entirely, which is exactly the
+        // behaviour that existed before it.
+        if (total < SmallestCorpusWorthCounting) return terms;
+        if (total <= 0) return terms;
+
+        var kept = new List<string>(terms.Count);
+        var rarest = terms[0];
+        var rarestSeen = int.MaxValue;
+
+        foreach (var term in terms)
+        {
+            var seen = SeenIn(term);
+            if (seen < rarestSeen) { rarestSeen = seen; rarest = term; }
+
+            // A THIRD OF THE LIBRARY IS THE LINE. Past it a term is not
+            // narrowing anything: it is a word the corpus happens to like.
+            if ((double)seen / total <= 0.33) kept.Add(term);
+        }
+
+        return kept.Count > 0 ? kept : [rarest];
+    }
+
+    private int Corpus()
+    {
+        if (_corpus >= 0) return _corpus;
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT count(*) FROM skills;";
+            _corpus = Convert.ToInt32(cmd.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (SqliteException) { _corpus = 0; }
+        return _corpus;
+    }
+
+    private int SeenIn(string term)
+    {
+        if (_seenIn.TryGetValue(term, out var cached)) return cached;
+
+        var count = 0;
+        if (_fts)
+        {
+            try
+            {
+                using var cmd = _conn.CreateCommand();
+                cmd.CommandText = "SELECT count(*) FROM skills_fts WHERE skills_fts MATCH $q;";
+                cmd.Parameters.AddWithValue("$q", SafeMatch([term]));
+                count = Convert.ToInt32(cmd.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch (SqliteException)
+            {
+                // Unknown frequency: treat it as rare, so the term is kept and
+                // behaviour falls back to what it was.
+                count = 0;
+            }
+        }
+
+        _seenIn[term] = count;
+        return count;
+    }
 
     /// <summary>The searchable words of a query, stopwords removed.</summary>
+    /// <remarks>
+    /// ONE OWNER: CircleAI.Core.SearchTerms, which the memory store also uses,
+    /// so the two cannot drift.
+    /// </remarks>
     private static List<string> Terms(string query)
-        => [.. query
-            .Split(Separators, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length > 1 && !Stopwords.Contains(t))
-            .Take(8)];
+        => CircleAI.Core.SearchTerms.Significant(query);
 
     /// <summary>An FTS5 MATCH expression that cannot be a syntax error.</summary>
     /// <remarks>
@@ -340,8 +476,37 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     /// as syntax. A person's question contains those, so every term is wrapped in
     /// double quotes as a literal phrase and embedded quotes are doubled.
     /// </remarks>
-    private static string SafeMatch(IEnumerable<string> terms)
-        => string.Join(" OR ", terms.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""));
+    /// <summary>
+    /// The columns that say what a skill IS, rather than what it goes on to say.
+    /// </summary>
+    /// <remarks>
+    /// THE TWO SEARCH PATHS IN THIS CLASS DISAGREED, AND THE FTS ONE WAS THE
+    /// OUTLIER. The LIKE fallback a few lines below has always matched
+    /// `name`, `description`, `tags` and never `instructions`; the FTS path
+    /// matched all four. So whether a skill was considered relevant depended on
+    /// whether the device had FTS5 compiled in.
+    ///
+    /// It matters because `instructions` is the whole body text of a SKILL.md.
+    /// Asked "Name three colours", the phone was handed ui-ux-design, threejs
+    /// and inspira-ui - all genuine lexical matches, because the word "colours"
+    /// appears somewhere inside a web-design skill's body. None of them is ABOUT
+    /// colours. A skill is relevant to a question when the question is about
+    /// what the skill IS, and its name, description and tags are what say so.
+    ///
+    /// Measured against the shipping 1,378-skill library - SkillRelevanceMeasure
+    /// holds the numbers, including OPEN-GAPS E15's query as a guard, because
+    /// "threat modeling" must still find threat-modeling: that skill matches on
+    /// its NAME, which is exactly the distinction being drawn here.
+    /// </remarks>
+    /// <summary>The FTS5 columns a match is scoped to — see the constructor.</summary>
+    private string Identifying => _identifyingOnly ? "{name tags}" : "{name description tags}";
+
+    /// <summary>An FTS5 MATCH expression that cannot be a syntax error.</summary>
+    /// <remarks>Instance, not static: the column scope depends on this store's mode.</remarks>
+    private string SafeMatch(IEnumerable<string> terms)
+        => Identifying + " : ("
+         + string.Join(" OR ", terms.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""))
+         + ")";
 
     private static IReadOnlyList<SkillSummary> ReadSummaries(SqliteCommand cmd, CancellationToken ct)
     {
@@ -368,6 +533,13 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(draft);
+
+        // THE FREQUENCY CACHE IS NOW STALE. It is what decides which words are
+        // worth searching for, and a write changes the corpus it was counted
+        // against - see Discriminating.
+        _seenIn.Clear();
+        _corpus = -1;
+
 
         var key = string.IsNullOrWhiteSpace(id) ? Slug(draft.Name) : id!.Trim();
         var when = DateTimeOffset.UtcNow;
@@ -446,6 +618,13 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     {
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(id)) return Task.CompletedTask;
+
+        // THE FREQUENCY CACHE IS NOW STALE. It is what decides which words are
+        // worth searching for, and a write changes the corpus it was counted
+        // against - see Discriminating.
+        _seenIn.Clear();
+        _corpus = -1;
+
 
         using var tx = _conn.BeginTransaction();
         foreach (var sql in new[]

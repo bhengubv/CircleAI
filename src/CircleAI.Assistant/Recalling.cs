@@ -84,6 +84,49 @@ public static class Recalling
     /// somebody is the one failure this whole feature must not cause.
     /// </para>
     /// </remarks>
+    /// <summary>The question again, with the remembered facts taken back off.</summary>
+    /// <remarks>
+    /// RETRIEVAL IS NOT PROMPTING, AND ONE STRING WAS DOING BOTH. What
+    /// <see cref="Ask"/> builds is what the MODEL should read. It was also being
+    /// handed to the skill store and the RAG index as the thing to search for -
+    /// so a phone that remembered "Never deploy with -t:Install on this phone,
+    /// it wipes the models every time" searched 1,378 skills for those words
+    /// along with the actual question. Measured on a P30 on 2026-09-13.
+    /// <para>
+    /// The facts are the least relevant possible search terms: they are about
+    /// the PERSON, and what is being looked for is about the SUBJECT.
+    /// </para>
+    /// <para>
+    /// HERE RATHER THAN IN THE HOSTING LAYER, because this file owns the format.
+    /// CircleAI.Hosting cannot reference this assembly - the dependency runs the
+    /// other way - and a layer that reconstructed this heading by hand would be
+    /// a second owner of it, which is how the two drift.
+    /// </para>
+    /// <para>
+    /// Anything that is not one of ours passes through unchanged, so a caller
+    /// that never used <see cref="Ask"/> is unaffected.
+    /// </para>
+    /// </remarks>
+    public static string Question(string? asked)
+    {
+        if (string.IsNullOrWhiteSpace(asked)) return asked ?? string.Empty;
+        if (!asked.StartsWith(Heading, StringComparison.Ordinal)) return asked;
+
+        // The question is the last paragraph - Ask separates it with a blank
+        // line, which is the only blank line the composed form contains.
+        var split = asked.IndexOf(Environment.NewLine + Environment.NewLine, StringComparison.Ordinal);
+        if (split < 0) return asked;
+
+        var question = asked[(split + (Environment.NewLine.Length * 2))..].Trim();
+
+        // A composed prompt with nothing after the facts should not retrieve on
+        // the facts; it should retrieve on nothing.
+        return question;
+    }
+
+    /// <summary>The one line that marks a composed prompt, written once.</summary>
+    private const string Heading = "Things you already know about them:";
+
     public static string Ask(string heard, IReadOnlyList<Remembered>? known)
     {
         if (known is null || known.Count == 0) return heard;
@@ -96,7 +139,7 @@ public static class Recalling
 
         if (facts.Count == 0) return heard;
 
-        return "Things you already know about them:" + Environment.NewLine
+        return Heading + Environment.NewLine
              + string.Join(Environment.NewLine, facts)
              + Environment.NewLine + Environment.NewLine
              + heard;

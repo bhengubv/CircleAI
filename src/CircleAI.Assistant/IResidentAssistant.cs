@@ -30,6 +30,27 @@ public enum ResidentState
 
     /// <summary>This platform cannot do it at all — see the browser.</summary>
     Unsupported,
+
+    /// <summary>
+    /// Listening, but only while the app is on screen.
+    /// </summary>
+    /// <remarks>
+    /// THE VENDOR KILLED THE SERVICE AND THIS IS WHAT IS LEFT. Huawei, Xiaomi,
+    /// Oppo and Vivo stop foreground services on their own schedule whatever the
+    /// notification says, and on those phones the resident path returns without
+    /// the microphone. The honest answer is not Failed - something IS listening -
+    /// and it is not Listening either, because closing the app ends it.
+    /// <para>
+    /// Appended rather than slotted in beside Listening so no existing value
+    /// changes number.
+    /// </para>
+    /// <para>
+    /// Screens must treat this as ON with a caveat: the switch stays on, and the
+    /// Hint - which for every other state is an error - is the caveat and has to
+    /// be shown.
+    /// </para>
+    /// </remarks>
+    ScreenOnly,
 }
 
 /// <summary>What the resident listener is doing, in words a person can read.</summary>

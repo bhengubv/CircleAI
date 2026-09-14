@@ -394,6 +394,21 @@ internal sealed class FakeSpokenLanguage : ISpokenLanguage
 /// </remarks>
 internal sealed class FakeBrain : IBrain
 {
+    /// <summary>Settable so a test can assert the screen RESIZES to what it is told.</summary>
+    public int MaxImageEdge { get; init; } = 512;
+
+    /// <summary>What the agentic second pass answers, and whether it ran.</summary>
+    public string ToolAnswer { get; init; } = "";
+
+    /// <summary>How many times the caller fell back to the tool path.</summary>
+    public int ToolTurns { get; private set; }
+
+    public Task<string> AskWithToolsAsync(string prompt, CancellationToken ct = default)
+    {
+        ToolTurns++;
+        return Task.FromResult(ToolAnswer);
+    }
+
     public string Answer { get; init; } = "translated";
     public bool Ready { get; init; } = true;
     public Exception? Throws { get; init; }
@@ -418,3 +433,59 @@ internal sealed class FakeFormFactor : IFormFactor
     public string GetPlatform() => "Test";
     public bool IsOnDevice { get; init; } = true;
 }
+
+/// <summary>A music maker that can, so the page renders its working half.</summary>
+/// <remarks>
+/// NoMusic WOULD ALSO RESOLVE, and would test the wrong thing: Available is
+/// false on it, so every assertion about moods, making and sharing would pass
+/// against a screen showing "not on this phone".
+/// </remarks>
+internal sealed class FakeMusic : IMakesMusic
+{
+    /// <summary>Whether the screen should offer to make anything.</summary>
+    public bool Available { get; init; } = true;
+
+    /// <summary>What MakeAsync hands back, or null for "could not".</summary>
+    public string? Made { get; init; } = "/tmp/bed-Calm.wav";
+
+    /// <summary>Whether the share sheet finds anything that takes a WAV.</summary>
+    public bool ShareWorks { get; init; } = true;
+
+    /// <summary>What was asked for, so a test can check the screen asked at all.</summary>
+    public List<MusicMood> Asked { get; } = [];
+
+    /// <summary>What the screen asked to send, in order.</summary>
+    public List<string> Shared { get; } = [];
+
+    public IReadOnlyList<MusicMood> Moods { get; } = [.. Enum.GetValues<MusicMood>()];
+
+    public Task<string?> MakeAsync(
+        MusicMood mood, TimeSpan length, CancellationToken ct = default)
+    {
+        Asked.Add(mood);
+        return Task.FromResult(Made);
+    }
+
+    public Task<bool> ShareAsync(string path, CancellationToken ct = default)
+    {
+        Shared.Add(path);
+        return Task.FromResult(ShareWorks);
+    }
+}
+
+/// <summary>A player that records what it was asked for rather than playing it.</summary>
+internal sealed class FakePlayer : IPlaysMedia
+{
+    /// <summary>What the screen handed over, in order.</summary>
+    public List<string> Played { get; } = [];
+
+    /// <summary>What to report back.</summary>
+    public PlayResult Result { get; init; } = PlayResult.Playing;
+
+    public Task<PlayResult> PlayAsync(string what, CancellationToken ct = default)
+    {
+        Played.Add(what);
+        return Task.FromResult(Result);
+    }
+}
+

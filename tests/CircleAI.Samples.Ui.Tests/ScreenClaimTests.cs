@@ -86,14 +86,44 @@ public class ChatScreenTests : TestContext
     }
 
     [Fact]
-    public void A_ready_phone_is_invited_to_ask()
+    public void A_ready_phone_is_given_something_to_press()
     {
+        // THIS USED TO ASSERT "Ask it something", AND THE SCREEN WAS RIGHT TO
+        // STOP SAYING IT. That line asks a person to invent an example before
+        // they have seen the thing work, and the commonest reason somebody
+        // closes an assistant in the first ten seconds is not knowing what to
+        // say to it. The other head opened with suggestions; this one did not.
+        //
+        // So the assertion is on the behaviour rather than the wording: an empty
+        // chat on a ready phone offers examples that can be pressed. Copy is
+        // allowed to change; having nothing to press is the regression.
         this.WireEverything();
 
         var chat = RenderComponent<Chat>();
 
         chat.WaitForAssertion(() =>
-            Assert.Contains("Ask it something", chat.Find(".empty").TextContent));
+            Assert.NotEmpty(chat.FindAll(".empty button.suggestion")));
+    }
+
+    [Fact]
+    public void Pressing_a_suggestion_asks_it()
+    {
+        // A suggestion that fills the box and waits is the same blank page with
+        // extra steps.
+        this.WireEverything();
+
+        var chat = RenderComponent<Chat>();
+        chat.WaitForAssertion(() =>
+            Assert.NotEmpty(chat.FindAll(".empty button.suggestion")));
+
+        // .ToList() FIRST, LIKE EVERY OTHER FindAll IN THIS FILE. Indexing the
+        // IHtmlCollection directly throws MissingMethodException against the
+        // AngleSharp this project resolves.
+        var example = chat.FindAll(".empty button.suggestion").ToList()[0].TextContent.Trim();
+        chat.FindAll(".empty button.suggestion").ToList()[0].Click();
+
+        chat.WaitForAssertion(() =>
+            Assert.Contains(example, chat.Markup, StringComparison.Ordinal));
     }
 }
 

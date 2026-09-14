@@ -68,6 +68,23 @@ public sealed class SkillContextBuilder
         }
         else
         {
+            // COMPACT MODE IS FOR A SELF / OVERVIEW QUESTION, NOT EVERY MISS.
+            //
+            // "What can you do" reduces to zero significant terms - every word is
+            // a stopword - and there a short capability list is the most useful
+            // thing to hand the model. But "What is the capital of France" has
+            // real terms ({capital, France}) that simply matched no skill, and
+            // listing "model.selection, model.catalogue…" at a geography question
+            // is the noise that made a P30's 0.6B answer "I need clarification"
+            // instead of "Paris". Measured 2026-09-14, enrichment=131 and still
+            // wrong; nothing injected is the right amount here.
+            //
+            // The distinction is the query itself: no significant terms => the
+            // person is asking WHAT this is, so overview; real terms with no
+            // match => a topic no skill covers, so silence.
+            if (CircleAI.Core.SearchTerms.Significant(userQuery).Count > 0)
+                return string.Empty;
+
             var all = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
             if (all.Count == 0) return string.Empty;
 

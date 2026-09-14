@@ -8,11 +8,26 @@
 // noticed for weeks, and it was found by grepping every injection against every
 // Program.cs by hand.
 //
+// AND THEN IT DID NOT FIND THE NEXT THREE, because it was a hand-written list of
+// fourteen [Fact]s and three pages were added without anybody adding a line.
+// Find, Seeing and Music had no coverage at all; Transcribe had none either. The
+// container could not even have built them - IMakesMusic, IPlaysMedia and
+// IKeepsTranscripts were all missing from WireEverything - so the two ways of
+// not noticing were pointing at each other, each looking like the other's job.
+//
+// So the list is gone. This asks the assembly which components carry a route,
+// which is the same question the Router asks at runtime: a page that is
+// reachable in the app is a page that is tested here, and adding one is not
+// something anybody can forget to do.
+//
 // A page that renders is not a page that works. But a page that CANNOT render is
 // never worth debugging further, and that is cheap to know.
 
+using System.Reflection;
 using Bunit;
 using CircleAI.Samples.Shared.Pages;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 
 namespace CircleAI.Samples.Ui.Tests;
 
@@ -20,18 +35,58 @@ public class EveryPageRendersTests : TestContext
 {
     public EveryPageRendersTests() => this.WireEverything();
 
-    [Fact] public void Loading()   => Assert.NotNull(RenderComponent<Loading>().Markup);
-    [Fact] public void Home()      => Assert.NotEmpty(RenderComponent<Home>().Markup);
-    [Fact] public void Services()  => Assert.NotEmpty(RenderComponent<Services>().Markup);
-    [Fact] public void Settings()  => Assert.NotEmpty(RenderComponent<Settings>().Markup);
-    [Fact] public void Translate() => Assert.NotEmpty(RenderComponent<Translate>().Markup);
-    [Fact] public void Languages() => Assert.NotEmpty(RenderComponent<Languages>().Markup);
-    [Fact] public void Abilities() => Assert.NotEmpty(RenderComponent<Abilities>().Markup);
-    [Fact] public void Career()    => Assert.NotEmpty(RenderComponent<Career>().Markup);
-    [Fact] public void JobSpec()   => Assert.NotEmpty(RenderComponent<JobSpec>().Markup);
-    [Fact] public void Chat()      => Assert.NotEmpty(RenderComponent<Chat>().Markup);
-    [Fact] public void You()       => Assert.NotEmpty(RenderComponent<You>().Markup);
-    [Fact] public void WakeWord()  => Assert.NotEmpty(RenderComponent<WakeWord>().Markup);
-    [Fact] public void Setup()     => Assert.NotEmpty(RenderComponent<Setup>().Markup);
-    [Fact] public void NotFound()  => Assert.NotEmpty(RenderComponent<NotFound>().Markup);
+    /// <summary>Every routable component in the shared page library.</summary>
+    /// <remarks>
+    /// THE SAME QUESTION THE ROUTER ASKS. Routes.razor sets AppAssembly from a
+    /// type in this assembly and Blazor then scans it for RouteAttribute; this
+    /// scans the same assembly for the same attribute, so the set here and the
+    /// set a person can navigate to cannot drift apart.
+    /// </remarks>
+    static IReadOnlyList<Type> Routable { get; } =
+        [.. typeof(Home).Assembly
+            .GetTypes()
+            .Where(t => t is { IsAbstract: false, IsGenericTypeDefinition: false })
+            .Where(t => typeof(IComponent).IsAssignableFrom(t))
+            .Where(t => t.GetCustomAttributes<RouteAttribute>().Any())
+            .OrderBy(t => t.Name, StringComparer.Ordinal)];
+
+    public static TheoryData<Type> EveryRoutablePage()
+    {
+        var data = new TheoryData<Type>();
+        foreach (var page in Routable) data.Add(page);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryRoutablePage))]
+    public void It_renders(Type page)
+    {
+        // Rendered by Type rather than by generic argument, because the whole
+        // point is that this file does not name the pages.
+        var cut = Render(builder =>
+        {
+            builder.OpenComponent(0, page);
+            builder.CloseComponent();
+        });
+
+        Assert.NotNull(cut.Markup);
+    }
+
+    [Fact]
+    public void The_scan_actually_found_the_screens()
+    {
+        // A REFLECTION QUERY THAT MATCHES NOTHING PASSES EVERY THEORY IT FEEDS.
+        // Without this, renaming the pages namespace or moving Home would turn
+        // the whole file green and silent, which is worse than the hand-written
+        // list it replaced.
+        Assert.True(Routable.Count >= 15,
+            $"only {Routable.Count} routable pages found - the scan is probably broken");
+
+        // The three that had no coverage at all, named here so a future refactor
+        // that quietly drops one has to argue with a test.
+        Assert.Contains(typeof(Find), Routable);
+        Assert.Contains(typeof(Seeing), Routable);
+        Assert.Contains(typeof(Music), Routable);
+        Assert.Contains(typeof(Transcribe), Routable);
+    }
 }

@@ -241,16 +241,34 @@ public class CompositeSkillStoreTests
     {
         // The other half. Fixing the above by never letting the library answer
         // would be a library nothing can reach.
+        //
+        // THE LIBRARY IS A TOKENIZING STORE, LIKE THE PHONE'S. This used to use
+        // InMemorySkillStore, whose MatchesQuery matches the WHOLE query as a
+        // substring - so "how do I write a commit message" never actually matched
+        // "Commit messages", and the test only passed because the no-match path
+        // listed the name in compact mode. Once compact stopped firing for a
+        // term-bearing question (Option 3), that crutch was gone and the gap
+        // showed. SqliteSkillStore tokenizes, the way the device's library does,
+        // so this now proves a REAL match reaches the library.
         var manifest = new ReadOnlyStore(("offline", Draft("Offline", "runs on this phone")));
-        var library = new InMemorySkillStore();
-        await library.UpsertAsync("commit", Draft(
-            "Commit messages", "write a good commit message", "imperative mood"));
+        var dbPath = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), "composite-reach-" + System.Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var library = new SqliteSkillStore(dbPath, identifyingMatchOnly: true);
+            await library.UpsertAsync("commit", Draft(
+                "Commit messages", "write a good commit message", "commit"));
 
-        var composite = new CompositeSkillStore(manifest, library);
-        var builder = new SkillContextBuilder(composite, maxSkills: 5, maxChars: 1500);
+            var composite = new CompositeSkillStore(manifest, library);
+            var builder = new SkillContextBuilder(composite, maxSkills: 5, maxChars: 1500);
 
-        var block = await builder.BuildContextAsync("how do I write a commit message");
+            var block = await builder.BuildContextAsync("how do I write a commit message");
 
-        Assert.Contains("commit", block, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("commit", block, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            try { System.IO.File.Delete(dbPath); } catch { /* temp */ }
+        }
     }
 }

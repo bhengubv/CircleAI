@@ -109,6 +109,20 @@ internal static class TestHost
         s.AddSingleton<IWakePhrases>(new FakeWakePhrases());
         s.AddSingleton<IWakeWord>(new FakeWakeWord());
 
+        // THE THREE NOTHING REGISTERED, WHICH IS WHY THREE PAGES HAD NO TESTS.
+        // Music injects IMakesMusic and IPlaysMedia and Transcribe injects
+        // IKeepsTranscripts; none of the three was here, so those pages could not
+        // be built by this container at all - and the hand-written list of pages
+        // in EveryPageRendersTests simply did not mention them. Two ways of not
+        // noticing, pointing at each other.
+        s.AddSingleton<IMakesMusic>(new FakeMusic());
+        s.AddSingleton<IPlaysMedia>(new FakePlayer());
+
+        // The real null object, because a browser tab genuinely has nowhere to
+        // keep somebody's meeting - so this is the head's actual answer, not a
+        // stand-in for one.
+        s.AddSingleton<IKeepsTranscripts>(KeepsNoTranscripts.Instance);
+
         // BUILT THE SAME WAY THE APP BUILDS IT. Handing the tests a
         // hand-assembled registry would let the app ship with a different set of
         // capabilities from the one every test passes against - which is the

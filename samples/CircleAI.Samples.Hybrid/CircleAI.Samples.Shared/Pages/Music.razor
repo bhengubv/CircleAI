@@ -1,0 +1,186 @@
+@*
+    Make music.
+
+    THE ONE THAT NEEDS NOTHING INSTALLED. No model, no download, no signal - the
+    generator is arithmetic. On a phone still fetching half a gigabyte of weights
+    this is one of the few things the app can actually do, which is exactly why
+    it belongs on a screen rather than buried.
+
+    It was in the native sample and nowhere here, and CircleAI.Music had no other
+    consumer in the repo - so retiring that sample would have retired the feature.
+
+    THE GENERATOR IS NOT CALLED FROM HERE. This library is loaded by a browser,
+    so it cannot reference CircleAI.Music any more than it can reference the
+    inference stack. IMakesMusic is the seam, the same way IBrain and IVoiceHost
+    already are, and a tab answers Available: false rather than offering a button
+    that does nothing.
+*@
+@page "/music"
+@* Named Maker, not Music: a member may not share its enclosing type's name,
+   and the generated class for this page is called Music. *@
+@inject IMakesMusic Maker
+@inject IPlaysMedia Player
+
+<div class="music">
+
+    @if (!Maker.Available)
+    {
+        @*
+            SAID PLAINLY, NOT HIDDEN. A capability this head does not have is a
+            fact worth stating - the alternative is somebody looking for a
+            feature the menu offered and finding an empty screen.
+        *@
+        <p class="music-none">
+            Making music needs the app on a phone. This is the web version.
+        </p>
+    }
+    else
+    {
+        <p class="music-lead">
+            Pick a feel. It is made on this phone, with nothing installed.
+        </p>
+
+        <div class="music-moods">
+            @foreach (var mood in Maker.Moods)
+            {
+                <button class="music-mood @(mood == _chosen ? "music-mood-on" : null)"
+                        @onclick="() => Make(mood)" disabled="@_busy">
+                    @mood
+                </button>
+            }
+        </div>
+
+        @if (_status is { Length: > 0 })
+        {
+            <p class="music-status" role="status">@_status</p>
+        }
+
+        @if (_made is { Length: > 0 } && !_busy)
+        {
+            <button class="music-play" @onclick="Play">Play it again</button>
+
+            @*
+                AND OFF THE PHONE, which is where this screen used to stop.
+
+                It printed the app-private path and called that done - a real
+                WAV, in a folder nothing on the phone can browse to, which for
+                the person holding it is the same as not having made anything.
+                The native screen offered "Save as WAV" through a document
+                picker; a page in a WebView has no picker, so this is the share
+                sheet, which reaches the file manager, WhatsApp and the downloads
+                folder alike.
+            *@
+            <button class="music-play" @onclick="Send">Send it somewhere</button>
+
+            @* STILL SAID, because the sheet can be declined or refused and the
+               file is real either way. *@
+            <p class="music-where">Saved as <code>@_made</code></p>
+        }
+    }
+
+</div>
+
+@code {
+    /// <summary>
+    /// Thirty seconds, matching the native screen.
+    /// </summary>
+    /// <remarks>
+    /// LONG ENOUGH TO BE A PIECE, short enough that a P30 finishes it while
+    /// somebody is still looking at the screen - measured there at 684 ms for
+    /// thirty seconds of audio.
+    /// </remarks>
+    static readonly TimeSpan Length = TimeSpan.FromSeconds(30);
+
+    MusicMood? _chosen;
+    string _made = "";
+    string _status = "";
+    bool _busy;
+
+    async Task Make(MusicMood mood)
+    {
+        if (_busy) return;
+
+        _busy = true;
+        _chosen = mood;
+        _made = "";
+        _status = "Making it…";
+
+        try
+        {
+            var path = await Maker.MakeAsync(mood, Length);
+
+            if (path is null)
+            {
+                _status = "That did not come out. Try another feel.";
+                return;
+            }
+
+            _made = path;
+            _status = "";
+            await Play();
+        }
+        catch (Exception ex)
+        {
+            _status = Trouble.Say(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Play what was made.
+    /// </summary>
+    /// <remarks>
+    /// IPlaysMedia RATHER THAN AN AUDIO TAG, because the file is on the phone's
+    /// own storage and a WebView cannot reach it without a content provider. The
+    /// interface already exists and already has an Android implementation and a
+    /// no-op for the web, so this is the seam rather than a new one.
+    /// </remarks>
+    /// <summary>Hand the finished piece to whatever the person wants to do with it.</summary>
+    /// <remarks>
+    /// NOT A FAILURE WHEN IT RETURNS FALSE. A phone with no app that takes audio
+    /// still has the file, and the path is still on screen underneath - so this
+    /// says what happened rather than treating a missing share sheet as a lost
+    /// piece of music.
+    /// </remarks>
+    async Task Send()
+    {
+        if (_made is not { Length: > 0 } || _busy) return;
+
+        try
+        {
+            if (!await Maker.ShareAsync(_made))
+                _status = "Nothing on this phone takes a WAV. It is saved below.";
+        }
+        catch (Exception ex)
+        {
+            _status = Trouble.Say(ex);
+        }
+    }
+
+    async Task Play()
+    {
+        if (_made.Length == 0) return;
+
+        try
+        {
+            // THE RESULT IS NOT DECORATION. PlayAsync answers Playing, NoPlayer or
+            // NotHere, and silence with no explanation is the single most common
+            // way an audio feature looks broken when it is merely unwired.
+            var played = await Player.PlayAsync(_made);
+
+            _status = played switch
+            {
+                PlayResult.Playing  => "",
+                PlayResult.NoPlayer => "Made it. This phone has nothing to play it with.",
+                _                   => "Made it, but it could not be found to play.",
+            };
+        }
+        catch (Exception ex)
+        {
+            _status = $"Made it, but could not play it: {ex.Message}";
+        }
+    }
+}

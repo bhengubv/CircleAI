@@ -199,3 +199,57 @@
     color: var(--brand-blue);
     text-decoration: none;
 }
+
+
+/*
+    THE SAME BAR, WITH A NUMBER BEHIND IT.
+
+    .bar above is indeterminate because the warm-up reports in words. The setup
+    run reports a fraction, so its fill is set rather than swept - an animation
+    over a known quantity throws the quantity away.
+*/
+.bar-known > span {
+    animation: none;
+    width: 0;
+    transition: width 240ms linear;
+}
+
+/*
+    WHAT THERE IS TIME FOR, while the brain comes down. The same card as the
+    setup screen's, because it is the same offer - copied rather than shared
+    because scoped CSS is per component, and a class that looks identical and
+    is not would be worse than the duplicate.
+*/
+.tour {
+    width: calc(100% - 48px);
+    background: var(--card);
+    box-shadow: var(--shadow);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-top: 12px;
+    text-align: left;
+}
+
+.tour-title { font-size: 17px; font-weight: 700; color: var(--brand-blue); }
+
+.tour-body {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+.tour-action {
+    font: inherit;
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    text-decoration: none;
+    cursor: pointer;
+}

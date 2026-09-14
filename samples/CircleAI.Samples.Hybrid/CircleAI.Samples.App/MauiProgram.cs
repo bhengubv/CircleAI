@@ -5,6 +5,7 @@
 
 using CircleAI.Assistant;
 using CircleAI.Assistant.Device;
+using CircleAI.Assistant.Voice;   // FileTranscriptStore
 using Microsoft.Extensions.Logging;
 using CircleAI.Memory;
 
@@ -54,6 +55,27 @@ public static class MauiProgram
         // search intent, so whatever music app is installed answers it and no
         // app is named in code.
         builder.Services.AddSingleton<IPlaysMedia, AndroidMediaPlayer>();
+
+        // MUSIC, WHICH NEEDS NOTHING INSTALLED. ProceduralMusicBedGenerator has
+        // been in CircleAI.Music the whole time with exactly one consumer - the
+        // native sample that is being retired - so without this registration the
+        // capability leaves with it.
+        builder.Services.AddSingleton<IMakesMusic, DeviceMusic>();
+
+        // TRANSCRIPTS ARE KEPT, WHICH THIS HEAD NEVER DID.
+        //
+        // Transcribe produced a meeting and threw it away the moment you left
+        // the screen: no IKeepsTranscripts was ever registered here, so
+        // AsSubtitles had nothing to render and Find had half a corpus to search.
+        // The native head kept them; FileTranscriptStore has been in
+        // CircleAI.Assistant.Runtime the whole time with one consumer.
+        //
+        // FilesDir, NOT the external directory the voices use. A transcript is
+        // the most private thing this app produces - a meeting, a clinic
+        // appointment, somebody's interview - and app-private storage is not
+        // readable by other apps, is off the shared card, and goes on uninstall.
+        builder.Services.AddSingleton<IKeepsTranscripts>(_ => new FileTranscriptStore(
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "Transcripts")));
 
         // KEEPING THE PERSON IN THE LOOP WHILE IT ACTS. Anything that hands off
         // to another app, or acts on somebody else's behalf, says so out loud and
