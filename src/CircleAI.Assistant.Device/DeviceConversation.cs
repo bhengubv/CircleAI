@@ -289,55 +289,35 @@ public sealed class DeviceConversation : IConversation
             bargeStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
             barge = BargeInAsync(mouth, speaking, bargeStop.Token);
 
-            // NEVER READ A TOOL CALL ALOUD.
+            // NEVER READ A TOOL CALL ALOUD, AND KEEP NO PRIVATE COPY OF HOW.
             //
-            // AskAsync streams from the raw generator, which does not execute
-            // tools - so when the model decides to search, the call arrives here
-            // as ordinary text. This head pushed every fragment straight to the
-            // speaker, so somebody who asked for the weather heard a line of JSON
-            // read out at them.
-            var watch = new System.Text.StringBuilder();
-            var calling = false;
-
-            await _brain.AskAsync(asked, fragment =>
+            // Streaming from the raw generator does not execute tools, so when the
+            // model decides to search the call arrives as ordinary text - and a
+            // head that pushed every fragment to the speaker read a line of JSON
+            // out at somebody who asked for the weather. AskMaybeToolsAsync streams,
+            // notices the call, says none of it, and re-runs through the executor -
+            // the same flow the typed screen now shares, so neither drifts.
+            var answer = await _brain.AskMaybeToolsAsync(asked, fragment =>
             {
-                watch.Append(fragment);
-                if (!calling && ToolCall.Looks(watch)) calling = true;
-
-                // NOTHING AFTER THE CALL IS STARTED IS SPOKEN. What is already
-                // out has been heard and cannot be taken back, which is why the
-                // detector only reads the head of the stream - see ToolCall.Head.
-                if (calling) return;
-
                 reply += fragment;
                 mouth.Push(fragment);
                 updates.Report(new TurnState(TurnPhase.Thinking,
                     Heard: heard, Reply: reply, Language: tag));
-            }, ct).ConfigureAwait(false);
+            },
+            onToolStarted: () => updates.Report(new TurnState(TurnPhase.Thinking,
+                Heard: heard, Detail: "Looking it up", Language: tag)),
+            ct: ct).ConfigureAwait(false);
 
-            // THE FAST PATH CANNOT USE TOOLS, SO EARN IT BACK ONLY WHEN NEEDED.
-            // Streaming is what gets sound out early and is right for the great
-            // majority of turns, which need no tool at all. When the model asks
-            // for one, that whole answer is void: re-run through the agentic
-            // path, which executes the call, feeds the result back, and answers
-            // from it. Two passes, and only for the turns that reach the world.
-            if (calling)
+            // A TOOL RAN, so what streamed was a void call: replace what was
+            // spoken with the tool-grounded answer. UsedTools is false when no
+            // call was made or this head has no tools wired, and in both of those
+            // cases what already streamed is what to keep.
+            if (answer.UsedTools)
             {
+                reply = answer.Text;
+                mouth.Push(answer.Text);
                 updates.Report(new TurnState(TurnPhase.Thinking,
-                    Heard: heard, Detail: "Looking it up", Language: tag));
-
-                var tooled = await _brain.AskWithToolsAsync(asked, ct).ConfigureAwait(false);
-
-                // EMPTY MEANS THE HEAD HAS NO TOOLS. Replacing a real answer with
-                // nothing would turn a head that cannot search into a head that
-                // says nothing at all.
-                if (!string.IsNullOrWhiteSpace(tooled))
-                {
-                    reply = tooled;
-                    mouth.Push(tooled);
-                    updates.Report(new TurnState(TurnPhase.Thinking,
-                        Heard: heard, Reply: reply, Language: tag));
-                }
+                    Heard: heard, Reply: reply, Language: tag));
             }
 
             // THE TWO HALVES, SEPARATELY TIMED. "It took ages and said something

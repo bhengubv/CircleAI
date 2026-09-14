@@ -1669,15 +1669,19 @@ public sealed class AIService : IAIService
         new("wifi",     Device), new("wi-fi",     Device), new("bluetooth", Device),
         new("volume",   Device),
 
-        // ARITHMETIC, WHICH NOTHING REGISTERED CAN ACTUALLY DO. These cues fire
-        // on "how many" and "calculate" and there is no calculator tool — so
-        // before this they bought a full catalogue of tools that cannot add up,
-        // at ten seconds a turn. Now they match nothing, and matching nothing
-        // sends nothing. If a calculator is ever registered, its description
-        // will contain these words and it will start being offered with no
-        // change here.
-        new("calculate",   Maths), new("convert",  Maths),
-        new("how much is", Maths), new("how many", Maths),
+        // ARITHMETIC, AND A CALCULATOR IS NOW REGISTERED (CircleAIToolBridge).
+        // Its description carries the words Maths serves ("arithmetic",
+        // "multiply"), so these cues offer it. The 0.6B cannot add - it answered
+        // "12 times 8" with "6" on a P30 - and that question carries no
+        // "calculate"/"how many", only an OPERATOR word, so the operators are
+        // cues in their own right. A false positive ("New York Times", "Google
+        // Plus") costs only a little prefill: the model still will not CALL a
+        // calculator for a newspaper.
+        new("calculate",   Maths), new("convert",    Maths),
+        new("how much is", Maths), new("how many",   Maths),
+        new("plus",        Maths), new("minus",      Maths),
+        new("times",       Maths), new("divided",    Maths),
+        new("multiplied",  Maths), new("percent",    Maths),
 
         // Explicit instruction to go and do something. Deliberately broad: the
         // person has asked for an action without saying which, so this is the

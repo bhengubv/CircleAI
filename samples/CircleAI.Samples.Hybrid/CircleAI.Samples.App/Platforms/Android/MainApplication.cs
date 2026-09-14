@@ -62,6 +62,24 @@ public class MainApplication : MauiApplication
         // Application.OnCreate rather than from whichever screen opens first.
         CircleAI.Device.AndroidDeviceMemory.Install(this);
 
+        // THE MEMORY MANAGER'S CENSUS, ON LAUNCH. Step zero of the footprint
+        // budget: print the phone's REAL disk and RAM - StatFs and
+        // ActivityManager, not the GC heap the probe above exists to correct -
+        // and what Circle AI is using, split into what is precious (downloaded
+        // models, the person's memory) and what is free to give back (skills,
+        // espeak, cache). A claim about storage is then checkable in logcat
+        // rather than believed. The budget itself (MemoryBudget) is pure and
+        // tested; this is where the real numbers enter it.
+        try
+        {
+            new CircleAI.Assistant.Device.MemoryManager(
+                new CircleAI.Assistant.Device.DeviceResourcesReader()).LogCensus();
+        }
+        catch (System.Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Memory", "census on launch failed: " + ex.Message);
+        }
+
         // AND THE PHONEMIZER, or this app can hear and translate but never
         // speak. The native head has always called this; the hybrid never did,
         // so CircleAISpeaker.MobilePhonemizerFactory stayed null and every voice that

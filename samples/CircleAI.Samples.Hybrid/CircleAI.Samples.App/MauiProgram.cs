@@ -40,6 +40,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<IMemoryService>(_ => new MemoryService(
             System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "memory")));
 
+        // THE MEMORY MANAGER. Step zero (the real device reader) plus the facade
+        // that ties it to the footprint and the pure budget. Registered so the
+        // setup path can ask CanDownload before a fetch - prevention, not cure -
+        // and so a storage screen can show what Circle AI uses. Reads the whole
+        // device, acts only on Circle AI's own footprint.
+        builder.Services.AddSingleton<CircleAI.Assistant.IDeviceResources,
+                                      CircleAI.Assistant.Device.DeviceResourcesReader>();
+        builder.Services.AddSingleton<CircleAI.Assistant.Device.MemoryManager>();
+
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
         builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();

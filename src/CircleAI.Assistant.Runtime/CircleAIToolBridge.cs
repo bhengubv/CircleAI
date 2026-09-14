@@ -71,6 +71,35 @@ public sealed class CircleAIToolBridge : IToolBridge
         },
         new ToolDefinition
         {
+            // A CALCULATOR, BECAUSE THE MODEL ON THE PHONE CANNOT ADD. Measured
+            // on a P30 2026-09-14: the 0.6B answered "what is 12 times 8" with
+            // "6". The header of this file calls add_numbers useless as evidence
+            // - true of a GOOD model, which would guess right. On this one a
+            // correct sum is proof the tool ran, and the only way the person gets
+            // a right answer at all. The evaluator (CircleAI.Tools.Arithmetic) is
+            // a hand-written parser over + - * / and brackets: no code escapes it.
+            //
+            // The description names the operations in the words the Maths tool-cue
+            // serves ("arithmetic", "multiply"), so an arithmetic question offers
+            // this tool rather than the search.
+            Name        = "calculate",
+            Description =
+                "Works out a numeric expression exactly - arithmetic the model must not do in its " +
+                "head. Use it for any sum: multiply, divide, add or subtract numbers, alone or mixed " +
+                "in brackets. Turn the words into a standard expression - \"12 times 8\" becomes " +
+                "\"12 * 8\", \"half of 40\" becomes \"40 / 2\" - and pass it as 'expression'.",
+            Parameters  = new Dictionary<string, ToolParameter>
+            {
+                ["expression"] = new()
+                {
+                    Type        = "string",
+                    Description = "A standard arithmetic expression using + - * / and brackets, for example \"12 * 8\" or \"(2 + 3) * 4\".",
+                },
+            },
+            RequiredParameters = new[] { "expression" },
+        },
+        new ToolDefinition
+        {
             // THE DESCRIPTION IS THE POLICY. A model decides whether to call a tool
             // by reading this sentence, so it has to say plainly what the tool is
             // for AND when not to bother — otherwise every "what is two plus two"
@@ -106,6 +135,23 @@ public sealed class CircleAIToolBridge : IToolBridge
                 return pct is null
                     ? ToolResult.Failure("get_battery_level", "Battery level is unavailable on this host.")
                     : ToolResult.Ok("get_battery_level", pct.Value);
+            }
+
+            case "calculate":
+            {
+                if (!invocation.Arguments.TryGetValue("expression", out var expr) || expr is null)
+                    return ToolResult.Failure("calculate", "Missing required argument 'expression'.");
+
+                var text = expr.ToString()!.Trim().Trim('"');
+
+                // The evaluator rejects anything that is not a well-formed sum, so
+                // a crafted string is refused, not run. The failure text is a
+                // sentence the model can relay - "that is not a sum I can work
+                // out" - rather than a stack trace.
+                if (!CircleAI.Tools.Arithmetic.TryEvaluate(text, out var value))
+                    return ToolResult.Failure("calculate", $"'{text}' is not a sum I can work out.");
+
+                return ToolResult.Ok("calculate", CircleAI.Tools.Arithmetic.Format(value));
             }
 
             case "lookup_price":

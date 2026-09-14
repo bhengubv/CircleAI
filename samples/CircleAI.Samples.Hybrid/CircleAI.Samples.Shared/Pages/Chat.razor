@@ -299,11 +299,32 @@
             var known = await Recalling.AboutAsync(Remembers, text);
             var asked = Recalling.Ask(text, known);
 
-            await Brain.AskAsync(asked, fragment =>
+            // STREAM, BUT ROUTE A TOOL CALL THROUGH THE EXECUTOR - the same shared
+            // flow the spoken turn uses (BrainToolFlow). Without this the typed
+            // screen printed the model's <tool_call> JSON, or its own wrong
+            // head-arithmetic, straight to the bubble: nothing here was listening
+            // for a call, so the calculator (and every tool) could never run.
+            var answered = await Brain.AskMaybeToolsAsync(asked,
+                fragment =>
+                {
+                    _turns[at] = _turns[at] with { Text = Strip(_turns[at].Text + fragment) };
+                    InvokeAsync(StateHasChanged);
+                },
+                onToolStarted: () =>
+                {
+                    // Drop the partial call head shown so far; the empty bubble
+                    // shows the thinking dots again while the second pass runs.
+                    _turns[at] = _turns[at] with { Text = "" };
+                    InvokeAsync(StateHasChanged);
+                });
+
+            // A tool ran: what streamed was the void call, so replace the bubble
+            // with the tool-grounded answer.
+            if (answered.UsedTools)
             {
-                _turns[at] = _turns[at] with { Text = Strip(_turns[at].Text + fragment) };
-                InvokeAsync(StateHasChanged);
-            });
+                _turns[at] = _turns[at] with { Text = Strip(answered.Text) };
+                await InvokeAsync(StateHasChanged);
+            }
         }
         catch (Exception ex)
         {
