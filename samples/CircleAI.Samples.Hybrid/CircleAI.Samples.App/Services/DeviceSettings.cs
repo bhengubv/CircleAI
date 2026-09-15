@@ -52,7 +52,11 @@ public sealed class DeviceSettings : ISettings
                 _store.Get(PolicyKey, nameof(LanguagePolicy.FollowTheSpeaker))!, out var p)
                 ? p : LanguagePolicy.FollowTheSpeaker,
             _store.Get(FixedKey),
-            _store.GetBool(WakeOnKey, true)));
+            _store.GetBool(WakeOnKey, true),
+            // THE CACHE CHOICES, through the one place that owns their keys, so a
+            // saved keep/cap and the trim that enforces it read the same two rows.
+            CachePolicySettings.ReadKeep(_store),
+            CachePolicySettings.ReadCap(_store)));
 
     /// <inheritdoc />
     /// <summary>The stored mode, including the name it used to be saved under.</summary>
@@ -73,6 +77,8 @@ public sealed class DeviceSettings : ISettings
         _store.Set(LanguageKey, settings.Language);
         _store.Set(PolicyKey, settings.Policy.ToString());
         _store.SetBool(WakeOnKey, settings.WakeEnabled);
+        CachePolicySettings.WriteKeep(_store, settings.CacheKeep);
+        CachePolicySettings.WriteCap(_store, settings.CacheCap);
 
         if (settings.FixedLanguage is null) _store.Set(FixedKey, null);
         else _store.Set(FixedKey, settings.FixedLanguage);

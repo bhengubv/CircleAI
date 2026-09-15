@@ -117,18 +117,35 @@ public class MainActivity : MauiAppCompatActivity
             // frees the regenerable scratch on disk - the same brownout, one tier
             // down, and free to rebuild. The worse the pressure, the more we let
             // go: a severe signal clears all of it, a milder one only what the
-            // standing policy would (aged-out and over-cap). Never the models or
-            // the person's memory - TrimCache and ReclaimCaches touch the cache
-            // alone. Off the main thread, because this callback runs on it and the
-            // work is disk I/O.
+            // person's own keep/cap would (aged-out and over-cap). Never the models
+            // or the person's memory - TrimCache and ReclaimCaches touch the cache
+            // alone.
             var severe = level is TrimMemory.RunningCritical or TrimMemory.Complete;
+
+            // Read the keep/cap on THIS (main) thread: the app store's single SQLite
+            // connection is not safe to touch from the worker below while the UI may
+            // be using it, so the values are in hand before the disk work goes
+            // off-thread. Defaults stand if the store is not resolvable.
+            var keep = CircleAI.Assistant.CacheEviction.KeepDefault;
+            var cap = CircleAI.Assistant.CacheEviction.MaxCacheDefaultBytes;
+            if (!severe)
+            {
+                var store = Microsoft.Maui.IPlatformApplication.Current?.Services?
+                    .GetService(typeof(CircleAI.Assistant.Device.SqliteAppStore))
+                    as CircleAI.Assistant.Device.SqliteAppStore;
+                if (store is not null)
+                    (keep, cap) = CircleAI.Assistant.Device.CachePolicySettings.Resolve(store);
+            }
+
+            // Off the main thread, because this callback runs on it and the work is
+            // disk I/O.
             System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
                     var manager = new CircleAI.Assistant.Device.MemoryManager(
                         new CircleAI.Assistant.Device.DeviceResourcesReader());
-                    var freed = severe ? manager.ReclaimCaches() : manager.TrimCache();
+                    var freed = severe ? manager.ReclaimCaches() : manager.TrimCache(cap, keep);
                     if (freed > 0)
                         Android.Util.Log.Info("CircleAI.Mem",
                             $"pressure cache tidy ({level}): freed {CircleAI.Assistant.MemoryBudget.Human(freed)}");

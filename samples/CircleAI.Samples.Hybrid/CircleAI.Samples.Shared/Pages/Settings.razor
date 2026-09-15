@@ -507,14 +507,28 @@ else
                     </div>
                 }
 
-                @* The standing rule that keeps the scratch in bounds on its own,
-                   so a background tidy-up is shown here, never a surprise. The
-                   text and its numbers come from the engine (CacheEviction), not
-                   retyped in the view. *@
-                @if (_storage.Policy.Length > 0)
-                {
-                    <div class="row"><span class="row-sub">@_storage.Policy</span></div>
-                }
+                @* HOW THE SCRATCH LOOKS AFTER ITSELF - the person's own two knobs,
+                   so the tidy-up is theirs to set, not a rule done to them. Bound
+                   straight to AppSettings; the engine (launch and memory-pressure
+                   trims) reads the same choice back through CachePolicySettings.
+                   Note + full-width select, the SAME shape as the Language picker
+                   above - a select in a flex .row squeezes its own label to a
+                   sliver, which it did on the P30. *@
+                <p class="note">Clear old scratch — throw away audio you have not used in a while.</p>
+                <select class="select" @bind:get="_s.CacheKeep" @bind:set="ChangeKeep">
+                    @foreach (var c in CacheChoices.AllKeep)
+                    {
+                        <option value="@c">@CacheChoices.Label(c)</option>
+                    }
+                </select>
+
+                <p class="note">Cache limit — trim the oldest when the scratch grows past this.</p>
+                <select class="select" @bind:get="_s.CacheCap" @bind:set="ChangeCap">
+                    @foreach (var c in CacheChoices.AllCap)
+                    {
+                        <option value="@c">@CacheChoices.Label(c)</option>
+                    }
+                </select>
 
                 @if (_storage.Freeable.Length > 0)
                 {
@@ -903,6 +917,17 @@ else
         catch (Exception ex) { _freedHint = Trouble.Say(ex); }
         finally { _freeing = false; }
     }
+
+    /// <summary>Change how long untouched scratch is kept, and persist it.</summary>
+    /// <remarks>
+    /// Persisted like every other setting via <see cref="Set"/>; the engine reads
+    /// the new choice back the next time it trims - at launch, or on memory
+    /// pressure - so there is nothing to apply here beyond writing it down.
+    /// </remarks>
+    async Task ChangeKeep(KeepChoice keep) => await Set(_s with { CacheKeep = keep });
+
+    /// <summary>Change the cache size cap, and persist it.</summary>
+    async Task ChangeCap(CapChoice cap) => await Set(_s with { CacheCap = cap });
 
     /// <summary>
     /// Change the language the app works in, and everything that reads off it.

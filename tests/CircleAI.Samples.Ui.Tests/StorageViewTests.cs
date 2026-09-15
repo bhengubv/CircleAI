@@ -94,17 +94,49 @@ public class StorageViewTests : TestContext
     }
 
     [Fact]
-    public void The_self_management_rule_is_shown_so_the_tidy_up_is_no_surprise()
+    public void The_keep_and_cap_pickers_show_the_choice_and_persist_a_change()
     {
-        // The standing rule that ages out old scratch and caps what remains runs
-        // unattended; the fold states it, so a background deletion is never a
-        // surprise. The sentence comes from the engine, verbatim.
-        var (screen, _) = PhoneStorage(new StorageReport(
-            [new StorageLine("Scratch & audio", "40 MB", true)],
-            Total: "40 MB", Freeable: "40 MB",
-            Policy: "Clears scratch older than 30 days · caps it at 256 MB."));
+        // The person's two knobs for the self-managing cache. They read off
+        // AppSettings and write straight back through the settings store, which is
+        // where the engine reads the same choice at trim time.
+        var settings = new FakeSettings
+        {
+            Settings = new AppSettings(CacheKeep: KeepChoice.OneMonth, CacheCap: CapChoice.Mb256),
+        };
 
+        this.WireEverything();
+        Services.AddSingleton<IDeviceFacts>(new FakeDeviceFacts
+        {
+            Storage = new StorageReport(
+                [new StorageLine("Scratch & audio", "40 MB", true)],
+                Total: "40 MB", Freeable: "40 MB"),
+        });
+        Services.AddSingleton<ISettings>(settings);   // last wins over WireEverything's default
+
+        var screen = RenderComponent<Settings>();
+        screen.FindAll("button,div,span")
+            .FirstOrDefault(e => e.TextContent.Trim() == "Phone")?.Click();
+        var fold = screen.FindAll("button.fold")
+            .FirstOrDefault(b => b.TextContent.Contains("This phone"));
+        if (fold is not null && !fold.ClassList.Contains("fold-on")) fold.Click();
+
+        // Both pickers render, with every option present.
         screen.WaitForAssertion(() =>
-            Assert.Contains("Clears scratch older than 30 days", screen.Markup));
+        {
+            Assert.Contains("Clear old scratch", screen.Markup);
+            Assert.Contains("Cache limit", screen.Markup);
+            Assert.Contains("Forever", screen.Markup);
+            Assert.Contains("No limit", screen.Markup);
+        });
+
+        // Changing the keep picker writes the new choice through the store.
+        var keepSelect = screen.FindAll("select.select").First(s => s.InnerHtml.Contains("Forever"));
+        keepSelect.Change(nameof(KeepChoice.ThreeDays));
+        Assert.Equal(KeepChoice.ThreeDays, settings.Settings.CacheKeep);
+
+        // And the cap picker likewise.
+        var capSelect = screen.FindAll("select.select").First(s => s.InnerHtml.Contains("No limit"));
+        capSelect.Change(nameof(CapChoice.Gb1));
+        Assert.Equal(CapChoice.Gb1, settings.Settings.CacheCap);
     }
 }

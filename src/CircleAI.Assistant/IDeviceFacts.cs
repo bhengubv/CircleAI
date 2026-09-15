@@ -99,13 +99,8 @@ public sealed record StorageLine(string Label, string Size, bool Regenerable);
 /// What one tap can free right now at no cost to the person — the regenerable
 /// scratch — human-readable, or empty when there is nothing to free.
 /// </param>
-/// <param name="Policy">
-/// The standing rule that keeps the scratch in bounds on its own, in a sentence —
-/// "Clears scratch older than 30 days · caps it at 256 MB." — so a background
-/// tidy-up is shown, never a surprise. Empty for a head that does not self-manage.
-/// </param>
 public sealed record StorageReport(
-    IReadOnlyList<StorageLine> Lines, string Total, string Freeable, string Policy = "")
+    IReadOnlyList<StorageLine> Lines, string Total, string Freeable)
 {
     /// <summary>The answer for a head that cannot measure its own footprint (the
     /// browser): an empty breakdown, so its storage screen shows nothing rather

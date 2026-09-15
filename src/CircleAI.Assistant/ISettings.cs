@@ -77,6 +77,8 @@ public enum LanguagePolicy
 /// The language to answer in when <see cref="LanguagePolicy.Fixed"/>.
 /// </param>
 /// <param name="WakeEnabled">Whether to listen for the wake phrase at all.</param>
+/// <param name="CacheKeep">How long untouched scratch is kept before it ages out.</param>
+/// <param name="CacheCap">How large the regenerable cache may grow before the oldest is evicted.</param>
 /// <remarks>
 /// THERE IS NO WakeLanguage, AND THERE MUST NOT BE ONE.
 /// <para>
@@ -104,7 +106,9 @@ public sealed record AppSettings(
     string Language = "en",
     LanguagePolicy Policy = LanguagePolicy.FollowTheSpeaker,
     string? FixedLanguage = null,
-    bool WakeEnabled = true);
+    bool WakeEnabled = true,
+    KeepChoice CacheKeep = KeepChoice.OneMonth,
+    CapChoice CacheCap = CapChoice.Mb256);
 
 /// <summary>One document the app has produced.</summary>
 /// <param name="Name">What it is called.</param>

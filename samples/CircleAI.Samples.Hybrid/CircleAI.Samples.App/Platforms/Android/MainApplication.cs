@@ -76,14 +76,28 @@ public class MainApplication : MauiApplication
                 new CircleAI.Assistant.Device.DeviceResourcesReader());
             manager.LogCensus();
 
-            // AND TIDY THE CACHE, ON LAUNCH. The self-managing half of the footprint
-            // budget: age out scratch past its window and cap what remains, so the
-            // regenerable cache cannot creep up across sessions on a phone that is
-            // already full. The CACHE ALONE - models and the person's memory are
-            // never enumerated (see MemoryManager.TrimCache), so the irreplaceable
-            // store can never be reached from here. Logged either way, so the launch
-            // tidy-up is visible in logcat rather than silent.
-            var trimmed = manager.TrimCache();
+            // AND TIDY THE CACHE, ON LAUNCH, TO THE PERSON'S OWN KEEP/CAP. The
+            // self-managing half of the footprint budget: age out scratch past its
+            // window and cap what remains, so the regenerable cache cannot creep up
+            // across sessions on a phone that is already full. The choices live in
+            // the one app store; resolve JUST that singleton (not the whole settings
+            // graph) so this stays cheap at OnCreate, and fall back to the defaults
+            // if it is not up yet. The CACHE ALONE - models and the person's memory
+            // are never enumerated (see MemoryManager.TrimCache). Logged either way,
+            // so the launch tidy-up is visible in logcat rather than silent.
+            var store = Microsoft.Maui.IPlatformApplication.Current?.Services?
+                .GetService(typeof(CircleAI.Assistant.Device.SqliteAppStore))
+                as CircleAI.Assistant.Device.SqliteAppStore;
+            long trimmed;
+            if (store is not null)
+            {
+                var (keep, cap) = CircleAI.Assistant.Device.CachePolicySettings.Resolve(store);
+                trimmed = manager.TrimCache(cap, keep);
+            }
+            else
+            {
+                trimmed = manager.TrimCache();
+            }
             Android.Util.Log.Info("CircleAI.Memory",
                 trimmed > 0
                     ? $"launch cache tidy: freed {CircleAI.Assistant.MemoryBudget.Human(trimmed)}"

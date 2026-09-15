@@ -501,20 +501,13 @@ public sealed class DeviceFacts : IDeviceFacts
             Add("Voice data", f.VoiceDataBytes, true);
             Add("Scratch & audio", f.CacheBytes, true);
 
-            // The self-management rule, in the person's words. The numbers are
-            // read from CacheEviction so they have ONE home and cannot drift from
-            // what TrimCache actually enforces - the "one fact, two owners" trap.
-            var keepDays = (int)CacheEviction.KeepDefault.TotalDays;
-            var policy = $"Clears scratch older than {keepDays} days · "
-                + $"caps it at {H(CacheEviction.MaxCacheDefaultBytes)}.";
-
             // Freeable is the CACHE alone — exactly what ReclaimStorageAsync frees
             // without a say-so. Skills and voice data are regenerable too but
             // re-unpack with a visible pause, so they are shown, not offered to a
-            // one-tap button.
+            // one-tap button. The keep/cap the person can pick are their own
+            // controls in the fold, read straight off AppSettings, not restated here.
             return new StorageReport(lines, H(f.TotalBytes),
-                f.CacheBytes > 0 ? H(f.CacheBytes) : string.Empty,
-                policy);
+                f.CacheBytes > 0 ? H(f.CacheBytes) : string.Empty);
         }, ct);
 
     /// <inheritdoc />
