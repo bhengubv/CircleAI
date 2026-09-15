@@ -573,6 +573,38 @@ else
                 }
             }
         }
+        <button class="fold @(_open == 2 ? "fold-on" : null)" @onclick="() => Open(2)"
+                aria-expanded="@(_open == 2)">
+            <span class="fold-title">Borrowing</span>
+            <span class="fold-now">@BorrowNow</span>
+            <span class="fold-chevron" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open == 2)
+        {
+            @*
+                POOLED INTELLIGENCE, OPT-IN. When this phone cannot run a model it can
+                borrow a trusted node's brain — but only if the person turns it on AND
+                names the node. Off by default, and only the RAW question leaves: never
+                memory, persona or device context. The rule (CanBorrow) is the
+                product's — AppSettings.Borrowing — this only renders and persists it.
+            *@
+            <label class="row">
+                <span class="row-text">
+                    <span class="row-title">Borrow a nearby brain</span>
+                    <span class="row-sub">When this phone can't run a model, ask a trusted node you choose. Only the plain question leaves — never your data.</span>
+                </span>
+                <input type="checkbox" checked="@_s.BorrowEnabled" @onchange="ToggleBorrow" />
+            </label>
+
+            @if (_s.BorrowEnabled)
+            {
+                <p class="note">The Circle node to borrow from — you name it; nothing is admitted on its own.</p>
+                <input class="select" type="text" placeholder="The node's tag, e.g. KXJB7-MN2P4"
+                       aria-label="The Circle node to borrow from"
+                       @bind:get="_s.BorrowNodeId" @bind:set="ChangeBorrowNode" @bind:event="onchange" />
+            }
+        }
     </section>
 }
 
@@ -928,6 +960,17 @@ else
 
     /// <summary>Change the cache size cap, and persist it.</summary>
     async Task ChangeCap(CapChoice cap) => await Set(_s with { CacheCap = cap });
+
+    /// <summary>The folded-heading state for borrowing: Off, needs a node, or On.</summary>
+    /// <remarks>Reads the product's own rule (<c>AppSettings.Borrowing.CanBorrow</c>).</remarks>
+    string BorrowNow => !_s.BorrowEnabled ? "Off" : _s.Borrowing.CanBorrow ? "On" : "Pick a node";
+
+    /// <summary>Turn borrowing a nearby brain on or off, and persist it.</summary>
+    async Task ToggleBorrow(ChangeEventArgs e) => await Set(_s with { BorrowEnabled = (bool)(e.Value ?? false) });
+
+    /// <summary>Change the hand-picked node to borrow from, and persist it. Blank clears it.</summary>
+    async Task ChangeBorrowNode(string? node)
+        => await Set(_s with { BorrowNodeId = string.IsNullOrWhiteSpace(node) ? null : node.Trim() });
 
     /// <summary>
     /// Change the language the app works in, and everything that reads off it.

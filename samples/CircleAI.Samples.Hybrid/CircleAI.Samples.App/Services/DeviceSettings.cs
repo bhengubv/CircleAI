@@ -33,6 +33,8 @@ public sealed class DeviceSettings : ISettings
     private const string PolicyKey = "app.language.policy";
     private const string FixedKey = "app.language.fixed";
     private const string WakeOnKey = "app.wake.enabled";
+    private const string BorrowOnKey = "app.borrow.enabled";
+    private const string BorrowNodeKey = "app.borrow.node";
 
     private static string DocumentsDir => AppPaths.Data;
 
@@ -56,7 +58,11 @@ public sealed class DeviceSettings : ISettings
             // THE CACHE CHOICES, through the one place that owns their keys, so a
             // saved keep/cap and the trim that enforces it read the same two rows.
             CachePolicySettings.ReadKeep(_store),
-            CachePolicySettings.ReadCap(_store)));
+            CachePolicySettings.ReadCap(_store),
+            // BORROWING CONSENT, through the same two-row pattern: whether pooled
+            // intelligence is on, and the node the person hand-picked. Off by default.
+            _store.GetBool(BorrowOnKey, false),
+            _store.Get(BorrowNodeKey)));
 
     /// <inheritdoc />
     /// <summary>The stored mode, including the name it used to be saved under.</summary>
@@ -79,6 +85,8 @@ public sealed class DeviceSettings : ISettings
         _store.SetBool(WakeOnKey, settings.WakeEnabled);
         CachePolicySettings.WriteKeep(_store, settings.CacheKeep);
         CachePolicySettings.WriteCap(_store, settings.CacheCap);
+        _store.SetBool(BorrowOnKey, settings.BorrowEnabled);
+        _store.Set(BorrowNodeKey, settings.BorrowNodeId);
 
         if (settings.FixedLanguage is null) _store.Set(FixedKey, null);
         else _store.Set(FixedKey, settings.FixedLanguage);
