@@ -79,6 +79,8 @@ public enum LanguagePolicy
 /// <param name="WakeEnabled">Whether to listen for the wake phrase at all.</param>
 /// <param name="CacheKeep">How long untouched scratch is kept before it ages out.</param>
 /// <param name="CacheCap">How large the regenerable cache may grow before the oldest is evicted.</param>
+/// <param name="BorrowEnabled">Whether borrowing a nearby node's brain is turned on. Off by default.</param>
+/// <param name="BorrowNodeId">The hand-picked Circle node to borrow from, or null.</param>
 /// <remarks>
 /// THERE IS NO WakeLanguage, AND THERE MUST NOT BE ONE.
 /// <para>
@@ -108,7 +110,19 @@ public sealed record AppSettings(
     string? FixedLanguage = null,
     bool WakeEnabled = true,
     KeepChoice CacheKeep = KeepChoice.OneMonth,
-    CapChoice CacheCap = CapChoice.Mb256);
+    CapChoice CacheCap = CapChoice.Mb256,
+    bool BorrowEnabled = false,
+    string? BorrowNodeId = null)
+{
+    /// <summary>
+    /// This person's borrowing consent for pooled intelligence — whether borrowing is
+    /// on and the single node they hand-picked — mapped to the product's
+    /// <see cref="OffloadConsent"/>. The shape and the rule (<c>CanBorrow</c>) live
+    /// here in the product; the settings screen only renders and persists the two
+    /// fields. Off by default: nothing borrows until the person opts in and names a node.
+    /// </summary>
+    public OffloadConsent Borrowing => new(BorrowEnabled, BorrowNodeId);
+}
 
 /// <summary>One document the app has produced.</summary>
 /// <param name="Name">What it is called.</param>
