@@ -30,6 +30,9 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
     <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <!-- INetworkTransport / NetworkPayload — this project provides an AetherNet-backed
+         carrier (AetherMeshTransport). CircleAI.Networking is package-free. -->
+    <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
   </ItemGroup>
 
   <!-- Floating refs — track 2.x upstream automatically. -->
