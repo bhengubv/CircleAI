@@ -26,6 +26,10 @@
          and the raw local brain we adapt it onto. We do NOT edit either. -->
     <ProjectReference Include="..\CircleAI.Mesh\CircleAI.Mesh.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj" />
+    <!-- The borrow seam (IOffloadGateway/OffloadConsent, browser-safe) and the
+         loaded-model service whose PlanFor answers "can this phone serve chat?". -->
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

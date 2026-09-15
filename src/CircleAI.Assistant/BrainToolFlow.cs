@@ -63,6 +63,12 @@ public static class BrainToolFlow
     /// can be worked out by the engine before the model is consulted. Null skips
     /// that and always streams.
     /// </param>
+    /// <param name="offload">
+    /// Optional. When set, and this device cannot run the model itself, the RAW
+    /// question (never the composed <paramref name="asked"/> prompt) is borrowed
+    /// from a chosen trusted node before the local head is tried. Null — the
+    /// browser, or borrowing turned off — skips it entirely.
+    /// </param>
     /// <param name="ct">Cancellation for the whole turn.</param>
     /// <remarks>
     /// WHY WATCH THE STREAM RATHER THAN ALWAYS TAKE THE AGENTIC PATH: streaming is
@@ -78,6 +84,7 @@ public static class BrainToolFlow
         Action<string> onFragment,
         Action? onToolStarted = null,
         string? question = null,
+        IOffloadGateway? offload = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(brain);
@@ -108,6 +115,19 @@ public static class BrainToolFlow
                 return new ToolAwareReply(byTool, UsedTools: true);
             // Empty means the head has no tools wired (the browser); fall through
             // and stream rather than answer with nothing.
+        }
+
+        // BORROW A NEARBY BRAIN WHEN THIS ONE CANNOT SERVE. Only the RAW question
+        // leaves the phone — never the composed prompt above — so no memory or
+        // persona rides along. The gateway itself decides whether to borrow at all
+        // (borrowing off, no node chosen, or this phone can run the model): it
+        // returns null and the turn streams locally exactly as before. A borrowed
+        // answer, like a tool result, REPLACES what would otherwise be streamed.
+        if (offload is not null && !string.IsNullOrEmpty(question))
+        {
+            var borrowed = await offload.TryBorrowAsync(question, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(borrowed))
+                return new ToolAwareReply(borrowed, UsedTools: true);
         }
 
         var streamed = new StringBuilder();
