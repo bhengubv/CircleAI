@@ -5,7 +5,7 @@
 // host configure it. Defaults are chosen so the mesh works out of the box on a
 // LAN / hotspot with a 30s freshness window and a 15s advert cadence.
 
-using CircleAI.AetherNet;
+using CircleAI.Networking;
 
 namespace CircleAI.Mesh;
 

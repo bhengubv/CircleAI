@@ -17,7 +17,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using CircleAI.AetherNet;
 using CircleAI.Core;
 using CircleAI.Networking;
 using Microsoft.Extensions.Hosting;

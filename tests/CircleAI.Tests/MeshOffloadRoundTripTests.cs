@@ -14,7 +14,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using CircleAI.AetherNet;
 using CircleAI.Core;
 using CircleAI.Hosting.InferenceBridge;
 using CircleAI.Mesh;

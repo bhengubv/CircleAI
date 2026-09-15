@@ -17,4 +17,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- DeviceTier, carried on every MeshCapabilityAdvertisement. CircleAI.Core
+         has no project references, so this edge cannot cycle. -->
+    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+  </ItemGroup>
+
 </Project>

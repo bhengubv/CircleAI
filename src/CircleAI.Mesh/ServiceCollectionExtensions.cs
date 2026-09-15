@@ -20,7 +20,7 @@
 // Discovery of peers is AetherNet's job (aether-protocol repo); this package only
 // consumes the transport and the registry.
 
-using CircleAI.AetherNet;
+using CircleAI.Networking;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 

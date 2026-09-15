@@ -11,7 +11,6 @@
 // wired. We do not discover peers. Zero-infrastructure BLE / Wi-Fi Direct
 // discovery is AetherNet's job (aether-protocol repo).
 
-using CircleAI.AetherNet;
 using CircleAI.Networking;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

@@ -6,7 +6,7 @@
     <Description>
       (RT-12 v2) The CircleAI mesh hand-off router. When the local device
       cannot hold the model a turn needs, the router borrows a stronger
-      peer's brain: it queries the CircleAI.AetherNet IMeshCapabilityRegistry
+      peer's brain: it queries the CircleAI.Networking IMeshCapabilityRegistry
       for peers advertising that model with enough spare KV budget, picks the
       best one, delegates the completion over any reachable INetworkTransport
       (hotspot / LAN / Aether mesh), and falls back to a local or smaller
@@ -28,13 +28,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Audited + reused, never duplicated:
-         - CircleAI.AetherNet  : MeshCapabilityAdvertisement, IMeshCapabilityRegistry,
-                                 IMeshCapabilityBroadcaster (the no-op we replace).
-         - CircleAI.Networking : INetworkTransport / NetworkPayload (the wire we ride).
-         - CircleAI.Core       : DeviceTier (carried on every advertisement).
-         We do NOT edit any of these projects. -->
-    <ProjectReference Include="..\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
+    <!-- Audited + reused, never duplicated. The mesh capability registry /
+         advertisement / broadcaster contracts were relocated OUT of
+         CircleAI.AetherNet into CircleAI.Networking (A0, 2026-09-15) so this
+         engine links NO AetherNet package — the mesh stands alone, and a carrier
+         (AetherNet mesh, or a sealed internet node-relay) is wired in only at the
+         app/plug level, behind INetworkTransport.
+         - CircleAI.Networking : INetworkTransport / NetworkPayload + the mesh
+                                 capability contracts (the wire we ride).
+         - CircleAI.Core       : DeviceTier (carried on every advertisement). -->
     <ProjectReference Include="..\CircleAI.Networking\CircleAI.Networking.csproj" />
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
   </ItemGroup>

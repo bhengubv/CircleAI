@@ -1,10 +1,15 @@
 // MeshCapabilityRegistry.cs
 //
-// (RT-12 v1) Mesh capability discovery — peers broadcast what they have
-// loaded ("I have Qwen3-1.7B-MNN with 2048 tokens of free KV budget on
-// a Tier=Phone device"). v1 ships the contracts + an in-memory registry;
-// the AetherNet broadcast transport lands in 2.7.0 with RT-12 v2 actual
-// offload.
+// (RT-12) Mesh capability discovery — peers broadcast what they have loaded
+// ("I have Qwen3-1.7B-MNN with 2048 tokens of free KV budget on a Tier=Phone
+// device"). Pure, transport-agnostic contracts + an in-memory registry.
+//
+// Relocated here from CircleAI.AetherNet (2026-09-15, "A0") so the mesh engine
+// (CircleAI.Mesh) links NO AetherNet package. These types depend on nothing but
+// CircleAI.Core, and they belong beside INetworkTransport / NetworkPayload — the
+// seam any carrier plugs into, whether that carrier is the AetherNet mesh or a
+// sealed internet node-relay. A bound transport feeds this registry as peer
+// advertisements arrive; with no transport bound it simply stays empty.
 
 using System;
 using System.Collections.Concurrent;
@@ -14,10 +19,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Core;
 
-namespace CircleAI.AetherNet;
+namespace CircleAI.Networking;
 
 /// <summary>
-/// (RT-12 v1) One peer's advertisement of what it can serve right now.
+/// (RT-12) One peer's advertisement of what it can serve right now.
 /// Pure data — no execution state.
 /// </summary>
 /// <param name="PeerId">Stable opaque identifier for the advertising peer.</param>
@@ -37,10 +42,9 @@ public sealed record MeshCapabilityAdvertisement(
     int?           LatencyHintMs = null);
 
 /// <summary>
-/// (RT-12 v1) Holds the latest advertisement per peer + supports
-/// filtered query. The AetherNet transport (v2, 2.7.0) feeds this
-/// registry as peers broadcast. v1 lets hosting layers query and
-/// reason about availability without yet routing.
+/// (RT-12) Holds the latest advertisement per peer + supports filtered query.
+/// A bound transport feeds this registry as peers broadcast; hosting layers
+/// query and reason about availability without themselves routing.
 /// </summary>
 public interface IMeshCapabilityRegistry
 {
@@ -75,9 +79,9 @@ public interface IMeshCapabilityRegistry
 }
 
 /// <summary>
-/// (RT-12 v1) Default <see cref="IMeshCapabilityRegistry"/> — in-memory,
-/// thread-safe. The AetherNet transport plugs into this; without a
-/// transport, the registry just stays empty (no peers).
+/// (RT-12) Default <see cref="IMeshCapabilityRegistry"/> — in-memory,
+/// thread-safe. A transport plugs into this; without a transport, the
+/// registry just stays empty (no peers).
 /// </summary>
 public sealed class InMemoryMeshCapabilityRegistry : IMeshCapabilityRegistry
 {
@@ -129,22 +133,21 @@ public sealed class InMemoryMeshCapabilityRegistry : IMeshCapabilityRegistry
 }
 
 /// <summary>
-/// (RT-12 v1) Contract for the broadcaster that publishes OUR
-/// advertisement to the mesh. v1 ships a no-op default; the AetherNet
-/// transport binding (v2) supersedes it.
+/// (RT-12) Contract for the broadcaster that publishes OUR advertisement to
+/// the mesh. Ships a no-op default; a bound transport supersedes it.
 /// </summary>
 public interface IMeshCapabilityBroadcaster
 {
     /// <summary>
-    /// Publish our current advertisement to the mesh. v1 may be a no-op
-    /// when no transport is registered.
+    /// Publish our current advertisement to the mesh. May be a no-op when no
+    /// transport is registered.
     /// </summary>
     ValueTask BroadcastAsync(MeshCapabilityAdvertisement ad, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Default broadcaster — does nothing. Used when no AetherNet transport
-/// is bound. Existing CircleAI deployments work unchanged.
+/// Default broadcaster — does nothing. Used when no transport is bound.
+/// Existing CircleAI deployments work unchanged.
 /// </summary>
 public sealed class NullMeshCapabilityBroadcaster : IMeshCapabilityBroadcaster
 {

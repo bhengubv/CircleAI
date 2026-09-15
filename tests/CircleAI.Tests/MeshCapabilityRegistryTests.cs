@@ -5,7 +5,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using CircleAI.AetherNet;
+using CircleAI.Networking;
 using CircleAI.Core;
 using Xunit;
 

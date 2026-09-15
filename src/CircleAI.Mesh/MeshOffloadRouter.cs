@@ -15,7 +15,7 @@
 // fills.
 
 using System.Diagnostics;
-using CircleAI.AetherNet;
+using CircleAI.Networking;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
