@@ -2,16 +2,16 @@
 //
 // The AetherNet carrier plug, proven end-to-end with no device: a borrower asks
 // over TWO AetherMeshTransport instances joined by an in-memory ITransportService
-// bus, each payload sealed by the (faked) Signal cipher, and the REAL
-// BridgeLocalInferenceFallback serves the turn on the far node. This mirrors
-// MeshOffloadRoundTripTests — but where that used a plaintext loopback, this proves
-// the AetherNet-backed INetworkTransport: framing, UHID routing, the session gate,
-// and that nothing of the payload rides in clear.
+// bus, the session OPENS ITSELF (pre-key handshake), each payload is sealed by the
+// (faked) Signal cipher, and the REAL BridgeLocalInferenceFallback serves the turn
+// on the far node. This mirrors MeshOffloadRoundTripTests — but where that used a
+// plaintext loopback, this proves the AetherNet-backed INetworkTransport: the
+// handshake, framing, UHID routing, and that nothing of the payload rides in clear.
 //
-// The cipher is faked (a reversible XOR) on purpose: real Signal crypto is
-// AetherNet's own tested concern; this asserts the ADAPTER's contract — it seals
-// before it sends, refuses to send without a session, and reconstructs the payload
-// on the far side.
+// The cipher is faked on purpose: real Signal crypto is AetherNet's own tested
+// concern. The fake models the three facts the adapter relies on — opening a
+// session from a peer's bundle, and a received sealed message opening the reply
+// direction — so the adapter's contract (handshake, seal, route) is what is pinned.
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +28,7 @@ using CircleAI.Hosting.InferenceBridge;
 using CircleAI.Mesh;
 using CircleAI.Mesh.Hosting;
 using CircleAI.Networking;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -42,12 +43,14 @@ public class AetherMeshTransportTests
         private readonly Dictionary<string, FakeTransport> _byUhid = new(StringComparer.Ordinal);
         public readonly List<byte[]> Wire = new();
 
-        public void Register(string uhid, FakeTransport t) => _byUhid[uhid] = t;
+        public void Register(string uhid, FakeTransport t) { lock (_byUhid) _byUhid[uhid] = t; }
 
         public void Deliver(string toUhid, string fromUhid, byte[] data)
         {
             lock (Wire) Wire.Add(data);
-            if (_byUhid.TryGetValue(toUhid, out var t)) t.Raise(fromUhid, data);
+            FakeTransport? t;
+            lock (_byUhid) _byUhid.TryGetValue(toUhid, out t);
+            t?.Raise(fromUhid, data);
         }
     }
 
@@ -75,8 +78,9 @@ public class AetherMeshTransportTests
         public PerTransportMetrics Metrics { get; } = new();
     }
 
-    // ── A stand-in Signal cipher: reversible XOR, with an explicit session set.
-    //    Enough to prove the adapter seals/gates; real crypto is AetherNet's. ───
+    // ── A stand-in Signal cipher: reversible XOR. A session opens by processing a
+    //    peer's bundle OR by receiving (decrypting) a sealed message from them —
+    //    which is how the real X3DH bootstraps the reply direction. ─────────────
     private sealed class FakeSignal : ISignalProtocolService
     {
         private const byte Mask = 0x5A;
@@ -85,7 +89,7 @@ public class AetherMeshTransportTests
         public FakeSignal(string me, params string[] peersWithSession)
         { _me = me; _sessions = new HashSet<string>(peersWithSession, StringComparer.Ordinal); }
 
-        public bool HasSession(string peerUhid) => _sessions.Contains(peerUhid);
+        public bool HasSession(string peerUhid) { lock (_sessions) return _sessions.Contains(peerUhid); }
 
         public Task<EncryptedPayload> EncryptAsync(string peerUhid, byte[] plaintext, CancellationToken ct = default)
         {
@@ -100,13 +104,22 @@ public class AetherMeshTransportTests
 
         public Task<byte[]> DecryptAsync(string peerUhid, EncryptedPayload payload, CancellationToken ct = default)
         {
+            lock (_sessions) _sessions.Add(peerUhid);   // receiving opens the reply session
             var p = (byte[])payload.Ciphertext.Clone();
             for (int i = 0; i < p.Length; i++) p[i] ^= Mask;
             return Task.FromResult(p);
         }
 
-        public Task<PreKeyBundle> GeneratePreKeyBundleAsync(string localUhid, CancellationToken ct = default) => throw new NotSupportedException();
-        public Task ProcessPreKeyBundleAsync(PreKeyBundle bundle, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<PreKeyBundle> GeneratePreKeyBundleAsync(string localUhid, CancellationToken ct = default)
+            => Task.FromResult(new PreKeyBundle(
+                localUhid, new byte[32], new byte[32], 1, new byte[32], 1, new byte[64], new byte[64]));
+
+        public Task ProcessPreKeyBundleAsync(PreKeyBundle bundle, CancellationToken ct = default)
+        {
+            lock (_sessions) _sessions.Add(bundle.Uhid);   // opening from a bundle establishes the session
+            return Task.CompletedTask;
+        }
+
         public Task<byte[]> SignDataAsync(byte[] data, CancellationToken ct = default) => throw new NotSupportedException();
         public bool VerifySignature(byte[] publicKey, byte[] data, byte[] signature) => throw new NotSupportedException();
         public byte[] DeriveEridRoutingKey() => throw new NotSupportedException();
@@ -143,11 +156,12 @@ public class AetherMeshTransportTests
     }
 
     [Fact]
-    public async Task A_borrowed_turn_crosses_the_sealed_AetherNet_transport_and_is_served_remotely()
+    public async Task A_borrowed_turn_auto_handshakes_seals_and_is_served_remotely()
     {
         var bus = new Bus();
-        var aT = new AetherMeshTransport(new FakeTransport(bus, "A"), new FakeSignal("A", "B"), "A");
-        var bT = new AetherMeshTransport(new FakeTransport(bus, "B"), new FakeSignal("B", "A"), "B");
+        // No pre-declared sessions: the pre-key handshake must open them itself.
+        var aT = new AetherMeshTransport(new FakeTransport(bus, "A"), new FakeSignal("A"), "A");
+        var bT = new AetherMeshTransport(new FakeTransport(bus, "B"), new FakeSignal("B"), "B");
         await aT.StartAsync(); await bT.StartAsync();
 
         await using var server = Client(bT, new BridgeLocalInferenceFallback(new StubBridge("Tokyo.")), "B", serve: true);
@@ -173,17 +187,22 @@ public class AetherMeshTransportTests
     }
 
     [Fact]
-    public async Task Without_a_session_the_transport_refuses_to_send_rather_than_leak()
+    public async Task An_unreachable_peer_times_out_rather_than_hanging_or_leaking()
     {
         var bus = new Bus();
-        // No peer session declared, so HasSession("B") is false.
-        var t = new AetherMeshTransport(new FakeTransport(bus, "A"), new FakeSignal("A"), "A");
+        // "A" is alone on the bus; "B" never answers the bundle request.
+        var t = new AetherMeshTransport(
+            new FakeTransport(bus, "A"), new FakeSignal("A"), "A", TimeSpan.FromMilliseconds(300));
         await t.StartAsync();
 
-        var payload = NetworkPayload.Create(new byte[] { 1, 2, 3 }, destinationId: "B", contentType: "x");
+        const string secret = "do not leak me";
+        var payload = NetworkPayload.Create(Encoding.UTF8.GetBytes(secret), destinationId: "B", contentType: "x");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => t.SendAsync(payload));
-        Assert.Empty(bus.Wire);   // nothing left the device
+        await Assert.ThrowsAsync<TimeoutException>(() => t.SendAsync(payload));
+
+        // Only the (plaintext-free) bundle request went out; the secret never did.
+        var s = Encoding.UTF8.GetBytes(secret);
+        Assert.All(bus.Wire, w => Assert.False(Contains(w, s), "payload leaked before a session existed"));
     }
 
     [Fact]
@@ -196,5 +215,21 @@ public class AetherMeshTransportTests
         // No DestinationId → broadcast; this carrier is point-to-point.
         var advert = NetworkPayload.Create(new byte[] { 9 }, destinationId: null, contentType: "advert");
         await Assert.ThrowsAsync<InvalidOperationException>(() => t.SendAsync(advert));
+    }
+
+    [Fact]
+    public void The_DI_extension_resolves_the_carrier_as_the_mesh_INetworkTransport()
+    {
+        var bus = new Bus();
+        var services = new ServiceCollection();
+        services.AddSingleton<ITransportService>(new FakeTransport(bus, "me"));
+        services.AddSingleton<ISignalProtocolService>(new FakeSignal("me"));
+        services.AddCircleAiMeshAetherTransport(_ => "me");
+
+        using var sp = services.BuildServiceProvider();
+        var transport = sp.GetRequiredService<INetworkTransport>();
+
+        Assert.IsType<AetherMeshTransport>(transport);
+        Assert.Equal(TransportKind.Aether, transport.Kind);
     }
 }
