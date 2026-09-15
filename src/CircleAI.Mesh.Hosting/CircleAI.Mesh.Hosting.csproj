@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Mesh.Hosting</PackageId>
+    <Description>
+      Host-side adapter that makes a device able to SERVE mesh offload turns:
+      it implements CircleAI.Mesh's ILocalInferenceFallback over the raw
+      CircleAI.Hosting.InferenceBridge IInferenceBridge, so a peer's borrowed
+      turn is completed as a clean prompt-to-text call with NONE of this node's
+      own memory, persona, or device context injected (that enrichment belongs to
+      IAIService, and is exactly what a served peer turn must not carry). Call
+      AddBrainInferenceFallback() after AddCircleAiMeshOffload to replace the
+      borrow-only NullLocalInferenceFallback.
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The offload seam we implement (ILocalInferenceFallback + OffloadTurn/Result)
+         and the raw local brain we adapt it onto. We do NOT edit either. -->
+    <ProjectReference Include="..\CircleAI.Mesh\CircleAI.Mesh.csproj" />
+    <ProjectReference Include="..\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+</Project>
