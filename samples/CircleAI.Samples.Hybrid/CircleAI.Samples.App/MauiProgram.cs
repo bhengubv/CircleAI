@@ -142,13 +142,15 @@ public static class MauiProgram
         // so every linking app is approved once with device auth — biometric / PIN
         // / pattern — and remembered. The grant store is in-memory for now: a
         // killed service process simply asks again, which is safe if less handy.
+        var grantsPath = System.IO.Path.Combine(
+            Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "link-grants.json");
         CircleAI.Device.CircleNeuronLinkService.Grants =
-            new CircleAI.Linking.InMemoryLinkGrantStore();
+            new CircleAI.Linking.FileLinkGrantStore(grantsPath);
         CircleAI.Device.CircleNeuronLinkService.FirstPartySignatures =
             new HashSet<string>(StringComparer.Ordinal);
-        CircleAI.Device.CircleNeuronLinkService.Auth =
-            new CircleAI.Device.AndroidAuthChallenge(
-                () => Microsoft.Maui.ApplicationModel.Platform.CurrentActivity);
+        // No auth gate is wired onto the SERVICE: a background service cannot show a
+        // biometric sheet, so approval happens in LinkConsentActivity (launched by
+        // the foreground client), which mints the grant this store then persists.
 
         builder.Services.AddMauiBlazorWebView();
 

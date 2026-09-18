@@ -49,6 +49,20 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         catch (Exception) { return false; }
     }
 
+    /// <summary>
+    /// The intent to launch Circle AI's link-approval screen. Start it with
+    /// <c>StartActivityForResult</c> from a foreground Activity (the biometric
+    /// sheet needs one) and treat <c>Result.Ok</c> as approved; then call
+    /// <see cref="AskAsync"/>. On a later ask the grant already exists.
+    /// </summary>
+    public static Intent ConsentIntent(LinkScope scope = LinkScope.Chat)
+    {
+        var intent = new Intent(LinkIpc.ConsentAction);
+        intent.SetPackage(LinkIpc.HostPackage);
+        intent.PutExtra(LinkIpc.ScopeExtra, (int)scope);
+        return intent;
+    }
+
     /// <summary>Bind the CircleAI link service. Null when it is not installed or
     /// the bind is refused.</summary>
     public static async Task<CircleAiLinkClient?> ConnectAsync(

@@ -4,38 +4,35 @@
 //
 // CircleNeuronService owns the models in one process; this exported service is
 // the only thing that lets a DIFFERENT app reach them. Exported is not trust:
-// every incoming turn is put through the LinkGate/LinkAuthorizer, which
-// authorizes the caller by the OS-reported package + signing certificate
-// (first-party auto, third-party device-auth) before a single token is served.
+// every incoming turn is judged by the LinkGate/LinkAuthorizer against the
+// OS-reported package + signing certificate before a single token is served.
 //
-// LOW-LEVEL BINDER, ON PURPOSE. A Messenger is easier but delivers the message
-// AFTER the binder transaction returns, so Binder.CallingUid is gone by the time
-// the handler runs and the caller cannot be identified. Binder.OnTransact runs
-// INSIDE the transaction, where the uid is reliable. The wire is a hand-marshalled
-// string map (LinkTurnCodec) behind an enforced interface token (LinkIpc.Descriptor).
+// THIS SERVICE NEVER PROMPTS. A biometric sheet cannot be shown from a background
+// service, so the approval happens in LinkConsentActivity — launched by the
+// foreground client — which mints the grant into the same store this reads. Here,
+// a caller either already has a grant (serve) or does not (told to link first).
+//
+// LOW-LEVEL BINDER, ON PURPOSE. A Messenger delivers the message AFTER the binder
+// transaction returns, so Binder.CallingUid is gone by the time the handler runs.
+// Binder.OnTransact runs INSIDE the transaction, where the uid is reliable. The
+// wire is a hand-marshalled string map (LinkTurnCodec) behind an enforced token.
 
 using System;
 using System.Collections.Generic;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Util;
-using CircleAI.Aether;
 using CircleAI.Hosting.Chat;
 using CircleAI.Linking;
 using Java.Security;
 
 namespace CircleAI.Device;
 
-/// <summary>
-/// Exported bound service that lets another app use the shared brain, gated by a
-/// link grant approved with device auth. Delegates the actual turn to the
-/// resident <see cref="CircleNeuronService"/>.
-/// </summary>
+/// <summary>Exported bound service that serves the shared brain to a linked app.</summary>
 [Service(Name = "ai.circle.CircleNeuronLinkService", Exported = true)]
 [IntentFilter(new[] { LinkIpc.BindAction })]
 public sealed class CircleNeuronLinkService : Service
@@ -48,16 +45,11 @@ public sealed class CircleNeuronLinkService : Service
     /// <summary>Signing digests trusted without a prompt (our own apps, same key).</summary>
     public static IReadOnlySet<string>? FirstPartySignatures { get; set; }
 
-    /// <summary>The device-auth gate (biometric / PIN). The host sets this.</summary>
-    public static IAuthChallenge? Auth { get; set; }
-
     /// <summary>How long a minted grant lives. Zero = does not expire.</summary>
     public static TimeSpan GrantLifetime { get; set; } = TimeSpan.Zero;
 
     /// <inheritdoc/>
     public override IBinder OnBind(Intent? intent) => new LinkBinder(this);
-
-    // ── the transaction ──────────────────────────────────────────────────────
 
     private sealed class LinkBinder : Binder
     {
@@ -69,11 +61,9 @@ public sealed class CircleNeuronLinkService : Service
             if (code != LinkIpc.TransactAsk || data is null)
                 return base.OnTransact(code, data, reply, flags);
 
-            // Refuse a transact meant for another interface.
             data.EnforceInterface(LinkIpc.Descriptor);
 
-            // Reliable HERE, inside the transaction: who is calling us.
-            var uid = Binder.CallingUid;
+            var uid = Binder.CallingUid;   // reliable inside the transaction
             var request = ReadMap(data);
 
             LinkTurnReply result;
@@ -86,8 +76,6 @@ public sealed class CircleNeuronLinkService : Service
         }
     }
 
-    // ── authorize, then serve ────────────────────────────────────────────────
-
     private async Task<LinkTurnReply> ServeAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
     {
         var turn = LinkTurnCodec.TryDecodeRequest(requestMap);
@@ -99,19 +87,20 @@ public sealed class CircleNeuronLinkService : Service
         var grants = Grants;
         if (grants is null) return LinkTurnReply.Failure("linking not available");
 
+        // NEVER PROMPT HERE. First-party callers auto-mint; everyone else must have
+        // approved the link already via LinkConsentActivity, so the auth callback
+        // just says no and an un-approved caller is told to link first.
         var gate = new LinkGate(grants, FirstPartySignatures);
         var authorizer = new LinkAuthorizer(grants, gate, GrantLifetime);
+        var grant = await authorizer.AuthorizeAsync(
+            new LinkRequest(identity.Value.Package, identity.Value.Signature, LinkScope.Chat),
+            static _ => Task.FromResult(false),
+            DateTimeOffset.UtcNow).ConfigureAwait(false);
+        if (grant is null) return LinkTurnReply.Failure("not linked — approve in Circle AI first");
 
-        var request = new LinkRequest(identity.Value.Package, identity.Value.Signature, LinkScope.Chat);
-        var grant = await authorizer
-            .AuthorizeAsync(request, RunDeviceAuthAsync, DateTimeOffset.UtcNow)
-            .ConfigureAwait(false);
-        if (grant is null) return LinkTurnReply.Failure("not authorized");
-
-        // Make sure the resident brain is up. A cross-app caller may be the first
-        // thing to touch it, and a cold model load is seconds long, so if it is
-        // not ready yet we say so rather than block the binder for half a minute.
-        try { CircleNeuronService.Start(this); } catch (Exception ex) { Log.Warn(Tag, "start: " + ex.Message); }
+        // Make sure the resident brain is up; a cold model load is seconds long.
+        try { CircleNeuronService.Start(this); }
+        catch (Exception ex) { Log.Warn(Tag, "start: " + ex.Message); }
 
         var node = CircleNeuronService.Node;
         if (node is null || !node.IsReady)
@@ -125,35 +114,28 @@ public sealed class CircleNeuronLinkService : Service
         return LinkTurnReply.Success(sb.ToString().Trim());
     }
 
-    private static async Task<bool> RunDeviceAuthAsync(CancellationToken ct)
-    {
-        var auth = Auth;
-        if (auth is null) return false;   // no gate wired => nothing may be approved
-        var result = await auth.ChallengeAsync(
-            AuthChallengeReason.AppLinkRequest,
-            AuthMethod.BiometricAndDeviceAdmin,
-            "Allow this app to use your Circle AI?",
-            ct).ConfigureAwait(false);
-        return result.Succeeded;
-    }
-
-    // ── caller identity from the OS, never from the caller ───────────────────
-
     private (string Package, string Signature)? CallerIdentity(int uid)
     {
-        var pm = PackageManager;
-        var packages = pm?.GetPackagesForUid(uid);
-        if (pm is null || packages is null || packages.Length == 0) return null;
+        var packages = PackageManager?.GetPackagesForUid(uid);
+        if (packages is null || packages.Length == 0) return null;
 
         var package = packages[0]!;
-        var signature = SignatureDigest(pm, package);
+        var signature = SignatureDigestOf(this, package);
         return signature is null ? null : (package, signature);
     }
 
-    private static string? SignatureDigest(PackageManager pm, string package)
+    /// <summary>
+    /// SHA-256 of a package's first signing certificate, or null. Shared with
+    /// LinkConsentActivity so the service and the consent screen judge a caller's
+    /// identity the same way.
+    /// </summary>
+    internal static string? SignatureDigestOf(Context context, string package)
     {
         try
         {
+            var pm = context.PackageManager;
+            if (pm is null) return null;
+
             byte[]? first = null;
             if ((int)Build.VERSION.SdkInt >= 28)
             {
@@ -163,7 +145,7 @@ public sealed class CircleNeuronLinkService : Service
             }
             else
             {
-#pragma warning disable CS0618 // GetSignatures/Signatures deprecated; still the only path < API 28
+#pragma warning disable CS0618 // Signatures deprecated; still the only path < API 28
                 var info = pm.GetPackageInfo(package, PackageInfoFlags.Signatures);
                 var sigs = info?.Signatures;
 #pragma warning restore CS0618
@@ -180,8 +162,6 @@ public sealed class CircleNeuronLinkService : Service
             return null;
         }
     }
-
-    // ── parcel <-> string map (mirror of the client's writer) ────────────────
 
     private static IReadOnlyDictionary<string, string> ReadMap(Parcel data)
     {
