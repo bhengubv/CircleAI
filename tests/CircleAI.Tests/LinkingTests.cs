@@ -220,4 +220,47 @@ public sealed class LinkingTests
             .AuthorizeAsync(new LinkRequest("com.b.app", ThirdParty), Approve, Now);
         Assert.Null(forever!.ExpiresAt);
     }
+
+    // ---- turn codec: the marshalling semantics for the Android Bundle hop ----
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Codec_round_trips_a_request(bool agentic)
+    {
+        var req = new LinkTurnRequest("sess-1", "what are my work rights?", agentic);
+
+        var back = LinkTurnCodec.TryDecodeRequest(LinkTurnCodec.Encode(req));
+
+        Assert.NotNull(back);
+        Assert.Equal(req, back);
+    }
+
+    [Fact]
+    public void Codec_decodes_a_request_with_no_message_as_null()
+    {
+        var map = new Dictionary<string, string> { [LinkTurnCodec.KeySession] = "s" };
+        Assert.Null(LinkTurnCodec.TryDecodeRequest(map));
+    }
+
+    [Fact]
+    public void Codec_round_trips_a_success_reply()
+    {
+        var reply = LinkTurnReply.Success("Paris.");
+        var back = LinkTurnCodec.DecodeReply(LinkTurnCodec.Encode(reply));
+        Assert.True(back.Ok);
+        Assert.Equal("Paris.", back.Reply);
+    }
+
+    [Fact]
+    public void Codec_round_trips_a_failure_reply_and_a_missing_ok_is_failure()
+    {
+        var back = LinkTurnCodec.DecodeReply(LinkTurnCodec.Encode(LinkTurnReply.Failure("busy")));
+        Assert.False(back.Ok);
+        Assert.Equal("busy", back.Error);
+
+        // A map with no ok key must never read as a false success.
+        var empty = LinkTurnCodec.DecodeReply(new Dictionary<string, string>());
+        Assert.False(empty.Ok);
+    }
 }
