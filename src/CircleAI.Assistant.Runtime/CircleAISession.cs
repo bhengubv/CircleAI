@@ -778,14 +778,25 @@ public sealed class CircleAISession : IAsyncDisposable
     /// own voice support.
     /// </para>
     /// <para>
-    /// So the manifest goes first and the library second. "What can you do" is
-    /// answered by this build; "how do I do X" is answered by the library.
+    /// So the manifest goes first, then OUR in-repo consumer pack, then the
+    /// community library. "What can you do" is answered by this build; a person's
+    /// "help me with my money / my work rights / a grant" is answered by the
+    /// consumer pack that backs those Services; "how do I do X" for anything else
+    /// falls through to the library. CompositeSkillStore asks all three and
+    /// de-dupes nearest-first, so a consumer skill for an everyday-life tile is
+    /// offered ahead of a developer skill from the 1,378-strong library.
     /// </para>
     /// </remarks>
     private static ISkillStore Skills()
-        => Library is null
-            ? CapabilityManifestSkillStore.Default
-            : new CompositeSkillStore(CapabilityManifestSkillStore.Default, Library);
+    {
+        // ALWAYS PRESENT, unlike the library: the consumer pack is embedded in
+        // CircleAI.Skills, so it is there on the browser (which ships no SQLite
+        // library) and before the phone has unpacked anything.
+        var consumer = ConsumerSkillPack.Shared;
+        return Library is null
+            ? new CompositeSkillStore(CapabilityManifestSkillStore.Default, consumer)
+            : new CompositeSkillStore(CapabilityManifestSkillStore.Default, consumer, Library);
+    }
 
     /// <summary>The memory this device keeps, when a head has wired one.</summary>
     /// <remarks>

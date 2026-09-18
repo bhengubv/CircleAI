@@ -38,4 +38,15 @@
     <EmbeddedResource Include="..\..\capabilities.json"
                       LogicalName="CircleAI.Skills.capabilities.json" />
   </ItemGroup>
+
+  <!--
+    The in-repo consumer skill pack — SA-relevant SKILL.md skills for the
+    everyday-life Services (work, money, grants, banking…). Embedded so
+    ConsumerSkillPack can load them ON DEVICE and in the BROWSER with no GitHub
+    download and no unpacked asset. Enumerated at runtime by the "SKILL.md"
+    suffix, so MSBuild's folder-name mangling of the resource id does not matter.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="ConsumerPack\**\SKILL.md" />
+  </ItemGroup>
 </Project>
