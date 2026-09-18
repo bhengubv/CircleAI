@@ -121,6 +121,8 @@
          of the native head. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
+    <!-- The cross-app link grant store + policy, wired onto the link service. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />
     <!-- The CV interview: its script, its profile store and the renderer. The
          screen only maps an answer onto a field - the questions and the document
          are this library's, so both apps run one interview. -->

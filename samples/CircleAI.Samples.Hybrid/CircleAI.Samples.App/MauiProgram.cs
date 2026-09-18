@@ -136,6 +136,20 @@ public static class MauiProgram
         // people around you.
         builder.Services.AddSingleton<IWhereAmI, DeviceWhereAmI>();
 
+        // THE CROSS-APP LINK. Another app can bind CircleNeuronLinkService to use
+        // this device's one shared brain; these hooks are how it is authorized.
+        // No caller is trusted by default (no first-party signatures wired here),
+        // so every linking app is approved once with device auth — biometric / PIN
+        // / pattern — and remembered. The grant store is in-memory for now: a
+        // killed service process simply asks again, which is safe if less handy.
+        CircleAI.Device.CircleNeuronLinkService.Grants =
+            new CircleAI.Linking.InMemoryLinkGrantStore();
+        CircleAI.Device.CircleNeuronLinkService.FirstPartySignatures =
+            new HashSet<string>(StringComparer.Ordinal);
+        CircleAI.Device.CircleNeuronLinkService.Auth =
+            new CircleAI.Device.AndroidAuthChallenge(
+                () => Microsoft.Maui.ApplicationModel.Platform.CurrentActivity);
+
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG
