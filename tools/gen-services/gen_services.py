@@ -38,7 +38,7 @@ INFRASTRUCTURE = (
     # classifier matches a name or a dotted prefix of it.
     "Assistant",
     "Accessibility", "Aether", "AetherNet", "Agents", "Ambient", "BuildFarm",
-    "Cast", "CodeUnderstanding", "ContentPolicy", "Core", "DepBot", "Desktop",
+    "Cast", "Client", "CodeUnderstanding", "ContentPolicy", "Core", "DepBot", "Desktop",
     "Device", "DevTools", "Distribution", "DocAnalytics", "Domain", "Embeddings",
     "Federation", "Hosting", "Identity", "Inference", "Inputs", "Integration",
     "IoT", "Languages.Language", "Linking", "Maui", "Mesh", "MicroAgents",

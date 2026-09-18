@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Client</PackageId>
+    <Version>1.0.0</Version>
+    <Description>
+      Client for a host app to use CircleAI's shared on-device brain. Detects the
+      installed standalone service, binds it, and asks a turn over the authorized
+      cross-app link — the person approves the link once with device auth, and from
+      then the app calls the one shared brain instead of shipping its own model.
+      A host app must declare a &lt;queries&gt; entry for the CircleAI package
+      (Android 11+ package visibility) to see and bind the service.
+    </Description>
+  </PropertyGroup>
+
+  <!-- Plain Android head, not MAUI: any Android app (ours or third-party) can
+       reference this without taking the MAUI stack. Singular android TFM, so the
+       net9 guardrail treats it as a head, not a library. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
+  </ItemGroup>
+
+</Project>

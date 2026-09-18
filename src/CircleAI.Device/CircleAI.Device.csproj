@@ -22,6 +22,10 @@
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- The cross-app link door (CircleNeuronLinkService) authorizes callers by
+         the link grant policy and the biometric/PIN gate contract. -->
+    <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
+    <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
   </ItemGroup>
 
 </Project>
