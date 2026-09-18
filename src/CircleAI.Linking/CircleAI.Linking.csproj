@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ========== NUGET IDENTITY ========== -->
+  <PropertyGroup>
+    <PackageId>CircleAI.Linking</PackageId>
+    <Version>1.0.0</Version>
+    <Description>
+      Cross-app link authorization for CircleAI — the standalone service app other
+      apps bind to for a shared on-device brain. Pure abstractions + policy:
+      LinkScope, LinkGrant, ILinkGrantStore, LinkGate (Allow / AutoApprove /
+      NeedAuth / Deny) and LinkAuthorizer (mint-on-approval). NO Android, auth, or
+      AetherNet dependency — the device layer supplies the caller identity and the
+      IAuthChallenge-backed approval callback, so this stays desktop-testable.
+    </Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

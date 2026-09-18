@@ -26,6 +26,12 @@ public enum AuthChallengeReason
     /// <summary>The operation being attempted requires elevated auth.</summary>
     PrivilegedOperation,
 
+    /// <summary>
+    /// Another app is asking to link to CircleAI on this device. The person
+    /// approves the link with device auth before the app may use the shared brain.
+    /// </summary>
+    AppLinkRequest,
+
     /// <summary>Scheduled trust renewal — periodic re-validation.</summary>
     PeriodicRevalidation,
 

@@ -112,6 +112,7 @@
     <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Mesh.Hosting\CircleAI.Mesh.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security.AetherNet\CircleAI.Security.AetherNet.csproj" />
