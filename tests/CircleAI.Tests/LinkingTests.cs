@@ -8,6 +8,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Linking;
@@ -262,5 +263,52 @@ public sealed class LinkingTests
         // A map with no ok key must never read as a false success.
         var empty = LinkTurnCodec.DecodeReply(new Dictionary<string, string>());
         Assert.False(empty.Ok);
+    }
+
+    // ---- persistent grant store ----
+
+    [Fact]
+    public async Task File_store_persists_a_grant_across_a_reload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"circleai-grants-{Guid.NewGuid():N}.json");
+        try
+        {
+            var grant = new LinkGrant("com.app.a", ThirdParty,
+                LinkScope.Chat | LinkScope.Memory, Now, Now.AddDays(30));
+            await new FileLinkGrantStore(path).SaveAsync(grant);
+
+            // A fresh store over the same file — as if the process was killed and restarted.
+            var reloaded = await new FileLinkGrantStore(path).FindAsync("com.app.a");
+            Assert.Equal(grant, reloaded);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task File_store_revoke_persists()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"circleai-grants-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new FileLinkGrantStore(path);
+            await store.SaveAsync(new LinkGrant("com.app.a", ThirdParty, LinkScope.Chat, Now));
+            await store.RevokeAsync("com.app.a");
+
+            Assert.Null(await new FileLinkGrantStore(path).FindAsync("com.app.a"));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task File_store_loads_a_corrupt_file_as_empty_rather_than_throwing()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"circleai-grants-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, "{ this is not valid json");
+        try
+        {
+            var store = new FileLinkGrantStore(path);
+            Assert.Empty(await store.ListAsync());
+        }
+        finally { File.Delete(path); }
     }
 }

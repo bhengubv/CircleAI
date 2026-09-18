@@ -29,6 +29,18 @@ public static class LinkIpc
     public const string BindAction = "com.bhengubv.circleai.action.LINK";
 
     /// <summary>
+    /// The intent action a client launches (FOR RESULT) to approve a link. The
+    /// consent screen must run in Circle AI's app and be started by the foreground
+    /// client, because a biometric sheet cannot be shown from a background service
+    /// — and starting it for result is how the OS tells the consent screen, via
+    /// getCallingPackage, which app is really asking.
+    /// </summary>
+    public const string ConsentAction = "com.bhengubv.circleai.action.LINK_CONSENT";
+
+    /// <summary>Intent extra (int) carrying the requested <c>LinkScope</c> on a consent launch.</summary>
+    public const string ScopeExtra = "com.bhengubv.circleai.extra.SCOPE";
+
+    /// <summary>
     /// The package that hosts the CircleAI service a client binds to — the
     /// standalone host. A client resolves the service by this package + the
     /// action. (Today the hybrid app; if the standalone is split to its own
