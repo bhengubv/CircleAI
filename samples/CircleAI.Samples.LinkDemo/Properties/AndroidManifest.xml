@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    <queries> IS THE WHOLE REASON THIS FILE EXISTS. From Android 11 an app cannot
+    see or bind another app's service unless it declares what it is looking for.
+    Without this, CircleAiLinkClient.IsInstalled reads false and BindService is
+    refused even when Circle AI is installed - so "link to Circle AI" would fail
+    on every modern phone in a way that looks like the service being absent.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<queries>
+		<package android:name="com.bhengubv.circleai.hybrid" />
+	</queries>
+	<application android:label="Circle AI Link Demo"
+	             android:allowBackup="true"></application>
+</manifest>
