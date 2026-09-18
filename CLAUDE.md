@@ -108,10 +108,12 @@ solution file contains. The sixteenth project is in no solution at all:
 dotnet test tests/CircleAI.Samples.Ui.Tests/CircleAI.Samples.Ui.Tests.csproj
 ```
 
-308 bUnit tests over the screens, and **nothing builds that project** — so when
-it stopped COMPILING it simply stopped running, and stayed that way with every
-other suite green. It was found by accident. No solution would have missed it if
-any solution contained it.
+344 bUnit tests over the screens, and **no solution builds that project** — so
+when it once stopped COMPILING it simply stopped running, and stayed that way
+with every other suite green. It builds and passes green today (all 344,
+verified 2026-09-18 via the command above), but nothing *guards* it: it can rot
+again the moment a screen change breaks the build unnoticed. It was found by
+accident — no solution would have missed it if any solution contained it.
 
 `tests/CircleAI.Tests` is the big one (~3,270 over both legs) and it is the one
 people mean by "the tests". The other fourteen hold 527 more, and this
