@@ -134,6 +134,39 @@ public static class SkillPackLoader
         return new SkillPackManifest(packName, packVersion, sourceUrl, license, count);
     }
 
+    /// <summary>
+    /// Import ONE skill from raw SKILL.md text — an upload, a share, a download,
+    /// any source. Parses it, stamps a source tag, and upserts it into
+    /// <paramref name="store"/> (a writable one, e.g. the person's SQLite skills).
+    /// Returns the stored skill, or null when the text carries no usable skill.
+    /// </summary>
+    /// <param name="store">Where to write it.</param>
+    /// <param name="markdown">The SKILL.md text.</param>
+    /// <param name="source">Where it came from — stamped as <c>source:&lt;source&gt;</c> (default "user").</param>
+    /// <param name="ct">Cancellation.</param>
+    public static async Task<SkillDetail?> ImportMarkdownAsync(
+        ISkillStore store, string markdown, string source = "user", CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (string.IsNullOrWhiteSpace(markdown)) return null;
+
+        ParsedSkill parsed;
+        try { parsed = Parse(markdown, source); }
+        catch { return null; }   // unparseable text is not a skill
+
+        if (string.IsNullOrWhiteSpace(parsed.Instructions)) return null;
+
+        var label = string.IsNullOrWhiteSpace(source) ? "user" : source.Trim().ToLowerInvariant();
+        var tags = parsed.Tags
+            .Concat(new[] { "pack:user", $"source:{label}" })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return await store.UpsertAsync(parsed.Id,
+            new SkillDraft(parsed.Name, parsed.Description, parsed.Instructions, tags), ct)
+            .ConfigureAwait(false);
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // YAML-frontmatter parser. Lenient — accepts the small subset Claude
     // Code skills use (name, description, optional metadata block). We

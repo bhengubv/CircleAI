@@ -762,6 +762,14 @@ public sealed class CircleAISession : IAsyncDisposable
     /// </remarks>
     public static ISkillStore? Library { get; set; }
 
+    /// <summary>
+    /// The person's OWN skills — uploaded, shared, or added from any source — in a
+    /// writable store the head opens (SQLite on device). Composed ahead of the
+    /// community library so what someone added for themselves is preferred over a
+    /// generic community skill. Null when no user store has been wired.
+    /// </summary>
+    public static ISkillStore? UserSkills { get; set; }
+
     /// <summary>What answers a skill lookup: the manifest, plus the library.</summary>
     /// <remarks>
     /// COMPOSED, NOT REPLACED, AND THIS IS THE WHOLE CARE POINT OF THE CHANGE.
@@ -792,10 +800,17 @@ public sealed class CircleAISession : IAsyncDisposable
         // ALWAYS PRESENT, unlike the library: the consumer pack is embedded in
         // CircleAI.Skills, so it is there on the browser (which ships no SQLite
         // library) and before the phone has unpacked anything.
-        var consumer = ConsumerSkillPack.Shared;
-        return Library is null
-            ? new CompositeSkillStore(CapabilityManifestSkillStore.Default, consumer)
-            : new CompositeSkillStore(CapabilityManifestSkillStore.Default, consumer, Library);
+        // manifest (self-honesty) → consumer (our SA pack) → user (their own
+        // uploads/additions) → library (the community 1,378). Only the ones that
+        // exist are composed; CompositeSkillStore asks all of them nearest-first.
+        var stores = new List<ISkillStore>
+        {
+            CapabilityManifestSkillStore.Default,
+            ConsumerSkillPack.Shared,
+        };
+        if (UserSkills is not null) stores.Add(UserSkills);
+        if (Library is not null) stores.Add(Library);
+        return new CompositeSkillStore([.. stores]);
     }
 
     /// <summary>The memory this device keeps, when a head has wired one.</summary>
