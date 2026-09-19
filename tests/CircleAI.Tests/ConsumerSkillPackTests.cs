@@ -8,6 +8,8 @@
 // SQLite library uses, the real SkillContextBuilder puts it in the prompt, and a
 // consumer skill is offered ahead of the community library.
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CircleAI.Assistant;   // Capabilities — the generated Services catalogue
@@ -135,5 +137,40 @@ public sealed class ConsumerSkillPackTests
 
         Assert.True(ours >= 0, "our money skill was not selected");
         Assert.True(lib < 0 || ours < lib, "the library skill outranked ours");
+    }
+
+    /// <summary>The tiles that need NO grounded skill — the model and its tools
+    /// answer them directly (write, translate, draw, look up, chat). Everything
+    /// else is a grounded domain and MUST have a skill, or the tile is a label.</summary>
+    private static readonly HashSet<string> Generative = new(StringComparer.Ordinal)
+    {
+        "Relationships", "Languages", "Interpret", "Research", "Code",
+        "Write something", "A presentation", "A chart", "Show me",
+        "Read a picture", "Look it up", "Make something up",
+        "Faith", "People", "Places to go",
+        "Music", "Sport", "Watch and read", "Video", "Games", "Gaming",
+    };
+
+    [Fact]
+    public async Task Every_grounded_services_tile_has_a_skill_behind_it()
+    {
+        // "A service with no skill behind it is a label." This is the whole-job
+        // guarantee: tap any grounded tile and its OWN opener must select at least
+        // one consumer skill. If a new tile is added with no skill, this fails and
+        // names it - you cannot ship half the grid.
+        var store = ConsumerSkillPack.Shared;
+        var missing = new List<string>();
+
+        foreach (var group in Capabilities.All)
+            foreach (var tile in group.Items)
+            {
+                if (Generative.Contains(tile.Title)) continue;
+                var hits = await store.SearchAsync(tile.Opener);
+                if (hits.Count == 0) missing.Add($"{tile.Title} -> \"{tile.Opener}\"");
+            }
+
+        Assert.True(missing.Count == 0,
+            "Grounded Services tiles with no consumer skill behind them:\n  " +
+            string.Join("\n  ", missing));
     }
 }
