@@ -19,6 +19,21 @@
 
 using CircleAI.Skills;
 
+// CONSUMER MODE. The everyday-life pack is ONE flat pack (each SKILL.md in its own
+// folder under ConsumerPack), not a directory OF packs, and ConsumerSkillPack
+// loads it with BARE ids and a fixed pack:consumer-sa tag. Its .db must be built
+// the same way or the ids drift from what the Services tiles and the tests expect,
+// so this mirrors ConsumerSkillPack.Load() exactly, through the same parser.
+if (args.Length > 0 && args[0] == "--consumer")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("usage: dotnet run --project tools/skills-db -- --consumer <consumerpack-dir> <output.db>");
+        return 2;
+    }
+    return await BuildConsumer(args[1], args[2]);
+}
+
 var root = args.Length > 0 ? args[0] : null;
 var output = args.Length > 1
     ? args[1]
@@ -185,4 +200,65 @@ static string Name(string dir)
     while (slug.Contains("--", StringComparison.Ordinal))
         slug = slug.Replace("--", "-", StringComparison.Ordinal);
     return slug.Trim('-');
+}
+
+// Build the consumer pack's .db, one flat pack, exactly as ConsumerSkillPack.Load
+// would build it in memory: every SKILL.md under the directory, parsed by the same
+// SkillPackLoader, stored under its BARE frontmatter-name slug (parsed.Id), each
+// row stamped pack:consumer-sa. identifyingMatchOnly is a READ-time choice, so the
+// default store here writes the same rows the runtime opens with name+tags scope.
+static async Task<int> BuildConsumer(string dir, string output)
+{
+    if (!Directory.Exists(dir))
+    {
+        Console.Error.WriteLine($"consumer pack directory not found: {Path.GetFullPath(dir)}");
+        return 2;
+    }
+
+    // A FRESH DATABASE EVERY TIME - see the library path above for why a derived
+    // artefact is never rebuilt on top of a previous run.
+    foreach (var stale in new[] { output, output + "-wal", output + "-shm" })
+        if (File.Exists(stale)) File.Delete(stale);
+
+    var outDir = Path.GetDirectoryName(Path.GetFullPath(output));
+    if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
+
+    var warnings = 0;
+    var count = 0;
+
+    using (var store = new SqliteSkillStore(output))
+    {
+        Console.WriteLine($"index: {(store.FullTextAvailable ? "FTS5" : "LIKE fallback - NO FTS5 IN THIS BUILD")}");
+        Console.WriteLine($"pack:  {ConsumerSkillPack.PackName}");
+        Console.WriteLine($"root:  {Path.GetFullPath(dir)}");
+        Console.WriteLine();
+
+        await foreach (var parsed in SkillPackLoader.LoadAsync(
+                           dir, SkillPackLoader.DefaultSkillFile,
+                           (file, ex) => { warnings++; Console.Error.WriteLine($"  ! {Path.GetFileName(file)}: {ex.Message}"); }))
+        {
+            var tags = parsed.Tags
+                .Concat([$"pack:{ConsumerSkillPack.PackName}"])
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var draft = new SkillDraft(
+                Name:         parsed.Name,
+                Description:  parsed.Description,
+                Instructions: parsed.Instructions,
+                Tags:         tags);
+
+            await store.UpsertAsync(parsed.Id, draft);   // BARE id, matching ConsumerSkillPack.Load()
+            count++;
+            Console.WriteLine($"  {parsed.Id}");
+        }
+    }
+    // The store is disposed here: SqliteConnection closes as the last handle, so
+    // SQLite checkpoints the WAL into the main file and consumer.db ships as one
+    // self-contained file - the same close the library .db already relies on.
+
+    Console.WriteLine();
+    Console.WriteLine($"{count} consumer skill(s) -> {output}  ({new FileInfo(output).Length / 1000.0:0.#} KB on disk)");
+    if (warnings > 0) Console.WriteLine($"{warnings} file(s) could not be parsed and were skipped");
+    return count > 0 ? 0 : 1;
 }

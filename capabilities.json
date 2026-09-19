@@ -259,7 +259,7 @@
       "Limits": [
         "Fifteen skills of a planned ~30 (waves 2–3 pending). Coverage is South-Africa-first (SASSA grants, CCMA, clinics, load-shedding, IDs) and thin outside it.",
         "Proven on the DESKTOP that a tile opener reaches the retrieval engine and returns the right skill; NOT yet Measured on the P30.",
-        "Loaded from embedded SKILL.md through an in-memory term matcher (ConsumerSkillPack). The runtime is slated to move to SQLite (SqliteSkillStore) for I/O; the Markdown stays as source. Until then every skill parses at launch.",
+        "Runs from a prebuilt SQLite database (consumer.db, FTS5 + identifying match), generated from the SKILL.md by tools/skills-db and unpacked once at first use - no Markdown is parsed on the turn path. The SKILL.md stay on disk as the source the .db is built from.",
         "Guidance, not professional advice — the legal, medical and money skills carry guardrails that point to the CCMA, clinics, Legal Aid and the real emergency numbers rather than deciding for the user."
       ]
     },

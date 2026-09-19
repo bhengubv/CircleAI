@@ -45,6 +45,16 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     private readonly bool _identifyingOnly;
     private bool _disposed;
 
+    // ONE CONNECTION, ONE COMMAND AT A TIME. A SqliteConnection is not safe for
+    // two commands at once, and this store is now shared: ConsumerSkillPack.Shared
+    // is a singleton two test classes hit in parallel, and the resident brain will
+    // serve concurrent link turns off one shared library. The turn path on the
+    // phone is single-threaded, so this lock is uncontended there; where it is
+    // contended it serialises fast indexed reads, which is correct, not slow.
+    // Monitor is re-entrant, so a public method holding it may call a private
+    // helper (Corpus/SeenIn) that touches the connection again on the same thread.
+    private readonly object _sync = new();
+
     /// <summary>Whether full-text search is available, or LIKE is standing in.</summary>
     public bool FullTextAvailable => _fts;
 
@@ -186,10 +196,13 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     public Task<IReadOnlyList<SkillSummary>> ListAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText =
-            "SELECT id, name, description, tags, source FROM skills ORDER BY name;";
-        return Task.FromResult(ReadSummaries(cmd, cancellationToken));
+        lock (_sync)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT id, name, description, tags, source FROM skills ORDER BY name;";
+            return Task.FromResult(ReadSummaries(cmd, cancellationToken));
+        }
     }
 
     /// <inheritdoc />
@@ -198,21 +211,24 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(id)) return Task.FromResult<SkillDetail?>(null);
 
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT id, name, description, instructions, tags, source, modified_utc
-            FROM   skills WHERE id = $id;
-            """;
-        cmd.Parameters.AddWithValue("$id", id);
+        lock (_sync)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT id, name, description, instructions, tags, source, modified_utc
+                FROM   skills WHERE id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", id);
 
-        using var r = cmd.ExecuteReader();
-        if (!r.Read()) return Task.FromResult<SkillDetail?>(null);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return Task.FromResult<SkillDetail?>(null);
 
-        return Task.FromResult<SkillDetail?>(new SkillDetail(
-            r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3),
-            SplitTags(r.GetString(4)),
-            (SkillSource)r.GetInt32(5),
-            DateTimeOffset.TryParse(r.GetString(6), out var when) ? when : default));
+            return Task.FromResult<SkillDetail?>(new SkillDetail(
+                r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3),
+                SplitTags(r.GetString(4)),
+                (SkillSource)r.GetInt32(5),
+                DateTimeOffset.TryParse(r.GetString(6), out var when) ? when : default));
+        }
     }
 
     /// <summary>Skills matching <paramref name="query"/>, best first.</summary>
@@ -232,6 +248,8 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         if (string.IsNullOrWhiteSpace(query))
             return Task.FromResult<IReadOnlyList<SkillSummary>>([]);
 
+        lock (_sync)
+        {
         // NOTHING WORTH SEARCHING FOR IS NOT THE SAME AS NO MATCH, and the gap
         // between them is what the model gets told about itself. See Stopwords.
         var terms = Terms(query);
@@ -306,6 +324,7 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         }
 
         return Task.FromResult(Like(terms, cancellationToken));
+        }
     }
 
     /// <summary>Substring search, for a build with no FTS5 and for a miss.</summary>
@@ -534,6 +553,8 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(draft);
 
+        lock (_sync)
+        {
         // THE FREQUENCY CACHE IS NOW STALE. It is what decides which words are
         // worth searching for, and a write changes the corpus it was counted
         // against - see Discriminating.
@@ -579,6 +600,7 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         return Task.FromResult(new SkillDetail(
             key, draft.Name ?? "", draft.Description ?? "", draft.Instructions ?? "",
             draft.Tags ?? [], SkillSource.File, when));
+        }
     }
 
     /// <summary>
@@ -619,6 +641,8 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         ThrowIfDisposed();
         if (string.IsNullOrWhiteSpace(id)) return Task.CompletedTask;
 
+        lock (_sync)
+        {
         // THE FREQUENCY CACHE IS NOW STALE. It is what decides which words are
         // worth searching for, and a write changes the corpus it was counted
         // against - see Discriminating.
@@ -642,6 +666,7 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
         }
         tx.Commit();
         return Task.CompletedTask;
+        }
     }
 
     // ------------------------------------------------------------------

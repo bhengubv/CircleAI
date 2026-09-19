@@ -1,6 +1,13 @@
 // ConsumerSkillStore.cs
 //
-// The in-repo consumer pack's store, matching the way the shipped library does.
+// An in-memory ISkillStore whose search matches the way the shipped library does.
+//
+// NO LONGER THE CONSUMER PACK'S PRIMARY STORE. The pack now ships as a prebuilt
+// SQLite database (see ConsumerSkillPack) and opens as a SqliteSkillStore. This
+// class is kept for two jobs: the empty fallback ConsumerSkillPack.Load returns
+// if that database cannot be unpacked, and an in-memory identifying store the
+// tests use as a stand-in library. Its match semantics still mirror the library's
+// identifyingMatchOnly, which is what makes it a faithful stand-in.
 //
 // WHY NOT JUST InMemorySkillStore. That store answers SearchAsync with a WHOLE
 // STRING Contains - a query of "Help me build my CV" is looked for verbatim in a
