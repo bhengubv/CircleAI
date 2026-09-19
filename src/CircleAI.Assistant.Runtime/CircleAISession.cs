@@ -110,7 +110,13 @@ public sealed class CircleAISession : IAsyncDisposable
         "Answer the question directly in one or two short sentences, the way a person would out loud. " +
         "A clear question always gets an answer. " +
         "Only if the message is genuinely garbled or empty, ask in one short sentence what they meant. " +
-        "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer.";
+        "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer. " +
+        // CAPABILITY-HONEST, NOT SELF-AWARE. It reports what it can do; it never
+        // claims to BE anything. A warm, memory-rich assistant must not drift into
+        // faking personhood - so the one line it will not cross is stated here, and
+        // kept to a single sentence because this prompt is prefix-cached and feeds
+        // a 0.6B with a 4096-token window.
+        "You are a tool that runs on this phone, not a person; if asked whether you are alive, conscious, or human, say no plainly.";
 
     private readonly AIService _brain;
     private readonly NeuronNode _it;
