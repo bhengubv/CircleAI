@@ -55,6 +55,17 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     // helper (Corpus/SeenIn) that touches the connection again on the same thread.
     private readonly object _sync = new();
 
+    // SERIALIZE CONSTRUCTION ACROSS THE PROCESS. Opening the process's first
+    // connection initializes the native SQLite provider, and the WAL pragma plus
+    // the CREATE TABLE / CREATE VIRTUAL TABLE below are DDL. Two stores
+    // constructing at once - many do in the test suite, and the resident brain
+    // opens several on warm-up - raced in that provider init and in concurrent DDL
+    // over a shared file; the loser threw, and ConsumerSkillPack.Shared cached the
+    // failure as an empty pack. This gate makes the one-time open+schema race-free.
+    // It does NOT cover queries (that is the per-instance _sync lock), so it costs
+    // nothing on the hot path - construction is rare.
+    private static readonly object _initGate = new();
+
     /// <summary>Whether full-text search is available, or LIKE is standing in.</summary>
     public bool FullTextAvailable => _fts;
 
@@ -85,11 +96,14 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
 
         _identifyingOnly = identifyingMatchOnly;
         _conn = new SqliteConnection($"Data Source={path}");
-        _conn.Open();
-        Tune();
-        ResetIfStale();
-        CreateSchema();
-        _fts = TryEnableFts();
+        lock (_initGate)
+        {
+            _conn.Open();
+            Tune();
+            ResetIfStale();
+            CreateSchema();
+            _fts = TryEnableFts();
+        }
     }
 
     /// <summary>WAL, so a reader and a writer stop blocking each other.</summary>

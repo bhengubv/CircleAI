@@ -47,34 +47,71 @@ public static class ConsumerSkillPack
     /// <summary>The embedded prebuilt database, pinned by LogicalName in the csproj.</summary>
     private const string DbResource = "CircleAI.Skills.consumer.db";
 
-    private static readonly Lazy<ISkillStore> _shared =
-        new(Load, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static volatile ISkillStore? _shared;
+    private static readonly object _sharedGate = new();
+    private static readonly ConsumerSkillStore _emptyFallback = new();
 
     /// <summary>The pack, opened once and shared.</summary>
-    public static ISkillStore Shared => _shared.Value;
+    /// <remarks>
+    /// A transient open failure serves an EMPTY pack for that ONE call and is
+    /// RETRIED on the next access - never cached. One hiccup must not disable the
+    /// Services for the life of the process, which is exactly what the old cached
+    /// Lazy did when a warm-up storm made the first open lose a construction race.
+    /// SqliteSkillStore now serialises construction so the race is gone; this
+    /// retry is the belt to that braces.
+    /// </remarks>
+    public static ISkillStore Shared
+    {
+        get
+        {
+            var cached = _shared;
+            if (cached is not null) return cached;
+            lock (_sharedGate)
+            {
+                if (_shared is not null) return _shared;
+                var db = TryOpen();
+                if (db is not null) return _shared = db;   // cache ONLY a real load
+                return _emptyFallback;                     // transient: retry next access
+            }
+        }
+    }
 
     /// <summary>
-    /// Unpack the embedded <c>consumer.db</c> and open it as a
-    /// <see cref="SqliteSkillStore"/>. A fresh instance each call; <see cref="Shared"/>
-    /// caches one. On any failure returns an empty in-memory store rather than
-    /// throwing - a missing pack costs "how do I…" answers, and the capability
-    /// manifest still answers "what can you do" (the same degradation
-    /// <c>SkillLibrary.Open</c> takes).
+    /// Open a fresh store over the pack database, or an empty in-memory store if it
+    /// cannot be opened - a missing pack costs "how do I…" answers, and the
+    /// capability manifest still answers "what can you do" (the degradation
+    /// <c>SkillLibrary.Open</c> also takes). A fresh instance each call;
+    /// <see cref="Shared"/> caches a successful one.
     /// </summary>
-    public static ISkillStore Load()
+    public static ISkillStore Load() => (ISkillStore?)TryOpen() ?? new ConsumerSkillStore();
+
+    // IDENTIFYING MATCH ONLY, LIKE THE LIBRARY. A consumer skill earns its place in
+    // the prompt by being ABOUT what the tile asked - its name and tags - not a
+    // word buried in its body. Every skill carries its domain in its tags: work,
+    // rights, money, grant, bank. See SqliteSkillStore's constructor.
+    // SERIALIZE THE WHOLE CONSUMER OPEN across the process. Shared and Load both
+    // land here, and on a COLD start they otherwise raced writing the same temp
+    // file in ExtractDb (Load, from a test, is not under _sharedGate) - which is
+    // what actually broke the pack under full-suite load. One opener at a time:
+    // the first writes and opens the db, the rest see it already extracted.
+    private static readonly object _openGate = new();
+
+    private static SqliteSkillStore? TryOpen()
     {
-        try
+        lock (_openGate)
         {
-            // IDENTIFYING MATCH ONLY, LIKE THE LIBRARY. A consumer skill earns its
-            // place in the prompt by being ABOUT what the tile asked - its name and
-            // its tags - not by a word buried in its body. That is why every
-            // consumer SKILL.md carries the domain in its tags: work, rights, money,
-            // grant, bank. See SqliteSkillStore's constructor.
-            return new SqliteSkillStore(ExtractDb(), identifyingMatchOnly: true);
-        }
-        catch
-        {
-            return new ConsumerSkillStore();
+            // RETRY a transient construction failure. Under a cold, heavily
+            // concurrent start the first open of the pack database can fail where
+            // the same open a moment later, or warm, succeeds; a few short retries
+            // absorb that so one hiccup does not leave the pack empty. If every
+            // attempt fails, Shared serves empty for that one call and retries on
+            // the next access - so a failure is never cached for the process.
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try { return new SqliteSkillStore(ExtractDb(), identifyingMatchOnly: true); }
+                catch { if (attempt < 2) System.Threading.Thread.Sleep(40 * (attempt + 1)); }
+            }
+            return null;
         }
     }
 
