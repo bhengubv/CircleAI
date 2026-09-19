@@ -230,20 +230,53 @@
       "Id": "self.knowledge",
       "Name": "Capability self-knowledge",
       "Status": "partial",
-      "Summary": "Lets the assistant answer 'what can you do?' from fact rather than invention.",
-      "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/ToolPromptRenderer.cs#Render",
+      "Summary": "Lets the assistant answer 'what can you do?' from THIS manifest rather than invention, and refuse to claim what it cannot yet do.",
+      "Package": "CircleAI.Skills",
+      "EntryPoint": "src/CircleAI.Skills/CapabilityManifestSkillStore.cs#SearchAsync",
       "Seam": "CircleAI.Skills.ISkillStore",
-      "VerifiedBy": [],
+      "VerifiedBy": [ "CapabilityManifestSkillStoreTests", "CompositeSkillStoreTests" ],
       "Measured": {
         "Device": "Huawei MAR-LX1M",
         "Date": "2026-07-20",
-        "Result": "Asked 'what can you do?' it answered accurately: 'retrieving battery level or looking up product prices'. Predicted to FAIL; it partially succeeded."
+        "Result": "Asked 'what can you do?' it answered accurately from the TOOLS block: 'retrieving battery level or looking up product prices'. This predates the feature-half wiring described in Limits."
       },
       "Limits": [
-        "It works only as a SIDE EFFECT of the tools block being in the system prompt. ISkillStore is still never populated.",
-        "So it can describe its TOOLS but not its FEATURES — voice, vision, mesh, memory, offline operation are all invisible to it.",
-        "THIS FILE is the intended input for the feature half. Until it is wired, the assistant cannot describe what it is."
+        "The feature-half is now wired: CapabilityManifestSkillStore populates ISkillStore from THIS manifest, and CircleAISession.Skills composes it into the retrieval path ahead of the consumer pack and any user-uploaded skills. The 2026-07-20 Measured note above predates that wiring.",
+        "Every entry carries its Status, and non-shipping entries say 'not yet' in words the model cannot miss — so it will not claim voice, vision or the cross-app link as done. That honesty is the point, and it pairs with the persona's not-self-aware clause in CircleAISession.",
+        "Retrieval surfaces the top few MATCHED entries per turn, not a full enumeration — a broad 'what can you do?' sees a relevant sample, not the whole catalogue.",
+        "Covered by desktop tests (the store and its composition); NOT re-Measured on the P30 since the wiring landed."
+      ]
+    },
+    {
+      "Id": "skills.consumer",
+      "Name": "Everyday-life skill pack",
+      "Status": "partial",
+      "Summary": "Grounds answers to real South-African life tasks — building a CV, applying for a grant, tenant rights, using a clinic, load-shedding, feeding a family — from a curated skill pack.",
+      "Package": "CircleAI.Skills",
+      "EntryPoint": "src/CircleAI.Skills/ConsumerSkillPack.cs#Shared",
+      "Seam": "CircleAI.Skills.ISkillStore",
+      "VerifiedBy": [ "ConsumerSkillPackTests" ],
+      "Limits": [
+        "Fifteen skills of a planned ~30 (waves 2–3 pending). Coverage is South-Africa-first (SASSA grants, CCMA, clinics, load-shedding, IDs) and thin outside it.",
+        "Proven on the DESKTOP that a tile opener reaches the retrieval engine and returns the right skill; NOT yet Measured on the P30.",
+        "Loaded from embedded SKILL.md through an in-memory term matcher (ConsumerSkillPack). The runtime is slated to move to SQLite (SqliteSkillStore) for I/O; the Markdown stays as source. Until then every skill parses at launch.",
+        "Guidance, not professional advice — the legal, medical and money skills carry guardrails that point to the CCMA, clinics, Legal Aid and the real emergency numbers rather than deciding for the user."
+      ]
+    },
+    {
+      "Id": "skills.upload",
+      "Name": "User-uploaded skills",
+      "Status": "partial",
+      "Summary": "Lets a person add their own SKILL.md — from any source — into a writable store, so the assistant becomes customised to them.",
+      "Package": "CircleAI.Skills",
+      "EntryPoint": "src/CircleAI.Skills/SkillPackLoader.cs#ImportMarkdownAsync",
+      "Seam": "CircleAI.Skills.ISkillStore",
+      "VerifiedBy": [ "UserSkillIngestTests" ],
+      "Limits": [
+        "The ingest and the writable SQLite store are tested and persist across restarts; there is NO user-facing upload screen yet, so from the app there is no way in — the repo's signature defect. It is wired via CircleAISession.UserSkills but not surfaced in UI.",
+        "Accepts one SKILL.md at a time (frontmatter + instructions). No pack/zip import, and no provenance check beyond a stamped source: label.",
+        "Junk — empty, unparseable, or no instructions — is refused and returns null; there are no partial writes.",
+        "Not Measured on the P30."
       ]
     },
     {
@@ -340,6 +373,22 @@
       "Limits": [
         "No vision model is catalogued, so the selector can never choose one and Vision requests throw. That throw IS tested, so the current behaviour is honest — the feature simply does not exist.",
         "KimiVlGenerator has never been executed."
+      ]
+    },
+    {
+      "Id": "link.crossapp",
+      "Name": "Standalone service link (other apps use this phone's brain)",
+      "Status": "scaffold",
+      "Summary": "CircleAI as a standalone service app other apps link to — install it once, authorise the model download, and let another app share this one brain instead of shipping its own, approving the link with a fingerprint, pattern or PIN.",
+      "Package": "CircleAI.Linking",
+      "EntryPoint": "src/CircleAI.Linking/LinkAuthorizer.cs#AuthorizeAsync",
+      "Seam": "CircleAI.Linking.LinkGate, CircleAI.Linking.ILinkGrantStore",
+      "VerifiedBy": [ "LinkingTests" ],
+      "Limits": [
+        "The link LOGIC — scope, per-app grants, the gate's Allow/AutoApprove/NeedAuth/Deny decision, and the LinkTurn Parcel codec — is complete and unit-tested (LinkingTests, both frameworks). The cross-process Binder hop, the biometric consent screen, and two apps actually sharing one brain have NEVER run on a device.",
+        "Android transport (CircleNeuronLinkService, LinkConsentActivity, AndroidAuthChallenge) and the host client (CircleAI.Client) compile but are exercised by no automated cross-process test — there is no such harness off-device.",
+        "Default scope is chat only; memory and other domains' skills need a separate, higher grant.",
+        "First-party apps (same signing key) auto-grant; third-party apps require device auth on every link."
       ]
     }
   ]
