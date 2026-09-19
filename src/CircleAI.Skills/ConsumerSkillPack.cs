@@ -8,15 +8,20 @@
 // from base knowledge, because nothing behind the tile could deliver. A service
 // with no skill behind it is a label.
 //
-// A PREBUILT SQLite DATABASE, NOT MARKDOWN PARSED AT LAUNCH. The pack ships as
-// consumer.db - an embedded, prebuilt SqliteSkillStore (FTS5 + identifying match)
-// generated from the SKILL.md by tools/skills-db. The runtime unpacks it once and
-// opens it, the same store the shipped library and long-term memory already use;
-// no Markdown is walked on the turn path, which is the I/O win. The SKILL.md stay
-// on disk under ConsumerPack/ as the human-authored SOURCE the .db is built from -
-// they are no longer embedded in the assembly.
+// A PREBUILT SQLite DATABASE, WHICH IS ALSO THE SOURCE OF TRUTH. The pack ships as
+// consumer.db - an embedded SqliteSkillStore (FTS5 + identifying match). The
+// runtime unpacks it once and opens it, the same store the shipped library and
+// long-term memory use; no Markdown is walked on the turn path, which is the I/O
+// win. The SKILL.md are NOT kept in the repo - one fact, one owner, so nothing can
+// drift from the database. To edit a skill, round-trip through Markdown in a
+// scratch dir and rebuild the db:
 //
-//   dotnet run --project tools/skills-db -- --consumer src/CircleAI.Skills/ConsumerPack src/CircleAI.Skills/consumer.db
+//   dotnet run --project tools/skills-db -- --export   src/CircleAI.Skills/consumer.db <scratch>
+//   # edit the SKILL.md under <scratch>, then:
+//   dotnet run --project tools/skills-db -- --consumer <scratch> src/CircleAI.Skills/consumer.db
+//
+// A person can also add their own skill at runtime through the upload flow
+// (SkillPackLoader.ImportMarkdownAsync -> a writable SQLite store).
 //
 // IN-REPO, NOT DOWNLOADED. The auto-importer pulls packs from GitHub at runtime;
 // that is a network dependency this product must not have (decentralisation and

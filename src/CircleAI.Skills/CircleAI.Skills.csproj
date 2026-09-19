@@ -48,10 +48,10 @@
     the browser (see the Microsoft.Data.Sqlite note above); the only heads that
     load this project - Android and the desktop/test hosts - all have SQLite.
 
-    consumer.db is DERIVED from the SKILL.md that stay on disk under ConsumerPack/
-    as the human-authored SOURCE. Regenerate it after editing any skill by running
-    tools/skills-db in its consumer mode; the exact command line is in the header of
-    ConsumerSkillPack.cs and in the tool's own usage text.
+    consumer.db IS THE SOURCE OF TRUTH. The SKILL.md are NOT kept in the repo -
+    one fact, one owner, so a Markdown copy cannot drift from the database. To edit
+    a skill: export the db to a scratch dir, edit the Markdown, rebuild, and commit
+    the .db (the two commands are in the header of ConsumerSkillPack.cs).
 
     LogicalName is pinned so ConsumerSkillPack finds the resource by a stable name
     regardless of how MSBuild would otherwise mangle it.

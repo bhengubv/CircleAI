@@ -19,11 +19,11 @@
 
 using CircleAI.Skills;
 
-// CONSUMER MODE. The everyday-life pack is ONE flat pack (each SKILL.md in its own
-// folder under ConsumerPack), not a directory OF packs, and ConsumerSkillPack
-// loads it with BARE ids and a fixed pack:consumer-sa tag. Its .db must be built
-// the same way or the ids drift from what the Services tiles and the tests expect,
-// so this mirrors ConsumerSkillPack.Load() exactly, through the same parser.
+// CONSUMER MODE. Builds consumer.db from a flat directory of SKILL.md (each skill
+// in its own folder), not a directory OF packs. Stamps a fixed pack:consumer-sa
+// tag and keeps BARE ids (the frontmatter-name slug) so the ids match what the
+// Services tiles and the tests expect. consumer.db is the committed SOURCE OF
+// TRUTH; this rebuilds it from a scratch dir you obtained with --export.
 if (args.Length > 0 && args[0] == "--consumer")
 {
     if (args.Length < 3)
@@ -32,6 +32,20 @@ if (args.Length > 0 && args[0] == "--consumer")
         return 2;
     }
     return await BuildConsumer(args[1], args[2]);
+}
+
+// EXPORT MODE. consumer.db is now the SOURCE OF TRUTH - the SKILL.md are not kept
+// in the repo (one fact, one owner: keeping both let them drift). To edit a
+// shipped skill: export the db to a scratch dir, edit the Markdown there, then
+// rebuild with --consumer and commit the .db. The scratch dir is never committed.
+if (args.Length > 0 && args[0] == "--export")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("usage: dotnet run --project tools/skills-db -- --export <db> <outdir>");
+        return 2;
+    }
+    return await ExportDb(args[1], args[2]);
 }
 
 var root = args.Length > 0 ? args[0] : null;
@@ -202,11 +216,11 @@ static string Name(string dir)
     return slug.Trim('-');
 }
 
-// Build the consumer pack's .db, one flat pack, exactly as ConsumerSkillPack.Load
-// would build it in memory: every SKILL.md under the directory, parsed by the same
-// SkillPackLoader, stored under its BARE frontmatter-name slug (parsed.Id), each
-// row stamped pack:consumer-sa. identifyingMatchOnly is a READ-time choice, so the
-// default store here writes the same rows the runtime opens with name+tags scope.
+// Build the consumer pack's .db from a flat directory of SKILL.md: every file under
+// the directory, parsed by SkillPackLoader, stored under its BARE frontmatter-name
+// slug (parsed.Id), each row stamped pack:consumer-sa. identifyingMatchOnly is a
+// READ-time choice, so the default store here writes the same rows the runtime
+// opens with name+tags scope.
 static async Task<int> BuildConsumer(string dir, string output)
 {
     if (!Directory.Exists(dir))
@@ -261,4 +275,51 @@ static async Task<int> BuildConsumer(string dir, string output)
     Console.WriteLine($"{count} consumer skill(s) -> {output}  ({new FileInfo(output).Length / 1000.0:0.#} KB on disk)");
     if (warnings > 0) Console.WriteLine($"{warnings} file(s) could not be parsed and were skipped");
     return count > 0 ? 0 : 1;
+}
+
+// Dump a skill database back to editable SKILL.md, one folder per skill named by
+// its id. This is the read/edit path for a database that is the source of truth:
+// export, edit, then --consumer to rebuild. The pack: tag is stamped at build
+// time, so it is stripped here and re-added by --consumer.
+static async Task<int> ExportDb(string dbPath, string outDir)
+{
+    if (!File.Exists(dbPath))
+    {
+        Console.Error.WriteLine($"database not found: {Path.GetFullPath(dbPath)}");
+        return 2;
+    }
+
+    Directory.CreateDirectory(outDir);
+
+    using var store = new SqliteSkillStore(dbPath);
+    var all = await store.ListAsync();
+    var n = 0;
+
+    foreach (var summary in all)
+    {
+        var s = await store.GetAsync(summary.Id);
+        if (s is null) continue;
+
+        var tags = s.Tags.Where(t => !t.StartsWith("pack:", StringComparison.OrdinalIgnoreCase));
+        var dir = Path.Combine(outDir, s.Id);
+        Directory.CreateDirectory(dir);
+
+        // Quote description defensively - it can carry a colon YAML would misread.
+        var desc = s.Description.Contains(':') ? $"\"{s.Description.Replace("\"", "\\\"")}\"" : s.Description;
+
+        var md = "---\n"
+               + $"name: {s.Name}\n"
+               + $"description: {desc}\n"
+               + $"tags: [{string.Join(", ", tags)}]\n"
+               + "---\n\n"
+               + s.Instructions.TrimEnd() + "\n";
+
+        await File.WriteAllTextAsync(Path.Combine(dir, "SKILL.md"), md);
+        n++;
+        Console.WriteLine($"  {s.Id}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"{n} skill(s) exported -> {Path.GetFullPath(outDir)}");
+    return n > 0 ? 0 : 1;
 }
