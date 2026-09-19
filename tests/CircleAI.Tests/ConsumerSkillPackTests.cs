@@ -33,7 +33,7 @@ public sealed class ConsumerSkillPackTests
         var store = ConsumerSkillPack.Load();   // a fresh load, not the singleton
         var all = await store.ListAsync();
 
-        Assert.True(all.Count >= 7, $"expected the authored consumer skills, got {all.Count}");
+        Assert.True(all.Count >= 15, $"expected the authored consumer skills, got {all.Count}");
         Assert.All(all, s => Assert.Contains($"pack:{ConsumerSkillPack.PackName}", s.Tags));
     }
 
@@ -49,6 +49,21 @@ public sealed class ConsumerSkillPackTests
 
         var hits = await ConsumerSkillPack.Shared.SearchAsync(opener);
 
+        Assert.Contains(hits, h => h.Id == expectedId);
+    }
+
+    [Theory]
+    [InlineData("Housing",      "renting-a-home-your-rights")]
+    [InlineData("Health",       "using-the-clinic-and-when-to-get-help")]
+    [InlineData("Legal",        "getting-legal-help-for-free")]
+    [InlineData("Staying safe", "emergencies-and-staying-safe")]
+    [InlineData("Electricity",  "electricity-and-load-shedding")]
+    [InlineData("Food",         "feeding-your-family-well")]
+    [InlineData("Farming",      "growing-food-at-home")]
+    public async Task A_wave1_tile_opener_selects_its_consumer_skill(string tileTitle, string expectedId)
+    {
+        var opener = OpenerFor(tileTitle);
+        var hits = await ConsumerSkillPack.Shared.SearchAsync(opener);
         Assert.Contains(hits, h => h.Id == expectedId);
     }
 
