@@ -803,9 +803,12 @@ public sealed class CircleAISession : IAsyncDisposable
     /// </remarks>
     private static ISkillStore Skills()
     {
-        // ALWAYS PRESENT, unlike the library: the consumer pack is embedded in
-        // CircleAI.Skills, so it is there on the browser (which ships no SQLite
-        // library) and before the phone has unpacked anything.
+        // ALWAYS COMPOSED, unlike the library: the consumer pack ships inside
+        // CircleAI.Skills as consumer.db and ConsumerSkillPack.Shared always
+        // returns a store (the prebuilt SQLite db where SQLite is present - Android
+        // and the desktop/test hosts - degrading to an empty store rather than
+        // throwing if it cannot be opened), so it is there before the phone has
+        // unpacked the community library.
         // manifest (self-honesty) → consumer (our SA pack) → user (their own
         // uploads/additions) → library (the community 1,378). Only the ones that
         // exist are composed; CompositeSkillStore asks all of them nearest-first.
