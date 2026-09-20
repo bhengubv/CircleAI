@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Android.App;
@@ -28,6 +29,8 @@ using Android.OS;
 using Android.Util;
 using CircleAI.Hosting.Chat;
 using CircleAI.Linking;
+using CircleAI.Memory;
+using CircleAI.Skills;
 using Java.Security;
 
 namespace CircleAI.Device;
@@ -48,6 +51,27 @@ public sealed class CircleNeuronLinkService : Service
     /// <summary>How long a minted grant lives. Zero = does not expire.</summary>
     public static TimeSpan GrantLifetime { get; set; } = TimeSpan.Zero;
 
+    /// <summary>
+    /// The person's long-term memory, for the recall / remember verbs. The host wires
+    /// this to the SAME store the app itself uses, so a linked app recalls and writes
+    /// the person's real memory — not a second copy. Null means the memory verbs
+    /// answer "memory not available" rather than inventing a store.
+    /// </summary>
+    public static IMemoryService? Memory { get; set; }
+
+    /// <summary>
+    /// The skill library for the skills verb. Defaults to the built-in consumer pack
+    /// (a prebuilt database, no model), so the verb works with zero host wiring; a
+    /// host may set its own store before first bind.
+    /// </summary>
+    public static ISkillStore? Skills { get; set; }
+
+    /// <summary>
+    /// The capability catalogue for the discovery verb. Defaults to the honest
+    /// embedded manifest, so "what can you do" answers from fact with no wiring.
+    /// </summary>
+    public static ICapabilityCatalog? Catalog { get; set; }
+
     /// <inheritdoc/>
     public override IBinder OnBind(Intent? intent) => new LinkBinder(this);
 
@@ -58,45 +82,68 @@ public sealed class CircleNeuronLinkService : Service
 
         protected override bool OnTransact(int code, Parcel? data, Parcel? reply, int flags)
         {
-            if (code != LinkIpc.TransactAsk || data is null)
+            if (data is null || (code != LinkIpc.TransactAsk && code != LinkIpc.TransactVerb))
                 return base.OnTransact(code, data, reply, flags);
 
             data.EnforceInterface(LinkIpc.Descriptor);
 
             var uid = Binder.CallingUid;   // reliable inside the transaction
             var request = ReadMap(data);
-
-            LinkTurnReply result;
-            try { result = _service.ServeAsync(uid, request).GetAwaiter().GetResult(); }
-            catch (Exception ex) { result = LinkTurnReply.Failure(ex.Message); }
-
             reply?.WriteNoException();
-            WriteMap(reply, LinkTurnCodec.Encode(result));
+
+            if (code == LinkIpc.TransactAsk)
+            {
+                LinkTurnReply result;
+                try { result = _service.ServeAskAsync(uid, request).GetAwaiter().GetResult(); }
+                catch (Exception ex) { result = LinkTurnReply.Failure(ex.Message); }
+                WriteMap(reply, LinkTurnCodec.Encode(result));
+            }
+            else   // LinkIpc.TransactVerb
+            {
+                LinkRowsReply result;
+                try { result = _service.ServeVerbAsync(uid, request).GetAwaiter().GetResult(); }
+                catch (Exception ex) { result = LinkRowsReply.Failure(ex.Message); }
+                WriteMap(reply, LinkVerbCodec.Encode(result));
+            }
             return true;
         }
     }
 
-    private async Task<LinkTurnReply> ServeAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
+    /// <summary>
+    /// Judge a caller for a given scope, never prompting. Returns null when the
+    /// caller may proceed, or the reason it may not.
+    /// </summary>
+    /// <remarks>
+    /// NEVER PROMPT HERE. First-party callers auto-mint; everyone else must have
+    /// approved the link already via LinkConsentActivity, so the auth callback just
+    /// says no and an un-approved caller is told to link first — for the exact scope
+    /// the verb needs, so a Chat-only grant cannot reach memory or the library.
+    /// </remarks>
+    private async Task<string?> AuthorizeAsync(int uid, LinkScope required)
+    {
+        var identity = CallerIdentity(uid);
+        if (identity is null) return "unknown caller";
+
+        var grants = Grants;
+        if (grants is null) return "linking not available";
+
+        var gate = new LinkGate(grants, FirstPartySignatures);
+        var authorizer = new LinkAuthorizer(grants, gate, GrantLifetime);
+        var grant = await authorizer.AuthorizeAsync(
+            new LinkRequest(identity.Value.Package, identity.Value.Signature, required),
+            static _ => Task.FromResult(false),
+            DateTimeOffset.UtcNow).ConfigureAwait(false);
+
+        return grant is null ? $"not linked for {required} — approve in Circle AI first" : null;
+    }
+
+    private async Task<LinkTurnReply> ServeAskAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
     {
         var turn = LinkTurnCodec.TryDecodeRequest(requestMap);
         if (turn is null) return LinkTurnReply.Failure("no message");
 
-        var identity = CallerIdentity(uid);
-        if (identity is null) return LinkTurnReply.Failure("unknown caller");
-
-        var grants = Grants;
-        if (grants is null) return LinkTurnReply.Failure("linking not available");
-
-        // NEVER PROMPT HERE. First-party callers auto-mint; everyone else must have
-        // approved the link already via LinkConsentActivity, so the auth callback
-        // just says no and an un-approved caller is told to link first.
-        var gate = new LinkGate(grants, FirstPartySignatures);
-        var authorizer = new LinkAuthorizer(grants, gate, GrantLifetime);
-        var grant = await authorizer.AuthorizeAsync(
-            new LinkRequest(identity.Value.Package, identity.Value.Signature, LinkScope.Chat),
-            static _ => Task.FromResult(false),
-            DateTimeOffset.UtcNow).ConfigureAwait(false);
-        if (grant is null) return LinkTurnReply.Failure("not linked — approve in Circle AI first");
+        var denied = await AuthorizeAsync(uid, LinkScope.Chat).ConfigureAwait(false);
+        if (denied is not null) return LinkTurnReply.Failure(denied);
 
         // Make sure the resident brain is up; a cold model load is seconds long.
         try { CircleNeuronService.Start(this); }
@@ -112,6 +159,71 @@ public sealed class CircleNeuronLinkService : Service
             sb.Append(chunk);
 
         return LinkTurnReply.Success(sb.ToString().Trim());
+    }
+
+    /// <summary>
+    /// Serve a structured verb — recall / remember (memory), skills (library),
+    /// capabilities (discovery). Each is gated on its own scope; the model-free
+    /// verbs answer instantly, so a linked app reaches the same memory, skills, and
+    /// honest self-catalogue it would get in-process.
+    /// </summary>
+    private async Task<LinkRowsReply> ServeVerbAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
+    {
+        var req = LinkVerbCodec.TryDecodeRequest(requestMap);
+        if (req is null) return LinkRowsReply.Failure("unknown verb");
+
+        var denied = await AuthorizeAsync(uid, LinkVerbs.RequiredScope(req.Verb)).ConfigureAwait(false);
+        if (denied is not null) return LinkRowsReply.Failure(denied);
+
+        switch (req.Verb)
+        {
+            case LinkVerb.Capabilities:
+            {
+                var catalog = Catalog ?? CapabilityCatalog.Default;
+                var rows = catalog.All()
+                    .Select(c => (IReadOnlyList<string>)new[] { c.Id, c.Status, c.Summary })
+                    .ToList();
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.Skills:
+            {
+                var store = Skills ?? ConsumerSkillPack.Shared;
+                var hits = string.IsNullOrWhiteSpace(req.Query)
+                    ? await store.ListAsync().ConfigureAwait(false)
+                    : await store.SearchAsync(req.Query!).ConfigureAwait(false);
+                var rows = hits
+                    .Select(s => (IReadOnlyList<string>)new[] { s.Id, s.Name })
+                    .ToList();
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.Recall:
+            {
+                var memory = Memory;
+                if (memory is null) return LinkRowsReply.Failure("memory not available");
+                var result = await memory.RecallAsync(
+                    new Situation(Text: req.Query ?? string.Empty),
+                    new RecallBudget(MaxAtoms: req.Limit)).ConfigureAwait(false);
+                var rows = result.Atoms
+                    .Select(a => (IReadOnlyList<string>)new[] { a.Text })
+                    .ToList();
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.Remember:
+            {
+                var memory = Memory;
+                if (memory is null) return LinkRowsReply.Failure("memory not available");
+                if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("nothing to remember");
+                await memory.RememberAsync(new MemoryAtom { Text = req.Text!, Subject = req.Subject })
+                    .ConfigureAwait(false);
+                return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+            }
+
+            default:
+                return LinkRowsReply.Failure("unknown verb");
+        }
     }
 
     private (string Package, string Signature)? CallerIdentity(int uid)

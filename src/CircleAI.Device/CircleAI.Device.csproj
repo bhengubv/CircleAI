@@ -26,6 +26,10 @@
          the link grant policy and the biometric/PIN gate contract. -->
     <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
     <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
+    <!-- The link's memory / skills / discovery verbs serve these directly:
+         the person's memory, the built-in skill pack, the capability manifest. -->
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\CircleAI.Skills\CircleAI.Skills.csproj" />
   </ItemGroup>
 
 </Project>

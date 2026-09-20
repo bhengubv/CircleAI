@@ -28,11 +28,30 @@ namespace CircleAI.Hosting.SelfHealing;
 /// <summary>Circle AI's self-healing sense, backed by the brain.</summary>
 public sealed class FailureAnalyst : IFailureAnalyst
 {
-    private readonly IAIService _brain;
+    private readonly Func<string, string, CancellationToken, Task<string>> _chat;
 
     /// <param name="brain">The Circle AI brain. The analyst is a thin layer over it.</param>
     public FailureAnalyst(IAIService brain)
-        => _brain = brain ?? throw new ArgumentNullException(nameof(brain));
+    {
+        ArgumentNullException.ThrowIfNull(brain);
+        // The brain treats a supplied system message as authoritative and skips the
+        // persona/RAG enrichment (AIService.PrepareMessagesAsync), so the analysis
+        // prompt reaches the model clean — which is what keeps the 0.6B's JSON honest.
+        _chat = (system, user, ct) => brain.ChatAsync(
+            new List<ChatMessage> { new("system", system), new("user", user) }, options: null, ct);
+    }
+
+    /// <summary>
+    /// Construct over a raw chat delegate — <c>(systemPrompt, userPrompt, ct) =&gt; reply</c>.
+    /// This lets a host back the analyst with a brain it already runs (e.g. the app's
+    /// resident <c>IBrain</c>) instead of standing up a second <see cref="IAIService"/>,
+    /// which would load a second copy of the model. The delegate returns the model's raw
+    /// text; a persona-wrapped reply still works, it just parses less reliably — and an
+    /// unparseable reply safely degrades to "needs a human", never a wrong fix.
+    /// </summary>
+    /// <param name="chat">The brain call: a system prompt, a user prompt, a token → a reply.</param>
+    public FailureAnalyst(Func<string, string, CancellationToken, Task<string>> chat)
+        => _chat = chat ?? throw new ArgumentNullException(nameof(chat));
 
     // Kept short and explicit: a 0.6B follows a tight schema far better than prose, and
     // the "if unsure, defer" line is what stops it guessing a fix for an error it does
@@ -57,12 +76,7 @@ public sealed class FailureAnalyst : IFailureAnalyst
         string reply;
         try
         {
-            var messages = new List<ChatMessage>
-            {
-                new("system", Instruction),
-                new("user", Describe(failure)),
-            };
-            reply = await _brain.ChatAsync(messages, options: null, ct).ConfigureAwait(false);
+            reply = await _chat(Instruction, Describe(failure), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

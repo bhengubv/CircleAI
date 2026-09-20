@@ -213,6 +213,14 @@ public static class AppRoutes
             ["find", "search", "look for", "what did I say about",
              "search my memory"]),
 
+        // THE APP'S OWN HEALTH — Wolverine. Voice-reachable and hand-linked from You;
+        // deliberately NOT in the Services grid (that is generated from modules). It
+        // shows what the app fixed itself, what is waiting for a person, and the
+        // autonomy dial — the face of "heals itself, or reaches a human".
+        new("wolverine", "Wolverine", Surface.Voice,
+            ["wolverine", "self healing", "self heal", "what did it fix",
+             "what fixed itself", "app health"]),
+
         // Stages, not destinations: each owns the whole screen and leaves on its
         // own. Offering them in a menu would be offering somewhere to go before
         // there is anywhere worth going.

@@ -33,6 +33,15 @@ public static class Trouble
     /// </remarks>
     public const int Longest = 160;
 
+    /// <summary>
+    /// An optional sink notified of every exception that passes through <see cref="Say"/>.
+    /// A head points this at the self-heal loop, so a caught failure is diagnosed and —
+    /// if safe — fixed, without Trouble taking any dependency (it stays browser-loadable,
+    /// which is why this is a plain delegate, not an injected service). Set once at
+    /// startup; a throwing observer is swallowed.
+    /// </summary>
+    public static Action<Exception>? Observer { get; set; }
+
     /// <summary>One sentence a non-developer can act on.</summary>
     /// <remarks>
     /// PHRASED AS A CAUSE PLUS A FIX, in that order, because "not enough free
@@ -66,6 +75,14 @@ public static class Trouble
         {
             // A diagnostic that throws would replace the failure being reported
             // with its own, which is the one thing this must never do.
+        }
+
+        // Hand the failure to whoever is healing (a head wires this to the self-heal
+        // loop). Fire-and-forget, and it never changes what the screen is told.
+        if (Observer is { } sink)
+        {
+            try { sink(ex); }
+            catch { /* the healer's own failure must not replace the one being reported */ }
         }
 
         var msg = ex.GetBaseException().Message ?? "";

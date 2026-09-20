@@ -167,8 +167,18 @@ those in-process for now.
 ### On-device link
 
 A phone app links to a resident Circle AI, biometric/PIN-gated, and calls the same
-capabilities across app boundaries (`CircleAI.Client`). Chat is live today; memory /
-skills / discovery follow (Slice 3).
+capabilities across app boundaries (`CircleAI.Client`) — with no brain, memory, or
+skill library of its own. Beyond chat (`AskAsync`), a linked app can now:
+
+- `RecallAsync` / `RememberAsync` — the person's long-term memory (needs a `Memory` grant)
+- `SkillsAsync` — search the skill library (needs a `Skills` grant)
+- `CapabilitiesAsync` — the honest capability manifest (the chat floor is enough)
+
+Each verb enforces its own scope, so linking for chat never silently grants memory or
+the library — the person approves the higher scope once, with a fingerprint / PIN.
+The memory / skills / discovery verbs need no model, so they answer instantly. The
+runnable `samples/CircleAI.Samples.LinkDemo` is a second app that borrows one shared
+Circle AI to do exactly this. (Self-healing over the link is not built yet.)
 
 ## Testing by consuming
 

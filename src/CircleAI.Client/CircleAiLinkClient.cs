@@ -109,6 +109,53 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         }, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Recall the person's memory for a situation. Needs a <c>Memory</c> grant.
+    /// Each row is <c>[text]</c>.</summary>
+    public Task<LinkRowsReply> RecallAsync(
+        string query, int limit = 5, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Recall, Query: query, Limit: limit), ct);
+
+    /// <summary>Write a fact into the person's memory. Needs a <c>Memory</c> grant.
+    /// Returns an ok reply with no rows.</summary>
+    public Task<LinkRowsReply> RememberAsync(
+        string text, string? subject = null, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Remember, Text: text, Subject: subject), ct);
+
+    /// <summary>Search or list the skill library. Needs a <c>Skills</c> grant. Each row
+    /// is <c>[id, name]</c>. A null or empty query lists the pack.</summary>
+    public Task<LinkRowsReply> SkillsAsync(
+        string? query = null, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Skills, Query: query), ct);
+
+    /// <summary>List what Circle AI can do, from its honest manifest. The chat floor is
+    /// enough. Each row is <c>[id, status, summary]</c>.</summary>
+    public Task<LinkRowsReply> CapabilitiesAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Capabilities), ct);
+
+    /// <summary>Transacts one structured verb. Mirrors <see cref="AskAsync"/>: blocks
+    /// internally, off the calling thread.</summary>
+    private async Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)
+    {
+        var binder = await _bound.Task.ConfigureAwait(false);
+        if (binder is null) return LinkRowsReply.Failure("not connected to Circle AI");
+
+        return await Task.Run(() =>
+        {
+            var data = Parcel.Obtain();
+            var reply = Parcel.Obtain();
+            try
+            {
+                data!.WriteInterfaceToken(LinkIpc.Descriptor);
+                WriteMap(data, LinkVerbCodec.Encode(req));
+                binder.Transact(LinkIpc.TransactVerb, data, reply, (TransactionFlags)0);
+                reply!.ReadException();
+                return LinkVerbCodec.DecodeReply(ReadMap(reply));
+            }
+            catch (Exception ex) { return LinkRowsReply.Failure(ex.Message); }
+            finally { data?.Recycle(); reply?.Recycle(); }
+        }, ct).ConfigureAwait(false);
+    }
+
     /// <inheritdoc/>
     public void OnServiceConnected(ComponentName? name, IBinder? service) => _bound.TrySetResult(service);
 

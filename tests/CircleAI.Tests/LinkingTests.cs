@@ -265,6 +265,96 @@ public sealed class LinkingTests
         Assert.False(empty.Ok);
     }
 
+    // ---- verb codec: the memory / skills / discovery channel ----
+
+    [Fact]
+    public void VerbCodec_round_trips_a_recall_request()
+    {
+        var req = new LinkVerbRequest(LinkVerb.Recall, Query: "visit the clinic", Limit: 3);
+        var back = LinkVerbCodec.TryDecodeRequest(LinkVerbCodec.Encode(req));
+        Assert.Equal(req, back);
+    }
+
+    [Fact]
+    public void VerbCodec_round_trips_a_remember_request()
+    {
+        var req = new LinkVerbRequest(LinkVerb.Remember, Text: "PIN reset needs the branch", Subject: "reset:pin");
+        var back = LinkVerbCodec.TryDecodeRequest(LinkVerbCodec.Encode(req));
+        Assert.Equal(req, back);
+    }
+
+    [Fact]
+    public void VerbCodec_round_trips_skills_and_capabilities_requests()
+    {
+        var skills = new LinkVerbRequest(LinkVerb.Skills, Query: "grant");
+        Assert.Equal(skills, LinkVerbCodec.TryDecodeRequest(LinkVerbCodec.Encode(skills)));
+
+        var caps = new LinkVerbRequest(LinkVerb.Capabilities);
+        Assert.Equal(caps, LinkVerbCodec.TryDecodeRequest(LinkVerbCodec.Encode(caps)));
+    }
+
+    [Fact]
+    public void VerbCodec_decodes_a_missing_or_unknown_verb_as_null()
+    {
+        Assert.Null(LinkVerbCodec.TryDecodeRequest(new Dictionary<string, string>()));
+        Assert.Null(LinkVerbCodec.TryDecodeRequest(
+            new Dictionary<string, string> { [LinkVerbCodec.KeyVerb] = "teleport" }));
+    }
+
+    [Fact]
+    public void VerbCodec_defaults_a_missing_or_bad_limit_to_a_sane_value()
+    {
+        var map = new Dictionary<string, string> { [LinkVerbCodec.KeyVerb] = "recall" };   // no limit
+        Assert.Equal(5, LinkVerbCodec.TryDecodeRequest(map)!.Limit);
+
+        map[LinkVerbCodec.KeyLimit] = "0";
+        Assert.Equal(5, LinkVerbCodec.TryDecodeRequest(map)!.Limit);
+    }
+
+    [Fact]
+    public void VerbCodec_round_trips_multi_field_rows()
+    {
+        var reply = LinkRowsReply.Success(new IReadOnlyList<string>[]
+        {
+            new[] { "self.healing", "partial", "categorise a failure, recommend a fix" },
+            new[] { "model.selection", "shipping", "pick the best model this device can hold" },
+        });
+
+        var back = LinkVerbCodec.DecodeReply(LinkVerbCodec.Encode(reply));
+
+        Assert.True(back.Ok);
+        Assert.Equal(2, back.Rows.Count);
+        Assert.Equal(new[] { "self.healing", "partial", "categorise a failure, recommend a fix" }, back.Rows[0]);
+        Assert.Equal("model.selection", back.Rows[1][0]);
+    }
+
+    [Fact]
+    public void VerbCodec_round_trips_an_empty_success_like_a_remember()
+    {
+        var back = LinkVerbCodec.DecodeReply(
+            LinkVerbCodec.Encode(LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>())));
+        Assert.True(back.Ok);
+        Assert.Empty(back.Rows);
+    }
+
+    [Fact]
+    public void VerbCodec_a_failure_and_a_missing_ok_both_read_as_failure()
+    {
+        var back = LinkVerbCodec.DecodeReply(LinkVerbCodec.Encode(LinkRowsReply.Failure("memory not available")));
+        Assert.False(back.Ok);
+        Assert.Equal("memory not available", back.Error);
+
+        Assert.False(LinkVerbCodec.DecodeReply(new Dictionary<string, string>()).Ok);
+    }
+
+    [Theory]
+    [InlineData(LinkVerb.Recall, LinkScope.Memory)]
+    [InlineData(LinkVerb.Remember, LinkScope.Memory)]
+    [InlineData(LinkVerb.Skills, LinkScope.Skills)]
+    [InlineData(LinkVerb.Capabilities, LinkScope.Chat)]
+    public void Verbs_declare_the_scope_each_one_costs(LinkVerb verb, LinkScope expected)
+        => Assert.Equal(expected, LinkVerbs.RequiredScope(verb));
+
     // ---- persistent grant store ----
 
     [Fact]

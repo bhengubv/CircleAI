@@ -1,0 +1,164 @@
+@*
+    Wolverine — the app's own health.
+
+    THE FACE OF "HEALS ITSELF, OR REACHES A HUMAN." The self-heal loop runs
+    underneath and out of sight; this is the one place a person sees it working:
+    what it fixed on its own, what it could not safely touch and is holding for them,
+    how healthy the app has been, and how much rein they have given it.
+
+    It reads through IHealingView — the browser-safe face over the product-side loop —
+    exactly as You reads IProfile. It never touches the loop's own types.
+
+    Live: the loop raises Changed as things heal; this re-reads and re-renders, off
+    the UI thread, and unsubscribes on dispose.
+*@
+@page "/wolverine"
+@inject IHealingView View
+@implements IDisposable
+
+<div class="wolv">
+
+    @* HEALTH — the one glance. *@
+    <section class="card health">
+        <div class="stats">
+            <span class="stat">
+                <span class="stat-n">@_health.Healed</span>
+                <span class="stat-l">healed itself</span>
+            </span>
+            <span class="stat @(_health.NeedsYou > 0 ? "stat-warn" : null)">
+                <span class="stat-n">@_health.NeedsYou</span>
+                <span class="stat-l">needs you</span>
+            </span>
+            <span class="stat">
+                <span class="stat-n">@_health.RecentFailures</span>
+                <span class="stat-l">in 24h</span>
+            </span>
+        </div>
+        <p class="muted last">@LastHealedLine</p>
+    </section>
+
+    @* AUTONOMY — the dial, and the boundary it can never cross. *@
+    <section class="card">
+        <h2 class="h">How much it may do on its own</h2>
+        <div class="seg" role="group" aria-label="Autonomy">
+            @foreach (var opt in Options)
+            {
+                <button class="seg-btn @(_health.Autonomy == opt.Level ? "seg-on" : null)"
+                        @onclick="() => SetAutonomy(opt.Level)"
+                        aria-pressed="@(_health.Autonomy == opt.Level)">
+                    @opt.Label
+                </button>
+            }
+        </div>
+        <p class="muted">@AutonomyBlurb</p>
+        <p class="bounds">It never touches code, money, or security on its own — those always wait for you.</p>
+    </section>
+
+    @* NEEDS YOU — the "reaches a human" list. *@
+    <section class="card">
+        <h2 class="h">Waiting for you <span class="count">@_needsYou.Count</span></h2>
+        @if (_needsYou.Count == 0)
+        {
+            <p class="nothing">Nothing needs you. Anything the app can't safely fix itself lands here.</p>
+        }
+        else
+        {
+            @foreach (var item in _needsYou)
+            {
+                <div class="row" @key="item.Id">
+                    <span class="row-text">
+                        <span class="row-title">@item.Title</span>
+                        <span class="row-sub">@item.Detail</span>
+                        @if (!string.IsNullOrWhiteSpace(item.Action))
+                        {
+                            <span class="row-act">Suggested: @item.Action</span>
+                        }
+                    </span>
+                    <button class="strike" @onclick="() => Handled(item.Id)"
+                            aria-label="@($"Mark handled: {item.Title}")">Done</button>
+                </div>
+            }
+        }
+    </section>
+
+    @* HEALED — what it fixed on its own. *@
+    <section class="card">
+        <h2 class="h">Healed itself <span class="count">@_healed.Count</span></h2>
+        @if (_healed.Count == 0)
+        {
+            <p class="nothing">Nothing yet. When the app fixes a failure on its own, it shows up here.</p>
+        }
+        else
+        {
+            @foreach (var item in _healed)
+            {
+                <div class="row" @key="item.Id">
+                    <span class="row-text">
+                        <span class="row-title">@item.Title</span>
+                        <span class="row-sub">@item.Detail</span>
+                    </span>
+                    <span class="ok" aria-hidden="true">✓</span>
+                </div>
+            }
+        }
+    </section>
+
+</div>
+
+@code {
+    HealthSummary _health = new(0, 0, 0, null, AutonomyLevel.AutoFixSafe);
+    IReadOnlyList<HealingItem> _needsYou = [];
+    IReadOnlyList<HealingItem> _healed = [];
+
+    static readonly (AutonomyLevel Level, string Label)[] Options =
+    [
+        (AutonomyLevel.Off, "Off"),
+        (AutonomyLevel.SuggestOnly, "Suggest"),
+        (AutonomyLevel.AutoFixSafe, "Auto-fix"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        View.Changed += OnChanged;
+        await Load();
+    }
+
+    // The loop raises Changed off the UI thread; marshal onto it before re-rendering.
+    void OnChanged() => _ = InvokeAsync(async () => { await Load(); StateHasChanged(); });
+
+    async Task Load()
+    {
+        _health = await View.HealthAsync();
+        _needsYou = await View.NeedsYouAsync();
+        _healed = await View.HealedAsync();
+    }
+
+    async Task SetAutonomy(AutonomyLevel level)
+    {
+        await View.SetAutonomyAsync(level);
+        await Load();
+    }
+
+    async Task Handled(string id) => await View.MarkHandledAsync(id);
+
+    string LastHealedLine =>
+        _health.LastHealed is { } t ? $"Last healed {Ago(t)}." : "Nothing healed yet.";
+
+    string AutonomyBlurb => _health.Autonomy switch
+    {
+        AutonomyLevel.Off => "Failures are recorded, but nothing is analysed or fixed.",
+        AutonomyLevel.SuggestOnly => "It diagnoses and suggests — every fix waits for you.",
+        _ => "It runs the safe, reversible fixes on its own, and asks you about the rest.",
+    };
+
+    static string Ago(DateTimeOffset t)
+    {
+        var d = DateTimeOffset.UtcNow - t;
+        if (d < TimeSpan.FromMinutes(1)) return "just now";
+        if (d < TimeSpan.FromHours(1)) return $"{(int)d.TotalMinutes} min ago";
+        if (d < TimeSpan.FromDays(1)) return $"{(int)d.TotalHours} h ago";
+        return $"{(int)d.TotalDays} d ago";
+    }
+
+    public void Dispose() => View.Changed -= OnChanged;
+}

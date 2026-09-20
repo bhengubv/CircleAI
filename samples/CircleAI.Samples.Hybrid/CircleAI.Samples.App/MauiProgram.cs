@@ -37,8 +37,12 @@ public static class MauiProgram
         //
         // Nothing here is held back for a lifecycle callback: a force-stop
         // never calls one, and on a phone that is how an app usually ends.
-        builder.Services.AddSingleton<IMemoryService>(_ => new MemoryService(
-            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "memory")));
+        // ONE memory instance for the whole process, shared by the app AND the
+        // cross-app link (wired below), so a linked app recalls and writes the
+        // person's REAL memory rather than a second store racing on the same folder.
+        var appMemory = new MemoryService(
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "memory"));
+        builder.Services.AddSingleton<IMemoryService>(appMemory);
 
         // THE MEMORY MANAGER. Step zero (the real device reader) plus the facade
         // that ties it to the footprint and the pure budget. Registered so the
@@ -152,6 +156,46 @@ public static class MauiProgram
         // biometric sheet, so approval happens in LinkConsentActivity (launched by
         // the foreground client), which mints the grant this store then persists.
 
+        // THE MEMORY VERBS SERVE THE SAME STORE THE APP USES. A linked app that
+        // holds a Memory grant recalls and writes the person's real memory through
+        // this one instance. Skills and discovery need no wiring — the service falls
+        // back to the built-in consumer pack and the embedded capability manifest.
+        CircleAI.Device.CircleNeuronLinkService.Memory = appMemory;
+
+        // ── SELF-HEALING ────────────────────────────────────────────────────────
+        // The app heals its own failures: a caught failure → diagnose (reusing the ONE
+        // resident brain, never a second model) → run a safe, reversible fix → escalate
+        // the rest. The loop's logic lives in the product; here we only wire it and give
+        // it the platform fixes. The Wolverine dashboard reads it through IHealingView.
+        var healingLog = new CircleAI.Hosting.SelfHealing.SqliteHealingLog(
+            "Data Source=" + System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "healing.db"));
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.IHealingLog>(healingLog);
+
+        // The analyst rides the app's resident IBrain rather than a second IAIService,
+        // folding its authoritative instruction into one prompt.
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.IFailureAnalyst>(sp =>
+        {
+            var brain = sp.GetRequiredService<IBrain>();
+            return new CircleAI.Hosting.SelfHealing.FailureAnalyst(
+                (system, user, ct) => brain.AskAsync($"{system}\n\n{user}", token: null, ct));
+        });
+
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISelfHealPolicy,
+                                      CircleAI.Assistant.Device.DeviceSelfHealPolicy>();
+
+        // The safe, reversible remedies the loop may run on its own (v1: free the
+        // regenerable caches — boundaried, never code / money / security).
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISafeFix>(sp =>
+            new CircleAI.Assistant.Device.MemoryManagerSafeFix(
+                sp.GetRequiredService<CircleAI.Assistant.Device.MemoryManager>(), "cache", reclaimAll: false));
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISafeFix>(sp =>
+            new CircleAI.Assistant.Device.MemoryManagerSafeFix(
+                sp.GetRequiredService<CircleAI.Assistant.Device.MemoryManager>(), "memory", reclaimAll: true));
+
+        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISelfHealer,
+                                      CircleAI.Hosting.SelfHealing.SelfHealer>();
+        builder.Services.AddSingleton<IHealingView, CircleAI.Assistant.Device.DeviceHealing>();
+
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG
@@ -168,6 +212,33 @@ public static class MauiProgram
         // Platform logging is what actually arrives; use logcat.
 #endif
 
-        return builder.Build();
+        var app = builder.Build();
+
+        // ── SELF-HEALING HOOKS ──────────────────────────────────────────────────
+        // Every screen already funnels caught failures through Trouble.Say — point it
+        // at the loop. Unhandled managed failures come through the runtime's channels.
+        // The healer is resolved lazily so a failure during startup still finds it.
+        Trouble.Observer = ex => Heal(app, ex, "app");
+
+        System.AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is System.Exception ex) Heal(app, ex, "unhandled");
+        };
+
+        System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Heal(app, e.Exception, "background-task");
+            e.SetObserved();   // recorded — don't let it tear the process down.
+        };
+
+        return app;
+    }
+
+    // Route a failure into the self-heal loop, resolved lazily, and never let the
+    // routing itself throw — a healer that failed must not add a failure of its own.
+    private static void Heal(MauiApp app, System.Exception exception, string source)
+    {
+        try { app.Services.GetRequiredService<CircleAI.Hosting.SelfHealing.ISelfHealer>().Heal(exception, source); }
+        catch { /* healing must never surface its own failure */ }
     }
 }

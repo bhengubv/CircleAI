@@ -11,8 +11,33 @@
 using Bunit;
 using CircleAI.Assistant;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace CircleAI.Samples.Ui.Tests;
+
+/// <summary>A healing view that answers with whatever the test put in it.</summary>
+internal sealed class FakeHealingView : IHealingView
+{
+    public HealthSummary Health { get; init; } = new(0, 0, 0, null, AutonomyLevel.AutoFixSafe);
+    public IReadOnlyList<HealingItem> Healed { get; init; } = [];
+    public IReadOnlyList<HealingItem> NeedsYou { get; init; } = [];
+
+    /// <summary>The last autonomy a test set, so it can be asserted.</summary>
+    public AutonomyLevel? SetTo { get; private set; }
+    /// <summary>The last id a test marked handled.</summary>
+    public string? HandledId { get; private set; }
+
+    public event Action? Changed;
+
+    public Task<HealthSummary> HealthAsync(CancellationToken ct = default) => Task.FromResult(Health);
+    public Task<IReadOnlyList<HealingItem>> HealedAsync(CancellationToken ct = default) => Task.FromResult(Healed);
+    public Task<IReadOnlyList<HealingItem>> NeedsYouAsync(CancellationToken ct = default) => Task.FromResult(NeedsYou);
+    public Task<AutonomyLevel> AutonomyAsync(CancellationToken ct = default) => Task.FromResult(Health.Autonomy);
+    public Task SetAutonomyAsync(AutonomyLevel level, CancellationToken ct = default)
+    { SetTo = level; Changed?.Invoke(); return Task.CompletedTask; }
+    public Task MarkHandledAsync(string id, CancellationToken ct = default)
+    { HandledId = id; Changed?.Invoke(); return Task.CompletedTask; }
+}
 
 internal sealed class FakeCareer : ICareerInterview
 {
@@ -123,6 +148,11 @@ internal static class TestHost
         s.AddSingleton<IDeviceFacts>(new FakeDeviceFacts());
         s.AddSingleton<IWakePhrases>(new FakeWakePhrases());
         s.AddSingleton<IWakeWord>(new FakeWakeWord());
+
+        // TryAdd, so a test that cares about Wolverine registers its own configured
+        // FakeHealingView BEFORE calling this and keeps it; every other page (and
+        // EveryPageRenders) gets this empty default.
+        s.TryAddSingleton<IHealingView>(new FakeHealingView());
 
         // THE THREE NOTHING REGISTERED, WHICH IS WHY THREE PAGES HAD NO TESTS.
         // Music injects IMakesMusic and IPlaysMedia and Transcribe injects

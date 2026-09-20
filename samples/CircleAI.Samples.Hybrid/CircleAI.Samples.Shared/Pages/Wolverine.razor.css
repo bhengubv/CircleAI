@@ -1,0 +1,150 @@
+/* Wolverine — the self-healing dashboard.
+   Cards, tokens and the blue come from app.css; this is only the layout for the
+   stats, the autonomy segments, and the event rows. No grey, no orange, no fixed
+   widths — it flows from 344px up. */
+
+.wolv {
+    display: grid;
+    gap: var(--gutter, 1rem);
+}
+
+/* HEALTH — three counts across the top. */
+.stats {
+    display: flex;
+    gap: var(--gutter, 1rem);
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.stat-n {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--on-surface);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+}
+
+.stat-l {
+    font-size: 0.8rem;
+    color: var(--on-surface-soft, var(--on-surface));
+}
+
+/* The one count that means "a person is needed" leans on the brand blue. */
+.stat-warn .stat-n {
+    color: var(--brand-blue);
+}
+
+.last {
+    margin: 0.6rem 0 0;
+}
+
+/* SECTION HEADINGS + count pill. */
+.h {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--on-surface);
+}
+
+.count {
+    min-width: 1.4rem;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    background: var(--brand-blue);
+    color: var(--on-strong, #fff);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* AUTONOMY — a three-way segmented control. */
+.seg {
+    display: flex;
+    gap: 0.35rem;
+}
+
+.seg-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.55rem 0.4rem;
+    border: 1px solid var(--hairline, rgba(127, 127, 127, 0.25));
+    border-radius: var(--radius, 0.75rem);
+    background: transparent;
+    color: var(--on-surface);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.seg-on {
+    background: var(--brand-blue);
+    border-color: var(--brand-blue);
+    color: var(--on-strong, #fff);
+}
+
+.bounds {
+    margin: 0.5rem 0 0;
+    font-size: 0.8rem;
+    color: var(--on-surface-soft, var(--on-surface));
+}
+
+/* EVENT ROWS — needs-you and healed share the shape. */
+.row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid var(--hairline, rgba(127, 127, 127, 0.25));
+}
+
+.row:first-of-type {
+    border-top: 0;
+}
+
+.row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.row-title {
+    font-weight: 600;
+    color: var(--on-surface);
+    overflow-wrap: anywhere;
+}
+
+.row-sub {
+    font-size: 0.85rem;
+    color: var(--on-surface-soft, var(--on-surface));
+    overflow-wrap: anywhere;
+}
+
+.row-act {
+    font-size: 0.82rem;
+    color: var(--brand-blue);
+    overflow-wrap: anywhere;
+}
+
+.ok {
+    flex: 0 0 auto;
+    color: var(--brand-blue);
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.nothing {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--on-surface-soft, var(--on-surface));
+}

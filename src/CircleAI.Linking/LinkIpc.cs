@@ -25,6 +25,15 @@ public static class LinkIpc
     /// <summary>Transaction code: ask the shared brain one turn.</summary>
     public const int TransactAsk = 1;
 
+    /// <summary>
+    /// Transaction code: a structured verb beyond chat — recall / remember (memory),
+    /// skills (the library), capabilities (discovery). The verb and its arguments
+    /// ride the same flat string map as a turn; the verb name is a field
+    /// (<see cref="LinkVerbCodec.KeyVerb"/>), so one code carries them all and the
+    /// service dispatches on the verb. Each verb enforces its own scope.
+    /// </summary>
+    public const int TransactVerb = 2;
+
     /// <summary>The intent action a client binds the link service by.</summary>
     public const string BindAction = "com.bhengubv.circleai.action.LINK";
 
