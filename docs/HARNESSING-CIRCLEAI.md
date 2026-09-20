@@ -172,7 +172,20 @@ skills / discovery follow (Slice 3).
 
 ## Testing by consuming
 
-The fastest proof is the in-process SDK: `AddCircleAI`, resolve `ICapabilityCatalog` and
-`IFailureAnalyst`, and call them. `HarnessExposureTests` in the test suite does exactly
-this as a consumer would, and `FailureAnalystTests` exercises the self-healing sense end
-to end with a fake brain — both run on the desktop with no model and no server.
+The fastest proof is to **run the sample consumer**. It references this SDK, calls
+`AddCircleAI`, and exercises every capability the way a harness would — discovery,
+skills, memory, and the self-healing sense all run on the desktop with **no model**;
+point it at one to see the brain answer too:
+
+```bash
+dotnet run --project samples/CircleAI.Samples.Harness
+# with a model (arg 1 or the CIRCLEAI_MODEL env var):
+dotnet run --project samples/CircleAI.Samples.Harness -- /path/to/qwen3-0.6b-mnn/config.json
+```
+
+Its [`Program.cs`](../samples/CircleAI.Samples.Harness/Program.cs) is the shortest
+possible harness — copy it as a starting point. In the test suite,
+`HarnessExposureTests` asserts the same SDK wiring, `FailureAnalystTests` drives the
+self-healing sense end to end with a fake brain, and the `CircleAI.Inference.Server.Tests`
+`CapabilitiesEndpointTests` / `SkillsEndpointTests` prove the HTTP door — all with no
+model and no live server.
