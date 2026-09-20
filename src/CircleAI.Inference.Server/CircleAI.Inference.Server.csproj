@@ -30,6 +30,8 @@
     <ProjectReference Include="..\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj" />
     <ProjectReference Include="..\CircleAI.Runtime\CircleAI.Runtime.csproj" />
     <ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" />
+    <!-- Skills + capability catalogue, for the /v1/capabilities and /v1/skills endpoints. -->
+    <ProjectReference Include="..\CircleAI.Skills\CircleAI.Skills.csproj" />
   </ItemGroup>
 
   <ItemGroup>

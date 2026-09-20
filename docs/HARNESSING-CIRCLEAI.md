@@ -137,12 +137,38 @@ await memory.LearnAsync("The clinic moved to Fridays.");
 
 The capabilities above are the same wherever Circle AI runs; only the transport differs.
 
-- **HTTP** — `CircleAI.Inference.Server` hosts the brain at `POST /v1/companion/turn`.
-  The memory / skills / discovery / self-healing endpoints are being added alongside it
-  (see the plan's Slice 2). Point a networked consumer at it.
-- **On-device link** — a phone app links to a resident Circle AI, biometric/PIN-gated,
-  and calls the same capabilities across app boundaries (`CircleAI.Client`). Chat is
-  live today; memory / skills / discovery follow (Slice 3).
+### HTTP — `CircleAI.Inference.Server`
+
+Point a networked consumer at the server. Every endpoint below is API-key gated
+(`X-CircleAI-Api-Key`), so an unauthenticated request gets `401`.
+
+```bash
+# The brain (a companion turn):
+curl -sX POST localhost:5000/v1/companion/turn -H "X-CircleAI-Api-Key: $KEY" \
+     -H 'content-type: application/json' -d '{"sessionId":"s1","message":"hello"}'
+
+# Discovery — the honest self-catalogue, as data:
+curl -s localhost:5000/v1/capabilities -H "X-CircleAI-Api-Key: $KEY"
+#   → { "capabilities": [ { "id":"self.healing", "status":"partial", … } ] }
+
+# Skills — list, or search with ?q= :
+curl -s localhost:5000/v1/skills                -H "X-CircleAI-Api-Key: $KEY"
+curl -s "localhost:5000/v1/skills?q=grant"      -H "X-CircleAI-Api-Key: $KEY"
+#   → { "query":"grant", "skills":[ { "id":…, "name":…, "description":…, "tags":[…] } ] }
+```
+
+`/v1/capabilities` serves the same `ICapabilityCatalog` and `/v1/skills` the same
+`ISkillStore` a consumer would resolve in-process — no model needed for either, so they
+answer instantly. A host that registers its own catalogue or skill store before
+`AddCircleAIInferenceServer` serves that instead. Memory and self-healing over HTTP are
+**not exposed yet** (the server composes the bridge directly, not `IAIService`); consume
+those in-process for now.
+
+### On-device link
+
+A phone app links to a resident Circle AI, biometric/PIN-gated, and calls the same
+capabilities across app boundaries (`CircleAI.Client`). Chat is live today; memory /
+skills / discovery follow (Slice 3).
 
 ## Testing by consuming
 

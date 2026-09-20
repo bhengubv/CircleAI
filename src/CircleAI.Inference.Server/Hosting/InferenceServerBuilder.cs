@@ -70,6 +70,12 @@ public static class InferenceServerBuilder
         services.TryAddSingleton<ICompanionSessionFactory, CompanionSessionFactory>();
         services.TryAddSingleton<ICompanionSessionResolver, InMemoryCompanionSessionResolver>();
 
+        // Read-only capability surface — discovery (the embedded manifest) and skills
+        // (the built-in pack). Zero-config defaults; a host serves its own by registering
+        // ICapabilityCatalog / ISkillStore before this call (TryAdd keeps the host's).
+        services.TryAddSingleton<CircleAI.Skills.ICapabilityCatalog>(_ => CircleAI.Skills.CapabilityCatalog.Default);
+        services.TryAddSingleton<CircleAI.Skills.ISkillStore>(_ => CircleAI.Skills.ConsumerSkillPack.Shared);
+
         // CircleAI.Runtime wiring — paths are expanded at AddSingleton time so
         // the directories exist before any request lands.
         services.AddSingleton<ICapabilityProbe>(_ => new CapabilityProbe());
@@ -139,6 +145,8 @@ public static class InferenceServerBuilder
         app.MapChatCompletions();
         app.MapEmbeddings();
         app.MapCompanion();
+        app.MapCapabilities();
+        app.MapSkills();
         app.MapDiagnostics();
         app.MapAdminLifecycle();
     }
