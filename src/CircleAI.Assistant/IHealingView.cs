@@ -65,4 +65,11 @@ public interface IHealingView
 
     /// <summary>Mark one escalated item as handled, so it leaves the "needs you" list.</summary>
     Task MarkHandledAsync(string id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Run one sample failure through the real self-heal loop, end to end, so a person
+    /// (or a demo) can watch it record → diagnose → fix-or-escalate without waiting for
+    /// a real failure. It exercises the actual pipeline, not a fake result.
+    /// </summary>
+    Task RunSelfCheckAsync(CancellationToken ct = default);
 }

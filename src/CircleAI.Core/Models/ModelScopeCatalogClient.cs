@@ -190,6 +190,11 @@ public sealed class ModelScopeCatalogClient : IDisposable
     private readonly bool _ownsHttp;
     private readonly ICatalogSignatureVerifier _verifier;
     private readonly IDeviceContext? _deviceContext;
+    // Verbose diagnostics sink — a skipped repo, a fetch summary. Silent when null,
+    // but ModelCatalogue.RefreshAsync wires it to ModelCatalogue.Diagnostics so the
+    // long-standing "Observers can be wired in later to count skipped repos" is no
+    // longer a silent gap.
+    private readonly Action<string, Exception?>? _diagnostics;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -217,7 +222,8 @@ public sealed class ModelScopeCatalogClient : IDisposable
         ModelScopeCatalogOptions options,
         HttpClient? httpClient = null,
         ICatalogSignatureVerifier? verifier = null,
-        IDeviceContext? deviceContext = null)
+        IDeviceContext? deviceContext = null,
+        Action<string, Exception?>? diagnostics = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _ownsHttp = httpClient is null;
@@ -226,6 +232,7 @@ public sealed class ModelScopeCatalogClient : IDisposable
             _http.DefaultRequestHeaders.UserAgent.ParseAdd(_options.UserAgent);
         _verifier      = verifier ?? NullCatalogSignatureVerifier.Instance;
         _deviceContext = deviceContext;
+        _diagnostics   = diagnostics;
 
         Directory.CreateDirectory(_options.CacheDirectory);
     }
@@ -398,13 +405,17 @@ public sealed class ModelScopeCatalogClient : IDisposable
             {
                 var entry = await BuildEntryAsync(repo, name, ct).ConfigureAwait(false);
                 if (entry is not null) entries.Add(entry);
+                else _diagnostics?.Invoke($"ModelScope discovery: skipped repo '{repo}' (unsupported modality or no pinnable files).", null);
             }
-            catch
+            catch (Exception ex)
             {
-                // Don't let one malformed entry kill the whole refresh.
-                // Observers can be wired in later to count skipped repos.
+                // Don't let one malformed entry kill the whole refresh — but say so,
+                // rather than the silent skip this used to be.
+                _diagnostics?.Invoke($"ModelScope discovery: skipped repo '{repo}' — {ex.Message}", ex);
             }
         }
+
+        _diagnostics?.Invoke($"ModelScope discovery: catalogued {entries.Count} of {modelList.Count} candidate repo(s).", null);
 
         return new ModelRegistry(
             RegistryUrl: $"{_options.BaseUri.TrimEndSlash()}/api/v1/models?Name={_options.Filter}",

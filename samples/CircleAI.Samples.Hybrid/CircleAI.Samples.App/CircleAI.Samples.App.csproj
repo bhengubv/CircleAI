@@ -44,7 +44,7 @@
          phones, so "did my build actually land" was unanswerable from adb. This
          number is in the manifest, `dumpsys package` reads it back, and it moves
          only when somebody changes it here. -->
-    <ApplicationVersion>30</ApplicationVersion>
+    <ApplicationVersion>31</ApplicationVersion>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->
@@ -56,6 +56,14 @@
          missing namespace rather than as a missing definition. This head speaks
          and listens, so the symbol is on. -->
     <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Release signing — pass credentials via MSBuild properties or CI/CD environment -->
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android')) and '$(Configuration)' == 'Release'">
+    <AndroidPackageFormat>aab</AndroidPackageFormat>
+    <RunAOTCompilation>true</RunAOTCompilation>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -102,6 +110,10 @@
          reference none of this, which is exactly why the shared UI talks to
          IVoiceHost instead of to these directly. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- Explicit, because MauiProgram now names CircleAI.Inference types directly
+         (CatalogueBootstrap, IModelAssessor) for the model-catalogue wiring. It was
+         already here transitively via Hosting; naming it makes that usage robust. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
     <ProjectReference Include="..\..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
     <!-- ProceduralMusicBedGenerator, behind IMakesMusic. Pure managed arithmetic:

@@ -65,6 +65,12 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IMeshCapabilityBroadcaster, AetherMeshCapabilityBroadcaster>();
         services.AddHostedService<MeshAdvertisementBeacon>();
 
+        // Share the model catalogue with peers when it changes from a non-mesh
+        // source, and receive peers' catalogues (the inbound half is in
+        // MeshOffloadClient's dispatch). This is how model updates cross aethernet.
+        services.TryAddSingleton<CatalogueMeshShare>();
+        services.AddHostedService(sp => sp.GetRequiredService<CatalogueMeshShare>());
+
         return services;
     }
 

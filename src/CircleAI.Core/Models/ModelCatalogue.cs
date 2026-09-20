@@ -58,6 +58,47 @@ public static class ModelCatalogue
     public static int Discovered => ModelRegistryService.Live?.Models?.Count ?? 0;
 
     /// <summary>
+    /// Raised whenever a catalogue arrives from ANY connection — an internet
+    /// refresh (<see cref="RefreshAsync"/>) or an aethernet / side-load
+    /// <see cref="Offer"/>. The second argument is the source label
+    /// (<c>"internet"</c>, <c>"aethernet"</c>, …). This is the one seam a sink
+    /// subscribes to so new rows reach the runtime SQLite catalogue no matter
+    /// which network they travelled — see <c>CatalogueUpdater</c>. Never carries a
+    /// null or empty registry; a sink that throws does not break the fetch/offer.
+    /// </summary>
+    public static event Action<ModelRegistry, string>? CatalogueArrived;
+
+    /// <summary>
+    /// Optional diagnostics sink for the catalogue's OWN operations — a refresh
+    /// that failed, an update that landed, a sink that threw. Static because the
+    /// catalogue is process-wide with no DI; a host points it at its logger (and,
+    /// for what a person should see, the self-heal log). Mirrors
+    /// <c>Trouble.Observer</c>. Without it the events are simply unobserved — but
+    /// they are never SILENT by default at the app level, because the discovery
+    /// clients log their own failures too.
+    /// </summary>
+    public static Action<string, Exception?>? Diagnostics { get; set; }
+
+    private static void Diag(string message, Exception? error = null)
+    {
+        try { Diagnostics?.Invoke(message, error); }
+        catch { /* diagnostics must never break the caller */ }
+    }
+
+    // Publish to every registry in the process AND announce the arrival to sinks.
+    // One place, so the internet and aethernet doors behave identically.
+    private static void PublishAndAnnounce(ModelRegistry? registry, string source)
+    {
+        ModelRegistryService.Publish(registry);   // refuses null / empty
+        if (registry?.Models is { Count: > 0 })
+        {
+            Diag($"Model catalogue updated from {source}: {registry.Models.Count} model(s).");
+            try { CatalogueArrived?.Invoke(registry, source); }
+            catch (Exception ex) { Diag($"A model-catalogue sink threw while applying a '{source}' update.", ex); }
+        }
+    }
+
+    /// <summary>
     /// Bring the catalogue up to date, if it is due and the network allows.
     /// </summary>
     /// <param name="options">
@@ -99,7 +140,8 @@ public static class ModelCatalogue
                 {
                     Cadence = CatalogRefreshCadence.Daily,
                 },
-                httpClient: null, verifier: null, deviceContext: null);
+                httpClient: null, verifier: null, deviceContext: null,
+                diagnostics: static (message, error) => Diag(message, error));
 
             // GetCachedCatalogAsync, not RefreshAsync: it honours the cadence,
             // serves the disk cache when one is fresh, and accepts a stale cache
@@ -109,18 +151,20 @@ public static class ModelCatalogue
                 .GetCachedCatalogAsync(acceptStaleOnError: true, ct)
                 .ConfigureAwait(false);
 
-            ModelRegistryService.Publish(fetched);
+            PublishAndAnnounce(fetched, "internet");
             return HasLive;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
             // Offline, rate-limited, an API that changed shape, a signature that
-            // did not verify. All of them mean the same thing to this app: keep
-            // the catalogue that shipped.
+            // did not verify. All of them mean the same thing to the app — keep
+            // the catalogue that shipped — but NOT silently: this is the exact
+            // failure that once "sat at 404 indefinitely, quietly doing nothing".
+            Diag("Model catalogue refresh from ModelScope failed; keeping the current catalogue.", ex);
             return HasLive;
         }
         finally
@@ -162,7 +206,19 @@ public static class ModelCatalogue
     /// what arrives can only add.
     /// </para>
     /// </remarks>
-    public static void Offer(ModelRegistry? registry) => ModelRegistryService.Publish(registry);
+    public static void Offer(ModelRegistry? registry) => PublishAndAnnounce(registry, "aethernet");
+
+    /// <summary>
+    /// Publish + announce a catalogue this code fetched from a NAMED source — an
+    /// internet discovery client other than the built-in ModelScope one (e.g.
+    /// HuggingFace), or a side-load. Fires <see cref="CatalogueArrived"/> with the
+    /// given <paramref name="source"/> label, so the right sinks apply it and a
+    /// non-mesh source still propagates to peers (unlike <see cref="Offer"/>, which
+    /// labels the arrival "aethernet" and is therefore never re-shared). Ignored
+    /// when the registry is null or empty.
+    /// </summary>
+    public static void Announce(ModelRegistry? registry, string source)
+        => PublishAndAnnounce(registry, string.IsNullOrWhiteSpace(source) ? "update" : source);
 
     /// <summary>
     /// Drop the live catalogue and go back to what shipped.

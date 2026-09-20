@@ -18,6 +18,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using CircleAI.Core;
+using CircleAI.Core.Models;
 using CircleAI.Networking;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -247,6 +248,12 @@ public sealed class MeshOffloadClient : IMeshOffloadClient, IHostedService, IAsy
                 _ = IngestAdvertAsync(payload);
                 break;
 
+            case MeshOffloadWire.CatalogueContentType:
+                // On a background task: applying a catalogue (upsert + re-assess in
+                // the CatalogueArrived sink) is real work and must not stall the pump.
+                _ = Task.Run(() => IngestCatalogue(payload), CancellationToken.None);
+                break;
+
             default:
                 // Shared transport carrying other CircleAI traffic - not ours.
                 break;
@@ -355,6 +362,42 @@ public sealed class MeshOffloadClient : IMeshOffloadClient, IHostedService, IAsy
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Mesh offload: advert ingest failed.");
+        }
+    }
+
+    // ── Model-catalogue ingest ─────────────────────────────────────────────
+
+    private void IngestCatalogue(NetworkPayload payload)
+    {
+        try
+        {
+            // Ignore our own catalogue echoed back over a broadcast transport.
+            if (string.Equals(payload.SourceId, _options.LocalNodeId, StringComparison.Ordinal)) return;
+
+            var registry = MeshOffloadWire.DecodeCatalogue(payload);
+            if (registry?.Models is not { Count: > 0 })
+            {
+                // A payload tagged as a catalogue that will not decode to one is
+                // worth seeing — it is a corrupt or hostile message, not noise.
+                _logger.LogWarning(
+                    "Mesh offload: a catalogue payload from {Peer} did not decode to any models; dropped.",
+                    payload.SourceId ?? "(unknown peer)");
+                return;
+            }
+
+            _logger.LogInformation(
+                "Mesh offload: received a model catalogue from {Peer} — {Count} model(s); handing to the catalogue.",
+                payload.SourceId ?? "(unknown peer)", registry.Models.Count);
+
+            // Offer fires CatalogueArrived (source "aethernet"), which the
+            // CatalogueUpdater applies into the runtime SQLite catalogue —
+            // integrity is the per-row SHA-256, and a mesh-sourced catalogue is
+            // never re-shared, so there is no gossip loop.
+            ModelCatalogue.Offer(registry);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Mesh offload: catalogue ingest from {Peer} failed.", payload.SourceId ?? "(unknown peer)");
         }
     }
 

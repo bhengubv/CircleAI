@@ -85,7 +85,20 @@
     }
 
     <main class="app-body @(ScreenName is null ? "app-body-flush" : null)">
-        @Body
+        @* EVERY page renders inside this. An uncaught exception in any screen is
+           funnelled to the self-heal loop (via Trouble) and shown as a recoverable
+           message instead of blanking the screen — so no page's failures are silent. *@
+        <HealingErrorBoundary @ref="_boundary">
+            <ChildContent>
+                @Body
+            </ChildContent>
+            <ErrorContent>
+                <div class="card">
+                    <p>Something went wrong on this screen. It's been noted, and self-healing will take a look.</p>
+                    <a class="btn" href="home">Back to home</a>
+                </div>
+            </ErrorContent>
+        </HealingErrorBoundary>
     </main>
 
     @*
@@ -160,6 +173,13 @@
     /// reason, not a state, and a reason that will not go away becomes furniture.
     /// </remarks>
     string? _says;
+
+    /// <summary>The error boundary around @Body.</summary>
+    HealingErrorBoundary? _boundary;
+
+    /// <summary>Reset the boundary when the routed page changes, so a screen that
+    /// errored does not keep showing its error message after the person moves on.</summary>
+    protected override void OnParametersSet() => _boundary?.Recover();
 
 
 

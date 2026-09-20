@@ -43,11 +43,28 @@ public class MainApplication : MauiApplication
         try
         {
             var stateDir = FilesDir?.AbsolutePath;
-            if (stateDir is not null &&
-                CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(stateDir) is { Length: > 0 } died)
+            if (stateDir is not null)
             {
-                Android.Util.Log.Error("CircleAI.Crash",
-                    $"the previous run died with no handler while: {died}");
+                // ONE well-known place for the crash breadcrumb, so the risky spans
+                // (DeviceBrain's model load) write it where this reads it.
+                CircleAI.Assistant.DeviceDiagnostics.DiagnosticsDirectory = stateDir;
+
+                if (CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(stateDir) is { Length: > 0 } died)
+                {
+                    Android.Util.Log.Error("CircleAI.Crash",
+                        $"the previous run died with no handler while: {died}");
+
+                    // FEED IT TO THE SELF-HEAL LOOP. A native death (OOM / SIGSEGV)
+                    // runs no handler, so this launch is the only chance to record it —
+                    // otherwise the worst failures never reach Wolverine. Fire-and-
+                    // forget; the loop never throws.
+                    var healer = Microsoft.Maui.IPlatformApplication.Current?.Services?
+                        .GetService(typeof(CircleAI.Hosting.SelfHealing.ISelfHealer))
+                        as CircleAI.Hosting.SelfHealing.ISelfHealer;
+                    _ = healer?.HealAsync(new CircleAI.Hosting.SelfHealing.FailureContext(
+                        Message: $"The app closed unexpectedly while: {died}",
+                        Source: "native-crash"));
+                }
             }
         }
         catch { /* diagnostics must never be the thing that fails */ }

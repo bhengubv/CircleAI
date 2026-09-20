@@ -34,6 +34,11 @@
 		<PackageReference Include="Scriban" Version="7.2.4" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+		<!-- The runtime model catalogue (SqliteModelCatalog) — one SQLite table as
+		     the single source of truth for model selection. Same package + version
+		     the storage projects (Memory/Skills/Career/Companion) already ship, so
+		     the Android native e_sqlite3 payload is already proven. -->
+		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
 	</ItemGroup>
 
 	<!-- Native runtime payload. The SDK's default item glob excludes

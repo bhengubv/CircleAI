@@ -8,6 +8,48 @@
     gap: var(--gutter, 1rem);
 }
 
+/* TABS — one thing per tab, nothing below a fold; counts ride the tab labels. */
+.tabs {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tab {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.55rem 0.3rem;
+    border: 0;
+    border-radius: var(--radius, 0.75rem);
+    background: transparent;
+    color: var(--on-surface-soft, var(--on-surface));
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* Active tab: a faint brand tint (distinct from the cards and the mode strip). */
+.tab-on {
+    background: rgba(33, 150, 243, 0.15);
+    color: var(--brand-blue);
+}
+
+.pill {
+    min-width: 1.15rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    background: var(--brand-blue);
+    color: var(--on-strong, #fff);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
 /* HEALTH — three counts across the top. */
 .stats {
     display: flex;
@@ -147,4 +189,18 @@
     margin: 0;
     font-size: 0.9rem;
     color: var(--on-surface-soft, var(--on-surface));
+}
+
+/* A quiet, centred diagnostic action — exercise the loop on demand. */
+.check {
+    justify-self: center;
+    margin-top: 0.25rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--hairline, rgba(127, 127, 127, 0.25));
+    border-radius: var(--radius, 0.75rem);
+    background: transparent;
+    color: var(--brand-blue);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
 }

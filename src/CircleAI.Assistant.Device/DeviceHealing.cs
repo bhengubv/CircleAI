@@ -93,6 +93,17 @@ public sealed class DeviceHealing : IHealingView, IDisposable
     }
 
     /// <inheritdoc />
+    public Task RunSelfCheckAsync(CancellationToken ct = default)
+        // Straight through the REAL loop — record, diagnose (if the brain is ready),
+        // fix-or-escalate. HealAsync raises HealingChanged, which we relay as Changed,
+        // so the dashboard updates itself. A cache-shaped failure so a ready brain can
+        // categorise it and auto-run the safe fix; with no brain it escalates honestly.
+        => _healer.HealAsync(new FailureContext(
+            Message: "Self-check: a cached lookup failed and needs refreshing.",
+            Source: "self-check",
+            Details: "Injected by the Wolverine self-check to exercise the loop end to end."), ct);
+
+    /// <inheritdoc />
     public void Dispose() => _healer.HealingChanged -= Raise;
 
     private static IReadOnlyList<HealingItem> Map(

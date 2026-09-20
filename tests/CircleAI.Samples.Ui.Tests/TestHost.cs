@@ -37,6 +37,11 @@ internal sealed class FakeHealingView : IHealingView
     { SetTo = level; Changed?.Invoke(); return Task.CompletedTask; }
     public Task MarkHandledAsync(string id, CancellationToken ct = default)
     { HandledId = id; Changed?.Invoke(); return Task.CompletedTask; }
+
+    /// <summary>How many times a self-check was run, so a test can assert it.</summary>
+    public int SelfChecks { get; private set; }
+    public Task RunSelfCheckAsync(CancellationToken ct = default)
+    { SelfChecks++; Changed?.Invoke(); return Task.CompletedTask; }
 }
 
 internal sealed class FakeCareer : ICareerInterview

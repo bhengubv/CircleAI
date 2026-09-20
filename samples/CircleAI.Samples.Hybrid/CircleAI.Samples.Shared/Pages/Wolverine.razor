@@ -2,15 +2,16 @@
     Wolverine — the app's own health.
 
     THE FACE OF "HEALS ITSELF, OR REACHES A HUMAN." The self-heal loop runs
-    underneath and out of sight; this is the one place a person sees it working:
-    what it fixed on its own, what it could not safely touch and is holding for them,
-    how healthy the app has been, and how much rein they have given it.
+    underneath and out of sight; this is where a person sees it work: what it fixed
+    on its own, what it's holding for them, how healthy the app has been, and how
+    much rein they've given it.
+
+    TABS, NOT A SCROLL. A control below the fold is a control nobody finds — the same
+    reason Services and You fold. Each tab holds one thing and fits the screen; the
+    counts sit on the tabs, so you see what needs attention without opening anything.
 
     It reads through IHealingView — the browser-safe face over the product-side loop —
-    exactly as You reads IProfile. It never touches the loop's own types.
-
-    Live: the loop raises Changed as things heal; this re-reads and re-renders, off
-    the UI thread, and unsubscribes on dispose.
+    exactly as You reads IProfile, and re-reads on the loop's Changed event.
 *@
 @page "/wolverine"
 @inject IHealingView View
@@ -18,94 +19,126 @@
 
 <div class="wolv">
 
-    @* HEALTH — the one glance. *@
-    <section class="card health">
-        <div class="stats">
-            <span class="stat">
-                <span class="stat-n">@_health.Healed</span>
-                <span class="stat-l">healed itself</span>
-            </span>
-            <span class="stat @(_health.NeedsYou > 0 ? "stat-warn" : null)">
-                <span class="stat-n">@_health.NeedsYou</span>
-                <span class="stat-l">needs you</span>
-            </span>
-            <span class="stat">
-                <span class="stat-n">@_health.RecentFailures</span>
-                <span class="stat-l">in 24h</span>
-            </span>
-        </div>
-        <p class="muted last">@LastHealedLine</p>
-    </section>
+    <div class="tabs" role="tablist">
+        <button class="tab @(_tab == Tab.Health ? "tab-on" : null)" role="tab"
+                @onclick="() => _tab = Tab.Health">Health</button>
+        <button class="tab @(_tab == Tab.Waiting ? "tab-on" : null)" role="tab"
+                @onclick="() => _tab = Tab.Waiting">
+            Waiting@if (_needsYou.Count > 0) { <span class="pill">@_needsYou.Count</span> }
+        </button>
+        <button class="tab @(_tab == Tab.Healed ? "tab-on" : null)" role="tab"
+                @onclick="() => _tab = Tab.Healed">
+            Healed@if (_healed.Count > 0) { <span class="pill">@_healed.Count</span> }
+        </button>
+        <button class="tab @(_tab == Tab.Autonomy ? "tab-on" : null)" role="tab"
+                @onclick="() => _tab = Tab.Autonomy">Autonomy</button>
+    </div>
 
-    @* AUTONOMY — the dial, and the boundary it can never cross. *@
-    <section class="card">
-        <h2 class="h">How much it may do on its own</h2>
-        <div class="seg" role="group" aria-label="Autonomy">
-            @foreach (var opt in Options)
-            {
-                <button class="seg-btn @(_health.Autonomy == opt.Level ? "seg-on" : null)"
-                        @onclick="() => SetAutonomy(opt.Level)"
-                        aria-pressed="@(_health.Autonomy == opt.Level)">
-                    @opt.Label
-                </button>
-            }
-        </div>
-        <p class="muted">@AutonomyBlurb</p>
-        <p class="bounds">It never touches code, money, or security on its own — those always wait for you.</p>
-    </section>
+    @* HEALTH — the one glance, and the way to see it work. *@
+    @if (_tab == Tab.Health)
+    {
+        <section class="card health">
+            <div class="stats">
+                <span class="stat">
+                    <span class="stat-n">@_health.Healed</span>
+                    <span class="stat-l">healed itself</span>
+                </span>
+                <span class="stat @(_health.NeedsYou > 0 ? "stat-warn" : null)">
+                    <span class="stat-n">@_health.NeedsYou</span>
+                    <span class="stat-l">needs you</span>
+                </span>
+                <span class="stat">
+                    <span class="stat-n">@_health.RecentFailures</span>
+                    <span class="stat-l">in 24h</span>
+                </span>
+            </div>
+            <p class="muted last">@LastHealedLine</p>
+        </section>
 
-    @* NEEDS YOU — the "reaches a human" list. *@
-    <section class="card">
-        <h2 class="h">Waiting for you <span class="count">@_needsYou.Count</span></h2>
-        @if (_needsYou.Count == 0)
-        {
-            <p class="nothing">Nothing needs you. Anything the app can't safely fix itself lands here.</p>
-        }
-        else
-        {
-            @foreach (var item in _needsYou)
+        @* See it work without waiting for a real failure: runs one sample failure
+           through the real loop, end to end. *@
+        <button class="check" @onclick="SelfCheck">Run a self-heal check</button>
+    }
+
+    @* WAITING — the "reaches a human" list. *@
+    @if (_tab == Tab.Waiting)
+    {
+        <section class="card">
+            @if (_needsYou.Count == 0)
             {
-                <div class="row" @key="item.Id">
-                    <span class="row-text">
-                        <span class="row-title">@item.Title</span>
-                        <span class="row-sub">@item.Detail</span>
-                        @if (!string.IsNullOrWhiteSpace(item.Action))
-                        {
-                            <span class="row-act">Suggested: @item.Action</span>
-                        }
-                    </span>
-                    <button class="strike" @onclick="() => Handled(item.Id)"
-                            aria-label="@($"Mark handled: {item.Title}")">Done</button>
-                </div>
+                <p class="nothing">Nothing needs you. Anything the app can't safely fix itself lands here.</p>
             }
-        }
-    </section>
+            else
+            {
+                @foreach (var item in _needsYou)
+                {
+                    <div class="row" @key="item.Id">
+                        <span class="row-text">
+                            <span class="row-title">@item.Title</span>
+                            <span class="row-sub">@item.Detail</span>
+                            @if (!string.IsNullOrWhiteSpace(item.Action))
+                            {
+                                <span class="row-act">Suggested: @item.Action</span>
+                            }
+                        </span>
+                        <button class="strike" @onclick="() => Handled(item.Id)"
+                                aria-label="@($"Mark handled: {item.Title}")">Done</button>
+                    </div>
+                }
+            }
+        </section>
+    }
 
     @* HEALED — what it fixed on its own. *@
-    <section class="card">
-        <h2 class="h">Healed itself <span class="count">@_healed.Count</span></h2>
-        @if (_healed.Count == 0)
-        {
-            <p class="nothing">Nothing yet. When the app fixes a failure on its own, it shows up here.</p>
-        }
-        else
-        {
-            @foreach (var item in _healed)
+    @if (_tab == Tab.Healed)
+    {
+        <section class="card">
+            @if (_healed.Count == 0)
             {
-                <div class="row" @key="item.Id">
-                    <span class="row-text">
-                        <span class="row-title">@item.Title</span>
-                        <span class="row-sub">@item.Detail</span>
-                    </span>
-                    <span class="ok" aria-hidden="true">✓</span>
-                </div>
+                <p class="nothing">Nothing yet. When the app fixes a failure on its own, it shows up here.</p>
             }
-        }
-    </section>
+            else
+            {
+                @foreach (var item in _healed)
+                {
+                    <div class="row" @key="item.Id">
+                        <span class="row-text">
+                            <span class="row-title">@item.Title</span>
+                            <span class="row-sub">@item.Detail</span>
+                        </span>
+                        <span class="ok" aria-hidden="true">✓</span>
+                    </div>
+                }
+            }
+        </section>
+    }
+
+    @* AUTONOMY — the dial, and the boundary it can never cross. *@
+    @if (_tab == Tab.Autonomy)
+    {
+        <section class="card">
+            <h2 class="h">How much it may do on its own</h2>
+            <div class="seg" role="group" aria-label="Autonomy">
+                @foreach (var opt in Options)
+                {
+                    <button class="seg-btn @(_health.Autonomy == opt.Level ? "seg-on" : null)"
+                            @onclick="() => SetAutonomy(opt.Level)"
+                            aria-pressed="@(_health.Autonomy == opt.Level)">
+                        @opt.Label
+                    </button>
+                }
+            </div>
+            <p class="muted">@AutonomyBlurb</p>
+            <p class="bounds">It never touches code, money, or security on its own — those always wait for you.</p>
+        </section>
+    }
 
 </div>
 
 @code {
+    enum Tab { Health, Waiting, Healed, Autonomy }
+    Tab _tab = Tab.Health;
+
     HealthSummary _health = new(0, 0, 0, null, AutonomyLevel.AutoFixSafe);
     IReadOnlyList<HealingItem> _needsYou = [];
     IReadOnlyList<HealingItem> _healed = [];
@@ -140,6 +173,8 @@
     }
 
     async Task Handled(string id) => await View.MarkHandledAsync(id);
+
+    async Task SelfCheck() => await View.RunSelfCheckAsync();
 
     string LastHealedLine =>
         _health.LastHealed is { } t ? $"Last healed {Ago(t)}." : "Nothing healed yet.";

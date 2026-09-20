@@ -527,6 +527,30 @@ namespace CircleAI.Core.Models
         /// </para>
         /// </remarks>
         public string? Architecture { get; init; }
+
+        /// <summary>
+        /// Which inference engine can open this model's files. Folds into the
+        /// runtime catalogue's <c>compatible</c> bit: a model is only compatible
+        /// on a device whose shipped engines include this one. Defaults to
+        /// <see cref="ModelEngine.Mnn"/> so every entry catalogued before the
+        /// field existed keeps its meaning — the whole curated ladder is MNN.
+        /// The catalogue seeder re-derives this per row from
+        /// <see cref="Quantization"/> / <see cref="Architecture"/>, so an ONNX /
+        /// ggml speech bundle is stamped correctly in the table even though the
+        /// registry JSON carries no engine.
+        /// </summary>
+        public ModelEngine Engine { get; init; } = ModelEngine.Mnn;
+
+        /// <summary>
+        /// SPDX licence identifier — e.g. <c>Apache-2.0</c>, <c>MIT</c>,
+        /// <c>apache-2.0</c>. Folds into the catalogue's <c>compatible</c> bit:
+        /// a model with a non-free licence is never offered
+        /// ([[fully-free-opensource-always]]). <c>null</c> / empty means
+        /// "unstated" and is grandfathered as clean — every curated entry
+        /// shipped after a licence review, so a missing tag is not a red flag;
+        /// a feed entry that states a non-free licence, however, is gated off.
+        /// </summary>
+        public string? License { get; init; }
     }
 
     /// <summary>

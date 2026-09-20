@@ -196,6 +196,20 @@ public static class MauiProgram
                                       CircleAI.Hosting.SelfHealing.SelfHealer>();
         builder.Services.AddSingleton<IHealingView, CircleAI.Assistant.Device.DeviceHealing>();
 
+        // ── MODEL CATALOGUE ─────────────────────────────────────────────────────
+        // The runtime SQLite catalogue is the single source of truth for model
+        // selection: a signed feed adds/re-pins rows, the device re-assesses them,
+        // the app reads the best it can run — no app release. This build ships the
+        // MNN engine only, so a GGUF model stays compatible=0 until one is added.
+        // The Wolverine bridge (wired via the ISelfHealer registered above) surfaces
+        // a refused feed or a "can run nothing" device into the self-heal log. The
+        // live IModelSelector is NOT swapped yet — that flip waits for the on-device
+        // demo (useAsPrimarySelector defaults false).
+        CircleAI.Hosting.ModelCatalogueServiceCollectionExtensions.AddModelCatalogue(
+            builder.Services,
+            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "models.db"),
+            new[] { CircleAI.Core.ModelEngine.Mnn });
+
         builder.Services.AddMauiBlazorWebView();
 
 #if DEBUG
@@ -230,6 +244,39 @@ public static class MauiProgram
             Heal(app, e.Exception, "background-task");
             e.SetObserved();   // recorded — don't let it tear the process down.
         };
+
+        // ── MODEL CATALOGUE BOOTSTRAP ───────────────────────────────────────────
+        // Seed the catalogue on first run and assess it against this device, so the
+        // ladder exists offline and the self-heal log sees what can run here. Never
+        // fails the app; a heuristic (unmeasured) probe stays quiet rather than cry
+        // "can run nothing" on a guessed RAM figure.
+        try
+        {
+            CircleAI.Inference.CatalogueBootstrap.Run(
+                app.Services.GetRequiredService<CircleAI.Core.Models.IModelCatalog>(),
+                app.Services.GetRequiredService<CircleAI.Inference.IModelAssessor>(),
+                CircleAI.Core.DeviceProbe.Snapshot(),
+                app.Services.GetService<CircleAI.Core.Models.IModelCatalogObserver>());
+        }
+        catch { /* a catalogue bootstrap hiccup must not stop the app starting */ }
+
+        // Keep the catalogue current from ANY connection, and make its own failures
+        // VISIBLE: route catalogue diagnostics (a failed refresh, a sink that threw)
+        // into the self-heal loop so Wolverine shows them rather than a silent
+        // "quietly doing nothing". Attach the sink so an internet refresh AND an
+        // aethernet offer both flow in, then kick BOTH internet hosts (ModelScope +
+        // HuggingFace; each self-throttles, offline is a no-op).
+        CircleAI.Core.Models.ModelCatalogue.Diagnostics = (message, error) =>
+        {
+            if (error is not null) Heal(app, error, "model-catalogue");
+        };
+        try
+        {
+            app.Services.GetRequiredService<CircleAI.Inference.CatalogueUpdater>().Attach();
+            CircleAI.Core.Models.ModelCatalogue.RefreshInBackground();
+            _ = app.Services.GetRequiredService<CircleAI.Core.Models.HuggingFaceCatalogClient>().RefreshAsync();
+        }
+        catch (System.Exception ex) { Heal(app, ex, "model-catalogue-startup"); }
 
         return app;
     }

@@ -273,7 +273,24 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
                 null;
 #endif
             var session = new CircleAISession(nativeLibDir, batteryPercent: ReadBatteryPercent);
-            await session.StartAsync().ConfigureAwait(false);
+
+            // MARK THE RISKIEST NATIVE SPAN so a death here is not silent. Loading a
+            // model is hundreds of MB of native work — the likeliest place a phone
+            // OOM-kills or segfaults, which runs NO handler and leaves nothing in
+            // logcat. The breadcrumb survives the death; the app reads it on the next
+            // launch and records it, so even the worst failures reach the self-heal
+            // log rather than the app just reopening as if nothing happened.
+            var crumb = CircleAI.Assistant.DeviceDiagnostics.DiagnosticsDirectory;
+            if (crumb is not null) CircleAI.Assistant.DeviceDiagnostics.BeginRisky(crumb, "loading the model");
+            try
+            {
+                await session.StartAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                if (crumb is not null) CircleAI.Assistant.DeviceDiagnostics.EndRisky(crumb);
+            }
+
             _session = session;
             return session;
         }

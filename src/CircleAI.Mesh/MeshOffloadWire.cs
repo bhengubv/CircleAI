@@ -14,6 +14,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CircleAI.Core.Models;
 using CircleAI.Networking;
 
 namespace CircleAI.Mesh;
@@ -24,6 +25,15 @@ internal static class MeshOffloadWire
     public const string RequestContentType = "application/x-circleai-offload-request+json";
     public const string ReplyContentType   = "application/x-circleai-offload-reply+json";
     public const string AdvertContentType  = "application/x-circleai-mesh-advert+json";
+
+    /// <summary>
+    /// A shared model catalogue ("here are the models I know about") — any node to
+    /// a peer. The body is a <see cref="ModelRegistry"/>; the receiver hands it to
+    /// <c>ModelCatalogue.Offer</c>. This is how the model catalogue travels over
+    /// aethernet, so a device that has never touched the internet can still learn
+    /// of newer models from a peer. Integrity is the per-file SHA-256 in each row.
+    /// </summary>
+    public const string CatalogueContentType = "application/x-circleai-model-catalogue+json";
 
     /// <summary>Metadata key carrying the correlation id (also inside the JSON body).</summary>
     public const string CorrelationMetaKey = "circleai-offload-corr";
@@ -49,6 +59,19 @@ internal static class MeshOffloadWire
         // destination null = broadcast to all reachable peers on the transport.
         return Build(sourceNodeId, null, body, AdvertContentType, env.PeerId, MessagePriority.Normal, ttl);
     }
+
+    public static NetworkPayload EncodeCatalogue(
+        string sourceNodeId, ModelRegistry registry, string? destinationPeerId, TimeSpan? ttl)
+    {
+        byte[] body = JsonSerializer.SerializeToUtf8Bytes(registry, MeshOffloadJsonContext.Default.ModelRegistry);
+        // destination null = broadcast (LAN/hotspot); a peer id = point-to-point,
+        // which is the only form the sealed Aether carrier will carry.
+        return Build(sourceNodeId, destinationPeerId, body, CatalogueContentType,
+            correlation: Guid.NewGuid().ToString("N"), MessagePriority.Normal, ttl);
+    }
+
+    public static ModelRegistry? DecodeCatalogue(NetworkPayload payload)
+        => JsonSerializer.Deserialize(payload.Data.Span, MeshOffloadJsonContext.Default.ModelRegistry);
 
     public static OffloadRequestEnvelope? DecodeRequest(NetworkPayload payload)
         => JsonSerializer.Deserialize(payload.Data.Span, MeshOffloadJsonContext.Default.OffloadRequestEnvelope);
@@ -120,6 +143,7 @@ internal sealed record MeshAdvertEnvelope(
 [JsonSerializable(typeof(OffloadRequestEnvelope))]
 [JsonSerializable(typeof(OffloadReplyEnvelope))]
 [JsonSerializable(typeof(MeshAdvertEnvelope))]
+[JsonSerializable(typeof(ModelRegistry))]
 internal sealed partial class MeshOffloadJsonContext : JsonSerializerContext
 {
 }
