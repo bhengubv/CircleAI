@@ -390,6 +390,24 @@
         "Default scope is chat only; memory and other domains' skills need a separate, higher grant.",
         "First-party apps (same signing key) auto-grant; third-party apps require device auth on every link."
       ]
+    },
+    {
+      "Id": "self.healing",
+      "Name": "Self-healing analysis",
+      "Status": "partial",
+      "Summary": "Given a failure (message + stack + context), categorises it and recommends quick-fix / patch / defer, drafting a patch when it can - a recommendation the consumer acts on, never an action Circle AI takes itself.",
+      "Package": "CircleAI.Hosting",
+      "EntryPoint": "src/CircleAI.Hosting/SelfHealing/FailureAnalyst.cs#AnalyseAsync",
+      "Seam": "CircleAI.Hosting.SelfHealing.IFailureAnalyst",
+      "VerifiedBy": [ "FailureAnalystTests" ],
+      "Requires": [
+        "The Circle AI brain (IAIService) - the analyst is a thin layer over it."
+      ],
+      "Limits": [
+        "Recommends and drafts only - it never acts. Executing a retry, opening a PR or deploying is the consumer's job (Circle AI is the brain, not the hand).",
+        "Unit-tested with a fake brain on the desktop; NOT yet Measured on the P30, and a 0.6B's JSON reliability under real load is unproven - an unparseable reply safely degrades to 'needs a human' rather than an invented fix.",
+        "In-process only for now (IFailureAnalyst); not yet exposed over the SDK registration, HTTP, or the on-device link for out-of-process consumers - those are later slices."
+      ]
     }
   ]
 }
