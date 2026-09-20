@@ -289,6 +289,20 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAIService>(sp => sp.GetRequiredService<AIService>());
 
         // ---------------------------------------------------------------
+        // IFailureAnalyst — Circle AI's self-healing SENSE, over the brain.
+        // A consumer that references the SDK and calls AddCircleAI gets it for
+        // free. TryAdd so a host can substitute its own (e.g. a remote brain).
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<SelfHealing.IFailureAnalyst>(sp =>
+            new SelfHealing.FailureAnalyst(sp.GetRequiredService<IAIService>()));
+
+        // ---------------------------------------------------------------
+        // ICapabilityCatalog — structured "what can Circle AI do, and what not
+        // yet" discovery over the embedded capabilities.json. No dependencies.
+        // ---------------------------------------------------------------
+        services.TryAddSingleton<CircleAI.Skills.ICapabilityCatalog>(_ => CircleAI.Skills.CapabilityCatalog.Default);
+
+        // ---------------------------------------------------------------
         // RagContextBuilder — always resolvable; uses episodic memory when
         // configured, falls back to an empty in-memory store otherwise.
         // ---------------------------------------------------------------
