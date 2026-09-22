@@ -236,6 +236,38 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// <summary>Whether memory mapping is on for this process, right now.</summary>
     internal static bool MmapIsAllowed => MmapOverride ?? AllowMemoryMapping;
 
+    /// <summary>
+    /// Weights bigger than any phone's RAM can hold need mmap; everything else
+    /// loads eagerly. 8 GB sits above the RAM of the phones this ships to, so only a
+    /// genuinely huge model (a 30B-class MoE) trips it.
+    /// </summary>
+    internal const long MmapWeightThresholdBytes = 8L * 1000 * 1000 * 1000;
+
+    /// <summary>
+    /// Whether a model's on-disk weights are too large to load eagerly, so mmap is
+    /// the only way in. PER-MODEL, because mmap'd inference has crashed MNN's
+    /// threadpool (a native SIGSEGV in generate) on models that fit in RAM and never
+    /// needed mapping — so mmap must engage only where a model genuinely requires it.
+    /// Sums the model directory; unknown size falls through to eager, the stable
+    /// default.
+    /// </summary>
+    internal static bool WeightsExceedEagerFit(string modelPath)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(modelPath);
+            if (string.IsNullOrEmpty(dir)) return false;
+            long bytes = 0;
+            foreach (var f in Directory.EnumerateFiles(dir))
+            {
+                try { bytes += new FileInfo(f).Length; } catch { }
+                if (bytes > MmapWeightThresholdBytes) return true;   // early out on a big model
+            }
+            return false;
+        }
+        catch { return false; }
+    }
+
     public QwenTextGenerator(
         string                   modelPath,
         uint                     contextSize,
@@ -303,15 +335,24 @@ public sealed class QwenTextGenerator : IChatGenerator
             var scratch = Path.Combine(Path.GetDirectoryName(modelPath) ?? ".", "mmap");
             Directory.CreateDirectory(scratch);
             mmap.UseScratch(scratch);
-            if (MmapIsAllowed) mmap.Enable();
+
+            // PER-MODEL, NOT A GLOBAL SWITCH. mmap'd inference has crashed MNN's
+            // threadpool (SIGSEGV in generate) on a model that fits in RAM and never
+            // needed mapping. So mmap engages ONLY for weights too large to load
+            // eagerly — a 30B-class MoE — where it is the sole option; a model that
+            // fits loads eagerly, the stable path. "Everything on" holds: mmap is on
+            // and available, engaged where a model needs it, not where it does not.
+            var useMmap = MmapIsAllowed && WeightsExceedEagerFit(modelPath);
+            if (useMmap) mmap.Enable();
 
             // AND THE KV CACHE, WHICH IS A SEPARATE FLAG. The prefix cache is
             // disk-backed and refuses to attach without kvcache_mmap, so
             // UsePrefixCache at the caller was being honoured nowhere and every
             // turn re-prefilled from cold — 13,4 seconds to the first token on a
             // P30 on 2026-09-09. Same scratch directory, which is why this sits
-            // after UseScratch rather than beside Enable.
-            if (MmapIsAllowed)
+            // after UseScratch rather than beside Enable. Gated with the weights,
+            // so a small eager model keeps the stable non-mmap KV path too.
+            if (useMmap)
                 new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }

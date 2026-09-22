@@ -118,9 +118,14 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // overhead), so the Max is a no-op for them.
     private double EffectiveMinRamGb(ModelEntry e)
     {
-        if (_mmapAllowed) return e.MinRamGb;
         var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        return Math.Max(e.MinRamGb, weightGb);
+        // mmap engages PER-MODEL: only for weights too large to load eagerly, and
+        // only when mmap is enabled. Such a model (a 30B-class MoE) needs just its
+        // active footprint resident (MinRamGb). Everything else loads eagerly — the
+        // stable path — so its full weight must fit. Mirrors
+        // QwenTextGenerator.WeightsExceedEagerFit so the bit matches what will load.
+        var willMmap = _mmapAllowed && e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes;
+        return willMmap ? e.MinRamGb : Math.Max(e.MinRamGb, weightGb);
     }
 
     // Quality-dominant. QualityRank differences (whole numbers: 6, 8, 10, 14) far
