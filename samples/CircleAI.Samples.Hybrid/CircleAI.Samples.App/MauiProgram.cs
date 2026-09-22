@@ -208,7 +208,8 @@ public static class MauiProgram
         CircleAI.Hosting.ModelCatalogueServiceCollectionExtensions.AddModelCatalogue(
             builder.Services,
             System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "models.db"),
-            new[] { CircleAI.Core.ModelEngine.Mnn });
+            new[] { CircleAI.Core.ModelEngine.Mnn },
+            useAsPrimarySelector: true);   // the catalogue now drives model choice per device
 
         builder.Services.AddMauiBlazorWebView();
 
