@@ -11,6 +11,7 @@
 // errors would hide exactly the "why is there no model" question a person asks.
 
 using System;
+using System.IO;
 using CircleAI.Core;
 using CircleAI.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -33,13 +34,18 @@ public static class CatalogueBootstrap
     /// <param name="observer">Where to surface the result; defaults to no-op.</param>
     /// <param name="seedFrom">Registry to seed from; defaults to the embedded one.</param>
     /// <param name="logger">Verbose diagnostics; defaults to a no-op logger.</param>
+    /// <param name="modelsDirectory">
+    /// Directory whose <c>&lt;modelId&gt;/installed.json</c> markers set the
+    /// <c>installed</c> flag; defaults to <see cref="ModelPaths.Default"/>.
+    /// </param>
     public static AssessmentResult Run(
         IModelCatalog catalog,
         IModelAssessor assessor,
         DeviceProbe probe,
         IModelCatalogObserver? observer = null,
         ModelRegistryService? seedFrom = null,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        string? modelsDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(assessor);
@@ -56,6 +62,44 @@ public static class CatalogueBootstrap
         catch (Exception ex)
         {
             log.LogWarning(ex, "Model catalogue: seeding from the embedded registry failed; assessing whatever is already stored.");
+        }
+
+        // RECONCILE what is actually on disk into `installed`. A model downloaded by
+        // a prior build — or before the catalogue existed — leaves a folder with an
+        // installed.json marker. Without this the catalogue reads installed=0 for it,
+        // so housekeeping cannot see it to reclaim, a loader may re-download what is
+        // already here, and rank's installed-bonus never applies. Scans
+        // ModelPaths.Default (the one place the model dir is decided) unless a caller
+        // names one. Bidirectional: a flag set for a folder that is now gone is
+        // cleared, so the bit tracks the disk both ways.
+        var modelsDir = string.IsNullOrWhiteSpace(modelsDirectory) ? ModelPaths.Default : modelsDirectory!;
+        try
+        {
+            if (Directory.Exists(modelsDir))
+            {
+                var reconciled = 0;
+                foreach (var e in catalog.All())
+                {
+                    var onDisk = File.Exists(Path.Combine(modelsDir, e.Name, "installed.json"));
+                    if (onDisk != catalog.IsInstalled(e.Name))
+                    {
+                        catalog.SetInstalled(e.Name, onDisk);
+                        reconciled++;
+                    }
+                }
+                if (reconciled > 0)
+                    log.LogInformation(
+                        "Model catalogue: reconciled {Count} model(s) with what is on disk (dir: {Dir}).",
+                        reconciled, modelsDir);
+            }
+            else
+            {
+                log.LogDebug("Model catalogue: models directory {Dir} does not exist yet; nothing to reconcile.", modelsDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Model catalogue: reconciling on-disk models failed; installed flags may be stale.");
         }
 
         var result = assessor.Assess(probe);

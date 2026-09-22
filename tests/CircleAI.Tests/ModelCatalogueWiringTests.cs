@@ -7,6 +7,7 @@
 // only on a probe it can trust.
 
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.Core;
@@ -124,5 +125,38 @@ public class CatalogueBootstrapTests
         Assert.True(cat.Count() > 0);                       // still seeded + assessed
         Assert.Equal(0, rec.Assessed);                      // but not surfaced off a guess
         Assert.Equal(0, rec.NoCompatible);
+    }
+
+    [Fact]
+    public void Reconciles_the_installed_flag_with_what_is_on_disk()
+    {
+        using var cat = new SqliteModelCatalog("Data Source=:memory:");
+        // Pre-populate so SeedFromEmbedded is skipped and the ids are ours.
+        static ModelEntry Row(string id) => new(id, "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
+            MinRamGb = 0.6, MinStorageGb = 0.5, QualityRank = 6, TotalBytes = 100_000_000,
+        };
+        cat.Upsert(Row("present-on-disk"));
+        cat.Upsert(Row("gone-from-disk"));
+        cat.SetInstalled("gone-from-disk", true);   // a stale flag, no folder behind it
+
+        // A models dir where only present-on-disk has finished (installed.json marker).
+        var dir = Path.Combine(Path.GetTempPath(), "circleai-reconcile-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "present-on-disk"));
+        File.WriteAllText(Path.Combine(dir, "present-on-disk", "installed.json"), "{}");
+        // A partial download (no marker) must NOT count as installed.
+        Directory.CreateDirectory(Path.Combine(dir, "gone-from-disk"));   // folder exists, no installed.json
+        try
+        {
+            CatalogueBootstrap.Run(cat, DeviceModelAssessor.MnnOnly(cat), Probe(8), modelsDirectory: dir);
+
+            Assert.True(cat.IsInstalled("present-on-disk"));    // marker present -> set true
+            Assert.False(cat.IsInstalled("gone-from-disk"));    // no marker -> stale flag cleared
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }
