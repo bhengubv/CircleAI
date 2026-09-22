@@ -116,26 +116,38 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // compatible set on a phone that would OOM loading it. Dense bundles are
     // unaffected: their MinRamGb already exceeds TotalBytes/1e9 (it includes KV +
     // overhead), so the Max is a no-op for them.
+    // Whether this model will be memory-mapped on this device: only weights too
+    // large to load eagerly, and only when mmap is enabled. Mirrors
+    // QwenTextGenerator.WeightsExceedEagerFit so the assessment matches what loads.
+    private bool WillMmap(ModelEntry e) =>
+        _mmapAllowed && e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes;
+
     private double EffectiveMinRamGb(ModelEntry e)
     {
         var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        // mmap engages PER-MODEL: only for weights too large to load eagerly, and
-        // only when mmap is enabled. Such a model (a 30B-class MoE) needs just its
-        // active footprint resident (MinRamGb). Everything else loads eagerly — the
-        // stable path — so its full weight must fit. Mirrors
-        // QwenTextGenerator.WeightsExceedEagerFit so the bit matches what will load.
-        var willMmap = _mmapAllowed && e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes;
-        return willMmap ? e.MinRamGb : Math.Max(e.MinRamGb, weightGb);
+        // An mmap'd model (a 30B-class MoE) needs just its active footprint resident
+        // (MinRamGb); everything else loads eagerly, so its full weight must fit.
+        return WillMmap(e) ? e.MinRamGb : Math.Max(e.MinRamGb, weightGb);
     }
 
-    // Quality-dominant. QualityRank differences (whole numbers: 6, 8, 10, 14) far
-    // outweigh the sub-1 nudges, so Best() tracks measured quality; the nudges
-    // only order models of equal quality.
+    // How far a slow-to-load model drops below the responsive set. Larger than any
+    // QualityRank (6..16), so a model that pages tens of GB before its first token
+    // sits beneath EVERY model that answers quickly, whatever their quality.
+    private const double SlowLoadRankPenalty = 100.0;
+
+    // Quality-dominant among models that answer quickly, THEN responsiveness. A model
+    // too large to load eagerly stays compatible (a person can still choose it), but
+    // it must not be the silent default: mapping tens of GB off disk means many
+    // seconds to a first token, or an OS kill mid-load on a busy phone. Best() picks
+    // the top rank, so the penalty keeps a giant off the default while quality still
+    // orders everything that loads fast. If ONLY a giant fits, it is still the top of
+    // one and still selected — nothing is excluded, only deprioritised.
     private double RankFor(ModelEntry e, double usableRamGb, bool installed)
     {
         var headroomGb = Math.Max(0.0, usableRamGb - EffectiveMinRamGb(e));
         var headroomBonus = Math.Min(headroomGb, 4.0) * 0.1;   // 0 .. 0.4
         var installedBonus = installed ? 0.25 : 0.0;           // prefer what's on disk
-        return e.QualityRank + headroomBonus + installedBonus;
+        var slowLoadPenalty = WillMmap(e) ? SlowLoadRankPenalty : 0.0;
+        return e.QualityRank + headroomBonus + installedBonus - slowLoadPenalty;
     }
 }

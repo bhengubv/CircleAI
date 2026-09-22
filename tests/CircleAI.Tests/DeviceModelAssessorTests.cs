@@ -150,6 +150,28 @@ public class DeviceModelAssessorTests
         }
     }
 
+    // A giant that must page tens of GB off disk before its first token stays
+    // COMPATIBLE (a person can choose it) but must never be the silent default — a
+    // model that answers quickly outranks it, whatever the quality gap.
+    [Fact]
+    public void A_giant_that_must_mmap_is_not_the_default_when_a_fast_model_fits()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("moe-35b", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
+            TotalBytes = 22_000_000_000, MinRamGb = 2.5, MinStorageGb = 22.0, QualityRank = 16,
+        });
+        cat.Upsert(Entry("fast-2b", qualityRank: 9, minRamGb: 1.9, minStorageGb: 1.5));
+
+        // mmap on, ample RAM + storage so BOTH are compatible.
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+            .Assess(Probe(ramGb: 12, storageGb: 128));
+
+        Assert.Equal(2, cat.Compatible(ModelModality.Chat).Count);        // both available
+        Assert.Equal("fast-2b", cat.Best(ModelModality.Chat)!.Name);      // fast one is the default
+    }
+
     // A dense bundle's MinRamGb already includes its full weights, so the mmap
     // flag must not change its verdict — guards the Max() in EffectiveMinRamGb.
     [Fact]
