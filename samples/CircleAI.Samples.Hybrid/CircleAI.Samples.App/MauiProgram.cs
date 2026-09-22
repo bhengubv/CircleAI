@@ -29,6 +29,10 @@ public static class MauiProgram
         // not fixed it. So mmap is on; the generation path now leaves a breadcrumb
         // (DeviceDiagnostics) so any future native death still reaches Wolverine.
         CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = true;
+        // (QwenTextGenerator.ForceMmap and DeviceModelAssessor.ExperimentForceCompatibleId
+        //  are diagnostic hooks, default OFF — used on-device to prove Qwen2.5-3B runs
+        //  on a 3.6 GB P30 via weight-mmap + single-thread. See the memory note
+        //  circleai-mmap-kvcache-crash-root-cause.)
 
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask

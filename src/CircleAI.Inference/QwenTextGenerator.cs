@@ -237,6 +237,14 @@ public sealed class QwenTextGenerator : IChatGenerator
     internal static bool MmapIsAllowed => MmapOverride ?? AllowMemoryMapping;
 
     /// <summary>
+    /// EXPERIMENT HOOK: force mmap on for EVERY model, not just the giants, so a
+    /// model that fits eagerly can be run through the mmap+single-thread path on a
+    /// real phone to prove that path is stable. Off by default; a host sets it only
+    /// to run that on-device test. Still gated by <see cref="MmapIsAllowed"/>.
+    /// </summary>
+    public static bool ForceMmap { get; set; }
+
+    /// <summary>
     /// Weights bigger than any phone's RAM can hold need mmap; everything else
     /// loads eagerly. 8 GB sits above the RAM of the phones this ships to, so only a
     /// genuinely huge model (a 30B-class MoE) trips it.
@@ -342,18 +350,28 @@ public sealed class QwenTextGenerator : IChatGenerator
             // eagerly — a 30B-class MoE — where it is the sole option; a model that
             // fits loads eagerly, the stable path. "Everything on" holds: mmap is on
             // and available, engaged where a model needs it, not where it does not.
-            var useMmap = MmapIsAllowed && WeightsExceedEagerFit(modelPath);
-            if (useMmap) mmap.Enable();
-
-            // AND THE KV CACHE, WHICH IS A SEPARATE FLAG. The prefix cache is
-            // disk-backed and refuses to attach without kvcache_mmap, so
-            // UsePrefixCache at the caller was being honoured nowhere and every
-            // turn re-prefilled from cold — 13,4 seconds to the first token on a
-            // P30 on 2026-09-09. Same scratch directory, which is why this sits
-            // after UseScratch rather than beside Enable. Gated with the weights,
-            // so a small eager model keeps the stable non-mmap KV path too.
+            var useMmap = MmapIsAllowed && (ForceMmap || WeightsExceedEagerFit(modelPath));
             if (useMmap)
-                new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
+            {
+                // WEIGHT mmap only — this is what lets a 2.4 GB model fit in ~0.9 GB
+                // free. Pairs with single thread; both were proven necessary and
+                // safe on a P30.
+                mmap.Enable();
+                new MnnRuntimeConfig(handle.DangerousGetHandle()).TrySetThreads(1);
+            }
+
+            // KV-CACHE mmap: DELIBERATELY OFF. Measured on a P30 loading Qwen2.5-3B
+            // on 2026-09-22 — enabling kvcache_mmap made MNN build a malformed prefix
+            // cache path ("prefixcache/" prepended to an absolute path →
+            // "prefixcache//data/user/0/…"), which it cannot create:
+            //     MNNJNI: Failed to create prefix cache file dir: prefixcache
+            //     MNNJNI: Failed to memory-map the kvcache!
+            //     libc:   FORTIFY: pthread_mutex_lock called on a destroyed mutex
+            //   → SIGSEGV in MNN::ThreadPool::enqueue during Session::run.
+            // THIS was the real cause of the whole "mmap crash", not the weight mmap
+            // or the thread count. The KV cache stays in RAM (small for our context),
+            // and the model loads. Re-enable only once the native path bug is fixed
+            // and it can be pointed at a directory MNN will actually create.
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
 

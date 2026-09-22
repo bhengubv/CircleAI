@@ -36,6 +36,15 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // last bit still counts as fitting — mirrors DeviceAwareModelSelector.
     private const double Eps = 0.0001;
 
+    /// <summary>
+    /// EXPERIMENT HOOK: a model id forced compatible regardless of the RAM gate, so
+    /// a deliberately-bigger model can be SELECTED and its runtime path (mmap /
+    /// single-thread / streaming) proven on a real phone — the "value picks the
+    /// model, software earns the fit" test. Null (default) disables it; a host sets
+    /// it only to run that on-device experiment.
+    /// </summary>
+    public static string? ExperimentForceCompatibleId { get; set; }
+
     /// <param name="catalog">The catalogue to score.</param>
     /// <param name="shippedEngines">
     /// The inference engines this build ships natively. A model whose
@@ -88,6 +97,13 @@ public sealed class DeviceModelAssessor : IModelAssessor
 
     private bool IsCompatible(ModelEntry e, DeviceProbe probe, double usableRamGb, double storageFreeGb)
     {
+        // 0. EXPERIMENT: force one named model compatible so its runtime path can be
+        //    proven on-device against the naive RAM gate. Storage still has to hold
+        //    it (a model that is not on disk cannot be run), but RAM is what we are
+        //    deliberately testing, so it is bypassed here.
+        if (ExperimentForceCompatibleId is { Length: > 0 } forced && e.Name == forced)
+            return storageFreeGb <= 0 || e.MinStorageGb <= storageFreeGb + Eps;
+
         // 1. Engine we ship — the term that tells the truth about GGUF vs MNN.
         if (!_shippedEngines.Contains(e.Engine)) return false;
 

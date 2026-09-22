@@ -162,6 +162,29 @@ public sealed class MnnRuntimeConfig
         catch (EntryPointNotFoundException) { return false; }
         catch (DllNotFoundException)        { return false; }
     }
+
+    /// <summary>
+    /// Caps MNN's inference threads. ONE thread is the mmap-safety lever.
+    /// </summary>
+    /// <remarks>
+    /// The native crash that took mmap out lives in MNN's THREADPOOL —
+    /// <c>ThreadPool::enqueue</c> dereferencing null during <c>generate</c>, the
+    /// SIGSEGV measured on the P30. With a single thread there is no pool to enqueue
+    /// onto, so that path cannot be reached: slower per token, but a big model that
+    /// RUNS beats a fast one that dies mid-answer. <c>thread_num</c> is MNN's own
+    /// LLM-config key (same JSON hook as <see cref="TryEnableKvCacheMmap"/>); if a
+    /// bridge does not honour it the model still loads, just multi-threaded, and the
+    /// generation breadcrumb catches the crash if it comes.
+    /// </remarks>
+    public bool TrySetThreads(int threads)
+    {
+        try
+        {
+            return MnnInteropRt.mnn_llm_set_config(_handle, $"{{\"thread_num\":{threads}}}") == 0;
+        }
+        catch (EntryPointNotFoundException) { return false; }
+        catch (DllNotFoundException)        { return false; }
+    }
 }
 
 /// <summary>(3.3.0) RT-03 mmap weight loading control.</summary>
