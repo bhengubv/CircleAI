@@ -20,22 +20,21 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
-        // EVERYTHING ON BY DEFAULT (product-owner directive). Memory-map model
-        // weights and the KV/prefix cache from first launch — the documented host
-        // hook the runtime leaves for exactly this. It unlocks two things at once:
-        //   • MoE bundles (Qwen3-30B-A3B etc.) become loadable, because only the
-        //     active experts stay resident while the kernel pages the rest off
-        //     disk — the "punch above our weight" the catalogue already selects for;
-        //     the DeviceModelAssessor reads this same flag, so its compatible bit
-        //     matches what will actually load.
-        //   • the cross-session prefix cache (short-term memory), which MNN refuses
-        //     to attach without kvcache_mmap — until now every chat re-paid the
-        //     ~13 s system-prompt prefill.
-        // ON THE RECORD: mmap was disabled after an MNN SIGSEGV killed two builds
-        // mid-answer. It is on now by directive; a recurrence surfaces in the
-        // self-heal log (Wolverine) instead of vanishing — which is what that loop
-        // is for.
-        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = true;
+        // MEMORY-MAP: OFF, and this comment is why. Turning it on (the "everything
+        // on by default" goal) CRASH-LOOPED the P30 on 2026-09-22: a native MNN
+        // SIGSEGV in ThreadPool::enqueue during mnn_llm_generate_stream_text (the
+        // Omni forward path), four crashes out to the launcher on one launch. The
+        // self-heal loop CANNOT save this — a native SIGSEGV kills the process
+        // before any C# handler runs, so nothing reached healing.db. This is the
+        // exact fault mmap was disabled for originally; it lives in the native layer
+        // (mnnbridge / MNN), not here. A stable app that runs small models eagerly
+        // beats one that dies mid-answer, so mmap stays OFF until either the native
+        // crash is fixed OR it is gated per-model (on only for a model too large to
+        // load eagerly, where it is the sole option — never for a small model that
+        // fits). Honest consequences, both waiting on that: the big MoE bundles stay
+        // compatible=0 (the assessor is mmap-aware and says so), and the
+        // cross-session prefix cache stays parked (it needs kvcache_mmap).
+        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = false;
 
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask
