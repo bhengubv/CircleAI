@@ -65,8 +65,26 @@ public sealed class PrefixCacheService
     {
         if (string.IsNullOrWhiteSpace(root))
             throw new ArgumentException("root is required.", nameof(root));
+        // A cache is an optimisation, never a reason to fail. If the chosen root
+        // cannot be created — a sandbox that denies it, or a platform whose home
+        // dir resolves oddly — fall back to a temp subdir so the service still
+        // constructs and the model still loads (cold prefill, not a crash). The
+        // Default instance is a static, so an unhandled throw here would surface
+        // as a TypeInitializationException on the first model load.
+        try
+        {
+            Directory.CreateDirectory(root);
+        }
+        catch
+        {
+            try
+            {
+                root = Path.Combine(Path.GetTempPath(), "CircleAI", "prefix-cache");
+                Directory.CreateDirectory(root);
+            }
+            catch { /* even temp is denied — Has/Save degrade to no-ops below */ }
+        }
         _root = root;
-        Directory.CreateDirectory(_root);
     }
 
     /// <summary>

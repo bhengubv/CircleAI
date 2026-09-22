@@ -20,6 +20,23 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
+        // EVERYTHING ON BY DEFAULT (product-owner directive). Memory-map model
+        // weights and the KV/prefix cache from first launch — the documented host
+        // hook the runtime leaves for exactly this. It unlocks two things at once:
+        //   • MoE bundles (Qwen3-30B-A3B etc.) become loadable, because only the
+        //     active experts stay resident while the kernel pages the rest off
+        //     disk — the "punch above our weight" the catalogue already selects for;
+        //     the DeviceModelAssessor reads this same flag, so its compatible bit
+        //     matches what will actually load.
+        //   • the cross-session prefix cache (short-term memory), which MNN refuses
+        //     to attach without kvcache_mmap — until now every chat re-paid the
+        //     ~13 s system-prompt prefill.
+        // ON THE RECORD: mmap was disabled after an MNN SIGSEGV killed two builds
+        // mid-answer. It is on now by directive; a recurrence surfaces in the
+        // self-heal log (Wolverine) instead of vanishing — which is what that loop
+        // is for.
+        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = true;
+
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask
         // these interfaces what is possible, and each head answers for itself.

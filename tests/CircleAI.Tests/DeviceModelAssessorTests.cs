@@ -114,4 +114,55 @@ public class DeviceModelAssessorTests
         Assert.Equal(3, result.Assessed);
         Assert.Equal(3, result.Compatible);
     }
+
+    // An MoE bundle (Qwen3-30B-A3B: 18 GB of weights on disk, but only ~3B active
+    // experts resident) advertises a low MinRamGb that is only truthful when the
+    // runtime memory-maps the weights. The compatible bit must follow what the
+    // runtime will actually do: recommend it when mmap pages the rest off disk,
+    // refuse it when the whole file would have to live in RAM and OOM the phone.
+    [Fact]
+    public void An_MoE_bundle_is_compatible_only_when_mmap_pages_its_weights()
+    {
+        static ModelEntry Moe() => new("qwen3-30b-a3b", "3.0", "MNN-Q4")
+        {
+            Engine       = ModelEngine.Mnn,
+            Modality     = ModelModality.Chat,
+            TotalBytes   = 18_000_000_000,   // 18 GB on disk
+            MinRamGb     = 2.5,              // only the active experts, IF mmap'd
+            MinStorageGb = 18.0,
+            QualityRank  = 15,
+        };
+
+        var phone = Probe(ramGb: 5, storageGb: 64);   // usable ~4.25 GB: 2.5 fits, 18 does not
+
+        using (var cat = NewCatalog())
+        {
+            cat.Upsert(Moe());
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false).Assess(phone);
+            Assert.Null(cat.Best(ModelModality.Chat));   // honest: 18 GB can't be resident
+        }
+
+        using (var cat = NewCatalog())
+        {
+            cat.Upsert(Moe());
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(phone);
+            Assert.Equal("qwen3-30b-a3b", cat.Best(ModelModality.Chat)!.Name);   // mmap pages the rest
+        }
+    }
+
+    // A dense bundle's MinRamGb already includes its full weights, so the mmap
+    // flag must not change its verdict — guards the Max() in EffectiveMinRamGb.
+    [Fact]
+    public void A_dense_bundle_is_unaffected_by_the_mmap_flag()
+    {
+        var phone = Probe(ramGb: 5, storageGb: 64);
+
+        foreach (var mmap in new[] { false, true })
+        {
+            using var cat = NewCatalog();
+            cat.Upsert(Entry("qwen3-1.7b", minRamGb: 1.7, minStorageGb: 1.2));  // TotalBytes 0.1 GB « 1.7
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: mmap).Assess(phone);
+            Assert.Equal("qwen3-1.7b", cat.Best(ModelModality.Chat)!.Name);
+        }
+    }
 }

@@ -30,6 +30,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
 {
     private readonly IModelCatalog _catalog;
     private readonly HashSet<ModelEngine> _shippedEngines;
+    private readonly bool _mmapAllowed;
 
     // Floating-point slack so a model whose MinRamGb equals usable RAM to the
     // last bit still counts as fitting — mirrors DeviceAwareModelSelector.
@@ -41,11 +42,23 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// <see cref="ModelEntry.Engine"/> is not in this set is never compatible —
     /// this is what keeps a GGUF model off an MNN-only device honestly.
     /// </param>
-    public DeviceModelAssessor(IModelCatalog catalog, IEnumerable<ModelEngine> shippedEngines)
+    /// <param name="mmapAllowed">
+    /// Whether the MNN runtime will memory-map model weights. <c>null</c> (the
+    /// default) reads the one runtime source of truth,
+    /// <see cref="QwenTextGenerator.MmapIsAllowed"/>. It changes the fit check:
+    /// with mmap the kernel pages weights off disk, so an MoE bundle's low
+    /// <see cref="ModelEntry.MinRamGb"/> (only the active experts stay resident)
+    /// holds; WITHOUT mmap — the Android default today, after an MNN SIGSEGV took
+    /// it out — the whole weight file must live in RAM, so a 30B-A3B advertised at
+    /// 2.5 GB would in fact OOM a phone. Kept injectable so a host that has
+    /// enabled mmap, and the tests, can state it outright.
+    /// </param>
+    public DeviceModelAssessor(IModelCatalog catalog, IEnumerable<ModelEngine> shippedEngines, bool? mmapAllowed = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         ArgumentNullException.ThrowIfNull(shippedEngines);
         _shippedEngines = new HashSet<ModelEngine>(shippedEngines);
+        _mmapAllowed = mmapAllowed ?? QwenTextGenerator.MmapIsAllowed;
     }
 
     /// <summary>Convenience for the app as it ships today: MNN is the only engine.</summary>
@@ -78,8 +91,9 @@ public sealed class DeviceModelAssessor : IModelAssessor
         // 1. Engine we ship — the term that tells the truth about GGUF vs MNN.
         if (!_shippedEngines.Contains(e.Engine)) return false;
 
-        // 2. RAM fits. usableRamGb already folds in RamFitHeadroom.
-        if (e.MinRamGb > usableRamGb + Eps) return false;
+        // 2. RAM fits. usableRamGb already folds in RamFitHeadroom, and
+        //    EffectiveMinRamGb folds in whether weights will be memory-mapped.
+        if (EffectiveMinRamGb(e) > usableRamGb + Eps) return false;
 
         // 3. Storage fits (0 = unknown, skip — same as the selector).
         if (storageFreeGb > 0 && e.MinStorageGb > storageFreeGb + Eps) return false;
@@ -94,12 +108,27 @@ public sealed class DeviceModelAssessor : IModelAssessor
         return true;
     }
 
+    // The RAM a model actually needs resident on THIS runtime. With mmap the
+    // kernel pages weights off disk, so an MoE bundle's low MinRamGb (only the
+    // active experts stay resident) is the real floor. Without mmap the whole
+    // weight file must be resident, so the floor rises to the full weight
+    // footprint — which is what keeps a 30B-A3B (18 GB, MinRamGb 2.5) out of the
+    // compatible set on a phone that would OOM loading it. Dense bundles are
+    // unaffected: their MinRamGb already exceeds TotalBytes/1e9 (it includes KV +
+    // overhead), so the Max is a no-op for them.
+    private double EffectiveMinRamGb(ModelEntry e)
+    {
+        if (_mmapAllowed) return e.MinRamGb;
+        var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
+        return Math.Max(e.MinRamGb, weightGb);
+    }
+
     // Quality-dominant. QualityRank differences (whole numbers: 6, 8, 10, 14) far
     // outweigh the sub-1 nudges, so Best() tracks measured quality; the nudges
     // only order models of equal quality.
-    private static double RankFor(ModelEntry e, double usableRamGb, bool installed)
+    private double RankFor(ModelEntry e, double usableRamGb, bool installed)
     {
-        var headroomGb = Math.Max(0.0, usableRamGb - e.MinRamGb);
+        var headroomGb = Math.Max(0.0, usableRamGb - EffectiveMinRamGb(e));
         var headroomBonus = Math.Min(headroomGb, 4.0) * 0.1;   // 0 .. 0.4
         var installedBonus = installed ? 0.25 : 0.0;           // prefer what's on disk
         return e.QualityRank + headroomBonus + installedBonus;
