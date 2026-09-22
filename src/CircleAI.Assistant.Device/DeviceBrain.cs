@@ -111,15 +111,31 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
 
     private void OnMemoryIsShort()
     {
-        var session = _session;
-        if (session is null || _closing) return;
+        if (_session is null || _closing) return;
 
         // NOT AWAITED AND NEVER THROWN. This arrives on a platform callback
         // where an escaping exception is a crash, and the caller is the OS.
         _ = Task.Run(async () =>
         {
-            try { await session.SignalCriticalMemoryAsync().ConfigureAwait(false); }
+            // TAKE THE GATE, NON-BLOCKING — the SECOND half of the 2026-09-11 fix.
+            // DisposeAsync stopped freeing the model out from under a running turn;
+            // THIS path did the same thing and was missed. SignalCriticalMemoryAsync
+            // tells MNN to drop native buffers, and a generation in flight is still
+            // reading them — free them mid-turn and the next threadpool enqueue
+            // dereferences null (SIGSEGV, .NET TP Worker), which is exactly the
+            // crash-loop a RAM-starved P30 hits, pressure firing on every launch.
+            // Wait(0): if a turn holds the gate, SKIP the reclaim rather than block
+            // the OS callback or free mid-turn — the turn is bounded by its token
+            // budget and frees its own working set on the way out. An OOM-kill
+            // (clean, restartable) beats a native crash mid-answer.
+            if (!await _gate.WaitAsync(0).ConfigureAwait(false)) return;
+            try
+            {
+                if (_closing || _session is null) return;
+                await _session.SignalCriticalMemoryAsync().ConfigureAwait(false);
+            }
             catch { /* the killer takes it or it does not; nothing more to do */ }
+            finally { _gate.Release(); }
         });
     }
 
@@ -155,7 +171,8 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
             if (_closing || _session is null)
                 throw new OperationCanceledException("The model is shutting down.");
 
-            var turn = await session.RunToolTurnAsync(prompt, question).ConfigureAwait(false);
+            var turn = await Generating("generating a response (tool turn)",
+                () => session.RunToolTurnAsync(prompt, question)).ConfigureAwait(false);
 
             // WHICH TOOLS RAN, NOT JUST THE TEXT. An answer with an EMPTY tool
             // list means the model invented the number rather than calling
@@ -207,11 +224,12 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
             // one screen that renders the stream showed the fault. SeeAsync two
             // methods below has always had the order right, which is what makes
             // this a slip rather than a convention.
-            return await session.RunTurnStreamingAsync(
-                prompt,
-                _ => { },
-                fragment => token?.Invoke(fragment),
-                _ => { }).ConfigureAwait(false);
+            return await Generating("generating a response (streaming)",
+                () => session.RunTurnStreamingAsync(
+                    prompt,
+                    _ => { },
+                    fragment => token?.Invoke(fragment),
+                    _ => { })).ConfigureAwait(false);
         }
         finally
         {
@@ -237,14 +255,29 @@ public sealed class DeviceBrain : IBrain, IAsyncDisposable
             // The session asks the selector whether this device can see BEFORE it
             // tries, so "no vision model" comes back as a sentence rather than as
             // an exception from somewhere deep inside.
-            return await session.RunImageTurnAsync(
-                question, image, _ => { }, fragment => token?.Invoke(fragment))
+            return await Generating("generating a response (image turn)",
+                () => session.RunImageTurnAsync(
+                    question, image, _ => { }, fragment => token?.Invoke(fragment)))
                 .ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    // A generation is the OTHER native span that can die without a handler (the
+    // 2026-09-11 SIGSEGV lives in Llm::generate, not just in load). Bracket it with
+    // a breadcrumb exactly as the load is, so a death mid-answer is named on the
+    // next launch and reaches the self-heal log — the verbose native-crash handling
+    // Wolverine consumes — instead of the app just reopening as if nothing happened.
+    private static async Task<T> Generating<T>(string what, Func<Task<T>> run)
+    {
+        var crumb = CircleAI.Assistant.DeviceDiagnostics.DiagnosticsDirectory;
+        if (crumb is null) return await run().ConfigureAwait(false);
+        CircleAI.Assistant.DeviceDiagnostics.BeginRisky(crumb, what);
+        try { return await run().ConfigureAwait(false); }
+        finally { CircleAI.Assistant.DeviceDiagnostics.EndRisky(crumb); }
     }
 
     private async Task<CircleAISession> SessionAsync(CancellationToken ct)

@@ -20,21 +20,15 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
-        // MEMORY-MAP: OFF, and this comment is why. Turning it on (the "everything
-        // on by default" goal) CRASH-LOOPED the P30 on 2026-09-22: a native MNN
-        // SIGSEGV in ThreadPool::enqueue during mnn_llm_generate_stream_text (the
-        // Omni forward path), four crashes out to the launcher on one launch. The
-        // self-heal loop CANNOT save this — a native SIGSEGV kills the process
-        // before any C# handler runs, so nothing reached healing.db. This is the
-        // exact fault mmap was disabled for originally; it lives in the native layer
-        // (mnnbridge / MNN), not here. A stable app that runs small models eagerly
-        // beats one that dies mid-answer, so mmap stays OFF until either the native
-        // crash is fixed OR it is gated per-model (on only for a model too large to
-        // load eagerly, where it is the sole option — never for a small model that
-        // fits). Honest consequences, both waiting on that: the big MoE bundles stay
-        // compatible=0 (the assessor is mmap-aware and says so), and the
-        // cross-session prefix cache stays parked (it needs kvcache_mmap).
-        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = false;
+        // MEMORY-MAP: ON. Everything on by default is the rule. The v35 crash-loop
+        // that looked like mmap was NOT mmap — it was the 2026-09-22 diagnosis of a
+        // KNOWN race (DeviceBrain.OnMemoryIsShort freed native buffers a running
+        // generation was still reading, the SIGSEGV documented on 2026-09-11), now
+        // fixed by gating that path. mmap only made the RAM-starved P30 hit the
+        // pressure handler sooner. Turning mmap off would have hidden the real bug,
+        // not fixed it. So mmap is on; the generation path now leaves a breadcrumb
+        // (DeviceDiagnostics) so any future native death still reaches Wolverine.
+        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = true;
 
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask
