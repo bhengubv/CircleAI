@@ -25,6 +25,16 @@ public class MainApplication : MauiApplication
     /// <inheritdoc />
     public override void OnCreate()
     {
+        // REAL RAM BEFORE MAUI INITIALISES, AND THAT ORDER IS THE WHOLE FIX.
+        // base.OnCreate() runs CreateMauiApp, which runs the catalogue bootstrap and
+        // its DeviceProbe.Snapshot(). Installed AFTER base.OnCreate (as it was), the
+        // platform memory probe arrives too late: Snapshot has already fallen back to
+        // the GC heap (~100 MB), so every model fails its fit check and the device
+        // INTERMITTENTLY decides it can run nothing — measured on the Redmi, a launch
+        // that assessed 16 models compatible and the next that assessed 1. Install it
+        // first; it only needs the Application context, which exists by now.
+        CircleAI.Device.AndroidDeviceMemory.Install(this);
+
         base.OnCreate();
 
         // DID THE LAST RUN DIE? SAY SO.
@@ -69,15 +79,8 @@ public class MainApplication : MauiApplication
         }
         catch { /* diagnostics must never be the thing that fails */ }
 
-        // TEACHES DeviceProbe TO READ THE PHONE'S REAL RAM, and without it the app
-        // quietly decides it is hardware that cannot run anything.
-        //
-        // DeviceProbe falls back to the GC HEAP LIMIT - a few hundred MB where the
-        // phone has 4 GB - so every model fails its own fit check and every ability
-        // reads "Needs more memory". Nothing throws. It happened here exactly as it
-        // happened in the native head, which is why that head installs it from
-        // Application.OnCreate rather than from whichever screen opens first.
-        CircleAI.Device.AndroidDeviceMemory.Install(this);
+        // (DeviceProbe's real-RAM probe is installed at the TOP of OnCreate now,
+        // before base.OnCreate() runs the catalogue bootstrap — see the note there.)
 
         // THE MEMORY MANAGER'S CENSUS, ON LAUNCH. Step zero of the footprint
         // budget: print the phone's REAL disk and RAM - StatFs and
