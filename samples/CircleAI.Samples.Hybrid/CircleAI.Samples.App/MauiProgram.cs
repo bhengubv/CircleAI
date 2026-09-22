@@ -274,7 +274,8 @@ public static class MauiProgram
                 app.Services.GetRequiredService<CircleAI.Core.Models.IModelCatalog>(),
                 app.Services.GetRequiredService<CircleAI.Inference.IModelAssessor>(),
                 CircleAI.Core.DeviceProbe.Snapshot(),
-                app.Services.GetService<CircleAI.Core.Models.IModelCatalogObserver>());
+                app.Services.GetService<CircleAI.Core.Models.IModelCatalogObserver>(),
+                reclaimInferior: true);   // housekeeping: shed a model a better one on disk supersedes
         }
         catch { /* a catalogue bootstrap hiccup must not stop the app starting */ }
 

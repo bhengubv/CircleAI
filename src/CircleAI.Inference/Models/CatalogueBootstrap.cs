@@ -38,6 +38,11 @@ public static class CatalogueBootstrap
     /// Directory whose <c>&lt;modelId&gt;/installed.json</c> markers set the
     /// <c>installed</c> flag; defaults to <see cref="ModelPaths.Default"/>.
     /// </param>
+    /// <param name="reclaimInferior">
+    /// When <c>true</c>, reclaim installed models that a better same-modality model
+    /// already on disk has superseded (see <see cref="CatalogueHousekeeping"/>).
+    /// Runs only off a measured probe. Off by default.
+    /// </param>
     public static AssessmentResult Run(
         IModelCatalog catalog,
         IModelAssessor assessor,
@@ -45,7 +50,8 @@ public static class CatalogueBootstrap
         IModelCatalogObserver? observer = null,
         ModelRegistryService? seedFrom = null,
         ILogger? logger = null,
-        string? modelsDirectory = null)
+        string? modelsDirectory = null,
+        bool reclaimInferior = false)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(assessor);
@@ -115,6 +121,22 @@ public static class CatalogueBootstrap
         {
             log.LogDebug("Model catalogue: device RAM is an unmeasured guess; not surfacing compatibility to avoid a false alarm.");
             return result;
+        }
+
+        // HOUSEKEEPING: shed superseded clutter now the compatible/installed columns
+        // are trustworthy (this only runs off a measured probe — reclaiming against a
+        // guessed compatibility could delete the wrong model). Opt-in, and every
+        // reclaim is logged. See CatalogueHousekeeping for the conservative policy.
+        if (reclaimInferior)
+        {
+            try
+            {
+                CatalogueHousekeeping.Reclaim(catalog, modelsDir, log);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Model catalogue: housekeeping pass failed; nothing reclaimed.");
+            }
         }
 
         try
