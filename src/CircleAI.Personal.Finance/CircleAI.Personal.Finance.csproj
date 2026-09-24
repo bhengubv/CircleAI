@@ -1,2 +1,30 @@
-<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><PackageId>CircleAI.Personal.Finance</PackageId>
-    <Description>Circle AI personal finance domain assistant. Budgeting, saving, debt management, and investment basics.</Description></PropertyGroup><PropertyGroup><TargetFrameworks>net9.0;net10.0</TargetFrameworks><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup><ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj"/></ItemGroup></Project>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>CircleAI.Personal.Finance</PackageId>
+    <Description>Circle AI personal finance. On-device budgeting, debt payoff and affordability — every figure computed deterministically in C#, never by the model — with the durable facts of somebody's money life kept in core memory so it grows with them.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" />
+    <!-- Core memory. What this module learns about somebody (what they earn,
+         when they are paid, what they owe) belongs in the assistant's own
+         memory tier, not a private table — otherwise it is fluent about your
+         rent on the money screen and blank about it everywhere else. -->
+    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same package and version the other on-device stores ship (Memory,
+         Skills, Career), so the Android native e_sqlite3 payload is already
+         proven rather than newly introduced here. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+  </ItemGroup>
+
+</Project>

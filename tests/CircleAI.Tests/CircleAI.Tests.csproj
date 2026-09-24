@@ -117,5 +117,6 @@
     <ProjectReference Include="..\..\src\CircleAI.Mesh.Hosting\CircleAI.Mesh.Hosting.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Security.AetherNet\CircleAI.Security.AetherNet.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Companion\CircleAI.Companion.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Personal.Finance\CircleAI.Personal.Finance.csproj" />
   </ItemGroup>
 </Project>
