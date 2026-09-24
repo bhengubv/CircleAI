@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Telephony.Plivo</PackageId>
-    <Version>3.3.0</Version>
     <Description>(3.3.0) Plivo carrier adapter for CircleAI.Telephony. Number search + purchase, application/answer-url configuration, outbound dial with Audio Streaming, hang up, cold transfer — all via Plivo's v1 REST API (Basic auth). The host (CircleAI.Hosting.Telephony.Plivo) serves the AnswerUrl that returns the &lt;Stream/&gt; XML pointing to the per-call WebSocket. Fail-soft when credentials missing.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;telephony;voice;phone;carrier;plivo</PackageTags>

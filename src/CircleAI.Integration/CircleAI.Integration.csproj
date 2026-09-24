@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Integration</PackageId>
-    <Version>3.3.0</Version>
     <Description>Shared abstractions for external integrations (calendar, email, news, weather, home automation) that the Circle AI Companion uses to gather context.</Description>
   </PropertyGroup>
   <PropertyGroup>

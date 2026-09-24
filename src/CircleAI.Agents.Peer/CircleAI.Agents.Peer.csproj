@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Agents.Peer</PackageId>
-    <Version>1.4.0</Version><Description>
+    <Description>
       Agent-to-agent protocol over Aether mesh transport for Circle AI —
       one person's AI talks to another person's AI directly over BLE/Wi-Fi
       Direct, no cloud. 1.4.0 adds AgentMessage.CorrelationId — distributed-

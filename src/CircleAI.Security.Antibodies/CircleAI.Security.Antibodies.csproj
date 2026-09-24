@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Security.Antibodies</PackageId>
-    <Version>0.1.0</Version>
     <Description>
       Defensive-by-purpose threat-AWARENESS "antibodies" for CircleAI.
       OSINT / threat-intel / malware-awareness seams that exist ONLY to warn and shield

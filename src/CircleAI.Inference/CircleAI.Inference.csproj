@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Inference</PackageId>
-    <Version>3.6.0</Version><Description>On-device LLM inference for Circle. 3.6.0: a big model now loads on a small phone — weight-mmap + single-thread with kvcache_mmap OFF. The long-standing MNN generate-time SIGSEGV was kvcache_mmap building a malformed prefix-cache path (a destroyed mutex), never weight-mmap; with it off, Qwen2.5-3B loads and generates on a 3.6 GB device. Adds a per-model mmap gate and mmap-aware device assessment (a slow giant stays compatible, never the silent default). Carries forward RT-08 fallback, PowerBudget / snapshot-restore / prefix-cache, and the &lt;think&gt;→reasoning_content router. mnnbridge native payload unchanged.</Description>
+    <Description>On-device LLM inference for Circle. 3.6.0: a big model now loads on a small phone — weight-mmap + single-thread with kvcache_mmap OFF. The long-standing MNN generate-time SIGSEGV was kvcache_mmap building a malformed prefix-cache path (a destroyed mutex), never weight-mmap; with it off, Qwen2.5-3B loads and generates on a 3.6 GB device. Adds a per-model mmap gate and mmap-aware device assessment (a slow giant stays compatible, never the silent default). Carries forward RT-08 fallback, PowerBudget / snapshot-restore / prefix-cache, and the &lt;think&gt;→reasoning_content router. mnnbridge native payload unchanged.</Description>
   </PropertyGroup>
 
   <PropertyGroup>

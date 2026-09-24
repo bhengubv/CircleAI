@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Security.Defense</PackageId>
-    <Version>1.0.0</Version>
     <Description>
       Always-on, on-device DEFENSIVE immune system for Circle AI. A network/threat
       monitor that shields the user by matching outbound/inbound network observations

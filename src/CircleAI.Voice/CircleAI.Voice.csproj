@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Voice</PackageId>
-    <Version>1.3.0</Version><Description>TTS/STT abstraction layer for Circle AI voice interaction.</Description>
+    <Description>TTS/STT abstraction layer for Circle AI voice interaction.</Description>
   </PropertyGroup>
 
 	<PropertyGroup>

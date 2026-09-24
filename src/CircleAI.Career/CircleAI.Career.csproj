@@ -3,7 +3,7 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Career</PackageId>
-    <Version>1.0.0</Version><Description>On-device career profile: the structured record of who someone is and what they have done, the interview that builds it by voice, and the tailoring of it to a specific job. The profile is the source of truth; a CV is one projection of it. Stored on the device and never synced.</Description>
+    <Description>On-device career profile: the structured record of who someone is and what they have done, the interview that builds it by voice, and the tailoring of it to a specific job. The profile is the source of truth; a CV is one projection of it. Stored on the device and never synced.</Description>
   </PropertyGroup>
 
   <!-- net10.0 only, following CircleAI.Documents, which this projects a CV

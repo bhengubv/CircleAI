@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Realtime</PackageId>
-    <Version>3.3.0</Version>
     <Description>(3.3.0) Carrier-agnostic contracts for all-in-one streaming realtime AI services that fuse STT + LLM + TTS over a single bidirectional WebSocket (OpenAI Realtime, Gemini Live, AWS Nova Sonic, ElevenLabs Conversational, Ultravox). Defines IRealtimeService, IRealtimeSession, RealtimeEvent, RealtimeAudioFrame, RealtimeSessionConfig. Null defaults so apps stay green without a vendor.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;realtime;voice;streaming;openai-realtime;gemini-live</PackageTags>

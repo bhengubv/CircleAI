@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Realtime.Cloud</PackageId>
-    <Version>3.3.0</Version>
     <Description>(3.3.0) Five cloud realtime-AI vendor connectors for CircleAI.Realtime: OpenAI Realtime (gpt-4o-realtime), Google Gemini Live, AWS Nova Sonic, ElevenLabs Conversational AI, and Ultravox. Each connector validates credentials, exposes ProviderId + IsConfigured, and opens an IRealtimeSession via a host-supplied IRealtimeTransport. Fail-soft when credentials missing.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;realtime;voice;streaming;openai;gemini;aws;elevenlabs;ultravox</PackageTags>

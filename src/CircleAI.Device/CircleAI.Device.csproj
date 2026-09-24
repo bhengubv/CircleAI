@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Device</PackageId>
-    <Version>1.0.0</Version>
     <Description>Android hosting for Circle AI: the resident device service that owns the models, and the memory probe every Android head must install.</Description>
   </PropertyGroup>
 

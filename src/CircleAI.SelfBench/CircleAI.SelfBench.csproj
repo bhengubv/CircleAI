@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.SelfBench</PackageId>
-    <Version>3.3.0</Version>
     <Description>
       Circle AI SelfBench — the lm-evaluation-harness-style benchmark suite + A/B
       runner + regression gate that powers Phase E7 self-improvement.

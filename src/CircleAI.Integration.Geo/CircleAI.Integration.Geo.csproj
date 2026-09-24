@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Integration.Geo</PackageId>
-    <Version>3.3.0</Version>
     <Description>Weather (Open-Meteo) + routing (OSRM) providers for Circle AI. Both are key-free open services suitable for proactive briefings.</Description>
   </PropertyGroup>
   <PropertyGroup>

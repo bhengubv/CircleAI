@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Client</PackageId>
-    <Version>1.0.0</Version>
     <Description>
       Client for a host app to use CircleAI's shared on-device brain. Detects the
       installed standalone service, binds it, and asks a turn over the authorized

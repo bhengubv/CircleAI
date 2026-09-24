@@ -22,7 +22,6 @@
   <PropertyGroup>
     <PackageId>CircleAI.Music</PackageId>
     <Title>CircleAI Music Beds</Title>
-    <Version>0.1.0</Version>
     <Description>On-device, fully-offline short music-bed generation for clips and video CVs. Ships a genuinely-working pure-managed procedural synthesiser (chord/arpeggio to PCM/WAV, zero dependencies) behind an IMusicBedGenerator seam; a catalogue-driven neural model plugs in later via the selector.</Description>
     <PackageTags>circle-ai;music;audio;procedural;wav;pcm;on-device;offline;music-bed</PackageTags>
   </PropertyGroup>

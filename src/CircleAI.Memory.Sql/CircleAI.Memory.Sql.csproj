@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.Memory.Sql</PackageId>
-    <Version>1.0.0</Version>
     <Description>The atom store on any ADO.NET engine - PostgreSQL, SQL Server, MySQL, Oracle - for the shared case, where SqliteAtomStore serves the phone.</Description>
   </PropertyGroup>
 

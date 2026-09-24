@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Telephony.Twilio</PackageId>
-    <Version>3.3.0</Version>
     <Description>(3.3.0) Twilio carrier adapter for CircleAI.Telephony. Number provisioning + inbound webhook configuration + outbound dial + call termination via Twilio's REST API. Media-stream WebSocket plumbing is host-supplied via IMediaStream — the ASP.NET host (CircleAI.Hosting.Telephony.Twilio) wires the WebSocket to the carrier package's session abstraction. Fail-soft when AccountSid / AuthToken missing.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;telephony;voice;phone;carrier;twilio</PackageTags>

@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Aether</PackageId>
-    <Version>1.3.0</Version>
     <Description>
       Aether mesh contracts for CircleAI — pure abstractions, no external runtime
       dependency. Defines IAetherContext, IAetherIntelligence, IAetherTelemetry,

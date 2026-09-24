@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Telephony.Telnyx</PackageId>
-    <Version>3.3.0</Version>
     <Description>(3.3.0) Telnyx carrier adapter for CircleAI.Telephony. Number search + purchase + assignment, Call Control App webhook configuration, outbound dial with Media Streaming, hang up, cold transfer — all via Telnyx v2 REST API (Bearer-token auth). Media-stream WebSocket plumbing is host-supplied via the shared IMediaStream contract. Fail-soft when API key missing.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;telephony;voice;phone;carrier;telnyx</PackageTags>

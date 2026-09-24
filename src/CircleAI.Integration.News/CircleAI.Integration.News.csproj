@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Integration.News</PackageId>
-    <Version>3.3.0</Version>
     <Description>External knowledge ingestion for Circle AI — RSS, NewsAPI/GNews, Bluesky firehose, Mastodon stream.</Description>
   </PropertyGroup>
   <PropertyGroup>

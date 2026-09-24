@@ -20,7 +20,6 @@
 
   <PropertyGroup>
     <PackageId>CircleAI.BusinessOps</PackageId>
-    <Version>0.1.0</Version>
     <Description>The operator core — CircleAI running a small business offline. Invoicing orchestration, a simple client book / CRM, and scheduling + follow-up primitives. On-device, no central API/DB.</Description>
     <Authors>The Geek Network</Authors>
     <PackageTags>ai;circle-ai;business-ops;invoicing;crm;scheduling;offline;on-device</PackageTags>

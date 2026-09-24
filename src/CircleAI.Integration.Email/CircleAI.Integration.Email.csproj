@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>CircleAI.Integration.Email</PackageId>
-    <Version>3.3.0</Version>
     <Description>Email integrations for Circle AI — Gmail API, Microsoft Graph (Outlook mail), and generic IMAP via MailKit.</Description>
   </PropertyGroup>
   <PropertyGroup>

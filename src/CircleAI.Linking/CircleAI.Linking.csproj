@@ -3,7 +3,6 @@
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
     <PackageId>CircleAI.Linking</PackageId>
-    <Version>1.0.0</Version>
     <Description>
       Cross-app link authorization for CircleAI — the standalone service app other
       apps bind to for a shared on-device brain. Pure abstractions + policy:
