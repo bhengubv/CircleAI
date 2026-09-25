@@ -20,7 +20,11 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>memory</ToolCommandName>
     <PackageId>CircleAI.Tools.Memory</PackageId>
-    <Version>1.4.0</Version>
+    <!-- No <Version> here. Directory.Build.props at the repo root is the single
+         source of version truth and the whole suite moves in lockstep; the 163
+         per-project versions under src/ were stripped for exactly this reason
+         (060bc68). This file sits in tools/, so that sweep missed it and the
+         tool shipped at 1.4.0 while everything else was 3.6.0. -->
     <Description>Universal local long-term memory: recall what this machine and the others already worked out.</Description>
   </PropertyGroup>
 
