@@ -82,6 +82,45 @@ public sealed class KimiVlGenerator : IChatGenerator
                 "libmnnbridge is on the native library search path.");
         }
 
+        // ---- MEMORY MAPPING, ported from QwenTextGenerator ----------------------
+        //
+        // This path had NONE of it, which is why a VL model has never loaded here:
+        // the vision generator walked straight into the same native fault the text
+        // generator was cured of (a2f2420). Ported deliberately rather than
+        // approximated — same gate, same single thread, same kvcache_mmap OFF.
+        //
+        // BEFORE load, because MNN reads these while loading.
+        //
+        // NOTE FOR VL SPECIFICALLY: WeightsExceedEagerFit sums the whole model
+        // DIRECTORY, so for a VLM bundle it already counts visual.mnn and
+        // visual.mnn.weight alongside llm.mnn — which is the correct measure here,
+        // because a VLM holds the vision encoder resident as well as the LLM.
+        try
+        {
+            var mmap = new MmapWeightLoader(handle.DangerousGetHandle());
+            var scratch = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(modelPath) ?? ".", "mmap");
+            System.IO.Directory.CreateDirectory(scratch);
+            mmap.UseScratch(scratch);
+
+            if (QwenTextGenerator.MmapIsAllowed &&
+                (QwenTextGenerator.ForceMmap || QwenTextGenerator.WeightsExceedEagerFit(modelPath)))
+            {
+                // Weight mmap + single thread. Both were proven necessary AND
+                // sufficient together on a P30; neither alone was enough.
+                mmap.Enable();
+                new MnnRuntimeConfig(handle.DangerousGetHandle()).TrySetThreads(1);
+            }
+
+            // KV-CACHE mmap: DELIBERATELY OFF, for the reason measured on a P30 on
+            // 2026-09-22 — it builds a malformed prefix-cache path, fails to create
+            // the KV files, and leaves a destroyed mutex behind, so the next
+            // pthread_mutex_lock faults: SIGSEGV in MNN::ThreadPool::enqueue during
+            // Session::run. That was the real cause of the whole "mmap crash".
+            // Do not enable it here either until the native path bug is fixed.
+        }
+        catch { /* older bridge or unmappable store — eager load is still correct */ }
+
         int rc = MnnInterop.mnn_llm_load(handle);
         if (rc != 0)
         {

@@ -36,10 +36,14 @@
 
   <!-- Floating refs — track 2.x upstream automatically. -->
   <ItemGroup>
-    <PackageReference Include="AetherNet.Core"      Version="2.*" />
-    <PackageReference Include="AetherNet.Transport" Version="2.*" />
-    <PackageReference Include="AetherNet.Security"  Version="2.*" />
-    <PackageReference Include="AetherNet.Messaging" Version="2.*" />
+    <!-- EXACT, NOT "3.*". A floating range lets an upstream release change what
+         this assembly does with no commit here, and the first anyone would know
+         is a device behaving differently. 3.0.0 is the latest published on
+         nuget.org (2.0.0 -> 2.5.0 -> 3.0.0). -->
+    <PackageReference Include="AetherNet.Core"      Version="3.0.0" />
+    <PackageReference Include="AetherNet.Transport" Version="3.0.0" />
+    <PackageReference Include="AetherNet.Security"  Version="3.0.0" />
+    <PackageReference Include="AetherNet.Messaging" Version="3.0.0" />
     <!-- Microsoft.Extensions.* come transitively via AetherNet.Core 1.1.0
          (10.0.2). No need to declare them here. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.*" />
