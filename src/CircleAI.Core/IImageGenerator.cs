@@ -17,7 +17,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CircleAI.Inference;
+namespace CircleAI.Core;
 
 /// <summary>What to draw, and how hard to work at it.</summary>
 /// <param name="Prompt">What the picture should show.</param>

@@ -422,4 +422,15 @@ public sealed class ModalityPlanTests
         var image  = Selector().PlanFor(Device(8), ModelModality.ImageGeneration);
         Assert.NotSame(vision.Model, image.Model);
     }
+
+    [Fact]
+    public void ImageGeneration_HasAGenerator_AndAModelCatalogued()
+    {
+        // The modality is not a label: IImageGenerator is the seam and
+        // OnnxImageGenerator implements it on ONNX Runtime, which this repo
+        // already ships. Qwen-Image-2.1 is catalogued under the modality.
+        Assert.True(typeof(CircleAI.Core.IImageGenerator).IsInterface);
+        Assert.Contains(nameof(ModelModality.ImageGeneration),
+                        Enum.GetNames(typeof(ModelModality)));
+    }
 }

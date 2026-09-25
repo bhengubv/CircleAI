@@ -3181,6 +3181,29 @@
         }
       ],
       "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen-Image-2.1",
+      "Version": "2.1",
+      "Quantization": "BF16",
+      "Repo": "Qwen/Qwen-Image-2.1",
+      "Architecture": "qwen-image",
+      "Modality": "ImageGeneration",
+      "Engine": "Onnx",
+      "TotalBytes": 41000000000,
+      "QualityRank": 16,
+      "MinRamGb": 24.0,
+      "MinStorageGb": 41.0,
+      "Capabilities": [
+        "Default"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "model_index.json",
+          "SizeBytes": 1024
+        }
+      ],
+      "Source": "HuggingFace"
     }
   ]
 }
