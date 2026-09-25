@@ -136,14 +136,51 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // large to load eagerly, and only when mmap is enabled. Mirrors
     // QwenTextGenerator.WeightsExceedEagerFit so the assessment matches what loads.
     private bool WillMmap(ModelEntry e) =>
-        _mmapAllowed && e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes;
+        _mmapAllowed &&
+        (e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes || IsMmapCapableVision(e));
+
+    // VISION BUNDLES MMAP BELOW THE GIANT THRESHOLD. A VLM carries a vision
+    // encoder (visual.mnn + visual.mnn.weight) alongside the LLM, so its weight
+    // footprint clears a phone's RAM at a far smaller TotalBytes than a dense
+    // text model does — Qwen2.5-VL-3B is 2.74 GB with MinRamGb 3.9, which no
+    // 3.6 GB phone can hold eagerly, and it sat permanently incompatible as a
+    // result. The 8 GB threshold exists to keep mmap away from models that fit
+    // eagerly (mmap'd inference has crashed MNN's threadpool on those); a VLM
+    // that does NOT fit eagerly is exactly the case mmap is for.
+    // Safe because KimiVlGenerator now carries the same weight-mmap +
+    // single-thread + kvcache-OFF recipe QwenTextGenerator was cured with.
+    private bool IsMmapCapableVision(ModelEntry e)
+    {
+        if (e.Modality != ModelModality.Vision) return false;
+        var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
+        return weightGb > 0 && e.MinRamGb > weightGb;   // needs more resident than it weighs
+    }
+
+    // What an mmap'd model still needs resident once the kernel is paging its
+    // weights: KV cache, activations and runtime overhead. MinRamGb bundles all
+    // of that TOGETHER WITH the weights, so subtracting the weights is what is
+    // left. Floored, because a bundle whose MinRamGb barely exceeds its weights
+    // must not come out at ~0 and look free.
+    // Grounded in measurement: Qwen2.5-3B, 2.4 GB of weights, ran on a P30 at
+    // ~800 MB resident once weight-mmap was on (2026-09-22).
+    private const double MmapResidentFloorGb = 0.6;
 
     private double EffectiveMinRamGb(ModelEntry e)
     {
         var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        // An mmap'd model (a 30B-class MoE) needs just its active footprint resident
-        // (MinRamGb); everything else loads eagerly, so its full weight must fit.
-        return WillMmap(e) ? e.MinRamGb : Math.Max(e.MinRamGb, weightGb);
+
+        if (!WillMmap(e))
+        {
+            // Eager: the whole weight file must be resident.
+            return Math.Max(e.MinRamGb, weightGb);
+        }
+
+        // Mmap'd: the weights are paged, so only the rest has to fit. For an MoE
+        // whose MinRamGb is already just the active experts (below its weight),
+        // that figure is the truthful floor and is kept as-is.
+        return e.MinRamGb <= weightGb
+            ? e.MinRamGb
+            : Math.Max(MmapResidentFloorGb, e.MinRamGb - weightGb);
     }
 
     // How far a slow-to-load model drops below the responsive set. Larger than any

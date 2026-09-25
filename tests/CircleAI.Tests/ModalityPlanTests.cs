@@ -393,4 +393,33 @@ public sealed class ModalityPlanTests
         Assert.Throws<ArgumentException>(
             () => Selector().PlanFor(Device(4), ModelModality.Chat));
     }
+
+    [Fact]
+    public void ImageGeneration_IsUnavailable_WhenNothingCatalogued()
+    {
+        // Music and Video each ship a managed synthesiser, so their absence is a
+        // HeuristicFallback. Nothing composites its way to a diffusion model, so
+        // image generation must report Unavailable rather than pretend — the same
+        // answer Coding gives, for the same reason.
+        var plan = Selector().PlanFor(Device(8), ModelModality.ImageGeneration);
+
+        Assert.False(plan.IsAvailable);
+        Assert.Equal(SelectionQuality.Unavailable, plan.Quality);
+        Assert.NotEqual(SelectionQuality.HeuristicFallback, plan.Quality);
+        Assert.Null(plan.Model);
+        Assert.False(string.IsNullOrWhiteSpace(plan.Reason));
+    }
+
+    [Fact]
+    public void ImageGeneration_IsNotConfusedWithVision()
+    {
+        // One is asked what IS in a picture and answers in text; the other is
+        // asked for a picture and returns pixels. A selector that could hand one
+        // to the other would give a draw request a model that cannot paint.
+        Assert.NotEqual(ModelModality.Vision, ModelModality.ImageGeneration);
+
+        var vision = Selector().PlanFor(Device(8), ModelModality.Vision);
+        var image  = Selector().PlanFor(Device(8), ModelModality.ImageGeneration);
+        Assert.NotSame(vision.Model, image.Model);
+    }
 }

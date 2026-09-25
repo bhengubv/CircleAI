@@ -166,4 +166,30 @@ public enum ModelModality
     /// </para>
     /// </remarks>
     Embedding,
+
+    /// <summary>
+    /// Image generation — a diffusion model that makes a picture from a prompt
+    /// (Qwen-Image, SDXL-Turbo, a distilled UNet), consumed by an
+    /// <c>IImageGenerator</c>, not <c>IChatGenerator</c>.
+    /// </summary>
+    /// <remarks>
+    /// NOT <see cref="Vision"/>, though both involve pictures. A vision model is
+    /// asked what IS in an image and answers in text; this is asked for an image
+    /// and returns pixels. A selection that could hand one to the other would
+    /// give a caption request a model that cannot read and a draw request a
+    /// model that cannot paint.
+    /// <para>
+    /// NO BUILT-IN FALLBACK, unlike <see cref="Music"/> and <see cref="Video"/>.
+    /// Those each ship a managed synthesiser, so their absence is
+    /// <c>HeuristicFallback</c>. Nothing procedural stands in for a diffusion
+    /// model, so with nothing catalogued this is <c>Unavailable</c> — the same
+    /// honest answer <see cref="Coding"/> gives.
+    /// </para>
+    /// <para>
+    /// Appended last, for the reason <see cref="Phonemizer"/> gives: these
+    /// values are persisted, so inserting one mid-enum renumbers every entry
+    /// after it and silently re-labels the catalogue.
+    /// </para>
+    /// </remarks>
+    ImageGeneration,
 }

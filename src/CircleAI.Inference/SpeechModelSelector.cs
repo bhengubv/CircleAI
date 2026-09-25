@@ -313,6 +313,16 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                     "device clears the coding hardware floor, but no on-device coding model is " +
                     "catalogued; a real 3-7B code model must be registered (see CircleAI.CodeAgent) to enable");
 
+            // Image generation has no procedural stand-in. Music and Video each
+            // ship a managed synthesiser, so their absence is a fallback; you
+            // cannot composite your way to a diffusion model, so with nothing
+            // catalogued this is Unavailable — the same honest answer Coding
+            // gives, for the same reason.
+            case ModelModality.ImageGeneration:
+                return new ModalityPlan(SelectionQuality.Unavailable, null,
+                    "no image-generation model is catalogued; unlike music and video there is no " +
+                    "built-in that can stand in, so a diffusion model must be registered to enable");
+
             // ASR, TTS and Vision have no non-model implementation. Saying
             // otherwise would mean claiming a capability that cannot run.
             default:

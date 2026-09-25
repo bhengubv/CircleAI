@@ -187,4 +187,88 @@ public class DeviceModelAssessorTests
             Assert.Equal("qwen3-1.7b", cat.Best(ModelModality.Chat)!.Name);
         }
     }
+
+    // ---- vision bundles -----------------------------------------------------
+
+    // A VLM carries a vision encoder alongside the LLM, so it needs MORE
+    // resident than it weighs on disk. Qwen2.5-VL-3B is 2.74 GB with MinRamGb
+    // 3.9 — above a 3.6 GB phone — so it sat permanently incompatible even
+    // though mmap is exactly what such a model needs. It weighs less than the
+    // 8 GB giant threshold, so the old gate never offered it mmap.
+    [Fact]
+    public void A_vision_bundle_that_needs_more_resident_than_it_weighs_gets_mmap()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("qwen2.5-vl-3b", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
+            TotalBytes = 2_736_200_899, MinRamGb = 3.9, MinStorageGb = 2.6, QualityRank = 9,
+        });
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+            .Assess(Probe(ramGb: 4.3));   // ~3.6 GB usable after headroom
+
+        Assert.NotNull(cat.Best(ModelModality.Vision));
+    }
+
+    // With mmap off it must stay out: eagerly it needs its full weight resident
+    // plus the encoder, and loading it would OOM.
+    [Fact]
+    public void The_same_vision_bundle_stays_out_when_mmap_is_off()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("qwen2.5-vl-3b", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
+            TotalBytes = 2_736_200_899, MinRamGb = 3.9, MinStorageGb = 2.6, QualityRank = 9,
+        });
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false)
+            .Assess(Probe(ramGb: 4.3));
+
+        Assert.Null(cat.Best(ModelModality.Vision));
+    }
+
+    // A small VLM whose MinRamGb already covers its weights must NOT be pushed
+    // onto the slow mmap path — SmolVLM-256M is 311 MB and fits eagerly.
+    [Fact]
+    public void A_small_vision_bundle_that_fits_eagerly_is_not_mmapped()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("smolvlm-256m", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
+            TotalBytes = 311_428_914, MinRamGb = 0.5, MinStorageGb = 0.4, QualityRank = 4,
+        });
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+            .Assess(Probe(ramGb: 4.3));
+
+        Assert.NotNull(cat.Best(ModelModality.Vision));
+    }
+
+    // ---- GGUF / engine honesty ---------------------------------------------
+
+    // Bonsai 2 27B is catalogued so the app can SAY it exists, and gated so it
+    // never offers a download that cannot load. Measured from the GGUF header
+    // 2026-09-25: architecture "qwen35", 5.95 GB, PTQ1_0 (1.75 bits/weight,
+    // 32 weights per 7-byte block). The engine is llama.cpp and this device
+    // ships MNN, so the honest verdict is incompatible — not absent.
+    [Fact]
+    public void Bonsai_is_catalogued_but_gated_off_an_MNN_only_device()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("Ternary-Bonsai-2-27B", "1.0", "PTQ1_0")
+        {
+            Engine = ModelEngine.LlamaCpp, Modality = ModelModality.Chat,
+            TotalBytes = 5_946_648_928, MinRamGb = 7.5, MinStorageGb = 6.0, QualityRank = 16,
+        });
+
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 32, storageGb: 200));
+
+        // Present in the catalogue...
+        Assert.Contains(cat.All(), m => m.Name == "Ternary-Bonsai-2-27B");
+        // ...and never selected, however much RAM the device has.
+        Assert.Null(cat.Best(ModelModality.Chat));
+    }
 }
