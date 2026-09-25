@@ -37,7 +37,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>CircleAI.Assistant.Device</RootNamespace>
-    <IsPackable>false</IsPackable>
+    <PackageId>CircleAI.Assistant.Device</PackageId>
+    <Description>The Circle AI assistant on Android, in C# — the turn loop, model host, voice and wake word, as plain .NET Android with no MAUI dependency. A head supplies the screens and the DI wiring; this supplies the assistant.</Description>
+    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- The linked Android sources are guarded by this, as in every head that
          compiles them - without it AndroidAudio.cs compiles to an empty file and

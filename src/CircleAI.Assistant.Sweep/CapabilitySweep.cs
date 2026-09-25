@@ -34,7 +34,12 @@ using CircleAI.Music;
 using CircleAI.Media.Rendering;
 using CircleAI.BusinessOps;
 using CircleAI.Cast;
-using CircleAI.AetherNet;                      // InMemoryMeshCapabilityRegistry, MeshCapabilityAdvertisement
+using CircleAI.AetherNet;
+// InMemoryMeshCapabilityRegistry + MeshCapabilityAdvertisement live in
+// CircleAI.Networking, NOT CircleAI.AetherNet — AetherNet's csproj description
+// claims them, which is what the old using believed. The wrong namespace never
+// surfaced because nothing built this project from clean.
+using CircleAI.Networking;
 using CircleAI.CodeAgent;
 using CircleAI.Security.Defense;               // BlocklistIndicatorSource, BlocklistThreatMonitor, NetworkObservation
 using CircleAI.Security.Antibodies;            // DefensiveAntibodySystem

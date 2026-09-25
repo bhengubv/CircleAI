@@ -22,7 +22,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>CircleAI.Assistant</RootNamespace>
-    <IsPackable>false</IsPackable>
+    <PackageId>CircleAI.Assistant.Sweep</PackageId>
+    <Description>The Circle AI capability sweep — every "hands make things" library exercised end to end, proving each actually runs on the device rather than merely compiling.</Description>
+    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
@@ -36,6 +38,11 @@
     <ProjectReference Include="..\CircleAI.BusinessOps\CircleAI.BusinessOps.csproj" />
     <ProjectReference Include="..\CircleAI.Cast\CircleAI.Cast.csproj" />
     <ProjectReference Include="..\CircleAI.Mesh\CircleAI.Mesh.csproj" />
+    <!-- CapabilitySweep.cs has `using CircleAI.AetherNet` for the mesh capability
+         registry, and this reference was missing. The project did not compile
+         from clean; it only appeared to build because stale output satisfied
+         MSBuild's up-to-date check. -->
+    <ProjectReference Include="..\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
     <ProjectReference Include="..\CircleAI.CodeAgent\CircleAI.CodeAgent.csproj" />
     <ProjectReference Include="..\CircleAI.Security.Defense\CircleAI.Security.Defense.csproj" />
     <ProjectReference Include="..\CircleAI.Security.Antibodies\CircleAI.Security.Antibodies.csproj" />
