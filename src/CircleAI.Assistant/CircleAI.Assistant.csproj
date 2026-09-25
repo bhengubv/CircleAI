@@ -15,11 +15,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <PackageId>CircleAI.Assistant</PackageId>
+    <Description>The Circle AI assistant in C# — capabilities, turn contracts, what it remembers and how it decides what was asked of it. Zero project references: data, interfaces and pure decisions only, so it loads in a browser as well as on a phone. A head supplies the rest by implementing these interfaces.</Description>
+
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>CircleAI.Assistant</RootNamespace>
-    <IsPackable>false</IsPackable>
+
+    <!-- PACKABLE, BECAUSE THE COMMENT ABOVE IS ONLY TRUE IF IT IS. This said
+         false for as long as it claimed to be the product a developer
+         references — which left exactly one way to get the assistant: mine the
+         sample app, the thing the header says nobody should ever have to do.
+         169 sibling packages shipped the parts while the assistant itself had
+         no distributable form. -->
+    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 

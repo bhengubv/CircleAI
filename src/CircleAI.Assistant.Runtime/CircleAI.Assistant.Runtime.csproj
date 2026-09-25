@@ -32,7 +32,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>CircleAI.Assistant</RootNamespace>
-    <IsPackable>false</IsPackable>
+    <PackageId>CircleAI.Assistant.Runtime</PackageId>
+    <Description>The Circle AI assistant's runtime in C# — the session that answers, the voice that reads it out, and the tools it can reach for. Pairs with CircleAI.Assistant, which holds the contracts this implements.</Description>
+
+    <!-- PACKABLE. This project exists because the runtime used to be loose source
+         files globbed into three heads by path, so "a developer who wanted the
+         assistant could not have it — there was nothing to take". Giving it an
+         assembly fixed half of that; leaving IsPackable false left the other
+         half exactly as it was. -->
+    <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
