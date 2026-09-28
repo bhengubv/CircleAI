@@ -1,4 +1,4 @@
-// DeviceModelAssessor.cs
+﻿// DeviceModelAssessor.cs
 //
 // The default IModelAssessor. `compatible` is device-fit: the engine is one this
 // device ships, RAM fits, storage fits, and (when stated) VRAM fits — reusing the
@@ -31,7 +31,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     private readonly IModelCatalog _catalog;
     private readonly HashSet<ModelEngine> _shippedEngines;
     private readonly bool _mmapAllowed;
-    private readonly double _maxModelBytes;
+    private readonly double? _maxModelBytesOverride;
 
     // Floating-point slack so a model whose MinRamGb equals usable RAM to the
     // last bit still counts as fitting — mirrors DeviceAwareModelSelector.
@@ -64,9 +64,10 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// enabled mmap, and the tests, can state it outright.
     /// </param>
     /// <param name="maxModelBytes">
-    /// The form-factor weight ceiling. A model bigger than this is never compatible,
-    /// however much RAM and storage the device reports. <c>null</c> (the default)
-    /// uses <see cref="FormFactorMaxBytes"/>.
+    /// An explicit weight budget in bytes, overriding the share-of-device rule.
+    /// <c>null</c> (the default) derives it per device from
+    /// <see cref="StorageShareOfDevice"/>. A desktop or server host passes a value
+    /// here to lift the budget deliberately rather than by accident.
     /// </param>
     public DeviceModelAssessor(IModelCatalog catalog, IEnumerable<ModelEngine> shippedEngines,
                                bool? mmapAllowed = null, double? maxModelBytes = null)
@@ -75,12 +76,60 @@ public sealed class DeviceModelAssessor : IModelAssessor
         ArgumentNullException.ThrowIfNull(shippedEngines);
         _shippedEngines = new HashSet<ModelEngine>(shippedEngines);
         _mmapAllowed = mmapAllowed ?? QwenTextGenerator.MmapIsAllowed;
-        _maxModelBytes = maxModelBytes ?? FormFactorMaxBytes;
-        if (_maxModelBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxModelBytes));
+        if (maxModelBytes is <= 0) throw new ArgumentOutOfRangeException(nameof(maxModelBytes));
+        // Kept as an OVERRIDE rather than resolved now: the budget is a share of the
+        // device's disk, and the device is not known until Assess is called.
+        _maxModelBytesOverride = maxModelBytes;
     }
 
     /// <summary>
-    /// The weight ceiling a model must clear to be offered: <b>20 GB</b>.
+    /// The share of the device's TOTAL storage that CircleAI's models may claim
+    /// between them: <b>30%</b>.
+    /// </summary>
+    /// <remarks>
+    /// A FIXED CEILING WAS THE WRONG SHAPE and this replaces it. 20 GB is a sixth of
+    /// a 128 GB handset and most of a 32 GB one — the same number means something
+    /// different on every device, so a rule written in gigabytes is a rule that is
+    /// wrong nearly everywhere. A share scales by construction.
+    /// <para>
+    /// TOTAL, never free. Free space is whatever is spare this morning: a model that
+    /// fits because the gallery is empty is one that should never have been offered,
+    /// and it would vanish from the list the moment the person takes photographs. A
+    /// budget that moves under the user is not a budget. Free space still gates the
+    /// individual download — that is the storage check further down, and it asks a
+    /// different question.
+    /// </para>
+    /// <para>
+    /// The person is told rather than silently limited: this is their disk, and a
+    /// capability withheld because of a budget should say so.
+    /// </para>
+    /// </remarks>
+    public const double StorageShareOfDevice = 0.30;
+
+    /// <summary>
+    /// Fallback ceiling when the device does not report its total storage.
+    /// </summary>
+    /// <remarks>
+    /// Only a head can read total size on Android — <c>DriveInfo</c> denies the
+    /// sandboxed data partition — so a desktop build or an un-wired head reports 0.
+    /// Guessing from free space would reintroduce exactly the drift the share exists
+    /// to avoid, so an unknown device falls back to a stated number instead: 20 GB,
+    /// which was the fixed rule, being a sixth of the 128 GB handset it was sized
+    /// against.
+    /// </remarks>
+    public const double FallbackMaxBytes = 20_000_000_000d;
+
+    /// <summary>The weight budget for this device: 30% of total disk, or the fallback.</summary>
+    public static double BudgetBytesFor(DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        return probe.StorageTotalBytes > 0
+            ? probe.StorageTotalBytes * StorageShareOfDevice
+            : FallbackMaxBytes;
+    }
+
+    /// <summary>
+    /// Superseded by <see cref="StorageShareOfDevice"/>; kept as the fallback value.
     /// </summary>
     /// <remarks>
     /// WHERE 20 COMES FROM: a common handset ships <b>128 GB of storage</b>, and one
@@ -149,11 +198,14 @@ public sealed class DeviceModelAssessor : IModelAssessor
         var usableRamGb   = probe.UsableRamGb;     // free RAM minus KV-growth headroom
         var storageFreeGb = probe.StorageFreeGb;   // catalogue units (10^9)
 
+        // 30% of THIS device's total disk, or the caller's explicit budget.
+        var budgetBytes = _maxModelBytesOverride ?? BudgetBytesFor(probe);
+
         var assessed = 0;
         var compatibleCount = 0;
         foreach (var e in _catalog.All())
         {
-            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb);
+            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb, budgetBytes);
             var rank = compatible ? RankFor(e, usableRamGb, _catalog.IsInstalled(e.Name)) : 0.0;
             _catalog.SetAssessment(e.Name, compatible, rank);
             assessed++;
@@ -162,7 +214,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
         return new AssessmentResult(assessed, compatibleCount);
     }
 
-    private bool IsCompatible(ModelEntry e, DeviceProbe probe, double usableRamGb, double storageFreeGb)
+    private bool IsCompatible(ModelEntry e, DeviceProbe probe, double usableRamGb, double storageFreeGb, double budgetBytes)
     {
         // 0. EXPERIMENT: force one named model compatible so its runtime path can be
         //    proven on-device against the naive RAM gate. Storage still has to hold
@@ -183,14 +235,15 @@ public sealed class DeviceModelAssessor : IModelAssessor
         if (e.Engine == ModelEngine.LlamaCpp && !LlamaQuantSupport.CanRead(e.Quantization))
             return false;
 
-        // 2. FORM FACTOR. A product ceiling, deliberately ahead of the RAM and
-        //    storage gates: those ask what THIS device happens to have, and a
-        //    roomy tablet would otherwise make a pack compatible that we cannot
-        //    ship to a phone. Judged on the weight itself, so the answer does not
+        // 2. SHARE OF THE DEVICE. 30% of TOTAL disk, ahead of the RAM and free-storage
+        //    gates because it asks a different question: not "can this land right
+        //    now" but "how much of this person's device may we ever claim". Total
+        //    rather than free, so the answer does not move when they take
+        //    photographs. Judged on the weight itself, so the answer does not
         //    drift by device. The experiment hook above returns before this on
         //    purpose — proving an oversized model's runtime path on a real phone
         //    is the one case that is allowed to ignore it.
-        if (e.TotalBytes > 0 && e.TotalBytes > _maxModelBytes) return false;
+        if (e.TotalBytes > 0 && e.TotalBytes > budgetBytes) return false;
 
         // 3. RAM fits. usableRamGb already folds in RamFitHeadroom, and
         //    EffectiveMinRamGb folds in whether weights will be memory-mapped.

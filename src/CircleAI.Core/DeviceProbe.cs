@@ -1,4 +1,4 @@
-// DeviceProbe.cs
+﻿// DeviceProbe.cs
 //
 // A point-in-time snapshot of what the device can physically do. The
 // SDK uses this to pick model size, context window, concurrency,
@@ -160,8 +160,29 @@ public sealed record DeviceProbe(
     /// </remarks>
     public double StorageFreeGb => StorageFreeBytes / BytesPerGb;
 
-    /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit.</summary>
-    public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null);
+    /// <summary>
+    /// TOTAL size of the drive that hosts the model cache. <c>0</c> = unknown.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="StorageFreeBytes"/> and used for a different
+    /// question. Free space answers "can this download land right now"; TOTAL answers
+    /// "how much of this person's device may we ever claim", and only the second is
+    /// stable. Free space is whatever happens to be spare this morning — a model that
+    /// fits today because the gallery is empty is one that should never have been
+    /// offered, and it would become un-offerable the moment they take photographs.
+    /// Total does not move.
+    /// <para>
+    /// Supplied by a platform head for the same reason <see cref="RamTotalBytes"/> is:
+    /// <see cref="DriveInfo"/> denies the sandboxed data partition on Android.
+    /// </para>
+    /// </remarks>
+    public long StorageTotalBytes { get; init; }
+
+    /// <summary>Total device storage in catalogue units (10^9). <c>0</c> = unknown.</summary>
+    public double StorageTotalGb => StorageTotalBytes / BytesPerGb;
+
+    /// <summary>Real device memory, supplied by a platform head that can read it. RamTotalBytes = device-class total; RamAvailableBytes = free RAM for fit; StorageTotalBytes = the whole drive, for the share of the device models may claim.</summary>
+    public readonly record struct PlatformMemory(long? RamAvailableBytes, long? StorageFreeBytes, long? RamTotalBytes = null, long? StorageTotalBytes = null);
 
     /// <summary>
     /// Optional platform hook. The platform-neutral Core cannot read a mobile
@@ -231,14 +252,16 @@ public sealed record DeviceProbe(
         double?  vramGbOverride      = null,
         long?    ramBytesOverride     = null,
         long?    storageBytesOverride = null,
-        long?    ramTotalBytesOverride = null)
+        long?    ramTotalBytesOverride = null,
+        long?    storageTotalBytesOverride = null)
     {
         // Real hardware first: explicit overrides, then the platform hook (set by
         // an Android / iOS head), then the platform-neutral heuristics. The
         // heuristics are accurate on desktop / server but read the GC heap limit
         // and the process drive, which a mobile sandbox reports as ~100 MB / 0 B.
         var platformSuppliedRam = false;
-        if (ramBytesOverride is null || storageBytesOverride is null || ramTotalBytesOverride is null)
+        if (ramBytesOverride is null || storageBytesOverride is null || ramTotalBytesOverride is null
+            || storageTotalBytesOverride is null)
         {
             var pm = PlatformMemoryProbe?.Invoke();
             if (ramBytesOverride is null && pm?.RamAvailableBytes is > 0)
@@ -247,6 +270,7 @@ public sealed record DeviceProbe(
             ramBytesOverride      ??= pm?.RamAvailableBytes;
             storageBytesOverride  ??= pm?.StorageFreeBytes;
             ramTotalBytesOverride ??= pm?.RamTotalBytes;
+            storageTotalBytesOverride ??= pm?.StorageTotalBytes;
         }
 
         long ram;
@@ -312,6 +336,9 @@ public sealed record DeviceProbe(
         {
             VramGb = vramGbOverride,
             RamTotalBytes = ramTotal,
+            // 0 when no head supplies it, which the share-of-device rule reads as
+            // "unknown" and falls back on rather than guessing from free space.
+            StorageTotalBytes = storageTotalBytesOverride is > 0 ? storageTotalBytesOverride.Value : 0,
             RamSource = ramSource,
         };
     }

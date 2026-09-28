@@ -17,7 +17,11 @@ public class DeviceModelAssessorTests
 {
     static SqliteModelCatalog NewCatalog() => new("Data Source=:memory:");
 
-    static DeviceProbe Probe(double ramGb, double storageGb = 100, double? vramGb = null)
+    // storageTotalGb defaults to 128 — the handset the share-of-device rule is sized
+    // against, so a test that does not care about the budget gets a realistic one
+    // (30% of 128 GB = 38.4 GB) rather than an accidental 0 that falls back.
+    static DeviceProbe Probe(double ramGb, double storageGb = 100, double? vramGb = null,
+                             double storageTotalGb = 128)
         => new(
             RamAvailableBytes: (long)(ramGb * 1_000_000_000),
             StorageFreeBytes:  (long)(storageGb * 1_000_000_000),
@@ -25,7 +29,11 @@ public class DeviceModelAssessorTests
             CpuCores:          8,
             Thermal:           ThermalClass.Active,
             Connectivity:      Connectivity.Online)
-        { VramGb = vramGb, RamTotalBytes = (long)(ramGb * 1_000_000_000) };
+        {
+            VramGb = vramGb,
+            RamTotalBytes = (long)(ramGb * 1_000_000_000),
+            StorageTotalBytes = (long)(storageTotalGb * 1_000_000_000),
+        };
 
     static ModelEntry Entry(
         string name,
@@ -290,12 +298,16 @@ public class DeviceModelAssessorTests
     const long GB = 1_000_000_000;
 
     [Fact]
-    public void A_model_over_the_form_factor_ceiling_is_incompatible_on_any_device()
+    public void A_model_over_the_budget_is_refused_however_much_is_free_right_now()
     {
         using var cat = NewCatalog();
-        cat.Upsert(Entry("too-big", totalBytes: 22_800_000_000));   // Qwen3.6-35B-A3B, the one catalogued pack still over the line
-        // 64 GB of RAM and a terabyte free — the device is not the question.
-        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 64, storageGb: 1000));
+        cat.Upsert(Entry("too-big", totalBytes: 22_800_000_000));   // Qwen3.6-35B-A3B
+        // THE POINT: a 32 GB handset with 64 GB of RAM and a terabyte reported free.
+        // The free figure is deliberately absurd, because free space is NOT what the
+        // budget is computed from — 30% of the 32 GB the device actually has is
+        // 9.6 GB, and a 22.8 GB pack does not fit inside it no matter what a
+        // momentary free-space reading claims.
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 64, storageGb: 1000, storageTotalGb: 32));
         Assert.Null(cat.Best(ModelModality.Chat));
         Assert.Contains(cat.All(), m => m.Name == "too-big");       // catalogued, just not offered
     }
@@ -316,7 +328,7 @@ public class DeviceModelAssessorTests
     public void A_model_exactly_on_the_ceiling_is_allowed()
     {
         using var cat = NewCatalog();
-        cat.Upsert(Entry("on-the-line", totalBytes: (long)DeviceModelAssessor.FormFactorMaxBytes));
+        cat.Upsert(Entry("on-the-line", totalBytes: (long)DeviceModelAssessor.BudgetBytesFor(Probe(64))));
         // RAM deliberately far past the ceiling. Without mmap EffectiveMinRamGb rises
         // to the full weight, so a probe sized near the ceiling has the RAM gate
         // refusing the model before the ceiling is ever consulted — the test would
@@ -367,42 +379,64 @@ public class DeviceModelAssessorTests
     }
 
     [Fact]
-    public void The_ceiling_removes_the_giant_MoE_bundles_from_the_real_catalogue()
+    public void The_budget_scales_with_the_device_instead_of_being_one_number()
     {
-        // NOT a rule asserted for its own sake — a CONSEQUENCE kept visible. The
-        // form-factor rule makes some catalogued models un-offerable on a default
-        // host, where before they were reachable via mmap on a roomy device. Naming
-        // them means the list cannot grow silently: add another oversized model and
-        // this fails until someone writes it down.
-        //
-        // WHY 20 GB: a common handset has 128 GB of storage, and one model may not
-        // take more than about a sixth of everything the person owns. That admits the
-        // whole image pipeline (7.59 + 5.03 + 0.68 = 13.30 GB, or 10.31 with the
-        // cheaper transformer), the dense Qwen3-14B at 9.44, and Qwen3-30B-A3B at
-        // 17.75. It refuses Qwen3.6-35B-A3B at 22.80 — nearly a fifth of the device
-        // for one model, which is the case the rule exists to say no to.
+        // THE WHOLE REASON A SHARE REPLACED A FIXED CEILING, shown against the real
+        // catalogue. A number in gigabytes means something different on every handset:
+        // 20 GB is a sixth of a 128 GB phone and two thirds of a 32 GB one, so one
+        // figure is wrong nearly everywhere. A share is right by construction, and
+        // what it costs is that the offering now DIFFERS BY DEVICE — which is correct,
+        // and is the thing worth pinning.
         using var registry = new ModelRegistryService();
-        var giants = registry.AllModels
-            .Where(m => m.TotalBytes > DeviceModelAssessor.FormFactorMaxBytes)
-            .Select(m => m.Name)
-            .OrderBy(n => n, StringComparer.Ordinal)
-            .ToList();
 
-        Assert.Equal(new[] { "Qwen3.6-35B-A3B-MNN" }, giants);
+        string[] Refused(double totalGb)
+        {
+            var budget = DeviceModelAssessor.BudgetBytesFor(Probe(8, storageTotalGb: totalGb));
+            return registry.AllModels
+                .Where(m => m.TotalBytes > budget)
+                .Select(m => m.Name)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToArray();
+        }
 
-        // the dense 14B sat between the earliest candidate ceilings, so it is the model
-        // that proves a ceiling was raised rather than merely renamed
-        var dense14b = registry.AllModels.Single(m => m.Name == "Qwen3-14B-MNN");
-        Assert.True(dense14b.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
-            $"Qwen3-14B is {dense14b.TotalBytes / 1e9:F2} GB and must clear the {DeviceModelAssessor.FormFactorMaxBytes / 1e9:F0} GB ceiling");
+        // 128 GB handset -> 38.4 GB. Everything catalogued fits, including the 22.8 GB
+        // MoE. A big phone is not the device this rule is protecting.
+        Assert.Empty(Refused(128));
 
-        // and every pack we actually run clears it
+        // 64 GB -> 19.2 GB. The 35B MoE goes; the 30B at 17.75 still fits.
+        Assert.Equal(new[] { "Qwen3.6-35B-A3B-MNN" }, Refused(64));
+
+        // 32 GB -> 9.6 GB, the cheap handset this is really for. Both MoE bundles go
+        // and so does the dense 14B at 9.44... which FITS, by 160 MB. That is the
+        // share doing its job rather than a round number doing it by luck.
+        Assert.Equal(
+            new[] { "Qwen3-30B-A3B-MNN", "Qwen3.6-35B-A3B-MNN" },
+            Refused(32));
+
+        // The packs actually in hand must survive the cheap handset, or the work of
+        // fetching and verifying them bought nothing.
+        var tightBudget = DeviceModelAssessor.BudgetBytesFor(Probe(8, storageTotalGb: 32));
         foreach (var name in new[] { "Ternary-Bonsai-2-27B", "Qwen-Image-2.1-UC" })
         {
             var m = registry.AllModels.Single(x => x.Name == name);
-            Assert.True(m.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
-                $"{name} is {m.TotalBytes / 1e9:F2} GB, over the {DeviceModelAssessor.FormFactorMaxBytes / 1e9:F0} GB ceiling");
+            Assert.True(m.TotalBytes <= tightBudget,
+                $"{name} is {m.TotalBytes / 1e9:F2} GB, over a 32 GB handset's {tightBudget / 1e9:F1} GB budget");
         }
+    }
+
+    [Fact]
+    public void A_device_that_does_not_report_its_disk_falls_back_rather_than_guessing()
+    {
+        // Only a head can read total size on Android; a desktop build or an un-wired
+        // head reports 0. Inferring it from FREE space would reintroduce the drift the
+        // share exists to remove — a budget computed from a momentarily empty disk is
+        // the fixed-ceiling problem wearing a different hat.
+        var unknown = Probe(8, storageTotalGb: 0);
+        Assert.Equal(DeviceModelAssessor.FallbackMaxBytes, DeviceModelAssessor.BudgetBytesFor(unknown));
+
+        // and a device that DOES report it never uses the fallback
+        Assert.Equal(128e9 * DeviceModelAssessor.StorageShareOfDevice,
+                     DeviceModelAssessor.BudgetBytesFor(Probe(8, storageTotalGb: 128)));
     }
 
     // ---- quantisation the loaded backend can read -----------------------------
