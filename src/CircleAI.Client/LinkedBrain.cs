@@ -1,4 +1,4 @@
-// LinkedBrain.cs
+﻿// LinkedBrain.cs
 //
 // An IBrain that asks the CircleAI service instead of loading a model.
 //
@@ -139,6 +139,42 @@ public sealed class LinkedBrain : IBrain, IDisposable
         return Task.FromResult(
             "Reading pictures is not available over the CircleAI link yet — "
             + "the link carries text only.");
+    }
+
+    /// <summary>Transcribe audio this app recorded, using the service's recogniser.</summary>
+    /// <remarks>
+    /// THE SPLIT, IN ONE METHOD. This app keeps the microphone — the permission, the
+    /// capture, knowing when the screen is up — and the service keeps the recogniser,
+    /// which is the hundreds of megabytes nobody can duplicate per app. The bytes
+    /// cross; the model does not.
+    /// <para>
+    /// Roughly 25 seconds fits in one call (see <see cref="LinkAudio.MaxSeconds"/>),
+    /// which is a spoken question rather than a recording. Longer audio is refused
+    /// with a sentence measured in seconds, not a crash.
+    /// </para>
+    /// </remarks>
+    public async Task<string> TranscribeAsync(byte[] pcm16, string? language = null,
+                                              CancellationToken ct = default)
+    {
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null) return NotLinked();
+
+        var reply = await client.TranscribeAsync(pcm16, language, ct).ConfigureAwait(false);
+        // An empty transcript is a RESULT — silence, a cough, an empty room — so it
+        // comes back as an empty string rather than an error a screen would show.
+        return reply.Ok ? reply.Text : reply.Error ?? "CircleAI could not hear that.";
+    }
+
+    /// <summary>Say these words with the device voice; the caller plays the audio.</summary>
+    /// <returns>PCM in <see cref="LinkAudioFormat"/>, or empty when it could not.</returns>
+    public async Task<byte[]> SpeakAsync(string text, string? language = null,
+                                         CancellationToken ct = default)
+    {
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null) return Array.Empty<byte>();
+
+        var reply = await client.SpeakAsync(text, language, ct).ConfigureAwait(false);
+        return reply.Ok ? reply.Audio : Array.Empty<byte>();
     }
 
     private static string NotLinked() =>

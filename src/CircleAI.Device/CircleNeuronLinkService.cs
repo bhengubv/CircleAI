@@ -1,4 +1,4 @@
-// CircleNeuronLinkService.cs
+﻿// CircleNeuronLinkService.cs
 //
 // The cross-app door to the shared brain.
 //
@@ -72,6 +72,18 @@ public sealed class CircleNeuronLinkService : Service
     /// </summary>
     public static ICapabilityCatalog? Catalog { get; set; }
 
+    /// <summary>
+    /// Speech for the audio transaction: the recogniser and the voice. Null means
+    /// audio is refused with "speech not available" rather than a silent empty
+    /// transcript, which a client cannot tell from a quiet room.
+    /// </summary>
+    /// <remarks>
+    /// THIS IS THE EXPENSIVE HALF, and the reason the transaction exists. A recogniser
+    /// and a voice are hundreds of megabytes; the client keeps the microphone, which
+    /// is free, and sends what it captured here.
+    /// </remarks>
+    public static ILinkSpeech? Speech { get; set; }
+
     /// <inheritdoc/>
     public override IBinder OnBind(Intent? intent) => new LinkBinder(this);
 
@@ -82,12 +94,46 @@ public sealed class CircleNeuronLinkService : Service
 
         protected override bool OnTransact(int code, Parcel? data, Parcel? reply, int flags)
         {
-            if (data is null || (code != LinkIpc.TransactAsk && code != LinkIpc.TransactVerb))
+            if (data is null || (code != LinkIpc.TransactAsk
+                                 && code != LinkIpc.TransactVerb
+                                 && code != LinkIpc.TransactAudio))
                 return base.OnTransact(code, data, reply, flags);
 
             data.EnforceInterface(LinkIpc.Descriptor);
 
             var uid = Binder.CallingUid;   // reliable inside the transaction
+
+            // AUDIO IS NOT A STRING MAP, so it is read before the map path runs at
+            // all. Reading the map first would consume the parcel's leading int as a
+            // pair count and then read audio bytes as UTF-16 keys.
+            if (code == LinkIpc.TransactAudio)
+            {
+                var audioRequest = LinkAudioCodec.TryReadRequest(new ParcelReader(data));
+                reply?.WriteNoException();
+
+                LinkAudioReply audioResult;
+                if (audioRequest is null)
+                {
+                    // Either a wire version this build does not speak, or audio past
+                    // the limit from a client that skipped its own check.
+                    audioResult = LinkAudioReply.Failure(
+                        "CircleAI could not read that audio request — check the app "
+                        + "and CircleAI are both up to date.");
+                }
+                else
+                {
+                    try
+                    {
+                        audioResult = _service.ServeAudioAsync(uid, audioRequest)
+                                              .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex) { audioResult = LinkAudioReply.Failure(ex.Message); }
+                }
+
+                if (reply is not null) LinkAudioCodec.WriteReply(new ParcelWriter(reply), audioResult);
+                return true;
+            }
+
             var request = ReadMap(data);
             reply?.WriteNoException();
 
@@ -296,6 +342,76 @@ public sealed class CircleNeuronLinkService : Service
         {
             reply.WriteString(pair.Key);
             reply.WriteString(pair.Value);
+        }
+    }
+
+    /// <summary>Adapts a <see cref="Parcel"/> to the codec's writer.</summary>
+    /// <remarks>
+    /// The codec is deliberately free of Android types so the wire can be tested off
+    /// a device; these two adapters are the only place the two meet.
+    /// </remarks>
+    private sealed class ParcelWriter(Parcel parcel) : LinkAudioCodec.IWriter
+    {
+        public void WriteInt(int value) => parcel.WriteInt(value);
+        public void WriteString(string? value) => parcel.WriteString(value);
+        public void WriteBytes(byte[] value) => parcel.WriteByteArray(value);
+    }
+
+    /// <summary>Adapts a <see cref="Parcel"/> to the codec's reader.</summary>
+    private sealed class ParcelReader(Parcel parcel) : LinkAudioCodec.IReader
+    {
+        public int ReadInt() => parcel.ReadInt();
+        public string? ReadString() => parcel.ReadString();
+        public byte[] ReadBytes() => parcel.CreateByteArray() ?? Array.Empty<byte>();
+    }
+
+    /// <summary>Serve one audio request: transcribe what a client recorded, or speak.</summary>
+    /// <remarks>
+    /// VOICE IS ITS OWN SCOPE, so a Chat-only grant cannot reach the microphone's
+    /// contents. What is being approved differs in kind: chat is "ask a question",
+    /// voice is "take whatever my microphone picked up", which can include a
+    /// conversation nobody meant to share.
+    /// </remarks>
+    private async Task<LinkAudioReply> ServeAudioAsync(int uid, LinkAudioRequest request)
+    {
+        var denied = await AuthorizeAsync(uid, LinkScope.Voice).ConfigureAwait(false);
+        if (denied is not null) return LinkAudioReply.Failure(denied);
+
+        var speech = Speech;
+        if (speech is null)
+            return LinkAudioReply.Failure(
+                "Speech is not available on this device yet.");
+
+        switch (request.Verb)
+        {
+            case LinkAudioVerb.Transcribe:
+            {
+                if (request.Audio.Length == 0)
+                    return LinkAudioReply.Failure("No audio was sent.");
+
+                var text = await speech.TranscribeAsync(request.Audio, request.Language)
+                                       .ConfigureAwait(false);
+                // AN EMPTY TRANSCRIPT IS A RESULT. Silence, a cough, an empty room —
+                // all of it recognises to nothing, and reporting that as a failure
+                // would tell somebody CircleAI is broken when it merely heard no words.
+                return LinkAudioReply.Transcribed(text ?? string.Empty);
+            }
+
+            case LinkAudioVerb.Speak:
+            {
+                if (string.IsNullOrWhiteSpace(request.Text))
+                    return LinkAudioReply.Failure("There were no words to say.");
+
+                var audio = await speech.SpeakAsync(request.Text, request.Language)
+                                        .ConfigureAwait(false);
+                // Oversized synthesis is refused by the codec with a readable reason
+                // rather than throwing inside the reply, which would leave the client
+                // holding a dead binder and no explanation.
+                return LinkAudioReply.Spoke(audio ?? Array.Empty<byte>());
+            }
+
+            default:
+                return LinkAudioReply.Failure("Unknown audio request.");
         }
     }
 }

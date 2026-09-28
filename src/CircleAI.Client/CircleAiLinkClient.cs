@@ -1,4 +1,4 @@
-// CircleAiLinkClient.cs
+﻿// CircleAiLinkClient.cs
 //
 // The host-app side of the cross-app link: find the shared brain, bind it, ask.
 //
@@ -157,6 +157,85 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     }
 
     /// <inheritdoc/>
+    /// <summary>Transcribe audio this app recorded, using the service's recogniser.</summary>
+    /// <param name="pcm16">Audio in <see cref="LinkAudioFormat"/> — 16 kHz mono 16-bit LE.</param>
+    /// <param name="language">BCP-47 tag, or null to let the service choose.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <remarks>
+    /// THE MICROPHONE STAYS HERE. This app records — it holds the permission and knows
+    /// when the screen is up — and sends the samples to the one process that owns a
+    /// recogniser. The size is checked BEFORE the transact, because exceeding the
+    /// binder budget raises TransactionTooLargeException, which names neither the size
+    /// nor the caller and can land on an unrelated call that was in flight.
+    /// </remarks>
+    public Task<LinkAudioReply> TranscribeAsync(byte[] pcm16, string? language = null,
+                                                CancellationToken ct = default)
+        => AudioAsync(new LinkAudioRequest(LinkAudioVerb.Transcribe, pcm16 ?? Array.Empty<byte>(),
+                                           Language: language), ct);
+
+    /// <summary>Say these words with the device voice, and get the audio back to play.</summary>
+    /// <remarks>
+    /// Playback stays here too, for the same reason recording does: an audio track is
+    /// cheap and belongs to the app the person is looking at. Only the VOICE — the
+    /// model — lives in the service.
+    /// </remarks>
+    public Task<LinkAudioReply> SpeakAsync(string text, string? language = null,
+                                           CancellationToken ct = default)
+        => AudioAsync(new LinkAudioRequest(LinkAudioVerb.Speak, Array.Empty<byte>(),
+                                           text ?? string.Empty, language), ct);
+
+    private async Task<LinkAudioReply> AudioAsync(LinkAudioRequest req, CancellationToken ct)
+    {
+        // CHECKED HERE, BEFORE A BINDER IS EVEN TOUCHED. The codec checks again when
+        // writing, and the service checks a third time on read — a caller that skips
+        // it gets a crash rather than an answer, and a service that trusts callers on
+        // sizes is one any app can bring down.
+        if (!LinkAudio.Fits(req.Audio.Length, out var refusal))
+            return LinkAudioReply.Failure(refusal!);
+
+        var binder = await _bound.Task.ConfigureAwait(false);
+        if (binder is null) return LinkAudioReply.Failure("not connected to Circle AI");
+
+        return await Task.Run(() =>
+        {
+            var data = Parcel.Obtain();
+            var reply = Parcel.Obtain();
+            try
+            {
+                data!.WriteInterfaceToken(LinkIpc.Descriptor);
+                if (!LinkAudioCodec.TryWriteRequest(new ParcelWriter(data), req, out var why))
+                    return LinkAudioReply.Failure(why!);
+
+                binder.Transact(LinkIpc.TransactAudio, data, reply, (TransactionFlags)0);
+                reply!.ReadException();
+                return LinkAudioCodec.ReadReply(new ParcelReader(reply));
+            }
+            catch (Exception ex) { return LinkAudioReply.Failure(ex.Message); }
+            finally { data?.Recycle(); reply?.Recycle(); }
+        }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Adapts a <see cref="Parcel"/> to the codec's writer.</summary>
+    /// <remarks>
+    /// MUST MIRROR THE SERVICE'S PAIR EXACTLY. The codec owns field ORDER; these two
+    /// own only the primitive calls. A Parcel is unframed, so a difference here does
+    /// not fail — it reads structurally valid rubbish.
+    /// </remarks>
+    private sealed class ParcelWriter(Parcel parcel) : LinkAudioCodec.IWriter
+    {
+        public void WriteInt(int value) => parcel.WriteInt(value);
+        public void WriteString(string? value) => parcel.WriteString(value);
+        public void WriteBytes(byte[] value) => parcel.WriteByteArray(value);
+    }
+
+    /// <summary>Adapts a <see cref="Parcel"/> to the codec's reader.</summary>
+    private sealed class ParcelReader(Parcel parcel) : LinkAudioCodec.IReader
+    {
+        public int ReadInt() => parcel.ReadInt();
+        public string? ReadString() => parcel.ReadString();
+        public byte[] ReadBytes() => parcel.CreateByteArray() ?? Array.Empty<byte>();
+    }
+
     public void OnServiceConnected(ComponentName? name, IBinder? service) => _bound.TrySetResult(service);
 
     /// <inheritdoc/>
