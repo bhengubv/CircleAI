@@ -516,6 +516,101 @@ public class DeviceModelAssessorTests
         Assert.Equal(expected, cat.Best(ModelModality.Chat) is not null);
     }
 
+    // ---- the reference device -------------------------------------------------
+    // Huawei P30 Lite (MAR-LX1M), the floor this product supports: measured at
+    // 3.6 GB RAM, ~1.3-1.5 GB free, 38 GB storage, Kirin 710, no GPU, EMUI, no GMS.
+    // docs/HARDWARE_FINDINGS_HUAWEI_P30.md. Anything below it is told to upgrade;
+    // everything at or above it must stay multimodal.
+
+    static DeviceProbe P30() => new(
+            RamAvailableBytes: 1_400_000_000,      // measured free, not total
+            StorageFreeBytes:  20_000_000_000,
+            Gpu:               GpuKind.None,
+            CpuCores:          8,
+            Thermal:           ThermalClass.Passive,
+            Connectivity:      Connectivity.Online)
+        { RamTotalBytes = 3_600_000_000, StorageTotalBytes = 38_000_000_000 };
+
+    [Fact]
+    public void The_P30_can_reach_a_3B_even_though_the_fast_model_stays_the_default()
+    {
+        // WHAT THIS GUARDS. Qwen2.5-3B declares 3.1 GB and weighs 2.37 GB, so without
+        // mmap the gate computed max(3.1, 2.37) = 3.1 GB and REFUSED it outright
+        // against ~1.19 GB usable. That model has been proven to load and generate on
+        // this exact phone at ~800 MB resident. The capability was real and
+        // unreachable — this repo's signature defect, arrived at from the gate's side.
+        //
+        // It is now COMPATIBLE: offerable, and a person can choose it. It is not the
+        // DEFAULT, and that is also right rather than a compromise — its measured
+        // first token on this phone is 32.8 s, so SlowLoadRankPenalty puts it beneath
+        // anything that answers quickly. Reachable and not silently chosen are
+        // different claims, and only the first one was broken.
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("qwen2.5-3b", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
+            TotalBytes = 2_370_000_000, MinRamGb = 3.1, MinStorageGb = 2.4, QualityRank = 9,
+        });
+        cat.Upsert(Entry("qwen3.5-0.8b", qualityRank: 7, minRamGb: 0.8,
+                         minStorageGb: 0.6, totalBytes: 550_000_000));
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(P30());
+
+        var reachable = cat.Compatible(ModelModality.Chat).Select(m => m.Name).ToList();
+        Assert.Contains("qwen2.5-3b", reachable);          // the fix: it exists for this phone
+        Assert.Equal("qwen3.5-0.8b", cat.Best(ModelModality.Chat)!.Name);   // and fast still wins
+    }
+
+    [Fact]
+    public void Without_mmap_the_3B_is_not_reachable_at_all_on_the_P30()
+    {
+        // The other half of the claim, so the test above cannot pass for an unrelated
+        // reason: with mmap off the same entry is refused outright rather than merely
+        // ranked low. That is the state the reference device was actually in.
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("qwen2.5-3b", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
+            TotalBytes = 2_370_000_000, MinRamGb = 3.1, MinStorageGb = 2.4, QualityRank = 9,
+        });
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false).Assess(P30());
+
+        Assert.Empty(cat.Compatible(ModelModality.Chat));
+    }
+
+    [Fact]
+    public void The_P30_stays_multimodal_and_disk_is_not_what_limits_it()
+    {
+        // The product goal stated as a test: every modality the device can serve, it
+        // DOES serve. On this phone RAM is the binding constraint and disk is not
+        // close — the whole set is about 3.6 GB against a budget of 30% of 38 GB =
+        // 11.4 GB, so a fuller set is affordable on disk and refused only on memory.
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("chat",   qualityRank: 7, minRamGb: 0.8, minStorageGb: 0.6, totalBytes: 550_000_000));
+        cat.Upsert(new ModelEntry("vision", "1.0", "MNN-Q4")
+        {
+            Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
+            TotalBytes = 2_740_000_000, MinRamGb = 3.9, MinStorageGb = 2.8, QualityRank = 9,
+        });
+        cat.Upsert(Entry("asr", modality: ModelModality.Asr, minRamGb: 0.4, minStorageGb: 0.1, totalBytes: 80_000_000));
+        cat.Upsert(Entry("tts", modality: ModelModality.Tts, minRamGb: 0.5, minStorageGb: 0.2, totalBytes: 110_000_000));
+        cat.Upsert(Entry("wake", modality: ModelModality.WakeWord, minRamGb: 0.1, minStorageGb: 0.1, totalBytes: 10_000_000));
+
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(P30());
+
+        foreach (var m in new[] { ModelModality.Chat, ModelModality.Vision,
+                                  ModelModality.Asr, ModelModality.Tts, ModelModality.WakeWord })
+            Assert.True(cat.Best(m) is not null, $"{m} has nothing on the reference device");
+
+        // and the budget is nowhere near binding
+        var used = new[] { "chat", "vision", "asr", "tts", "wake" }
+            .Sum(n => cat.All().Single(e => e.Name == n).TotalBytes);
+        var budget = DeviceModelAssessor.BudgetBytesFor(P30());
+        Assert.True(used < budget / 2,
+            $"the set is {used / 1e9:F2} GB of a {budget / 1e9:F2} GB budget — if this ever tightens, disk has become the constraint and the allocator story changes");
+    }
+
     [Fact]
     public void ShippedEngines_always_has_MNN_and_adds_llama_only_when_the_native_library_loaded()
     {

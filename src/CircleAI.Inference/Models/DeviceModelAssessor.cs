@@ -247,7 +247,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
 
         // 3. RAM fits. usableRamGb already folds in RamFitHeadroom, and
         //    EffectiveMinRamGb folds in whether weights will be memory-mapped.
-        if (EffectiveMinRamGb(e) > usableRamGb + Eps) return false;
+        if (EffectiveMinRamGb(e, usableRamGb) > usableRamGb + Eps) return false;
 
         // 4. Storage fits (0 = unknown, skip — same as the selector).
         if (storageFreeGb > 0 && e.MinStorageGb > storageFreeGb + Eps) return false;
@@ -273,9 +273,32 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // Whether this model will be memory-mapped on this device: only weights too
     // large to load eagerly, and only when mmap is enabled. Mirrors
     // QwenTextGenerator.WeightsExceedEagerFit so the assessment matches what loads.
-    private bool WillMmap(ModelEntry e) =>
+    /// <summary>
+    /// Whether this model will be memory-mapped ON THIS DEVICE.
+    /// </summary>
+    /// <remarks>
+    /// MMAP IS A RESPONSE TO A CONSTRAINT, NOT A PROPERTY OF A MODEL, and the first
+    /// attempt at widening this got that wrong. The rule became "declares more RAM
+    /// than it weighs", which is true of nearly every small model — Qwen3-0.6B
+    /// declares 0.6 GB and weighs 0.45 — so a 0.45 GB model was marked as mmap'd and
+    /// picked up <see cref="SlowLoadRankPenalty"/>, a penalty meant for a model that
+    /// pages tens of gigabytes before its first token. A giant then outranked a fast
+    /// small model, which is precisely the outcome that penalty exists to prevent.
+    /// <para>
+    /// The honest question is whether the model fits EAGERLY here. If it does, load it
+    /// eagerly and no penalty applies. If it does not, mmap is the only way in, and
+    /// the penalty is earned. That makes the answer depend on the device, which is
+    /// correct: the same 3B is an eager load on a tablet and a paged one on a P30.
+    /// </para>
+    /// <para>
+    /// The huge-model threshold stays as an independent term: a 30B-class MoE is
+    /// mmap'd on anything, because no phone or tablet holds it eagerly at all.
+    /// </para>
+    /// </remarks>
+    private bool WillMmap(ModelEntry e, double usableRamGb) =>
         _mmapAllowed &&
-        (e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes || IsMmapCapableVision(e));
+        (e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes
+         || EagerGb(e) > usableRamGb + Eps);
 
     // VISION BUNDLES MMAP BELOW THE GIANT THRESHOLD. A VLM carries a vision
     // encoder (visual.mnn + visual.mnn.weight) alongside the LLM, so its weight
@@ -287,11 +310,24 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // that does NOT fit eagerly is exactly the case mmap is for.
     // Safe because KimiVlGenerator now carries the same weight-mmap +
     // single-thread + kvcache-OFF recipe QwenTextGenerator was cured with.
-    private bool IsMmapCapableVision(ModelEntry e)
+    /// <summary>Resident memory if the weights are loaded eagerly.</summary>
+    private static double EagerGb(ModelEntry e)
     {
-        if (e.Modality != ModelModality.Vision) return false;
         var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        return weightGb > 0 && e.MinRamGb > weightGb;   // needs more resident than it weighs
+        return Math.Max(e.MinRamGb, weightGb);
+    }
+
+    /// <summary>Resident memory if the weights are memory-mapped and paged from disk.</summary>
+    /// <remarks>
+    /// For an MoE whose <see cref="ModelEntry.MinRamGb"/> is already just the active
+    /// experts (below its weight), that figure is the truthful floor and is kept.
+    /// </remarks>
+    private static double MmappedGb(ModelEntry e)
+    {
+        var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
+        return e.MinRamGb <= weightGb
+            ? e.MinRamGb
+            : Math.Max(MmapResidentFloorGb, e.MinRamGb - weightGb);
     }
 
     // What an mmap'd model still needs resident once the kernel is paging its
@@ -303,23 +339,8 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // ~800 MB resident once weight-mmap was on (2026-09-22).
     private const double MmapResidentFloorGb = 0.6;
 
-    private double EffectiveMinRamGb(ModelEntry e)
-    {
-        var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-
-        if (!WillMmap(e))
-        {
-            // Eager: the whole weight file must be resident.
-            return Math.Max(e.MinRamGb, weightGb);
-        }
-
-        // Mmap'd: the weights are paged, so only the rest has to fit. For an MoE
-        // whose MinRamGb is already just the active experts (below its weight),
-        // that figure is the truthful floor and is kept as-is.
-        return e.MinRamGb <= weightGb
-            ? e.MinRamGb
-            : Math.Max(MmapResidentFloorGb, e.MinRamGb - weightGb);
-    }
+    private double EffectiveMinRamGb(ModelEntry e, double usableRamGb)
+        => WillMmap(e, usableRamGb) ? MmappedGb(e) : EagerGb(e);
 
     // How far a slow-to-load model drops below the responsive set. Larger than any
     // QualityRank (6..16), so a model that pages tens of GB before its first token
@@ -335,10 +356,10 @@ public sealed class DeviceModelAssessor : IModelAssessor
     // one and still selected — nothing is excluded, only deprioritised.
     private double RankFor(ModelEntry e, double usableRamGb, bool installed)
     {
-        var headroomGb = Math.Max(0.0, usableRamGb - EffectiveMinRamGb(e));
+        var headroomGb = Math.Max(0.0, usableRamGb - EffectiveMinRamGb(e, usableRamGb));
         var headroomBonus = Math.Min(headroomGb, 4.0) * 0.1;   // 0 .. 0.4
         var installedBonus = installed ? 0.25 : 0.0;           // prefer what's on disk
-        var slowLoadPenalty = WillMmap(e) ? SlowLoadRankPenalty : 0.0;
+        var slowLoadPenalty = WillMmap(e, usableRamGb) ? SlowLoadRankPenalty : 0.0;
         return e.QualityRank + headroomBonus + installedBonus - slowLoadPenalty;
     }
 }
