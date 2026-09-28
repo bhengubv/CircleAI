@@ -70,10 +70,53 @@ public static class ConsumerSkillPack
             {
                 if (_shared is not null) return _shared;
                 var db = TryOpen();
-                if (db is not null) return _shared = db;   // cache ONLY a real load
+                if (db is not null) return _shared = new Undisposable(db);   // cache ONLY a real load
                 return _emptyFallback;                     // transient: retry next access
             }
         }
+    }
+
+    /// <summary>
+    /// A process-wide store cannot be allowed to die because one caller wrapped it.
+    /// </summary>
+    /// <remarks>
+    /// <c>CompositeSkillStore.Dispose</c> disposes every store it was handed - it
+    /// assumes it OWNS them - so a caller doing
+    /// <c>using var c = new CompositeSkillStore(ConsumerSkillPack.Shared, mine)</c>
+    /// destroys the shared pack for the whole process. Everything touching
+    /// <see cref="Shared"/> afterwards throws ObjectDisposedException, and nothing
+    /// reopens it because <see cref="Shared"/> caches a successful load on purpose.
+    /// <para>
+    /// That was NOT theoretical: it took out 21 tests on the net10 leg while net9
+    /// stayed green, because the two runtimes order the suite differently and net9
+    /// happened to run the disposing test late. A bug that depends on test ORDER is
+    /// worth killing at the source rather than at the one call site that found it.
+    /// </para>
+    /// <para>
+    /// It still implements IDisposable so the cast in CompositeSkillStore succeeds
+    /// and the call is a no-op, rather than the borrower discovering it cannot
+    /// dispose what it borrowed. Whoever really owns the store closes the inner one.
+    /// </para>
+    /// </remarks>
+    private sealed class Undisposable(ISkillStore inner) : ISkillStore, IDisposable
+    {
+        public Task<IReadOnlyList<SkillSummary>> ListAsync(CancellationToken cancellationToken = default)
+            => inner.ListAsync(cancellationToken);
+
+        public Task<SkillDetail?> GetAsync(string id, CancellationToken cancellationToken = default)
+            => inner.GetAsync(id, cancellationToken);
+
+        public Task<IReadOnlyList<SkillSummary>> SearchAsync(string query, CancellationToken cancellationToken = default)
+            => inner.SearchAsync(query, cancellationToken);
+
+        public Task<SkillDetail> UpsertAsync(string? id, SkillDraft draft, CancellationToken cancellationToken = default)
+            => inner.UpsertAsync(id, draft, cancellationToken);
+
+        public Task DeleteAsync(string id, CancellationToken cancellationToken = default)
+            => inner.DeleteAsync(id, cancellationToken);
+
+        /// <summary>Deliberately nothing: a borrower does not close a shared store.</summary>
+        public void Dispose() { }
     }
 
     /// <summary>
