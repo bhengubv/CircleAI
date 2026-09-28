@@ -1151,5 +1151,22 @@
         "SizeBytes": 2065
       }
     ]
+  },
+  "Ternary-Bonsai-2-27B": {
+    "Repo": "prism-ml/Ternary-Bonsai-2-27B-gguf",
+    "Source": "HuggingFace",
+    "Modality": "Chat",
+    "Architecture": "qwen35",
+    "QuantizationType": "PTQ1_0",
+    "Engine": "LlamaCpp",
+    "Version": "1.0",
+    "TotalBytes": 5946648928,
+    "BundleFiles": [
+      {
+        "Name": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+        "Sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
+        "SizeBytes": 5946648928
+      }
+    ]
   }
 }

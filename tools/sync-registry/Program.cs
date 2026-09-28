@@ -75,6 +75,13 @@ foreach (var (name, node) in keyed)
     Copy(src, dst, "Source");
     CopyModality(src, dst, name);
     Copy(src, dst, "Architecture");
+    // WHICH RUNTIME OPENS IT. Preservation below keeps Engine for a model that is
+    // ALREADY in the runtime file, but a model added to the keyed file and nowhere
+    // else has nothing to preserve — it would generate with no Engine, default to
+    // Mnn, and a GGUF row would claim to be an MNN one. That row then passes the
+    // engine gate on an MNN-only device and fails at the native boundary, which is
+    // exactly the honesty the gate exists to provide.
+    Copy(src, dst, "Engine");
     Copy(src, dst, "TotalBytes");
     Copy(src, dst, "Url");
     Copy(src, dst, "Checksum");
