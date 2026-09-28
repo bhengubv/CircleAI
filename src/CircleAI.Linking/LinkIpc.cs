@@ -1,4 +1,4 @@
-// LinkIpc.cs
+﻿// LinkIpc.cs
 //
 // The wire constants both sides of the cross-app link agree on.
 //
@@ -33,6 +33,19 @@ public static class LinkIpc
     /// service dispatches on the verb. Each verb enforces its own scope.
     /// </summary>
     public const int TransactVerb = 2;
+
+    /// <summary>
+    /// Transaction code: audio in or out — transcribe what this app recorded, or
+    /// speak some text with the device voice.
+    /// </summary>
+    /// <remarks>
+    /// ITS OWN CODE RATHER THAN ANOTHER VERB, because the verb transaction carries a
+    /// flat map of STRINGS and audio is bytes. Base64 through that map would inflate
+    /// every clip by a third against a budget already measured in tens of seconds,
+    /// and would hide the size check that has to happen before the transact. See
+    /// <see cref="LinkAudio.MaxAudioBytes"/>.
+    /// </remarks>
+    public const int TransactAudio = 3;
 
     /// <summary>The intent action a client binds the link service by.</summary>
     public const string BindAction = "com.bhengubv.circleai.action.LINK";

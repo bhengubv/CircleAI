@@ -1,4 +1,4 @@
-// LinkScope.cs
+﻿// LinkScope.cs
 //
 // What a linked app is allowed to reach inside CircleAI.
 //
@@ -26,4 +26,21 @@ public enum LinkScope
 
     /// <summary>The full skill library beyond the caller's own domain. A higher grant.</summary>
     Skills = 4,
+
+    /// <summary>
+    /// The microphone's CONTENTS and the person's voice: transcribing audio this app
+    /// recorded, and speaking with the device voice.
+    /// </summary>
+    /// <remarks>
+    /// ITS OWN SCOPE, NOT PART OF Chat, because the thing being approved is different
+    /// in kind. Chat is "this app may ask the shared brain a question". Voice is
+    /// "this app may send the shared brain whatever its microphone picked up" — which
+    /// can include a conversation nobody meant to share, and which a person should be
+    /// able to refuse while still letting the app use chat.
+    /// <para>
+    /// The APP still holds the microphone permission and does the recording; this
+    /// governs what it may hand over.
+    /// </para>
+    /// </remarks>
+    Voice = 8,
 }
