@@ -1,4 +1,4 @@
-// QwenTextGenerator.cs
+﻿// QwenTextGenerator.cs
 //
 // IChatGenerator backed by MNN-LLM running a Qwen-family model.
 // (Qwen3 / Qwen3.5 — design targets; any model using the Qwen ChatML
@@ -26,6 +26,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using CircleAI.Core;
 
 namespace CircleAI.Inference;
 
@@ -195,7 +196,7 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// mid-answer is worse than a slow first token.
     /// </remarks>
     /// <summary>
-    /// Whether MNN may memory-map weights and the prefix cache. Off by default.
+    /// Whether MNN may memory-map weights. <b>On by default.</b>
     /// </summary>
     /// <remarks>
     /// A SETTING, NOT JUST AN ENVIRONMENT VARIABLE, AND THAT WAS THE REAL
@@ -205,18 +206,39 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// off with no way on, and no way to test either branch on the device where
     /// the fault was found.
     /// <para>
-    /// WHY IT IS OFF. <c>use_mmap</c> and <c>kvcache_mmap</c> were the proven
-    /// cause of an MNN SIGSEGV - v7 and v8 died, v9 survived twice with them
-    /// disabled. A process that dies mid-answer is worse than a slow first
-    /// token, so off is the right default until the mapping itself is fixed.
+    /// IT WAS OFF, AND THE CONDITION FOR TURNING IT BACK ON HAS BEEN MET. The
+    /// earlier note said off "until the mapping itself is fixed", blaming
+    /// <c>use_mmap</c> and <c>kvcache_mmap</c> together for a SIGSEGV in
+    /// <c>MNN::ThreadPool::enqueue</c>. The cause was later isolated to
+    /// <c>kvcache_mmap</c> alone: it built a malformed prefix-cache path
+    /// (<c>prefixcache//data/user/0/…</c>), failed to create it, and left a destroyed
+    /// mutex behind. Weight mmap was never the fault. <c>kvcache_mmap</c> is now
+    /// never enabled at all - see the load path - so this flag no longer controls it,
+    /// and the summary line above no longer mentions it.
     /// </para>
     /// <para>
-    /// The environment variable still works and still wins, because a desktop
-    /// or CI run has no other way in and that is where an A/B of the crash gets
-    /// done. A host that wants it sets this instead.
+    /// WHAT IT BUYS, measured rather than argued: Qwen2.5-3B, 2.4 GB of weights, loads
+    /// and generates on a 3.6 GB P30 Lite at roughly 800 MB resident under exactly the
+    /// configuration this enables - weight mmap plus a single thread, prefix cache in
+    /// RAM. With it off, the reference phone is held to a 0.8B chat model and a 256M
+    /// vision model while a 3B of each is within reach.
+    /// </para>
+    /// <para>
+    /// ⚠ TURNING THIS ON ALONE WOULD HAVE BEEN WORSE THAN LEAVING IT OFF, and that is
+    /// worth stating where somebody will find it. <see cref="WeightsExceedEagerFit"/>
+    /// decided mapping from weight-versus-8-GB and knew nothing about the device,
+    /// while <c>ModelFit</c> marks a model compatible on the ASSUMPTION it will be
+    /// paged. A 2.37 GB model on a phone with ~1.19 GB usable was therefore promised
+    /// as paged and loaded eagerly - the selector says yes, the loader OOMs. That gap
+    /// is closed in the same change as this default; neither is safe without the
+    /// other.
+    /// </para>
+    /// <para>
+    /// The environment variable still wins, so <c>CIRCLEAI_MNN_MMAP=0</c> turns it off
+    /// without a rebuild if a device disagrees.
     /// </para>
     /// </remarks>
-    public static bool AllowMemoryMapping { get; set; }
+    public static bool AllowMemoryMapping { get; set; } = true;
 
     /// <summary>
     /// The environment override, or <c>null</c> when it is not set.
@@ -265,15 +287,59 @@ public sealed class QwenTextGenerator : IChatGenerator
         {
             var dir = Path.GetDirectoryName(modelPath);
             if (string.IsNullOrEmpty(dir)) return false;
+
+            // THE DEVICE'S ACTUAL FREE MEMORY, not only a fixed threshold. These two
+            // terms answer different questions and both are needed:
+            //
+            //   > 8 GB          no phone or tablet holds this eagerly, whatever is free
+            //   > usable RAM    THIS device cannot hold it right now
+            //
+            // The second was missing, and its absence is what made turning mmap on
+            // unsafe rather than merely unhelpful. ModelFit -- the single owner of
+            // "does it fit", which the selectors and the assessor all read -- marks a
+            // model compatible ON THE ASSUMPTION it will be paged when it does not fit
+            // eagerly. This loader decided by weight-vs-8-GB alone, so a 2.37 GB model
+            // on a phone with ~1.19 GB usable was promised as paged and then loaded
+            // eagerly: the assessor says yes, the loader OOMs. Qwen2.5-3B is exactly
+            // that case, and it is the model the mmap work was proven on.
+            //
+            // Weights-only here, deliberately: the loader has files, not a catalogue
+            // entry, so it cannot see MinRamGb. That makes it slightly more willing to
+            // load eagerly than ModelFit is to promise paging, which is the safe
+            // direction -- a model whose RAM need is runtime structures rather than
+            // weights is not helped by mapping them, and the assessor refuses it
+            // anyway.
+            var usableBytes = UsableRamBytesOrZero();
+
             long bytes = 0;
             foreach (var f in Directory.EnumerateFiles(dir))
             {
                 try { bytes += new FileInfo(f).Length; } catch { }
-                if (bytes > MmapWeightThresholdBytes) return true;   // early out on a big model
+                if (bytes > MmapWeightThresholdBytes) return true;            // big on any device
+                if (usableBytes > 0 && bytes > usableBytes) return true;      // big on THIS device
             }
             return false;
         }
         catch { return false; }
+    }
+
+    /// <summary>
+    /// Free RAM this process may commit to weights, or <c>0</c> when it cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// Zero means "unknown", and unknown must fall back to the fixed threshold rather
+    /// than to zero-means-everything-is-too-big — reading a failure as "map everything"
+    /// would turn one unreadable probe into mmap for every model on every device.
+    /// </remarks>
+    private static long UsableRamBytesOrZero()
+    {
+        try
+        {
+            var probe = DeviceProbe.Snapshot();
+            var usable = probe.UsableRamGb;
+            return usable > 0 ? (long)(usable * DeviceProbe.BytesPerGb) : 0;
+        }
+        catch { return 0; }
     }
 
     public QwenTextGenerator(

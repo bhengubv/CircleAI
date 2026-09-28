@@ -214,19 +214,39 @@ public class DeviceModelAssessorTests
     // though mmap is exactly what such a model needs. It weighs less than the
     // 8 GB giant threshold, so the old gate never offered it mmap.
     [Fact]
-    public void A_vision_bundle_that_needs_more_resident_than_it_weighs_gets_mmap()
+    public void A_bundle_gets_the_mmap_discount_only_when_somebody_measured_it()
     {
-        using var cat = NewCatalog();
-        cat.Upsert(new ModelEntry("qwen2.5-vl-3b", "1.0", "MNN-Q4")
+        // THE RULE IS A MEASUREMENT, NOT A FORMULA. The obvious arithmetic is
+        // MinRamGb - weight: assume the declared requirement splits into weights plus
+        // runtime and subtract the paged half. It was in ModelFit and it offered a
+        // 2.85 GB model to a 1.1 GB handset, because Qwen3.5-4B declares 3.8 GB and
+        // the formula produced 0.95. One model measured at 0.8 GB does not license
+        // the same sum for every other model.
+        ModelEntry Vlm(double? measured) => new("qwen2.5-vl-3b", "1.0", "MNN-Q4")
         {
             Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
             TotalBytes = 2_736_200_899, MinRamGb = 3.9, MinStorageGb = 2.6, QualityRank = 9,
-        });
+            MmapResidentGb = measured,
+        };
 
-        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
-            .Assess(Probe(ramGb: 4.3));   // ~3.6 GB usable after headroom
+        // 3.9 GB declared against ~3.6 GB usable: eagerly it does not fit, and with
+        // no measurement there is nothing that says paging would help.
+        using (var cat = NewCatalog())
+        {
+            cat.Upsert(Vlm(null));
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+                .Assess(Probe(ramGb: 4.3));
+            Assert.Null(cat.Best(ModelModality.Vision));
+        }
 
-        Assert.NotNull(cat.Best(ModelModality.Vision));
+        // Measured at 1.2 GB resident, so it fits and is offered.
+        using (var cat = NewCatalog())
+        {
+            cat.Upsert(Vlm(1.2));
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+                .Assess(Probe(ramGb: 4.3));
+            Assert.NotNull(cat.Best(ModelModality.Vision));
+        }
     }
 
     // With mmap off it must stay out: eagerly it needs its full weight resident
@@ -550,6 +570,11 @@ public class DeviceModelAssessorTests
         {
             Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
             TotalBytes = 2_370_000_000, MinRamGb = 3.1, MinStorageGb = 2.4, QualityRank = 9,
+            // The measurement that makes this reachable: ~0.8 GB resident on a P30
+            // Lite with weight-mmap and a single thread, 2026-09-22. Without it the
+            // model stays on its 3.1 GB eager figure and is refused, which is the
+            // correct answer for any model nobody has run.
+            MmapResidentGb = 0.8,
         });
         cat.Upsert(Entry("qwen3.5-0.8b", qualityRank: 7, minRamGb: 0.8,
                          minStorageGb: 0.6, totalBytes: 550_000_000));
@@ -588,10 +613,13 @@ public class DeviceModelAssessorTests
         // 11.4 GB, so a fuller set is affordable on disk and refused only on memory.
         using var cat = NewCatalog();
         cat.Upsert(Entry("chat",   qualityRank: 7, minRamGb: 0.8, minStorageGb: 0.6, totalBytes: 550_000_000));
+        // A SMALL VLM, because no vision bundle has a measured mmap figure yet and an
+        // unmeasured one gets no discount. This is what the reference device really
+        // gets today: vision is served, by the model that fits without paging.
         cat.Upsert(new ModelEntry("vision", "1.0", "MNN-Q4")
         {
             Engine = ModelEngine.Mnn, Modality = ModelModality.Vision,
-            TotalBytes = 2_740_000_000, MinRamGb = 3.9, MinStorageGb = 2.8, QualityRank = 9,
+            TotalBytes = 310_000_000, MinRamGb = 0.5, MinStorageGb = 0.4, QualityRank = 4,
         });
         cat.Upsert(Entry("asr", modality: ModelModality.Asr, minRamGb: 0.4, minStorageGb: 0.1, totalBytes: 80_000_000));
         cat.Upsert(Entry("tts", modality: ModelModality.Tts, minRamGb: 0.5, minStorageGb: 0.2, totalBytes: 110_000_000));

@@ -150,31 +150,40 @@ public class DeviceCapabilityReportTests
     [Fact]
     public void The_selectors_and_the_assessor_agree_about_vision_on_the_P30()
     {
-        // THE DISAGREEMENT THIS CLOSES. The catalogue said Qwen2.5-VL-3B runs on a
-        // P30 -- 2.74 GB of weights paged, ~1.16 GB resident -- while the selector
-        // that actually picks a vision model said SmolVLM-256M, because it compared a
-        // declared 3.9 GB against ~1.19 GB usable and stopped there. Same phone, same
-        // catalogue, two answers, and the one a person saw was the wrong one.
+        // THE DISAGREEMENT THIS CLOSES was never about which model is right — it was
+        // that six places asked "does this fit" and only one of them knew about
+        // paging, so the catalogue and the selector gave different answers on the same
+        // phone. They now all call ModelFit. What they agree ON is a separate
+        // question, and today the answer is: Qwen2.5-VL-3B does NOT fit a P30.
         //
-        // Six places asked "does this fit": two in the chat selector, three in the
-        // speech selector, one in the assessor, and only the assessor knew about
-        // paging. They now all call ModelFit.
+        // It has no MEASURED memory-mapped figure, and an unmeasured model gets no
+        // discount — MinRamGb minus weight is a plausible sum that offered a 2.85 GB
+        // model to a 1.1 GB handset. So the VLM stays on its 3.9 GB eager figure
+        // against ~1.19 GB usable and is refused, by every one of the six.
         var probe = P30();
         using var registry = Registry();
         var vl = registry.AllModels.Single(m => m.Name == "Qwen2.5-VL-3B-Instruct-MNN");
 
-        // the shared rule says it fits, with paging
-        Assert.True(ModelFit.Fits(vl, probe, mmapAllowed: true));
-        Assert.True(ModelFit.WillMmap(vl, probe.UsableRamGb, mmapAllowed: true));
+        Assert.Null(ModelFit.MmappedGb(vl));                              // nobody measured it
+        Assert.False(ModelFit.WillMmap(vl, probe.UsableRamGb, mmapAllowed: true));
+        Assert.False(ModelFit.Fits(vl, probe, mmapAllowed: true));
 
-        // and the assessor, which scores the catalogue, agrees
+        // the assessor, which scores the catalogue, says the same
         using var cat = new SqliteModelCatalog("Data Source=:memory:");
         cat.Upsert(vl);
         new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(probe);
-        Assert.NotNull(cat.Best(ModelModality.Vision));
+        Assert.Null(cat.Best(ModelModality.Vision));
 
-        // eagerly it would NOT fit -- so the test cannot pass for a trivial reason
-        Assert.False(ModelFit.Fits(vl, probe, mmapAllowed: false));
+        // and the capability report a person reads agrees, rather than promising a
+        // model the catalogue would refuse
+        var vision = Report(probe).Lines.Single(l => l.Modality == ModelModality.Vision);
+        Assert.NotEqual("Qwen2.5-VL-3B-Instruct-MNN", vision.ModelId);
+
+        // MEASURE IT AND THIS CHANGES. The same entry with a resident figure fits,
+        // which is the whole shape of the rule: run it on a phone, write down what
+        // you saw, and the model becomes reachable.
+        var measured = vl with { MmapResidentGb = 1.16 };
+        Assert.True(ModelFit.Fits(measured, probe, mmapAllowed: true));
     }
 
 }

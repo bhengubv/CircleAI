@@ -1,4 +1,4 @@
-// SqliteModelCatalog.cs
+﻿// SqliteModelCatalog.cs
 //
 // The runtime model catalogue as ONE SQLite table — the single source of truth
 // for model selection (see IModelCatalog). One row per model; two computed
@@ -75,6 +75,10 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
                 architecture       TEXT,
                 language           TEXT,
                 license            TEXT,
+                -- Resident RAM when weights are mmap'd, AS MEASURED on a device.
+                -- Nullable and normally null: unmeasured is the honest default, and
+                -- a model without one gets no paging discount at all.
+                mmap_resident_gb   REAL,
                 compatible         INTEGER NOT NULL DEFAULT 0,
                 rank               REAL NOT NULL DEFAULT 0,
                 installed          INTEGER NOT NULL DEFAULT 0,
@@ -91,7 +95,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         "id, version, quantization, url, checksum, repo, source, modality, engine, " +
         "total_bytes, bundle_files, min_ram_gb, min_storage_gb, min_vram_gb, " +
         "capabilities, quality_rank, fallback_model_id, memory_hint_bytes, " +
-        "architecture, language, license";
+        "architecture, language, license, mmap_resident_gb";   // appended: keeps ordinals stable
 
     // ── Write ──────────────────────────────────────────────────────────────
 
@@ -124,7 +128,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
                     ($id, $version, $quantization, $url, $checksum, $repo, $source, $modality, $engine,
                      $totalBytes, $bundleFiles, $minRamGb, $minStorageGb, $minVramGb,
                      $capabilities, $qualityRank, $fallbackModelId, $memoryHintBytes,
-                     $architecture, $language, $license,
+                     $architecture, $language, $license, $mmapResidentGb,
                      0, 0, $installed, NULL);
                 """;
 
@@ -317,6 +321,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         cmd.Parameters.AddWithValue("$architecture", (object?)e.Architecture ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$language", (object?)e.Language ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$license", (object?)e.License ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$mmapResidentGb", (object?)e.MmapResidentGb ?? DBNull.Value);
     }
 
     // Column order MUST match `Columns`.
@@ -356,6 +361,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
                 Architecture    = reader.IsDBNull(18) ? null : reader.GetString(18),
                 Language        = reader.IsDBNull(19) ? null : reader.GetString(19),
                 License         = reader.IsDBNull(20) ? null : reader.GetString(20),
+                MmapResidentGb  = reader.IsDBNull(21) ? null : reader.GetDouble(21),
             });
         }
         return results;

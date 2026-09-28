@@ -1,4 +1,4 @@
-// ModelFit.cs
+﻿// ModelFit.cs
 //
 // ONE ANSWER TO "DOES THIS MODEL FIT THIS DEVICE".
 //
@@ -51,19 +51,48 @@ public static class ModelFit
         return Math.Max(e.MinRamGb, weightGb);
     }
 
-    /// <summary>Resident memory when the weights are memory-mapped and paged from disk.</summary>
+    /// <summary>
+    /// Resident memory when the weights are memory-mapped, or <c>null</c> when that
+    /// is not known for this model.
+    /// </summary>
     /// <remarks>
-    /// For an MoE whose <see cref="ModelEntry.MinRamGb"/> is already just the active
-    /// experts — below its own weight — that figure is the truthful floor and is kept
-    /// rather than reduced further.
+    /// TWO SOURCES, AND ONLY ONE OF THEM IS TRUSTED FOR AN ARBITRARY MODEL.
+    /// <list type="number">
+    /// <item><description>
+    /// <see cref="ModelEntry.MmapResidentGb"/> — somebody ran the model on a device
+    /// and watched the number. Used whenever it is present.
+    /// </description></item>
+    /// <item><description>
+    /// An MoE whose <see cref="ModelEntry.MinRamGb"/> is already BELOW its own weight.
+    /// That figure is the active experts, which is what stays resident by
+    /// construction, so it is a statement about the architecture rather than an
+    /// estimate — a 30B-A3B advertising 2.5 GB against 17.75 GB of weights means it.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// ANYTHING ELSE RETURNS NULL, and the caller falls back to the eager figure. The
+    /// tempting third source is <c>MinRamGb - weight</c>: assume the declared
+    /// requirement splits cleanly into weights plus runtime and subtract the paged
+    /// part. It was in this file and it was wrong — Qwen3.5-4B declares 3.8 GB against
+    /// 2.85 GB of weights, so it produced 0.95 GB and offered a 2.85 GB model to a
+    /// 1.1 GB handset. The guards that caught it exist because the app was OOM-killed
+    /// on a P30. One measurement (Qwen2.5-3B at ~0.8 GB) does not license the same
+    /// arithmetic for every other model, and a crash mid-answer is worse than a model
+    /// nobody was offered.
+    /// </para>
     /// </remarks>
-    public static double MmappedGb(ModelEntry e)
+    public static double? MmappedGb(ModelEntry e)
     {
         ArgumentNullException.ThrowIfNull(e);
+
+        if (e.MmapResidentGb is > 0 and var measured)
+            return Math.Max(MmapResidentFloorGb, measured);
+
         var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        return e.MinRamGb <= weightGb
-            ? e.MinRamGb
-            : Math.Max(MmapResidentFloorGb, e.MinRamGb - weightGb);
+        if (weightGb > 0 && e.MinRamGb > 0 && e.MinRamGb <= weightGb)
+            return e.MinRamGb;          // MoE: the declared figure IS the resident set
+
+        return null;                    // unmeasured: no discount
     }
 
     /// <summary>Whether this model will be memory-mapped on this device.</summary>
@@ -84,14 +113,20 @@ public static class ModelFit
     {
         ArgumentNullException.ThrowIfNull(e);
         var allowed = mmapAllowed ?? QwenTextGenerator.MmapIsAllowed;
-        return allowed
-            && (e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes
-                || EagerGb(e) > usableRamGb + Eps);
+        if (!allowed) return false;
+
+        // Paging only counts when we KNOW what it costs. Without a resident figure
+        // the honest answer is that this model loads eagerly, whatever the loader
+        // might do — claiming otherwise is how an unmeasured discount reaches a phone.
+        if (MmappedGb(e) is null) return false;
+
+        return e.TotalBytes > QwenTextGenerator.MmapWeightThresholdBytes
+            || EagerGb(e) > usableRamGb + Eps;
     }
 
     /// <summary>The RAM this model actually needs resident on this device.</summary>
     public static double EffectiveMinRamGb(ModelEntry e, double usableRamGb, bool? mmapAllowed = null)
-        => WillMmap(e, usableRamGb, mmapAllowed) ? MmappedGb(e) : EagerGb(e);
+        => WillMmap(e, usableRamGb, mmapAllowed) ? MmappedGb(e)!.Value : EagerGb(e);
 
     /// <summary>Whether the device has the memory for it.</summary>
     public static bool FitsRam(ModelEntry e, double usableRamGb, bool? mmapAllowed = null)

@@ -1,4 +1,4 @@
-// SelectionQualityTests.cs
+﻿// SelectionQualityTests.cs
 //
 // FIT IS NOT FUNCTION.
 //
@@ -13,7 +13,9 @@
 // ModelSelection.Quality carries that distinction. These tests pin it.
 
 using System;
+using System.Linq;
 using CircleAI.Core;
+using CircleAI.Core.Models;
 using CircleAI.Inference;
 using Xunit;
 
@@ -43,9 +45,17 @@ public sealed class SelectionQualityTests
         // catalogued — a newer model that also fits, which is an improvement
         // reported as a regression. What must hold is that a Good verdict comes
         // with something the phone can actually hold.
-        Assert.True(pick.EstimatedBytes < 1_100_000_000L,
+        // DISK BYTES WERE STANDING IN FOR RAM, which held only while every model
+        // loaded eagerly. A model with a MEASURED memory-mapped figure is far smaller
+        // in memory than on disk, so a byte threshold now fails on models the phone
+        // can genuinely hold. The claim being made is about memory; it now measures
+        // memory.
+        var chosen = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+        var needGb = ModelFit.EffectiveMinRamGb(chosen, Device(1.1).UsableRamGb);
+        Assert.True(needGb <= Device(1.1).UsableRamGb + ModelFit.Eps,
             $"Quality.Good on a 1.1 GB phone, but picked {pick.ModelId} " +
-            $"at {pick.EstimatedBytes} bytes.");
+            $"needing {needGb:0.##} GB resident.");
     }
 
     [Fact]

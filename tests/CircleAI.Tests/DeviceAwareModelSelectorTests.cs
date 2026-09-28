@@ -1,4 +1,4 @@
-// DeviceAwareModelSelectorTests.cs
+﻿// DeviceAwareModelSelectorTests.cs
 //
 // Locks in the behaviour of the SDK's headline promise: "the consumer states
 // intent, the SDK picks the model that fits THIS device."
@@ -146,8 +146,16 @@ public sealed class DeviceAwareModelSelectorRegistryTests
         var chosen = new ModelRegistryService().AllModels
             .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
 
-        Assert.True(chosen.MinRamGb <= 1.1,
-            $"{chosen.Name} wants {chosen.MinRamGb} GB on a 1.1 GB handset");
+        // EFFECTIVE, not declared. MinRamGb is what a model needs with its weights
+        // held in memory; a model with a MEASURED memory-mapped figure needs less,
+        // and asserting on the declared number would refuse a model the device can
+        // demonstrably run. The intent of this line is unchanged — whatever it picks
+        // must fit what the phone actually has — so it now asks the same question the
+        // selector asked.
+        var needGb = ModelFit.EffectiveMinRamGb(chosen, Device(1.1).UsableRamGb);
+        Assert.True(needGb <= Device(1.1).UsableRamGb + ModelFit.Eps,
+            $"{chosen.Name} needs {needGb:0.##} GB resident on a 1.1 GB handset "
+            + $"(declares {chosen.MinRamGb}, measured mmap {chosen.MmapResidentGb?.ToString() ?? "none"})");
 
         // Compared against the SELECTOR'S OWN candidate list, not the whole
         // registry. Re-deriving "what counts as a chat model" in the test means
@@ -173,10 +181,21 @@ public sealed class DeviceAwareModelSelectorRegistryTests
     {
         // Regression: with MinRamGb absent the fit gate was inert and this
         // returned the 14B on a 1.1 GB handset.
-        var pick = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default);
+        var probe = Device(1.1);
+        var pick  = new DeviceAwareModelSelector().BestFit(probe, ChatCapability.Default);
         Assert.NotEqual("Qwen3-14B-MNN", pick.ModelId);
-        Assert.True(pick.EstimatedBytes < 1_000_000_000L,
-            $"Picked '{pick.ModelId}' ({pick.EstimatedBytes} bytes) for a 1.1 GB device.");
+
+        // DISK BYTES WERE A PROXY FOR RAM, and that proxy held only while every model
+        // loaded eagerly. A model with a measured memory-mapped figure occupies far
+        // less memory than it does disk — Qwen2.5-3B is 2.37 GB on disk and ~0.8 GB
+        // resident on a P30 — so a byte threshold now refuses models the device can
+        // actually run while saying nothing about whether it can hold them.
+        // The guard's intent is RAM; it now measures RAM.
+        var chosen = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+        var needGb = ModelFit.EffectiveMinRamGb(chosen, probe.UsableRamGb);
+        Assert.True(needGb <= probe.UsableRamGb + ModelFit.Eps,
+            $"Picked '{pick.ModelId}' needing {needGb:0.##} GB resident for a 1.1 GB device.");
     }
 
     [Fact]

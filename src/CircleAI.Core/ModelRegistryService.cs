@@ -445,6 +445,34 @@ namespace CircleAI.Core.Models
         public double MinRamGb { get; init; }
 
         /// <summary>
+        /// Resident RAM in gigabytes when this model's weights are MEMORY-MAPPED,
+        /// <b>as measured on a real device</b>. <c>null</c> — the default — means
+        /// nobody has measured it.
+        /// </summary>
+        /// <remarks>
+        /// A MEASUREMENT, NEVER A CALCULATION, and the distinction is the whole point
+        /// of the field. The obvious formula is <c>MinRamGb - weight</c>: assume the
+        /// declared requirement decomposes cleanly into weights plus runtime, subtract
+        /// the part that gets paged, keep the rest. It is plausible and it is a guess,
+        /// and applied across a catalogue it offers a 2.85 GB model to a 1.1 GB
+        /// handset — <c>Qwen3.5-4B</c> declares 3.8 GB, so the formula produces 0.95
+        /// and the model slips under the bar on a phone that cannot hold it. The
+        /// guards that caught that exist because the app was OOM-killed on a P30.
+        /// <para>
+        /// So the discount applies only where somebody has run the model and watched
+        /// the number. One model has that today: <c>Qwen2.5-3B-Instruct-MNN</c>, 2.4 GB
+        /// of weights, ~0.8 GB resident on a P30 Lite with weight-mmap and a single
+        /// thread (2026-09-22). Everything else stays on the eager figure, which is
+        /// exactly as safe as it was before mmap was enabled.
+        /// </para>
+        /// <para>
+        /// To add one: run the model on the target device, watch resident memory
+        /// during generation, and record what you saw. Do not compute it.
+        /// </para>
+        /// </remarks>
+        public double? MmapResidentGb { get; init; }
+
+        /// <summary>
         /// Minimum free storage in gigabytes required to keep the bundle on
         /// disk after download. Default <c>0</c> means "no minimum stated."
         /// </summary>
