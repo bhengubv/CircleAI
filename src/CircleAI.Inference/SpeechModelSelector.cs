@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 // SpeechModelSelector.cs
 //
@@ -332,8 +332,12 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
             // gives, for the same reason.
             case ModelModality.ImageGeneration:
                 return new ModalityPlan(SelectionQuality.Unavailable, null,
-                    "no image-generation model is catalogued; unlike music and video there is no " +
-                    "built-in that can stand in, so a diffusion model must be registered to enable");
+                    AnyCatalogued(modality)
+                        ? "an image-generation model is catalogued, but this build has no engine that " +
+                          "can open it; there is no built-in that can stand in, so the engine is what " +
+                          "enables it, not another model"
+                        : "no image-generation model is catalogued; unlike music and video there is no " +
+                          "built-in that can stand in, so a diffusion model must be registered to enable");
 
             // ASR, TTS and Vision have no non-model implementation. Saying
             // otherwise would mean claiming a capability that cannot run.
@@ -346,9 +350,30 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                     ? new ModalityPlan(pick.Quality, pick,
                         $"{pick.ModelId} selected for {modality} ({pick.Quality})")
                     : new ModalityPlan(SelectionQuality.Unavailable, null,
-                        $"no {modality} model is catalogued and there is no built-in fallback for it");
+                        AnyCatalogued(modality)
+                            ? $"a {modality} model is catalogued, but this build has no engine that can " +
+                              $"open it, and there is no built-in fallback for it"
+                            : $"no {modality} model is catalogued and there is no built-in fallback for it");
         }
     }
+
+
+    /// <summary>
+    /// Is anything of this modality catalogued at all, regardless of whether this
+    /// build can open it?
+    /// </summary>
+    /// <remarks>
+    /// THREE STATES, NOT TWO, and conflating them made the app lie about itself.
+    /// "Nothing is catalogued" is fixed by cataloguing a model; "catalogued but this
+    /// build cannot open it" is fixed by shipping an engine; "catalogued and opens
+    /// but does not fit" is fixed by a smaller model. The engine gate in
+    /// PlanForCore filters rows BEFORE the reason is chosen, so a row that exists and
+    /// merely lacks a runtime was being reported as absent — with Qwen-Image
+    /// catalogued, verified and on disk, the device still said no image-generation
+    /// model is catalogued. A person cannot act on that and neither can a developer.
+    /// </remarks>
+    private bool AnyCatalogued(ModelModality modality) =>
+        _registry.AllModels.Any(e => e.Modality == modality);
 
     /// <inheritdoc/>
     public IReadOnlyList<ModelSelection> CandidatesFor(DeviceProbe probe, ModelModality modality)
