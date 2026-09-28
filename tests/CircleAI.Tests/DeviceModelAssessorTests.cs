@@ -538,7 +538,9 @@ public class DeviceModelAssessorTests
 
     // ---- the reference device -------------------------------------------------
     // Huawei P30 Lite (MAR-LX1M), the floor this product supports: measured at
-    // 3.6 GB RAM, ~1.3-1.5 GB free, 38 GB storage, Kirin 710, no GPU, EMUI, no GMS.
+    // 3.6 GB RAM (3,776,516 kB), 1.19 GB available, 115.9 GB storage with 29.8 GB
+    // free, Kirin 710, no GPU, EMUI, no GMS. RAM and availability read off the
+    // device on 2026-09-28; the doc's "38 GB" was free space that day, not size.
     // docs/HARDWARE_FINDINGS_HUAWEI_P30.md. Anything below it is told to upgrade;
     // everything at or above it must stay multimodal.
 
@@ -549,7 +551,7 @@ public class DeviceModelAssessorTests
             CpuCores:          8,
             Thermal:           ThermalClass.Passive,
             Connectivity:      Connectivity.Online)
-        { RamTotalBytes = 3_600_000_000, StorageTotalBytes = 38_000_000_000 };
+        { RamTotalBytes = 3_776_516_000, StorageTotalBytes = 115_886_522_368 };
 
     [Fact]
     public void The_P30_can_reach_a_3B_even_though_the_fast_model_stays_the_default()
@@ -609,8 +611,8 @@ public class DeviceModelAssessorTests
     {
         // The product goal stated as a test: every modality the device can serve, it
         // DOES serve. On this phone RAM is the binding constraint and disk is not
-        // close — the whole set is about 3.6 GB against a budget of 30% of 38 GB =
-        // 11.4 GB, so a fuller set is affordable on disk and refused only on memory.
+        // close — the whole set is about 3.6 GB against a budget of 30% of 115.9 GB =
+        // 34.8 GB, so a fuller set is affordable on disk and refused only on memory.
         using var cat = NewCatalog();
         cat.Upsert(Entry("chat",   qualityRank: 7, minRamGb: 0.8, minStorageGb: 0.6, totalBytes: 550_000_000));
         // A SMALL VLM, because no vision bundle has a measured mmap figure yet and an
@@ -637,6 +639,57 @@ public class DeviceModelAssessorTests
         var budget = DeviceModelAssessor.BudgetBytesFor(P30());
         Assert.True(used < budget / 2,
             $"the set is {used / 1e9:F2} GB of a {budget / 1e9:F2} GB budget — if this ever tightens, disk has become the constraint and the allocator story changes");
+    }
+
+    // ---- the phone has to go on being a phone ---------------------------------
+
+    [Fact]
+    public void Ten_gigabytes_of_free_storage_survives_whatever_we_install()
+    {
+        // Photographs, messages, an OS update, the apps somebody actually bought the
+        // device for. A model that takes the last of the disk has made the handset
+        // worse at its job in exchange for being clever.
+        //
+        // 40 GB total, 12 GB free: the share allows 12 GB, the reserve allows 2.
+        var tight = Probe(ramGb: 4, storageGb: 12, storageTotalGb: 40);
+        Assert.Equal(2e9, DeviceModelAssessor.BudgetBytesFor(tight), 1e6);
+
+        // The reference P30: 115.9 GB total, ~29 GB free. Share 34.8, reserve 19.
+        // The reserve binds, and the phone keeps its 10 GB.
+        var p30 = Probe(ramGb: 4, storageGb: 29, storageTotalGb: 115.9);
+        Assert.Equal(19e9, DeviceModelAssessor.BudgetBytesFor(p30), 1e8);
+
+        // A roomy device is limited by the share instead, since it has plenty spare.
+        var roomy = Probe(ramGb: 8, storageGb: 200, storageTotalGb: 256);
+        Assert.Equal(256e9 * DeviceModelAssessor.StorageShareOfDevice,
+                     DeviceModelAssessor.BudgetBytesFor(roomy), 1e6);
+    }
+
+    [Fact]
+    public void A_nearly_full_phone_is_offered_nothing_rather_than_its_last_gigabyte()
+    {
+        // The honest end of the rule. With 6 GB free there is no room that can be
+        // taken without dropping below the reserve, so the budget is zero and every
+        // model is refused — including ones that would "fit" the free space. Telling
+        // somebody to clear space is better than silently filling it.
+        var nearlyFull = Probe(ramGb: 4, storageGb: 6, storageTotalGb: 64);
+        Assert.Equal(0.0, DeviceModelAssessor.BudgetBytesFor(nearlyFull));
+
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("small", totalBytes: 450_000_000));   // 0.45 GB, would fit 6 GB free
+        DeviceModelAssessor.MnnOnly(cat).Assess(nearlyFull);
+        Assert.Null(cat.Best(ModelModality.Chat));
+    }
+
+    [Fact]
+    public void An_unreadable_free_space_figure_does_not_invent_a_reserve()
+    {
+        // 0 free means "not measured", the same convention the storage gate uses. A
+        // reserve subtracted from a reading we never got would refuse every model on
+        // every desktop, where only a platform head can report these numbers.
+        var unknownFree = Probe(ramGb: 8, storageGb: 0, storageTotalGb: 128);
+        Assert.Equal(128e9 * DeviceModelAssessor.StorageShareOfDevice,
+                     DeviceModelAssessor.BudgetBytesFor(unknownFree), 1e6);
     }
 
     [Fact]

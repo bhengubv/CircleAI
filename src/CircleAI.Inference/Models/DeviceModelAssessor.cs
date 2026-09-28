@@ -120,12 +120,50 @@ public sealed class DeviceModelAssessor : IModelAssessor
     public const double FallbackMaxBytes = 20_000_000_000d;
 
     /// <summary>The weight budget for this device: 30% of total disk, or the fallback.</summary>
+    /// <summary>
+    /// Free storage that must survive whatever we install: <b>10 GB</b>.
+    /// </summary>
+    /// <remarks>
+    /// A PHONE HAS TO GO ON BEING A PHONE. Photographs, messages, an OS update, the
+    /// other apps someone actually bought the device for — all of that needs room,
+    /// and a model that takes the last of it has made the handset worse at its job in
+    /// exchange for being clever. This is the floor beneath which we do not go,
+    /// whatever the share allows.
+    /// <para>
+    /// IT READS FREE SPACE, and that is not a contradiction of
+    /// <see cref="StorageShareOfDevice"/> reading total. They answer different
+    /// questions and both are needed: the share asks how much of this device we may
+    /// EVER claim, which must not move when the gallery fills; the reserve asks
+    /// whether there is room for this download RIGHT NOW, which must. A budget
+    /// computed from free space drifts; a reserve computed from anything else is
+    /// blind to the state the person is actually in.
+    /// </para>
+    /// </remarks>
+    public const double FreeStorageReserveBytes = 10_000_000_000d;
+
+    /// <summary>The weight budget for this device: the share, less the reserve.</summary>
+    /// <remarks>
+    /// The LOWER of two limits, because either one alone permits a bad outcome. On the
+    /// reference P30 (115.9 GB total, ~29 GB free) the share allows 34.8 GB and the
+    /// reserve allows 19 GB, so 19 GB is the answer — the phone keeps its 10 GB. On a
+    /// nearly-full device the reserve can reach zero, which is correct: nothing is
+    /// offered until the person frees something, and saying so is better than filling
+    /// the last of their disk.
+    /// </remarks>
     public static double BudgetBytesFor(DeviceProbe probe)
     {
         ArgumentNullException.ThrowIfNull(probe);
-        return probe.StorageTotalBytes > 0
+
+        var share = probe.StorageTotalBytes > 0
             ? probe.StorageTotalBytes * StorageShareOfDevice
             : FallbackMaxBytes;
+
+        // 0 free = unknown, same convention as the storage gate: do not invent a
+        // reserve out of a reading we did not get.
+        if (probe.StorageFreeBytes <= 0) return share;
+
+        var headroom = Math.Max(0.0, probe.StorageFreeBytes - FreeStorageReserveBytes);
+        return Math.Min(share, headroom);
     }
 
     /// <summary>

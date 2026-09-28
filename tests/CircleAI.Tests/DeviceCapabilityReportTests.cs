@@ -15,7 +15,8 @@ namespace CircleAI.Tests;
 public class DeviceCapabilityReportTests
 {
     // The reference device, measured: docs/HARDWARE_FINDINGS_HUAWEI_P30.md.
-    // Huawei P30 Lite (MAR-LX1M): 3.6 GB RAM, ~1.4 GB free, 38 GB storage, no GPU.
+    // Huawei P30 Lite (MAR-LX1M), read off the device 2026-09-28: 3,776,516 kB RAM,
+    // 1.19 GB available, 115.9 GB storage (29.8 GB free), Kirin 710, no GPU.
     static DeviceProbe P30() => new(
             RamAvailableBytes: 1_400_000_000,
             StorageFreeBytes:  20_000_000_000,
@@ -23,7 +24,7 @@ public class DeviceCapabilityReportTests
             CpuCores:          8,
             Thermal:           ThermalClass.Passive,
             Connectivity:      Connectivity.Online)
-        { RamTotalBytes = 3_600_000_000, StorageTotalBytes = 38_000_000_000 };
+        { RamTotalBytes = 3_776_516_000, StorageTotalBytes = 115_886_522_368 };
 
     // A 2015-era handset: below the floor on both counts.
     static DeviceProbe TooOld() => new(

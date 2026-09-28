@@ -1,4 +1,4 @@
-// DeviceCapabilityReport.cs
+﻿// DeviceCapabilityReport.cs
 //
 // "Best we can do with your device is this."
 //
@@ -81,15 +81,18 @@ public sealed record DeviceCapabilityReport(
 public static class DeviceCapability
 {
     /// <summary>
-    /// The reference device: <b>Huawei P30 Lite</b> — 3.6 GB RAM, 38 GB storage.
+    /// The reference device: <b>Huawei P30 Lite</b> — 3.6 GB RAM, 116 GB storage.
     /// </summary>
     /// <remarks>
     /// NOT AN ARBITRARY FLOOR. A P30 Lite is a seven-year-old handset, and that is
     /// precisely why it is the floor: it is what a great many people actually hold,
     /// so supporting down to it is a decision about who the product is for rather
     /// than a convenience. Measured, not taken off a spec sheet — 3.6 GB
-    /// (3,776,516 kB), ~1.3–1.5 GB free, 38 GB storage, Kirin 710, no GPU, EMUI, no
-    /// GMS. See <c>docs/HARDWARE_FINDINGS_HUAWEI_P30.md</c>.
+    /// (3,776,516 kB), 1.19 GB available, 115.9 GB storage with 29.8 GB free, Kirin
+    /// 710, no GPU, EMUI, no GMS. RAM and availability read off the device on
+    /// 2026-09-28; see <c>docs/HARDWARE_FINDINGS_HUAWEI_P30.md</c>, whose "38 GB" was
+    /// FREE SPACE on the day it was written rather than the size of the device — and
+    /// free space is precisely what a budget must not be computed from.
     /// <para>
     /// Below it, the honest answer is to say so. Above it, every capability the
     /// device can serve must be served — the quantisation moves, the capability list
