@@ -80,7 +80,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     }
 
     /// <summary>
-    /// The weight ceiling a model must clear to be offered: <b>10 GB</b>.
+    /// The weight ceiling a model must clear to be offered: <b>15 GB</b>.
     /// </summary>
     /// <remarks>
     /// A PRODUCT rule, not a device measurement, which is why it sits apart from the
@@ -89,12 +89,19 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// happens to have — so it never becomes compatible on a roomy device and then
     /// impossible on the next one.
     /// <para>
-    /// What it admits and what it costs, at 10 GB: every pack we run clears it —
-    /// Bonsai 2 27B PTQ1_0 at 5.95 GB (PQ2_0 7.21 GB), Qwen-Image 2.1 from Q8_0
-    /// (7.64 GB) down — and so does the dense <c>Qwen3-14B-MNN</c> at 9.44 GB, which
-    /// an 8 GB ceiling would have dropped. What it still refuses is the giant MoE
-    /// bundles, <c>Qwen3-30B-A3B</c> (17.75 GB) and <c>Qwen3.6-35B-A3B</c> (22.80 GB),
-    /// and Qwen-Image's F16 at 14.23 GB.
+    /// WHAT 15 GB BUYS that the earlier candidates did not. Image generation is the
+    /// whole reason: a picture needs three parts, and the transformer alone makes
+    /// none. The cheapest working set is UC Q4_K_M (4.60) + Qwen3-VL-8B Q4_K_M (5.03)
+    /// + VAE (0.68) = 10.31 GB, which a 10 GB ceiling missed by 300 MB; at 15 GB even
+    /// the Q8_0 transformer fits alongside them (13.30 GB). An 8 GB ceiling would also
+    /// have dropped the dense <c>Qwen3-14B-MNN</c> at 9.44 GB, an ordinary chat model
+    /// and not the giant the rule was aimed at.
+    /// </para>
+    /// <para>
+    /// What it still refuses: <c>Qwen3-30B-A3B</c> (17.75 GB) and
+    /// <c>Qwen3.6-35B-A3B</c> (22.80 GB). Both are far enough past the line that no
+    /// plausible ceiling admits them, which is the point — the rule stays about
+    /// shippability rather than becoming a negotiation.
     /// </para>
     /// <para>
     /// Units are the catalogue's (10^9, matching <see cref="ModelEntry.TotalBytes"/>),
@@ -102,7 +109,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// rather than by accident.
     /// </para>
     /// </remarks>
-    public const double FormFactorMaxBytes = 10_000_000_000d;
+    public const double FormFactorMaxBytes = 15_000_000_000d;
 
     /// <summary>Convenience for the app as it ships today: MNN is the only engine.</summary>
     public static DeviceModelAssessor MnnOnly(IModelCatalog catalog) =>
