@@ -1,4 +1,4 @@
-// ModalityPlanTests.cs
+﻿// ModalityPlanTests.cs
 //
 // Guards the FALLBACK TABLE in SpeechModelSelector.PlanFor.
 //
@@ -435,7 +435,7 @@ public sealed class ModalityPlanTests
     {
         // The modality is not a label: IImageGenerator is the seam and
         // OnnxImageGenerator implements it on ONNX Runtime, which this repo
-        // already ships. Qwen-Image-2.1 is catalogued under the modality.
+        // already ships. The Qwen-Image UC pack is catalogued under the modality.
         Assert.True(typeof(CircleAI.Core.IImageGenerator).IsInterface);
         Assert.Contains(nameof(ModelModality.ImageGeneration),
                         Enum.GetNames(typeof(ModelModality)));

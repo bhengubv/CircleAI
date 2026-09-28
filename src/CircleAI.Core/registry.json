@@ -1168,5 +1168,22 @@
         "SizeBytes": 5946648928
       }
     ]
+  },
+  "Qwen-Image-2.1-UC": {
+    "Repo": "abenzerps/Qwen-Image-2.1-Uncensored-GGUF",
+    "Source": "HuggingFace",
+    "Modality": "ImageGeneration",
+    "Architecture": "qwen_image21",
+    "QuantizationType": "Q8_0",
+    "Engine": "LlamaCpp",
+    "Version": "2.1",
+    "TotalBytes": 7591557920,
+    "BundleFiles": [
+      {
+        "Name": "qwen-image-2.1-UC-Q8_0.gguf",
+        "Sha256": "cde456c72ea3ecebfc1be783300e972711d875e0c5f1bed33d42b66b156affa8",
+        "SizeBytes": 7591557920
+      }
+    ]
   }
 }

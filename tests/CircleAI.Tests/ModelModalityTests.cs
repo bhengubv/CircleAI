@@ -1,4 +1,4 @@
-// ModelModalityTests.cs
+﻿// ModelModalityTests.cs
 //
 // The safety property that makes the speech ladder catalogue-able at all:
 // a chat request must NEVER select a speech model.
@@ -129,7 +129,7 @@ public sealed class ModelModalityTests
 
         // The Qwen-family entries that are deliberately NOT chat, named rather than
         // pattern-matched. The old predicate was "starts with Qwen and is not -VL-",
-        // which silently admitted Qwen-Image-2.1 the moment image generation was
+        // which silently admitted the Qwen-Image row the moment image generation was
         // catalogued — the test failed for the right reason but the wrong shape.
         // Naming them means a new non-chat Qwen still fails here until it is listed
         // AND its real modality asserted, so this gets STRONGER as the catalogue
@@ -137,7 +137,7 @@ public sealed class ModelModalityTests
         var nonChatQwen = new Dictionary<string, ModelModality>(StringComparer.Ordinal)
         {
             ["Qwen2.5-VL-3B-Instruct-MNN"] = ModelModality.Vision,
-            ["Qwen-Image-2.1"]             = ModelModality.ImageGeneration,
+            ["Qwen-Image-2.1-UC"]          = ModelModality.ImageGeneration,
         };
 
         Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen") && !nonChatQwen.ContainsKey(e.Name)),

@@ -1,4 +1,4 @@
-// DeviceModelAssessorTests.cs
+﻿// DeviceModelAssessorTests.cs
 //
 // The assessment that fills `compatible`/`rank`. `compatible` is the AND of four
 // gates — engine shipped, RAM fits, storage fits, licence free — and each gate
@@ -390,7 +390,7 @@ public class DeviceModelAssessorTests
             $"Qwen3-14B is {dense14b.TotalBytes / 1e9:F2} GB and must clear a 10 GB ceiling");
 
         // and every pack we actually run clears it
-        foreach (var name in new[] { "Ternary-Bonsai-2-27B", "Qwen-Image-2.1" })
+        foreach (var name in new[] { "Ternary-Bonsai-2-27B", "Qwen-Image-2.1-UC" })
         {
             var m = registry.AllModels.Single(x => x.Name == name);
             Assert.True(m.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
