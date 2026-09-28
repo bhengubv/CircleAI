@@ -1,4 +1,4 @@
-using Android.App;
+﻿using Android.App;
 using Android.Runtime;
 
 namespace CircleAI.Samples.App;
@@ -134,7 +134,12 @@ public class MainApplication : MauiApplication
         // needs espeak G2P - all of them but Japanese - refused with "on-device
         // phonemizer not wired". Same call, same file, same order as
         // CircleAIApplication.OnCreate.
-        CircleAI.Assistant.Device.VoiceWiring.Install(this);
+        // VoiceWiring.Install is GONE from this app. It unpacked espeak's data and
+        // installed the phonemiser so this process could synthesise speech; the
+        // service does that now. Worth noting what else leaves with it: espeak-ng is
+        // GPL-3.0 and was kept out-of-process precisely so linking it would not
+        // relicense the app — a client that no longer synthesises needs none of that
+        // arrangement.
 
         // WHERE A SIDELOADED VOICE IS FOUND - AND THIS HEAD NEVER LOOKED.
         //

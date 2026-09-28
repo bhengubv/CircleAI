@@ -68,7 +68,17 @@ public static class MauiProgram
         builder.Services.AddSingleton<CircleAI.Assistant.Device.MemoryManager>();
 
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
-        builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
+        // SPEAKING MOVED TO THE SERVICE. DeviceVoiceHost catalogued TTS models,
+        // chose one for the device and loaded it through BundleModelLoader; between
+        // that and VoiceWiring's espeak setup, every app that wanted to talk carried
+        // libespeak-ng.so, a 12 MB data zip, ONNX Runtime and a downloaded voice.
+        // The service owns all of it, so this app asks for bytes and plays them.
+        //
+        // Playback stays HERE deliberately: an audio track is cheap and belongs to
+        // the app somebody is looking at, which knows when to duck and when to stop.
+        builder.Services.AddSingleton<IVoiceHost>(sp =>
+            new CircleAI.Client.LinkedVoiceHost(
+                (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
         builder.Services.AddSingleton<ISpokenLanguage, StoredSpokenLanguage>();
         // THE BRAIN IS NOT IN THIS APP ANY MORE. It was DeviceBrain, which loads a
