@@ -170,8 +170,20 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         var ramGb     = probe.UsableRamGb;   // free RAM minus KV-growth headroom
         var storageGb = probe.StorageFreeGb;   // catalogue units — see DeviceProbe.BytesPerGb
 
-        var ofModality = _registry.AllModels.Where(e => e.Modality == modality).ToList();
-        if (ofModality.Count == 0) return null;   // this modality is not catalogued — honest null
+        // ENGINE FIRST, before RAM and storage. A catalogued row whose engine this
+        // build does not ship cannot be loaded at any amount of RAM, so offering it
+        // is worse than reporting nothing: the caller gets a model, tries to load it
+        // and fails at the native boundary.
+        //
+        // This was a live hole. The selector had no reference to Engine at all, and it
+        // stayed invisible only because the one GGUF row in the catalogue carried a
+        // placeholder MinRamGb of 24 that no test device could reach. Giving that row
+        // its real requirements made the selector hand back a model nothing can run.
+        var shipped = DeviceModelAssessor.ShippedEngines();
+        var ofModality = _registry.AllModels
+            .Where(e => e.Modality == modality && shipped.Contains(e.Engine))
+            .ToList();
+        if (ofModality.Count == 0) return null;   // nothing RUNNABLE for this modality — honest null
 
         var deviceOk = ofModality
             .Where(e => e.MinRamGb <= ramGb + 0.0001 &&

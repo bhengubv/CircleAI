@@ -33,12 +33,13 @@ public class DeviceModelAssessorTests
         int qualityRank = 6,
         double minRamGb = 0.6,
         double minStorageGb = 0.5,
-        ModelModality modality = ModelModality.Chat)
+        ModelModality modality = ModelModality.Chat,
+        long totalBytes = 100_000_000)
         => new(name, "1.0", "MNN-Q4")
         {
             Engine       = engine,
             Modality     = modality,
-            TotalBytes   = 100_000_000,
+            TotalBytes   = totalBytes,
             MinRamGb     = minRamGb,
             MinStorageGb = minStorageGb,
             QualityRank  = qualityRank,
@@ -135,17 +136,24 @@ public class DeviceModelAssessorTests
 
         var phone = Probe(ramGb: 5, storageGb: 64);   // usable ~4.25 GB: 2.5 fits, 18 does not
 
+        // The ceiling is lifted here ON PURPOSE. This test is about the mmap/RAM
+        // maths in EffectiveMinRamGb — an 18 GB MoE is the only shape that exercises
+        // it — and the 8 GB form-factor rule would otherwise refuse the bundle before
+        // that maths ever runs, silently gutting the coverage while staying green.
+        // The ceiling has its own tests below; this one keeps its own subject.
+        const double NoCeiling = 1e12;
+
         using (var cat = NewCatalog())
         {
             cat.Upsert(Moe());
-            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false).Assess(phone);
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false, maxModelBytes: NoCeiling).Assess(phone);
             Assert.Null(cat.Best(ModelModality.Chat));   // honest: 18 GB can't be resident
         }
 
         using (var cat = NewCatalog())
         {
             cat.Upsert(Moe());
-            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(phone);
+            new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true, maxModelBytes: NoCeiling).Assess(phone);
             Assert.Equal("qwen3-30b-a3b", cat.Best(ModelModality.Chat)!.Name);   // mmap pages the rest
         }
     }
@@ -164,8 +172,10 @@ public class DeviceModelAssessorTests
         });
         cat.Upsert(Entry("fast-2b", qualityRank: 9, minRamGb: 1.9, minStorageGb: 1.5));
 
-        // mmap on, ample RAM + storage so BOTH are compatible.
-        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true)
+        // mmap on, ample RAM + storage so BOTH are compatible. Ceiling lifted for the
+        // same reason as above: the subject here is that a giant never becomes the
+        // silent DEFAULT, which needs it compatible in the first place.
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true, maxModelBytes: 1e12)
             .Assess(Probe(ramGb: 12, storageGb: 128));
 
         Assert.Equal(2, cat.Compatible(ModelModality.Chat).Count);        // both available
@@ -270,5 +280,134 @@ public class DeviceModelAssessorTests
         Assert.Contains(cat.All(), m => m.Name == "Ternary-Bonsai-2-27B");
         // ...and never selected, however much RAM the device has.
         Assert.Null(cat.Best(ModelModality.Chat));
+    }
+
+    // ---- form-factor ceiling ------------------------------------------------
+    // Phones and tablets are the form factors we cater for, so a pack above 8 GB is
+    // not shippable however roomy the device in hand happens to be. These pin that
+    // as a PRODUCT rule: the gate is judged on the weight, never on the device.
+
+    const long GB = 1_000_000_000;
+
+    [Fact]
+    public void A_model_over_the_form_factor_ceiling_is_incompatible_on_any_device()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("too-big", totalBytes: 14_230_275_808));   // Qwen-Image 2.1 F16
+        // 64 GB of RAM and a terabyte free — the device is not the question.
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 64, storageGb: 1000));
+        Assert.Null(cat.Best(ModelModality.Chat));
+        Assert.Contains(cat.All(), m => m.Name == "too-big");       // catalogued, just not offered
+    }
+
+    [Fact]
+    public void The_packs_we_actually_run_clear_the_ceiling()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("bonsai-ptq1", qualityRank: 9, totalBytes: 5_946_648_928));  // 5.95 GB
+        cat.Upsert(Entry("bonsai-pq2",  qualityRank: 8, totalBytes: 7_210_000_000));  // 7.21 GB
+        cat.Upsert(Entry("qwen-image-f16", qualityRank: 99, totalBytes: 14_230_275_808));
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 16, storageGb: 200));
+        // the oversized one outranks everything and still must not win
+        Assert.Equal("bonsai-ptq1", cat.Best(ModelModality.Chat)!.Name);
+    }
+
+    [Fact]
+    public void A_model_exactly_on_the_ceiling_is_allowed()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("on-the-line", totalBytes: (long)DeviceModelAssessor.FormFactorMaxBytes));
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 16, storageGb: 200));
+        Assert.Equal("on-the-line", cat.Best(ModelModality.Chat)!.Name);   // ceiling is a max, not a limit below
+    }
+
+    [Fact]
+    public void A_host_can_lift_the_ceiling_deliberately()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("big", totalBytes: 40 * GB));
+        // desktop/server hosts are not phones; the rule is injectable so lifting it
+        // is a decision at a call site rather than an accident of a roomy device.
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: false, maxModelBytes: 64d * GB)
+            .Assess(Probe(ramGb: 128, storageGb: 2000));
+        Assert.Equal("big", cat.Best(ModelModality.Chat)!.Name);
+    }
+
+    [Fact]
+    public void The_experiment_hook_still_bypasses_the_ceiling()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("oversized", totalBytes: 14_230_275_808));
+        try
+        {
+            // proving an oversized pack's runtime path on a real phone is the one
+            // case allowed to ignore the product rule
+            DeviceModelAssessor.ExperimentForceCompatibleId = "oversized";
+            DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 4, storageGb: 200));
+            Assert.Equal("oversized", cat.Best(ModelModality.Chat)!.Name);
+        }
+        finally
+        {
+            DeviceModelAssessor.ExperimentForceCompatibleId = null;
+        }
+    }
+
+    [Fact]
+    public void A_zero_TotalBytes_entry_is_not_refused_by_the_ceiling()
+    {
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("unknown-size", totalBytes: 0));   // 0 = unsized, like the storage gate
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 8));
+        Assert.Equal("unknown-size", cat.Best(ModelModality.Chat)!.Name);
+    }
+
+    [Fact]
+    public void The_ceiling_removes_the_giant_MoE_bundles_from_the_real_catalogue()
+    {
+        // NOT a rule asserted for its own sake — a CONSEQUENCE kept visible. The
+        // form-factor rule makes some catalogued models un-offerable on a default
+        // host, where before they were reachable via mmap on a roomy device. Naming
+        // them means the list cannot grow silently: add another oversized model and
+        // this fails until someone writes it down.
+        //
+        // WHY THE CEILING IS 10 GB AND NOT 8. At 8 GB this list also contained the
+        // dense Qwen3-14B-MNN at 9.44 GB — an ordinary chat model, not a giant, and
+        // not what the rule was aimed at. 10 GB keeps the 14B and still refuses the
+        // MoE bundles, which are 17.75 GB and 22.80 GB and nowhere near the line.
+        using var registry = new ModelRegistryService();
+        var giants = registry.AllModels
+            .Where(m => m.TotalBytes > DeviceModelAssessor.FormFactorMaxBytes)
+            .Select(m => m.Name)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(new[] { "Qwen3-30B-A3B-MNN", "Qwen3.6-35B-A3B-MNN" }, giants);
+
+        // the dense 14B sits between the two candidate ceilings, so it is the model
+        // that proves which one is in force
+        var dense14b = registry.AllModels.Single(m => m.Name == "Qwen3-14B-MNN");
+        Assert.True(dense14b.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
+            $"Qwen3-14B is {dense14b.TotalBytes / 1e9:F2} GB and must clear a 10 GB ceiling");
+
+        // and every pack we actually run clears it
+        foreach (var name in new[] { "Ternary-Bonsai-2-27B", "Qwen-Image-2.1" })
+        {
+            var m = registry.AllModels.Single(x => x.Name == name);
+            Assert.True(m.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
+                $"{name} is {m.TotalBytes / 1e9:F2} GB, over the {DeviceModelAssessor.FormFactorMaxBytes / 1e9:F0} GB ceiling");
+        }
+    }
+
+    [Fact]
+    public void ShippedEngines_always_has_MNN_and_adds_llama_only_when_the_native_library_loaded()
+    {
+        var engines = DeviceModelAssessor.ShippedEngines();
+        Assert.Contains(ModelEngine.Mnn, engines);
+        // The bridge is a build fact probed at runtime, so this asserts the
+        // CORRESPONDENCE rather than a constant: whatever LlamaGenerator reports is
+        // what the assessor must gate on. Green before the native library is built
+        // and green after, which is the point — flipping GGUF rows to compatible
+        // must need no catalogue edit and no app release.
+        Assert.Equal(LlamaGenerator.IsAvailable, engines.Contains(ModelEngine.LlamaCpp));
     }
 }

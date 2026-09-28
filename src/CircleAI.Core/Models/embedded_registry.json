@@ -3177,6 +3177,7 @@
       "BundleFiles": [
         {
           "Name": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
+          "Sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
           "SizeBytes": 5946648928
         }
       ],
@@ -3185,22 +3186,23 @@
     {
       "Name": "Qwen-Image-2.1",
       "Version": "2.1",
-      "Quantization": "BF16",
-      "Repo": "Qwen/Qwen-Image-2.1",
+      "Quantization": "Q6_K",
+      "Repo": "unsloth/qwen-image-2.1-gguf",
       "Architecture": "qwen-image",
       "Modality": "ImageGeneration",
-      "Engine": "Onnx",
-      "TotalBytes": 41000000000,
+      "Engine": "LlamaCpp",
+      "TotalBytes": 6271551200,
       "QualityRank": 16,
-      "MinRamGb": 24.0,
-      "MinStorageGb": 41.0,
+      "MinRamGb": 7.0,
+      "MinStorageGb": 6.5,
       "Capabilities": [
         "Default"
       ],
       "BundleFiles": [
         {
-          "Name": "model_index.json",
-          "SizeBytes": 1024
+          "Name": "qwen-image-2.1-Q6_K.gguf",
+          "Sha256": "2ead1ee665e8ebc5fec517d287a167f5c6a7e985acbf3b1b93143437a04616ac",
+          "SizeBytes": 6271551200
         }
       ],
       "Source": "HuggingFace"

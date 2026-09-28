@@ -401,6 +401,13 @@ public sealed class ModalityPlanTests
         // HeuristicFallback. Nothing composites its way to a diffusion model, so
         // image generation must report Unavailable rather than pretend — the same
         // answer Coding gives, for the same reason.
+        //
+        // "NOTHING CATALOGUED" NOW MEANS "NOTHING RUNNABLE". Qwen-Image 2.1 IS
+        // catalogued, as a 6.27 GB Q6_K GGUF that fits this 8 GB device comfortably —
+        // so the only thing keeping this Unavailable is that the llama.cpp engine is
+        // not built yet. Build the bridge and this test SHOULD fail: image generation
+        // will genuinely be available, and that is the moment to change it. Until
+        // then it guards the honest answer, which is what it was always for.
         var plan = Selector().PlanFor(Device(8), ModelModality.ImageGeneration);
 
         Assert.False(plan.IsAvailable);

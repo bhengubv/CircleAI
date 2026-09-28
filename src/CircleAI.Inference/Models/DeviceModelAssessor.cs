@@ -31,6 +31,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     private readonly IModelCatalog _catalog;
     private readonly HashSet<ModelEngine> _shippedEngines;
     private readonly bool _mmapAllowed;
+    private readonly double _maxModelBytes;
 
     // Floating-point slack so a model whose MinRamGb equals usable RAM to the
     // last bit still counts as fitting — mirrors DeviceAwareModelSelector.
@@ -62,17 +63,74 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// 2.5 GB would in fact OOM a phone. Kept injectable so a host that has
     /// enabled mmap, and the tests, can state it outright.
     /// </param>
-    public DeviceModelAssessor(IModelCatalog catalog, IEnumerable<ModelEngine> shippedEngines, bool? mmapAllowed = null)
+    /// <param name="maxModelBytes">
+    /// The form-factor weight ceiling. A model bigger than this is never compatible,
+    /// however much RAM and storage the device reports. <c>null</c> (the default)
+    /// uses <see cref="FormFactorMaxBytes"/>.
+    /// </param>
+    public DeviceModelAssessor(IModelCatalog catalog, IEnumerable<ModelEngine> shippedEngines,
+                               bool? mmapAllowed = null, double? maxModelBytes = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         ArgumentNullException.ThrowIfNull(shippedEngines);
         _shippedEngines = new HashSet<ModelEngine>(shippedEngines);
         _mmapAllowed = mmapAllowed ?? QwenTextGenerator.MmapIsAllowed;
+        _maxModelBytes = maxModelBytes ?? FormFactorMaxBytes;
+        if (_maxModelBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maxModelBytes));
     }
+
+    /// <summary>
+    /// The weight ceiling a model must clear to be offered: <b>10 GB</b>.
+    /// </summary>
+    /// <remarks>
+    /// A PRODUCT rule, not a device measurement, which is why it sits apart from the
+    /// RAM and storage gates. Phones and tablets are the form factors we cater for, and
+    /// a pack above this is not shippable to them however much a particular device
+    /// happens to have — so it never becomes compatible on a roomy device and then
+    /// impossible on the next one.
+    /// <para>
+    /// What it admits and what it costs, at 10 GB: every pack we run clears it —
+    /// Bonsai 2 27B PTQ1_0 at 5.95 GB (PQ2_0 7.21 GB), Qwen-Image 2.1 from Q8_0
+    /// (7.64 GB) down — and so does the dense <c>Qwen3-14B-MNN</c> at 9.44 GB, which
+    /// an 8 GB ceiling would have dropped. What it still refuses is the giant MoE
+    /// bundles, <c>Qwen3-30B-A3B</c> (17.75 GB) and <c>Qwen3.6-35B-A3B</c> (22.80 GB),
+    /// and Qwen-Image's F16 at 14.23 GB.
+    /// </para>
+    /// <para>
+    /// Units are the catalogue's (10^9, matching <see cref="ModelEntry.TotalBytes"/>),
+    /// not 2^30. Injectable so a desktop or server host can lift it deliberately
+    /// rather than by accident.
+    /// </para>
+    /// </remarks>
+    public const double FormFactorMaxBytes = 10_000_000_000d;
 
     /// <summary>Convenience for the app as it ships today: MNN is the only engine.</summary>
     public static DeviceModelAssessor MnnOnly(IModelCatalog catalog) =>
         new(catalog, new[] { ModelEngine.Mnn });
+
+    /// <summary>
+    /// The engines this BUILD can actually load, probed at runtime rather than
+    /// declared. MNN is always present; llama.cpp counts only when its native
+    /// library really loaded, which is what <see cref="LlamaGenerator.IsAvailable"/>
+    /// answers (it is <c>NativeVersion is not null</c>, not a compile-time flag).
+    /// </summary>
+    /// <remarks>
+    /// This is the seam that lets a GGUF model be offered honestly. Until the native
+    /// bridge is built, every GGUF row stays <c>compatible = 0</c> and the app can
+    /// say the model exists without offering a download that cannot load. Build the
+    /// bridge and the same rows flip to compatible with no catalogue edit and no app
+    /// release — which is the entire point of the runtime catalogue.
+    /// </remarks>
+    public static IReadOnlyCollection<ModelEngine> ShippedEngines()
+    {
+        var set = new HashSet<ModelEngine> { ModelEngine.Mnn };
+        if (LlamaGenerator.IsAvailable) set.Add(ModelEngine.LlamaCpp);
+        return set;
+    }
+
+    /// <summary>Assessor for what this device can really run, engines probed at runtime.</summary>
+    public static DeviceModelAssessor ForThisBuild(IModelCatalog catalog, double? maxModelBytes = null) =>
+        new(catalog, ShippedEngines(), mmapAllowed: null, maxModelBytes: maxModelBytes);
 
     /// <inheritdoc />
     public AssessmentResult Assess(DeviceProbe probe)
@@ -107,14 +165,23 @@ public sealed class DeviceModelAssessor : IModelAssessor
         // 1. Engine we ship — the term that tells the truth about GGUF vs MNN.
         if (!_shippedEngines.Contains(e.Engine)) return false;
 
-        // 2. RAM fits. usableRamGb already folds in RamFitHeadroom, and
+        // 2. FORM FACTOR. A product ceiling, deliberately ahead of the RAM and
+        //    storage gates: those ask what THIS device happens to have, and a
+        //    roomy tablet would otherwise make a pack compatible that we cannot
+        //    ship to a phone. Judged on the weight itself, so the answer does not
+        //    drift by device. The experiment hook above returns before this on
+        //    purpose — proving an oversized model's runtime path on a real phone
+        //    is the one case that is allowed to ignore it.
+        if (e.TotalBytes > 0 && e.TotalBytes > _maxModelBytes) return false;
+
+        // 3. RAM fits. usableRamGb already folds in RamFitHeadroom, and
         //    EffectiveMinRamGb folds in whether weights will be memory-mapped.
         if (EffectiveMinRamGb(e) > usableRamGb + Eps) return false;
 
-        // 3. Storage fits (0 = unknown, skip — same as the selector).
+        // 4. Storage fits (0 = unknown, skip — same as the selector).
         if (storageFreeGb > 0 && e.MinStorageGb > storageFreeGb + Eps) return false;
 
-        // 4. VRAM, only when the entry states a requirement. Unknown / no GPU
+        // 5. VRAM, only when the entry states a requirement. Unknown / no GPU
         //    memory when a model demands it → not compatible (video models).
         if (e.MinVramGb is double needVram)
         {

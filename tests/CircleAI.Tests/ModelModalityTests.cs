@@ -125,12 +125,26 @@ public sealed class ModelModalityTests
         // pollute chat selection. Qwen2.5-VL is a Qwen BY NAME but a VISION
         // model, so it is excluded from the chat assertion and checked on its own.
         using var registry = new ModelRegistryService();
+        var byName = registry.AllModels.ToDictionary(e => e.Name);
 
-        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen") && !e.Name.Contains("-VL-")),
+        // The Qwen-family entries that are deliberately NOT chat, named rather than
+        // pattern-matched. The old predicate was "starts with Qwen and is not -VL-",
+        // which silently admitted Qwen-Image-2.1 the moment image generation was
+        // catalogued — the test failed for the right reason but the wrong shape.
+        // Naming them means a new non-chat Qwen still fails here until it is listed
+        // AND its real modality asserted, so this gets STRONGER as the catalogue
+        // grows instead of being loosened each time.
+        var nonChatQwen = new Dictionary<string, ModelModality>(StringComparer.Ordinal)
+        {
+            ["Qwen2.5-VL-3B-Instruct-MNN"] = ModelModality.Vision,
+            ["Qwen-Image-2.1"]             = ModelModality.ImageGeneration,
+        };
+
+        Assert.All(registry.AllModels.Where(e => e.Name.StartsWith("Qwen") && !nonChatQwen.ContainsKey(e.Name)),
             e => Assert.Equal(ModelModality.Chat, e.Modality));
 
-        var byName = registry.AllModels.ToDictionary(e => e.Name);
-        Assert.Equal(ModelModality.Vision, byName["Qwen2.5-VL-3B-Instruct-MNN"].Modality);
+        foreach (var (name, modality) in nonChatQwen)
+            Assert.Equal(modality, byName[name].Modality);
         Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-medium"].Modality);
         Assert.Equal(ModelModality.Tts,    byName["Piper-en_US-lessac-high"].Modality);
         Assert.Equal(ModelModality.Asr,    byName["Whisper-tiny-ggml"].Modality);
