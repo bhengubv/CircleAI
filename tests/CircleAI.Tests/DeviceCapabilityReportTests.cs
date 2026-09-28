@@ -146,4 +146,35 @@ public class DeviceCapabilityReportTests
         Assert.Contains("no engine", image.Plan.Reason);
         Assert.DoesNotContain("no image-generation model is catalogued", image.Plan.Reason);
     }
+
+    [Fact]
+    public void The_selectors_and_the_assessor_agree_about_vision_on_the_P30()
+    {
+        // THE DISAGREEMENT THIS CLOSES. The catalogue said Qwen2.5-VL-3B runs on a
+        // P30 -- 2.74 GB of weights paged, ~1.16 GB resident -- while the selector
+        // that actually picks a vision model said SmolVLM-256M, because it compared a
+        // declared 3.9 GB against ~1.19 GB usable and stopped there. Same phone, same
+        // catalogue, two answers, and the one a person saw was the wrong one.
+        //
+        // Six places asked "does this fit": two in the chat selector, three in the
+        // speech selector, one in the assessor, and only the assessor knew about
+        // paging. They now all call ModelFit.
+        var probe = P30();
+        using var registry = Registry();
+        var vl = registry.AllModels.Single(m => m.Name == "Qwen2.5-VL-3B-Instruct-MNN");
+
+        // the shared rule says it fits, with paging
+        Assert.True(ModelFit.Fits(vl, probe, mmapAllowed: true));
+        Assert.True(ModelFit.WillMmap(vl, probe.UsableRamGb, mmapAllowed: true));
+
+        // and the assessor, which scores the catalogue, agrees
+        using var cat = new SqliteModelCatalog("Data Source=:memory:");
+        cat.Upsert(vl);
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn }, mmapAllowed: true).Assess(probe);
+        Assert.NotNull(cat.Best(ModelModality.Vision));
+
+        // eagerly it would NOT fit -- so the test cannot pass for a trivial reason
+        Assert.False(ModelFit.Fits(vl, probe, mmapAllowed: false));
+    }
+
 }

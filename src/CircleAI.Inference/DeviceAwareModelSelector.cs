@@ -1,4 +1,4 @@
-// DeviceAwareModelSelector.cs
+﻿// DeviceAwareModelSelector.cs
 //
 // Default IModelSelector implementation. Reads the embedded model
 // registry, filters by capability + device fit, ranks by quality.
@@ -82,8 +82,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
         //    than throwing. A wearable that can only run the smallest
         //    model should still get the smallest model, not an exception.
         var deviceOk = capabilityOk
-            .Where(e => e.MinRamGb <= ramGb + 0.0001 &&
-                        (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+            .Where(e => ModelFit.Fits(e, ramGb, storageGb))
             .ToList();
 
         // Something fits → best quality that fits.
@@ -133,8 +132,7 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
                 // A "what could run here" listing that marks unrunnable entries
                 // as Good would be actively misleading — that is the whole point
                 // of this endpoint.
-                Quality:          (e.MinRamGb <= ramGb + 0.0001 &&
-                                   (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+                Quality:          (ModelFit.Fits(e, ramGb, storageGb))
                                       ? SelectionQuality.Good
                                       : SelectionQuality.NothingFits))
             .ToList();

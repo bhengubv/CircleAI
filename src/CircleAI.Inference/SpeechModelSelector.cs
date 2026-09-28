@@ -186,8 +186,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         if (ofModality.Count == 0) return null;   // nothing RUNNABLE for this modality — honest null
 
         var deviceOk = ofModality
-            .Where(e => e.MinRamGb <= ramGb + 0.0001 &&
-                        (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+            .Where(e => ModelFit.Fits(e, ramGb, storageGb))
             .ToList();
 
         var somethingFits = deviceOk.Count > 0;
@@ -391,8 +390,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
                 RequiresDownload: true,
                 EstimatedBytes:   e.TotalBytes,
                 Tier:             tier,
-                Quality:          (e.MinRamGb <= ramGb + 0.0001 &&
-                                  (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+                Quality:          (ModelFit.Fits(e, ramGb, storageGb))
                                      ? SelectionQuality.Good
                                      : SelectionQuality.NothingFits))
             .ToList();
@@ -426,8 +424,7 @@ public sealed class SpeechModelSelector : ISpeechModelSelector
         if (ofLanguage.Count == 0) return null;   // nothing catalogued for this language — honest null
 
         var deviceOk = ofLanguage
-            .Where(e => e.MinRamGb <= ramGb + 0.0001 &&
-                        (storageGb <= 0 || e.MinStorageGb <= storageGb + 0.0001))
+            .Where(e => ModelFit.Fits(e, ramGb, storageGb))
             .ToList();
 
         var somethingFits = deviceOk.Count > 0;
