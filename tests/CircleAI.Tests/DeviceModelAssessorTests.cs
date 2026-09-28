@@ -398,6 +398,83 @@ public class DeviceModelAssessorTests
         }
     }
 
+    // ---- quantisation the loaded backend can read -----------------------------
+    // "Do we ship llama.cpp" and "can THIS llama.cpp open THIS pack" are different
+    // questions, and only the second keeps Bonsai off a stock build.
+
+    [Fact]
+    public void Stock_llama_cpp_reads_the_ordinary_quants_and_not_the_bonsai_ones()
+    {
+        var stock = LlamaQuantSupport.Stock;
+        foreach (var q in new[] { "Q8_0", "Q6_K", "Q4_K_M", "Q2_K", "F16", "BF16" })
+            Assert.True(stock.Reads(q), $"stock should read {q}");
+
+        // The trap this table exists for: upstream HAS ternary types, and they are
+        // NOT Bonsai's. TQ1_0 is a 256-element superblock at 1.6875 bpw; PTQ1_0 is a
+        // 128-element, 28-byte block with its own fp16 scale and a Hadamard rotation
+        // folded into the weights. Alike names, incompatible bytes.
+        Assert.True(stock.Reads("TQ1_0"));
+        Assert.False(stock.Reads("PTQ1_0"));
+        Assert.False(stock.Reads("PQ2_0"));
+    }
+
+    [Fact]
+    public void The_prism_fork_is_a_superset_of_stock()
+    {
+        // Why shipping the fork costs nothing in coverage: everything stock opens,
+        // it opens. If that ever stops being true, choosing a backend becomes a
+        // trade-off rather than a free upgrade, and this should fail first.
+        Assert.All(LlamaQuantSupport.Stock.Quants,
+            q => Assert.True(LlamaQuantSupport.Prism.Reads(q), $"prism must still read {q}"));
+        Assert.True(LlamaQuantSupport.Prism.Reads("PTQ1_0"));
+        Assert.True(LlamaQuantSupport.Prism.Reads("PQ2_0"));
+    }
+
+    [Fact]
+    public void With_no_native_bridge_nothing_GGUF_can_be_read()
+    {
+        // The honest default. Until the native library is built there is no backend,
+        // so every GGUF row is refused rather than offered and failed at load.
+        if (LlamaGenerator.IsAvailable) return;   // a built bridge is tested by the rows below
+        Assert.Null(LlamaQuantSupport.Loaded);
+        Assert.False(LlamaQuantSupport.CanRead("Q8_0"));
+        Assert.False(LlamaQuantSupport.CanRead("PTQ1_0"));
+    }
+
+    [Fact]
+    public void An_MNN_quantisation_string_is_never_refused_by_the_quant_gate()
+    {
+        // MNN rows carry values like "MNN-Q4" that say nothing about GGUF. The ENGINE
+        // gate is what keeps them away from llama.cpp; this predicate must not be the
+        // thing that removes them, or every MNN model disappears the day a bridge
+        // loads. Guards the "nobody claims it, so leave it alone" branch.
+        using var cat = NewCatalog();
+        cat.Upsert(Entry("mnn-row"));                       // Engine.Mnn, "MNN-Q4"
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 8));
+        Assert.Equal("mnn-row", cat.Best(ModelModality.Chat)!.Name);
+    }
+
+    [Fact]
+    public void A_GGUF_row_is_refused_when_the_loaded_backend_cannot_read_its_quantisation()
+    {
+        // The whole point, stated as catalogue behaviour: Bonsai is PTQ1_0, so even a
+        // device that ships llama.cpp, has the RAM and clears the ceiling must not be
+        // offered it unless the loaded build reads PTQ1_0.
+        using var cat = NewCatalog();
+        cat.Upsert(new ModelEntry("bonsai", "1.0", "PTQ1_0")
+        {
+            Engine = ModelEngine.LlamaCpp, Modality = ModelModality.Chat,
+            TotalBytes = 5_946_648_928, MinRamGb = 7.5, MinStorageGb = 6.0, QualityRank = 16,
+        });
+
+        // engine deliberately declared shipped, so ONLY the quant gate can refuse it
+        new DeviceModelAssessor(cat, new[] { ModelEngine.Mnn, ModelEngine.LlamaCpp }, mmapAllowed: false)
+            .Assess(Probe(ramGb: 16, storageGb: 200));
+
+        var expected = LlamaQuantSupport.Loaded?.Reads("PTQ1_0") == true;
+        Assert.Equal(expected, cat.Best(ModelModality.Chat) is not null);
+    }
+
     [Fact]
     public void ShippedEngines_always_has_MNN_and_adds_llama_only_when_the_native_library_loaded()
     {

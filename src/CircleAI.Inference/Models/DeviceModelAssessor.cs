@@ -165,6 +165,15 @@ public sealed class DeviceModelAssessor : IModelAssessor
         // 1. Engine we ship — the term that tells the truth about GGUF vs MNN.
         if (!_shippedEngines.Contains(e.Engine)) return false;
 
+        // 1b. QUANTISATION the loaded backend can actually read. The engine gate
+        //     above says we ship llama.cpp; it does not say THIS llama.cpp opens
+        //     THIS pack. Stock rejects Bonsai's PTQ1_0/PQ2_0 as unknown types —
+        //     prism's card states it outright — so an engine-only gate would offer
+        //     Bonsai on a stock build and fail at load. Only applies to GGUF rows;
+        //     MNN quantisation strings are left to the engine gate.
+        if (e.Engine == ModelEngine.LlamaCpp && !LlamaQuantSupport.CanRead(e.Quantization))
+            return false;
+
         // 2. FORM FACTOR. A product ceiling, deliberately ahead of the RAM and
         //    storage gates: those ask what THIS device happens to have, and a
         //    roomy tablet would otherwise make a pack compatible that we cannot
