@@ -1,4 +1,4 @@
-// The MAUI head's composition root.
+﻿// The MAUI head's composition root.
 //
 // Registers this device's answers to the shared UI's questions and hands it a
 // BlazorWebView to render in.
@@ -71,9 +71,22 @@ public static class MauiProgram
         builder.Services.AddSingleton<IVoiceHost, DeviceVoiceHost>();
         builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
         builder.Services.AddSingleton<ISpokenLanguage, StoredSpokenLanguage>();
-        // One brain for the app, shared by the chat screen and the job-spec
-        // tailoring: loading a model is seconds and hundreds of megabytes.
-        builder.Services.AddSingleton<IBrain, DeviceBrain>();
+        // THE BRAIN IS NOT IN THIS APP ANY MORE. It was DeviceBrain, which loads a
+        // model into this process — seconds and hundreds of megabytes, per app, on a
+        // phone where fifteen apps cannot each hold a copy. LinkedBrain asks the
+        // standalone CircleAI service over the authorized cross-app link instead.
+        //
+        // IBrain was already the seam, which is why this is one line: the web head has
+        // run a non-local brain (BrowserBrain) for a while, so this is the third
+        // implementation of an existing contract rather than a new abstraction.
+        //
+        // THE APP NOW REQUIRES THE SERVICE, and that is the intended shape — two store
+        // listings, one of which owns the models. LinkedBrain.StateAsync distinguishes
+        // "not installed" from "installed but not linked", because those need different
+        // things from a person, and a screen that says only "not ready" leaves them
+        // with no idea which action to take.
+        builder.Services.AddSingleton<IBrain>(_ =>
+            new CircleAI.Client.LinkedBrain(Android.App.Application.Context));
 
         // WHAT THE CIRCLE CAN BE ASKED TO DO. Services is the catalogue you
         // browse; this is the side that acts. One instance, because every voice
@@ -154,27 +167,15 @@ public static class MauiProgram
         // people around you.
         builder.Services.AddSingleton<IWhereAmI, DeviceWhereAmI>();
 
-        // THE CROSS-APP LINK. Another app can bind CircleNeuronLinkService to use
-        // this device's one shared brain; these hooks are how it is authorized.
-        // No caller is trusted by default (no first-party signatures wired here),
-        // so every linking app is approved once with device auth — biometric / PIN
-        // / pattern — and remembered. The grant store is in-memory for now: a
-        // killed service process simply asks again, which is safe if less handy.
-        var grantsPath = System.IO.Path.Combine(
-            Microsoft.Maui.Storage.FileSystem.AppDataDirectory, "link-grants.json");
-        CircleAI.Device.CircleNeuronLinkService.Grants =
-            new CircleAI.Linking.FileLinkGrantStore(grantsPath);
-        CircleAI.Device.CircleNeuronLinkService.FirstPartySignatures =
-            new HashSet<string>(StringComparer.Ordinal);
-        // No auth gate is wired onto the SERVICE: a background service cannot show a
-        // biometric sheet, so approval happens in LinkConsentActivity (launched by
-        // the foreground client), which mints the grant this store then persists.
+        // THE CROSS-APP LINK IS HOSTED ELSEWHERE NOW. This block used to wire
+        // CircleNeuronLinkService's grant store, first-party set and memory, because
+        // this app WAS the host — LinkIpc.HostPackage literally named it, so the
+        // shared brain on a device was something a person got by installing a sample.
+        // All of it moved to samples/CircleAI.Service.Android, which is a separate
+        // store listing that owns the models.
+        //
+        // This app is now one of its clients, and asks through LinkedBrain above.
 
-        // THE MEMORY VERBS SERVE THE SAME STORE THE APP USES. A linked app that
-        // holds a Memory grant recalls and writes the person's real memory through
-        // this one instance. Skills and discovery need no wiring — the service falls
-        // back to the built-in consumer pack and the embedded capability manifest.
-        CircleAI.Device.CircleNeuronLinkService.Memory = appMemory;
 
         // ── SELF-HEALING ────────────────────────────────────────────────────────
         // The app heals its own failures: a caught failure → diagnose (reusing the ONE

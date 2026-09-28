@@ -25,6 +25,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
+    <!-- IBrain, so a client can drop in LinkedBrain where it had a local one.
+         CircleAI.Assistant is the contracts assembly and keeps its own reference
+         count near zero, so this adds contracts and not an engine. -->
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
   </ItemGroup>
 
 </Project>

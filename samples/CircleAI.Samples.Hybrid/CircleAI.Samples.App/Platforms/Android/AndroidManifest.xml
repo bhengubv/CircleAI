@@ -130,6 +130,21 @@
 		<intent>
 			<action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
 		</intent>
+		<!--
+		    THE CIRCLEAI SERVICE, BY PACKAGE. Same Android 11 visibility rule as the
+		    media query above, and the failure is nastier because it is silent:
+		    without this, PackageManager.GetPackageInfo throws NameNotFound on a
+		    device where the service is installed and running, so
+		    CircleAiLinkClient.IsInstalled returns false, no bind is ever attempted,
+		    and nothing logs an error. The app simply behaves as though CircleAI
+		    were not on the phone.
+
+		    By PACKAGE rather than by intent, deliberately: there is exactly one
+		    host and its identity is the thing being checked. An intent query would
+		    let any app claiming the action answer, which for a component that
+		    holds the person's memory is the wrong shape of question.
+		-->
+		<package android:name="com.bhengubv.circleai.service" />
 	</queries>
 
 	<application android:allowBackup="true"

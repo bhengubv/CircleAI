@@ -132,7 +132,10 @@
          Was a folder of Services here plus eight files linked by path out
          of the native head. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
-    <ProjectReference Include="..\..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
+    <!-- THE CLIENT, not the host. This app no longer hosts CircleNeuronLinkService:
+         that moved to samples/CircleAI.Service.Android, which is its own store
+         listing. LinkedBrain is what replaces a locally-loaded model here. -->
+    <ProjectReference Include="..\..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
     <!-- The cross-app link grant store + policy, wired onto the link service. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />
     <!-- The CV interview: its script, its profile store and the renderer. The
