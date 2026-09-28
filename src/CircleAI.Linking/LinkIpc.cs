@@ -50,10 +50,27 @@ public static class LinkIpc
     public const string ScopeExtra = "com.bhengubv.circleai.extra.SCOPE";
 
     /// <summary>
-    /// The package that hosts the CircleAI service a client binds to — the
-    /// standalone host. A client resolves the service by this package + the
-    /// action. (Today the hybrid app; if the standalone is split to its own
-    /// package this is the one constant that moves.)
+    /// The package that hosts the CircleAI service a client binds to. A client
+    /// resolves the service by this package plus <see cref="BindAction"/>.
     /// </summary>
-    public const string HostPackage = "com.bhengubv.circleai.hybrid";
+    /// <remarks>
+    /// THE CONSTANT MOVED, exactly as the note here anticipated. It named
+    /// <c>com.bhengubv.circleai.hybrid</c> — the sample — so the shared brain on a
+    /// device was something a person got by installing a demo, and any second app
+    /// wanting it had to hope the demo was still installed. The host is now an app of
+    /// its own with its own store listing, and the sample is one of its clients.
+    /// <para>
+    /// IT MUST MATCH the service head's <c>ApplicationId</c>
+    /// (<c>samples/CircleAI.Service.Android</c>). They are one fact: if they differ,
+    /// <c>CircleAiLinkClient.IsInstalled</c> reads false on a device where the service
+    /// is installed and running, no bind is ever attempted, and nothing reports an
+    /// error — the client simply behaves as though CircleAI were absent.
+    /// </para>
+    /// <para>
+    /// A client also needs a <c>&lt;queries&gt;</c> entry for this package in its own
+    /// manifest, or Android 11+ package visibility hides it and
+    /// <c>IsInstalled</c> lies in the same silent way.
+    /// </para>
+    /// </remarks>
+    public const string HostPackage = "com.bhengubv.circleai.service";
 }

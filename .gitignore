@@ -395,3 +395,6 @@ artifacts-nuget/
 TestOut/
 TestOut2/
 TestOut3/
+
+# Native bridge build output — cross-compiled per machine, never committed.
+native/llama-bridge/build-android/

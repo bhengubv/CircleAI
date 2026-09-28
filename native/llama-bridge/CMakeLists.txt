@@ -8,7 +8,21 @@
 # break surfaces on a device build. Bump LLAMA_TAG deliberately and fix
 # src/llamabridge.cpp in the same commit.
 #
-# Licence: llama.cpp is MIT, which clears the repo's licence-first rule.
+# WHY PRISM'S FORK AND NOT UPSTREAM. It is a strict SUPERSET: everything upstream
+# opens, it opens, plus the ternary packs Bonsai ships in. Upstream REFUSES those
+# outright -- prism's model card says it rejects PQ2_0 and PTQ1_0 as unknown types --
+# so building upstream would mean shipping a GGUF engine that cannot open the one
+# GGUF chat model in the catalogue. The cost is tracking somebody else's fork; the
+# cost of not doing it is a catalogue entry that can never be compatible.
+#
+# The struct is NOT on their master, which carries only upstream's TQ1_0/TQ2_0 --
+# alike in name, different in bytes (256-element superblock at 1.6875 bpw, versus
+# PTQ1_0's 128-element 28-byte block with its own fp16 scale and a Hadamard rotation
+# folded into the weights). The kernels live on the `prism` branch, and this pins its
+# tagged release rather than the branch head, for the same reason the upstream pin
+# exists.
+#
+# Licence: MIT on both, which clears the repo's licence-first rule.
 
 cmake_minimum_required(VERSION 3.16)
 project(llamabridge LANGUAGES C CXX)
@@ -17,8 +31,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# The pin. One line to review when upgrading.
-set(LLAMA_TAG "b4644" CACHE STRING "llama.cpp git tag to build against")
+# The pins. Two lines to review when upgrading.
+set(LLAMA_REPO "https://github.com/PrismML-Eng/llama.cpp.git"
+    CACHE STRING "llama.cpp repository — prism's fork, a superset of upstream")
+set(LLAMA_TAG  "prism-b10743-adfffbe"
+    CACHE STRING "llama.cpp git tag to build against")
 
 option(LLAMABRIDGE_USE_SYSTEM_LLAMA "Link an already-built llama.cpp instead of fetching" OFF)
 
@@ -34,7 +51,7 @@ else()
   set(LLAMA_CURL           OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(
     llama_cpp
-    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
+    GIT_REPOSITORY ${LLAMA_REPO}
     GIT_TAG        ${LLAMA_TAG}
     GIT_SHALLOW    TRUE
   )
@@ -47,7 +64,11 @@ target_include_directories(llamabridge
   PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_compile_definitions(llamabridge PRIVATE LLAMABRIDGE_BUILD)
+target_compile_definitions(llamabridge PRIVATE
+  LLAMABRIDGE_BUILD
+  # The engine reports its own identity; the managed side reads it to decide
+  # which quantisations it may claim. See LlamaQuantSupport.Loaded.
+  LLAMABRIDGE_LLAMA_TAG="${LLAMA_TAG}")
 target_link_libraries(llamabridge PRIVATE llama)
 
 # Hide everything except the LLAMABRIDGE_API surface, so the .so does not

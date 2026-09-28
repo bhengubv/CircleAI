@@ -205,11 +205,23 @@ void llama_bridge_reset(llama_bridge_handle handle) {
     llama_memory_clear(llama_get_memory(b->ctx), true);
 }
 
+// The tag this was built against, stamped in by CMake. LLAMA_BUILD_NUMBER was used
+// here and does not exist for a CONSUMER of llama.cpp -- it is a CMake variable the
+// project uses internally, not a macro in the public headers, so this failed to
+// compile the moment the bridge was built for real.
+#ifndef LLAMABRIDGE_LLAMA_TAG
+#define LLAMABRIDGE_LLAMA_TAG "unknown"
+#endif
+
 const char* llama_bridge_version(void) {
-    // Carries the llama.cpp build number so "which llama.cpp is this" is
-    // answerable from a log line — which matters the moment a fork is in play.
+    // THIS STRING IS LOAD-BEARING, not a log line. LlamaQuantSupport.Loaded reads it
+    // to decide which GGUF quantisations this build can open: a tag containing
+    // "prism" means the ternary packs (PTQ1_0/PQ2_0) are available, anything else is
+    // treated as stock and under-claims. So the engine's own identity travels with
+    // the binary rather than being asserted on the managed side, and a bridge built
+    // against upstream by accident reports upstream and is trusted for less.
     static std::string s = std::string("circleai-llamabridge/0.1.0 llama.cpp/")
-                         + std::to_string(LLAMA_BUILD_NUMBER);
+                         + LLAMABRIDGE_LLAMA_TAG;
     return s.c_str();
 }
 
