@@ -693,6 +693,32 @@ public class DeviceModelAssessorTests
     }
 
     [Fact]
+    public void No_catalogued_model_claims_a_paging_discount_nobody_measured()
+    {
+        // A MEASURED FIGURE IS A CLAIM ABOUT A PHONE, so adding one should be a
+        // deliberate act by somebody who watched the number, not a line that drifts in
+        // with a catalogue update. This fails the moment an entry gains one — which is
+        // the point: read the remark on ModelEntry.MmapResidentGb, confirm a person
+        // really ran it on a device, then update this list.
+        //
+        // It is empty today and that is not an oversight. 0.8 GB was briefly recorded
+        // for Qwen2.5-3B from a note rather than a run anybody here watched, and its
+        // only effect was to offer a 2.37 GB model to a 1.19 GB phone. An unverified
+        // measurement is worse than none, because it wears the authority of one.
+        using var registry = new ModelRegistryService();
+        var claimed = registry.AllModels
+            .Where(m => m.MmapResidentGb is > 0)
+            .Select(m => $"{m.Name} ({m.MmapResidentGb} GB)")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(claimed.Count == 0,
+            "these entries claim a measured memory-mapped figure; confirm somebody ran "
+            + "each on a device and then update this test: "
+            + string.Join(", ", claimed));
+    }
+
+    [Fact]
     public void ShippedEngines_always_has_MNN_and_adds_llama_only_when_the_native_library_loaded()
     {
         var engines = DeviceModelAssessor.ShippedEngines();

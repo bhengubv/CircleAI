@@ -416,8 +416,7 @@
           "SizeBytes": 3193477
         }
       ],
-      "Source": "HuggingFace",
-      "MmapResidentGb": 0.8
+      "Source": "HuggingFace"
     },
     {
       "Name": "Qwen2.5-7B-Instruct-MNN",

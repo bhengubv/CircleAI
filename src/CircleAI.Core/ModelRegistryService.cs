@@ -1,4 +1,4 @@
-using System.Security;
+﻿using System.Security;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -460,10 +460,16 @@ namespace CircleAI.Core.Models
         /// guards that caught that exist because the app was OOM-killed on a P30.
         /// <para>
         /// So the discount applies only where somebody has run the model and watched
-        /// the number. One model has that today: <c>Qwen2.5-3B-Instruct-MNN</c>, 2.4 GB
-        /// of weights, ~0.8 GB resident on a P30 Lite with weight-mmap and a single
-        /// thread (2026-09-22). Everything else stays on the eager figure, which is
-        /// exactly as safe as it was before mmap was enabled.
+        /// the number. <b>NO ENTRY CARRIES ONE TODAY</b>, which is the honest state and
+        /// not an oversight: a figure of 0.8 GB was briefly recorded for
+        /// <c>Qwen2.5-3B-Instruct-MNN</c> and then removed, because it came from a note
+        /// rather than from a run anybody here watched — and its only effect was to
+        /// offer a 2.37 GB model to a 1.19 GB phone. An unverified measurement is worse
+        /// than none: it wears the authority of one.
+        /// </para>
+        /// <para>
+        /// So every model currently sits on its eager figure, exactly as safe as before
+        /// mmap was enabled, and the seam waits for a real number.
         /// </para>
         /// <para>
         /// To add one: run the model on the target device, watch resident memory
