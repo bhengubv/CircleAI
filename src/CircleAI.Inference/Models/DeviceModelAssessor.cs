@@ -80,28 +80,30 @@ public sealed class DeviceModelAssessor : IModelAssessor
     }
 
     /// <summary>
-    /// The weight ceiling a model must clear to be offered: <b>15 GB</b>.
+    /// The weight ceiling a model must clear to be offered: <b>20 GB</b>.
     /// </summary>
     /// <remarks>
-    /// A PRODUCT rule, not a device measurement, which is why it sits apart from the
-    /// RAM and storage gates. Phones and tablets are the form factors we cater for, and
-    /// a pack above this is not shippable to them however much a particular device
-    /// happens to have — so it never becomes compatible on a roomy device and then
-    /// impossible on the next one.
-    /// <para>
-    /// WHAT 15 GB BUYS that the earlier candidates did not. Image generation is the
-    /// whole reason: a picture needs three parts, and the transformer alone makes
-    /// none. The cheapest working set is UC Q4_K_M (4.60) + Qwen3-VL-8B Q4_K_M (5.03)
-    /// + VAE (0.68) = 10.31 GB, which a 10 GB ceiling missed by 300 MB; at 15 GB even
-    /// the Q8_0 transformer fits alongside them (13.30 GB). An 8 GB ceiling would also
-    /// have dropped the dense <c>Qwen3-14B-MNN</c> at 9.44 GB, an ordinary chat model
-    /// and not the giant the rule was aimed at.
+    /// WHERE 20 COMES FROM: a common handset ships <b>128 GB of storage</b>, and one
+    /// model may not take more than about a sixth of everything the person owns —
+    /// their photos, their music, every other app. It is a claim on the DEVICE'S
+    /// DISK, which is why it is a fixed product rule and not a reading of free space:
+    /// free space is whatever happens to be spare this morning, and a model that fits
+    /// today because the gallery is empty is a model that should never have been
+    /// offered. The RAM and storage gates below still apply on top; this one asks a
+    /// different question, and asks it first.
     /// </para>
     /// <para>
-    /// What it still refuses: <c>Qwen3-30B-A3B</c> (17.75 GB) and
-    /// <c>Qwen3.6-35B-A3B</c> (22.80 GB). Both are far enough past the line that no
-    /// plausible ceiling admits them, which is the point — the rule stays about
-    /// shippability rather than becoming a negotiation.
+    /// WHAT IT ADMITS. Image generation is the capability that set the floor: a
+    /// picture needs three parts and the transformer alone makes none. The working
+    /// set is UC Q8_0 (7.59) + Qwen3-VL-8B Q4_K_M (5.03) + VAE (0.68) = 13.30 GB, and
+    /// the cheaper Q4_K_M transformer brings it to 10.31 GB. Both fit with room. So
+    /// does the dense <c>Qwen3-14B-MNN</c> at 9.44 GB, and <c>Qwen3-30B-A3B</c> at
+    /// 17.75 GB.
+    /// </para>
+    /// <para>
+    /// What it still refuses: <c>Qwen3.6-35B-A3B</c> at 22.80 GB — nearly a fifth of
+    /// a 128 GB handset for one model, which is the case this rule exists to say no
+    /// to.
     /// </para>
     /// <para>
     /// Units are the catalogue's (10^9, matching <see cref="ModelEntry.TotalBytes"/>),
@@ -109,7 +111,7 @@ public sealed class DeviceModelAssessor : IModelAssessor
     /// rather than by accident.
     /// </para>
     /// </remarks>
-    public const double FormFactorMaxBytes = 15_000_000_000d;
+    public const double FormFactorMaxBytes = 20_000_000_000d;
 
     /// <summary>Convenience for the app as it ships today: MNN is the only engine.</summary>
     public static DeviceModelAssessor MnnOnly(IModelCatalog catalog) =>

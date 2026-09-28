@@ -293,7 +293,7 @@ public class DeviceModelAssessorTests
     public void A_model_over_the_form_factor_ceiling_is_incompatible_on_any_device()
     {
         using var cat = NewCatalog();
-        cat.Upsert(Entry("too-big", totalBytes: 17_750_000_000));   // Qwen3-30B-A3B, catalogued and over any plausible line
+        cat.Upsert(Entry("too-big", totalBytes: 22_800_000_000));   // Qwen3.6-35B-A3B, the one catalogued pack still over the line
         // 64 GB of RAM and a terabyte free — the device is not the question.
         DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 64, storageGb: 1000));
         Assert.Null(cat.Best(ModelModality.Chat));
@@ -306,7 +306,7 @@ public class DeviceModelAssessorTests
         using var cat = NewCatalog();
         cat.Upsert(Entry("bonsai-ptq1", qualityRank: 9, totalBytes: 5_946_648_928));  // 5.95 GB
         cat.Upsert(Entry("bonsai-pq2",  qualityRank: 8, totalBytes: 7_210_000_000));  // 7.21 GB
-        cat.Upsert(Entry("moe-30b", qualityRank: 99, totalBytes: 17_750_000_000));
+        cat.Upsert(Entry("moe-35b", qualityRank: 99, totalBytes: 22_800_000_000));
         DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 16, storageGb: 200));
         // the oversized one outranks everything and still must not win
         Assert.Equal("bonsai-ptq1", cat.Best(ModelModality.Chat)!.Name);
@@ -342,7 +342,7 @@ public class DeviceModelAssessorTests
     public void The_experiment_hook_still_bypasses_the_ceiling()
     {
         using var cat = NewCatalog();
-        cat.Upsert(Entry("oversized", totalBytes: 17_750_000_000));
+        cat.Upsert(Entry("oversized", totalBytes: 22_800_000_000));
         try
         {
             // proving an oversized pack's runtime path on a real phone is the one
@@ -375,13 +375,12 @@ public class DeviceModelAssessorTests
         // them means the list cannot grow silently: add another oversized model and
         // this fails until someone writes it down.
         //
-        // WHY 15 GB. Image generation is the reason: a picture needs three parts and
-        // the transformer alone makes none. The cheapest working set is 10.31 GB, which
-        // a 10 GB ceiling missed by 300 MB; at 15 GB the Q8_0 transformer fits beside
-        // the other two as well (13.30 GB). An 8 GB ceiling would also have dropped the
-        // dense Qwen3-14B-MNN at 9.44 GB, an ordinary chat model. The MoE bundles are
-        // 17.75 GB and 22.80 GB — far enough past the line that no plausible ceiling
-        // admits them, which keeps this a shippability rule and not a negotiation.
+        // WHY 20 GB: a common handset has 128 GB of storage, and one model may not
+        // take more than about a sixth of everything the person owns. That admits the
+        // whole image pipeline (7.59 + 5.03 + 0.68 = 13.30 GB, or 10.31 with the
+        // cheaper transformer), the dense Qwen3-14B at 9.44, and Qwen3-30B-A3B at
+        // 17.75. It refuses Qwen3.6-35B-A3B at 22.80 — nearly a fifth of the device
+        // for one model, which is the case the rule exists to say no to.
         using var registry = new ModelRegistryService();
         var giants = registry.AllModels
             .Where(m => m.TotalBytes > DeviceModelAssessor.FormFactorMaxBytes)
@@ -389,10 +388,10 @@ public class DeviceModelAssessorTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
 
-        Assert.Equal(new[] { "Qwen3-30B-A3B-MNN", "Qwen3.6-35B-A3B-MNN" }, giants);
+        Assert.Equal(new[] { "Qwen3.6-35B-A3B-MNN" }, giants);
 
-        // the dense 14B sat between the 8 and 10 GB candidates, so it is the model that
-        // proves a ceiling was raised rather than merely renamed
+        // the dense 14B sat between the earliest candidate ceilings, so it is the model
+        // that proves a ceiling was raised rather than merely renamed
         var dense14b = registry.AllModels.Single(m => m.Name == "Qwen3-14B-MNN");
         Assert.True(dense14b.TotalBytes <= DeviceModelAssessor.FormFactorMaxBytes,
             $"Qwen3-14B is {dense14b.TotalBytes / 1e9:F2} GB and must clear the {DeviceModelAssessor.FormFactorMaxBytes / 1e9:F0} GB ceiling");
