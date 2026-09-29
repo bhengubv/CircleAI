@@ -1,4 +1,4 @@
-// StatusActivity.cs
+﻿// StatusActivity.cs
 //
 // The service's only screen, and it is deliberately almost nothing.
 //
@@ -23,7 +23,7 @@ using CircleAI.Core.Models;
 using CircleAI.Device;
 using CircleAI.Inference;
 
-namespace CircleAI.Service.Android;
+namespace CircleAIService;
 
 [Activity(Label = "CircleAI", MainLauncher = true, Exported = true)]
 public sealed class StatusActivity : Activity

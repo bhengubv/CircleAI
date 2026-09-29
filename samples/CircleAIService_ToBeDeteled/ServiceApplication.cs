@@ -1,4 +1,4 @@
-// ServiceApplication.cs
+﻿// ServiceApplication.cs
 //
 // The standalone CircleAI service, bootstrapped.
 //
@@ -19,7 +19,7 @@ using CircleAI.Core;
 using CircleAI.Device;
 using CircleAI.Linking;
 
-namespace CircleAI.Service.Android;
+namespace CircleAIService;
 
 // NO ICON SET, which is a gap and not a choice worth defending: this ships with
 // Android's default launcher icon. A store listing needs a real one, and inventing

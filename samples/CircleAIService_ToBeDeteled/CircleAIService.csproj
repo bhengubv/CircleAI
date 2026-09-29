@@ -35,7 +35,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
 
-    <RootNamespace>CircleAI.Service.Android</RootNamespace>
+    <RootNamespace>CircleAIService</RootNamespace>
 
     <!-- MUST match LinkIpc.HostPackage, or every client's IsInstalled() reads
          false and no bind is ever attempted. The two are one fact; the constant
