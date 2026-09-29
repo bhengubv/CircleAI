@@ -1,0 +1,134 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI Service — the installed app that OWNS the models.
+
+    THE SAME SHAPE AS AetherNetService, deliberately. That pair already settled how a
+    service and a thin app live together on one device:
+
+      src/AetherNetService          the service APK, its own ApplicationId, runs the radios
+      samples/.../AetherNet.Sample  the thin app - "runs no radios ... takes its identity
+                                    from the separate AetherNetService app"
+      src/AetherNet.Node.Android    the client library BOTH of them reference
+
+    CircleAI maps onto it one for one: this project, CircleAI.Samples.App, and
+    CircleAI.Client. Aether runs no radios; the thin CircleAI app runs no model, no
+    recogniser, no voice and no microphone. The hardware and the megabytes live here.
+
+    WHY IT EXISTS AS ITS OWN PACKAGE. A 122 MB voice takes 13-23 s to build a session
+    on a P30 Lite, and fifteen apps on a 3 GB phone cannot each hold their own copy.
+    A person who wants CircleAI on their phone installs CircleAI, not a sample of it.
+
+    IT SHIPS NO SCREENS AND HAS NO LAUNCHER ENTRY. A service does not have a UI. It
+    had one - StatusActivity, [Activity(MainLauncher = true)] - and that was wrong:
+    it put this app in the launcher as something a person opens, which is exactly the
+    confusion the split exists to remove. Two store listings; only one is an app you
+    open.
+
+    THE ONE ACTIVITY IS NOT AN EXCEPTION. LinkConsentActivity (in CircleAI.Device) is
+    translucent, ExcludeFromRecents, has no launcher filter, and is launched FOR
+    RESULT by a client - because a background service cannot raise a biometric sheet,
+    and starting it for result is how the OS tells the consent screen which package is
+    really asking. It is the client's approval dialog wearing this process.
+
+    SO HOW DOES IT START? A client binds to CircleNeuronLinkService, Android starts
+    the process, and Application.OnCreate wires everything before the bind is
+    answered. That is the whole entry point.
+
+    THE MANIFEST IS GENERATED FROM ATTRIBUTES in CircleAI.Device, which is why no XML
+    here declares anything:
+      CircleNeuronLinkService  [Service(Exported = true)] + [IntentFilter(BindAction)]
+      LinkConsentActivity      [Activity(Exported = true)] + [IntentFilter(ConsentAction)]
+      CircleNeuronService      [Service(ForegroundServiceType = DataSync | Microphone)]
+    Referencing CircleAI.Device is what puts them in the package.
+
+    ANDROID TODAY; iOS AND WINDOWS ARE THE POINT OF THE SHAPE. Everything platform-
+    specific is behind CircleAI.Device and CircleAI.Assistant.Device, so a second head
+    is another TargetFramework and its own host class, not a second product.
+    AetherNetService is Android-only today for the same reason and by the same plan.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <RootNamespace>CircleAI.Service.Android</RootNamespace>
+
+    <!-- MUST match LinkIpc.HostPackage, or every client's IsInstalled() reads false
+         and no bind is ever attempted. The two are one fact; the constant is the one
+         place it is written down. -->
+    <ApplicationId>com.bhengubv.circleai.service</ApplicationId>
+
+    <!-- Android's versionCode. It MUST increase on every build somebody could install
+         over, or the install is refused with no useful message. -->
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+
+    <!-- Plain APK so `adb install` works without a bundletool step. Also: a Release
+         -t:Install of an app bundle UNINSTALLS first and takes the downloaded models
+         with it, which on a P30 is gigabytes. -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+    <!-- The linked Android sources are guarded by this, as in every head that compiles
+         them - without it AndroidAudio.cs compiles to an empty file and the type reads
+         as a missing namespace rather than a missing definition. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The resident service, the link service and the consent activity all live here.
+         This single reference is what makes this app the host. -->
+    <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" />
+
+    <!-- The engines. This app owns model selection and loading, so it is the one
+         package that needs them; the client has no inference dependency at all, which
+         is the entire point of the split. -->
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+
+    <!-- The assistant's device half: the microphone and speaker, the recogniser and
+         the voice (ServiceSpeech), the model store, the skill library, VoiceWiring. -->
+    <ProjectReference Include="..\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
+
+    <!-- The client library, referenced by BOTH halves - exactly as AetherNetService
+         references AetherNet.Node.Android. It carries AppPaths and SqliteAppStore,
+         which both processes need to find their own storage. -->
+    <ProjectReference Include="..\CircleAI.Client\CircleAI.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      espeak-ng AND THE SKILL DATABASE. Both were in the thin app and neither could be
+      used there: espeak-ng is a grapheme-to-phoneme front end for SYNTHESIS, and
+      skills.db is what a MODEL looks things up in. This is the process with both.
+
+      arm64 only for the .so - the x86_64 build would need the NDK recipe run again -
+      and the library and its data are version-locked at espeak-ng 1.52.0, so they move
+      together or not at all.
+
+      espeak-ng is GPL-3.0 and is used OUT OF PROCESS, never linked. That arrangement
+      is what keeps it off this app's licence, and it is why the phonemiser is invoked
+      rather than referenced.
+    -->
+    <AndroidNativeLibrary Include="..\CircleAI.Voice\runtimes\android-arm64\native\libespeak-ng.so"
+                          Abi="arm64-v8a" />
+    <AndroidAsset Include="..\CircleAI.Voice\assets\espeak-ng-data.zip"
+                  Link="espeak-ng-data.zip" />
+    <AndroidAsset Include="..\CircleAI.Skills\assets\skills.db.zip"
+                  Link="skills.db.zip" />
+  </ItemGroup>
+
+  <!--
+    MNN's native libraries are bundled by the repo-root Directory.Build.targets; no
+    per-project plumbing. This app does NOT opt out - it is the one that loads them.
+
+    The llama.cpp bridge is not wired in here yet. libllamabridge.so is built (arm64,
+    against PrismML-Eng/llama.cpp prism-b10743-adfffbe) and needs four companion
+    libraries - libllama, libggml, libggml-cpu, libggml-base, about 61 MB together.
+    Adding them is a deliberate step with a real size cost.
+  -->
+
+</Project>

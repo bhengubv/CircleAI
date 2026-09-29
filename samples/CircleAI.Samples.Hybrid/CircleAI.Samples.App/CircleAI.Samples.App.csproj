@@ -142,7 +142,10 @@
     <!-- Shared light utilities: paths, settings, memory pressure, the skill index.
          No engine and no model in any of them — the app is thin because it carries
          no CircleAI.Inference, not because it carries no AppPaths. -->
-    <ProjectReference Include="..\..\..\src\CircleAIService.Shared\CircleAIService.Shared.csproj" />
+    <!-- NO REFERENCE TO THE SERVICE PROJECT. CircleAIService is an APK of its own, and
+         an app cannot reference another app. Everything this head needs to REACH it is
+         in CircleAI.Client below - the same shape as AetherNet.Sample, which "runs no
+         radios ... and takes its identity from the separate AetherNetService app". -->
     <ProjectReference Include="..\..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
     <!-- The cross-app link grant store + policy, wired onto the link service. -->
     <ProjectReference Include="..\..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />

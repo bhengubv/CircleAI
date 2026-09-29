@@ -35,15 +35,33 @@
     <TargetFramework>net10.0-android</TargetFramework>
     <SupportedOSPlatformVersion>21.0</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
+    <!-- AndroidAudio.cs and its siblings are guarded by this, as in every project that
+         compiles them - without it the file compiles to nothing and AndroidAudioCapture
+         reads as a missing NAMESPACE rather than a missing definition. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- AUDIO, NOT THE VOICE STACK. The microphone, the speaker, the sample format and
+         the level-based VAD - AudioFormat, IAudioCapture, IAudioPlayer, IAudioDecoder,
+         WavIo - with no Whisper and no ONNX voices behind them. Those are the
+         service's, and taking CircleAI.Voice here would put 18.3 MB of
+         libonnxruntime.so into every client that opens a microphone. -->
+    <ProjectReference Include="..\CircleAI.Audio\CircleAI.Audio.csproj" />
     <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
     <!-- IBrain, so a client can drop in LinkedBrain where it had a local one.
          CircleAI.Assistant is the contracts assembly and keeps its own reference
          count near zero, so this adds contracts and not an engine. -->
     <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SQLite for SqliteAppStore. THE ONE FILE FOR ALL OF A HEAD'S STATE, and both
+         halves need it: the app for its settings, the service to find its own storage.
+         Declared here rather than inherited, because it arrived behind an unrelated
+         reference once and removing that reference broke the settings store. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
 </Project>
