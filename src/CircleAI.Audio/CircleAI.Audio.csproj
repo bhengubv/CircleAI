@@ -1,0 +1,41 @@
+<!--
+  Audio, without an engine.
+
+  WHY THIS EXISTS. CircleAI.Voice holds two different things under one name: the
+  primitives every audio path needs - a sample format, a microphone interface, a
+  speaker interface, WAV, a level-based VAD, a transcript - and the ENGINES that
+  turn audio into words and words into audio: Whisper, the ONNX TTS voices, the
+  Zipformer keyword spotter.
+
+  The engines bring Microsoft.ML.OnnxRuntime and Whisper.net.Runtime with them,
+  and NuGet native assets are not optional for a consumer: referencing the
+  assembly for AudioFormat put libonnxruntime.so (18.3 MB) and five whisper
+  libraries into an app that only wanted to open the microphone and send the
+  bytes somewhere else. It was 18 MB of an engine nothing in that process could
+  call, and no reference the app declared said so.
+
+  So the primitives moved down here and CircleAI.Voice references them. THE
+  NAMESPACE IS STILL CircleAI.Voice - deliberately. A namespace is not an
+  assembly: every `using CircleAI.Voice;` in the tree keeps compiling, no call
+  site changes, and the only thing that moved is which .dll a type is in. The
+  same trick made CircleAIService possible.
+
+  NOTHING IN HERE MAY REFERENCE AN ENGINE. That is the whole contract. If a type
+  here needs Whisper or ONNX, it belongs in CircleAI.Voice, not in this project -
+  and a PackageReference added here would silently undo the split.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>CircleAI.Voice</RootNamespace>
+    <PackageId>CircleAI.Audio</PackageId>
+    <Description>The engine-free half of CircleAI's voice stack: sample formats, microphone and speaker contracts, WAV, level-based voice activity detection, transcripts and subtitles. Carries no inference runtime, so a client can capture and play audio without shipping ONNX Runtime or Whisper.</Description>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

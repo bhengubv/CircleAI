@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
@@ -11,7 +11,22 @@
       A host app must declare a &lt;queries&gt; entry for the CircleAI package
       (Android 11+ package visibility) to see and bind the service.
     </Description>
-  </PropertyGroup>
+  
+    <!--
+      NO ENGINE NATIVES. The repo-root Directory.Build.targets bundles MNN and
+      Whisper into EVERY android project - both default to true - and this is an
+      android class library, so they landed in CircleAI.Client.aar and the app
+      unpacked them from there. That is how a client whose whole purpose is to
+      NOT hold a model shipped libMNN.so, libllm.so, libmnnbridge.so and five
+      whisper/ggml libraries: no project reference named them, no csproj named
+      them, and the only place it showed was a listing of the APK.
+
+      The service still gets both - samples/CircleAIService is an android app and
+      does not opt out - next to the models that use them.
+    -->
+    <CircleAIBundleMnn>false</CircleAIBundleMnn>
+    <CircleAIBundleWhisper>false</CircleAIBundleWhisper>
+</PropertyGroup>
 
   <!-- Plain Android head, not MAUI: any Android app (ours or third-party) can
        reference this without taking the MAUI stack. Singular android TFM, so the

@@ -7,7 +7,6 @@ using CircleAI.Assistant;
 using CircleAI.Assistant.Device;
 using CircleAI.Assistant.Voice;   // FileTranscriptStore
 using Microsoft.Extensions.Logging;
-using CircleAI.Memory;
 
 namespace CircleAI.Samples.App;
 
@@ -20,19 +19,12 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
-        // MEMORY-MAP: ON. Everything on by default is the rule. The v35 crash-loop
-        // that looked like mmap was NOT mmap — it was the 2026-09-22 diagnosis of a
-        // KNOWN race (DeviceBrain.OnMemoryIsShort freed native buffers a running
-        // generation was still reading, the SIGSEGV documented on 2026-09-11), now
-        // fixed by gating that path. mmap only made the RAM-starved P30 hit the
-        // pressure handler sooner. Turning mmap off would have hidden the real bug,
-        // not fixed it. So mmap is on; the generation path now leaves a breadcrumb
-        // (DeviceDiagnostics) so any future native death still reaches Wolverine.
-        CircleAI.Inference.QwenTextGenerator.AllowMemoryMapping = true;
-        // (QwenTextGenerator.ForceMmap and DeviceModelAssessor.ExperimentForceCompatibleId
-        //  are diagnostic hooks, default OFF — used on-device to prove Qwen2.5-3B runs
-        //  on a 3.6 GB P30 via weight-mmap + single-thread. See the memory note
-        //  circleai-mmap-kvcache-crash-root-cause.)
+        // THE MMAP SWITCH IS THE SERVICE'S NOW, and it is the last line of this file
+        // that named an engine. QwenTextGenerator.AllowMemoryMapping tells the text
+        // generator how to load model weights; there is no generator in this process
+        // to tell. Nothing was lost by deleting it: the property already defaults to
+        // true (QwenTextGenerator.cs:241), so this line only restated the default -
+        // for a type this app no longer loads.
 
         // Device-specific services the shared UI depends on. This is the seam that
         // lets one set of pages render on a phone and in a browser: the pages ask
@@ -44,28 +36,24 @@ public static class MauiProgram
         builder.Services.AddSingleton(_ => new SqliteAppStore(
             System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "app.db")));
 
-        // THE MEMORY THE APP HOLDS. One for the life of the process, on the
-        // app's own storage, beside everything else it keeps. It is not a
-        // feature of a screen - it is what the app knows, and anything that
-        // wants to ask or tell it takes IMemoryService.
-        //
-        // Nothing here is held back for a lifecycle callback: a force-stop
-        // never calls one, and on a phone that is how an app usually ends.
-        // ONE memory instance for the whole process, shared by the app AND the
-        // cross-app link (wired below), so a linked app recalls and writes the
-        // person's REAL memory rather than a second store racing on the same folder.
-        var appMemory = new MemoryService(
-            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "memory"));
-        builder.Services.AddSingleton<IMemoryService>(appMemory);
+        // THE MEMORY IS THE SERVICE'S, and this app no longer holds a copy. It used
+        // to build its own MemoryService on its own folder — which is how it came to
+        // ship the inference engine: CircleAI.Memory reaches CircleAI.Embeddings
+        // reaches CircleAI.Inference, and nothing in this file ever named any of
+        // them. It is also the wrong shape on its own terms: what somebody told
+        // their phone is ONE person's memory on ONE device, not a copy per app.
+        // IRemembers is registered below, over the link.
 
-        // THE MEMORY MANAGER. Step zero (the real device reader) plus the facade
-        // that ties it to the footprint and the pure budget. Registered so the
-        // setup path can ask CanDownload before a fetch - prevention, not cure -
-        // and so a storage screen can show what Circle AI uses. Reads the whole
-        // device, acts only on Circle AI's own footprint.
-        builder.Services.AddSingleton<CircleAI.Assistant.IDeviceResources,
-                                      CircleAI.Assistant.Device.DeviceResourcesReader>();
-        builder.Services.AddSingleton<CircleAI.Assistant.Device.MemoryManager>();
+        // NO MEMORY MANAGER AND NO DEVICE READER. Both were here so the setup path
+        // could ask CanDownload before fetching a model, and so a storage screen
+        // could show what Circle AI uses. This app downloads no model and holds no
+        // footprint to show: the figures that mattered - what the models take, what
+        // the voices take, what can be given back - are the service's, and they went
+        // with MemoryManager to CircleAI.Assistant.Device.
+        //
+        // What is left of that job here is AppCache, which tidies THIS app's own
+        // cache directory to the person's keep/cap. It needs no registration: it is
+        // a static over one directory, called from launch and from memory pressure.
 
         builder.Services.AddSingleton<IFormFactor, DeviceFormFactor>();
         // SPEAKING MOVED TO THE SERVICE. DeviceVoiceHost catalogued TTS models,
@@ -79,7 +67,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IVoiceHost>(sp =>
             new CircleAI.Client.LinkedVoiceHost(
                 (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
-        builder.Services.AddSingleton<IDeviceFacts, DeviceFacts>();
+        builder.Services.AddSingleton<IDeviceFacts>(sp => new Services.ServiceDeviceFacts((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<ISpokenLanguage, StoredSpokenLanguage>();
         // THE BRAIN IS NOT IN THIS APP ANY MORE. It was DeviceBrain, which loads a
         // model into this process — seconds and hundreds of megabytes, per app, on a
@@ -117,8 +105,8 @@ public static class MauiProgram
         // Transcribe produced a meeting and threw it away the moment you left
         // the screen: no IKeepsTranscripts was ever registered here, so
         // AsSubtitles had nothing to render and Find had half a corpus to search.
-        // The native head kept them; FileTranscriptStore has been in
-        // CircleAI.Assistant.Runtime the whole time with one consumer.
+        // The native head kept them; FileTranscriptStore sits in
+        // CircleAI.Assistant, beside the interface, and needs nothing but a folder.
         //
         // FilesDir, NOT the external directory the voices use. A transcript is
         // the most private thing this app produces - a meeting, a clinic
@@ -131,23 +119,33 @@ public static class MauiProgram
         // to another app, or acts on somebody else's behalf, says so out loud and
         // leaves it on the shade - one sentence per step, before the step. The
         // browser head has neither a voice nor a shade and gets AnnouncesNothing.
-        builder.Services.AddSingleton<IAnnounces, AndroidAnnouncer>();
+        builder.Services.AddSingleton<IAnnounces, Services.ServiceAnnouncer>();
 
         builder.Services.AddSingleton(sp => CapabilityRegistry.For(
             sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
-        builder.Services.AddSingleton<IWakePhrases, DeviceWakePhrases>();
+        // WAKE PHRASES ARE THE SERVICE'S. DeviceWakePhrases opens the KWS bundle's
+        // tokeniser out of the model store to judge a typed phrase, and the phrase it
+        // settles on is what the SERVICE listens for. Both halves are over there.
+        builder.Services.AddSingleton<IWakePhrases>(sp =>
+            new Services.ServiceWakePhrases((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IShareTarget, AndroidShareTarget>();
-        builder.Services.AddSingleton<IWakeWord, DeviceWakeWord>();
+        builder.Services.AddSingleton<IWakeWord>(sp => new Services.ServiceWakeWord((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
         // MAY THIS APP LISTEN. The assistant asks; this head knows how to get
         // the answer, because it is the thing with a screen. See IMicrophoneAccess.
         builder.Services.AddSingleton<IMicrophoneAccess, MauiMicrophoneAccess>();
-        builder.Services.AddSingleton<ISetup, DeviceSetup>();
-        builder.Services.AddSingleton<IConversation, DeviceConversation>();
+        builder.Services.AddSingleton<ISetup>(sp => new Services.ServiceSetup((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+        builder.Services.AddSingleton<IConversation>(sp => new Services.ServiceConversation((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IProfile, DeviceProfile>();
-        builder.Services.AddSingleton<IResidentAssistant, DeviceResidentAssistant>();
+        // LISTENING RUNS IN THE SERVICE. DeviceResidentAssistant did it here — found
+        // the bundle, installed the wake word, started the resident service, held the
+        // microphone. That is the always-on half and it belongs to the app with the
+        // foreground service and the notification that discloses the microphone.
+        builder.Services.AddSingleton<IResidentAssistant>(sp =>
+            new Services.ServiceResidentAssistant(
+                (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
         // ONE MICROPHONE, SO ONE ANSWER TO WHAT IT IS DOING. Home's circle and the
         // middle of the tab bar are the same control offered twice, and each used to keep
@@ -156,12 +154,15 @@ public static class MauiProgram
         // and a singleton would show every visitor whoever spoke last.
         builder.Services.AddScoped<VoiceMark>();
 
-        // THE MEMORY LOOP, CLOSED. LearnAsync has been called on every utterance
-        // for a long time and RecallAsync from nowhere but a diagnostic screen,
-        // so the phone accumulated everything anybody said and could not tell
-        // them their own name the next morning. DeviceMemory is the real store
-        // behind the shared contract; the store's effects are what read it back.
-        builder.Services.AddSingleton<IRemembers, DeviceMemory>();
+        // THE MEMORY LOOP, CLOSED, AND NOW ACROSS THE LINK. LearnAsync has been
+        // called on every utterance for a long time and RecallAsync from nowhere but
+        // a diagnostic screen, so the phone accumulated everything anybody said and
+        // could not tell them their own name the next morning. The store is the
+        // service's; LinkedMemory is this app's end of the recall / remember verbs,
+        // which have been on the wire behind LinkScope.Memory the whole time.
+        builder.Services.AddSingleton<IRemembers>(sp =>
+            new CircleAI.Client.LinkedMemory(
+                (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
         // ONE OWNER FOR THE CONVERSATION. Registered after IRemembers so the
         // effects get the real memory rather than the do-nothing fallback.
@@ -170,7 +171,7 @@ public static class MauiProgram
         // WHAT IS ACTUALLY WIRED, as opposed to what is offered. The setup census
         // counts downloads; this asks the runtime hooks and the real speech path
         // whether they work. Scoped, because it holds no state worth sharing.
-        builder.Services.AddScoped<IWiringProbe, DeviceWiringProbe>();
+        builder.Services.AddScoped<IWiringProbe>(sp => new Services.ServiceWiringProbe((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
         // WHERE THE PHONE IS, WHICH IS NOT WHERE ITS OWNER IS FROM. The
         // interpreter needs both: your language, and the language of the
@@ -181,60 +182,26 @@ public static class MauiProgram
         // CircleNeuronLinkService's grant store, first-party set and memory, because
         // this app WAS the host — LinkIpc.HostPackage literally named it, so the
         // shared brain on a device was something a person got by installing a sample.
-        // All of it moved to samples/CircleAI.Service.Android, which is a separate
+        // All of it moved to samples/CircleAIService, which is a separate
         // store listing that owns the models.
         //
         // This app is now one of its clients, and asks through LinkedBrain above.
 
 
-        // ── SELF-HEALING ────────────────────────────────────────────────────────
-        // The app heals its own failures: a caught failure → diagnose (reusing the ONE
-        // resident brain, never a second model) → run a safe, reversible fix → escalate
-        // the rest. The loop's logic lives in the product; here we only wire it and give
-        // it the platform fixes. The Wolverine dashboard reads it through IHealingView.
-        var healingLog = new CircleAI.Hosting.SelfHealing.SqliteHealingLog(
-            "Data Source=" + System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "healing.db"));
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.IHealingLog>(healingLog);
-
-        // The analyst rides the app's resident IBrain rather than a second IAIService,
-        // folding its authoritative instruction into one prompt.
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.IFailureAnalyst>(sp =>
-        {
-            var brain = sp.GetRequiredService<IBrain>();
-            return new CircleAI.Hosting.SelfHealing.FailureAnalyst(
-                (system, user, ct) => brain.AskAsync($"{system}\n\n{user}", token: null, ct));
-        });
-
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISelfHealPolicy,
-                                      CircleAI.Assistant.Device.DeviceSelfHealPolicy>();
-
-        // The safe, reversible remedies the loop may run on its own (v1: free the
-        // regenerable caches — boundaried, never code / money / security).
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISafeFix>(sp =>
-            new CircleAI.Assistant.Device.MemoryManagerSafeFix(
-                sp.GetRequiredService<CircleAI.Assistant.Device.MemoryManager>(), "cache", reclaimAll: false));
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISafeFix>(sp =>
-            new CircleAI.Assistant.Device.MemoryManagerSafeFix(
-                sp.GetRequiredService<CircleAI.Assistant.Device.MemoryManager>(), "memory", reclaimAll: true));
-
-        builder.Services.AddSingleton<CircleAI.Hosting.SelfHealing.ISelfHealer,
-                                      CircleAI.Hosting.SelfHealing.SelfHealer>();
-        builder.Services.AddSingleton<IHealingView, CircleAI.Assistant.Device.DeviceHealing>();
-
-        // ── MODEL CATALOGUE ─────────────────────────────────────────────────────
-        // The runtime SQLite catalogue is the single source of truth for model
-        // selection: a signed feed adds/re-pins rows, the device re-assesses them,
-        // the app reads the best it can run — no app release. This build ships the
-        // MNN engine only, so a GGUF model stays compatible=0 until one is added.
-        // The Wolverine bridge (wired via the ISelfHealer registered above) surfaces
-        // a refused feed or a "can run nothing" device into the self-heal log. The
-        // live IModelSelector is NOT swapped yet — that flip waits for the on-device
-        // demo (useAsPrimarySelector defaults false).
-        CircleAI.Hosting.ModelCatalogueServiceCollectionExtensions.AddModelCatalogue(
-            builder.Services,
-            System.IO.Path.Combine(FileSystem.AppDataDirectory, "CircleAI", "models.db"),
-            new[] { CircleAI.Core.ModelEngine.Mnn },
-            useAsPrimarySelector: true);   // the catalogue now drives model choice per device
+        // -- SELF-HEALING AND THE MODEL CATALOGUE ARE THE SERVICE'S --------------
+        // Both blocks that stood here are gone, and they are the clearest example of
+        // what thin costs and what it buys. The self-heal loop diagnoses a failure
+        // with the brain and fixes it by freeing the MODEL caches; the catalogue
+        // decides which model this device can run and downloads it. Neither means
+        // anything in a process that holds no model - and wiring them here is what
+        // referenced CircleAI.Hosting, and behind it the whole inference engine.
+        //
+        // THE SCREEN STAYS. ServiceHealing renders Wolverine and says where the
+        // watching happens, rather than showing an empty dashboard - "healed: 0,
+        // needs you: 0" reads as "nothing has gone wrong" when the truth is
+        // "nothing here is watching".
+        builder.Services.AddSingleton<IHealingView>(sp =>
+            new Services.ServiceHealing((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
         builder.Services.AddMauiBlazorWebView();
 
@@ -254,65 +221,45 @@ public static class MauiProgram
 
         var app = builder.Build();
 
-        // ── SELF-HEALING HOOKS ──────────────────────────────────────────────────
-        // Every screen already funnels caught failures through Trouble.Say — point it
-        // at the loop. Unhandled managed failures come through the runtime's channels.
-        // The healer is resolved lazily so a failure during startup still finds it.
-        Trouble.Observer = ex => Heal(app, ex, "app");
+        // -- FAILURE HOOKS, WITHOUT A HEALER ------------------------------------
+        // The funnels stay wired, because losing a failure silently is worse than not
+        // fixing it: every screen's catch block goes through Trouble.Say, and the
+        // runtime's two channels are where a failure nobody caught turns up. They go
+        // to logcat here rather than into a loop, because the loop is in CircleAI.
+        //
+        // WHAT IS LOST BY THAT, PLAINLY: this app's own failures no longer reach
+        // Wolverine. Closing it means a healing verb on the link - a protocol change
+        // with its own scope, not something to paper over here.
+        Trouble.Observer = ex => Note(ex, "app");
 
         System.AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            if (e.ExceptionObject is System.Exception ex) Heal(app, ex, "unhandled");
+            if (e.ExceptionObject is System.Exception ex) Note(ex, "unhandled");
         };
 
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Heal(app, e.Exception, "background-task");
-            e.SetObserved();   // recorded — don't let it tear the process down.
+            Note(e.Exception, "background-task");
+            e.SetObserved();   // recorded - don't let it tear the process down.
         };
 
-        // ── MODEL CATALOGUE BOOTSTRAP ───────────────────────────────────────────
-        // Seed the catalogue on first run and assess it against this device, so the
-        // ladder exists offline and the self-heal log sees what can run here. Never
-        // fails the app; a heuristic (unmeasured) probe stays quiet rather than cry
-        // "can run nothing" on a guessed RAM figure.
-        try
-        {
-            CircleAI.Inference.CatalogueBootstrap.Run(
-                app.Services.GetRequiredService<CircleAI.Core.Models.IModelCatalog>(),
-                app.Services.GetRequiredService<CircleAI.Inference.IModelAssessor>(),
-                CircleAI.Core.DeviceProbe.Snapshot(),
-                app.Services.GetService<CircleAI.Core.Models.IModelCatalogObserver>(),
-                reclaimInferior: true);   // housekeeping: shed a model a better one on disk supersedes
-        }
-        catch { /* a catalogue bootstrap hiccup must not stop the app starting */ }
-
-        // Keep the catalogue current from ANY connection, and make its own failures
-        // VISIBLE: route catalogue diagnostics (a failed refresh, a sink that threw)
-        // into the self-heal loop so Wolverine shows them rather than a silent
-        // "quietly doing nothing". Attach the sink so an internet refresh AND an
-        // aethernet offer both flow in, then kick BOTH internet hosts (ModelScope +
-        // HuggingFace; each self-throttles, offline is a no-op).
-        CircleAI.Core.Models.ModelCatalogue.Diagnostics = (message, error) =>
-        {
-            if (error is not null) Heal(app, error, "model-catalogue");
-        };
-        try
-        {
-            app.Services.GetRequiredService<CircleAI.Inference.CatalogueUpdater>().Attach();
-            CircleAI.Core.Models.ModelCatalogue.RefreshInBackground();
-            _ = app.Services.GetRequiredService<CircleAI.Core.Models.HuggingFaceCatalogClient>().RefreshAsync();
-        }
-        catch (System.Exception ex) { Heal(app, ex, "model-catalogue-startup"); }
+        // NO CATALOGUE BOOTSTRAP. Seeding a model ladder, assessing it against this
+        // device, and refreshing it from ModelScope and HuggingFace all belong to the
+        // process that downloads and loads models. CircleAI does that; this app asks
+        // it questions.
 
         return app;
     }
 
-    // Route a failure into the self-heal loop, resolved lazily, and never let the
-    // routing itself throw — a healer that failed must not add a failure of its own.
-    private static void Heal(MauiApp app, System.Exception exception, string source)
+    // Write a failure down where it can be read, and never let the writing itself
+    // throw - a reporter that failed must not add a failure of its own.
+    private static void Note(System.Exception exception, string source)
     {
-        try { app.Services.GetRequiredService<CircleAI.Hosting.SelfHealing.ISelfHealer>().Heal(exception, source); }
-        catch { /* healing must never surface its own failure */ }
+        try
+        {
+            Android.Util.Log.Error("CircleAI.Trouble",
+                $"{source}: {exception.GetType().Name}: {exception.Message}");
+        }
+        catch { /* reporting must never surface its own failure */ }
     }
 }

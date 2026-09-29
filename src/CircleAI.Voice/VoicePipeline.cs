@@ -1,47 +1,8 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace CircleAI.Voice;
 
-/// <summary>
-/// Captures raw audio from a platform input (microphone) and exposes it as
-/// an asynchronous stream of PCM byte chunks. Implementations are expected
-/// to produce data in the format reported by <see cref="Format"/>.
-/// </summary>
-public interface IAudioCapture : IAsyncDisposable
-{
-    /// <summary>The PCM format produced by <see cref="CaptureAsync"/>.</summary>
-    AudioFormat Format { get; }
-
-    /// <summary>
-    /// Begin capturing audio. The returned sequence yields PCM chunks until
-    /// the cancellation token is signalled or the underlying capture stops.
-    /// </summary>
-    /// <param name="ct">Cancellation token used to stop capture.</param>
-    IAsyncEnumerable<ReadOnlyMemory<byte>> CaptureAsync(CancellationToken ct);
-}
-
-/// <summary>
-/// No-op <see cref="IAudioCapture"/> that yields no audio. Used as a safe
-/// default when no platform microphone backend is available.
-/// </summary>
-public sealed class NullAudioCapture : IAudioCapture
-{
-    /// <inheritdoc />
-    public AudioFormat Format { get; } = AudioFormat.Pcm16Mono16k;
-
-    /// <inheritdoc />
-    public async IAsyncEnumerable<ReadOnlyMemory<byte>> CaptureAsync(
-        [EnumeratorCancellation] CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        await Task.CompletedTask.ConfigureAwait(false);
-        yield break;
-    }
-
-    /// <inheritdoc />
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
 
 /// <summary>
 /// Payload describing a completed transcription produced by

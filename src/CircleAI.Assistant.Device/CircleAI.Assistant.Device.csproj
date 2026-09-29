@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   The assistant on Android, in C#.
 
   NOT A MAUI LIBRARY, AND THAT IS THE WHOLE POINT. Everything in here used to
@@ -49,6 +49,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <!-- THE CLIENT HALF. Same namespace, split assembly: the service needs both
+         halves, a client needs only the other one. This is the direction that makes
+         the split useful — if it were reversed, a client referencing the client half
+         would still drag the engines in behind it. -->
+    <ProjectReference Include="..\CircleAIService.Shared\CircleAIService.Shared.csproj" />
     <ProjectReference Include="..\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />

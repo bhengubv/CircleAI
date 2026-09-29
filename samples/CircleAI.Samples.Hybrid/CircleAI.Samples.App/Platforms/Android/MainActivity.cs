@@ -1,4 +1,4 @@
-using Android.App;
+﻿using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
@@ -45,14 +45,13 @@ public class MainActivity : MauiAppCompatActivity
         base.OnCreate(savedInstanceState);
         Park(Intent);
 
-#if DEBUG
-        // DEBUG ONLY, AND OFF THE UI THREAD. Everything about the memory's
-        // design assumes a handset - SQLite because it is the only option on a
-        // phone, FTS5 with a LIKE floor because a build flag is not something
-        // to assume here - and none of it had ever run on one. This says what
-        // is actually true on this device. `adb logcat -s CircleMemory`.
-        MemoryProbe.Start(FilesDir?.AbsolutePath ?? CacheDir!.AbsolutePath);
-#endif
+        // THE MEMORY PROBE RAN HERE AND HAS MOVED TO THE SERVICE. It opened a real
+        // store, checked whether FTS5 was actually compiled in, recorded, recalled,
+        // rebuilt the index from the log and timed each part - a diagnostic of
+        // CircleAI.Memory, which is now the service's. Running it here would have
+        // meant this app referencing the memory library, and behind it Embeddings
+        // and the inference engine, to test a store it does not own.
+        // `adb logcat -s CircleMemory` on the CircleAI process.
     }
 
     /// <summary>
@@ -143,16 +142,20 @@ public class MainActivity : MauiAppCompatActivity
             {
                 try
                 {
-                    var manager = new CircleAI.Assistant.Device.MemoryManager(
-                        new CircleAI.Assistant.Device.DeviceResourcesReader());
-                    var freed = severe ? manager.ReclaimCaches() : manager.TrimCache(cap, keep);
+                    // THIS APP'S CACHE DIRECTORY, not Circle AI's footprint. The old
+                    // MemoryManager could also see downloaded models and the person's
+                    // memory and was careful never to touch them; AppCache cannot
+                    // reach either, which is the better version of that promise.
+                    var freed = severe
+                        ? CircleAI.Assistant.Device.AppCache.Empty()
+                        : CircleAI.Assistant.Device.AppCache.Trim(cap, keep);
                     if (freed > 0)
-                        Android.Util.Log.Info("CircleAI.Mem",
+                        Android.Util.Log.Info("CircleAI.Cache",
                             $"pressure cache tidy ({level}): freed {CircleAI.Assistant.MemoryBudget.Human(freed)}");
                 }
                 catch (System.Exception ex)
                 {
-                    Android.Util.Log.Warn("CircleAI.Mem", "pressure cache tidy failed: " + ex.Message);
+                    Android.Util.Log.Warn("CircleAI.Cache", "pressure cache tidy failed: " + ex.Message);
                 }
             });
         }

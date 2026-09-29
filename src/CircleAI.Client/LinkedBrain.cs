@@ -177,6 +177,15 @@ public sealed class LinkedBrain : IBrain, IDisposable
         return reply.Ok ? reply.Audio : Array.Empty<byte>();
     }
 
+    /// <summary>The bound client, for the siblings that ride the same link.</summary>
+    /// <remarks>
+    /// ONE BIND PER APP, not one per contract. LinkedMemory needs the same service,
+    /// the same consent and the same connection; giving it its own would cost a second
+    /// round trip and a second grant check for nothing, and would leave two objects
+    /// disagreeing about whether the link is up.
+    /// </remarks>
+    internal Task<CircleAiLinkClient?> LinkAsync(CancellationToken ct) => ConnectAsync(ct);
+
     private static string NotLinked() =>
         "CircleAI is not linked to this app yet. Approve the link to use the shared brain.";
 

@@ -74,7 +74,7 @@ public static class LinkIpc
     /// its own with its own store listing, and the sample is one of its clients.
     /// <para>
     /// IT MUST MATCH the service head's <c>ApplicationId</c>
-    /// (<c>samples/CircleAI.Service.Android</c>). They are one fact: if they differ,
+    /// (<c>samples/CircleAIService</c>). They are one fact: if they differ,
     /// <c>CircleAiLinkClient.IsInstalled</c> reads false on a device where the service
     /// is installed and running, no bind is ever attempted, and nothing reports an
     /// error — the client simply behaves as though CircleAI were absent.

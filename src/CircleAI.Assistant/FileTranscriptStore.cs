@@ -10,6 +10,11 @@
 // NOTHING LEAVES THE DEVICE. The path handed in is app-private storage. There is
 // no sync, no backup and no upload, and forgetting one deletes the file. That is
 // the product's posture, not a setting.
+//
+// IT LIVES BESIDE ITS INTERFACE NOW, having sat in CircleAI.Assistant.Runtime -
+// which reaches Hosting and then Inference, the whole engine - for a class that
+// needs a folder and System.Text.Json. The thin app keeps its own transcripts and
+// must not carry an inference engine to do it.
 
 using System.Text.Json;
 using System.Text.Json.Serialization;

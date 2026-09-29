@@ -37,7 +37,12 @@ INFRASTRUCTURE = (
     # Assistant.Runtime, Assistant.Device and Assistant.Sweep, because the
     # classifier matches a name or a dotted prefix of it.
     "Assistant",
-    "Accessibility", "Aether", "AetherNet", "Agents", "Ambient", "BuildFarm",
+    # Audio is the engine-free half of Voice - sample formats, the microphone and
+    # speaker contracts, WAV, VAD, transcripts. Same reason Voice is here: nobody
+    # picks "Audio" off a list, it is what Listening and Talking are built out of.
+    # It exists as its own project so a thin client can open the microphone
+    # without shipping ONNX Runtime and Whisper; see CircleAI.Audio.csproj.
+    "Accessibility", "Aether", "AetherNet", "Agents", "Ambient", "Audio", "BuildFarm",
     "Cast", "Client", "CodeUnderstanding", "ContentPolicy", "Core", "DepBot", "Desktop",
     "Device", "DevTools", "Distribution", "DocAnalytics", "Domain", "Embeddings",
     "Federation", "Hosting", "Identity", "Inference", "Inputs", "Integration",

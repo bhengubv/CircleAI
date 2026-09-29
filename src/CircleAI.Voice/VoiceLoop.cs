@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 // VoiceLoop.cs
 //
@@ -22,21 +22,6 @@ using System.Threading.Tasks;
 
 namespace CircleAI.Voice;
 
-/// <summary>Audio sink — plays synthesised PCM. Hosts back this with a platform player.</summary>
-public interface IAudioPlayer : IAsyncDisposable
-{
-    /// <summary>Plays one PCM buffer to completion.</summary>
-    Task PlayAsync(ReadOnlyMemory<byte> pcm, int sampleRate, int channels, int bitsPerSample, CancellationToken ct = default);
-}
-
-/// <summary>Discards audio. Lets the loop run headless (tests, servers) without a speaker.</summary>
-public sealed class NullAudioPlayer : IAudioPlayer
-{
-    public Task PlayAsync(ReadOnlyMemory<byte> pcm, int sampleRate, int channels, int bitsPerSample, CancellationToken ct = default)
-        => Task.CompletedTask;
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-}
 
 /// <summary>One completed hands-free exchange.</summary>
 public sealed class VoiceExchangeEventArgs : EventArgs

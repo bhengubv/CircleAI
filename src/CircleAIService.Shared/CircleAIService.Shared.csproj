@@ -1,0 +1,131 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The CLIENT half of the Android assistant.
+
+    THE SPLIT IS BY COST, NOT BY DEVICE-ISHNESS. Everything here is cheap and belongs
+    to the app somebody is looking at: the microphone and its capture, the wake word
+    (a 7 MB model, and round-tripping audio frames to another process per frame would
+    be absurd), playback, paths, settings, the skill index. What is NOT here is
+    anything that loads a big model — inference, the TTS voices, the phonemiser, the
+    resident service. Those live in CircleAI.Assistant.Device and ship in the service
+    app, because a recogniser and a voice are hundreds of megabytes and fifteen apps
+    on a 3 GB phone cannot each hold a copy.
+
+    SAME NAMESPACE AS THE HALF IT CAME FROM (CircleAI.Assistant.Device), on purpose.
+    Thirty-six files shared one namespace, so splitting the ASSEMBLY while keeping the
+    namespace means not one consumer's `using` changes — the move is a packaging
+    decision, not a source-compatibility event. A client picks up this project, a
+    service picks up both.
+
+    IT MUST NOT GROW A REFERENCE TO CircleAI.Inference OR CircleAI.Device. That is the
+    whole point: those two are what dragged the engines and a second copy of the
+    resident service into every client APK. If something here needs them, it belongs
+    on the other side of the line.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- .Shared BECAUSE TWO PROJECTS MAY NOT SHARE A FILE NAME. This was
+         src/CircleAIService, and samples/CircleAIService is the service app; the
+         moment the service head referenced this library (through
+         CircleAI.Assistant.Device) NuGet restore failed outright with "error:
+         Ambiguous project name 'CircleAIService'". It keys on the project FILE
+         name, so AssemblyName does not settle it - one of the two files has to be
+         called something else.
+
+         The app keeps its name, because that one is a store listing. This is the
+         shared half both heads compile against: microphone, speaker, paths,
+         settings, cache. The namespace is untouched (CircleAI.Assistant.Device),
+         so no call site changed. -->
+    <PackageId>CircleAIService.Shared</PackageId>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- CARRIED ACROSS FROM THE HALF THIS SPLIT OFF, and its old comment says exactly
+         why it matters: without it AndroidAudio.cs compiles to an EMPTY FILE and
+         AndroidAudioCapture reads as a missing namespace rather than a missing
+         definition — which is what the first build of this project reported. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+
+    <!--
+      NO ENGINE NATIVES, AND THIS IS THE ONE THAT WAS INVISIBLE. The repo-root
+      Directory.Build.targets adds MNN and Whisper to EVERY project whose platform
+      is android - both default to true - and this is an android class library. An
+      app packages the native libraries of the android libraries it references, so
+      a client that had dropped every inference PROJECT reference still shipped
+      libMNN.so, libMNN_CL.so, libMNN_Express.so, libMNN_Vulkan.so, libllm.so,
+      libmnnbridge.so and five whisper/ggml libraries - through here.
+
+      It cost 23.7 MB in an APK where nothing could call a line of it, and no
+      reference graph showed it: the only way to find it was to list the APK.
+
+      The SERVICE still gets both, because samples/CircleAIService is an android
+      app in its own right and does not opt out - the root targets bundle them
+      there, next to the models they load.
+    -->
+    <CircleAIBundleMnn>false</CircleAIBundleMnn>
+    <CircleAIBundleWhisper>false</CircleAIBundleWhisper>
+    <Description>
+      The client half of CircleAI's Android assistant: microphone capture, wake word,
+      playback, paths and settings. Carries no inference engine and no resident
+      service — a client asks the standalone CircleAI service for anything that needs
+      a model.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
+    <!-- NO CircleAI.Skills. SkillLibrary unpacked a 5 MB database out of the APK
+         for a MODEL to look things up in, and it went to the service with the
+         model. Nothing here has referenced a skill since. -->
+    <!-- NO CircleAI.Memory, AND THAT ONE LINE WAS THE WHOLE ENGINE. It reaches
+         CircleAI.Embeddings, which reaches CircleAI.Inference: an app that only
+         wanted to remember a name shipped MNN, ONNX Runtime and the model
+         catalogue, transitively, with no line of its own code naming any of it.
+         DeviceMemory went to CircleAI.Assistant.Device with the rest of the
+         service half; a client asks over the link (CircleAI.Client.LinkedMemory),
+         which is the right split anyway - one person's memory on one device,
+         not a copy per app that asked. -->
+    <!-- AUDIO, NOT THE VOICE STACK. This needs the microphone, the speaker, the
+         sample format, WAV and a level-based VAD - all of which used to come from
+         CircleAI.Voice, and brought Microsoft.ML.OnnxRuntime and Whisper.net.Runtime
+         with them. NuGet native assets are not optional for a consumer, so opening
+         the microphone cost this app 18.3 MB of libonnxruntime.so and five whisper
+         libraries it could not call.
+
+         Synthesis, transcription and the keyword spotter stay on the service side,
+         and with them the espeak phonemiser - which is GPL-3.0 and kept out of
+         process precisely so linking it would not relicense an app. -->
+    <ProjectReference Include="..\CircleAI.Audio\CircleAI.Audio.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SQLite, DECLARED RATHER THAN INHERITED. SqliteAppStore has always needed it
+         and never said so: it arrived behind CircleAI.Skills, so removing an
+         unrelated reference broke the app's settings store. A dependency a file
+         actually uses belongs in the project that holds the file. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      THE SERVICE HALF SEES THIS ONE'S INTERNALS, because the two were a single
+      assembly until now and shared internal types freely — PlatformAudio is the one
+      the compiler found first.
+
+      InternalsVisibleTo rather than making them public: the split is a PACKAGING
+      decision, and widening a NuGet package's public surface to serve it would mean
+      third parties depending on types that were never meant to be an API. The other
+      direction is not granted — the client must not reach into the service half, and
+      the missing grant is what stops that happening by accident.
+    -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>CircleAI.Assistant.Device</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

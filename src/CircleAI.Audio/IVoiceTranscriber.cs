@@ -1,4 +1,4 @@
-namespace CircleAI.Voice;
+﻿namespace CircleAI.Voice;
 
 /// <summary>
 /// Converts captured audio into text. Implementations are expected to consume
@@ -103,11 +103,11 @@ public sealed record TranscriptSegment(string Text, TimeSpan Start, TimeSpan End
 
     /// <summary>Who said it, or <c>null</c> when that is not known.</summary>
     /// <remarks>
-    /// A LABEL, NOT A NAME. <see cref="Diarisation"/> fills this with
+    /// A LABEL, NOT A NAME. Diarisation fills this with
     /// "Speaker 1", "Speaker 2" and so on - it can tell voices apart without
     /// having any idea who they belong to, which is the whole point for a
     /// recording of people who never enrolled. Putting a real name here is
-    /// <see cref="ISpeakerIdentity"/>'s job and needs enrolment.
+    /// ISpeakerIdentity's job and needs enrolment.
     /// <para>
     /// A PROPERTY RATHER THAN A FOURTH POSITIONAL PARAMETER, so every existing
     /// construction site keeps compiling and simply reports no speaker - which

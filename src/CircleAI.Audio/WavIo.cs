@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 
 namespace CircleAI.Voice;
 
@@ -7,14 +7,26 @@ namespace CircleAI.Voice;
 /// </summary>
 /// <remarks>
 /// Deliberately small: it exists so a reference recording can become the float
-/// samples <see cref="PocketTtsEngine"/> needs, on every platform CircleAI
+/// samples PocketTtsEngine needs, on every platform CircleAI
 /// ships to, without dragging in an audio library. It reads what the voice
 /// stack actually encounters — PCM 8/16/24/32-bit and IEEE float — and refuses
 /// anything else loudly rather than producing noise.
 /// </remarks>
 public static class WavIo
 {
-    private const int TargetRate = PocketTtsEngine.SampleRate;
+    // 24 kHz, WHICH IS PocketTtsEngine.SampleRate AND MUST STAY THAT.
+    //
+    // It used to read that constant directly. It cannot now: PocketTtsEngine is an
+    // ONNX engine and lives in CircleAI.Voice, which references this assembly - the
+    // other way round would be a cycle, and referencing it back would put ONNX
+    // Runtime into every client that opens a WAV file, which is the whole reason
+    // this project exists.
+    //
+    // A duplicated constant is a thing that can drift, so say plainly what binds it:
+    // this is the rate the reference recording for voice cloning must be at, and
+    // PocketTtsEngine.SampleRate is the same number for the same reason. There is a
+    // test asserting they agree (WavIoRateTests), because a comment is not a check.
+    private const int TargetRate = 24_000;
 
     /// <summary>
     /// Read a WAV file as mono float samples at 24 kHz, resampling if needed.
