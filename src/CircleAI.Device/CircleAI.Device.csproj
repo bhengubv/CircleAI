@@ -27,6 +27,14 @@
     <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <!-- HOW A MODEL IS FOUND. CircleNeuronService hosts the device's one brain, and
+         AIService cannot resolve a model without a loader and a selector - it threw
+         "AIService needs either AIOptions.ModelPath or an IModelLoader" and the node
+         stayed null for ever. BundleModelLoader and DeviceAwareModelSelector live
+         here. Pinning a path instead would hardcode a model name, which is the one
+         thing model acquisition must never do. Only the service references this
+         project, so the thin app carries none of it. -->
+    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
     <!-- The cross-app link door (CircleNeuronLinkService) authorizes callers by
          the link grant policy and the biometric/PIN gate contract. -->
     <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />

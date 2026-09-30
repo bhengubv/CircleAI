@@ -1,4 +1,4 @@
-// CircleNeuronService.cs
+﻿// CircleNeuronService.cs
 //
 // The resident device service: one process that owns the models, so the apps
 // don't each own their own.
@@ -28,6 +28,8 @@ using Android.App;
 using Android.Content;
 using Android.OS;
 using CircleAI.Core;
+using CircleAI.Core.Models;
+using CircleAI.Inference;
 using CircleAI.Hosting;
 using CircleAI.Hosting.Neuron;
 
@@ -378,8 +380,14 @@ public sealed partial class CircleNeuronService : Service
                 return;
             }
 
+            // EVERY STATE ON THIS PATH GOES TO LOGCAT AS WELL AS THE SHADE. It used
+            // to go ONLY to the notification: a load that failed wrote its reason into
+            // a line of text on the lock screen and nowhere else, so from outside the
+            // phone the service was indistinguishable from one still thinking. The
+            // only branch that logged was "no brain was asked for".
             Status = "loading the model…";
             State  = ServiceState.Loading;
+            global::Android.Util.Log.Info(LogTag, Status);
             Notify(Status);
 
             NeuronNode node;
@@ -391,12 +399,32 @@ public sealed partial class CircleNeuronService : Service
                 // AIService's brownout path — the one that downshifts and releases —
                 // so Android's onTrimMemory and the idle timer both end up pulling
                 // the same lever the design already built.
+                // A LOADER AND A SELECTOR, OR THERE IS NO MODEL. These were all null,
+                // and that was survivable only while nothing ever asked this service
+                // for a brain: AIService.ResolveModelPathAsync throws "needs either
+                // AIOptions.ModelPath or an IModelLoader" the moment it is started,
+                // the catch below wrote the reason into a notification, and Node
+                // stayed null for ever. From outside, every question came back
+                // "brain warming up, try again shortly" - indefinitely.
+                //
+                // THE SELECTOR IS THE POINT, not a detail. Pinning AIOptions.ModelPath
+                // would also have cleared the exception, and would hardcode a model
+                // name into the service - the one thing model acquisition must never
+                // do. DeviceAwareModelSelector asks what THIS phone can hold and
+                // picks; that is how a P30 and a flagship run the same build.
+                //
+                // The same three objects CircleAISession builds for an in-process
+                // brain, over the same store, so a service and a host head cannot
+                // disagree about which model the device is running.
+                var options  = factory();
+                var registry = new ModelRegistryService();
+
                 node = new NeuronNode(new AIService(
-                    factory(),
-                    modelLoader:          null,
+                    options,
+                    modelLoader:          new BundleModelLoader(options.ModelStorageDirectory!, registry),
                     generatorFactory:     null,
-                    modelSelector:        null,
-                    modelRegistry:        null,
+                    modelSelector:        new DeviceAwareModelSelector(registry),
+                    modelRegistry:        registry,
                     memoryPressureSource: Memory));
                 Node = node;
             }
@@ -407,6 +435,8 @@ public sealed partial class CircleNeuronService : Service
 
             Status = node.IsReady ? "ready" : node.StatusMessage;
             State  = node.IsReady ? ServiceState.Ready : ServiceState.Failed;
+            if (node.IsReady) global::Android.Util.Log.Info(LogTag, "brain ready");
+            else global::Android.Util.Log.Warn(LogTag, "brain did not come up: " + Status);
 
             // Only once there is something worth releasing. Started earlier it
             // would spend the whole cold load counting the model as idle.
@@ -421,6 +451,7 @@ public sealed partial class CircleNeuronService : Service
             // read Status and say something true instead of hanging.
             Status = $"failed to load: {ex.Message}";
             State  = ServiceState.Failed;
+            global::Android.Util.Log.Error(LogTag, $"{ex.GetType().Name}: {ex}");
             Notify(Status);
         }
     }
