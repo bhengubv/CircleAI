@@ -67,6 +67,52 @@ public enum LinkVerb
 
     /// <summary>Where the run started by <see cref="SetupStart"/> has got to.</summary>
     SetupProgress,
+
+    // -- THE SERVICE'S OWN SETTINGS ---------------------------------------------
+    //
+    // SAYING "OPEN CIRCLEAI" IS NOT AN ANSWER WHEN CIRCLEAI HAS NO LAUNCHER ICON.
+    // The wake-phrase row told a person to open an app they cannot open - honest
+    // about where the setting lives and useless as advice. A service with no screens
+    // can only be configured from an app that has some, so its settings come across
+    // the wire like everything else.
+
+    /// <summary>The wake phrases for a language, each row [text, chosen, builtIn, quality, advice].</summary>
+    WakePhrasesFor,
+
+    /// <summary>Judge a typed phrase without adding it: one row of [added, quality, advice].</summary>
+    WakePhraseCheck,
+
+    /// <summary>Add a phrase for a language, unless it cannot work at all.</summary>
+    WakePhraseAdd,
+
+    /// <summary>Listen for this phrase from now on.</summary>
+    WakePhraseChoose,
+
+    /// <summary>Remove a phrase the person added. Built-in phrases stay.</summary>
+    WakePhraseRemove,
+
+    // -- LISTENING, AND WHAT THE SERVICE HOLDS ----------------------------------
+    //
+    // The last two rows that reported instead of controlling. "Answer to its name"
+    // told the person to open CircleAI to turn listening on - the same unreachable
+    // advice the wake phrase gave - and the abilities read "Nothing for this yet"
+    // because the client, having no models, truthfully had nothing. Both answers
+    // are about the SERVICE, so both come from it.
+
+    /// <summary>What the resident listener is doing: one row of [state, status, hint].</summary>
+    ResidentStatus,
+
+    /// <summary>Start listening for the wake phrase. Same row shape as <see cref="ResidentStatus"/>.</summary>
+    ResidentStart,
+
+    /// <summary>Stop listening. Same row shape.</summary>
+    ResidentStop,
+
+    /// <summary>What this device can actually do: [title, blurb, state, bytes].</summary>
+    Abilities,
+
+    /// <summary>What Circle AI holds here: [label, size, regenerable], then a totals row.</summary>
+    Footprint,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -115,6 +161,24 @@ public static class LinkVerbs
         LinkVerb.SetupCensus    => LinkScope.Chat,
         LinkVerb.SetupStart     => LinkScope.Chat,
         LinkVerb.SetupProgress  => LinkScope.Chat,
+
+        // THE WAKE PHRASE IS WHAT THE MICROPHONE LISTENS FOR, so it is gated on Voice
+        // rather than the chat floor: changing it changes what the service does with
+        // an open microphone, which is a bigger thing than asking it a question.
+        LinkVerb.WakePhrasesFor   => LinkScope.Voice,
+        LinkVerb.WakePhraseCheck  => LinkScope.Voice,
+        LinkVerb.WakePhraseAdd    => LinkScope.Voice,
+        LinkVerb.WakePhraseChoose => LinkScope.Voice,
+        LinkVerb.WakePhraseRemove => LinkScope.Voice,
+
+        // Listening is the microphone, so it is Voice. What the service HOLDS is not
+        // private - it is the same list the setup census gives - so the chat floor
+        // covers reading it.
+        LinkVerb.ResidentStatus => LinkScope.Voice,
+        LinkVerb.ResidentStart  => LinkScope.Voice,
+        LinkVerb.ResidentStop   => LinkScope.Voice,
+        LinkVerb.Abilities      => LinkScope.Chat,
+        LinkVerb.Footprint      => LinkScope.Chat,
         _                     => LinkScope.Chat,
     };
 }
@@ -162,6 +226,31 @@ public static class LinkSetupRows
             remainingSeconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
             phase,
         };
+
+    /// <summary>One wake phrase: [text, chosen, builtIn, quality, advice].</summary>
+    public static IReadOnlyList<string> WakePhrase(
+        string text, bool chosen, bool builtIn, string quality, string advice)
+        => new[] { text, chosen ? "1" : "0", builtIn ? "1" : "0", quality, advice };
+
+    /// <summary>A verdict on a phrase: [added, quality, advice].</summary>
+    public static IReadOnlyList<string> WakeVerdict(bool added, string quality, string advice)
+        => new[] { added ? "1" : "0", quality, advice };
+
+    /// <summary>The resident listener: [state, status, hint].</summary>
+    public static IReadOnlyList<string> Resident(string state, string status, string hint)
+        => new[] { state, status, hint };
+
+    /// <summary>One ability: [title, blurb, state, bytes].</summary>
+    public static IReadOnlyList<string> Ability(string title, string blurb, string state, long? bytes)
+        => new[]
+        {
+            title, blurb, state,
+            bytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+        };
+
+    /// <summary>One storage line: [label, size, regenerable].</summary>
+    public static IReadOnlyList<string> Storage(string label, string size, bool regenerable)
+        => new[] { label, size, regenerable ? "1" : "0" };
 
     /// <summary>Read a column, or a default when the row is short or the text will not parse.</summary>
     /// <remarks>

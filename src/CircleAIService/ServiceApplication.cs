@@ -155,6 +155,21 @@ public sealed class ServiceApplication : Application
             WarmOnStart           = true,
         };
 
+        // WHAT THE PHONE ANSWERS TO. DeviceWakePhrases keeps the chosen phrase in this
+        // app's own store and judges a new one against the KWS bundle's tokeniser -
+        // both of which are here, which is exactly why a client could only ever be
+        // told to go elsewhere. Wired, it can be set from any approved app.
+        CircleNeuronLinkService.WakePhrases = new DeviceWakePhrases(
+            new SqliteAppStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI", "app.db")));
+
+        // LISTENING, AND WHAT THIS DEVICE HOLDS. The last two rows in the client's
+        // settings that could only report: "Answer to its name" pointed at an app with
+        // no launcher icon, and the abilities read "Nothing for this yet" because the
+        // client has no models to count. Both facts are here, so both are served here.
+        var footprint = new MemoryManager(new DeviceResourcesReader());
+        CircleNeuronLinkService.Resident = new ResidentListeningControl(this);
+        CircleNeuronLinkService.Facts    = new DeviceFacts(footprint);
+
         // AND THE SKILL LIBRARY, off the UI thread: the first call unpacks 20 MB out
         // of the APK, and OnCreate runs before any component does. Nothing needs it
         // until a turn, and a bind that arrives first will simply find it a moment

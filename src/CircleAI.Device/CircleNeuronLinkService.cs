@@ -97,6 +97,33 @@ public sealed class CircleNeuronLinkService : Service
     public static ISetup? Setup { get; set; }
 
     /// <summary>
+    /// The wake phrases this device listens for. Set by the host; null refuses.
+    /// </summary>
+    /// <remarks>
+    /// THE ROW THAT USED TO SAY "OPEN CIRCLEAI" is why this exists. A client can see
+    /// that the wake phrase belongs to the service - that part was always honest -
+    /// but it could do nothing about it, and the app it pointed at has no launcher
+    /// icon to open. Judging a phrase needs the KWS model's own tokeniser, which
+    /// lives here with the model, so the judgement travels rather than the model.
+    /// </remarks>
+    public static IWakePhrases? WakePhrases { get; set; }
+
+    /// <summary>The resident listener, so a client can turn listening on and off.</summary>
+    /// <remarks>
+    /// "Answer to its name" used to tell the person to open CircleAI - an app with no
+    /// launcher icon. The microphone and the foreground service are here; the switch
+    /// has to be reachable from somewhere with a screen.
+    /// </remarks>
+    public static IResidentAssistant? Resident { get; set; }
+
+    /// <summary>What this device can do and what Circle AI holds on it.</summary>
+    /// <remarks>
+    /// The client's own answer was "Nothing for this yet" - truthful, since it holds
+    /// no models, and useless, since the question is about the device.
+    /// </remarks>
+    public static IDeviceFacts? Facts { get; set; }
+
+    /// <summary>
     /// The run started by <see cref="LinkVerb.SetupStart"/>, and the last thing it said.
     /// </summary>
     /// <remarks>
@@ -252,6 +279,96 @@ public sealed class CircleNeuronLinkService : Service
 
         switch (req.Verb)
         {
+            case LinkVerb.ResidentStatus:
+            case LinkVerb.ResidentStart:
+            case LinkVerb.ResidentStop:
+            {
+                var resident = Resident;
+                if (resident is null) return LinkRowsReply.Failure("listening not available");
+
+                var status = req.Verb switch
+                {
+                    LinkVerb.ResidentStart => await resident.StartAsync().ConfigureAwait(false),
+                    LinkVerb.ResidentStop  => await resident.StopAsync().ConfigureAwait(false),
+                    _                      => await resident.RefreshAsync().ConfigureAwait(false),
+                };
+
+                return LinkRowsReply.Success(new[]
+                {
+                    LinkSetupRows.Resident(status.State.ToString(), status.Status, status.Hint),
+                });
+            }
+
+            case LinkVerb.Abilities:
+            {
+                var facts = Facts;
+                if (facts is null) return LinkRowsReply.Failure("device facts not available");
+                var rows = await facts.AbilitiesAsync().ConfigureAwait(false);
+                return LinkRowsReply.Success(rows
+                    .Select(a => LinkSetupRows.Ability(a.Title, a.Blurb, a.State.ToString(), a.Bytes))
+                    .ToList());
+            }
+
+            case LinkVerb.Footprint:
+            {
+                var facts = Facts;
+                if (facts is null) return LinkRowsReply.Failure("device facts not available");
+                var report = await facts.StorageAsync().ConfigureAwait(false);
+
+                // THE TOTALS RIDE AS THE LAST ROW rather than as their own verb: one
+                // round trip, and a screen that has the lines always has the total
+                // that goes with them. Marked by an empty label, which no real line has.
+                var rows = report.Lines
+                    .Select(l => LinkSetupRows.Storage(l.Label, l.Size, l.Regenerable))
+                    .ToList();
+                rows.Add(LinkSetupRows.Storage(string.Empty, report.Total, false));
+                rows.Add(LinkSetupRows.Storage(string.Empty, report.Freeable, true));
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.WakePhrasesFor:
+            {
+                var phrases = WakePhrases;
+                if (phrases is null) return LinkRowsReply.Failure("wake phrases not available");
+                var all = await phrases.ForAsync(req.Query ?? "en").ConfigureAwait(false);
+                return LinkRowsReply.Success(all
+                    .Select(o => LinkSetupRows.WakePhrase(
+                        o.Text, o.Chosen, o.BuiltIn, o.Quality.ToString(), o.Advice))
+                    .ToList());
+            }
+
+            case LinkVerb.WakePhraseCheck:
+            case LinkVerb.WakePhraseAdd:
+            {
+                var phrases = WakePhrases;
+                if (phrases is null) return LinkRowsReply.Failure("wake phrases not available");
+                if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("no phrase");
+
+                var verdict = req.Verb == LinkVerb.WakePhraseAdd
+                    ? await phrases.AddAsync(req.Query ?? "en", req.Text!).ConfigureAwait(false)
+                    : await phrases.CheckAsync(req.Query ?? "en", req.Text!).ConfigureAwait(false);
+
+                return LinkRowsReply.Success(new[]
+                {
+                    LinkSetupRows.WakeVerdict(verdict.Added, verdict.Quality.ToString(), verdict.Advice),
+                });
+            }
+
+            case LinkVerb.WakePhraseChoose:
+            case LinkVerb.WakePhraseRemove:
+            {
+                var phrases = WakePhrases;
+                if (phrases is null) return LinkRowsReply.Failure("wake phrases not available");
+                if (string.IsNullOrWhiteSpace(req.Text)) return LinkRowsReply.Failure("no phrase");
+
+                if (req.Verb == LinkVerb.WakePhraseChoose)
+                    await phrases.ChooseAsync(req.Query ?? "en", req.Text!).ConfigureAwait(false);
+                else
+                    await phrases.RemoveAsync(req.Query ?? "en", req.Text!).ConfigureAwait(false);
+
+                return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+            }
+
             case LinkVerb.SetupReadiness:
             {
                 var setup = Setup;

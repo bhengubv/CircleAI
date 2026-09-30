@@ -157,6 +157,52 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> SetupProgressAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.SetupProgress), ct);
 
+    /// <summary>The wake phrases for a language: [text, chosen, builtIn, quality, advice].</summary>
+    /// <remarks>
+    /// THE JUDGEMENT TRAVELS, NOT THE MODEL. Deciding whether a typed phrase can
+    /// survive a room needs the keyword spotter's own tokeniser, which is hundreds of
+    /// megabytes and lives with the service. These five verbs let a client ask for the
+    /// verdict instead of carrying the thing that produces it.
+    /// </remarks>
+    public Task<LinkRowsReply> WakePhrasesForAsync(string language, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.WakePhrasesFor, Query: language), ct);
+
+    /// <summary>Judge a phrase without adding it: [added, quality, advice].</summary>
+    public Task<LinkRowsReply> WakePhraseCheckAsync(string language, string phrase, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.WakePhraseCheck, Query: language, Text: phrase), ct);
+
+    /// <summary>Add a phrase, unless it cannot work at all.</summary>
+    public Task<LinkRowsReply> WakePhraseAddAsync(string language, string phrase, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.WakePhraseAdd, Query: language, Text: phrase), ct);
+
+    /// <summary>Listen for this phrase from now on.</summary>
+    public Task<LinkRowsReply> WakePhraseChooseAsync(string language, string phrase, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.WakePhraseChoose, Query: language, Text: phrase), ct);
+
+    /// <summary>Remove a phrase the person added.</summary>
+    public Task<LinkRowsReply> WakePhraseRemoveAsync(string language, string phrase, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.WakePhraseRemove, Query: language, Text: phrase), ct);
+
+    /// <summary>What the resident listener is doing: [state, status, hint].</summary>
+    public Task<LinkRowsReply> ResidentStatusAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.ResidentStatus), ct);
+
+    /// <summary>Start listening for the wake phrase.</summary>
+    public Task<LinkRowsReply> ResidentStartAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.ResidentStart), ct);
+
+    /// <summary>Stop listening.</summary>
+    public Task<LinkRowsReply> ResidentStopAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.ResidentStop), ct);
+
+    /// <summary>What this device can actually do: [title, blurb, state, bytes].</summary>
+    public Task<LinkRowsReply> AbilitiesAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Abilities), ct);
+
+    /// <summary>What Circle AI holds here: lines, then total and freeable as the last two rows.</summary>
+    public Task<LinkRowsReply> FootprintAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Footprint), ct);
+
     /// <summary>Transacts one structured verb. Mirrors <see cref="AskAsync"/>: blocks
     /// internally, off the calling thread.</summary>
     private async Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)

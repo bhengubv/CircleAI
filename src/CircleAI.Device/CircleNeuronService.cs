@@ -418,12 +418,56 @@ public sealed partial class CircleNeuronService : Service
                 // disagree about which model the device is running.
                 var options  = factory();
                 var registry = new ModelRegistryService();
+                var loader   = new BundleModelLoader(options.ModelStorageDirectory!, registry);
+                var selector = new DeviceAwareModelSelector(registry);
 
+                // THE BRAIN LOADS WHAT IS THERE. IT DOES NOT FETCH.
+                //
+                // AIService.ResolveModelPathAsync downloads a missing model as part of
+                // starting, which is right for a host that has no other way to get one
+                // and wrong here: this app now has a setup path that a person drives
+                // from a client, and two downloads of the same file is not a race that
+                // resolves. It produced exactly that -
+                //
+                //   Download of '.../Qwen3.6-35B-A3B-MNN/.../llm.mnn.weight' failed
+                //   after 4 attempt(s) ... 'llm.mnn.weight.tmp' because it is being
+                //   used by another process
+                //
+                // - with the setup run holding the temp file, the brain retrying four
+                // times, failing, and the node never coming up while the download it
+                // was fighting carried on perfectly well.
+                //
+                // IT IS ALSO THE WRONG MOMENT TO SPEND SOMEBODY'S DATA. Asking a
+                // question should never be what starts a 21 GB download; the setup
+                // screen exists so that decision is made deliberately, with the size
+                // written next to it.
+                //
+                // So: if the chosen model is not on disk, say so and stop. The client
+                // reads that as "not set up", which is exactly what it is, and offers
+                // the download through the path built for it.
+                var wanted = options.ModelId;
+                if (string.IsNullOrWhiteSpace(wanted))
+                {
+                    var best = selector.BestFit(DeviceProbe.Snapshot(), options.RequiredCapabilities);
+                    wanted = best?.ModelId;
+                }
+
+                if (string.IsNullOrWhiteSpace(wanted) || !loader.ModelPresent(wanted!))
+                {
+                    Status = "no model on this device yet — set it up first";
+                    State  = ServiceState.Idle;
+                    global::Android.Util.Log.Info(LogTag, Status);
+                    Notify(Status);
+                    return;
+                }
+
+                // AIOptions is a class, not a record, so the resolved id is pinned on
+                // the instance the factory made rather than on a copy of it.
                 node = new NeuronNode(new AIService(
                     options,
-                    modelLoader:          new BundleModelLoader(options.ModelStorageDirectory!, registry),
+                    modelLoader:          loader,
                     generatorFactory:     null,
-                    modelSelector:        new DeviceAwareModelSelector(registry),
+                    modelSelector:        selector,
                     modelRegistry:        registry,
                     memoryPressureSource: Memory));
                 Node = node;

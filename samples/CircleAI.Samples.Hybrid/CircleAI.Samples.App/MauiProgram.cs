@@ -125,11 +125,13 @@ public static class MauiProgram
             sp.GetService<IBrain>(), sp.GetService<ISettings>(), sp.GetService<IPlaysMedia>()));
         builder.Services.AddSingleton<ICareerInterview, CareerInterviewHost>();
         builder.Services.AddSingleton<IJobSpecTailor, JobSpecTailor>();
-        // WAKE PHRASES ARE THE SERVICE'S. DeviceWakePhrases opens the KWS bundle's
-        // tokeniser out of the model store to judge a typed phrase, and the phrase it
-        // settles on is what the SERVICE listens for. Both halves are over there.
+        // WAKE PHRASES ARE THE SERVICE'S, AND NOW THEY ARE SETTABLE FROM HERE. The
+        // first version of this refused and told the person to "open CircleAI" - an
+        // app with no launcher icon, so the advice could not be followed. The judging
+        // still happens over there, because it reads the keyword spotter's own
+        // tokeniser; what travels is the verdict.
         builder.Services.AddSingleton<IWakePhrases>(sp =>
-            new Services.ServiceWakePhrases((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+            new CircleAI.Client.LinkedWakePhrases((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IShareTarget, AndroidShareTarget>();
         builder.Services.AddSingleton<IWakeWord>(sp => new Services.ServiceWakeWord((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
@@ -146,7 +148,7 @@ public static class MauiProgram
         // microphone. That is the always-on half and it belongs to the app with the
         // foreground service and the notification that discloses the microphone.
         builder.Services.AddSingleton<IResidentAssistant>(sp =>
-            new Services.ServiceResidentAssistant(
+            new CircleAI.Client.LinkedResidentAssistant(
                 (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
 
         // ONE MICROPHONE, SO ONE ANSWER TO WHAT IT IS DOING. Home's circle and the
