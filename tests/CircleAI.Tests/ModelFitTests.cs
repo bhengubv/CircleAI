@@ -1,4 +1,4 @@
-// ModelFitTests.cs
+﻿// ModelFitTests.cs
 //
 // The one function that decides whether a model can run on a phone, and it had no
 // test file. Not a thin one — none. It was reached only incidentally, through
@@ -11,6 +11,7 @@
 // handset and the app was OOM-killed on a P30, and once when an architectural
 // claim about mixture-of-experts let a 35B through the same gate.
 
+using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
 using Xunit;
@@ -73,6 +74,33 @@ public class ModelFitTests
     public void Without_a_measurement_there_is_no_discount()
     {
         Assert.Null(ModelFit.MmappedGb(Moe35B()));
+    }
+
+    [Fact]
+    public void Every_path_that_asks_whether_it_fits_gives_the_same_answer()
+    {
+        // ModelFit EXISTS BECAUSE THIS RULE HAD SIX COPIES THAT DISAGREED, and it
+        // still had a seventh: ModelChoice.Fits compared MinRamGb straight against
+        // usable RAM, never touching the mmap reasoning. That is the one the
+        // abilities screen asks, so fixing ModelFit changed nothing a person could
+        // see - "Answering - 22797 MB" on a 7.6 GB phone survived the fix untouched.
+        //
+        // This asserts they agree. A new caller that reimplements the arithmetic
+        // fails here rather than on somebody's handset.
+        var probe = new DeviceProbe(
+            RamAvailableBytes: (long)(CircleOsRamGb * 1_000_000_000),
+            StorageFreeBytes:  110L * 1_000_000_000,
+            Gpu:               GpuKind.None,
+            CpuCores:          8,
+            Thermal:           ThermalClass.Active,
+            Connectivity:      Connectivity.Online);
+
+        // FirstRun.Fits is private and builds the SETUP PLAN - the list a person
+        // taps - so it is reached the way a caller reaches it: through the plan. It
+        // was the eighth copy, and it kept offering the 35B while the abilities
+        // screen, already fixed, offered a 1.4 GB model.
+        Assert.Equal(ModelFit.Fits(Moe35B(), probe), ModelChoice.Fits(Moe35B(), probe));
+        Assert.False(ModelChoice.Fits(Moe35B(), probe));
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-// ModelChoice.cs
+﻿// ModelChoice.cs
 //
 // Which model this phone should use for a job. Asked in ONE place.
 //
@@ -40,13 +40,29 @@ public static class ModelChoice
 {
     /// <summary>Whether a phone can run it at all.</summary>
     /// <remarks>
-    /// Storage is only checked when the probe reports a figure: a device that
-    /// cannot measure free space returns 0, and refusing every model on that
-    /// basis would leave the app claiming a working phone can do nothing.
+    /// THE SEVENTH COPY OF THIS RULE, AND THE ONE THAT WAS MISSED. ModelFit exists
+    /// because "does this fit" had been written six times in six places and they
+    /// disagreed; this was a seventh, comparing MinRamGb straight against usable RAM
+    /// with no mention of weights or paging.
+    /// <para>
+    /// So while ModelFit learned to refuse an unmeasured mmap discount, this did not,
+    /// and it is what the abilities screen asks. Fixing ModelFit changed nothing a
+    /// person could see: Answering still offered 22797 MB — a 21.2 GB model — on a
+    /// 7.6 GB phone, because the number came through here.
+    /// </para>
+    /// <para>
+    /// The comment forty lines below says "THE SAME CHOICE THE CHAT SCREEN MAKES ...
+    /// One rule, one answer", written when the duplicate in DeviceBrain was removed.
+    /// It was true of that duplicate and not of this function. It is true now.
+    /// </para>
+    /// <para>
+    /// Storage is still only checked when the probe reports a figure: a device that
+    /// cannot measure free space returns 0, and refusing every model on that basis
+    /// would leave the app claiming a working phone can do nothing. ModelFit.Fits
+    /// keeps that behaviour.
+    /// </para>
     /// </remarks>
-    public static bool Fits(ModelEntry m, DeviceProbe probe)
-        => m.MinRamGb <= probe.UsableRamGb + 0.0001
-        && (probe.StorageFreeGb <= 0 || m.MinStorageGb <= probe.StorageFreeGb + 0.0001);
+    public static bool Fits(ModelEntry m, DeviceProbe probe) => ModelFit.Fits(m, probe);
 
     /// <summary>
     /// What is installed for this job, or the best thing that would fit.

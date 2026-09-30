@@ -1,4 +1,4 @@
-// CatalogueHousekeeping.cs
+﻿// CatalogueHousekeeping.cs
 //
 // "If a better model is found, housekeeping kicks in and a new model checks in."
 // This is the reclaim half: an INFERIOR model that has been SUPERSEDED by a better
@@ -84,8 +84,68 @@ public static class CatalogueHousekeeping
                 reclaim.Add(new HousekeepingReclaim(
                     m.Name,
                     $"superseded by {dominator.Name} (quality {dominator.QualityRank} > {m.QualityRank}, similar size)"));
+
+            // A MODEL THAT NO LONGER FITS IS NOT REMOVED, AND THAT IS DELIBERATE.
+            // It was tried here and a test said no: Never_removes_a_model_that_runs
+            // _here_for_a_better_one_that_does_not keeps an installed model that
+            // stopped fitting, because free space comes back, a fit rule gets
+            // corrected, and the bytes are already paid for. Re-downloading something
+            // already on the phone is a worse outcome than the disk it holds.
+            //
+            // The waste that prompted the question was not this shape anyway: it was
+            // 2.9 GB of a download that STOPPED - never installed, invisible to every
+            // rule here, and handled by SweepAbandoned below.
         }
         return reclaim;
+    }
+
+    /// <summary>
+    /// Delete download leftovers under <paramref name="modelsDirectory"/> that no
+    /// run is still writing to, and report the bytes freed.
+    /// </summary>
+    /// <param name="modelsDirectory">The model store.</param>
+    /// <param name="idleFor">
+    /// How long a temp file must have gone untouched before it counts as abandoned.
+    /// </param>
+    /// <remarks>
+    /// A CANCELLED DOWNLOAD LEAVES ITS BYTES BEHIND AND NOTHING EVER LOOKS AGAIN. The
+    /// reclaim policy above cannot see them: it reasons about INSTALLED models, and a
+    /// half-fetched bundle was never installed. On the device that found this, 2.9 GB
+    /// of a model nothing would ever load again sat in the store, invisible to every
+    /// rule and to the storage census's own idea of what is precious.
+    /// <para>
+    /// IDLE, NOT MERELY PRESENT, AND THAT IS THE WHOLE SAFETY OF IT. A download in
+    /// flight is a .tmp being written to this second; deleting it would kill a fetch
+    /// somebody is watching a progress bar for. Anything touched inside the window is
+    /// left alone, so the test for "abandoned" is time, not shape.
+    /// </para>
+    /// </remarks>
+    public static long SweepAbandoned(string modelsDirectory, TimeSpan idleFor)
+    {
+        if (string.IsNullOrWhiteSpace(modelsDirectory) || !Directory.Exists(modelsDirectory))
+            return 0;
+
+        var cutoff = DateTime.UtcNow - idleFor;
+        long freed = 0;
+
+        try
+        {
+            foreach (var tmp in Directory.EnumerateFiles(modelsDirectory, "*.tmp", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var fi = new FileInfo(tmp);
+                    if (fi.LastWriteTimeUtc > cutoff) continue;   // still being written
+                    var size = fi.Length;
+                    fi.Delete();
+                    freed += size;
+                }
+                catch { /* in use or vanished: leave it */ }
+            }
+        }
+        catch { /* the walk failing is not fatal */ }
+
+        return freed;
     }
 
     /// <summary>

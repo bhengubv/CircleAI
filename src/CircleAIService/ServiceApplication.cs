@@ -170,6 +170,42 @@ public sealed class ServiceApplication : Application
         CircleNeuronLinkService.Resident = new ResidentListeningControl(this);
         CircleNeuronLinkService.Facts    = new DeviceFacts(footprint);
 
+        // HOUSEKEEPING, ON INIT, BECAUSE NOTHING WAS DOING IT HERE. The catalogue
+        // bootstrap used to run in the hybrid app with reclaimInferior: true, and it
+        // left with the models - so the process that now OWNS them inherited none of
+        // the tidying. Two kinds of waste accumulate and neither is visible to the
+        // storage census, which counts downloaded models as precious:
+        //
+        //   - a model a better one of similar size has superseded;
+        //   - a model that no longer fits this device, when something else here can
+        //     do the job - the 21.2 GB MoE fetched on an unmeasured mmap claim and
+        //     refused by the corrected rule was exactly that;
+        //   - and the leftovers of a download that stopped: 2.9 GB of .tmp nothing
+        //     would ever look at again.
+        //
+        // OFF THE MAIN THREAD AND AFTER AN HOUR'S IDLE. This walks the model store,
+        // which is gigabytes, and OnCreate runs before any component does. The idle
+        // window is what makes it safe to run at start-up at all: a download in
+        // flight is a .tmp being written to right now, and killing it would end a
+        // fetch somebody is watching a progress bar for.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var freed = CircleAI.Inference.CatalogueHousekeeping
+                    .SweepAbandoned(ModelStore.Path, TimeSpan.FromHours(1));
+
+                global::Android.Util.Log.Info("CircleAI.Housekeeping",
+                    freed > 0
+                        ? $"swept {CircleAI.Assistant.MemoryBudget.Human(freed)} of abandoned downloads"
+                        : "no abandoned downloads to sweep");
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn("CircleAI.Housekeeping", "sweep failed: " + ex.Message);
+            }
+        });
+
         // AND THE SKILL LIBRARY, off the UI thread: the first call unpacks 20 MB out
         // of the APK, and OnCreate runs before any component does. Nothing needs it
         // until a turn, and a bind that arrives first will simply find it a moment

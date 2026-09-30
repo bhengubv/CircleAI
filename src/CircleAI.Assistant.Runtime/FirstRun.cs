@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 // FirstRun.cs
 //
@@ -653,11 +653,24 @@ public static class FirstRun
 
     /// <summary>Whether this model can run on this phone at all.</summary>
     /// <remarks>
-    /// Identical to the abilities screen's rule, and it depends on the platform
-    /// memory probe being installed — unwired, DeviceProbe reports the GC heap
-    /// (~100 MB) and this says no to everything. See CircleAIApplication.
+    /// IT SAID "IDENTICAL TO THE ABILITIES SCREEN'S RULE" AND WAS A COPY OF IT. That
+    /// sentence is the whole defect: a rule worth calling identical is a rule worth
+    /// calling, and this one drifted the moment the other was fixed. ModelFit learned
+    /// to refuse an unmeasured mmap discount, ModelChoice was pointed at it, and this
+    /// - which builds the SETUP PLAN, the list a person actually taps - kept comparing
+    /// MinRamGb straight against usable RAM.
+    /// <para>
+    /// So the abilities screen offered a 1.4 GB model while the download it started
+    /// ground through a 21.2 GB one, on a 7.6 GB phone. Eight copies of this rule have
+    /// existed; ModelFit replaced six, ModelChoice was the seventh, this was the
+    /// eighth. ModelFitTests now asserts all three surviving callers agree.
+    /// </para>
+    /// <para>
+    /// It still depends on the platform memory probe being installed - unwired,
+    /// DeviceProbe reports the GC heap (~100 MB) and every model is refused. See
+    /// AndroidDeviceMemory.Install.
+    /// </para>
     /// </remarks>
-    static bool Fits(ModelEntry m, DeviceProbe probe) =>
-        m.MinRamGb <= probe.UsableRamGb + 0.0001 &&
-        (probe.StorageFreeGb <= 0 || m.MinStorageGb <= probe.StorageFreeGb + 0.0001);
+    static bool Fits(ModelEntry m, DeviceProbe probe)
+        => CircleAI.Inference.ModelFit.Fits(m, probe);
 }
