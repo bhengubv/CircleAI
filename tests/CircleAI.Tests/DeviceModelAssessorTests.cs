@@ -129,6 +129,14 @@ public class DeviceModelAssessorTests
     // runtime memory-maps the weights. The compatible bit must follow what the
     // runtime will actually do: recommend it when mmap pages the rest off disk,
     // refuse it when the whole file would have to live in RAM and OOM the phone.
+    //
+    // THE FIXTURE CARRIES MmapResidentGb NOW, AND THAT IS THE POINT OF THE CHANGE.
+    // It used to declare MinRamGb 2.5 against 18 GB of weights and rely on ModelFit
+    // reading that as "an MoE means what it says" - which made this test the thing
+    // that certified the behaviour. On a real device that rule offered 21.2 GB to a
+    // 7.6 GB phone. The mmap ARITHMETIC this test is about is unchanged and still
+    // exercised; what changed is that the discount now needs a figure somebody
+    // watched, which is exactly what MmapResidentGb is for.
     [Fact]
     public void An_MoE_bundle_is_compatible_only_when_mmap_pages_its_weights()
     {
@@ -136,10 +144,11 @@ public class DeviceModelAssessorTests
         {
             Engine       = ModelEngine.Mnn,
             Modality     = ModelModality.Chat,
-            TotalBytes   = 18_000_000_000,   // 18 GB on disk
-            MinRamGb     = 2.5,              // only the active experts, IF mmap'd
-            MinStorageGb = 18.0,
-            QualityRank  = 15,
+            TotalBytes     = 18_000_000_000,   // 18 GB on disk
+            MinRamGb       = 2.5,              // only the active experts, IF mmap'd
+            MmapResidentGb = 2.5,              // and somebody MEASURED that it is
+            MinStorageGb   = 18.0,
+            QualityRank    = 15,
         };
 
         var phone = Probe(ramGb: 5, storageGb: 64);   // usable ~4.25 GB: 2.5 fits, 18 does not
@@ -176,7 +185,8 @@ public class DeviceModelAssessorTests
         cat.Upsert(new ModelEntry("moe-35b", "1.0", "MNN-Q4")
         {
             Engine = ModelEngine.Mnn, Modality = ModelModality.Chat,
-            TotalBytes = 22_000_000_000, MinRamGb = 2.5, MinStorageGb = 22.0, QualityRank = 16,
+            TotalBytes = 22_000_000_000, MinRamGb = 2.5, MmapResidentGb = 2.5,
+            MinStorageGb = 22.0, QualityRank = 16,
         });
         cat.Upsert(Entry("fast-2b", qualityRank: 9, minRamGb: 1.9, minStorageGb: 1.5));
 

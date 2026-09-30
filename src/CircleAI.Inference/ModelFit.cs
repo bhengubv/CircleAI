@@ -62,13 +62,28 @@ public static class ModelFit
     /// <see cref="ModelEntry.MmapResidentGb"/> — somebody ran the model on a device
     /// and watched the number. Used whenever it is present.
     /// </description></item>
-    /// <item><description>
-    /// An MoE whose <see cref="ModelEntry.MinRamGb"/> is already BELOW its own weight.
-    /// That figure is the active experts, which is what stays resident by
-    /// construction, so it is a statement about the architecture rather than an
-    /// estimate — a 30B-A3B advertising 2.5 GB against 17.75 GB of weights means it.
-    /// </description></item>
     /// </list>
+    /// <para>
+    /// THERE USED TO BE A SECOND SOURCE AND IT LET A 35B THROUGH. The rule was: an
+    /// MoE whose <see cref="ModelEntry.MinRamGb"/> is already below its own weight is
+    /// declaring its active experts, so believe it — "a statement about the
+    /// architecture rather than an estimate". The architecture part is probably true;
+    /// an A3B does keep roughly 3B active, which at Q4 is about the 2.5 GB claimed.
+    /// <para>
+    /// It is still a claim about how a RUNTIME will page 18.7 GB of inactive experts
+    /// on a PHONE, and that is not architecture — it is the page cache, the router
+    /// changing experts every token, and whatever else on the device wants memory.
+    /// Nobody has watched it. On a 7.6 GB handset the rule offered 21.2 GB of weights
+    /// and the download was 10.6 hours; the same row would have been offered to the
+    /// 3.6 GB P30 this product is built for.
+    /// </para>
+    /// <para>
+    /// The paragraph below already says paging counts only when we know what it
+    /// costs, and this branch manufactured exactly the figure that sentence refuses.
+    /// A model that genuinely holds 2.5 GB resident should carry MmapResidentGb,
+    /// which somebody sets by running it.
+    /// </para>
+    /// </para>
     /// <para>
     /// ANYTHING ELSE RETURNS NULL, and the caller falls back to the eager figure. The
     /// tempting third source is <c>MinRamGb - weight</c>: assume the declared
@@ -87,10 +102,6 @@ public static class ModelFit
 
         if (e.MmapResidentGb is > 0 and var measured)
             return Math.Max(MmapResidentFloorGb, measured);
-
-        var weightGb = e.TotalBytes > 0 ? e.TotalBytes / DeviceProbe.BytesPerGb : 0.0;
-        if (weightGb > 0 && e.MinRamGb > 0 && e.MinRamGb <= weightGb)
-            return e.MinRamGb;          // MoE: the declared figure IS the resident set
 
         return null;                    // unmeasured: no discount
     }
