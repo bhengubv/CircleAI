@@ -1,4 +1,4 @@
-// LinkVerbs.cs
+﻿// LinkVerbs.cs
 //
 // The structured verbs a linked app can call beyond chat, and the scope each one
 // needs. Kept next to the grant + turn types, portable and desktop-tested, so the
@@ -31,6 +31,42 @@ public enum LinkVerb
 
     /// <summary>List what Circle AI can do (the honest manifest). The chat floor is enough.</summary>
     Capabilities,
+
+    // -- SETTING THE SERVICE UP, FROM THE APP -----------------------------------
+    //
+    // CircleAI has no screens. Every decision a person makes about it - which
+    // models it holds, whether it can see as well as hear - has to arrive from an
+    // app they can actually open. These five are that road.
+    //
+    // THE CHAT FLOOR IS ENOUGH FOR ALL OF THEM, deliberately. Three are pure
+    // reads, and the two that act are driven by a person tapping "set it up" in an
+    // app they have already approved; the service still applies its own metered-
+    // connection rules to the download itself. A separate scope would mean a
+    // second biometric sheet for something they just asked for by name.
+
+    /// <summary>Whether the service can hold a conversation yet, and what it is waiting for.</summary>
+    SetupReadiness,
+
+    /// <summary>What still has to be fetched for full use, and how big each piece is.</summary>
+    SetupPlan,
+
+    /// <summary>What the service already holds, so a person can see what they have.</summary>
+    SetupCensus,
+
+    /// <summary>
+    /// Begin fetching what <see cref="SetupPlan"/> lists. Returns at once.
+    /// </summary>
+    /// <remarks>
+    /// IT CANNOT BLOCK AND IT MUST NOT TRY. A binder transaction is request and
+    /// response on one thread, and this work runs for minutes over a phone network.
+    /// So this starts it and answers immediately; <see cref="SetupProgress"/> is how
+    /// the caller follows along. Pretending to stream would deadlock the binder
+    /// thread for the whole download.
+    /// </remarks>
+    SetupStart,
+
+    /// <summary>Where the run started by <see cref="SetupStart"/> has got to.</summary>
+    SetupProgress,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -72,6 +108,83 @@ public static class LinkVerbs
         LinkVerb.Remember     => LinkScope.Memory,
         LinkVerb.Skills       => LinkScope.Skills,
         LinkVerb.Capabilities => LinkScope.Chat,   // the manifest is not private
+
+        // Setting the service up is using it: see the note on the verbs themselves.
+        LinkVerb.SetupReadiness => LinkScope.Chat,
+        LinkVerb.SetupPlan      => LinkScope.Chat,
+        LinkVerb.SetupCensus    => LinkScope.Chat,
+        LinkVerb.SetupStart     => LinkScope.Chat,
+        LinkVerb.SetupProgress  => LinkScope.Chat,
         _                     => LinkScope.Chat,
     };
+}
+
+/// <summary>
+/// The wire shape of a setup row, in both directions.
+/// </summary>
+/// <remarks>
+/// ONE REPLY TYPE, ROWS OF STRINGS, because that is what a Bundle carries cheaply
+/// and what every other verb already uses. These helpers keep the column order in
+/// ONE place: a service that writes [title, bytes] and a client that reads
+/// [bytes, title] is a bug that compiles, ships, and shows somebody a 0-byte
+/// download called "4831838208".
+/// </remarks>
+public static class LinkSetupRows
+{
+    /// <summary>Readiness: a single row of [stage, headline, caption, canTalk].</summary>
+    public static IReadOnlyList<string> Readiness(
+        string stage, string headline, string caption, bool canTalk)
+        => new[] { stage, headline, caption, canTalk ? "1" : "0" };
+
+    /// <summary>One plan item: [title, bytes].</summary>
+    public static IReadOnlyList<string> PlanItem(string title, long bytes)
+        => new[] { title, bytes.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+
+    /// <summary>One census row: [title, present, bytes, detail].</summary>
+    public static IReadOnlyList<string> CensusRow(string title, bool present, long bytes, string detail)
+        => new[]
+        {
+            title,
+            present ? "1" : "0",
+            bytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            detail,
+        };
+
+    /// <summary>Progress: a single row of [index, count, title, fraction, remainingSeconds, phase].</summary>
+    public static IReadOnlyList<string> Progress(
+        int index, int count, string title, double fraction, double remainingSeconds, string phase)
+        => new[]
+        {
+            index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            title,
+            fraction.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            remainingSeconds.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            phase,
+        };
+
+    /// <summary>Read a column, or a default when the row is short or the text will not parse.</summary>
+    /// <remarks>
+    /// A SHORT ROW IS A VERSION SKEW, NOT A CRASH. The two apps are installed and
+    /// updated separately, so an older service will one day answer a newer client.
+    /// Every read here tolerates a missing column rather than throwing across the
+    /// link, because a setup screen that cannot render is worse than one missing a
+    /// number.
+    /// </remarks>
+    public static string Text(IReadOnlyList<string> row, int at, string fallback = "")
+        => row is not null && at < row.Count && row[at] is not null ? row[at] : fallback;
+
+    /// <summary>Read a column as a long.</summary>
+    public static long Number(IReadOnlyList<string> row, int at, long fallback = 0)
+        => long.TryParse(Text(row, at), System.Globalization.NumberStyles.Integer,
+                         System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    /// <summary>Read a column as a double.</summary>
+    public static double Fraction(IReadOnlyList<string> row, int at, double fallback = 0)
+        => double.TryParse(Text(row, at), System.Globalization.NumberStyles.Float,
+                           System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+
+    /// <summary>Read a column as a flag: "1" is true and everything else is false.</summary>
+    public static bool Flag(IReadOnlyList<string> row, int at)
+        => Text(row, at) == "1";
 }

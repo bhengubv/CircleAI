@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!-- ========== NUGET IDENTITY ========== -->
   <PropertyGroup>
@@ -19,6 +19,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- THE ASSISTANT'S CONTRACTS, for ISetup. This app has no screens, so setting it
+         up happens from a linked app, and the setup verbs hand that app the same
+         Readiness / SetupItem / Census / SetupProgressReport the in-process screens
+         use. CircleAI.Assistant has zero project references of its own, so this costs
+         one small assembly and cannot cycle. -->
+    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
     <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
     <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <!-- The cross-app link door (CircleNeuronLinkService) authorizes callers by

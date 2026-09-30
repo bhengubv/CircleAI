@@ -132,6 +132,31 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> CapabilitiesAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Capabilities), ct);
 
+    /// <summary>Whether the service can hold a conversation yet, and what it waits on.</summary>
+    /// <remarks>
+    /// THE FIVE SETUP VERBS ARE HOW A SERVICE WITH NO SCREENS GETS CONFIGURED. Every
+    /// one carries the chat scope, because the person driving them is in an app they
+    /// have already approved and is asking for this by name.
+    /// </remarks>
+    public Task<LinkRowsReply> SetupReadinessAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupReadiness), ct);
+
+    /// <summary>What the service still needs fetching, each row [title, bytes].</summary>
+    public Task<LinkRowsReply> SetupPlanAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupPlan), ct);
+
+    /// <summary>What the service already holds, each row [title, present, bytes, detail].</summary>
+    public Task<LinkRowsReply> SetupCensusAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupCensus), ct);
+
+    /// <summary>Begin fetching the plan. Returns at once; follow it with <see cref="SetupProgressAsync"/>.</summary>
+    public Task<LinkRowsReply> SetupStartAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupStart), ct);
+
+    /// <summary>Where the run has got to: one row of [index, count, title, fraction, seconds, phase].</summary>
+    public Task<LinkRowsReply> SetupProgressAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupProgress), ct);
+
     /// <summary>Transacts one structured verb. Mirrors <see cref="AskAsync"/>: blocks
     /// internally, off the calling thread.</summary>
     private async Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)

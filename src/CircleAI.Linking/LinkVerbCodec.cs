@@ -1,4 +1,4 @@
-// LinkVerbCodec.cs
+﻿// LinkVerbCodec.cs
 //
 // The marshalling for the verb channel (LinkIpc.TransactVerb), kept portable so it
 // is exercised on the desktop without a phone — exactly like LinkTurnCodec does for
@@ -127,13 +127,25 @@ public static class LinkVerbCodec
 
     // ── verb <-> wire name ─────────────────────────────────────────────────────
 
+    // A NEW VERB USED TO COMPILE AND FAIL ON THE WIRE. NameOf fell through to
+    // string.Empty and VerbOf to null, so adding a case to the enum and forgetting
+    // this table produced a perfectly green build whose every call came back
+    // "unknown verb" - which reads like a version mismatch and is a missing line.
+    // Five setup verbs were lost that way, on a phone, after two installs.
+    //
+    // SO THE DEFAULT IS THE ENUM NAME ON BOTH SIDES. The four constants below keep
+    // the wire names the first version shipped - they cannot be renamed without
+    // breaking an older client - and anything added from now on works without
+    // touching this file. Encode and decode fall through together, which is the
+    // property that matters: one without the other is the same bug reversed.
+
     private static string NameOf(LinkVerb verb) => verb switch
     {
         LinkVerb.Recall       => NameRecall,
         LinkVerb.Remember     => NameRemember,
         LinkVerb.Skills       => NameSkills,
         LinkVerb.Capabilities => NameCapabilities,
-        _                     => string.Empty,
+        _                     => verb.ToString(),
     };
 
     private static LinkVerb? VerbOf(string name) => name switch
@@ -142,6 +154,10 @@ public static class LinkVerbCodec
         NameRemember     => LinkVerb.Remember,
         NameSkills       => LinkVerb.Skills,
         NameCapabilities => LinkVerb.Capabilities,
-        _                => null,
+
+        // Anything else: the enum name, exactly as NameOf writes it. Unknown to this
+        // version still lands on null, which is the right answer for a client newer
+        // than the service it is talking to.
+        _ => Enum.TryParse<LinkVerb>(name, ignoreCase: false, out var parsed) ? parsed : null,
     };
 }

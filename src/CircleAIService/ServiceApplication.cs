@@ -120,6 +120,41 @@ public sealed class ServiceApplication : Application
         // voice it needed.
         CircleNeuronLinkService.Speech = new ServiceSpeech();
 
+        // SETTING THIS APP UP, FROM AN APP THAT HAS A SCREEN. CircleNeuronLinkService
+        // .Setup defaults to null and null answers "setup not available", so the five
+        // setup verbs were refused - which left the models unreachable by anybody:
+        // this app cannot ask for them (no UI) and the client could not either.
+        // DeviceSetup is the real thing; it plans, fetches and reports.
+        // The microphone state is read from the platform (this app cannot prompt for
+        // it - no screens), and the footprint gate is the same MemoryManager the
+        // storage census uses, so "can I fetch this" is answered against the real disk.
+        CircleNeuronLinkService.Setup = new DeviceSetup(
+            new DeviceMicrophoneAccess(this),
+            new MemoryManager(new DeviceResourcesReader()));
+
+        // THE BRAIN ITSELF, AND NOTHING HAS EVER ASKED FOR ONE. CircleNeuronService
+        // hosts a NeuronNode only when a host sets OptionsFactory; left null it runs,
+        // holds the microphone, and reports "listening only — no brain was asked for".
+        // That property had ZERO setters in the repo, and its own comment explains why
+        // it was reasonable: the hybrid app used to host its brain in its OWN process
+        // and wanted this service purely to keep the mic open with the screen off.
+        //
+        // That world is gone. The app holds no model now, so if this app does not ask
+        // for a brain, nothing on the device has one - which is exactly what happened:
+        // every question came back "brain warming up, try again shortly" for ever,
+        // because Node was null and always would be.
+        //
+        // WarmOnStart pays the cold start once, up front, rather than on the first
+        // question somebody asks. On a P30 that is thirteen to twenty-three seconds,
+        // and it is far better spent while the notification says "loading" than while
+        // a person waits on a blank bubble.
+        CircleNeuronService.OptionsFactory = () => new CircleAI.Hosting.AIOptions
+        {
+            NativeLibDir          = ApplicationInfo?.NativeLibraryDir,
+            ModelStorageDirectory = ModelStore.Path,
+            WarmOnStart           = true,
+        };
+
         // AND THE SKILL LIBRARY, off the UI thread: the first call unpacks 20 MB out
         // of the APK, and OnCreate runs before any component does. Nothing needs it
         // until a turn, and a bind that arrives first will simply find it a moment

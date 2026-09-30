@@ -27,6 +27,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Util;
+using CircleAI.Assistant;
 using CircleAI.Hosting.Chat;
 using CircleAI.Linking;
 using CircleAI.Memory;
@@ -83,6 +84,31 @@ public sealed class CircleNeuronLinkService : Service
     /// is free, and sends what it captured here.
     /// </remarks>
     public static ILinkSpeech? Speech { get; set; }
+
+    /// <summary>
+    /// Setting this app up: what it still needs, what it holds, and fetching it.
+    /// </summary>
+    /// <remarks>
+    /// THIS APP HAS NO SCREENS, so the person who decides what it should be able to
+    /// do is always in some other app. Null means the setup verbs answer "setup not
+    /// available" rather than pretending there is nothing to download - which is what
+    /// an empty plan would say, and it is a different sentence entirely.
+    /// </remarks>
+    public static ISetup? Setup { get; set; }
+
+    /// <summary>
+    /// The run started by <see cref="LinkVerb.SetupStart"/>, and the last thing it said.
+    /// </summary>
+    /// <remarks>
+    /// A DOWNLOAD OUTLIVES THE CALL THAT STARTED IT, by minutes. The binder thread
+    /// cannot wait for it, so the run is held here and the caller polls. Static
+    /// because the client may go away and come back - a person who closes the app
+    /// mid-download and reopens it should find the same run, not a second one.
+    /// </remarks>
+    private static Task? _setupRun;
+    private static SetupProgressReport? _setupAt;
+    private static string? _setupFailed;
+    private static readonly object _setupLock = new();
 
     /// <inheritdoc/>
     public override IBinder OnBind(Intent? intent) => new LinkBinder(this);
@@ -226,6 +252,107 @@ public sealed class CircleNeuronLinkService : Service
 
         switch (req.Verb)
         {
+            case LinkVerb.SetupReadiness:
+            {
+                var setup = Setup;
+                if (setup is null) return LinkRowsReply.Failure("setup not available");
+                var r = await setup.ReadinessAsync().ConfigureAwait(false);
+                return LinkRowsReply.Success(new[]
+                {
+                    LinkSetupRows.Readiness(r.Stage.ToString(), r.Headline, r.Caption, r.CanTalk),
+                });
+            }
+
+            case LinkVerb.SetupPlan:
+            {
+                var setup = Setup;
+                if (setup is null) return LinkRowsReply.Failure("setup not available");
+                var plan = await setup.PlanAsync().ConfigureAwait(false);
+                return LinkRowsReply.Success(
+                    plan.Select(i => LinkSetupRows.PlanItem(i.Title, i.Bytes)).ToList());
+            }
+
+            case LinkVerb.SetupCensus:
+            {
+                var setup = Setup;
+                if (setup is null) return LinkRowsReply.Failure("setup not available");
+                var census = await setup.CensusAsync().ConfigureAwait(false);
+                return LinkRowsReply.Success(
+                    census.Rows.Select(c => LinkSetupRows.CensusRow(c.Title, c.Present, c.Bytes, c.Detail))
+                               .ToList());
+            }
+
+            case LinkVerb.SetupStart:
+            {
+                var setup = Setup;
+                if (setup is null) return LinkRowsReply.Failure("setup not available");
+
+                lock (_setupLock)
+                {
+                    // ALREADY RUNNING IS A SUCCESS, NOT AN ERROR. Two screens, or one
+                    // screen after a rotate, must not start a second download of the
+                    // same gigabytes onto the same phone.
+                    if (_setupRun is { IsCompleted: false })
+                        return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+
+                    _setupAt = null;
+                    _setupFailed = null;
+
+                    var progress = new Progress<SetupProgressReport>(p => _setupAt = p);
+                    _setupRun = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await setup.RunAsync(progress, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            // KEPT, NOT THROWN. Nothing is awaiting this task, so an
+                            // unobserved exception would vanish and the caller would
+                            // poll a run that had died - forever.
+                            _setupFailed = ex.Message;
+                            Log.Warn(Tag, "setup run failed: " + ex.Message);
+                        }
+                    });
+                }
+
+                Log.Info(Tag, "setup: started");
+                return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+            }
+
+            case LinkVerb.SetupProgress:
+            {
+                var run = _setupRun;
+                var failed = _setupFailed;
+                if (failed is not null) return LinkRowsReply.Failure(failed);
+                if (run is null) return LinkRowsReply.Failure("nothing is being set up");
+
+                var at = _setupAt;
+                if (run.IsCompleted && at is null)
+                    // Finished before it reported anything: a plan with nothing in it.
+                    return LinkRowsReply.Success(new[]
+                    {
+                        LinkSetupRows.Progress(0, 0, "Done", 1, 0, nameof(SetupPhase.Done)),
+                    });
+
+                if (at is null)
+                    return LinkRowsReply.Success(new[]
+                    {
+                        LinkSetupRows.Progress(0, 0, "Starting", 0, 0, nameof(SetupPhase.Fetching)),
+                    });
+
+                // THE PHASE IS FORCED TO Done WHEN THE TASK IS, because the last
+                // report a run makes is not always its final phase, and a screen that
+                // never sees Done sits on 99% for ever.
+                var phase = run.IsCompleted ? SetupPhase.Done : at.Phase;
+                return LinkRowsReply.Success(new[]
+                {
+                    LinkSetupRows.Progress(at.Index, at.Count, at.Title,
+                                           run.IsCompleted ? 1 : at.Fraction,
+                                           at.Remaining.TotalSeconds, phase.ToString()),
+                });
+            }
+
             case LinkVerb.Capabilities:
             {
                 var catalog = Catalog ?? CapabilityCatalog.Default;

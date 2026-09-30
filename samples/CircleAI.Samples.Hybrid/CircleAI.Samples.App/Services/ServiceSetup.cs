@@ -21,48 +21,81 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
 {
     /// <inheritdoc />
     /// <remarks>Nothing downloads here, so nothing is ever running.</remarks>
-    public bool IsRunning => false;
+    /// <inheritdoc />
+    /// <remarks>True while this screen is following a run; the run itself is the service's.</remarks>
+    public bool IsRunning => _running;
+
+    private bool _running;
+
+    /// <summary>The service's setup, over the link. The mapping onto the wire is in the product.</summary>
+    private readonly LinkedSetup _link = new(brain);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// CIRCLEAI'S OWN ANSWER. Whether this phone can hold a conversation is a fact
+    /// about the models, and the models are over there.
+    /// </remarks>
     public async Task<Readiness> ReadinessAsync(CancellationToken ct = default)
     {
         if (!brain.ServiceInstalled)
-            return new Readiness(ReadyStage.NeedsSetup, "Install CircleAI",
-                "This app asks CircleAI to think, speak and listen.", CanTalk: false);
+            return new Readiness(ReadyStage.NeedsSetup, "CircleAI is not installed",
+                                 "It holds the models and does the thinking. Install it to begin.",
+                                 false);
 
-        var state = await brain.StateAsync(ct).ConfigureAwait(false);
-        return state.Ready
-            ? new Readiness(ReadyStage.Ready, "Ready", state.Detail, CanTalk: true)
-            : new Readiness(ReadyStage.NeedsSetup, "Approve the link", state.Detail, CanTalk: false);
+        return await _link.ReadinessAsync(ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     /// <remarks>
-    /// EMPTY, because there is nothing to download. A plan with rows in it would
-    /// offer somebody work this app cannot do and does not need done.
+    /// THE SERVICE'S PLAN, NOT THIS APP'S. It used to return empty with a comment
+    /// saying there was nothing to download, and that was true of this app and
+    /// useless to the person: CircleAI is the thing with models to fetch, and it has
+    /// no screen to offer them on. The rows come back over the link.
     /// </remarks>
     public Task<IReadOnlyList<SetupItem>> PlanAsync(CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<SetupItem>>(Array.Empty<SetupItem>());
+        => _link.PlanAsync(ct);
 
     /// <inheritdoc />
     /// <remarks>
-    /// ONE ROW, AND IT IS THE TRUE ONE. A census counts what is present on the
-    /// device; for this app that is exactly one thing — CircleAI itself.
+    /// WHAT CIRCLEAI HOLDS, asked over the link. This used to answer with one row
+    /// saying whether CircleAI was installed, which is a true sentence and not a
+    /// census: the question a person is asking on that screen is what their phone can
+    /// actually DO - can it see, can it hear, can it speak their language - and every
+    /// one of those answers is on the other side of the link.
+    /// <para>
+    /// NOT INSTALLED IS STILL THE FIRST ANSWER. Nothing else is worth saying until
+    /// the service is there at all, and the link cannot tell you so.
+    /// </para>
     /// </remarks>
     public Task<Census> CensusAsync(CancellationToken ct = default)
     {
-        var there = brain.ServiceInstalled;
-        var row = new CensusRow("CircleAI", there, 0,
-            there ? "Installed — it holds the models." : "Not installed.");
-        return Task.FromResult(new Census(
-            new[] { row }, there ? 1 : 0, 1,
-            there ? "CircleAI is installed." : "CircleAI is not installed."));
+        if (!brain.ServiceInstalled)
+        {
+            var missing = new CensusRow("CircleAI", false, 0, "Not installed.");
+            return Task.FromResult(new Census(
+                new[] { missing }, 0, 1, "CircleAI is not installed."));
+        }
+
+        return _link.CensusAsync(ct);
     }
 
     /// <inheritdoc />
-    /// <remarks>Nothing to run: the service downloads its own models.</remarks>
-    public Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
-        => Task.CompletedTask;
+    /// <remarks>
+    /// THE APP ASKS, THE SERVICE FETCHES. This used to be a no-op whose comment said
+    /// "the service downloads its own models" - which was never true of anything: the
+    /// service has no screen on which somebody could ask it to, so nothing was ever
+    /// downloaded by anybody. The tap happens here, the gigabytes land there.
+    /// <para>
+    /// The run outlives this call and this screen. Closing the app mid-download and
+    /// coming back rejoins the same run rather than starting a second copy of it.
+    /// </para>
+    /// </remarks>
+    public async Task RunAsync(IProgress<SetupProgressReport> progress, CancellationToken ct = default)
+    {
+        _running = true;
+        try { await _link.RunAsync(progress, ct).ConfigureAwait(false); }
+        finally { _running = false; }
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
