@@ -186,16 +186,19 @@ public sealed class CircleNeuronLinkService : Service
     private async Task<LinkTurnReply> ServeAskAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
     {
         var turn = LinkTurnCodec.TryDecodeRequest(requestMap);
+        Log.Info(Tag, "serve: ask received");
         if (turn is null) return LinkTurnReply.Failure("no message");
 
         var denied = await AuthorizeAsync(uid, LinkScope.Chat).ConfigureAwait(false);
-        if (denied is not null) return LinkTurnReply.Failure(denied);
+        if (denied is not null) { Log.Info(Tag, "serve: denied - " + denied); return LinkTurnReply.Failure(denied); }
+        Log.Info(Tag, "serve: authorised, starting the brain");
 
         // Make sure the resident brain is up; a cold model load is seconds long.
         try { CircleNeuronService.Start(this); }
         catch (Exception ex) { Log.Warn(Tag, "start: " + ex.Message); }
 
         var node = CircleNeuronService.Node;
+        Log.Info(Tag, $"serve: node={(node is null ? "null" : node.IsReady ? "ready" : "not ready")}");
         if (node is null || !node.IsReady)
             return LinkTurnReply.Failure("brain warming up, try again shortly");
 

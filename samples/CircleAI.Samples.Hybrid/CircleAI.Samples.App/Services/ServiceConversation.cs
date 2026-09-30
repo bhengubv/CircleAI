@@ -27,7 +27,7 @@ using CircleAI.Linking;
 namespace CircleAI.Samples.App.Services;
 
 /// <inheritdoc />
-public sealed class ServiceConversation(LinkedBrain brain) : IConversation
+public sealed class ServiceConversation(LinkedBrain brain, IRemembers memory) : IConversation
 {
     /// <inheritdoc />
     public Task<BrainState> StateAsync(CancellationToken ct = default) => brain.StateAsync(ct);
@@ -126,10 +126,36 @@ public sealed class ServiceConversation(LinkedBrain brain) : IConversation
     }
 
     /// <inheritdoc />
-    public async Task HeardAsync(string said, CancellationToken ct = default)
+    /// <remarks>
+    /// IT WRITES THE WORDS DOWN. THAT IS ALL IT DOES, and getting that wrong cost a
+    /// working app on the phone. This asked the brain and then spoke the answer -
+    /// two round trips over the link, the second needing a voice model - while the
+    /// screen sat awaiting it BEFORE making its own real ask. The contract says, in
+    /// as many words, that it "never throws and never keeps the caller waiting", and
+    /// the typed screen calls it on the way in precisely because it is supposed to be
+    /// free. What a person saw was their question sitting on screen with no reply, no
+    /// error and nothing in logcat.
+    /// <para>
+    /// NOT AWAITED, and it cannot throw out of here: a memory that could take a
+    /// conversation down with it would deserve to be turned off. Same shape as
+    /// DeviceConversation.HeardAsync, which had it right all along.
+    /// </para>
+    /// <para>
+    /// CancellationToken.None deliberately: the token belongs to the turn, and a turn
+    /// that ends must not cancel the note about what was said in it.
+    /// </para>
+    /// </remarks>
+    public Task HeardAsync(string said, CancellationToken ct = default)
     {
-        var reply = await brain.AskAsync(said, null, ct).ConfigureAwait(false);
-        await SayAsync(reply, null, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(said)) return Task.CompletedTask;
+
+        _ = Task.Run(async () =>
+        {
+            try { await memory.LearnAsync(said, CancellationToken.None).ConfigureAwait(false); }
+            catch { /* a memory is never worth an answer */ }
+        }, CancellationToken.None);
+
+        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

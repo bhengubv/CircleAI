@@ -1,4 +1,4 @@
-// BrowserSetup.cs
+﻿// BrowserSetup.cs
 //
 // There is nothing to set up in a browser.
 
@@ -68,4 +68,17 @@ public sealed class BrowserSetup : ISetup
     /// </remarks>
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
         => Task.FromResult(true);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// FALSE, because there is no link and no CircleAI on the other side of a browser.
+    /// Saying true would put service settings on a screen that could never apply them.
+    /// </remarks>
+    public Task<bool> LinkApprovedAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    /// <inheritdoc />
+    /// <remarks>FALSE: a browser cannot start another app's consent screen.</remarks>
+    public Task<bool> ApproveLinkAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
 }

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  THE SERVICE'S OWN PERMISSIONS, WHICH DID NOT COME WITH IT WHEN IT SPLIT OFF.
+
+  Every one of these used to be in the hybrid app's manifest, because the hybrid app
+  WAS the host. Splitting the code across moved none of them, and a missing permission
+  does not fail at build time - it fails on the phone, once, quietly. The one that
+  found this was USE_BIOMETRIC: the consent screen could not raise its prompt, so the
+  authoriser reported "not granted", the app reported "the person declined", and a
+  person who had never been shown anything was told they had said no. No grant could
+  ever be created, which made the entire link unusable.
+
+  The manifest is otherwise GENERATED from attributes in CircleAI.Device - the two
+  services and the consent activity - so nothing here declares a component. This file
+  exists for the permissions alone.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Models and the catalogue are downloaded here; the client never fetches one. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <!-- THE CONSENT SHEET. LinkConsentActivity asks the person to approve a client with
+       a biometric or the device credential, and without this the prompt throws before
+       it is shown. It is a normal permission: declaring it is all that is needed. -->
+  <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+  <!-- THE MICROPHONE, for the wake word and the recogniser. The client captures its
+       own audio for a tap-to-talk turn and sends the bytes; this app is the one that
+       listens with the screen off. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+  <!-- THE RESIDENT SERVICE AND ITS DISCLOSURE. CircleNeuronService declares
+       ForegroundServiceType = DataSync | Microphone, and Android refuses to start a
+       typed foreground service whose type is not also declared here. The notification
+       is how the microphone is disclosed, so POST_NOTIFICATIONS is part of the same
+       promise rather than a nicety. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <!-- Listening through a doze window, and coming back after a restart, because a
+       phone that has to be opened once a day to start listening is not listening. -->
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+  <application android:allowBackup="true" android:supportsRtl="true" />
+</manifest>

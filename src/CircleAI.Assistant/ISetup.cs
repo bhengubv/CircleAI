@@ -1,4 +1,4 @@
-// ISetup.cs
+﻿// ISetup.cs
 //
 // First run: what this phone still needs, and fetching it.
 
@@ -269,4 +269,31 @@ public interface ISetup
     /// </para>
     /// </remarks>
     Task<bool> BackgroundAllowedAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether this app is approved to use CircleAI, and may therefore configure it.
+    /// </summary>
+    /// <remarks>
+    /// SEPARATE FROM "IS THE BRAIN READY". A brain can be bound and still refuse every
+    /// question, because binding is not approving - the grant is checked per call,
+    /// inside the service. A screen that shows service settings has to know which of
+    /// the two it is looking at, or it offers controls that cannot work.
+    /// </remarks>
+    Task<bool> LinkApprovedAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Ask the person to approve this app's link to CircleAI, and say whether they did.
+    /// </summary>
+    /// <remarks>
+    /// THE SAME SHAPE AS <see cref="AllowMicrophoneAsync"/>: prompt, and report the
+    /// answer. It is a permission like any other - the difference is that the sheet
+    /// belongs to another app, and the OS only tells that app who is asking when the
+    /// screen is started FOR RESULT. So this cannot live in shared UI; it needs the
+    /// head's own Activity.
+    /// <para>
+    /// TRUE WHEN THERE IS NOTHING TO APPROVE. A head that IS the service, or one with
+    /// no link at all, says so rather than offering a button that would do nothing.
+    /// </para>
+    /// </remarks>
+    Task<bool> ApproveLinkAsync(CancellationToken ct = default);
 }

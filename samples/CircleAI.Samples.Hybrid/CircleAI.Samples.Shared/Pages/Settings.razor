@@ -1,4 +1,4 @@
-@*
+﻿@*
     Settings. Things you change.
 
     NO MARKETING ON THIS SCREEN. It carried a tab called "What it is for" and a
@@ -473,6 +473,33 @@ else
                 </div>
             }
 
+            @*
+                THE LINK TO CIRCLE AI, WHICH EVERYTHING BELOW DEPENDS ON. The
+                assistant, its memory, its voice and its skills all live in the
+                CircleAI app; this one asks. Until the person approves that, every
+                one of those calls is refused - so the state belongs at the top of
+                this section rather than buried as a diagnostic.
+
+                HIDDEN WHERE THERE IS NOTHING TO APPROVE. A head that IS the service,
+                and a browser with no link at all, both answer true/false without a
+                sheet, and the row does not appear.
+            *@
+            @if (_linked is false)
+            {
+                <div class="row">
+                    <span class="row-text">
+                        <span class="row-title">Circle AI is not approved yet</span>
+                        <span class="row-sub">
+                            Thinking, remembering, hearing and speaking all happen in the
+                            Circle AI app. Approve it once and they start working.
+                        </span>
+                    </span>
+                    <button class="allow" @onclick="ApproveLink" disabled="@_approving">
+                        @(_approving ? "Waiting…" : "Approve")
+                    </button>
+                </div>
+            }
+
             <div class="row">
                 <span class="row-text">
                     <span class="row-title">Where the work happens</span>
@@ -918,6 +945,11 @@ else
         try { _keepsRunning = await Wizard.BackgroundAllowedAsync(); }
         catch { _keepsRunning = null; }
 
+        // ITS OWN try, and null on failure so the row stays hidden: a screen that
+        // cannot reach the service must not accuse the person of not approving it.
+        try { _linked = await Wizard.LinkApprovedAsync(); }
+        catch { _linked = null; }
+
         // ITS OWN try, so a fault reading the model registry cannot take the
         // language and document tabs down with it - which is exactly what it did.
         try
@@ -927,6 +959,32 @@ else
             _storage = await Facts.StorageAsync();
         }
         catch (Exception ex) { _trouble = $"Reading what is installed: {Trouble.Say(ex)}"; }
+    }
+
+    /// <summary>Null until asked, false when this app is not approved to use Circle AI.</summary>
+    bool? _linked;
+
+    /// <summary>True while the approval sheet is up, so the button cannot be tapped twice.</summary>
+    bool _approving;
+
+    /// <summary>Ask Circle AI for approval, then re-read everything it gates.</summary>
+    /// <remarks>
+    /// The whole screen is reloaded afterwards rather than just this row, because
+    /// approval is what makes the voice, the wake phrases and the footprint readable
+    /// at all - leaving them as they were would show a screen that is approved at the
+    /// top and empty underneath.
+    /// </remarks>
+    async Task ApproveLink()
+    {
+        if (_approving) return;
+        _approving = true;
+        try
+        {
+            _linked = await Wizard.ApproveLinkAsync();
+            if (_linked is true) await Reload();
+        }
+        catch (Exception ex) { _trouble = Trouble.Say(ex); }
+        finally { _approving = false; }
     }
 
     void Open(int index) => _open = _open == index ? -1 : index;

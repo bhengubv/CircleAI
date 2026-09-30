@@ -1,4 +1,4 @@
-// SetupPhaseTests.cs
+﻿// SetupPhaseTests.cs
 //
 // The setup screen saying what it is doing, rather than a countdown that stopped.
 //
@@ -67,6 +67,10 @@ public class SetupPhaseTests : TestContext
         public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+        public Task<bool> LinkApprovedAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+        public Task<bool> ApproveLinkAsync(CancellationToken ct = default) => Task.FromResult(true);
     }
 
     private IRenderedComponent<Setup> Screen(SetupProgressReport report)

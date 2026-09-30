@@ -1,4 +1,4 @@
-// ServiceSetup.cs
+﻿// ServiceSetup.cs
 //
 // Setting up means installing CircleAI, not downloading models here.
 //
@@ -87,4 +87,70 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
 
     /// <inheritdoc />
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(false);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// ASKED OVER THE LINK, NOT GUESSED. Capabilities is the cheapest verb that goes
+    /// through the same authorisation - its scope is Chat and the manifest is not
+    /// private - so a granted link answers it and an ungranted one refuses.
+    /// </remarks>
+    public async Task<bool> LinkApprovedAsync(CancellationToken ct = default)
+    {
+        var state = await brain.StateAsync(ct).ConfigureAwait(false);
+        return state.Ready;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// STARTED FOR RESULT, AND THAT IS LOAD-BEARING. LinkConsentActivity reads
+    /// CallingPackage to know who is asking, and the OS only fills that in for an
+    /// activity started for result - StartActivity would show the same sheet with no
+    /// idea who it was about, and it would grant nothing.
+    /// <para>
+    /// It needs the ACTIVITY, which is why this cannot live in the shared UI or in the
+    /// product library: neither has one. The whole reason ISetup carries this at all
+    /// is that the head is the only thing that can do it.
+    /// </para>
+    /// <para>
+    /// THE RESULT IS NOT READ FROM onActivityResult. The consent screen writes the
+    /// grant on the SERVICE side, so the honest way to learn the answer is to ask the
+    /// service again rather than trust a result code. Polling, because the sheet is a
+    /// separate app: this returns when the grant appears, when the person backs out,
+    /// or after a minute - whichever comes first.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ApproveLinkAsync(CancellationToken ct = default)
+    {
+        if (!brain.ServiceInstalled) return false;
+        if (await LinkApprovedAsync(ct).ConfigureAwait(false)) return true;
+
+        var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+        if (activity is null) return false;
+
+        // EVERYTHING THIS APP ACTUALLY USES, asked for once. Chat to think, Memory to
+        // remember, Skills to look things up, Voice to hear and speak. Asking for them
+        // one at a time would mean four sheets for one decision.
+        var scope = CircleAI.Linking.LinkScope.Chat
+                  | CircleAI.Linking.LinkScope.Memory
+                  | CircleAI.Linking.LinkScope.Skills
+                  | CircleAI.Linking.LinkScope.Voice;
+
+        try { activity.StartActivityForResult(brain.ConsentIntent(scope), ConsentRequest); }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Link", "could not open the approval screen: " + ex.Message);
+            return false;
+        }
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(1);
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(500, ct).ConfigureAwait(false);
+            if (await LinkApprovedAsync(ct).ConfigureAwait(false)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Request code for the consent sheet. Nothing reads the result; see above.</summary>
+    private const int ConsentRequest = 0x11c;
 }

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <!--
     CircleAI Service — the installed app that OWNS the models.
@@ -72,6 +72,10 @@
          -t:Install of an app bundle UNINSTALLS first and takes the downloaded models
          with it, which on a P30 is gigabytes. -->
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+    <!-- The permissions live here; the components are generated from attributes in
+         CircleAI.Device. Same arrangement as AetherNetService. -->
+    <AndroidManifest>Platforms\Android\AndroidManifest.xml</AndroidManifest>
 
     <!-- The linked Android sources are guarded by this, as in every head that compiles
          them - without it AndroidAudio.cs compiles to an empty file and the type reads

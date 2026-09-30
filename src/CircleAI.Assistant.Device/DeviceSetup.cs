@@ -1,4 +1,4 @@
-// DeviceSetup.cs
+﻿// DeviceSetup.cs
 //
 // First run on this phone, over the same FirstRun planner the native head uses.
 //
@@ -500,4 +500,12 @@ public sealed class DeviceSetup : ISetup
 
             return steps;
         }, ct);
+
+    /// <inheritdoc />
+    /// <remarks>TRUE: this head IS the service. There is no link to approve.</remarks>
+    public Task<bool> LinkApprovedAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    /// <inheritdoc />
+    /// <remarks>TRUE, and no sheet is shown: see <see cref="LinkApprovedAsync"/>.</remarks>
+    public Task<bool> ApproveLinkAsync(CancellationToken ct = default) => Task.FromResult(true);
 }

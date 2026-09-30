@@ -73,21 +73,54 @@ public sealed class LinkedBrain : IBrain, IDisposable
             return new BrainState(false, "CircleAI is not installed on this device.");
 
         var client = await ConnectAsync(ct).ConfigureAwait(false);
-        return client is null
-            ? new BrainState(false, "CircleAI is installed but this app is not linked to it yet.")
-            : new BrainState(true, "Using the shared CircleAI brain.");
+        if (client is null)
+            return new BrainState(false, "CircleAI is installed but this app is not linked to it yet.");
+
+        // BOUND IS NOT APPROVED, AND SAYING OTHERWISE IS A LIE THE SCREEN REPEATS.
+        // ConnectAsync only binds; the grant is checked per transaction, inside the
+        // service. So this used to report "Using the shared CircleAI brain" on a link
+        // nobody had approved, and the first question then came back refused - which
+        // is exactly the state the three-way answer below exists to prevent.
+        //
+        // Capabilities is the probe because it is the cheapest verb that goes through
+        // the same authorisation: its scope is Chat, and the manifest is not private,
+        // so a granted link answers it immediately and an ungranted one refuses.
+        var probe = await client.CapabilitiesAsync(ct).ConfigureAwait(false);
+        return probe.Ok
+            ? new BrainState(true, "Using the shared CircleAI brain.")
+            : new BrainState(false, probe.Error ?? "This app is not linked to CircleAI yet.");
     }
 
     /// <inheritdoc />
     public async Task<string> AskAsync(string prompt, Action<string>? token = null,
                                        CancellationToken ct = default)
     {
+        // TRACED AT EVERY STEP, because the first end-to-end run of this produced a
+        // question on screen with no reply, no error and not one line anywhere. A
+        // seam that can fail silently has to say where it got to.
+        Trace("ask: connecting");
         var client = await ConnectAsync(ct).ConfigureAwait(false);
-        if (client is null) return NotLinked();
+        if (client is null) { Trace("ask: NOT CONNECTED"); return NotLinked(); }
 
+        Trace("ask: transacting");
         var reply = await client.AskAsync(_session, prompt, agentic: false, ct)
                                 .ConfigureAwait(false);
-        if (!reply.Ok) return reply.Error ?? "CircleAI could not answer.";
+        Trace($"ask: replied ok={reply.Ok} error={reply.Error ?? "-"} len={(reply.Reply ?? string.Empty).Length}");
+
+        // A REFUSAL IS AN ANSWER AND MUST TRAVEL THE SAME ROAD. Returning it without
+        // calling `token` looks harmless and is not: the typed screen builds its
+        // bubble ONLY from streamed fragments, so an unstreamed refusal left the
+        // bubble empty, and that screen then deletes an empty bubble as "the model
+        // produced nothing". The service said "not linked for Chat - approve in
+        // Circle AI first", the app received it in under a second, and a person saw
+        // their question sitting there with no reply, no error and nothing in logcat.
+        // Every caller that can render an answer can render this.
+        if (!reply.Ok)
+        {
+            var why = reply.Error ?? "CircleAI could not answer.";
+            token?.Invoke(why);
+            return why;
+        }
 
         var text = reply.Reply ?? string.Empty;
 
@@ -185,6 +218,16 @@ public sealed class LinkedBrain : IBrain, IDisposable
     /// disagreeing about whether the link is up.
     /// </remarks>
     internal Task<CircleAiLinkClient?> LinkAsync(CancellationToken ct) => ConnectAsync(ct);
+
+    /// <summary>One line per step of a turn, to logcat.</summary>
+    /// <remarks>
+    /// Android.Util.Log directly: ILogger reaches nothing on Android, which is how a
+    /// whole failing path came to produce no output at all.
+    /// </remarks>
+    private static void Trace(string line)
+    {
+        try { Android.Util.Log.Info("CircleAI.Link", line); } catch { }
+    }
 
     private static string NotLinked() =>
         "CircleAI is not linked to this app yet. Approve the link to use the shared brain.";

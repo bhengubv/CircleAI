@@ -1,4 +1,4 @@
-// Fakes.cs
+﻿// Fakes.cs
 //
 // Heads that do nothing, so a component can be asked what it SAYS.
 //
@@ -104,6 +104,24 @@ internal sealed class FakeSetup : ISetup
 
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
         => Task.FromResult(BackgroundAllowed);
+
+    /// <summary>Whether the app is approved to use CircleAI. True by default, so the
+    /// approval row stays hidden and a test that is about something else is not
+    /// perturbed by it; set false to render that row.</summary>
+    public bool LinkApproved { get; set; } = true;
+
+    public Task<bool> LinkApprovedAsync(CancellationToken ct = default)
+        => Task.FromResult(LinkApproved);
+
+    /// <summary>Records that approval was asked for, and grants it.</summary>
+    public bool ApprovalAsked { get; private set; }
+
+    public Task<bool> ApproveLinkAsync(CancellationToken ct = default)
+    {
+        ApprovalAsked = true;
+        LinkApproved = true;
+        return Task.FromResult(true);
+    }
 }
 
 /// <summary>Settings held in memory, so a test can put the app in Translator mode.</summary>

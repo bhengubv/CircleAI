@@ -1,4 +1,4 @@
-// HandoverTests.cs
+﻿// HandoverTests.cs
 //
 // You could not talk to it while it downloaded.
 //
@@ -92,6 +92,10 @@ internal sealed class StagedSetup : ISetup
     public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    public Task<bool> LinkApprovedAsync(CancellationToken ct = default) => Task.FromResult(true);
+
+    public Task<bool> ApproveLinkAsync(CancellationToken ct = default) => Task.FromResult(true);
 }
 
 public class HandoverTests : TestContext

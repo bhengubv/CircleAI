@@ -137,7 +137,9 @@ public static class MauiProgram
         // the answer, because it is the thing with a screen. See IMicrophoneAccess.
         builder.Services.AddSingleton<IMicrophoneAccess, MauiMicrophoneAccess>();
         builder.Services.AddSingleton<ISetup>(sp => new Services.ServiceSetup((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
-        builder.Services.AddSingleton<IConversation>(sp => new Services.ServiceConversation((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+        builder.Services.AddSingleton<IConversation>(sp => new Services.ServiceConversation(
+            (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>(),
+            sp.GetRequiredService<IRemembers>()));
         builder.Services.AddSingleton<IProfile, DeviceProfile>();
         // LISTENING RUNS IN THE SERVICE. DeviceResidentAssistant did it here — found
         // the bundle, installed the wake word, started the resident service, held the
