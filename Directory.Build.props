@@ -99,9 +99,24 @@
       2. setx ANDROID_KEYSTORE_PASS "<from the password manager>" - then a NEW SHELL.
       3. Verify: pwsh -c "[Environment]::GetEnvironmentVariable('ANDROID_KEYSTORE_PASS','User')"
 
-    Without it, Release fails at signing with XA4314 "$(AndroidSigningKeyPass) is
-    empty". That is the right failure: a Release package signed with the debug key is
-    the thing this block exists to stop.
+    HOW THE PASSWORD GETS IN, AND $(VAR) WAS THE WRONG WAY. Writing
+    <AndroidSigningKeyPass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningKeyPass> bakes the
+    value into an MSBuild property, where it can be printed by -getProperty and can
+    land in a build log. The documented form is a PREFIX that apksigner resolves
+    itself - see .NET for Android's build properties - so the password is never an
+    MSBuild value at all:
+
+      env:NAME      read from the environment at signing time
+      file:PATH     read from a file whose whole contents are the password
+
+    Proven on this box: the SDK passes it straight through as
+    apksigner's own ks-pass argument with that file:... spec, and apksigner opens the file. (It was tried against
+    Visual Studio's TheGeekAlias.keyInfo, which sits beside the keystore - that is
+    NOT a bare password file and apksigner said so, which is how we know the prefix
+    is honoured rather than taken literally.)
+
+    So a file wins if one exists, and the environment otherwise. Either way nothing
+    here reads the secret: MSBuild hands apksigner a path or a variable name.
 
     Release artefacts are produced the way thegeeknetwork\CLAUDE.md says, not by a
     build: `dotnet publish -f net10.0-android -m:1`. The -m:1 is mandatory — without
@@ -115,8 +130,11 @@
     <AndroidSigningKeyStore Condition="Exists('$(_CircleAIVsKeystore)')">$(_CircleAIVsKeystore)</AndroidSigningKeyStore>
     <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(UserProfile)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
     <AndroidSigningKeyAlias>TheGeekAlias</AndroidSigningKeyAlias>
-    <AndroidSigningKeyPass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningKeyPass>
-    <AndroidSigningStorePass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningStorePass>
+    <_CircleAIKeyPassFile>$(UserProfile)\keystore\TheGeekAlias.pass</_CircleAIKeyPassFile>
+    <_CircleAIKeyPass Condition="Exists('$(_CircleAIKeyPassFile)')">file:$(_CircleAIKeyPassFile)</_CircleAIKeyPass>
+    <_CircleAIKeyPass Condition="'$(_CircleAIKeyPass)' == ''">env:ANDROID_KEYSTORE_PASS</_CircleAIKeyPass>
+    <AndroidSigningKeyPass>$(_CircleAIKeyPass)</AndroidSigningKeyPass>
+    <AndroidSigningStorePass>$(_CircleAIKeyPass)</AndroidSigningStorePass>
   </PropertyGroup>
 
 </Project>
