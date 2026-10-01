@@ -1,4 +1,4 @@
-// TargetFrameworkTests.cs
+﻿// TargetFrameworkTests.cs
 //
 // Every shipped library must still be usable from net9.0.
 //
@@ -36,6 +36,14 @@ public class TargetFrameworkTests
     [
         "CircleAI.Assistant.Device",
         "CircleAI.Device",
+
+        // AN APPLICATION, AND NOW TWO OF THEM. CircleAIService is the service's
+        // own package - net10.0-android for the bound service, net10.0 for the
+        // desktop host - and nothing references it, because an app cannot be
+        // referenced by another app. It used to slip past the check below on the
+        // "singular TFM means a head" rule; adding the second head made it read as
+        // a library that had dropped net9.0, which is the opposite of what happened.
+        "CircleAIService",
     ];
 
     [Fact]

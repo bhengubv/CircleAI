@@ -49,7 +49,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFramework>net10.0-android</TargetFramework>
+    <TargetFrameworks>net10.0-android;net10.0</TargetFrameworks>
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
@@ -86,7 +86,7 @@
   <ItemGroup>
     <!-- The resident service, the link service and the consent activity all live here.
          This single reference is what makes this app the host. -->
-    <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" />
+    <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" Condition="$(TargetFramework.Contains('-android'))" />
 
     <!-- The engines. This app owns model selection and loading, so it is the one
          package that needs them; the client has no inference dependency at all, which
@@ -95,12 +95,12 @@
 
     <!-- The assistant's device half: the microphone and speaker, the recogniser and
          the voice (ServiceSpeech), the model store, the skill library, VoiceWiring. -->
-    <ProjectReference Include="..\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
+    <ProjectReference Include="..\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" Condition="$(TargetFramework.Contains('-android'))" />
 
     <!-- The client library, referenced by BOTH halves - exactly as AetherNetService
          references AetherNet.Node.Android. It carries AppPaths and SqliteAppStore,
          which both processes need to find their own storage. -->
-    <ProjectReference Include="..\CircleAI.Client\CircleAI.Client.csproj" />
+    <ProjectReference Include="..\CircleAI.Client\CircleAI.Client.csproj" Condition="$(TargetFramework.Contains('-android'))" />
   </ItemGroup>
 
   <ItemGroup>
@@ -134,5 +134,42 @@
     libraries - libllama, libggml, libggml-cpu, libggml-base, about 61 MB together.
     Adding them is a deliberate step with a real size cost.
   -->
+
+  <!--
+    THE TWO HEADS OF ONE SERVICE.
+
+    net10.0-android is the bound service: a binder other apps attach to by package
+    name, a foreground notification, the microphone. net10.0 is the same engine on a
+    desktop, where that shape has no equivalent - so the transport becomes the
+    loopback HTTP endpoint CircleAI.Hosting already carries and the rest is unchanged.
+
+    ONE PROJECT RATHER THAN TWO, because it is one service with two front doors; a
+    second project would be a second place to forget to bump a version or wire a
+    dependency. The platform split is by file, not by repository.
+  -->
+  <ItemGroup Condition="!$(TargetFramework.Contains('-android'))">
+    <!-- The Android head's Application class, its manifest and its launcher icon are
+         meaningless off the phone, and Resources/** would be fed to a resource
+         compiler that is not there. -->
+    <Compile Remove="ServiceApplication.cs" />
+    <None Remove="Resources\**" />
+    <None Remove="Platforms\**" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$(TargetFramework.Contains('-android'))">
+    <!-- And the desktop entry point is not an Android app's; Android has no Main. -->
+    <Compile Remove="Host\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- BOTH HEADS. The desktop one answers on HttpLoopbackEndpoint, which lives
+         here; the Android one names AIOptions directly when it sets
+         CircleNeuronService.OptionsFactory. That reference used to arrive
+         transitively through CircleAI.Device, so conditioning this to the desktop
+         leg broke the Android build with CS0012 - a type "defined in an assembly
+         that is not referenced", which reads as a missing package and is a missing
+         transitive. Named explicitly, for both. -->
+    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+  </ItemGroup>
 
 </Project>
