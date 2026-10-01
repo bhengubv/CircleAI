@@ -82,9 +82,21 @@
         uninstalls first and takes the downloaded models with it. Both heads set apk
         for themselves and say why.
 
-    Operator setup, once per machine (Deployment\Setup-DeployMachine.ps1 does step 1):
-      1. TheGeekAlias.keystore at %USERPROFILE%\keystore\, copied from
-         %LOCALAPPDATA%\Xamarin\Mono for Android\Keystore\TheGeekAlias      2. setx ANDROID_KEYSTORE_PASS "<from the password manager>" — then a NEW SHELL.
+    WHERE THE KEY IS. Visual Studio keeps the one it manages at
+    %LOCALAPPDATA%\Xamarin\Mono for Android\Keystore\TheGeekAlias\, and that copy is
+    taken first: a machine with Visual Studio on it already has the key and needs no
+    setup step at all. %USERPROFILE%\keystore\ is the fallback - where
+    thegeeknetwork's Deployment\Setup-DeployMachine.ps1 puts it, and what its own
+    props points at. Either resolves, and neither is copied.
+
+    (An earlier edit of this comment lost a newline to a backslash at end of line,
+    which is also how the publish flags broke the props load with MSB4024. A path
+    ending in a separator is the last thing you want at the end of a line here.)
+
+    Operator setup, once per machine:
+      1. Nothing, if Visual Studio holds the keystore. Otherwise run
+         Deployment\Setup-DeployMachine.ps1.
+      2. setx ANDROID_KEYSTORE_PASS "<from the password manager>" - then a NEW SHELL.
       3. Verify: pwsh -c "[Environment]::GetEnvironmentVariable('ANDROID_KEYSTORE_PASS','User')"
 
     Without it, Release fails at signing with XA4314 "$(AndroidSigningKeyPass) is
@@ -99,7 +111,9 @@
   -->
   <PropertyGroup Condition="$(TargetFramework.Contains('-android')) AND '$(Configuration)' == 'Release'">
     <AndroidKeyStore>true</AndroidKeyStore>
-    <AndroidSigningKeyStore>$(UserProfile)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
+    <_CircleAIVsKeystore>$(LOCALAPPDATA)\Xamarin\Mono for Android\Keystore\TheGeekAlias\TheGeekAlias.keystore</_CircleAIVsKeystore>
+    <AndroidSigningKeyStore Condition="Exists('$(_CircleAIVsKeystore)')">$(_CircleAIVsKeystore)</AndroidSigningKeyStore>
+    <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(UserProfile)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
     <AndroidSigningKeyAlias>TheGeekAlias</AndroidSigningKeyAlias>
     <AndroidSigningKeyPass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningKeyPass>
     <AndroidSigningStorePass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningStorePass>
