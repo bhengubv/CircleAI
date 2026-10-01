@@ -58,9 +58,20 @@
     <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
   </PropertyGroup>
 
-  <!-- Release signing — pass credentials via MSBuild properties or CI/CD environment -->
+  <!-- Release signing is in the repo-root Directory.Build.props, which wires the shared
+       TheGeekAlias key for every android head here. This comment used to say "pass
+       credentials via MSBuild properties or CI/CD environment" and nothing passed any,
+       so every Release build was quietly signed with Android's DEBUG key - a package
+       that installs, runs, passes every suite and can be shipped nowhere. -->
   <PropertyGroup Condition="$(TargetFramework.Contains('-android')) and '$(Configuration)' == 'Release'">
-    <AndroidPackageFormat>aab</AndroidPackageFormat>
+
+    <!-- APK, NOT AAB, AND aab IS THE DEFAULT SO THIS LINE HAS TO SAY SO.
+         A Release -t:Install of an app bundle UNINSTALLS first - `Install` depends on
+         both _DeployApk (`adb install -r`, in place) and _DeployAppBundle (uninstall,
+         then install), and the package format picks which one runs. That is the trap
+         CLAUDE.md spends a section on, and it cost a day. It is also the right format
+         to ship: this product is degoogled, and an app bundle is a Play Store artefact. -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
     <RunAOTCompilation>true</RunAOTCompilation>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>

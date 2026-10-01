@@ -23,10 +23,34 @@ using CircleAI.Memory;
 
 namespace CircleAI.Service.Android;
 
-// NO ICON SET, which is a gap and not a choice worth defending: this ships with
-// Android's default launcher icon. A store listing needs a real one, and inventing
-// artwork here would be worse than leaving the hole visible.
-[Application(Label = "CircleAI")]
+// WHAT THIS APP IS CALLED AND WHAT IT LOOKS LIKE, in one place.
+//
+// IT HAD NEITHER. The label read "CircleAI" - the same string as the app, so the two
+// entries in Settings > Apps were indistinguishable - and no icon was set at all, so
+// Android drew its generic placeholder. Confirmed on a P30 on 2026-10-01: dumpsys
+// reported no icon, and the App info page showed the default glyph. A store listing
+// cannot ship that, and neither can somebody trying to work out which of the two is
+// holding their microphone.
+//
+// HERE RATHER THAN IN AndroidManifest.xml, and the difference is not cosmetic: this
+// attribute WINS over the template's <application> element, so a label set in the
+// manifest is silently discarded. Measured - the manifest said "Circle AI Service"
+// and `aapt2 dump badging` read back "CircleAI". One owner, and it is this line.
+//
+// THE SAME MARK AS THE APP, deliberately. It is one product; a second identity for
+// the engine behind it would be a thing to distrust rather than to recognise. The
+// NAME is what separates them in the list.
+//
+// THE PNGs ARE DERIVED, NOT DRAWN. Resources/mipmap-* comes from the app head's
+// Resources/AppIcon/appicon.svg through MAUI's resizetizer, which this project does
+// not have - it is a plain Android SDK project. To regenerate: build the app head in
+// Release and copy its obj/Release/net10.0-android/resizetizer/r/mipmap-* over
+// src/CircleAIService/Resources/mipmap-*. The svg upstream of all of it is written by
+// tools/brand-mark/gen_mark.py, so the mark still has one owner too.
+[Application(
+    Label     = "Circle AI Service",
+    Icon      = "@mipmap/appicon",
+    RoundIcon = "@mipmap/appicon_round")]
 public sealed class ServiceApplication : Application
 {
     public ServiceApplication(IntPtr handle, JniHandleOwnership transfer)

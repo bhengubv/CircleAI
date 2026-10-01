@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
   THE SERVICE'S OWN PERMISSIONS, WHICH DID NOT COME WITH IT WHEN IT SPLIT OFF.
 
@@ -46,5 +46,8 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+  <!-- The label and the icon are on [Application] in ServiceApplication.cs, which
+       WINS over anything set here - a label written in this file is discarded
+       without a word. Only the two attributes nothing else owns live here. -->
   <application android:allowBackup="true" android:supportsRtl="true" />
 </manifest>
