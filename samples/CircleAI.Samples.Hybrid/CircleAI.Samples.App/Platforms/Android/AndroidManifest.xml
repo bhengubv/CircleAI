@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <!--
     INTERNET is declared, and declaring it is the point of this file.
 
@@ -23,75 +23,39 @@
 	-->
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 	<!--
-	    THE RESIDENT SERVICE RUNS IN THE FOREGROUND, AND ON ANDROID THAT IS A
-	    PERMISSION, NOT A CHOICE. Without FOREGROUND_SERVICE, startForeground
-	    throws SecurityException and the platform then kills the process for not
-	    having gone foreground - measured on a P30 (API 29): the wake word was
-	    listening, and the app died about ten seconds later with
+	    SEVEN PERMISSIONS LEFT WITH THE RESIDENT LISTENER AND THE DECLARATIONS DID NOT.
 
-	        Context.startForegroundService() did not then call
-	        Service.startForeground()
+	    This head used to run the foreground service, hold the wake lock, post the
+	    microphone notification and come back after a reboot. All of that is
+	    CircleAIService's now - this app has three files under Platforms/Android
+	    (this manifest, MainActivity, MainApplication), no Service, no
+	    BroadcastReceiver, and references neither CircleAI.Device nor
+	    CircleAI.Assistant.Device. Nothing in this APK can use any of them.
 
-	    which names the symptom and not one word of the cause. This manifest had
-	    only INTERNET and RECORD_AUDIO, so the service had been refused on every
-	    attempt since this head existed.
+	    So these are gone:
 
-	      FOREGROUND_SERVICE             API 28+. The one that was missing.
-	      FOREGROUND_SERVICE_DATA_SYNC   API 34+. From 14 the TYPE needs its own
-	                                     permission or the start is refused.
-	      FOREGROUND_SERVICE_MICROPHONE  API 34+. Same rule for the microphone
-	                                     type, which this head claims from API 30.
-	      POST_NOTIFICATIONS             API 33+. A foreground service must show a
-	                                     notification; denied, it still runs but
-	                                     nobody can see it is holding the
-	                                     microphone - which is the one thing that
-	                                     notification exists to be honest about.
+	      FOREGROUND_SERVICE               no Service in this package
+	      FOREGROUND_SERVICE_DATA_SYNC     ditto
+	      FOREGROUND_SERVICE_MICROPHONE    ditto - and this is the one that reads
+	                                       worst on a store listing: a thin client
+	                                       asking to hold a microphone in the
+	                                       background for work another app does
+	      POST_NOTIFICATIONS               ServiceAnnouncer posts nothing, on purpose
+	                                       - "the shade belongs to the service that
+	                                       is actually doing the work"
+	      WAKE_LOCK                        no PowerManager call survives here
+	      RECEIVE_BOOT_COMPLETED           BootReceiver went with the models
+	      REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+	                                       only grants the per-package dialog, and
+	                                       the package needing the exemption is the
+	                                       SERVICE. An app cannot ask for another
+	                                       app's. See ServiceSetup.AllowBackgroundAsync,
+	                                       which opens the settings list instead -
+	                                       that intent needs no permission at all.
 
-	    Declared unguarded, as in the native head: a build that cannot host the
-	    device service is not a smaller build, it is a broken one.
+	    A permission a build cannot exercise is not harmless. It is the first thing
+	    a reviewer reads and the only thing most people will ever see of this split.
 	-->
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-	<!--
-	    WAKE_LOCK. Normal permission, granted at install, and without it
-	    PowerManager.newWakeLock throws.
-
-	    A FOREGROUND SERVICE KEEPS THE PROCESS. IT DOES NOT KEEP THE CPU. With
-	    the screen off and no wake lock the AudioRecord loop stops being
-	    scheduled: the service record is still there, the notification is still
-	    there, IsListening still says true, and no audio is read at all. Nothing
-	    logs an error, because nothing failed - the thread was simply never run
-	    again.
-
-	    Measured on a P30 on 2026-09-05: the five-second wake heartbeat stopped
-	    the moment the app left the foreground, the process fell from 711 MB to
-	    47 MB as the models were reclaimed, and somebody then spoke to the phone
-	    for eleven minutes while it heard a quiet room.
-
-	    "Answers to its name with the screen off" is the whole feature, and this
-	    one line is what makes the sentence true.
-	-->
-	<uses-permission android:name="android.permission.WAKE_LOCK" />
-	<!-- WITHOUT THIS, THE "Fix it" BUTTON IS A NO-OP. Settings.ACTION_REQUEST_
-	     IGNORE_BATTERY_OPTIMIZATIONS only shows its dialog to an app that holds
-	     this permission; without it the activity starts and finishes instantly,
-	     so the button appears dead and the code that launched it still reports
-	     success. Measured on a P30 on 2026-09-07: tapped, nothing happened, no
-	     error anywhere - and the exemption is the one thing standing between a
-	     wake word that works and one that goes deaf an hour after you put the
-	     phone down. -->
-	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-	<!--
-	    COMING BACK AFTER A REBOOT. Without this the assistant is silent from the
-	    moment the phone restarts until somebody happens to open the app, and a
-	    thing that forgets how to listen every time the battery dies is not an
-	    assistant. See BootReceiver - which restores the MODELS only: from
-	    Android 14 a microphone-typed foreground service may not be started from
-	    BOOT_COMPLETED, so listening waits for one deliberate tap by design.
-	-->
-	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 	<!--
 	    hasFragileUserData: on Android 10+ the uninstall dialog OFFERS to keep this
 	    app's data. One attribute, and a reinstall stops wiping 250 MB of models

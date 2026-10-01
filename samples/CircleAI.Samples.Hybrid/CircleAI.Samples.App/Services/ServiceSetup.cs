@@ -141,11 +141,90 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
     public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(false);
 
     /// <inheritdoc />
-    /// <remarks>Background work is the service's; this app has none to exempt.</remarks>
-    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(false);
+    /// <remarks>
+    /// IT RETURNED FALSE AND THE BUTTON LOOKED BROKEN. "Background work is the
+    /// service's; this app has none to exempt" is true and was the wrong conclusion:
+    /// the warning above the button is about the SERVICE being killed, so the row
+    /// printed "This phone may stop it listening - Fix it" on every launch and Fix it
+    /// did nothing, for ever. Seen on a P30 on 2026-10-01.
+    /// <para>
+    /// THE SETTINGS LIST, NOT THE PER-PACKAGE DIALOG. ACTION_REQUEST_IGNORE_BATTERY_
+    /// OPTIMIZATIONS names one package and only shows for the app that holds
+    /// REQUEST_IGNORE_BATTERY_OPTIMIZATIONS - and the package needing the exemption
+    /// is CircleAI's, which this app cannot ask for on its behalf. The list screen
+    /// takes no package, needs no permission at all, and puts the person exactly
+    /// where the choice is made. That is also why this head no longer declares that
+    /// permission.
+    /// </para>
+    /// <para>
+    /// The return says only that something opened - which is the contract the screen
+    /// already documents, because the person may grant, refuse or back out. The
+    /// re-read happens on the way back in.
+    /// </para>
+    /// </remarks>
+    public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)
+    {
+        if (ServiceExempt()) return Task.FromResult(true);
+
+        try
+        {
+            var intent = new Android.Content.Intent(
+                Android.Provider.Settings.ActionIgnoreBatteryOptimizationSettings);
+
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+            if (activity is not null)
+            {
+                activity.StartActivity(intent);
+            }
+            else
+            {
+                // No activity means no task to open into, so it needs its own.
+                intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                Android.App.Application.Context.StartActivity(intent);
+            }
+
+            return Task.FromResult(true);
+        }
+        catch (Exception ex)
+        {
+            // Vendors move this screen between firmwares; the caller prints a
+            // sentence telling somebody where to look instead.
+            Android.Util.Log.Warn("CircleAI.Setup", "battery settings did not open: " + ex.Message);
+            return Task.FromResult(false);
+        }
+    }
 
     /// <inheritdoc />
-    public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(false);
+    /// <remarks>
+    /// ASKED ABOUT THE SERVICE'S PACKAGE, which is the one that holds the microphone
+    /// and gets hibernated. This answered about THIS app - and hardcoded false at
+    /// that - so the warning could never clear however many times somebody granted
+    /// the exemption.
+    /// </remarks>
+    public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
+        => Task.FromResult(ServiceExempt());
+
+    /// <summary>Whether Android will let CircleAI keep running in the background.</summary>
+    /// <remarks>
+    /// isIgnoringBatteryOptimizations takes a package name and this one is CircleAI's,
+    /// not this app's. LinkIpc.HostPackage rather than a literal: the same constant
+    /// the bind uses, so there is one place that says which app is the host.
+    /// </remarks>
+    private static bool ServiceExempt()
+    {
+        try
+        {
+            var power = (Android.OS.PowerManager?)Android.App.Application.Context
+                .GetSystemService(Android.Content.Context.PowerService);
+
+            return power?.IsIgnoringBatteryOptimizations(CircleAI.Linking.LinkIpc.HostPackage) == true;
+        }
+        catch
+        {
+            // A phone that will not answer is not a phone that has granted it.
+            return false;
+        }
+    }
 
     /// <inheritdoc />
     /// <remarks>
