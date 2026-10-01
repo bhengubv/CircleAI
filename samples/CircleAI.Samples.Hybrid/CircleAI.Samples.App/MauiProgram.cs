@@ -133,7 +133,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IWakePhrases>(sp =>
             new CircleAI.Client.LinkedWakePhrases((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IShareTarget, AndroidShareTarget>();
-        builder.Services.AddSingleton<IWakeWord>(sp => new Services.ServiceWakeWord((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+        builder.Services.AddSingleton<IWakeWord>(sp => new CircleAI.Client.LinkedWakeWord((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
         // MAY THIS APP LISTEN. The assistant asks; this head knows how to get
         // the answer, because it is the thing with a screen. See IMicrophoneAccess.

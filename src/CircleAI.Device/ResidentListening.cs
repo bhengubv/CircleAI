@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 
 // ResidentListening.cs
 //
@@ -277,13 +277,12 @@ public sealed partial class CircleNeuronService
         try { await listener.StopAsync().ConfigureAwait(false); } catch { /* replacing it anyway */ }
     }
 
-    /// <summary>What the ongoing notification should say about the microphone.</summary>
+    /// <summary>The microphone sentence, or null when nothing is holding it.</summary>
     /// <remarks>
     /// Named rather than implied. Somebody glancing at their notification shade
     /// should be able to tell that this app is holding the microphone right now,
     /// and what it is waiting to hear — not have to infer it from "running".
-    /// </remarks>
-    /// <remarks>
+    /// <para>
     /// KEPT, NOT RECORDED. This said "nothing is recorded or sent", which is not
     /// true and cannot be - audio that is never recorded cannot be matched
     /// against a phrase. What is true, and what somebody glancing at their shade
@@ -291,13 +290,26 @@ public sealed partial class CircleNeuronService
     /// The same correction was made on all five screens; this is the sixth place
     /// that claim is made, and it is the one that sits on the notification shade
     /// all day.
+    /// </para>
+    /// <para>
+    /// ONE OWNER FOR ONE SENTENCE, AND IT IS SEPARATE FROM THE STATUS LINE FOR THAT
+    /// REASON. Notify composes this in over whatever a caller passed, so a status
+    /// write cannot bury the disclosure; without a single source the two would be
+    /// free to drift, which is how every other duplicated fact here ended up with
+    /// two answers.
+    /// </para>
     /// </remarks>
-    internal static string ListeningNotificationText() =>
+    internal static string? MicrophoneDisclosure() =>
         _listener is { IsListening: true } l
             ? $"Listening for “{l.Describe}” — nothing is kept or sent"
-            : WaitingToBeAsked
+            : null;
+
+    /// <summary>What the ongoing notification should say when nobody has asked for one.</summary>
+    internal static string ListeningNotificationText() =>
+        MicrophoneDisclosure()
+            ?? (WaitingToBeAsked
                 ? "Not listening since the phone restarted — tap to switch it back on"
-                : "Ready";
+                : "Ready");
 
     /// <summary>
     /// True when the owner had listening on, the phone restarted, and the

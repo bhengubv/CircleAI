@@ -12,7 +12,9 @@
 using System;
 using Android.App;
 using Android.Content;
+using Android.Content.PM;
 using Android.OS;
+using System.Threading.Tasks;
 using CircleAI.Aether;
 using CircleAI.Linking;
 
@@ -94,6 +96,26 @@ public sealed class LinkConsentActivity : Activity
                     ? $"consent: GRANTED to '{caller}'"
                     : $"consent: not granted - {why ?? "the person declined"}");
             SetResult(grant is not null ? Result.Ok : Result.Canceled);
+
+            // AND THE MICROPHONE, BECAUSE THIS IS THE ONLY PLACE THAT CAN ASK FOR IT.
+            //
+            // CircleAI declares RECORD_AUDIO and had never been granted it: a runtime
+            // permission needs an Activity to raise the dialog, and a service with no
+            // screens has none. So "answer to its name" could not start, on any
+            // device, ever - the service held the permission in its manifest and
+            // nothing in the product could turn it into a grant.
+            //
+            // This activity is the one exception: it exists because a background
+            // service cannot raise a biometric sheet either, and it is already in
+            // front of the person. Asking here also puts the question where it makes
+            // sense - they have just approved an app to use the voice, and the next
+            // thing that needs saying is that the phone will listen.
+            //
+            // ONLY WHEN VOICE WAS ACTUALLY APPROVED. A client that asked for chat and
+            // memory has no business triggering a microphone prompt; that would be a
+            // permission harvested on the back of an unrelated approval.
+            if (grant is not null && scope.HasFlag(LinkScope.Voice))
+                await EnsureMicrophoneAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -107,5 +129,54 @@ public sealed class LinkConsentActivity : Activity
         {
             Finish();
         }
+    }
+
+    /// <summary>Request RECORD_AUDIO if this app does not have it, and wait for the answer.</summary>
+    /// <remarks>
+    /// AWAITED SO THE DIALOG SURVIVES. OnCreate finishes this activity in its finally
+    /// block, and a permission dialog raised by an activity that then finishes is
+    /// dismissed before anybody reads it. The completion source holds the activity
+    /// open exactly as long as the question is on screen.
+    /// <para>
+    /// A refusal is not an error here. The link is already granted and everything but
+    /// the wake word works without a microphone; the listening switch will report
+    /// NeedsPermission, which is true and actionable, rather than failing silently.
+    /// </para>
+    /// </remarks>
+    private async Task EnsureMicrophoneAsync()
+    {
+        try
+        {
+            if (CheckSelfPermission(Android.Manifest.Permission.RecordAudio) == Permission.Granted)
+                return;
+
+            _microphone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            RequestPermissions(new[] { Android.Manifest.Permission.RecordAudio }, MicrophoneRequest);
+
+            var granted = await _microphone.Task.ConfigureAwait(true);
+            Android.Util.Log.Info("CircleAI.Link",
+                granted ? "consent: microphone granted" : "consent: microphone declined");
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Link", "could not ask for the microphone: " + ex.Message);
+        }
+    }
+
+    private const int MicrophoneRequest = 0x91c;
+    private TaskCompletionSource<bool>? _microphone;
+
+    /// <inheritdoc />
+    public override void OnRequestPermissionsResult(
+        int requestCode, string[] permissions, Permission[] grantResults)
+    {
+        if (requestCode == MicrophoneRequest)
+        {
+            _microphone?.TrySetResult(
+                grantResults.Length > 0 && grantResults[0] == Permission.Granted);
+            return;
+        }
+
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 }

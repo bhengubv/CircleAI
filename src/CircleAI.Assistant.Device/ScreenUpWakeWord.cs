@@ -1,4 +1,4 @@
-// ScreenUpWakeWord.cs
+﻿// ScreenUpWakeWord.cs
 //
 // The wake word, running in this process, for the phones that will not let a
 // service hold the microphone.
@@ -29,12 +29,28 @@
 // only reason any of the numbers in here are trusted.
 
 using Android.Util;
+using CircleAI.Device;
 using CircleAI.Voice;
 
 namespace CircleAI.Assistant.Device;
 
 /// <summary>Listens for the wake phrase while the app is on screen.</summary>
-public sealed class ScreenUpWakeWord : IAsyncDisposable
+/// <remarks>
+/// AND IT IS AN <see cref="IResidentListener"/>, WHICH IS HOW THE REST OF THE
+/// PRODUCT FINDS OUT IT IS RUNNING. This loop was started directly and told nobody,
+/// so <c>CircleNeuronService.IsListening</c> — the one flag three other places read
+/// to answer "is the microphone open" — stayed false while the microphone was open.
+/// The Settings screen showed the result side by side: "Answer to its name" ticked,
+/// because that reads this object, and the Waking ability offering "Turn on",
+/// because that reads the flag. Same phone, same second, two answers.
+/// <para>
+/// Implementing the seam rather than being adapted to it, because the seam is four
+/// members this class already has in all but name, and the service needs them to
+/// hold the CPU wake lock and to write the microphone disclosure on the shade —
+/// neither of which a loop nobody knows about can get.
+/// </para>
+/// </remarks>
+public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
 {
     private const string Tag = "CircleAI.ScreenWake";
 
@@ -56,8 +72,40 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable
     /// <summary>Raised off the UI thread when the phrase lands.</summary>
     public event EventHandler<string>? Woke;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// THE PHRASE IS NOT KNOWN UNTIL THE SPOTTER IS BUILT, which happens on the loop
+    /// thread a moment after Start returns — so this reads "its name" for that moment
+    /// rather than a phrase invented here. The notification is refreshed again when
+    /// the listener reports it is up, by which time this is the real list.
+    /// </remarks>
+    public string Describe => _describe;
+
+    private volatile string _describe = "its name";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// RAISED FROM THE CONFIRMER'S VETO, which is the one near miss this loop can
+    /// actually see: a phrase that matched in full and was turned down for being too
+    /// quiet, too fast or too soon after the last one. Partial matches are counted
+    /// inside the spotter and never surface here, so they are not claimed.
+    /// </remarks>
+    public event EventHandler<ResidentNearMiss>? Nearly;
+
     /// <summary>True while the microphone is open for the wake phrase.</summary>
     public bool IsListening => _loop is { IsCompleted: false };
+
+    /// <inheritdoc />
+    /// <remarks>Synchronous underneath: starting is handing a loop to the thread pool.</remarks>
+    public Task StartAsync(CancellationToken ct = default)
+    {
+        Start();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The token is accepted for the seam; stopping is cancelling the loop.</remarks>
+    public Task StopAsync(CancellationToken ct) => StopAsync();
 
     /// <summary>Opens the microphone. Does nothing if already listening.</summary>
     public void Start()
@@ -107,13 +155,28 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable
 
             Log.Info(Tag, $"listening for: {string.Join(" | ", kws.Keywords)}");
 
+            // WHAT THE SHADE SAYS IT IS LISTENING FOR. The notification is written
+            // from Describe, and until the spotter existed there was no phrase to
+            // put in it - so the disclosure named the phrase only by luck of timing.
+            _describe = kws.Keywords.Count > 0 ? kws.Keywords[0] : "its name";
+            CircleNeuronService.RefreshNotification();
+
             kws.Woke += (_, d) =>
             {
                 Log.Info(Tag, $"HEARD \"{d.Phrase}\" p={d.Probability:F4} @{d.AtFrame}");
                 Woke?.Invoke(this, d.Phrase);
             };
             kws.Rejected += (_, r) =>
+            {
                 Log.Info(Tag, $"VETOED \"{r.Detection.Phrase}\" — {r.Reason}");
+
+                // A COMPLETE MATCH, REFUSED - which is what ResidentNearMiss.Refused
+                // is for, and the only thing that distinguishes "stand closer" from
+                // "say it again more clearly" on a screen watching the listener.
+                var tokens = kws.TokenCountOf(r.Detection.Phrase);
+                Nearly?.Invoke(this, new ResidentNearMiss(
+                    r.Detection.Phrase, tokens, tokens, r.Detection.Probability, r.Reason));
+            };
 
             await using var mic = new AndroidAudioCapture();
             var pcm = new float[1600];

@@ -1,4 +1,4 @@
-// LinkedResidentAssistant.cs
+﻿// LinkedResidentAssistant.cs
 //
 // The "answer to its name" switch, made to actually switch something.
 //
@@ -27,12 +27,21 @@ public sealed class LinkedResidentAssistant(LinkedBrain brain) : IResidentAssist
 {
     /// <inheritdoc />
     /// <remarks>
-    /// FALSE, BECAUSE THIS PROPERTY CANNOT ASK. It is synchronous and the answer is
-    /// across a link; the screens that matter use the async calls below, which report
-    /// the real state. Returning a remembered guess here is how a "listening"
-    /// indicator ends up lit over a service that stopped.
+    /// THE LAST ANSWER THE SERVICE GAVE, not a guess and not a constant. This is
+    /// synchronous and the truth is across a link, so it cannot ask — it was
+    /// hardcoded false for exactly that reason, which meant the settings checkbox
+    /// could never tick no matter what the service said. Settings reads this to
+    /// decide whether the switch is on.
+    /// <para>
+    /// It is only ever written by a call that DID ask, so before the first call it
+    /// reports false — not listening — which is the safe direction: a dark switch
+    /// over a listening phone would be a lie about the microphone, and the screen
+    /// refreshes within a second of opening.
+    /// </para>
     /// </remarks>
-    public bool IsListening => false;
+    public bool IsListening => _listening;
+
+    private volatile bool _listening;
 
     /// <inheritdoc />
     /// <remarks>
@@ -79,9 +88,12 @@ public sealed class LinkedResidentAssistant(LinkedBrain brain) : IResidentAssist
                 reply.Error ?? "It did not answer.");
 
         var row = reply.Rows[0];
-        return new ResidentStatus(
-            Enum.TryParse<ResidentState>(LinkSetupRows.Text(row, 0), out var st) ? st : ResidentState.Failed,
-            LinkSetupRows.Text(row, 1),
-            LinkSetupRows.Text(row, 2));
+        var state = Enum.TryParse<ResidentState>(LinkSetupRows.Text(row, 0), out var st)
+            ? st
+            : ResidentState.Failed;
+
+        _listening = state == ResidentState.Listening;
+
+        return new ResidentStatus(state, LinkSetupRows.Text(row, 1), LinkSetupRows.Text(row, 2));
     }
 }

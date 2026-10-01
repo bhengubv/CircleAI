@@ -1,4 +1,4 @@
-// LinkedDeviceFacts.cs
+﻿// LinkedDeviceFacts.cs
 //
 // What this phone can do, and what Circle AI is using on it — asked, not guessed.
 //
@@ -42,11 +42,19 @@ public sealed class LinkedDeviceFacts(LinkedBrain brain)
         return [.. reply.Rows.Select(r =>
         {
             var bytes = LinkSetupRows.Text(r, 3);
+
+            // THE ROUTE, WHICH THIS USED TO DROP ON THE FLOOR. It is not decoration:
+            // the abilities screen reads it to tell "start the listener" from "fetch
+            // the model", so a null route sent every Waking tap down the download
+            // path and the row stayed off however many times it was pressed.
+            var route = LinkSetupRows.Text(r, 4);
+
             return new AbilityRow(
                 LinkSetupRows.Text(r, 0),
                 LinkSetupRows.Text(r, 1),
                 Enum.TryParse<AbilityState>(LinkSetupRows.Text(r, 2), out var st) ? st : AbilityState.NotCatalogued,
-                string.IsNullOrEmpty(bytes) ? null : LinkSetupRows.Number(r, 3));
+                string.IsNullOrEmpty(bytes) ? null : LinkSetupRows.Number(r, 3),
+                string.IsNullOrEmpty(route) ? null : route);
         })];
     }
 

@@ -1,91 +1,232 @@
-// ResidentListeningControl.cs
+﻿// ResidentListeningControl.cs
 //
-// "Answer to its name", as a switch the service can actually be asked to flip.
+// "Answer to its name" — the switch, and the thing behind it.
 //
-// THERE WAS NO IResidentAssistant ON THIS SIDE AT ALL. The only implementations in
-// the tree were a browser one that says "impossible", a client one that said "open
-// CircleAI" — about an app with no launcher icon — and the proxy that now calls
-// this. So the switch a person saw in Settings had, on every head, nothing behind
-// it.
+// THERE WAS NOTHING BEHIND IT ON ANY HEAD. The only IResidentAssistant
+// implementations in the tree were a browser one saying "impossible" and a client
+// one saying "open CircleAI" — about an app with no launcher icon. Meanwhile every
+// part a wake word needs had been built and left unreachable:
 //
-// IT IS A VIEW OVER CircleNeuronService, NOT A SECOND LISTENER. That service already
-// holds the microphone, owns the foreground notification the microphone is disclosed
-// through, and survives the screen going off — which is the entire meaning of
-// "answer to its name". Building a parallel one here would give a device two things
-// competing for one microphone.
+//   ScreenUpWakeWord          complete, ZERO callers in the repo
+//   ZipformerKwsSpotter       complete, reached only by the above
+//   DeviceWakePhrases         writes the keyword file, and its KeywordFile is
+//                             documented "Public: the resident wake service reads
+//                             the same file the app writes" — a service nobody wrote
+//   KWS-Zipformer-HeyB        6.4 MB, downloaded, never opened
+//   RECORD_AUDIO              declared in the manifest, never granted, because a
+//                             service with no Activity cannot raise the dialog
 //
-// THE STATE IS READ, NEVER REMEMBERED. Android can stop a foreground service, a
-// person can revoke the microphone, a battery optimiser can step in — none of which
-// this object would hear about. So every call asks the service what it is doing now.
+// Five finished pieces and no line joining them. This is that line.
+//
+// THE NOTIFICATION IS NOT OPTIONAL. CircleNeuronService is started alongside the
+// spotter because it owns the foreground notification the microphone is disclosed
+// through — "listening for Hey Circle AI, nothing is kept or sent". A phone holding
+// an open microphone with nothing on the shade is not disclosure, it is the absence
+// of it, and that is the one thing this feature must never get wrong.
 
+using System.Linq;
 using Android.Content;
 using CircleAI.Assistant;
 using CircleAI.Device;
 
 namespace CircleAI.Assistant.Device;
 
-/// <summary>Turns the resident listener on and off, and says what it is doing.</summary>
+/// <summary>Turns the wake word on and off, and says what it is doing.</summary>
 /// <param name="context">Any context; the application context is right here.</param>
 public sealed class ResidentListeningControl(Context context) : IResidentAssistant
 {
-    /// <inheritdoc />
-    public bool IsListening => CircleNeuronService.State == CircleNeuronService.ServiceState.Ready;
+    private const string Tag = "CircleAI.Wake";
 
-    /// <inheritdoc />
+    /// <summary>The directory that actually holds the spotter's graphs.</summary>
     /// <remarks>
-    /// Declared to satisfy the interface, never raised here. The wake word fires
-    /// inside CircleNeuronService; routing that out is a separate seam and inventing
-    /// an event that never comes would be worse than an honest silence.
+    /// THE BUNDLE UNPACKS A LEVEL DOWN, and assuming otherwise fails late and
+    /// obscurely: ZipformerKwsSpotter throws "no *encoder*.onnx in ..." from inside
+    /// its constructor, which surfaces as the wake loop dying rather than as a model
+    /// that is not where it was expected. On the P30 the entry is
+    /// KWS-Zipformer-HeyB/ and the graphs are in KWS-Zipformer-HeyB/kws-hey-b/.
+    /// <para>
+    /// So the encoder is what is searched for, not a path that is guessed. One level
+    /// down is enough for every bundle shape shipped so far, and a bundle that nests
+    /// deeper should say so rather than be found by a recursive walk of the model
+    /// store.
+    /// </para>
     /// </remarks>
-    public event EventHandler<string>? Woke { add { } remove { } }
+    private static string? BundleDir()
+    {
+        var root = Path.Combine(ModelStore.Path, "KWS-Zipformer-HeyB");
+        if (!Directory.Exists(root)) return null;
+        if (HasEncoder(root)) return root;
+
+        foreach (var child in Directory.EnumerateDirectories(root))
+            if (HasEncoder(child)) return child;
+
+        return null;
+    }
+
+    private static bool HasEncoder(string dir)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(dir, "*encoder*.onnx").Any();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private ScreenUpWakeWord? _ears;
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <inheritdoc />
-    public Task<ResidentStatus> StartAsync(CancellationToken ct = default)
+    public bool IsListening => _ears?.IsListening == true;
+
+    /// <inheritdoc />
+    /// <remarks>Forwarded from the spotter, so a host can act on the phrase.</remarks>
+    public event EventHandler<string>? Woke;
+
+    /// <inheritdoc />
+    public async Task<ResidentStatus> StartAsync(CancellationToken ct = default)
     {
-        try { CircleNeuronService.Start(context); }
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_ears is { IsListening: true }) return Listening();
+
+            // THE MODEL FIRST, because the honest refusal is specific. Without the
+            // bundle the spotter throws deep inside its first audio chunk, which
+            // surfaces as "it stopped" rather than "you have not downloaded it yet".
+            var bundle = BundleDir();
+            if (bundle is null)
+                return new ResidentStatus(ResidentState.Unsupported,
+                    "The wake word is not downloaded",
+                    "Set CircleAI up and it will fetch what it needs to hear its name.");
+
+            // The microphone is a runtime permission and this app cannot prompt — it
+            // has no Activity. LinkConsentActivity asks for it when a client is
+            // approved for Voice; until then, say so rather than opening a recorder
+            // that returns silence for ever.
+            if (context.CheckSelfPermission(Android.Manifest.Permission.RecordAudio)
+                != Android.Content.PM.Permission.Granted)
+                return new ResidentStatus(ResidentState.NeedsPermission,
+                    "CircleAI cannot use the microphone",
+                    "Approve the link again from the app and allow the microphone when asked.");
+
+            // THE DISCLOSURE, BEFORE THE MICROPHONE. CircleNeuronService owns the
+            // ongoing notification; starting the spotter first would open a recorder
+            // with nothing on the shade to say so.
+            try { CircleNeuronService.Start(context); }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn(Tag, "foreground service did not start: " + ex.Message);
+            }
+
+            var keywords = DeviceWakePhrases.KeywordFile("en");
+            var ears = new ScreenUpWakeWord(bundle, File.Exists(keywords) ? keywords : null);
+            ears.Woke += (_, phrase) =>
+            {
+                Android.Util.Log.Info(Tag, $"woke on \"{phrase}\"");
+                Woke?.Invoke(this, phrase);
+            };
+
+            // THROUGH THE SERVICE, NOT PAST IT, AND THE SCREEN SHOWED WHY.
+            //
+            // This used to call ears.Start() directly and keep the spotter to
+            // itself. CircleNeuronService.IsListening - the one static three other
+            // places read to answer "is the microphone open" - therefore stayed
+            // false while the microphone was open, and Settings printed both
+            // answers at once on a P30 on 2026-10-01: "Answer to its name" ticked,
+            // because that reads THIS object, and the Waking ability still offering
+            // "Turn on", because that reads the static. Same screen, same second.
+            //
+            // AND TWO THINGS THE PRIVATE LOOP COULD NOT HAVE. StartListeningAsync
+            // takes the PARTIAL WAKE LOCK, without which "it answers with the screen
+            // off" lasts until the CPU suspends and then silently does not - the
+            // failure measured on a P30 on 2026-09-05, eleven minutes of somebody
+            // talking to a phone that was not scheduled to hear them. And it writes
+            // the microphone disclosure on the shade, naming the phrase, which is
+            // the one thing this feature must never get wrong.
+            CircleNeuronService.Listener = ears;
+            _ears = ears;
+
+            var up = await CircleNeuronService.StartListeningAsync(ct).ConfigureAwait(false);
+            if (!up)
+            {
+                CircleNeuronService.Listener = null;
+                _ears = null;
+                return new ResidentStatus(ResidentState.Failed,
+                    "It could not start listening",
+                    "The microphone did not open. Something else on this phone may be holding it.");
+            }
+
+            Android.Util.Log.Info(Tag, $"listening, keywords={(File.Exists(keywords) ? keywords : "built-in")}");
+            return Listening();
+        }
         catch (Exception ex)
         {
-            return Task.FromResult(new ResidentStatus(ResidentState.Failed,
-                "Could not start listening", ex.Message));
+            Android.Util.Log.Error(Tag, "could not start listening: " + ex);
+            return new ResidentStatus(ResidentState.Failed, "It could not start listening", ex.Message);
         }
-        return Task.FromResult(Now());
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <inheritdoc />
-    public Task<ResidentStatus> StopAsync(CancellationToken ct = default)
+    public async Task<ResidentStatus> StopAsync(CancellationToken ct = default)
     {
-        try { CircleNeuronService.Stop(context); }
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_ears is not null)
+            {
+                // THE SERVICE STOPS IT, so the wake lock is released and the shade
+                // stops saying the microphone is open in the same breath. Stopping
+                // the spotter behind the service's back left both behind.
+                await CircleNeuronService.StopListeningAsync(ct).ConfigureAwait(false);
+                CircleNeuronService.Listener = null;
+
+                await _ears.DisposeAsync().ConfigureAwait(false);
+                _ears = null;
+                Android.Util.Log.Info(Tag, "stopped listening");
+            }
+
+            // THE SERVICE STAYS UP. It hosts the brain as well as the microphone, and
+            // stopping the wake word is not a reason to unload a model every other
+            // app on the link is using.
+            return Off();
+        }
         catch (Exception ex)
         {
-            return Task.FromResult(new ResidentStatus(ResidentState.Failed,
-                "Could not stop listening", ex.Message));
+            return new ResidentStatus(ResidentState.Failed, "It could not stop listening", ex.Message);
         }
-        return Task.FromResult(new ResidentStatus(ResidentState.Off,
-            "Not listening", "Turn it on to wake it by name."));
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <inheritdoc />
-    /// <remarks>Resuming is starting; the service decides whether that is a no-op.</remarks>
+    /// <remarks>Resuming is starting; Start is a no-op when it is already listening.</remarks>
     public Task<ResidentStatus> ResumeAsync(CancellationToken ct = default) => StartAsync(ct);
 
     /// <inheritdoc />
-    public Task<ResidentStatus> RefreshAsync(CancellationToken ct = default) => Task.FromResult(Now());
-
-    /// <summary>What the resident service is doing, in the words a screen can show.</summary>
     /// <remarks>
-    /// LOADING IS NOT LISTENING AND NOT OFF. It is the thirteen to twenty-three
-    /// seconds a model takes to open on a P30, and a screen that shows "off" for that
-    /// window invites somebody to tap the switch again.
+    /// ASKED, NOT REMEMBERED. The loop can end without anyone calling Stop — the
+    /// microphone is revoked, the OS reclaims the service, the spotter throws — so
+    /// this reads the loop rather than a flag set when it was started.
     /// </remarks>
-    private static ResidentStatus Now() => CircleNeuronService.State switch
-    {
-        CircleNeuronService.ServiceState.Ready =>
-            new ResidentStatus(ResidentState.Listening, "Listening", CircleNeuronService.Status),
-        CircleNeuronService.ServiceState.Loading =>
-            new ResidentStatus(ResidentState.Off, "Getting ready", CircleNeuronService.Status),
-        CircleNeuronService.ServiceState.Failed =>
-            new ResidentStatus(ResidentState.Failed, "It could not start", CircleNeuronService.Status),
-        _ =>
-            new ResidentStatus(ResidentState.Off, "Not listening", "Turn it on to wake it by name."),
-    };
+    public Task<ResidentStatus> RefreshAsync(CancellationToken ct = default)
+        => Task.FromResult(IsListening ? Listening() : Off());
+
+    private static ResidentStatus Listening() => new(
+        ResidentState.Listening,
+        "Listening",
+        "It answers to its name with the screen off. Nothing is kept or sent.");
+
+    private static ResidentStatus Off() => new(
+        ResidentState.Off,
+        "Not listening",
+        "Turn it on to wake it by name.");
 }

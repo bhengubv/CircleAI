@@ -236,16 +236,45 @@ public static class LinkSetupRows
     public static IReadOnlyList<string> WakeVerdict(bool added, string quality, string advice)
         => new[] { added ? "1" : "0", quality, advice };
 
-    /// <summary>The resident listener: [state, status, hint].</summary>
-    public static IReadOnlyList<string> Resident(string state, string status, string hint)
-        => new[] { state, status, hint };
+    /// <summary>The resident listener: [state, status, hint, heard].</summary>
+    /// <remarks>
+    /// HEARD IS A COUNTER, NOT AN EVENT, BECAUSE A BINDER CANNOT PUSH. The wake
+    /// phrase fires in the service's process and there is no verb that calls back, so
+    /// a client watching the wake screen had no way to learn it had been heard — the
+    /// one thing somebody opens that screen to find out. A monotonic count turns the
+    /// event into state: a client that sees the number go up knows it woke, without
+    /// the service having to reach into it.
+    /// </remarks>
+    public static IReadOnlyList<string> Resident(
+        string state, string status, string hint, int heard = 0)
+        => new[]
+        {
+            state, status, hint,
+            heard.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
 
-    /// <summary>One ability: [title, blurb, state, bytes].</summary>
-    public static IReadOnlyList<string> Ability(string title, string blurb, string state, long? bytes)
+    /// <summary>One ability: [title, blurb, state, bytes, route].</summary>
+    /// <remarks>
+    /// THE ROUTE IS WHAT MAKES THE ROW DO ANYTHING, AND IT WAS DROPPED HERE.
+    /// AbilityRow.TryRoute is how a screen tells "turn this on" from "fetch this":
+    /// the Waking row is the one ability whose button starts a listener rather than
+    /// a download, and the screen decides which by reading the route. Four columns
+    /// left it null on the far side, so a linked client sent every Waking tap down
+    /// the download path — a 548 MB setup run for a bundle already on the phone,
+    /// after which the row still read "Turn on" because nothing had been started.
+    /// <para>
+    /// Empty for an ability the serving head has no screen for, which is already
+    /// what TryRoute means — see IDeviceFacts: "a row that looks tappable and does
+    /// nothing is worse than a plain one".
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> Ability(
+        string title, string blurb, string state, long? bytes, string? route = null)
         => new[]
         {
             title, blurb, state,
             bytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+            route ?? string.Empty,
         };
 
     /// <summary>One storage line: [label, size, regenerable].</summary>

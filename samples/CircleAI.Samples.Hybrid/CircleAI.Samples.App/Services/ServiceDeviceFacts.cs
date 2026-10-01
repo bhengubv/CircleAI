@@ -112,7 +112,12 @@ public sealed class ServiceDeviceFacts(LinkedBrain brain) : IDeviceFacts
                     progress.Report($"{p.Title} — {p.Fraction:P0}"));
 
             await _setup.RunAsync(relay, ct).ConfigureAwait(false);
-            return $"{title} is ready.";
+
+            // "On" IS THE CONTRACT'S WORD FOR SUCCESS, NOT A SENTENCE ABOUT IT.
+            // The screen compares this to "On" and treats anything else as the
+            // reason it failed - so the friendly "Waking is ready." was printed in
+            // the warning slot under the heading, on a successful run, every time.
+            return "On";
         }
         catch (Exception ex)
         {

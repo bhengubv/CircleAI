@@ -114,7 +114,38 @@ public sealed class CircleNeuronLinkService : Service
     /// launcher icon. The microphone and the foreground service are here; the switch
     /// has to be reachable from somewhere with a screen.
     /// </remarks>
-    public static IResidentAssistant? Resident { get; set; }
+    public static IResidentAssistant? Resident
+    {
+        get => _resident;
+        set
+        {
+            if (ReferenceEquals(_resident, value)) return;
+            if (_resident is not null) _resident.Woke -= OnWoke;
+            _resident = value;
+            if (value is not null) value.Woke += OnWoke;
+        }
+    }
+
+    private static IResidentAssistant? _resident;
+
+    /// <summary>How many times this service has heard its name since it started.</summary>
+    /// <remarks>
+    /// THE WAKE SCREEN HAD NOTHING TO WATCH. A binder is request/response: the phrase
+    /// lands in this process and there is no channel back, so a linked client could
+    /// only ever be told the listener was ON, never that it had just heard something
+    /// — on the one screen whose entire purpose is to say the name and see it react.
+    /// <para>
+    /// A COUNT RATHER THAN A FLAG, so a client that polls cannot miss one between two
+    /// asks and cannot be fooled by a second wake into thinking nothing happened. It
+    /// resets with the process, which is honest: it counts this run, not all time.
+    /// </para>
+    /// </remarks>
+    public static int Heard => _heard;
+
+    private static int _heard;
+
+    private static void OnWoke(object? sender, string phrase)
+        => System.Threading.Interlocked.Increment(ref _heard);
 
     /// <summary>What this device can do and what Circle AI holds on it.</summary>
     /// <remarks>
@@ -295,7 +326,8 @@ public sealed class CircleNeuronLinkService : Service
 
                 return LinkRowsReply.Success(new[]
                 {
-                    LinkSetupRows.Resident(status.State.ToString(), status.Status, status.Hint),
+                    LinkSetupRows.Resident(
+                        status.State.ToString(), status.Status, status.Hint, _heard),
                 });
             }
 
@@ -305,7 +337,7 @@ public sealed class CircleNeuronLinkService : Service
                 if (facts is null) return LinkRowsReply.Failure("device facts not available");
                 var rows = await facts.AbilitiesAsync().ConfigureAwait(false);
                 return LinkRowsReply.Success(rows
-                    .Select(a => LinkSetupRows.Ability(a.Title, a.Blurb, a.State.ToString(), a.Bytes))
+                    .Select(a => LinkSetupRows.Ability(a.Title, a.Blurb, a.State.ToString(), a.Bytes, a.TryRoute))
                     .ToList());
             }
 

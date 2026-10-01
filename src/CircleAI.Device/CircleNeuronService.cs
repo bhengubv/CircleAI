@@ -209,7 +209,16 @@ public sealed partial class CircleNeuronService : Service
     private static CircleNeuronService? _running;
 
     /// <summary>Puts what the service is actually doing back on the shade.</summary>
-    internal static void RefreshNotification()
+    /// <remarks>
+    /// PUBLIC BECAUSE THE LISTENER LEARNS ITS PHRASE AFTER IT STARTS. A keyword
+    /// spotter does not know what it is listening for until its graphs are loaded,
+    /// which is seconds after StartAsync returns — so the one refresh the service
+    /// does on its own runs while <see cref="IResidentListener.Describe"/> is still
+    /// a placeholder, and the shade then kept that placeholder for the whole time
+    /// the microphone was open. The same argument this file already makes about
+    /// "Ready": disclosure that does not update is not disclosure.
+    /// </remarks>
+    public static void RefreshNotification()
     {
         try { _running?.Notify(ListeningNotificationText()); }
         catch { /* a notification is never worth taking the service down for */ }
@@ -790,10 +799,29 @@ public sealed partial class CircleNeuronService : Service
         }
     }
 
+    /// <summary>Writes the shade, with one line that no caller may write over.</summary>
+    /// <remarks>
+    /// THE OPEN MICROPHONE WINS, AND IT HAD BEEN LOSING A RACE. Two things write
+    /// this notification: the listener, through RefreshNotification, and the brain,
+    /// which reports "loading the model…" and then "ready" as it comes up. The
+    /// listener starts first and the model finishes loading several seconds later —
+    /// so on a P30 on 2026-10-01 the shade read "ready" while the microphone was
+    /// open and the wake lock was held, which is precisely the state this file spends
+    /// two paragraphs saying must never be shown.
+    /// <para>
+    /// Fixed here rather than at either caller because there is no sequence of two
+    /// independent writers that is safe: whoever writes last wins, and one of them is
+    /// a model load whose timing nobody controls. The microphone is not a status
+    /// among others, it is a disclosure, so it is composed in at the one place every
+    /// write passes through.
+    /// </para>
+    /// </remarks>
     private void Notify(string text)
     {
         try
         {
+            text = MicrophoneDisclosure() ?? text;
+
             // Remembered so a renewal can repeat it rather than re-deriving it.
             _lastText = text;
 
