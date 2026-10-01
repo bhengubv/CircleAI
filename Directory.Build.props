@@ -62,92 +62,47 @@
 
   <!--
     ============================================================================
-    ANDROID RELEASE SIGNING
+    ANDROID RELEASE SIGNING — the same block thegeeknetwork\code\Directory.Build.props
+    uses for its seventeen apps, so every package this organisation ships is signed
+    with one key and a person who already trusts one of them is not asked to trust a
+    second identity for the engine behind it.
 
-    BOTH APKs WERE DEBUG-SIGNED AND NOTHING SAID SO. A Release Android build with
-    no signing configured does not fail - MAUI/the Android SDK quietly fall back
-    to the platform debug keystore, so you get a Release APK that installs, runs,
-    passes every test, and cannot be uploaded anywhere. Checked on a P30 on
-    2026-10-01: both packages carried the debug signature.
+    IT WAS MISSING HERE AND NOTHING SAID SO. A Release Android build with no signing
+    configured does not fail — `_ResolveAndroidSigningKey` falls back to the platform
+    debug keystore — so both packages installed, ran, passed every suite, and could be
+    uploaded nowhere. Confirmed on a P30 on 2026-10-01: both carried the debug
+    signature.
 
-    THE KEY ALREADY EXISTED. TheGeekAlias.keystore is the same key the seventeen
-    apps under thegeeknetwork\code use, wired there in exactly this way; this repo
-    was simply never given the block. One key, so a person who already trusts one
-    of these apps is not asked to trust a second identity for the engine behind it.
+    TWO DELIBERATE DIFFERENCES FROM THAT FILE, AND ONLY TWO:
+      * No '$(UseMaui)' == 'true' gate. CircleAIService is a plain Microsoft.NET.Sdk
+        Android project, not a MAUI one, so that condition would have left the half
+        that holds the microphone and the models unsigned — the exact bug.
+      * No <AndroidPackageFormat>aab</AndroidPackageFormat>. An app bundle is a Play
+        Store artefact and this product is degoogled; a Release -t:Install of one also
+        uninstalls first and takes the downloaded models with it. Both heads set apk
+        for themselves and say why.
 
-    THE PASSWORD IS NEVER IN A FILE. It comes from ANDROID_KEYSTORE_PASS in the
-    environment, which is the only reason this block can be committed at all.
+    Operator setup, once per machine (Deployment\Setup-DeployMachine.ps1 does step 1):
+      1. TheGeekAlias.keystore at %USERPROFILE%\keystore\, copied from
+         %LOCALAPPDATA%\Xamarin\Mono for Android\Keystore\TheGeekAlias      2. setx ANDROID_KEYSTORE_PASS "<from the password manager>" — then a NEW SHELL.
+      3. Verify: pwsh -c "[Environment]::GetEnvironmentVariable('ANDROID_KEYSTORE_PASS','User')"
 
-    Operator setup, once per machine:
-      1. The keystore at %USERPROFILE%\keystore\TheGeekAlias.keystore
-         (thegeeknetwork\Deployment\Setup-DeployMachine.ps1 puts it there, or copy it
-         from %LOCALAPPDATA%\Xamarin\Mono for Android\Keystore\TheGeekAlias\).
-      2. setx ANDROID_KEYSTORE_PASS "<from the password manager>"
-      3. OPEN A NEW SHELL. setx does not touch the one you typed it in.
+    Without it, Release fails at signing with XA4314 "$(AndroidSigningKeyPass) is
+    empty". That is the right failure: a Release package signed with the debug key is
+    the thing this block exists to stop.
 
-    Until then, -p:CircleAIAllowDebugSignedRelease=true builds a debug-signed Release
-    package so on-device testing can carry on. It warns on every build and the result
-    must never leave the bench.
-
-    PACKAGE FORMAT IS DELIBERATELY NOT SET HERE. thegeeknetwork's copy of this block
-    forces aab, which is a Play Store format; this product is degoogled and ships an
-    APK, and a Release -t:Install of an app bundle uninstalls first and takes the
-    downloaded models with it. CircleAIService.csproj sets apk for itself and says
-    why; nothing shared may override that.
+    Release artefacts are produced the way thegeeknetwork\CLAUDE.md says, not by a
+    build: `dotnet publish -f net10.0-android -m:1`. The -m:1 is mandatory — without
+    it the publish runs out of memory — with no runtime identifier and not
+    self-contained.
     ============================================================================
   -->
-  <PropertyGroup Condition="$(TargetFramework.Contains('-android')) AND '$(Configuration)' == 'Release' AND '$(CircleAIAllowDebugSignedRelease)' != 'true'">
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android')) AND '$(Configuration)' == 'Release'">
     <AndroidKeyStore>true</AndroidKeyStore>
-    <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == '' AND '$(UserProfile)' != ''">$(UserProfile)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
-    <AndroidSigningKeyStore Condition="'$(AndroidSigningKeyStore)' == ''">$(HOME)/keystore/TheGeekAlias.keystore</AndroidSigningKeyStore>
-    <AndroidSigningKeyAlias Condition="'$(AndroidSigningKeyAlias)' == ''">TheGeekAlias</AndroidSigningKeyAlias>
+    <AndroidSigningKeyStore>$(UserProfile)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>TheGeekAlias</AndroidSigningKeyAlias>
     <AndroidSigningKeyPass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningKeyPass>
     <AndroidSigningStorePass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningStorePass>
   </PropertyGroup>
 
-  <!--
-    SAY WHICH OF THE TWO IS MISSING, BEFORE THE BUILD SPENDS TEN MINUTES ON IT.
-    Without this the failure is MSB4044 "required parameter KeyPass" from
-    AndroidSignPackage, at the very end of a Release build, which names neither the
-    variable nor the file. Both checks are errors rather than warnings on purpose:
-    the silent fallback to the debug key is the defect this whole block exists to
-    stop, and a warning in a build this size is a thing nobody reads.
-
-    BEFORE PrepareForBuild, WHICH IS THE ONLY HOOK THAT PROVED TO RUN FIRST.
-    BeforeTargets="Build" fires AFTER $(BuildDependsOn) - which already contains the
-    signing - so the first cut never ran at all and XA4314 won. Hooking the Android
-    SDK's own _ResolveAndroidSigningKey did not fire either. PrepareForBuild is
-    documented, stable, in Microsoft.Common.targets rather than the Android SDK, and
-    runs before anything in the inner build - measured, not assumed.
-
-    AndroidApplication, NOT OutputType. The csproj says <OutputType>Exe</OutputType>
-    and the property still evaluates to "Library" - the Android SDK rewrites it,
-    because an APK's entry point is Android's, not a CLR Main. Measured with
-    `dotnet msbuild -getProperty:OutputType`, which is also how the first condition
-    was found to be silently false: a Target whose Condition does not hold is
-    skipped without a word, so the guard looked wired and did nothing, twice.
-    AndroidApplication reads true for CircleAIService and false for every android
-    class library, which is the question actually being asked. It is only available
-    at execution time, which is why the PropertyGroup above cannot use it - a
-    Directory.Build.props PropertyGroup is evaluated before the SDK sets it.
-  -->
-  <Target Name="CircleAIRequireSigningKey" BeforeTargets="PrepareForBuild"
-          Condition="'$(AndroidApplication)' == 'true' AND '$(Configuration)' == 'Release'">
-
-    <!--
-      THE ESCAPE HATCH IS NAMED, AND IT COMPLAINS EVERY TIME.
-      A hard error with no way past it would also stop the Release -t:Install loop
-      that every on-device test runs through, on any machine where the password has
-      not been set yet - so there is one, and it has to be typed out in full on the
-      command line, which means nobody reaches it by accident and it is visible in
-      whatever log the build lands in.
-    -->
-    <Warning Condition="'$(CircleAIAllowDebugSignedRelease)' == 'true'"
-             Text="This Release package is signed with Android's DEBUG key because CircleAIAllowDebugSignedRelease=true was passed. It will install and run; it cannot be shipped to anyone." />
-
-    <Error Condition="'$(CircleAIAllowDebugSignedRelease)' != 'true' AND !Exists('$(AndroidSigningKeyStore)')"
-           Text="Release Android builds must be signed with the release key, and it is not at $(AndroidSigningKeyStore). Run thegeeknetwork\Deployment\Setup-DeployMachine.ps1, or copy TheGeekAlias.keystore there yourself. Building Release without it would silently produce a debug-signed package." />
-    <Error Condition="'$(CircleAIAllowDebugSignedRelease)' != 'true' AND '$(ANDROID_KEYSTORE_PASS)' == ''"
-           Text="ANDROID_KEYSTORE_PASS is not set, so $(AndroidSigningKeyStore) cannot be opened. Run: setx ANDROID_KEYSTORE_PASS &quot;&lt;from the password manager&gt;&quot; - then open a NEW shell, because setx does not touch the current one." />
-  </Target>
 </Project>
