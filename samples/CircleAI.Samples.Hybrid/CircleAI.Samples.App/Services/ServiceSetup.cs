@@ -98,13 +98,39 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
     }
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<TourStep>>(new[]
-        {
-            new TourStep("Install CircleAI",
-                "It holds the models and does the thinking, so this app stays small.",
-                "Open CircleAI", null),
-        });
+    /// <remarks>
+    /// IT TOLD PEOPLE TO INSTALL SOMETHING THEY HAD INSTALLED. One step, returned
+    /// unconditionally, on a device where CircleAI was installed, approved, and
+    /// downloading models for this app while the card was on screen - and whose
+    /// action, "Open CircleAI", names an app with no launcher icon. The same shape as
+    /// the wake-phrase and listening rows, left in a fourth place.
+    /// <para>
+    /// NOTHING TO SAY IS THE RIGHT ANSWER ONCE IT IS WORKING. A tour exists to get
+    /// somebody over the first hurdle; after that an empty list is what honesty looks
+    /// like, and the setup screen already shows what is still missing.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
+    {
+        if (!brain.ServiceInstalled)
+            return new[]
+            {
+                new TourStep("Install CircleAI",
+                    "It holds the models and does the thinking, so this app stays small.",
+                    "Get CircleAI", null),
+            };
+
+        var state = await brain.StateAsync(ct).ConfigureAwait(false);
+        if (!state.Ready)
+            return new[]
+            {
+                new TourStep("Approve CircleAI",
+                    "It is installed; this app needs your say-so to use it. One tap, once.",
+                    "Approve", "settings"),
+            };
+
+        return Array.Empty<TourStep>();
+    }
 
     /// <inheritdoc />
     /// <remarks>

@@ -79,7 +79,37 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
         var result = await listener.Transcriber
             .TranscribeAsync(audio, ct, tag).ConfigureAwait(false);
 
-        return result.Text ?? string.Empty;
+        return Heard(result.Text);
+    }
+
+    /// <summary>What was actually said, or nothing.</summary>
+    /// <remarks>
+    /// WHISPER HAS WORDS FOR SILENCE AND THEY ARE NOT SILENCE. A quiet room comes
+    /// back as "[BLANK_AUDIO]", and other no-speech markers in brackets turn up the
+    /// same way. Passed through, they are a question: on the P30 a silent 25-second
+    /// recording produced "[BLANK_AUDIO]" in the person's own chat bubble and the
+    /// model gamely set about answering it.
+    /// <para>
+    /// EMPTY IS THE HONEST ANSWER and the callers already handle it - an empty
+    /// transcript is a RESULT, a quiet room, and ServiceConversation drops the turn
+    /// rather than showing an error. Doing this here rather than in one client means
+    /// every app on the link gets it.
+    /// </para>
+    /// </remarks>
+    private static string Heard(string? text)
+    {
+        var said = text?.Trim() ?? string.Empty;
+        if (said.Length == 0) return string.Empty;
+
+        // A transcript that is ONLY a bracketed marker is the recogniser telling us it
+        // heard nothing worth writing down. Brackets inside real speech are untouched.
+        if (said.StartsWith('[') && said.EndsWith(']') && !said.AsSpan(1, said.Length - 2).Contains(']'))
+        {
+            VoiceTrace.Write($"link stt: no speech ({said})");
+            return string.Empty;
+        }
+
+        return said;
     }
 
     /// <inheritdoc />
