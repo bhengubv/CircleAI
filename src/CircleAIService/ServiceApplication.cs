@@ -197,7 +197,31 @@ public sealed class ServiceApplication : Application
         // no launcher icon, and the abilities read "Nothing for this yet" because the
         // client has no models to count. Both facts are here, so both are served here.
         var footprint = new MemoryManager(new DeviceResourcesReader());
-        CircleNeuronLinkService.Resident = new ResidentListeningControl(this);
+
+        // AND WHAT HAPPENS WHEN IT HEARS ITS NAME, WHICH WAS NOTHING AT ALL.
+        //
+        // The detector fired, CircleNeuronLinkService.OnWoke incremented an integer,
+        // and that was the entire consequence: no tone, no microphone, no question,
+        // no answer. Every part existed and no line joined them - the repo's named
+        // first defect, sitting on the headline feature. A person said "Hey B" on a
+        // P30 on 2026-10-01, the log read HEARD "HEY B" p=0.3029, and the phone did
+        // not react.
+        //
+        // WIRED HERE because this is the process that has all four pieces: the
+        // microphone, the recogniser, the brain and the voice. The turn itself is
+        // WakeTurn, in the product.
+        WakeTurn.Speech = CircleNeuronLinkService.Speech;
+
+        var resident = new ResidentListeningControl(this);
+        resident.Woke += (_, phrase) =>
+        {
+            // NOT AWAITED, AND IT MUST NOT BE. This fires on the wake loop's own
+            // thread, and the first thing the turn does is stop that loop - awaiting
+            // here would have the loop waiting on itself.
+            _ = WakeTurn.RunAsync(phrase);
+        };
+
+        CircleNeuronLinkService.Resident = resident;
         CircleNeuronLinkService.Facts    = new DeviceFacts(footprint);
 
         // HOUSEKEEPING, ON INIT, BECAUSE NOTHING WAS DOING IT HERE. The catalogue

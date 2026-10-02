@@ -104,7 +104,7 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
                 reply!.ReadException();
                 return LinkTurnCodec.DecodeReply(ReadMap(reply));
             }
-            catch (Exception ex) { return LinkTurnReply.Failure(ex.Message); }
+            catch (Exception ex) { return LinkTurnReply.Failure(Why(ex)); }
             finally { data?.Recycle(); reply?.Recycle(); }
         }, ct).ConfigureAwait(false);
     }
@@ -207,6 +207,43 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> FootprintAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Footprint), ct);
 
+    /// <summary>What to tell a person when the transaction itself failed.</summary>
+    /// <remarks>
+    /// ex.Message IS NOT A SENTENCE WHEN THE OTHER APP HAS DIED. All three transacts
+    /// handed it straight to the caller, and the caller renders it in a chat bubble -
+    /// so when Android killed the service under memory pressure on a P30 on
+    /// 2026-10-02, what a person saw was:
+    ///
+    ///     Exception_WasThrown, Android.Util.AndroidException
+    ///
+    /// which is a resource key and a type name. The binder's own failures are the
+    /// ones most likely to be seen, because they happen exactly when the phone is
+    /// struggling and somebody is most likely to be asking why.
+    /// <para>
+    /// THE REAL ONE IS STILL LOGGED. The sentence is for the person; the exception is
+    /// for whoever reads logcat afterwards, and losing it would trade one unreadable
+    /// failure for an invisible one.
+    /// </para>
+    /// </remarks>
+    private static string Why(Exception ex)
+    {
+        global::Android.Util.Log.Warn("CircleAI.Link", "transact failed: " + ex);
+
+        return ex switch
+        {
+            // The host process is gone - killed, crashed, or updated underneath us.
+            // It restarts on the next bind, so "ask again" is true rather than kind.
+            global::Android.OS.DeadObjectException =>
+                "Circle AI stopped — this phone closed it. Ask again and it will start up.",
+
+            // Over the binder's ~1 MB budget, which is shared across the process.
+            global::Android.OS.TransactionTooLargeException =>
+                "That was too big to send to Circle AI. Try a shorter one.",
+
+            _ => "Circle AI could not answer just now. Ask again.",
+        };
+    }
+
     /// <summary>Transacts one structured verb. Mirrors <see cref="AskAsync"/>: blocks
     /// internally, off the calling thread.</summary>
     private async Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)
@@ -226,7 +263,7 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
                 reply!.ReadException();
                 return LinkVerbCodec.DecodeReply(ReadMap(reply));
             }
-            catch (Exception ex) { return LinkRowsReply.Failure(ex.Message); }
+            catch (Exception ex) { return LinkRowsReply.Failure(Why(ex)); }
             finally { data?.Recycle(); reply?.Recycle(); }
         }, ct).ConfigureAwait(false);
     }
@@ -285,7 +322,7 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
                 reply!.ReadException();
                 return LinkAudioCodec.ReadReply(new ParcelReader(reply));
             }
-            catch (Exception ex) { return LinkAudioReply.Failure(ex.Message); }
+            catch (Exception ex) { return LinkAudioReply.Failure(Why(ex)); }
             finally { data?.Recycle(); reply?.Recycle(); }
         }, ct).ConfigureAwait(false);
     }
