@@ -107,6 +107,61 @@ public sealed class AssistantPersonaTests
         Assert.DoesNotContain("You are Circle AI -", source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void The_spoken_form_claims_exactly_what_the_prompt_form_claims()
+    {
+        // TWO COPIES OF ONE FACT, AND THIS IS WHAT STOPS THEM DRIFTING. CanDo is
+        // addressed to the model as "you"; CanDoSpoken is what the person hears,
+        // so it is first person. Neither may quietly grow a claim the other does
+        // not make - which is the only real cost of not doing pronoun surgery at
+        // runtime.
+        foreach (var claim in new[] { "no signal", "answer questions", "write and summarise",
+                                      "translate", "transcribe", "out loud", "remember" })
+        {
+            Assert.Contains(claim, AssistantPersona.CanDo, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(claim, AssistantPersona.CanDoSpoken, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void The_spoken_form_speaks_as_itself()
+    {
+        // It is returned verbatim to the person and read aloud by the wake turn,
+        // so it must not address them as the thing that runs on the phone.
+        Assert.StartsWith("I run on this phone", AssistantPersona.CanDoSpoken, StringComparison.Ordinal);
+        Assert.DoesNotContain("you answer", AssistantPersona.CanDoSpoken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void The_spoken_form_is_sayable()
+    {
+        // NO MARKDOWN, NO LIST, NO IDS. The screen-off turn hands this straight to
+        // the voice, and PlainReply is not in that path - this string is already
+        // the final text.
+        foreach (var unsayable in new[] { "*", "#", "`", "\n", "_" })
+            Assert.DoesNotContain(unsayable, AssistantPersona.CanDoSpoken, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Both_heads_answer_the_question_from_the_same_sentence()
+    {
+        // ONE FACT, ONE OWNER - the failure this whole change exists for. A
+        // service answering from the sentence while the app answered from the
+        // model is two products wearing one name. Source-level for the same
+        // reason as the SystemPrompt check: neither type can be newed up here.
+        foreach (var head in new[]
+                 {
+                     Path.Combine(Root(), "src", "CircleAIService", "ServiceApplication.cs"),
+                     Path.Combine(Root(), "src", "CircleAI.Assistant.Runtime", "CircleAISession.cs"),
+                 })
+        {
+            var source = File.ReadAllText(head);
+            Assert.Contains("OverviewAnswer", source, StringComparison.Ordinal);
+            Assert.Contains("AssistantPersona.CanDoSpoken", source, StringComparison.Ordinal);
+        }
+    }
+
+
     /// <summary>The repo root, found by walking up from the test assembly.</summary>
     private static string Root()
     {

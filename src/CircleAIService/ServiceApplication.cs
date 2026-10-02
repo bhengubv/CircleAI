@@ -219,6 +219,17 @@ public sealed class ServiceApplication : Application
             // told it otherwise.
             SystemPrompt          = AssistantPersona.Prompt,
 
+            // AND IT SAYS IT, rather than being told it and hoping. With the sentence
+            // in the prompt alone, a P30 answered "What can you do?" with "I am here
+            // to help you! What can I do for you today?" - right identity, no false
+            // claims, and not one of the things it can actually do. The same persona
+            // asks for one or two short sentences, so it gave a short one.
+            //
+            // What this phone can do is a fact THIS app owns. The model was guessing
+            // at it, and the precedent for taking a known answer off the dice is
+            // arithmetic, which the core already answers itself.
+            OverviewAnswer        = AssistantPersona.CanDoSpoken,
+
             // AND WHAT IT CAN ACTUALLY DO, WHICH THE BRAIN IN THIS PROCESS HAD NEVER
             // BEEN TOLD. AIOptions.SkillStore is what SkillContextBuilder reads to put
             // the assistant's own capabilities in front of it, and this app never set

@@ -462,6 +462,12 @@ public sealed class AIService : IAIService
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+
+        // ANSWERED HERE, WITHOUT THE MODEL. See AIOptions.OverviewAnswer: what
+        // this app can do is a fact the host owns, and the model is guessing at
+        // it. Before EnsureStartedAsync on purpose - a known answer must not
+        // wait thirteen to twenty-three seconds for a cold model to load.
+        if (FixedAnswer(messages) is { } canned) return canned;
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
         // Determine the user query (last user message) for routing + RAG lookup.
@@ -504,6 +510,14 @@ public sealed class AIService : IAIService
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+
+        // ANSWERED HERE, WITHOUT THE MODEL - see ChatAsync. One chunk and done,
+        // which is what a streaming caller sees for any short answer anyway.
+        if (FixedAnswer(messages) is { } canned)
+        {
+            yield return canned;
+            yield break;
+        }
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
         var userQuery = messages.LastOrDefault(m =>
@@ -575,6 +589,14 @@ public sealed class AIService : IAIService
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(messages);
+
+        // ANSWERED HERE, WITHOUT THE MODEL - see ChatAsync. Tagged Content, not
+        // Reasoning: there was no thinking to show.
+        if (FixedAnswer(messages) is { } canned)
+        {
+            yield return new ChatFragment(ChatFragmentKind.Content, canned);
+            yield break;
+        }
         await EnsureStartedAsync(ct).ConfigureAwait(false);
 
         var userQuery = messages.LastOrDefault(m =>
@@ -1905,6 +1927,29 @@ public sealed class AIService : IAIService
         string userQuery, CancellationToken ct)
         => Combine(_options.SystemPrompt,
                    await BuildEnrichmentAsync(userQuery, ct).ConfigureAwait(false));
+
+    /// <summary>The host's own answer to this turn, or null to ask the model.</summary>
+    /// <remarks>
+    /// NARROW ON PURPOSE, TWICE OVER: it does nothing unless the host set
+    /// <see cref="AIOptions.OverviewAnswer"/>, and then only for the questions
+    /// <see cref="CircleAI.Core.OverviewQuestion"/> recognises - ones with no
+    /// subject to retrieve on and a capability word in them. Everything else,
+    /// including "who are you" and "how are you", goes to the model as before.
+    ///
+    /// NOT REPORTED AS INFERENCE. No generator ran, no tokens were produced, and
+    /// recording a nought-millisecond turn would quietly poison every latency
+    /// figure the observers collect.
+    /// </remarks>
+    private string? FixedAnswer(IReadOnlyList<ChatMessage> messages)
+    {
+        if (string.IsNullOrWhiteSpace(_options.OverviewAnswer)) return null;
+
+        var asked = messages.LastOrDefault(m =>
+            string.Equals(m.Role, "user", StringComparison.OrdinalIgnoreCase))?.Content;
+
+        return CircleAI.Core.OverviewQuestion.Matches(asked) ? _options.OverviewAnswer : null;
+    }
+
 
     private SkillContextBuilder EnsureSkillContextBuilder()
     {

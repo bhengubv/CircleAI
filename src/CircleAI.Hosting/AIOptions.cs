@@ -80,6 +80,30 @@ public sealed class AIOptions
     public string SystemPrompt { get; init; } = "You are B!, a helpful on-device assistant.";
 
     /// <summary>
+    /// The host's own answer to "what can you do?", or null to let the model try.
+    /// </summary>
+    /// <remarks>
+    /// THE ONE QUESTION THE MODEL IS ONLY GUESSING AT. What an app can do is a
+    /// fact the app owns; the model has at best been told it in a system prompt,
+    /// and a small one will not recite a prompt back. Measured on a P30 with
+    /// Qwen3.5-0.8B: given the capability sentence and asked what it could do, it
+    /// answered "I am here to help you! What can I do for you today?" - correct,
+    /// harmless, and not one of the things it can actually do. Before that, with
+    /// no persona at all, it introduced itself as a different vendor's model.
+    ///
+    /// SET BY THE HOST, NOT BY THE SDK, because this library does not know what
+    /// the product around it can do - the same division as
+    /// <see cref="RetrievalQuery"/>, where the SDK owns the rule and the head
+    /// owns the content. Left null, nothing changes and the model answers.
+    ///
+    /// WRITTEN AS THE PERSON WILL HEAR IT: it is returned verbatim, and the
+    /// spoken path reads it aloud. See <see cref="CircleAI.Core.OverviewQuestion"/>
+    /// for exactly which questions reach it - deliberately the narrowest rule
+    /// that covers the one people ask.
+    /// </remarks>
+    public string? OverviewAnswer { get; init; }
+
+    /// <summary>
     /// Default sampling knobs applied when a caller doesn't pass their own
     /// <see cref="GenerationOptions"/>.
     /// </summary>

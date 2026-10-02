@@ -63,6 +63,27 @@ public static class AssistantPersona
         "write and summarise, translate, transcribe what you hear, speak your " +
         "answers out loud, and remember what you are told.";
 
+    /// <summary>The same sentence, in the words it would use to say it.</summary>
+    /// <remarks>
+    /// TWO FORMS BECAUSE THEY DO TWO JOBS. CanDo is addressed TO the model, in a
+    /// system prompt that speaks to it as "you"; this one is the answer the
+    /// person hears, so it is first person and reads aloud. Rewriting pronouns at
+    /// runtime would be a clever way to get one of them subtly wrong.
+    ///
+    /// KEPT HONEST BY A TEST, not by discipline: AssistantPersonaTests asserts
+    /// both name the same capabilities, so neither can quietly grow a claim the
+    /// other does not make. That is the whole risk of a second copy, and it is
+    /// the risk worth taking over pronoun surgery.
+    ///
+    /// AND IT IS SPOKEN, not just shown. The wake turn hands this to the voice
+    /// with the screen off, so it has to be a sentence somebody can follow by
+    /// ear - no markdown, no list, no ids.
+    /// </remarks>
+    public const string CanDoSpoken =
+        "I run on this phone and work with no signal: I answer questions, " +
+        "write and summarise, translate, transcribe what you hear, speak my " +
+        "answers out loud, and remember what you tell me.";
+
     // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
     // assistant told it was "IT!", on a product called Circle AI.
     //

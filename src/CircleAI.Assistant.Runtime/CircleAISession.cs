@@ -210,6 +210,8 @@ public sealed class CircleAISession : IAsyncDisposable
             var stubOptions = new AIOptions
             {
                 SystemPrompt = Prompt,
+                // Same answer here as on the real path; see the second site below.
+                OverviewAnswer = CircleAI.Assistant.AssistantPersona.CanDoSpoken,
                 ModelId      = "it-stub",
                 ModelPath    = stubPath,
                 WarmOnStart  = false,
@@ -255,6 +257,10 @@ public sealed class CircleAISession : IAsyncDisposable
             var options = new AIOptions
             {
                 SystemPrompt          = Prompt,
+                // AND THE SAME ANSWER ON THIS PATH. One fact, one owner: a session that
+                // answered "what can you do" out of the model while the service answered it
+                // from the sentence is two products wearing one name.
+                OverviewAnswer        = CircleAI.Assistant.AssistantPersona.CanDoSpoken,
                 NativeLibDir          = nativeLibDir,
                 ModelStorageDirectory = modelDir,
                 WarmOnStart           = true,   // pay the cold start once, up front
