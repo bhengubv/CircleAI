@@ -199,6 +199,25 @@ public sealed class ServiceApplication : Application
         // question somebody asks. On a P30 that is thirteen to twenty-three seconds,
         // and it is far better spent while the notification says "loading" than while
         // a person waits on a blank bubble.
+        // EXPERIMENT, 2026-10-03: run the model on the GPU instead of the CPU.
+        //
+        // libMNN_CL.so (2.3 MB) and libMNN_Vulkan.so (780 KB) have shipped in this
+        // APK all along and nothing ever asked for them - every model has run
+        // "backend_type":"cpu", which the bridge prints after load. Prefill is one
+        // large compute-bound matrix multiply, which is what a GPU is for; decode is
+        // memory-bound and one token wide, where it is not.
+        //
+        // THE NUMBER TO BEAT, measured on this phone today: prefill 5,721 ms for a
+        // 198-token prompt, 28.9 ms per token. Watch for CIRCLEAI-BACKEND in the log
+        // to see whether MNN accepted it, and the bridge's own config line to see
+        // what it actually resolved.
+        //
+        // NO FALLBACK BY DESIGN. A driver that refuses leaves the brain unable to
+        // load, loudly, which is the result worth having - a silent retry on the CPU
+        // would hide it. Setting this back to null is one deploy.
+        CircleAI.Inference.QwenTextGenerator.Backend = "opencl";
+
+
         CircleNeuronService.OptionsFactory = () => new CircleAI.Hosting.AIOptions
         {
             NativeLibDir          = ApplicationInfo?.NativeLibraryDir,

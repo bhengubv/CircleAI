@@ -182,6 +182,46 @@ public sealed class MnnRuntimeConfig
         {
             return MnnInteropRt.mnn_llm_set_config(_handle, $"{{\"thread_num\":{threads}}}") == 0;
         }
+
+
+        catch (EntryPointNotFoundException) { return false; }
+        catch (DllNotFoundException)        { return false; }
+    }
+
+    /// <summary>Asks MNN to run on a different compute backend.</summary>
+    /// <remarks>
+    /// <para>
+    /// THREE MEGABYTES OF GPU BACKEND SHIP IN THE APK AND NOTHING EVER ASKED FOR
+    /// THEM. <c>libMNN_CL.so</c> (2.3 MB, OpenCL) and <c>libMNN_Vulkan.so</c>
+    /// (780 KB) ride in through the MNN .aar, and every model has run
+    /// <c>"backend_type":"cpu"</c> - which the bridge prints after load, so this
+    /// was visible all along.
+    /// </para>
+    /// <para>
+    /// IT IS PREFILL THAT WOULD BENEFIT, NOT DECODE. Reading the prompt is one
+    /// large compute-bound matrix multiply, which is what a GPU is built for;
+    /// writing the answer is memory-bound and one token wide, where a GPU's
+    /// advantage mostly disappears. Measured on a P30 on 2026-10-03: prefill
+    /// 28.9 ms/token at 198 tokens and 45.8 ms/token at 573, against decode's
+    /// ~113 ms/token. Prefill is already batched - this is about where it runs.
+    /// </para>
+    /// <para>
+    /// BEFORE LOAD, like every other config read here, and best-effort: a phone
+    /// whose driver refuses must fall back to the CPU rather than fail to load a
+    /// model at all. The caller is responsible for that fallback - see
+    /// QwenTextGenerator, which retries once on the CPU.
+    /// </para>
+    /// </remarks>
+    /// <param name="backend">MNN's own name for it - "cpu", "opencl", "vulkan".</param>
+    public bool TrySetBackend(string backend)
+    {
+        if (string.IsNullOrWhiteSpace(backend)) return false;
+
+        try
+        {
+            return MnnInteropRt.mnn_llm_set_config(
+                _handle, "{\"backend_type\":\"" + backend + "\"}") == 0;
+        }
         catch (EntryPointNotFoundException) { return false; }
         catch (DllNotFoundException)        { return false; }
     }

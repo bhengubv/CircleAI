@@ -1,4 +1,4 @@
-﻿// QwenTextGenerator.cs
+// QwenTextGenerator.cs
 //
 // IChatGenerator backed by MNN-LLM running a Qwen-family model.
 // (Qwen3 / Qwen3.5 — design targets; any model using the Qwen ChatML
@@ -240,6 +240,22 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// </remarks>
     public static bool AllowMemoryMapping { get; set; } = true;
 
+    /// <summary>Which MNN backend to run on, or null to leave the model's own choice.</summary>
+    /// <remarks>
+    /// OFF BY DEFAULT AND THAT IS DELIBERATE. libMNN_CL.so and libMNN_Vulkan.so
+    /// ship in the APK - 3 MB of GPU backend that nothing has ever asked for - and
+    /// every model has run on the CPU. Prefill is one large compute-bound matrix
+    /// multiply and is exactly the part a GPU would help; decode is memory-bound
+    /// and one token wide, where it would not.
+    ///
+    /// NO AUTOMATIC FALLBACK, ON PURPOSE. A driver that refuses leaves the model
+    /// unable to load, and silently retrying on the CPU would hide exactly the
+    /// result this is here to measure. It stays null until a number says
+    /// otherwise, and whoever sets it owns the deploy that unsets it.
+    /// </remarks>
+    public static string? Backend { get; set; }
+
+
     /// <summary>
     /// The environment override, or <c>null</c> when it is not set.
     /// </summary>
@@ -440,6 +456,18 @@ public sealed class QwenTextGenerator : IChatGenerator
             // and it can be pointed at a directory MNN will actually create.
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
+
+        // WHERE IT RUNS, when somebody has asked for something other than the CPU.
+        // Before load, because MNN resolves the backend while loading - the config
+        // line the bridge prints afterwards is the proof it took.
+        if (!string.IsNullOrWhiteSpace(Backend))
+        {
+            var took = false;
+            try { took = new MnnRuntimeConfig(handle.DangerousGetHandle()).TrySetBackend(Backend!); }
+            catch { /* older bridge - the model still loads on the CPU */ }
+            Console.WriteLine($"CIRCLEAI-BACKEND asked={Backend} accepted={took}");
+        }
+
 
         // NO THINKING OUT LOUD. The bundles ship enable_thinking:true in their own
         // jinja context, so a reasoning model deliberates in front of the person
