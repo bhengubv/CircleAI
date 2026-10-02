@@ -470,6 +470,15 @@ public sealed partial class CircleNeuronService : Service
                     return;
                 }
 
+                // AND SAY WHICH ONE, WHICH NOTHING EVER DID. The shade and the log
+                // both read "loading the model…" on a phone holding seven of them,
+                // chosen by a fit rule nobody can see the output of - so when an
+                // answer came back wrong there was no way to tell whether the model
+                // was bad, the wrong one, or fine and the prompt was at fault. The
+                // desktop head has printed this since the day it was written; this
+                // one, which is the one people actually use, did not.
+                global::Android.Util.Log.Info(LogTag, "model: " + wanted);
+
                 // AIOptions is a class, not a record, so the resolved id is pinned on
                 // the instance the factory made rather than on a copy of it.
                 node = new NeuronNode(new AIService(

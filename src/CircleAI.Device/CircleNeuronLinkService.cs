@@ -291,7 +291,12 @@ public sealed class CircleNeuronLinkService : Service
                            .ConfigureAwait(false))
             sb.Append(chunk);
 
-        return LinkTurnReply.Success(sb.ToString().Trim());
+        // CLEANED HERE, WHERE IT IS PRODUCED, because this answer has three consumers
+        // and they must not each strip it their own way: the chat bubble, "Read it
+        // out", and the spoken turn that runs with the screen off. A P30 rendered
+        // "**Joke:**" literally in the bubble on 2026-10-02, and the same string is
+        // what the voice would have said aloud, asterisks included.
+        return LinkTurnReply.Success(CircleAI.Assistant.PlainReply.Clean(sb.ToString()));
     }
 
     /// <summary>

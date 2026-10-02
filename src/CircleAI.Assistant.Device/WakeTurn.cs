@@ -206,7 +206,9 @@ public static class WakeTurn
             answer.Append(chunk);
         }
 
-        return answer.ToString().Trim();
+        // The same cleaning the link does, for the same reason and more so: this one
+        // is only ever spoken, so an asterisk is a syllable.
+        return PlainReply.Clean(answer.ToString());
     }
 
     /// <summary>Say it out loud.</summary>
