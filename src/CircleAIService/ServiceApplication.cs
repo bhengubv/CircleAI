@@ -1,4 +1,4 @@
-﻿// ServiceApplication.cs
+// ServiceApplication.cs
 //
 // The standalone CircleAI service, bootstrapped.
 //
@@ -204,6 +204,20 @@ public sealed class ServiceApplication : Application
             NativeLibDir          = ApplicationInfo?.NativeLibraryDir,
             ModelStorageDirectory = ModelStore.Path,
             WarmOnStart           = true,
+
+            // WHO IT IS, WHICH THIS PATH HAD NEVER BEEN TOLD. AIOptions.SystemPrompt
+            // was left at the SDK default here - "You are B!, a helpful on-device
+            // assistant" - because the persona was a private constant inside the app's
+            // own CircleAISession, and the app stopped holding a model. Every question
+            // arrives through the link and is answered HERE, so the tuned text was
+            // being written for a path nothing reaches.
+            //
+            // On a P30 on 2026-10-02 that cost the product its own name: asked what it
+            // could do, it replied "I'm Qwen3.5, the latest version of Alibaba's
+            // multimodal large language model" and listed Qwen's abilities, part of it
+            // in Chinese. It is not that the model was wrong about itself; nobody had
+            // told it otherwise.
+            SystemPrompt          = AssistantPersona.Prompt,
 
             // AND WHAT IT CAN ACTUALLY DO, WHICH THE BRAIN IN THIS PROCESS HAD NEVER
             // BEEN TOLD. AIOptions.SkillStore is what SkillContextBuilder reads to put

@@ -298,21 +298,48 @@ public sealed class SkillContextBuilderTests
     }
 
     [Fact]
-    public async Task BuildContextAsync_OverviewQuestion_ListsNamesOnly_RatherThanEverything()
+    public async Task BuildContextAsync_OverviewQuestion_InjectsNothing_ThePersonaAnswersIt()
     {
-        // Compact mode is for a SELF / OVERVIEW question — one with no significant
-        // terms, like "what can you do", where a short list of skill handles is
-        // the most useful thing. It must NOT dump every skill in full: on a
-        // 4096-token window a few verbose skills crowd out the conversation.
+        // AN OVERVIEW QUESTION HAS NO SUBJECT TO RETRIEVE ON. "What can you do"
+        // reduces to zero significant terms - every word is a stopword - so no
+        // index can answer it, and AssistantPersona.CanDo is the one fixed
+        // sentence that does, in front of the model on every turn.
+        //
+        // This used to emit a names-only listing. Measured against the shipping
+        // manifest on 2026-10-02, that listing was ids - "model.selection,
+        // model.catalogue, model.download" - which is the engine room talking.
         var store = new InMemorySkillStore();
         await store.UpsertAsync("calendar-summariser",
             new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
         var builder = new SkillContextBuilder(store);
 
-        var result = await builder.BuildContextAsync("what can you do");
+        Assert.Equal(string.Empty, await builder.BuildContextAsync("what can you do"));
+        Assert.Equal(string.Empty, await builder.BuildContextAsync("What can you do?"));
+        Assert.Equal(string.Empty, await builder.BuildContextAsync("who are you"));
+    }
 
-        Assert.Contains("calendar-summariser", result);          // the handle is offered
-        Assert.DoesNotContain("Call the calendar tool", result); // the body is not
+    [Fact]
+    public async Task BuildContextAsync_OverviewQuestion_BeatsAnAccidentalMatch()
+    {
+        // THE ORDER IS THE FIX. The overview test used to live in the no-match
+        // branch, so it only ran when nothing matched - and on the real manifest
+        // something did: one entry's description contains the phrase "what can
+        // you do?" word for word, and the store matches the whole query as a
+        // substring. An accident beat the rule, and the entry it found was the
+        // meta-entry about being honest, four fifths caveats. A P30's 0.8B
+        // summarised the caveats: "there isn't much useful information available
+        // for me due to technical constraints".
+        var store = new InMemorySkillStore();
+        await store.UpsertAsync("self-knowledge",
+            new SkillDraft("Self knowledge",
+                           "Lets the assistant answer 'what can you do?' from the manifest",
+                           "Limits: not yet measured.",
+                           new[] { "self" }));
+        var builder = new SkillContextBuilder(store);
+
+        // It WOULD match on substring; the overview rule gets there first.
+        Assert.NotEmpty(await store.SearchAsync("what can you do?"));
+        Assert.Equal(string.Empty, await builder.BuildContextAsync("what can you do?"));
     }
 
     [Fact]
@@ -336,19 +363,19 @@ public sealed class SkillContextBuilderTests
     }
 
     [Fact]
-    public async Task BuildContextAsync_TheCompactListingsIdsCanBeLookedBackUp()
+    public async Task BuildContextAsync_AnIdItPrintsCanBeLookedBackUp()
     {
-        // Closes the loop the compact listing opens. An overview question prints
-        // ids and invites the model to "ask to expand" — so asking BY THAT ID has
-        // to return the body. Search covered name, description and tags but not
-        // the id, so the only handle on offer once retrieved nothing.
+        // Closes the loop the block opens. Every entry injected is headed with its
+        // id, so asking BY THAT ID has to return the body. Search covered name,
+        // description and tags but not the id, so the only handle on offer once
+        // retrieved nothing.
         var store = new InMemorySkillStore();
         await store.UpsertAsync("calendar-summariser",
             new SkillDraft("Calendar Summariser", "Summarises events", "Call the calendar tool.", new[] { "calendar" }));
         var builder = new SkillContextBuilder(store);
 
-        var listing = await builder.BuildContextAsync("what can you do");
-        Assert.Contains("calendar-summariser", listing);
+        var block = await builder.BuildContextAsync("calendar");
+        Assert.Contains("calendar-summariser", block);
 
         var expanded = await builder.BuildContextAsync("calendar-summariser");
         Assert.Contains("Call the calendar tool", expanded);

@@ -14,6 +14,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using CircleAI.Assistant;
 using CircleAI.Skills;
 using Xunit;
 
@@ -203,8 +204,8 @@ public class CompositeSkillStoreTests
         //   so "what can you do" hits nothing in it - by design, and harmless for
         //   as long as it was the only store.
         //
-        //   SkillContextBuilder switches to COMPACT mode on zero matches and
-        //   lists capability names. That is how the model used to learn what it
+        //   SkillContextBuilder switched to COMPACT mode on zero matches and
+        //   listed capability names. That is how the model used to learn what it
         //   is.
         //
         //   Add a library that ORs every term, and "do" and "you" match hundreds
@@ -231,9 +232,17 @@ public class CompositeSkillStoreTests
         var builder = new SkillContextBuilder(composite, maxSkills: 5, maxChars: 1500);
         var block = await builder.BuildContextAsync("what can you do");
 
-        // Whatever mode it lands in, the assistant's own capabilities must be in
-        // the block it hands the model.
-        Assert.Contains("offline", block, StringComparison.OrdinalIgnoreCase);
+        // AND THE SEAM IS NOW CLOSED FROM THE OTHER END (2026-10-02). This used
+        // to assert that the capabilities were in the BLOCK - which is a race the
+        // library can always win, because it takes only one community skill
+        // matching a stopword to push the manifest out of five slots.
+        //
+        // An overview question no longer reaches any store: it has no significant
+        // terms, so the builder returns before searching, and what this phone can
+        // do is one fixed sentence in AssistantPersona, in front of the model on
+        // every turn. Nothing can crowd it out.
+        Assert.Equal(string.Empty, block);
+        Assert.Contains("remember", AssistantPersona.CanDo, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

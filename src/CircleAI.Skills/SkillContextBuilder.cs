@@ -50,49 +50,42 @@ public sealed class SkillContextBuilder
         if (string.IsNullOrWhiteSpace(userQuery))
             return string.Empty;
 
+        // AN OVERVIEW QUESTION IS ANSWERED BY THE PERSONA, NOT BY A SEARCH, and it
+        // is decided BEFORE the search rather than after it.
+        //
+        // "What can you do?" reduces to zero significant terms - what, can, you, do
+        // are all stopwords - so there is no subject to retrieve on and no index can
+        // answer it. AssistantPersona.CanDo is one fixed sentence saying what this
+        // phone does, in front of the model on every turn, and it cannot be
+        // mis-ranked.
+        //
+        // THIS USED TO FALL OUT OF THE NO-MATCH BRANCH, which is why it had to move.
+        // Compact mode - a names-only listing - lived in the else below, so it only
+        // ran when nothing matched. Measured against the shipping manifest on
+        // 2026-10-02: "What can you do?" DID match, once, because one of the nineteen
+        // entries (self.knowledge) contains that exact phrase in its description and
+        // the manifest matches the whole query as a substring. An accident beat the
+        // rule. And self.knowledge is the meta-entry ABOUT being honest, four fifths
+        // Limits - so on a P30 the 0.8B summarised the caveats and answered "there
+        // isn't much useful information available for me due to technical
+        // constraints".
+        //
+        // The names-only listing goes with it, and was never the answer anyway: it
+        // emitted ids - "model.selection, model.catalogue, model.download" - which is
+        // the engine room talking, not the product.
+        if (CircleAI.Core.SearchTerms.Significant(userQuery).Count == 0)
+            return string.Empty;
+
         var matches = await _store.SearchAsync(userQuery, cancellationToken).ConfigureAwait(false);
 
-        // NO-MATCH => COMPACT MODE, not "dump everything".
-        //
-        // This used to fall back to the full skill list WITH full Instructions on
-        // every unmatched turn. Measured on a Huawei P30 Lite (2026-07-21): with
-        // a capability-manifest store behind it, that pushed the on-device sweep
-        // from 4m33s to >20m — a 0.6B with a 4096-token window spends its whole
-        // budget re-reading skills the turn never asked about. Compact mode gives
-        // the model an awareness line without the prompt tax.
-        var matched = matches.Count > 0;
-        IReadOnlyList<SkillSummary> candidates;
-        if (matched)
-        {
-            candidates = matches.Take(_maxSkills).ToList();
-        }
-        else
-        {
-            // COMPACT MODE IS FOR A SELF / OVERVIEW QUESTION, NOT EVERY MISS.
-            //
-            // "What can you do" reduces to zero significant terms - every word is
-            // a stopword - and there a short capability list is the most useful
-            // thing to hand the model. But "What is the capital of France" has
-            // real terms ({capital, France}) that simply matched no skill, and
-            // listing "model.selection, model.catalogue…" at a geography question
-            // is the noise that made a P30's 0.6B answer "I need clarification"
-            // instead of "Paris". Measured 2026-09-14, enrichment=131 and still
-            // wrong; nothing injected is the right amount here.
-            //
-            // The distinction is the query itself: no significant terms => the
-            // person is asking WHAT this is, so overview; real terms with no
-            // match => a topic no skill covers, so silence.
-            if (CircleAI.Core.SearchTerms.Significant(userQuery).Count > 0)
-                return string.Empty;
+        // A TOPICAL MISS INJECTS NOTHING. "What is the capital of France" has real
+        // terms ({capital, France}) that simply matched no skill. Listing capability
+        // names at a geography question is the noise that made a P30's 0.6B answer
+        // "I need clarification" instead of "Paris" - measured 2026-09-14,
+        // enrichment=131 and still wrong. Nothing is the right amount here.
+        if (matches.Count == 0) return string.Empty;
 
-            var all = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
-            if (all.Count == 0) return string.Empty;
-
-            var names = all.Take(_maxSkills).Select(s => s.Id).ToList();
-            Console.WriteLine($"CIRCLEAI-SKILLS compact q=\"{userQuery}\" "
-                            + $"store={all.Count} names={string.Join(",", names)}");
-            return "## Available Skills (names only; ask to expand)\n" + string.Join(", ", names) + "\n";
-        }
+        var candidates = matches.Take(_maxSkills).ToList();
 
         Console.WriteLine($"CIRCLEAI-SKILLS full q=\"{userQuery}\" hits={matches.Count} "
                         + $"chosen={string.Join(",", candidates.Select(c => c.Id))}");

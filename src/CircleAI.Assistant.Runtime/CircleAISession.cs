@@ -82,41 +82,14 @@ public sealed class CircleAISession : IAsyncDisposable
     /// may take; the config is the setting.
     /// </para>
     /// </remarks>
-    // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
-    // assistant told it was "IT!", on a product called Circle AI.
-    //
-    // AND THE LENGTH RULE WAS ALREADY HERE, AND IGNORED. "One or two short
-    // sentences" produced 175 characters about cryptocurrency on 2026-09-09 -
-    // in answer to thirteen characters of noise. A small model treats a length
-    // request as a suggestion; what it does obey better is a rule about what
-    // NOT to do.
-    //
-    // THE CLARIFICATION RULE THEN OVER-FIRED, AND IT MADE THE APP WORTHLESS.
-    // "If the question is unclear, garbled, or looks mis-heard, do not answer
-    // it: ask what they meant" was written for garbled VOICE, but a 0.6B applied
-    // it to CLEAR questions. Measured on a P30 2026-09-14 with a completely empty
-    // enrichment (nothing but this prompt and the question): "What is the capital
-    // of France" came back "What did you mean?" - not "Paris". Every version
-    // showed the same tell ("Which capital is being asked?", "I need
-    // clarification"). An assistant that will not answer a plain question is
-    // worth nothing, whatever else is clean underneath.
-    //
-    // So answering is now the DEFAULT and stated first, and clarification is
-    // scoped to genuinely garbled or empty input - the case it was actually for.
-    // The invention guard (never make up a law, price, date, fact) stays: that
-    // is the one a person cannot un-hear.
-    private const string Prompt =
-        "You are Circle AI - a dry, competent assistant that runs on this phone. " +
-        "Answer the question directly in one or two short sentences, the way a person would out loud. " +
-        "A clear question always gets an answer. " +
-        "Only if the message is genuinely garbled or empty, ask in one short sentence what they meant. " +
-        "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer. " +
-        // CAPABILITY-HONEST, NOT SELF-AWARE. It reports what it can do; it never
-        // claims to BE anything. A warm, memory-rich assistant must not drift into
-        // faking personhood - so the one line it will not cross is stated here, and
-        // kept to a single sentence because this prompt is prefix-cached and feeds
-        // a 0.6B with a 4096-token window.
-        "You are a tool that runs on this phone, not a person; if asked whether you are alive, conscious, or human, say no plainly.";
+    // ONE OWNER, AND IT IS NOT THIS FILE ANY MORE. This text was a private
+    // constant here, and the app that owns this session stopped holding a model:
+    // every question now goes app -> link -> CircleNeuronService, whose AIOptions
+    // had no SystemPrompt at all. So the tuned persona applied to a path nothing
+    // reaches, and the brain that answers ran on the SDK default. Moved to
+    // AssistantPersona, which both heads can see; the history of the wording is
+    // with it.
+    private const string Prompt = CircleAI.Assistant.AssistantPersona.Prompt;
 
     private readonly AIService _brain;
     private readonly NeuronNode _it;

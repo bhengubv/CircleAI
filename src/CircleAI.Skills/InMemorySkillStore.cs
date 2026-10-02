@@ -82,11 +82,10 @@ public sealed class InMemorySkillStore : ISkillStore
 
     /// <summary>Does this skill answer <paramref name="query"/>?</summary>
     /// <remarks>
-    /// The ID is matched FIRST because it is the handle we hand out. When no skill
-    /// matches, <c>SkillContextBuilder</c> falls back to listing ids and inviting
-    /// the model to "ask to expand" — and the only way to ask is to name the id.
-    /// Searching everything except the id meant that invitation went nowhere: the
-    /// listing advertised a handle that retrieved nothing.
+    /// The ID is matched FIRST because it is the handle we hand out:
+    /// <c>SkillContextBuilder</c> heads every entry it injects with the id, so a
+    /// model that has been shown one and asks by it has to get the body back.
+    /// Searching everything except the id meant that handle retrieved nothing.
     /// </remarks>
     private static bool MatchesQuery(SkillDetail s, string query) =>
         s.Id.Contains(query, StringComparison.OrdinalIgnoreCase) ||

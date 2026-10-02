@@ -372,13 +372,13 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     /// Asked "what can you do", this store OR'd every term - "do" and "you"
     /// included - and matched hundreds of the 1,378 community skills.
     /// <para>
-    /// That is not just a bad result list. SkillContextBuilder switches to a
-    /// COMPACT mode when a search returns NOTHING, listing capability names so the
-    /// model at least knows what it is; a search returning junk instead puts it in
-    /// FULL mode over five arbitrary community skills, and the capability manifest
-    /// never reaches the prompt at all. The phone answered "my primary
-    /// capabilities include assisting with various queries related to user needs",
-    /// which is a model with nothing to go on.
+    /// That is not just a bad result list. A search returning junk fills the block
+    /// with five arbitrary community skills, and the capability manifest never
+    /// reaches the prompt at all. The phone answered "my primary capabilities
+    /// include assisting with various queries related to user needs", which is a
+    /// model with nothing to go on. (Who it IS no longer depends on this: that is
+    /// AssistantPersona, a fixed sentence on every turn. What it can do about a
+    /// NAMED subject still comes through here.)
     /// </para>
     /// <para>
     /// So a query made only of stopwords matches nothing, deliberately, and the

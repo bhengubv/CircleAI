@@ -221,8 +221,8 @@ public sealed class FileSkillStore : ISkillStore
 
     /// <summary>Does this skill answer <paramref name="query"/>?</summary>
     /// <remarks>
-    /// ID first — it is the handle the compact listing hands out, so it has to be
-    /// the one thing a lookup is guaranteed to find. Kept identical to the other
+    /// ID first — it is the handle every injected entry is headed with, so it has
+    /// to be the one thing a lookup is guaranteed to find. Kept identical to the other
     /// stores: a skill that resolves in memory and not on disk is a bug that only
     /// shows up on someone's phone.
     /// </remarks>
