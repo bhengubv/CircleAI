@@ -269,6 +269,22 @@ public interface ISetup
     Task<bool> BackgroundAtRiskAsync(CancellationToken ct = default)
         => Task.FromResult(false);
 
+    /// <summary>What this phone calls the setting, in its own words, or null.</summary>
+    /// <remarks>
+    /// SO THE INSTRUCTION CAN BE FOLLOWED. "Allow it to run in the background" names
+    /// nothing a person will find on a Huawei: the screen that decides it is called
+    /// App launch, and on a Xiaomi it is Autostart. An instruction that names no
+    /// setting on the phone in their hand is an instruction they cannot carry out,
+    /// and when the assistant then stops listening overnight the reasonable
+    /// conclusion is that the software is broken.
+    /// <para>
+    /// Null when this make has no known second screen, which is most of them - the
+    /// stock battery list is then the whole of it and the generic wording is right.
+    /// </para>
+    /// </remarks>
+    Task<string?> BackgroundSettingNameAsync(CancellationToken ct = default)
+        => Task.FromResult<string?>(null);
+
     /// <summary>Whether this phone will let the assistant keep running.</summary>
     /// <remarks>
     /// ASKING WAS ONLY EVER OFFERED DURING FIRST-RUN SETUP, so a phone set up

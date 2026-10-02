@@ -382,9 +382,18 @@ else
                 <span class="row-text">
                     <span class="row-title">This phone may stop it listening</span>
                     <span class="row-sub">
-                        Phones from this maker close background apps to save battery,
-                        which can switch this off without telling you. Allowing it to
-                        run in the background prevents that.
+                        @if (_backgroundSetting is { Length: > 0 } setting)
+                        {
+                            @:Phones from this maker close background apps to save
+                            @:battery, which can switch this off without telling you.
+                            @:Open @setting and allow Circle AI to stop that.
+                        }
+                        else
+                        {
+                            @:Phones from this maker close background apps to save
+                            @:battery, which can switch this off without telling you.
+                            @:Allowing it to run in the background prevents that.
+                        }
                     </span>
                 </span>
                 <button class="compact" disabled="@_askingBackground" @onclick="AllowBackground">
@@ -745,6 +754,14 @@ else
     /// </remarks>
     bool _backgroundAtRisk;
 
+    /// <summary>What THIS phone calls the setting, or null when it has no second one.</summary>
+    /// <remarks>
+    /// NAMED SO IT CAN BE FOUND. "Allow it to run in the background" names nothing a
+    /// person will see on a Huawei - the screen is called App launch - so the
+    /// instruction cannot be carried out and the assistant goes on being closed.
+    /// </remarks>
+    string? _backgroundSetting;
+
     bool _residentBusy;
     bool? _residentOn;
 
@@ -910,6 +927,8 @@ else
             // is looking at this row and will act on the answer.
             try { _backgroundAtRisk = await Wizard.BackgroundAtRiskAsync(); }
             catch { /* the warning stays hidden rather than guessed at */ }
+            try { _backgroundSetting = await Wizard.BackgroundSettingNameAsync(); }
+            catch { /* the generic wording is still true */ }
             try { _keepsRunning = await Wizard.BackgroundAllowedAsync(); }
             catch { /* leave the last answer standing rather than guess */ }
         }
@@ -1090,6 +1109,8 @@ else
         // with it. Left null, the prompt simply does not appear.
         try { _backgroundAtRisk = await Wizard.BackgroundAtRiskAsync(); }
         catch { /* leave it as it was */ }
+        try { _backgroundSetting = await Wizard.BackgroundSettingNameAsync(); }
+        catch { /* the generic wording is still true */ }
         try { _keepsRunning = await Wizard.BackgroundAllowedAsync(); }
         catch { _keepsRunning = null; }
 

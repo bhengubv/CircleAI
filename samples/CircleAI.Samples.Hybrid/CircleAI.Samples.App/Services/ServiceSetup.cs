@@ -166,6 +166,18 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
     {
         if (ServiceExempt()) return Task.FromResult(true);
 
+        // THE MAKER'S OWN SCREEN FIRST, because on these phones the stock battery
+        // list is necessary and not sufficient - EMUI closes an app left on "Manage
+        // automatically" in App launch whatever the battery list says. Somebody who
+        // follows a generic instruction, does exactly what it asked, and still loses
+        // the assistant overnight concludes the software is broken, and they are
+        // being reasonable.
+        foreach (var screen in BackgroundFix.Screens(Android.OS.Build.Manufacturer))
+        {
+            if (Opened(new Android.Content.ComponentName(screen.Package, screen.Activity)))
+                return Task.FromResult(true);
+        }
+
         try
         {
             var intent = new Android.Content.Intent(
@@ -217,6 +229,47 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
         if (await BackgroundAllowedAsync(ct).ConfigureAwait(false)) return false;
 
         return BackgroundRisk.Known(Android.OS.Build.Manufacturer);
+    }
+
+    /// <inheritdoc />
+    public Task<string?> BackgroundSettingNameAsync(CancellationToken ct = default)
+        => Task.FromResult(BackgroundFix.SettingName(Android.OS.Build.Manufacturer));
+
+    /// <summary>Try one maker screen; true only if it actually came up.</summary>
+    /// <remarks>
+    /// VENDORS RENAME AND MOVE THESE BETWEEN FIRMWARES, so this is a list of
+    /// candidates rather than one name and a hope - and every failure has to be
+    /// caught, because a missing component throws ActivityNotFound and a present but
+    /// guarded one throws SecurityException. Either way the next candidate gets a
+    /// turn and the stock battery screen is still the floor.
+    /// </remarks>
+    private static bool Opened(Android.Content.ComponentName component)
+    {
+        try
+        {
+            var intent = new Android.Content.Intent();
+            intent.SetComponent(component);
+
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+            if (activity is not null)
+            {
+                activity.StartActivity(intent);
+            }
+            else
+            {
+                intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                Android.App.Application.Context.StartActivity(intent);
+            }
+
+            Android.Util.Log.Info("CircleAI.Setup", "opened " + component.FlattenToShortString());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Info("CircleAI.Setup",
+                component.FlattenToShortString() + " did not open: " + ex.Message);
+            return false;
+        }
     }
 
     /// <summary>Whether Android will let CircleAI keep running in the background.</summary>
