@@ -1,4 +1,4 @@
-﻿// LinkedResidentAssistant.cs
+// LinkedResidentAssistant.cs
 //
 // The "answer to its name" switch, made to actually switch something.
 //
@@ -72,8 +72,9 @@ public sealed class LinkedResidentAssistant(LinkedBrain brain) : IResidentAssist
     {
         if (!brain.ServiceInstalled)
             return new ResidentStatus(ResidentState.NotInstalled,
-                "CircleAI is not installed",
-                "This app asks CircleAI to listen and to think. Install it to use them.");
+                ServicePairing.Name + " is not installed",
+                "This app asks Circle AI to listen and to think, and the part that does "
+                + "both is a separate download. Add it to use them.");
 
         var client = await brain.LinkAsync(ct).ConfigureAwait(false);
         if (client is null)

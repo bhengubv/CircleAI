@@ -1,4 +1,4 @@
-﻿// LinkedWakeWord.cs
+// LinkedWakeWord.cs
 //
 // The wake word runs in CircleAIService, and this screen follows it.
 //
@@ -53,8 +53,9 @@ public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
         if (!brain.ServiceInstalled)
         {
             updates.Report(new WakeStatus(WakeState.NotInstalled,
-                "CircleAI is not installed",
-                "This app asks CircleAI to listen and to think. Install it to use them."));
+                ServicePairing.Name + " is not installed",
+                "This app asks Circle AI to listen and to think, and the part that does "
+                + "both is a separate download. Add it to use them."));
             return;
         }
 

@@ -381,6 +381,19 @@ public sealed class QwenTextGenerator : IChatGenerator
         // bare it throws "DllNotFoundException: mnnbridge", which says nothing
         // about the real cause — on Android that is a build-time packaging
         // omission, and diagnosing it once cost an APK teardown.
+        // SOMEWHERE FOR MNN TO PUT ITS CACHES, BEFORE IT GOES LOOKING FOR THEM.
+        //
+        // MNN resolves "./mnn_cachefile.bin" and "prefixcache/..." against the
+        // process working directory, which on Android is "/" and unwritable - so
+        // the OpenCL kernel cache has never loaded and the prefix cache has never
+        // been creatable. Beside the model, which is writable by definition: the
+        // bundle was downloaded into it.
+        //
+        // Before create, not before load: MNN reads the OpenCL cache while building
+        // the backend, which happens inside create on some paths.
+        NativeCacheDirectory.Use(modelPath);
+
+
         MnnModelHandle handle;
         try
         {

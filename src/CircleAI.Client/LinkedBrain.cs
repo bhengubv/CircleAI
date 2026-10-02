@@ -1,4 +1,4 @@
-﻿// LinkedBrain.cs
+// LinkedBrain.cs
 //
 // An IBrain that asks the CircleAI service instead of loading a model.
 //
@@ -70,7 +70,11 @@ public sealed class LinkedBrain : IBrain, IDisposable
         // link), and ready. Collapsing them into "not ready" leaves somebody with no
         // idea which of the two actions to take.
         if (!ServiceInstalled)
-            return new BrainState(false, "CircleAI is not installed on this device.");
+            // NAMED FOR WHAT IS MISSING, NOT FOR THE PACKAGE. Circle AI is two apps and
+            // only one has an icon, so "CircleAI is not installed" is nonsense said to
+            // somebody looking straight at the Circle AI they just installed. One
+            // owner for the words - ServicePairing.
+            return new BrainState(false, ServicePairing.Name + " is not installed on this device.");
 
         var client = await ConnectAsync(ct).ConfigureAwait(false);
         if (client is null)
