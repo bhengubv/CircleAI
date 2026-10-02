@@ -105,6 +105,24 @@ internal sealed class FakeSetup : ISetup
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
         => Task.FromResult(BackgroundAllowed);
 
+    /// <summary>Whether this make of phone closes background apps on its own.</summary>
+    /// <remarks>
+    /// THE SECOND HALF OF THE QUESTION, AND IT USED NOT TO EXIST. The warning was
+    /// driven by BackgroundAllowed alone - and not holding Android's exemption is
+    /// the default state of every phone, so the screen warned everybody for ever.
+    /// It now needs BOTH: no exemption AND a make known to do it.
+    /// <para>
+    /// TRUE BY DEFAULT HERE, so the tests that are about the warning keep saying
+    /// what they already said - they set BackgroundAllowed = false to describe a
+    /// phone that kills background work, and this is the other half of that
+    /// description. A test about a well-behaved phone sets it false.
+    /// </para>
+    /// </remarks>
+    public bool BackgroundKillerMake { get; set; } = true;
+
+    public Task<bool> BackgroundAtRiskAsync(CancellationToken ct = default)
+        => Task.FromResult(!BackgroundAllowed && BackgroundKillerMake);
+
     /// <summary>Whether the app is approved to use CircleAI. True by default, so the
     /// approval row stays hidden and a test that is about something else is not
     /// perturbed by it; set false to render that row.</summary>

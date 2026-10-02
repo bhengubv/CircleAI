@@ -248,6 +248,27 @@ public interface ISetup
     /// </remarks>
     Task<bool> AllowBackgroundAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether listening on THIS phone is actually at risk of being stopped.
+    /// </summary>
+    /// <remarks>
+    /// NOT THE SAME QUESTION AS <see cref="BackgroundAllowedAsync"/>, and conflating
+    /// them put a permanent warning on every phone. Android grants the
+    /// battery-optimisation exemption to nothing until somebody asks, so "not exempt"
+    /// is the default state of the world and says nothing about whether this phone
+    /// closes background apps. The warning it drove asserted that it does.
+    /// <para>
+    /// This is the narrower, checkable fact: not exempt AND a make known to stop
+    /// background work on its own. See <see cref="BackgroundRisk"/>.
+    /// </para>
+    /// <para>
+    /// False by default, so a head that cannot tell shows nothing rather than
+    /// guessing - which is the right way round for a warning.
+    /// </para>
+    /// </remarks>
+    Task<bool> BackgroundAtRiskAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
+
     /// <summary>Whether this phone will let the assistant keep running.</summary>
     /// <remarks>
     /// ASKING WAS ONLY EVER OFFERED DURING FIRST-RUN SETUP, so a phone set up

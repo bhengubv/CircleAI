@@ -204,6 +204,21 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default)
         => Task.FromResult(ServiceExempt());
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// BOTH HALVES, AND THE SECOND ONE IS THE ONE THAT WAS MISSING. Not holding the
+    /// exemption is Android's default; it only matters on a phone that will act on
+    /// it. Build.Manufacturer is read here because this is the head with the
+    /// platform; which makes count is BackgroundRisk's, in the product, where it can
+    /// be tested without a phone.
+    /// </remarks>
+    public async Task<bool> BackgroundAtRiskAsync(CancellationToken ct = default)
+    {
+        if (await BackgroundAllowedAsync(ct).ConfigureAwait(false)) return false;
+
+        return BackgroundRisk.Known(Android.OS.Build.Manufacturer);
+    }
+
     /// <summary>Whether Android will let CircleAI keep running in the background.</summary>
     /// <remarks>
     /// isIgnoringBatteryOptimizations takes a package name and this one is CircleAI's,
