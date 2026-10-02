@@ -328,7 +328,41 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
                     """;
                 cmd.Parameters.AddWithValue("$q", SafeMatch(terms));
                 var hits = ReadSummaries(cmd, cancellationToken);
-                if (hits.Count > 0) return Task.FromResult(hits);
+                // A SEARCH THAT RAN AND FOUND NOTHING IS AN ANSWER, NOT A FAILURE.
+                //
+                // This used to be "if (hits.Count > 0)", falling through to the
+                // substring LIKE below whenever FTS came back empty - and that turned
+                // a correct no into three wrong yeses. Measured against the shipping
+                // 1,378-skill library, SkillRelevanceMeasure holds the numbers:
+                //
+                //   "Hey, B."       FTS 0  ->  LIKE 3   heygen, heyreach, heyzine
+                //   "hello"         FTS 0  ->  LIKE 1   helloleads
+                //   "good morning"  FTS 0  ->  LIKE 2   goodbits, goody
+                //   "hi there"      FTS 0  ->  LIKE 18
+                //
+                // Every one of those injected about 1,650 characters. On a P30 on
+                // 2026-10-03 a person said "Hey B", the transcript was seven
+                // characters, and the prompt reached 573 tokens: prefill 26,256 ms,
+                // decode 1,018 ms. Twenty-six seconds of prefill because "hey" is a
+                // SUBSTRING of HeyGen. The library is full of SaaS product names, so
+                // every common opener a person says is a substring of one of them.
+                //
+                // LIKE STAYS FOR WHAT IT WAS ACTUALLY FOR: a device with no FTS5
+                // compiled in, and a MATCH expression FTS5 refuses. Both are below.
+                // What it must not do is second-guess a tokeniser that worked.
+                // AND IN IDENTIFYING MODE THAT IS THE FINAL ANSWER.
+                //
+                // The two modes are answering two different questions. A general
+                // store is a SEARCH BOX: an empty result is unhelpful, a loose one
+                // is cheap, and somebody typing "ubernet" should still find
+                // Kubernetes - SqliteSkillStoreTests pins that. Identifying mode is
+                // what feeds a MODEL's prompt, and there a loose result is not
+                // cheap at all: it is prefill, and prefill on a P30 is about 45 ms
+                // per token.
+                // Identifying mode returns the FTS answer whatever it is, EMPTY
+                // INCLUDED. A general store keeps its old behaviour exactly: hits
+                // if there are any, LIKE if there are not.
+                if (_identifyingOnly || hits.Count > 0) return Task.FromResult(hits);
             }
             catch (SqliteException)
             {

@@ -318,5 +318,35 @@ namespace CircleAI.Inference
         /// </para>
         /// </remarks>
         public bool ContinueConversation { get; init; } = false;
+
+        /// <summary>The same options, with the prefix cache switched on.</summary>
+        /// <remarks>
+        /// A COPY, BECAUSE THE PROPERTIES ARE INIT-ONLY and this is a class rather
+        /// than a record - a caller's options object may be shared, and mutating it
+        /// would turn one turn's decision into every turn's.
+        ///
+        /// IT EXISTS BECAUSE THE CACHE HAD A WRITER AND NO READER. AIService warms
+        /// the prefix cache at start-up with UsePrefixCache = true, and then answered
+        /// every question with options that left it false - so the snapshot was
+        /// written where nobody was waiting and never read where somebody was. The
+        /// component that writes a cache is the component that has to read it.
+        ///
+        /// EVERY PROPERTY IS CARRIED. A missed one here would silently drop a
+        /// caller's MaxTokens or stop sequences on the floor, which is a far worse
+        /// bug than a slow prefill.
+        /// </remarks>
+        public GenerationOptions WithPrefixCache() => new()
+        {
+            MaxTokens            = MaxTokens,
+            Temperature          = Temperature,
+            TopP                 = TopP,
+            TopK                 = TopK,
+            Seed                 = Seed,
+            StopSequences        = StopSequences,
+            IncludeReasoning     = IncludeReasoning,
+            Budget               = Budget,
+            ContinueConversation = ContinueConversation,
+            UsePrefixCache       = true,
+        };
     }
 }

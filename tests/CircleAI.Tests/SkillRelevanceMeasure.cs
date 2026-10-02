@@ -91,4 +91,47 @@ public class SkillRelevanceMeasure : IClassFixture<SkillLibraryFixture>
         var topFive = hits.Take(5).Select(h => h.Id).ToList();
         Assert.Contains(topFive, id => id.Contains("threat", StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>Greetings and openers - what somebody says BEFORE they ask anything.</summary>
+    public static TheoryData<string> Greetings() =>
+    [
+        "Hey, B.",
+        "Hey B",
+        "hello",
+        "hi there",
+        "good morning",
+    ];
+
+    [Theory]
+    [MemberData(nameof(Greetings))]
+    public void A_greeting_costs_the_model_nothing(string greeting)
+    {
+        // THE RULER THE OTHER ONE IS NOT. Share-of-library says this is fine:
+        // "Hey, B." matched 3 skills out of 1,378, which is 0.2% and sails past
+        // the 25% line above. It still cost twenty-six seconds.
+        //
+        // Measured on a P30 on 2026-10-03. A person said "Hey B"; the transcript
+        // was the seven characters "Hey, B."; the search matched heygen-automation,
+        // heyreach-automation and heyzine-automation - because "hey" is a SUBSTRING
+        // of all three - and the prompt went from about thirty tokens to 573.
+        //
+        //     prefill=26256 ms | decode=1018 ms | total=27381 ms
+        //
+        // Twenty-six seconds of prefill, one second of thinking. What the model pays
+        // for is CHARACTERS IN THE PROMPT, so that is what this measures.
+        using var store = new SqliteSkillStore(Db, identifyingMatchOnly: true);
+        var builder = new SkillContextBuilder(store);
+
+        var block = builder.BuildContextAsync(greeting).GetAwaiter().GetResult();
+        var hits = store.SearchAsync(greeting).GetAwaiter().GetResult();
+
+        _out.WriteLine($"[{greeting}] -> {hits.Count} hits, {block.Length} chars injected");
+        foreach (var h in hits.Take(5)) _out.WriteLine($"    {h.Id}");
+
+        // NOTHING, NOT "A LITTLE". There is no skill in a 1,378-skill library that
+        // a person saying hello needs, and on this phone every 45 characters of
+        // prompt is about a second they spend waiting.
+        Assert.Equal(0, block.Length);
+    }
+
 }

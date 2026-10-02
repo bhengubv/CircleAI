@@ -717,7 +717,14 @@ public sealed class AIServiceTests : IDisposable
 
         await svc.ChatAsync(new[] { new ChatMessage("user", "hi") });
 
-        Assert.Same(customOpts, generator.LastGenerateOptions);
+        // NOT THE SAME INSTANCE ANY MORE, AND ON PURPOSE. AIService copies the
+        // options to switch UsePrefixCache on - it warms that cache at start-up and
+        // has to be the one that reads it. Reference identity was only ever a proxy
+        // for "the caller's choices reach the generator"; this asserts that, which
+        // is the contract the name claims.
+        Assert.Equal(customOpts.MaxTokens, generator.LastGenerateOptions!.MaxTokens);
+        Assert.Equal(customOpts.Temperature, generator.LastGenerateOptions!.Temperature);
+        Assert.True(generator.LastGenerateOptions!.UsePrefixCache);
     }
 
     [Fact]
@@ -737,9 +744,14 @@ public sealed class AIServiceTests : IDisposable
 
         await svc.ChatAsync(new[] { new ChatMessage("user", "hi") }, callerOpts);
 
-        // Caller-supplied options should win; default should NOT be used.
-        Assert.Same(callerOpts, generator.LastGenerateOptions);
-        Assert.NotSame(defaultOpts, generator.LastGenerateOptions);
+        // NOT THE SAME INSTANCE ANY MORE, AND ON PURPOSE. AIService copies the
+        // options to switch UsePrefixCache on - it warms that cache at start-up and
+        // has to be the one that reads it. Reference identity was only ever a proxy
+        // for "the caller's choices reach the generator"; this asserts that, which
+        // is the contract the name claims.
+        Assert.Equal(callerOpts.MaxTokens, generator.LastGenerateOptions!.MaxTokens);
+        Assert.Equal(callerOpts.Temperature, generator.LastGenerateOptions!.Temperature);
+        Assert.NotEqual(defaultOpts.MaxTokens, generator.LastGenerateOptions!.MaxTokens);
     }
 
     // ------------------------------------------------------------------
@@ -817,7 +829,14 @@ public sealed class AIServiceTests : IDisposable
 
         await foreach (var _ in svc.StreamAsync(new[] { new ChatMessage("user", "hi") })) { }
 
-        Assert.Same(customOpts, generator.LastStreamOptions);
+        // NOT THE SAME INSTANCE ANY MORE, AND ON PURPOSE. AIService copies the
+        // options to switch UsePrefixCache on - it warms that cache at start-up and
+        // has to be the one that reads it. Reference identity was only ever a proxy
+        // for "the caller's choices reach the generator"; this asserts that, which
+        // is the contract the name claims.
+        Assert.Equal(customOpts.MaxTokens, generator.LastStreamOptions!.MaxTokens);
+        Assert.Equal(customOpts.Temperature, generator.LastStreamOptions!.Temperature);
+        Assert.True(generator.LastStreamOptions!.UsePrefixCache);
     }
 
     // ------------------------------------------------------------------
@@ -1689,9 +1708,14 @@ public sealed class AIServiceStreamContractTests : IDisposable
         await foreach (var _ in svc.StreamAsync(
             new[] { new ChatMessage("user", "hi") }, callerOpts)) { }
 
-        // Caller-supplied options must win; service default must NOT be used.
-        Assert.Same(callerOpts,    generator.LastStreamOptions);
-        Assert.NotSame(defaultOpts, generator.LastStreamOptions);
+        // NOT THE SAME INSTANCE ANY MORE, AND ON PURPOSE. AIService copies the
+        // options to switch UsePrefixCache on - it warms that cache at start-up and
+        // has to be the one that reads it. Reference identity was only ever a proxy
+        // for "the caller's choices reach the generator"; this asserts that, which
+        // is the contract the name claims.
+        Assert.Equal(callerOpts.MaxTokens, generator.LastStreamOptions!.MaxTokens);
+        Assert.Equal(callerOpts.Temperature, generator.LastStreamOptions!.Temperature);
+        Assert.NotEqual(defaultOpts.MaxTokens, generator.LastStreamOptions!.MaxTokens);
     }
 
     // ------------------------------------------------------------------

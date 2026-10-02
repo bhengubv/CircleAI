@@ -1,4 +1,4 @@
-﻿// CircleNeuronLinkService.cs
+// CircleNeuronLinkService.cs
 //
 // The cross-app door to the shared brain.
 //
@@ -276,6 +276,28 @@ public sealed class CircleNeuronLinkService : Service
         var denied = await AuthorizeAsync(uid, LinkScope.Chat).ConfigureAwait(false);
         if (denied is not null) { Log.Info(Tag, "serve: denied - " + denied); return LinkTurnReply.Failure(denied); }
         Log.Info(Tag, "serve: authorised, starting the brain");
+
+        // A GREETING IS NOT A QUESTION, AND IT NEVER REACHES THE MODEL.
+        //
+        // On a P30 on 2026-10-03 somebody said "Hey B" into the app. Whisper gave
+        // back "Hey, B." and those seven characters were put to the brain: three
+        // SaaS skills matched on the substring "hey", the prompt reached 573 tokens,
+        // prefill took 26,256 ms and the whole turn 38.5 seconds - to say hello.
+        //
+        // HERE, BECAUSE THIS IS THE SEAM EVERY APP CROSSES. Fixing it in the sample
+        // would fix one caller; this one covers every app that ever links, including
+        // the ones nobody has written yet.
+        // THE PHRASE THIS DEVICE IS ACTUALLY LISTENING FOR, asked of the listener
+        // rather than copied: somebody can change it, and a second copy would stop
+        // recognising the moment they did. Null before the listener starts, which
+        // only costs the greeting shortcut on a phrase nobody is being woken by.
+        if (CircleAI.Assistant.Opener.IsNothingButHello(
+                turn.Message, CircleNeuronService.Listener?.Describe))
+        {
+            Log.Info(Tag, "serve: a greeting, answered without the brain");
+            return LinkTurnReply.Success(CircleAI.Assistant.AssistantPersona.Greeting);
+        }
+
 
         // Make sure the resident brain is up; a cold model load is seconds long.
         try { CircleNeuronService.Start(this); }

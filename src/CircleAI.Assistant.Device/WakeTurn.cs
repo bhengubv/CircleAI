@@ -142,6 +142,16 @@ public static class WakeTurn
             }
 
             Log.Info(Tag, "heard: " + question);
+
+            // AND IF ALL THEY SAID WAS THE NAME AGAIN, IT HAS ALREADY ANSWERED. The
+            // greeting went out before the microphone opened; saying it twice is
+            // better than putting "Hey B" to a language model for thirty seconds.
+            if (CircleAI.Assistant.Opener.IsNothingButHello(question))
+            {
+                Log.Info(Tag, "that was a greeting, not a question");
+                return;
+            }
+
             try { Earcon.Heard(); } catch { /* as above */ }
 
             var answer = await AskAsync(question!, ct).ConfigureAwait(false);

@@ -484,6 +484,20 @@ public sealed class AIService : IAIService
             .ConfigureAwait(false);
         var effectiveOptions = options ?? _options.DefaultGenerationOptions;
 
+        // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
+        //
+        // WarmUpAsync pays the system block's prefill at start-up, where nobody is
+        // waiting, with UsePrefixCache = true - and then every real question was
+        // answered with options that left it false. The snapshot was written and
+        // never read. Measured on a P30 on 2026-10-03: CIRCLEAI-KV prefix-miss
+        // cache=off on a turn whose prefill was 26,256 ms.
+        //
+        // HERE RATHER THAN ON THE HOST'S OPTIONS, because a host should not have to
+        // know that this service keeps a cache in order to benefit from it. A
+        // caller who passes their own GenerationOptions keeps every other choice
+        // they made; only this one is turned on.
+        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
+
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
         var correlationId = Guid.NewGuid();
@@ -531,6 +545,20 @@ public sealed class AIService : IAIService
         var prepared = await PrepareMessagesAsync(messages, userQuery, ct)
             .ConfigureAwait(false);
         var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+
+        // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
+        //
+        // WarmUpAsync pays the system block's prefill at start-up, where nobody is
+        // waiting, with UsePrefixCache = true - and then every real question was
+        // answered with options that left it false. The snapshot was written and
+        // never read. Measured on a P30 on 2026-10-03: CIRCLEAI-KV prefix-miss
+        // cache=off on a turn whose prefill was 26,256 ms.
+        //
+        // HERE RATHER THAN ON THE HOST'S OPTIONS, because a host should not have to
+        // know that this service keeps a cache in order to benefit from it. A
+        // caller who passes their own GenerationOptions keeps every other choice
+        // they made; only this one is turned on.
+        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
@@ -607,6 +635,20 @@ public sealed class AIService : IAIService
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
         var prepared = await PrepareMessagesAsync(messages, userQuery, ct).ConfigureAwait(false);
         var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+
+        // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
+        //
+        // WarmUpAsync pays the system block's prefill at start-up, where nobody is
+        // waiting, with UsePrefixCache = true - and then every real question was
+        // answered with options that left it false. The snapshot was written and
+        // never read. Measured on a P30 on 2026-10-03: CIRCLEAI-KV prefix-miss
+        // cache=off on a turn whose prefill was 26,256 ms.
+        //
+        // HERE RATHER THAN ON THE HOST'S OPTIONS, because a host should not have to
+        // know that this service keeps a cache in order to benefit from it. A
+        // caller who passes their own GenerationOptions keeps every other choice
+        // they made; only this one is turned on.
+        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdownCts.Token);
 
@@ -703,6 +745,20 @@ public sealed class AIService : IAIService
             _options.AgenticMaxIterations
                 ?? DeviceTierDefaults.AgenticMaxIterations(_resolvedDeviceTier));
         var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+
+        // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
+        //
+        // WarmUpAsync pays the system block's prefill at start-up, where nobody is
+        // waiting, with UsePrefixCache = true - and then every real question was
+        // answered with options that left it false. The snapshot was written and
+        // never read. Measured on a P30 on 2026-10-03: CIRCLEAI-KV prefix-miss
+        // cache=off on a turn whose prefill was 26,256 ms.
+        //
+        // HERE RATHER THAN ON THE HOST'S OPTIONS, because a host should not have to
+        // know that this service keeps a cache in order to benefit from it. A
+        // caller who passes their own GenerationOptions keeps every other choice
+        // they made; only this one is turned on.
+        effectiveOptions = (effectiveOptions ?? new GenerationOptions()).WithPrefixCache();
 
         // Build conversation history with just the user turn.
         // PrepareMessagesAsync injects the enriched system prompt on every
