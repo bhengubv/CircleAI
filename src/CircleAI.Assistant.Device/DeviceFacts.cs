@@ -356,6 +356,12 @@ public sealed class DeviceFacts : IDeviceFacts
     /// lets this app do and why it asks. The constant is still named here, so the
     /// state is read from the platform rather than assumed.
     /// <para>
+    /// AND NO TEST-TUBE WORDS. The first cut of these said "foreground service",
+    /// "scheduling the thread that reads it" and "bringing the models back" - three
+    /// phrases that mean something to whoever wrote the permission and nothing to
+    /// the person being asked to allow it. Each line now says what the phone will
+    /// do and what happens without it, which is the only thing a person is deciding.
+    ///
     /// RUNTIME SAYS WHETHER ANYTHING CAN BE DONE ABOUT IT. The microphone and
     /// notifications are the person's to give and take back; the rest are granted at
     /// install and cannot be withdrawn, so a screen that offered to change them would
@@ -376,27 +382,27 @@ public sealed class DeviceFacts : IDeviceFacts
 
         (global::Android.Manifest.Permission.UseBiometric,
             "Check it is you",
-            "Approving an app to use your memory and your voice asks for the phone's own unlock.",
+            "Before another app can use your memory or your voice, your phone asks you to unlock it.",
             false),
 
         (global::Android.Manifest.Permission.ForegroundService,
             "Keep running",
-            "Listening with the screen off is a foreground service, which Android requires this for.",
+            "Android asks for this before an app is allowed to keep listening with the screen off.",
             false),
 
         (global::Android.Manifest.Permission.WakeLock,
             "Stay awake while listening",
-            "Without it the microphone stays open and the phone stops scheduling the thread that reads it.",
+            "Without it the phone dozes off and stops hearing you, even with the microphone still on.",
             false),
 
         (global::Android.Manifest.Permission.ReceiveBootCompleted,
             "Come back after a restart",
-            "Bringing the models back when the phone restarts. Listening still waits for one deliberate tap.",
+            "Getting ready again after you restart the phone. It still waits for you to switch listening back on.",
             false),
 
         (global::Android.Manifest.Permission.Internet,
             "Download what it needs",
-            "Fetching models and voices on request. Questions are answered on this phone.",
+            "Getting new voices and languages when you ask for them. Your questions are answered here, not sent away.",
             false),
     ];
 
