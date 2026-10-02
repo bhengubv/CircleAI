@@ -14,11 +14,17 @@
 // the hand-off to Android's own installer. The app renders it; none of the
 // reasoning lives in a screen.
 //
-// WHERE THE PACKAGE COMES FROM IS NOT DECIDED HERE, deliberately. A store listing,
-// a signed download, and a copy from a phone already carrying it over the mesh are
-// three different products with three different answers about what happens with no
-// signal and no account - and that is a decision, not a detail. Source is a seam;
-// everything around it is the same whichever way it is answered.
+// AND IT COMES FROM ANOTHER PHONE, NOT FROM A STORE OR THE MESH.
+//
+// The mesh cannot be the first hop: fetching the brain over Aether needs
+// AetherNetService, which is itself another install on a phone that has nothing.
+// Chicken and egg. A store needs a store and a signal; a download needs a signal.
+// What needs nothing at all is Android's own share sheet - a phone that already has
+// Circle AI hands over the installer itself, by Bluetooth if that is all there is.
+// Nearby, Wi-Fi Direct and the Aether mesh appear on that same sheet when the phone
+// has them, so the mesh is a route it may take rather than a thing it requires.
+//
+// AppShare is the giving half. This is the receiving half.
 //
 // ANDROID ASKS AGAIN, WHATEVER WE DO. Installing a package needs
 // REQUEST_INSTALL_PACKAGES, and even holding it the system shows its own
@@ -60,8 +66,19 @@ public static class ServicePairing
     /// <summary>Why it is a separate download, in one sentence somebody can act on.</summary>
     public const string Why =
         "Circle AI comes in two parts. This one is the screens; the other is the brain " +
-        "that answers you, and it is a large download because the models live in it. " +
+        "that answers you, and it is large because the models live in it. " +
         "It runs on the phone with no signal and no account, and it has no icon of its own.";
+
+    /// <summary>How to get it, on a phone with nothing else on it.</summary>
+    /// <remarks>
+    /// THE ONLY ROUTE THAT NEEDS NOTHING. Said plainly because the person reading it
+    /// may have no data left, and every other answer - a store, a download, the mesh -
+    /// quietly assumes they do. Anyone already carrying Circle AI can send it from
+    /// their own phone; see AppShare.
+    /// </remarks>
+    public const string HowToGet =
+        "Anyone who already has Circle AI can send it to you from their phone, over " +
+        "Bluetooth if that is all you have. No shop, no account, no data.";
 
     /// <summary>Is the other half here, and will this phone let us fetch it?</summary>
     public static PairingState Check(Context context)
