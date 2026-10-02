@@ -41,16 +41,22 @@ namespace CircleAI.Service.Android;
 // the engine behind it would be a thing to distrust rather than to recognise. The
 // NAME is what separates them in the list.
 //
-// THE PNGs ARE DERIVED, NOT DRAWN. Resources/mipmap-* comes from the app head's
-// Resources/AppIcon/appicon.svg through MAUI's resizetizer, which this project does
-// not have - it is a plain Android SDK project. To regenerate: build the app head in
-// Release and copy its obj/Release/net10.0-android/resizetizer/r/mipmap-* over
-// src/CircleAIService/Resources/mipmap-*. The svg upstream of all of it is written by
-// tools/brand-mark/gen_mark.py, so the mark still has one owner too.
+// AND THE MARK IS GENERATED, NOT COPIED. Resources/drawable/ic_launcher*.xml come
+// out of tools/brand-mark/gen_mark.py, from the same strokes() that writes the app's
+// appicon.svg - so the logo cannot drift between the app and the service that answers
+// for it. They were 22 PNGs lifted out of the MAUI head's build output for a while,
+// which is a second copy of the mark with no owner.
+//
+// VECTORS BECAUSE THIS IS NOT A MAUI PROJECT. There is no resizetizer in a plain
+// Android SDK build to turn an svg into five densities, and the geometry is in the
+// generator anyway. ic_launcher.xml is the whole icon in one vector for the API 24-25
+// floor; drawable-anydpi-v26 carries the adaptive version for everything newer.
+//
+// No RoundIcon: an adaptive icon is masked by the launcher, so a separate round
+// drawable would be a second thing to keep in step for no visible gain.
 [Application(
-    Label     = "Circle AI Service",
-    Icon      = "@mipmap/appicon",
-    RoundIcon = "@mipmap/appicon_round")]
+    Label = "Circle AI Service",
+    Icon  = "@drawable/ic_launcher")]
 public sealed class ServiceApplication : Application
 {
     public ServiceApplication(IntPtr handle, JniHandleOwnership transfer)
