@@ -222,6 +222,41 @@ public sealed class ServiceApplication : Application
         };
 
         CircleNeuronLinkService.Resident = resident;
+
+        // AND COME BACK AFTER BEING KILLED, WHICH IS NOT THE SAME AS AFTER A REBOOT.
+        //
+        // Android SIGKILLed this process twice on a P30 on 2026-10-02 - MemFree at
+        // 80 MB of 3.7 GB, load average 44, every other app's services going down in
+        // the same window. ActivityManager restarted the service, the brain came
+        // back, and LISTENING DID NOT: there was no code anywhere that resumed it.
+        // The phone stopped answering to its name and nothing said so, while the
+        // app's checkbox went on showing it ticked.
+        //
+        // BootReceiver covers the reboot case and deliberately does NOT resume -
+        // from Android 14 a microphone-typed service may not be started from
+        // BOOT_COMPLETED, and holding a microphone should follow a deliberate act
+        // rather than a power cycle. A process restart is a different thing: the
+        // person already said yes, nothing about that changed, and the only reason
+        // the microphone closed is that the phone was short of memory.
+        //
+        // ResidentPrefs is the record of what they chose. It defaults to yes, so a
+        // fresh install listens; an explicit no is written now and is obeyed here.
+        try
+        {
+            if (ResidentPrefs.WasRunning(this))
+            {
+                global::Android.Util.Log.Info("CircleAI.Wake", "resuming: the owner had it on");
+                _ = resident.ResumeAsync();
+            }
+            else
+            {
+                global::Android.Util.Log.Info("CircleAI.Wake", "not resuming: the owner turned it off");
+            }
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn("CircleAI.Wake", "could not resume listening: " + ex.Message);
+        }
         CircleNeuronLinkService.Facts    = new DeviceFacts(footprint);
 
         // HOUSEKEEPING, ON INIT, BECAUSE NOTHING WAS DOING IT HERE. The catalogue

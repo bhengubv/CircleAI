@@ -159,6 +159,15 @@ public sealed class ResidentListeningControl(Context context) : IResidentAssista
                     "The microphone did not open. Something else on this phone may be holding it.");
             }
 
+            // AND WRITE IT DOWN, WHICH NOTHING HAS EVER DONE. ResidentPrefs.SetRunning
+            // had zero callers in the repo - so the record the boot path reads, and
+            // the record that is supposed to make an explicit "off" survive a
+            // restart, was never written by anybody. WasRunning defaults to true, so
+            // the failure was silent in the direction nobody notices: turning
+            // listening OFF did not stick, and the file's own remarks say it does.
+            try { ResidentPrefs.SetRunning(context, true); }
+            catch (Exception ex) { Android.Util.Log.Warn(Tag, "could not record it: " + ex.Message); }
+
             Android.Util.Log.Info(Tag, $"listening, keywords={(File.Exists(keywords) ? keywords : "built-in")}");
             return Listening();
         }
@@ -189,6 +198,14 @@ public sealed class ResidentListeningControl(Context context) : IResidentAssista
 
                 await _ears.DisposeAsync().ConfigureAwait(false);
                 _ears = null;
+
+                // A NO IS A DECISION AND HAS TO OUTLIVE THE PROCESS. Without this
+                // the only thing written down is the default, which is yes - so
+                // somebody who switched listening off found it back on after the
+                // phone restarted, having been asked and ignored.
+                try { ResidentPrefs.SetRunning(context, false); }
+                catch (Exception ex) { Android.Util.Log.Warn(Tag, "could not record it: " + ex.Message); }
+
                 Android.Util.Log.Info(Tag, "stopped listening");
             }
 
