@@ -84,6 +84,35 @@ public static class AssistantPersona
         "write and summarise, translate, transcribe what you hear, speak my " +
         "answers out loud, and remember what you tell me.";
 
+    /// <summary>What it says the moment it hears its name.</summary>
+    /// <remarks>
+    /// A TONE IS NOT AN ANSWER. Waking already played one - 345 ms of beep, measured
+    /// on a P30 on 2026-10-03 - and a person who said "Hey B" to that phone still had
+    /// no idea whether they had been heard. They waited, which is exactly right,
+    /// because that is how every assistant they have ever used behaves: you say the
+    /// name, it answers, THEN you ask. The turn meanwhile sat for fifteen seconds
+    /// waiting for a question, collected 0.32 seconds of speech, timed out and said
+    /// nothing. The model was backwards - it wanted the question before it had told
+    /// anybody it was listening.
+    ///
+    /// SPOKEN, NOT BEEPED, because the screen is off. There is no light ring and no
+    /// waveform on a locked phone; the voice is the whole interface, so the
+    /// acknowledgement has to be in it. The tone stays as well - it is instant and
+    /// costs nothing, and it covers the gap while this is synthesised.
+    ///
+    /// ONE WORD, because it is paid for in latency on every single wake, and a
+    /// greeting that takes a second to speak is worse than the beep it replaced.
+    /// </remarks>
+    public const string Greeting = "Hi.";
+
+    /// <summary>What it says when it greeted somebody and heard nothing back.</summary>
+    /// <remarks>
+    /// THE SECOND HALF OF THE SAME DEFECT. Saying hello and then going silent for
+    /// fifteen seconds leaves a person exactly where the tone left them - unsure
+    /// whether it is still listening, gave up, or broke. It closes the turn out loud.
+    /// </remarks>
+    public const string NothingHeard = "I did not catch that.";
+
     // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
     // assistant told it was "IT!", on a product called Circle AI.
     //

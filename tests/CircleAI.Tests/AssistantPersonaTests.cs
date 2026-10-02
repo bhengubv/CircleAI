@@ -162,6 +162,65 @@ public sealed class AssistantPersonaTests
     }
 
 
+    [Fact]
+    public void It_answers_its_name_out_loud()
+    {
+        // A TONE IS NOT AN ANSWER, measured on a P30 on 2026-10-03: the beep played
+        // for 345 ms, the person waited - correctly, because that is how every
+        // assistant they have used behaves - and the turn sat silent for fifteen
+        // seconds waiting for a question it had never asked for.
+        Assert.False(string.IsNullOrWhiteSpace(AssistantPersona.Greeting));
+        Assert.False(string.IsNullOrWhiteSpace(AssistantPersona.NothingHeard));
+    }
+
+    [Theory]
+    [InlineData("greeting")]
+    [InlineData("nothing-heard")]
+    public void What_it_says_on_waking_is_short_and_sayable(string which)
+    {
+        // PAID FOR IN LATENCY ON EVERY WAKE. These are synthesised on the device
+        // while somebody waits, so a sentence here is a second of silence there.
+        // And they are only ever spoken - the screen is off - so a character that
+        // is not a word is a noise.
+        var line = which == "greeting" ? AssistantPersona.Greeting : AssistantPersona.NothingHeard;
+
+        Assert.InRange(line.Length, 2, 40);
+        foreach (var unsayable in new[] { "*", "#", "`", "_" })
+            Assert.DoesNotContain(unsayable, line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_turn_greets_before_it_opens_the_microphone()
+    {
+        // ORDER IS THE WHOLE FIX. Greeting after the capture starts would put our own
+        // voice at the front of their question AND leave them talking into silence.
+        // Source-level: the turn is Android-only and cannot be driven from here.
+        var source = File.ReadAllText(Path.Combine(
+            Root(), "src", "CircleAI.Assistant.Device", "WakeTurn.cs"));
+
+        var greets = source.IndexOf("AssistantPersona.Greeting", StringComparison.Ordinal);
+        var hears  = source.IndexOf("await HearAsync(ct)", StringComparison.Ordinal);
+
+        Assert.True(greets > 0, "the turn does not greet at all");
+        Assert.True(hears > 0, "the turn does not capture at all");
+        Assert.True(greets < hears, "the turn opens the microphone before it says hello");
+    }
+
+    [Fact]
+    public void The_turn_does_not_wait_the_full_deadline_for_a_first_word()
+    {
+        // TWO DIFFERENT QUESTIONS, TWO DIFFERENT NUMBERS. Longest bounds a question
+        // already under way; FirstWord bounds the silence before any question at all.
+        // Sharing one number is how a quiet room cost fifteen seconds of apparent
+        // deadness after the phone had just spoken.
+        var source = File.ReadAllText(Path.Combine(
+            Root(), "src", "CircleAI.Assistant.Device", "WakeTurn.cs"));
+
+        Assert.Contains("FirstWord", source, StringComparison.Ordinal);
+        Assert.Contains("AssistantPersona.NothingHeard", source, StringComparison.Ordinal);
+    }
+
+
     /// <summary>The repo root, found by walking up from the test assembly.</summary>
     private static string Root()
     {

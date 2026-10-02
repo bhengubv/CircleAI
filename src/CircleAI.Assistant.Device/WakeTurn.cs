@@ -1,4 +1,4 @@
-﻿// WakeTurn.cs
+// WakeTurn.cs
 //
 // What happens after it hears its name.
 //
@@ -55,6 +55,21 @@ public static class WakeTurn
     /// </remarks>
     private static readonly TimeSpan Longest = TimeSpan.FromSeconds(15);
 
+    /// <summary>How long it waits for somebody to START, having said hello.</summary>
+    /// <remarks>
+    /// SEPARATE FROM <see cref="Longest"/>, WHICH IS A DIFFERENT QUESTION. That one
+    /// bounds a question already under way; this one bounds the silence before any
+    /// question at all, and the two must not share a number. Fifteen seconds of
+    /// nothing is not patience, it is a phone that has stopped responding - measured
+    /// on a P30 on 2026-10-03, where exactly that silence read as a dead turn.
+    ///
+    /// SIX SECONDS, between Siri (which closes at about three) and Alexa (about
+    /// five), and longer than both because this one has just spoken and the person
+    /// has to hear it finish first.
+    /// </remarks>
+    private static readonly TimeSpan FirstWord = TimeSpan.FromSeconds(6);
+
+
     /// <summary>One turn at a time; a second wake while one is running is ignored.</summary>
     private static readonly SemaphoreSlim One = new(1, 1);
 
@@ -88,10 +103,41 @@ public static class WakeTurn
             try { await Task.Delay(TimeSpan.FromMilliseconds(700), ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
 
+            // AND THEN IT ANSWERS, BEFORE IT EXPECTS ANYTHING.
+            //
+            // THE TONE WAS NOT ENOUGH, measured on a P30 on 2026-10-03. A person said
+            // "Hey B", the spotter heard it at p=0.4068, the beep played for 345 ms -
+            // and they waited, because that is what every assistant they have used
+            // does: you say the name, it answers, THEN you ask. This turn meanwhile
+            // opened the microphone and sat there. Fifteen seconds later it had
+            // collected 10,240 bytes - 0.32 seconds of speech - timed out, and said
+            // nothing at all. Nobody was at fault; the order was.
+            //
+            // BEFORE THE MICROPHONE OPENS, not after, for two reasons: the person has
+            // to hear it before they start talking, and speaking into a microphone we
+            // are holding would put our own voice at the front of their question.
+            //
+            // NEVER FATAL. A greeting that failed to synthesise must not cost somebody
+            // the turn - the tone already told them something happened, and a question
+            // answered without a hello beats no answer.
+            try
+            {
+                await SayAsync(AssistantPersona.Greeting, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception ex) { Log.Warn(Tag, "could not greet: " + ex.Message); }
+
             var question = await HearAsync(ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(question))
             {
                 Log.Info(Tag, "nothing was said");
+
+                // IT SAID HELLO AND THEN WENT QUIET, which is the same defect the
+                // greeting exists to fix, one step later: the person is left with no
+                // idea whether it is still listening, gave up, or broke.
+                try { await SayAsync(AssistantPersona.NothingHeard, ct).ConfigureAwait(false); }
+                catch (Exception ex) { Log.Warn(Tag, "could not say so: " + ex.Message); }
+
                 return;
             }
 
@@ -174,6 +220,12 @@ public static class WakeTurn
                 // Silence AFTER something was said is the end of the question.
                 // Silence before it is somebody who has not started yet.
                 if (spoken.Count > 0) break;
+
+                // AND SILENCE THAT NEVER BECOMES ANYTHING IS ITS OWN ANSWER. Without
+                // this the loop runs the full Longest deadline on a room where nobody
+                // spoke, which is fifteen seconds of a phone doing nothing visible
+                // after it has just said hello.
+                if (clock.Elapsed > FirstWord) break;
             }
         }
         catch (OperationCanceledException)
