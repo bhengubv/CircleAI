@@ -341,6 +341,16 @@ public sealed class CircleNeuronLinkService : Service
                     .ToList());
             }
 
+            case LinkVerb.Permissions:
+            {
+                var facts = Facts;
+                if (facts is null) return LinkRowsReply.Failure("device facts not available");
+                var rows = await facts.PermissionsAsync().ConfigureAwait(false);
+                return LinkRowsReply.Success(rows
+                    .Select(r => LinkSetupRows.Permission(r.Title, r.Why, r.Granted, r.Runtime))
+                    .ToList());
+            }
+
             case LinkVerb.Footprint:
             {
                 var facts = Facts;

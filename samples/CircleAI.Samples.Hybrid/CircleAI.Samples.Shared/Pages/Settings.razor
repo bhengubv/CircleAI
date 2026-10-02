@@ -600,6 +600,79 @@ else
                 }
             }
         }
+        @*
+            WHAT CIRCLE AI IS ALLOWED TO DO, ON THE ONLY SCREEN THAT CAN SHOW IT.
+
+            The engine ships no launcher icon by design - it is a service, and a
+            service with an icon is a lie about what opening it would do. The cost is
+            that everything it holds was invisible: it has the microphone, the
+            foreground service and the biometric prompt, and a person could only find
+            any of that by opening Android's settings, scrolling an app list and
+            recognising a name they have never been shown.
+
+            So the app it answers for shows them. This is the engine's list, not this
+            app's - different packages, different grants, and the interesting ones are
+            the engine's.
+        *@
+        <button class="fold @(_open == 3 ? "fold-on" : null)" @onclick="() => Open(3)"
+                aria-expanded="@(_open == 3)">
+            <span class="fold-title">What it is allowed to do</span>
+            <span class="fold-chevron" aria-hidden="true">›</span>
+        </button>
+
+        @if (_open == 3)
+        {
+            @if (_permissions.Count == 0)
+            {
+                <div class="row">
+                    <span class="row-text">
+                        <span class="row-sub">
+                            Approve Circle AI first and this will show what it is
+                            allowed to do on this phone.
+                        </span>
+                    </span>
+                </div>
+            }
+            else
+            {
+                @foreach (var p in _permissions)
+                {
+                    <div class="row" @key="p.Title">
+                        <span class="row-text">
+                            <span class="row-title">@p.Title</span>
+                            <span class="row-sub">@p.Why</span>
+                        </span>
+                        @*
+                            A TICK OR A WORD, NOT A SWITCH. This app cannot grant
+                            another app's permission, and a control that looks like it
+                            can is worse than none - the one button below goes where
+                            the decision is actually made.
+                        *@
+                        @if (p.Granted)
+                        {
+                            <span class="on">&#10003;</span>
+                        }
+                        else
+                        {
+                            <span class="row-now">@(p.Runtime ? "Not allowed" : "Off")</span>
+                        }
+                    </div>
+                }
+
+                <div class="row">
+                    <span class="row-text">
+                        <span class="row-sub">
+                            Changing any of these happens in Android's own settings for
+                            Circle AI, which is the only place it can.
+                        </span>
+                    </span>
+                    <button class="compact" @onclick="OpenPermissions" disabled="@_openingPermissions">
+                        @(_openingPermissions ? "Opening…" : "Open")
+                    </button>
+                </div>
+            }
+        }
+
         <button class="fold @(_open == 2 ? "fold-on" : null)" @onclick="() => Open(2)"
                 aria-expanded="@(_open == 2)">
             <span class="fold-title">Borrowing</span>
@@ -788,7 +861,11 @@ else
             // Not fatal, and deliberately not caught into _trouble: the toggle
             // itself succeeded, and a warning about a stale row would be a
             // worse answer than a correct row.
-            try { _abilities = await Facts.AbilitiesAsync(); }
+            try { _permissions = await Facts.PermissionsAsync(); }
+        catch { /* leave what was there */ }
+        try { _abilities = await Facts.AbilitiesAsync(); }
+            catch { /* the section renders its own empty state */ }
+            try { _permissions = await Facts.PermissionsAsync(); }
             catch { /* the toggle worked; the list can be stale until reload */ }
 
             // AND ASK AGAIN WHETHER THE PHONE WILL LET IT LIVE. The warning is
@@ -823,6 +900,37 @@ else
     AppSettings _s = new();
     IReadOnlyList<StoredDocument> _docs = [];
     IReadOnlyList<AbilityRow> _abilities = [];
+
+    /// <summary>What Circle AI is allowed to do, as Circle AI reports it.</summary>
+    /// <remarks>
+    /// EMPTY UNTIL THE LINK ANSWERS, and empty is rendered as "approve it first"
+    /// rather than as a list of refusals. A screen that shows every permission as
+    /// "Not allowed" because it could not ask is accusing the engine of something it
+    /// has not done.
+    /// </remarks>
+    IReadOnlyList<PermissionRow> _permissions = [];
+
+    bool _openingPermissions;
+
+    /// <summary>Hand the person to Android's settings for the engine's package.</summary>
+    /// <remarks>
+    /// Re-read on the way back in, like the battery exemption: they may have changed
+    /// something while they were over there, and this screen should not go on showing
+    /// what was true before it handed over.
+    /// </remarks>
+    async Task OpenPermissions()
+    {
+        if (_openingPermissions) return;
+        _openingPermissions = true;
+        try
+        {
+            if (!await Facts.OpenPermissionsAsync())
+                _trouble = "This phone did not offer that screen. Look for Circle AI "
+                         + "in Settings › Apps to change what it is allowed to do.";
+        }
+        catch (Exception ex) { _trouble = ex.Message; }
+        finally { _openingPermissions = false; }
+    }
     IReadOnlyList<WakePhraseOption> _wake = [];
     PhoneFacts _phone = new([], []);
     StorageReport? _storage;
@@ -955,6 +1063,7 @@ else
         try
         {
             _abilities = await Facts.AbilitiesAsync();
+            _permissions = await Facts.PermissionsAsync();
             _phone = await Facts.PhoneAsync();
             _storage = await Facts.StorageAsync();
         }

@@ -65,6 +65,58 @@ public sealed class ServiceDeviceFacts(LinkedBrain brain) : IDeviceFacts
         => _link.StorageAsync(ct);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// THE SERVICE'S GRANTS, NOT THIS APP'S. They are different packages with
+    /// different permissions - this one asks for three, CircleAI for seven - and the
+    /// ones worth looking at are the engine's: it is the package holding the
+    /// microphone and the foreground service.
+    /// </remarks>
+    public Task<IReadOnlyList<PermissionRow>> PermissionsAsync(CancellationToken ct = default)
+        => _link.PermissionsAsync(ct);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// ANDROID'S OWN SCREEN FOR THAT PACKAGE, because this app cannot grant another
+    /// app's permissions and should not look as though it can. The intent names the
+    /// service by package, any app may launch it, and it needs no permission of its
+    /// own - the same shape as the battery-optimisation list.
+    /// <para>
+    /// WITHOUT THIS THE SERVICE WAS UNREACHABLE. It ships no launcher icon by design,
+    /// so short of knowing to open Settings, scroll an app list and find a name they
+    /// have never seen, a person had no way to inspect or withdraw anything.
+    /// </para>
+    /// </remarks>
+    public Task<bool> OpenPermissionsAsync(CancellationToken ct = default)
+    {
+        if (!brain.ServiceInstalled) return Task.FromResult(false);
+
+        try
+        {
+            var intent = new Android.Content.Intent(
+                Android.Provider.Settings.ActionApplicationDetailsSettings,
+                Android.Net.Uri.Parse("package:" + CircleAI.Linking.LinkIpc.HostPackage));
+
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+            if (activity is not null)
+            {
+                activity.StartActivity(intent);
+            }
+            else
+            {
+                intent.SetFlags(Android.Content.ActivityFlags.NewTask);
+                Android.App.Application.Context.StartActivity(intent);
+            }
+
+            return Task.FromResult(true);
+        }
+        catch (Exception ex)
+        {
+            Android.Util.Log.Warn("CircleAI.Facts", "could not open CircleAI's settings: " + ex.Message);
+            return Task.FromResult(false);
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<PhoneFacts> PhoneAsync(CancellationToken ct = default)
     {
         var state = await brain.StateAsync(ct).ConfigureAwait(false);

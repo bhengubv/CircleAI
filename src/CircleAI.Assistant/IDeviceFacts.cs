@@ -1,4 +1,4 @@
-// IDeviceFacts.cs
+﻿// IDeviceFacts.cs
 //
 // What the "What it can do" screen needs, and only a head can answer.
 //
@@ -71,6 +71,29 @@ public sealed record AbilityRow(
 
 /// <summary>One labelled fact about the phone.</summary>
 public sealed record PhoneFact(string Title, string Value);
+
+/// <summary>One thing CircleAI is, or is not, allowed to do on this device.</summary>
+/// <param name="Title">What it lets CircleAI do, in a person's words.</param>
+/// <param name="Why">Why CircleAI asks for it — one sentence, concrete.</param>
+/// <param name="Granted">Whether the person has allowed it.</param>
+/// <param name="Runtime">
+/// True when it is a runtime permission somebody can change, false when it is granted
+/// at install and cannot be withdrawn. The difference decides whether a screen should
+/// offer to do anything about it.
+/// </param>
+/// <remarks>
+/// THE SERVICE HAS NO LAUNCHER ICON, SO NOTHING COULD SHOW THIS. CircleAI holds the
+/// microphone, the foreground service and the biometric prompt, and the only way to
+/// see any of that was to find it in Android's own app list — which a person has no
+/// reason to know exists, because it never appears in a launcher. An engine somebody
+/// cannot inspect is an engine they have to take on trust.
+/// <para>
+/// NAMED FOR WHAT IT DOES, NOT FOR THE CONSTANT. "android.permission.RECORD_AUDIO"
+/// tells somebody nothing they did not already fear; "Hear you, when you speak to it"
+/// and a reason tells them what they are agreeing to.
+/// </para>
+/// </remarks>
+public sealed record PermissionRow(string Title, string Why, bool Granted, bool Runtime);
 
 /// <summary>What this phone is, and what CircleAI does about it.</summary>
 /// <param name="Facts">The plain-language lines, in order.</param>
@@ -149,4 +172,28 @@ public interface IDeviceFacts
     /// <remarks>Default: nothing to free — only a real footprint can be reclaimed.</remarks>
     Task<string> ReclaimStorageAsync(CancellationToken ct = default)
         => Task.FromResult(string.Empty);
+
+    /// <summary>What CircleAI is allowed to do on this device, and what it is not.</summary>
+    /// <remarks>
+    /// A DEFAULT OF NOTHING, so a head with no engine behind it — the browser — shows
+    /// an empty section rather than a list of permissions it invented. The head that
+    /// can ask the service answers properly; everything else says nothing, which is
+    /// true.
+    /// </remarks>
+    Task<IReadOnlyList<PermissionRow>> PermissionsAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<PermissionRow>>(System.Array.Empty<PermissionRow>());
+
+    /// <summary>Open the place a person can change those permissions.</summary>
+    /// <remarks>
+    /// THE APP CANNOT GRANT THE SERVICE'S PERMISSIONS, and it should not pretend to.
+    /// A runtime permission belongs to the package that holds it, so the honest action
+    /// is to put the person in front of CircleAI's own permission screen — which is
+    /// reachable by intent from any app, needs no permission to launch, and is the
+    /// only place the decision can actually be made.
+    /// <para>
+    /// False when this head has no way to open it, so a button is not drawn.
+    /// </para>
+    /// </remarks>
+    Task<bool> OpenPermissionsAsync(CancellationToken ct = default)
+        => Task.FromResult(false);
 }

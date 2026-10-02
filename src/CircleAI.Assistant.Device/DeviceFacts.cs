@@ -1,4 +1,4 @@
-// DeviceFacts.cs
+﻿// DeviceFacts.cs
 //
 // What this phone can do, answered once for every head.
 //
@@ -347,6 +347,118 @@ public sealed class DeviceFacts : IDeviceFacts
             }
             return rows;
         }, ct);
+
+    /// <summary>What this app asks the person for, in the order it matters.</summary>
+    /// <remarks>
+    /// WRITTEN OUT RATHER THAN READ BACK FROM THE MANIFEST, and the reason is the
+    /// wording. PackageManager hands back "android.permission.RECORD_AUDIO", which
+    /// tells somebody nothing they did not already fear; what they need is what it
+    /// lets this app do and why it asks. The constant is still named here, so the
+    /// state is read from the platform rather than assumed.
+    /// <para>
+    /// RUNTIME SAYS WHETHER ANYTHING CAN BE DONE ABOUT IT. The microphone and
+    /// notifications are the person's to give and take back; the rest are granted at
+    /// install and cannot be withdrawn, so a screen that offered to change them would
+    /// be offering something that does not exist.
+    /// </para>
+    /// </remarks>
+    private static readonly (string Permission, string Title, string Why, bool Runtime)[] Asked =
+    [
+        (global::Android.Manifest.Permission.RecordAudio,
+            "Hear you",
+            "Answering to its name, and listening when you speak to it. Nothing is kept or sent.",
+            true),
+
+        (global::Android.Manifest.Permission.PostNotifications,
+            "Show what it is doing",
+            "The notification that says the microphone is open. Without it, it can still listen and you cannot tell.",
+            true),
+
+        (global::Android.Manifest.Permission.UseBiometric,
+            "Check it is you",
+            "Approving an app to use your memory and your voice asks for the phone's own unlock.",
+            false),
+
+        (global::Android.Manifest.Permission.ForegroundService,
+            "Keep running",
+            "Listening with the screen off is a foreground service, which Android requires this for.",
+            false),
+
+        (global::Android.Manifest.Permission.WakeLock,
+            "Stay awake while listening",
+            "Without it the microphone stays open and the phone stops scheduling the thread that reads it.",
+            false),
+
+        (global::Android.Manifest.Permission.ReceiveBootCompleted,
+            "Come back after a restart",
+            "Bringing the models back when the phone restarts. Listening still waits for one deliberate tap.",
+            false),
+
+        (global::Android.Manifest.Permission.Internet,
+            "Download what it needs",
+            "Fetching models and voices on request. Questions are answered on this phone.",
+            false),
+    ];
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// ASKED OF THE PLATFORM, EVERY TIME. A permission can be withdrawn from Android's
+    /// own settings while this process is running, so a remembered answer is a screen
+    /// that tells somebody they are protected when they are not.
+    /// </remarks>
+    public Task<IReadOnlyList<PermissionRow>> PermissionsAsync(CancellationToken ct = default)
+        => Task.Run<IReadOnlyList<PermissionRow>>(() =>
+        {
+            var context = global::Android.App.Application.Context;
+            var rows = new List<PermissionRow>(Asked.Length);
+
+            foreach (var (permission, title, why, runtime) in Asked)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var granted = false;
+                try
+                {
+                    granted = Held(context, permission);
+                }
+                catch
+                {
+                    // A platform that will not answer is not one that has granted it.
+                }
+
+                rows.Add(new PermissionRow(title, why, granted, runtime));
+            }
+
+            return rows;
+        }, ct);
+
+    /// <summary>Whether this app actually holds a permission, asked the right way.</summary>
+    /// <remarks>
+    /// CheckSelfPermission IS THE WRONG QUESTION FOR NOTIFICATIONS, AND IT ANSWERS
+    /// CONFIDENTLY. POST_NOTIFICATIONS arrived in API 33; below that it is not a
+    /// permission at all, so CheckSelfPermission returns Denied on every older phone
+    /// — and this screen said "Show what it is doing: Not allowed" on a P30 whose
+    /// notification was on the shade at that moment, saying the microphone was open.
+    /// A screen built to let somebody check what an app is doing has to be right
+    /// about it before anything else.
+    /// <para>
+    /// AreNotificationsEnabled is the fact itself rather than a proxy for it: it is
+    /// API 24+, it accounts for the person having switched the channel off, and it
+    /// answers the question actually being asked — will this notification be seen.
+    /// </para>
+    /// </remarks>
+    private static bool Held(global::Android.Content.Context context, string permission)
+    {
+        if (permission == global::Android.Manifest.Permission.PostNotifications)
+        {
+            var notifications = (global::Android.App.NotificationManager?)
+                context.GetSystemService(global::Android.Content.Context.NotificationService);
+            return notifications?.AreNotificationsEnabled() == true;
+        }
+
+        return context.CheckSelfPermission(permission)
+            == global::Android.Content.PM.Permission.Granted;
+    }
 
     /// <inheritdoc />
     public Task<PhoneFacts> PhoneAsync(CancellationToken ct = default)

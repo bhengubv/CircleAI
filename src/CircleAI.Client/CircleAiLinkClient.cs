@@ -199,6 +199,10 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> AbilitiesAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Abilities), ct);
 
+    /// <summary>What CircleAI is allowed to do here: [title, why, granted, runtime].</summary>
+    public Task<LinkRowsReply> PermissionsAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Permissions), ct);
+
     /// <summary>What Circle AI holds here: lines, then total and freeable as the last two rows.</summary>
     public Task<LinkRowsReply> FootprintAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Footprint), ct);

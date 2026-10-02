@@ -58,6 +58,27 @@ public sealed class LinkedDeviceFacts(LinkedBrain brain)
         })];
     }
 
+    /// <summary>What CircleAI is allowed to do on this device.</summary>
+    /// <remarks>
+    /// EMPTY WHEN THE LINK IS DOWN, like the abilities above: a list of permissions
+    /// invented on this side would be a claim about another app's grants, which is
+    /// precisely the thing somebody is reading this screen to check.
+    /// </remarks>
+    public async Task<IReadOnlyList<PermissionRow>> PermissionsAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return [];
+
+        var reply = await client.PermissionsAsync(ct).ConfigureAwait(false);
+        if (!reply.Ok) return [];
+
+        return [.. reply.Rows.Select(r => new PermissionRow(
+            LinkSetupRows.Text(r, 0),
+            LinkSetupRows.Text(r, 1),
+            LinkSetupRows.Flag(r, 2),
+            LinkSetupRows.Flag(r, 3)))];
+    }
+
     /// <summary>What Circle AI holds on this phone.</summary>
     /// <remarks>
     /// THE LAST TWO ROWS ARE THE TOTALS, not lines — the service appends them so a

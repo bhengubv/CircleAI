@@ -113,6 +113,17 @@ public enum LinkVerb
 
     /// <summary>What Circle AI holds here: [label, size, regenerable], then a totals row.</summary>
     Footprint,
+
+    /// <summary>
+    /// What CircleAI is allowed to do here: [title, why, granted, runtime].
+    /// </summary>
+    /// <remarks>
+    /// THE HOST HAS NO SCREENS, so nothing could ever show this. It holds the
+    /// microphone, the foreground service and the biometric prompt, and the only
+    /// place any of that was visible was Android's own app list - which a person
+    /// has no reason to open for an app that never appears in a launcher.
+    /// </remarks>
+    Permissions,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -154,6 +165,12 @@ public static class LinkVerbs
         LinkVerb.Remember     => LinkScope.Memory,
         LinkVerb.Skills       => LinkScope.Skills,
         LinkVerb.Capabilities => LinkScope.Chat,   // the manifest is not private
+
+        // CHAT, AND NOT A HIGHER BAR ON PURPOSE. This says what the HOST is allowed
+        // to do, not what the caller may do - refusing to answer it would leave a
+        // person unable to see what is holding their microphone, which is the
+        // opposite of protecting them.
+        LinkVerb.Permissions  => LinkScope.Chat,
 
         // Setting the service up is using it: see the note on the verbs themselves.
         LinkVerb.SetupReadiness => LinkScope.Chat,
@@ -276,6 +293,11 @@ public static class LinkSetupRows
             bytes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
             route ?? string.Empty,
         };
+
+    /// <summary>One permission: [title, why, granted, runtime].</summary>
+    public static IReadOnlyList<string> Permission(
+        string title, string why, bool granted, bool runtime)
+        => new[] { title, why, granted ? "1" : "0", runtime ? "1" : "0" };
 
     /// <summary>One storage line: [label, size, regenerable].</summary>
     public static IReadOnlyList<string> Storage(string label, string size, bool regenerable)
