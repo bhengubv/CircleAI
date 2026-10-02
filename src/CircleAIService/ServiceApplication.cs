@@ -18,7 +18,12 @@ using Android.Runtime;
 using CircleAI.Core;
 using CircleAI.Device;
 using CircleAI.Linking;
+using CircleAI.Assistant;
+using CircleAI.Skills;
 using CircleAI.Assistant.Device;
+using CircleAI.Core;
+using CircleAI.Core.Models;
+using CircleAI.Inference;
 using CircleAI.Memory;
 
 namespace CircleAI.Service.Android;
@@ -61,6 +66,22 @@ public sealed class ServiceApplication : Application
 {
     public ServiceApplication(IntPtr handle, JniHandleOwnership transfer)
         : base(handle, transfer) { }
+
+    /// <summary>What the brain is told it can do: the manifest, then the packs.</summary>
+    /// <remarks>
+    /// THE LIBRARY IS NOT OPEN YET WHEN THIS RUNS. Opening it unpacks 20 MB out of
+    /// the APK so it happens on a background task, while the brain is built eagerly
+    /// so a question never waits on a cold model. LiveSkillStore is asked on every
+    /// call rather than captured once, so the library joins the moment it lands
+    /// instead of missing the composite by a second and never reaching the model.
+    /// </remarks>
+    private static ISkillStore ServiceSkills()
+        => new CompositeSkillStore(
+        [
+            CapabilityManifestSkillStore.Default,
+            ConsumerSkillPack.Shared,
+            new LiveSkillStore(() => CircleNeuronLinkService.Skills),
+        ]);
 
     public override void OnCreate()
     {
@@ -183,6 +204,20 @@ public sealed class ServiceApplication : Application
             NativeLibDir          = ApplicationInfo?.NativeLibraryDir,
             ModelStorageDirectory = ModelStore.Path,
             WarmOnStart           = true,
+
+            // AND WHAT IT CAN ACTUALLY DO, WHICH THE BRAIN IN THIS PROCESS HAD NEVER
+            // BEEN TOLD. AIOptions.SkillStore is what SkillContextBuilder reads to put
+            // the assistant's own capabilities in front of it, and this app never set
+            // it. The library WAS opened and handed to CircleNeuronLinkService.Skills,
+            // so a linked app could search it, and to CircleAISession.Library, which is
+            // the app's session path. The model that actually answers got neither, and
+            // had been introducing itself from one line of persona.
+            //
+            // MANIFEST FIRST, and that order is the care point: it is not a set of
+            // skills, it is the assistant's honesty about itself, every entry carrying
+            // a [status]. A community skill called "voice" must never become what the
+            // phone says about its own voice support.
+            SkillStore = ServiceSkills(),
         };
 
         // WHAT THE PHONE ANSWERS TO. DeviceWakePhrases keeps the chosen phrase in this
