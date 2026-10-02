@@ -34,6 +34,9 @@ public class HomeClaimTests : TestContext
         // rather than on whatever it was testing.
         Services.AddConversationStore();
         Services.AddSingleton<IConversation>(new FakeConversation());
+        // Home shows PairingNotice, which asks whether the other half of Circle AI
+        // is installed. Complete by default here, so it renders nothing.
+        Services.AddSingleton<IAppPairing>(new FakePairing());
         Services.AddSingleton<IVoiceHost>(new FakeVoiceHost
         {
             Catalogue = catalogue ?? [],

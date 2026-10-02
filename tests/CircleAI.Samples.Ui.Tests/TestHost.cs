@@ -135,6 +135,7 @@ internal static class TestHost
         s.AddSingleton(new VoiceMark());
         s.AddSingleton<IConversation>(new FakeConversation());
         s.AddSingleton<IShareTarget>(new FakeShareTarget());
+        s.AddSingleton<IAppPairing>(new FakePairing());
         s.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
         s.AddSingleton<IVoiceHost>(new FakeVoiceHost
         {

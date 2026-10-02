@@ -25,6 +25,11 @@
 @inject IAnnounces Announcer
 @implements IDisposable
 
+@* HALF OF THIS APP MAY NOT BE INSTALLED, and until it is there is nothing Home can
+   do for anybody. Renders nothing at all when the pair is complete and this phone
+   has nothing to pass on, so it is not furniture. *@
+<PairingNotice />
+
 <div class="home">
 
     @* No wordmark here any more: the bar above carries it now that the bar is on

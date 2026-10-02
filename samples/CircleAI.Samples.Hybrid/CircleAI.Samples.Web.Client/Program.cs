@@ -16,6 +16,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.Services.AddSingleton<IFormFactor, BrowserFormFactor>();
 builder.Services.AddSingleton<IVoiceHost, BrowserVoiceHost>();
 builder.Services.AddSingleton<IDeviceFacts, BrowserDeviceFacts>();
+builder.Services.AddSingleton<IAppPairing, BrowserAppPairing>();
 builder.Services.AddSingleton<ISpokenLanguage, BrowserSpokenLanguage>();
 builder.Services.AddSingleton<IBrain, BrowserBrain>();
 

@@ -1,4 +1,4 @@
-﻿// The MAUI head's composition root.
+// The MAUI head's composition root.
 //
 // Registers this device's answers to the shared UI's questions and hands it a
 // BlazorWebView to render in.
@@ -68,6 +68,7 @@ public static class MauiProgram
             new CircleAI.Client.LinkedVoiceHost(
                 (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IDeviceFacts>(sp => new Services.ServiceDeviceFacts((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+        builder.Services.AddSingleton<IAppPairing, ServiceAppPairing>();
         builder.Services.AddSingleton<ISpokenLanguage, StoredSpokenLanguage>();
         // THE BRAIN IS NOT IN THIS APP ANY MORE. It was DeviceBrain, which loads a
         // model into this process — seconds and hundreds of megabytes, per app, on a

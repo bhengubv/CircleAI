@@ -174,6 +174,8 @@ public class HomeVoiceNavigationTests : TestContext
     {
         var talk = new FakeConversation { Heard = heard, Ready = true };
         Services.AddSingleton(new VoiceMark());
+        // Home shows PairingNotice; complete by default, so it renders nothing.
+        Services.AddSingleton<IAppPairing>(new FakePairing());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
         // MainLayout takes IDispatcher and IState<ConversationState>; a
         // hand-rolled DI that skips the store fails on a missing dependency

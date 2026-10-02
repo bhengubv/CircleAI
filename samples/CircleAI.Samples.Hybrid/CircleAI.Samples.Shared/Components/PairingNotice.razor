@@ -1,0 +1,69 @@
+@*
+    Circle AI is two apps and only one of them has an icon.
+
+    THE THIN APP CANNOT THINK. Every question travels app -> link -> the service,
+    which is where the brain, the models, the voices and the skill library live.
+    Installed on its own this app is a set of screens that cannot answer anything,
+    and until now nothing on it said why - the link just reported that Circle AI was
+    not installed, to somebody looking straight at the Circle AI they had installed.
+
+    AND THE WAY OUT IS A FILE, NOT A LINK. A phone with nothing on it cannot reach a
+    store or a mesh - fetching the brain over Aether would need AetherNetService,
+    which is itself another install, which is the same problem one step along. What
+    needs nothing at all is somebody who already has Circle AI handing over the
+    installer through Android's own share sheet. Bluetooth is the floor.
+
+    THE BLOCKING STATE ONLY, NOT THE FEATURE. Sending Circle AI to somebody is a
+    thing a person DOES, so it lives in Services with the other things they can do -
+    see SendApp. This is the app telling them it cannot work yet, which is neither a
+    feature nor a setting and belongs in front of them.
+
+    SILENT WHEN THERE IS NOTHING TO SAY. A complete phone renders no markup at all,
+    so this can sit at the top of Home without becoming furniture.
+*@
+@inject IAppPairing Pairing
+
+@if (!_facts.Complete)
+{
+    <section class="pairing" aria-labelledby="pairing-title">
+        <h2 class="pairing-title" id="pairing-title">@Missing is not on this phone yet</h2>
+        <p class="pairing-why">@AssistantPairingCopy.Why</p>
+        <p class="pairing-how">@AssistantPairingCopy.HowToGet</p>
+
+        @* THE PERMISSION IS A SETTINGS SCREEN, NOT A DIALOG. From Android 8 it
+           cannot be asked for inline, so the honest thing is to say so and take
+           them to their own switch rather than a list of every app on the phone. *@
+        @if (!_facts.MayInstall)
+        {
+            <p class="pairing-gate">
+                This phone also has to allow Circle AI to add it. That is one switch,
+                in Android's own settings.
+            </p>
+            <button class="pairing-go" @onclick="OpenPermission">Open that setting</button>
+        }
+    </section>
+}
+
+@code {
+    private PairingFacts _facts;
+
+    /// <summary>What is missing, named the way the product names it.</summary>
+    /// <remarks>
+    /// ONE OWNER FOR THE WORDS. The same name the link uses when it refuses, so a
+    /// person is not told about two different things that are the same thing.
+    /// </remarks>
+    private static string Missing => AssistantPairingCopy.Name;
+
+    protected override void OnInitialized()
+    {
+        // ASKED, NOT REMEMBERED. Somebody can leave this screen, install the other
+        // half, and come back - so the answer is read when the component appears
+        // rather than cached for the life of the app.
+        _facts = Pairing.Facts;
+    }
+
+    private void OpenPermission()
+    {
+        Pairing.OpenInstallPermission();
+    }
+}

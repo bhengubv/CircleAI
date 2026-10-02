@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
     INTERNET is declared, and declaring it is the point of this file.
 
@@ -22,6 +22,13 @@
 	    Measured on the P30.
 	-->
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+	<!--
+	    REQUEST_INSTALL_PACKAGES, because Circle AI is two apps and this is the one with the icon.
+	    The other half is the brain - no icon, large, and the only thing that can answer a question - and a phone with nothing on it cannot reach a store or the mesh to get it. The route that needs nothing is somebody who already has Circle AI handing over the installer through Android's share sheet, and receiving it means this app asks Android to install a package.
+	    NOT A RUNTIME PERMISSION AND THERE IS NO DIALOG. From Android 8 it is a per-app switch on a Settings screen somebody has to visit - declaring it here only makes that switch exist. ServicePairing.InstallPermissionSettings takes them straight to this app's own, rather than a list of every app on the phone.
+	    Declared because nothing fails at build time without it: a missing permission in a split app is silent until somebody is standing in front of the broken screen.
+	-->
+	<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 	<!--
 	    SEVEN PERMISSIONS LEFT WITH THE RESIDENT LISTENER AND THE DECLARATIONS DID NOT.
 

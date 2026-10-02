@@ -1,0 +1,71 @@
+@*
+    Sending Circle AI to somebody.
+
+    A FEATURE, SO IT LIVES WITH THE FEATURES. This sat on Home for an afternoon
+    because that is where the missing-brain notice is, and it does not belong there:
+    the notice is the app saying it cannot work, this is a thing a person chooses to
+    do. Services is where things a person does are listed, and Settings is for
+    changing something they already have - neither of which this is.
+
+    AND IT IS THE ONLY ROUTE THAT NEEDS NOTHING. A phone with nothing on it cannot
+    reach a store, and cannot reach the mesh either - that would need
+    AetherNetService, which is another install, which is the same problem one step
+    along. Somebody handing over the installer through Android's own share sheet
+    needs no shop, no account and no signal. Bluetooth is the floor.
+*@
+@page "/send-app"
+@inject IAppPairing Pairing
+
+<section class="pairing-give" aria-labelledby="give-title">
+    <h1 class="pairing-title" id="give-title">Send Circle AI to someone</h1>
+
+    @if (_offerable.Count == 0)
+    {
+        @* A phone that has nothing to give says so, rather than offering a button
+           that opens an empty share sheet. *@
+        <p class="pairing-why">
+            There is nothing to send from this phone yet.
+        </p>
+    }
+    else
+    {
+        <p class="pairing-why">
+            Hand them both parts straight from this phone - over Bluetooth if that is
+            all either of you has. No shop, no account, no data.
+        </p>
+
+        <ul class="pairing-list">
+            @foreach (var app in _offerable)
+            {
+                <li class="pairing-item">
+                    <span class="pairing-name">@app.Label</span>
+                    <span class="pairing-size">@Size(app.Bytes)</span>
+                </li>
+            }
+        </ul>
+
+        <button class="pairing-go" @onclick="Offer" disabled="@_sending">
+            @(_sending ? "Opening…" : "Send it")
+        </button>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<OfferableApp> _offerable = [];
+    private bool _sending;
+
+    protected override void OnInitialized() => _offerable = Pairing.Offerable;
+
+    private async Task Offer()
+    {
+        if (_sending) return;
+        _sending = true;
+
+        try { await Pairing.OfferAsync(); }
+        finally { _sending = false; }
+    }
+
+    /// <summary>Megabytes, because nobody thinks in bytes about a download.</summary>
+    private static string Size(long bytes)
+        => bytes <= 0 ? "" : $"{bytes / 1024d / 1024d:0.#} MB";
+}

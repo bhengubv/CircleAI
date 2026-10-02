@@ -182,6 +182,14 @@ public static class AppRoutes
         new("abilities", "What it can do", Surface.Voice,
             ["what can you do", "what it can do", "abilities", "features"]),
 
+        // SENDING THE APP ITSELF, which is a thing a person does and so is a
+        // feature, not a setting. The only way onto a phone that has nothing:
+        // no shop, no signal, and not the mesh either - that would need
+        // AetherNetService, another install, the same problem one step along.
+        new("send-app", "Send Circle AI", Surface.Voice,
+            ["send circle ai", "share circle ai", "send the app", "share the app",
+             "give someone circle ai"]),
+
         // THREE SCREENS THE NATIVE SAMPLE HAD AND THIS ONE DID NOT.
         //
         // Audited 2026-09-13: SeeingActivity, MusicActivity and SearchActivity

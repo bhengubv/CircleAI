@@ -1,4 +1,4 @@
-﻿// Fakes.cs
+// Fakes.cs
 //
 // Heads that do nothing, so a component can be asked what it SAYS.
 //
@@ -525,3 +525,17 @@ internal sealed class FakePlayer : IPlaysMedia
     }
 }
 
+/// <summary>A phone with both halves and nothing to say about it.</summary>
+/// <remarks>
+/// COMPLETE BY DEFAULT, so PairingNotice renders nothing and every other page's
+/// tests read what they were always reading. A test that wants the missing-brain
+/// case registers its own after WireEverything - last one wins.
+/// </remarks>
+internal sealed class FakePairing : IAppPairing
+{
+    public PairingFacts Facts { get; init; } = new(Complete: true, MayInstall: true, CanOffer: false);
+    public IReadOnlyList<OfferableApp> Offerable { get; init; } = [];
+
+    public Task<bool> OfferAsync(CancellationToken ct = default) => Task.FromResult(true);
+    public bool OpenInstallPermission() => true;
+}
