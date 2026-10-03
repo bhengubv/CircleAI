@@ -255,6 +255,22 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// </remarks>
     public static string? Backend { get; set; }
 
+    /// <summary>Let the KV cache live on disk, which is what the prefix cache needs.</summary>
+    /// <remarks>
+    /// OFF BY DEFAULT BECAUSE IT USED TO SIGSEGV THIS PHONE. MNN built a malformed
+    /// path - "prefixcache/" prepended to an ABSOLUTE session path - failed to
+    /// create the directory, and left a destroyed mutex that faulted the threadpool
+    /// on the next lock. That was the whole of the "mmap curse", and it is why the
+    /// prefix cache has been dead since 2026-09-22.
+    ///
+    /// WHAT CHANGED: NativeCacheDirectory now puts the process in a directory it can
+    /// write, so the mkdir MNN does there can succeed. That is a reason to re-test
+    /// it, not a reason to assume it. Whoever turns this on watches for
+    /// "Failed to create prefix cache file dir" and for the threadpool fault.
+    /// </remarks>
+    public static bool AllowKvCacheMmap { get; set; }
+
+
 
     /// <summary>
     /// The environment override, or <c>null</c> when it is not set.
@@ -467,6 +483,16 @@ public sealed class QwenTextGenerator : IChatGenerator
             // or the thread count. The KV cache stays in RAM (small for our context),
             // and the model loads. Re-enable only once the native path bug is fixed
             // and it can be pointed at a directory MNN will actually create.
+
+            // AND IT CAN BE ASKED FOR AGAIN NOW THAT THE DIRECTORY EXISTS.
+            // NativeCacheDirectory has put the process somewhere writable, so the
+            // mkdir that failed - and left the destroyed mutex behind - has
+            // somewhere to land. Off unless somebody turns it on deliberately.
+            if (AllowKvCacheMmap)
+            {
+                var took = new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
+                Console.WriteLine($"CIRCLEAI-KVMMAP asked=true accepted={took}");
+            }
         }
         catch { /* older bridge or unmappable store — eager load is still correct */ }
 

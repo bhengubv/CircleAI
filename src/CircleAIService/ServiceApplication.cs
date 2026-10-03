@@ -199,23 +199,42 @@ public sealed class ServiceApplication : Application
         // question somebody asks. On a P30 that is thirteen to twenty-three seconds,
         // and it is far better spent while the notification says "loading" than while
         // a person waits on a blank bubble.
-        // EXPERIMENT, 2026-10-03: run the model on the GPU instead of the CPU.
+        // THE GPU IS 22x SLOWER ON THIS PHONE AND THE EXPERIMENT IS OVER.
         //
-        // libMNN_CL.so (2.3 MB) and libMNN_Vulkan.so (780 KB) have shipped in this
-        // APK all along and nothing ever asked for them - every model has run
-        // "backend_type":"cpu", which the bridge prints after load. Prefill is one
-        // large compute-bound matrix multiply, which is what a GPU is for; decode is
-        // memory-bound and one token wide, where it is not.
+        // libMNN_CL.so and libMNN_Vulkan.so ship in this APK and nothing had ever
+        // asked for them, so it looked like free speed waiting to be claimed:
+        // prefill is one large compute-bound matrix multiply, which is what a GPU is
+        // for. Measured on the P30, same 193-token warm-up both times:
         //
-        // THE NUMBER TO BEAT, measured on this phone today: prefill 5,721 ms for a
-        // 198-token prompt, 28.9 ms per token. Watch for CIRCLEAI-BACKEND in the log
-        // to see whether MNN accepted it, and the bridge's own config line to see
-        // what it actually resolved.
+        //   cpu      prefill   5 559 ms      28.8 ms/token
+        //   opencl   prefill 124 349 ms     644.3 ms/token
         //
-        // NO FALLBACK BY DESIGN. A driver that refuses leaves the brain unable to
-        // load, loudly, which is the result worth having - a silent retry on the CPU
-        // would hide it. Setting this back to null is one deploy.
-        CircleAI.Inference.QwenTextGenerator.Backend = "opencl";
+        // MNN accepted it and the Mali driver loaded - this is not a failure to
+        // engage, it is the GPU genuinely being that much worse. A Kirin 710 reports
+        // i8sdot:0, fp16:0, i8mm:0, so there is no hardware help on either side, and
+        // whatever MNN's OpenCL path does with quantised weights costs far more than
+        // it saves. The kernel cache cannot help either: it has no writer at all, so
+        // the kernels are rebuilt on every load - see mnn-opencl-cache-has-no-writer.
+        //
+        // QwenTextGenerator.Backend stays null, which is the model's own choice. The
+        // switch is kept because the answer is per-device and a phone with real GPU
+        // compute may well go the other way; this one does not.
+
+        // AND kvcache_mmap STAYS OFF. Tested 2026-10-03 now that the working
+        // directory is writable, and it still SIGSEGVs - twice in ninety seconds,
+        // pid 7198 then 7304, both "prcp FGS", fault addr 0x0 in MNN::ThreadPool
+        // ::enqueue on a .NET TP Worker. The identical signature as September.
+        //
+        // WHY THE DIRECTORY DID NOT SAVE IT. MNN prepends a relative "prefixcache/"
+        // to the ABSOLUTE session path, so what it tries to create is
+        //
+        //   prefixcache//data/user/0/com.bhengubv.circleai.service/files/...session_0.k
+        //
+        // - the whole absolute tree recreated underneath a relative folder. A
+        // writable working directory lets it make "prefixcache" and nothing below.
+        // The fix is to hand setPrefixCacheFile a RELATIVE filename so it builds
+        // "prefixcache/<key>.session", which is one level and creatable. That is a
+        // change to PrefixCacheService and it is not made here.
 
 
         CircleNeuronService.OptionsFactory = () => new CircleAI.Hosting.AIOptions
