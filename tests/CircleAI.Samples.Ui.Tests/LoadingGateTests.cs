@@ -28,6 +28,9 @@ public class LoadingGateTests : TestContext
             ? new FakeSetup()
             : new FakeSetup { Census = census });
         Services.AddSingleton<IWiringProbe>(new BrowserWiringProbeStub());
+        // The loading screen waits for the brain now - warming the voice and
+        // leaving the model cold was half a job. Ready by default here.
+        Services.AddSingleton<IBrain>(new FakeBrain());
         JSInterop.Mode = JSRuntimeMode.Loose;
         return talk;
     }

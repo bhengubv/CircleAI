@@ -35,6 +35,8 @@
 @inject IJSRuntime JS
 @inject IConversation Talk
 @inject IWiringProbe Probe
+@* THE BRAIN, because warming the voice and leaving the model cold is half a job. *@
+@inject IBrain Brain
 @implements IDisposable
 
 <div class="loading">
@@ -305,6 +307,18 @@
             });
 
             await Talk.PrepareAsync(progress);
+
+            // AND THE BRAIN, WHICH WAS NEVER WARMED HERE AT ALL.
+            //
+            // This screen warmed the voice and left, so Home arrived with a cold
+            // model and the first question came back "brain warming up, try again
+            // shortly". On a P30 that load is thirteen to twenty-three seconds; a 2B
+            // on a Tensor G2 took nineteen. All of it was spent AFTER the person was
+            // told the phone was ready.
+            //
+            // Asking is starting - StateAsync binds the service with AutoCreate - so
+            // the first call does the work and the rest watch it happen.
+            await BrainAsync();
         }
         catch
         {
@@ -338,6 +352,50 @@
 
         await WarmAsync();
         Nav.NavigateTo("home");
+    }
+
+    /// <summary>Wait for the model, but never for ever.</summary>
+    /// <remarks>
+    /// A CEILING, NOT A TARGET. The whole philosophy of this screen is that it gets
+    /// out of the way - it already refuses to hold somebody for the last byte of a
+    /// download, and it must not start holding them for a model that will not load.
+    /// Forty seconds is roughly twice the slowest load measured (nineteen for a 2B
+    /// on a Tensor G2, thirteen to twenty-three for a 0.8B on a P30); past that,
+    /// something is wrong and Home says so better than a spinner does.
+    ///
+    /// SAYING WHICH STAGE, because a screen that sits still for twenty seconds under
+    /// one unchanging word is indistinguishable from one that has hung.
+    /// </remarks>
+    async Task BrainAsync()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(40);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            BrainState state;
+            try { state = await Brain.StateAsync().ConfigureAwait(false); }
+            catch { return; }   // no service, no brain - Home explains it properly
+
+            if (state.Ready) return;
+
+            // ITS OWN WORDS, NOT OURS. The service says "loading the model" or
+            // "no model on this device yet - set it up first", and inventing a
+            // cheerier sentence here would hide the second one.
+            _warming = string.IsNullOrWhiteSpace(state.Detail) ? "Starting the brain" : state.Detail;
+
+            // NOT AWAITED, LIKE THE PROGRESS CALLBACK ABOVE IT. This runs inside
+            // OnInitializedAsync, which the renderer is already awaiting - awaiting a
+            // render from in here deadlocks, and the first version of this loop did:
+            // the screen never left and the test sat out its whole twenty seconds.
+            _ = InvokeAsync(StateHasChanged);
+
+            // OFF THE RENDERER'S CONTEXT. This waits on a real timer from inside
+            // OnInitializedAsync, which the renderer is awaiting - resuming on that
+            // context means the continuation queues behind the very render it is
+            // waiting for, and nothing moves. The UI update above goes through
+            // InvokeAsync precisely so this does not have to.
+            await Task.Delay(500).ConfigureAwait(false);
+        }
     }
 
     static string Size(long bytes) => bytes switch

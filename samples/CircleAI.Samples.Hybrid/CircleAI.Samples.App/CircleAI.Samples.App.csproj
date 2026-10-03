@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   The MAUI head - the app, and the only head with a splash.
 
   THIS IS WHERE THE SPLASH COMES FROM. <MauiSplashScreen> below is the whole
@@ -44,7 +44,7 @@
          phones, so "did my build actually land" was unanswerable from adb. This
          number is in the manifest, `dumpsys package` reads it back, and it moves
          only when somebody changes it here. -->
-    <ApplicationVersion>55</ApplicationVersion>
+    <ApplicationVersion>56</ApplicationVersion>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->

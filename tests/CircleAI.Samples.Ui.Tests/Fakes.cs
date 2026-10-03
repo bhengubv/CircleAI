@@ -457,10 +457,20 @@ internal sealed class FakeBrain : IBrain
     /// </remarks>
     public int StateAsks;
 
+    /// <summary>Report cold for this many asks before going ready.</summary>
+    /// <remarks>
+    /// A MODEL LOAD IS NOT INSTANT and the loading screen now waits for it - thirteen
+    /// to twenty-three seconds on a P30, nineteen for a 2B on a Tensor G2. A fake
+    /// that is ready on the first ask cannot show that the screen waits at all.
+    /// </remarks>
+    public int ColdForAsks { get; init; }
+
     public Task<BrainState> StateAsync(CancellationToken ct = default)
     {
-        System.Threading.Interlocked.Increment(ref StateAsks);
-        return Task.FromResult(new BrainState(Ready, Ready ? "" : "no brain in a test"));
+        var n = System.Threading.Interlocked.Increment(ref StateAsks);
+        var ready = Ready && n > ColdForAsks;
+        return Task.FromResult(new BrainState(
+            ready, ready ? "" : Ready ? "loading the model" : "no brain in a test"));
     }
 
     public Task<string> AskAsync(
