@@ -157,27 +157,46 @@ public sealed partial class CircleNeuronService : Service
     /// </remarks>
     private global::Android.Content.PM.ForegroundService ClaimedTypes()
     {
-        var types = global::Android.Content.PM.ForegroundService.TypeDataSync;
-
-        // API 30 OR LATER FOR THE MICROPHONE TYPE. TypeMicrophone is 0x80 and
-        // was introduced in API 30; Android 10 does not know that bit, rejects
-        // a StartForeground that claims it, and then kills the process for not
-        // having gone foreground. Measured on a P30 (API 29): the wake word was
-        // listening and the app died ten seconds later.
+        // MICROPHONE WHEN WE HAVE IT, AND NOT dataSync AS WELL - THAT COMBINATION IS
+        // WHAT KILLED THIS SERVICE ON ANDROID 16.
         //
-        // Claiming it is a DECLARATION to the OS about what this service does.
-        // Not claiming it on Android 10 does not close the microphone - the
-        // listener still holds it; the service simply declares dataSync, which
-        // is the whole vocabulary that platform has.
+        // This used to start from TypeDataSync and OR the microphone on top, so every
+        // start claimed dataSync. From Android 14 a dataSync foreground service
+        // carries a DAILY TIME BUDGET; spend it and startForeground is refused
+        // outright until it resets. Measured on a Circle OS device (SDK 36) on
+        // 2026-10-04:
+        //
+        //   ForegroundServiceStartNotAllowedException:
+        //     Time limit already exhausted for foreground service type unknown
+        //
+        // After which the service did not start AT ALL - no pid, no brain, every
+        // question answered "brain warming up" for ever. The P30 is Android 10 and
+        // cannot reproduce any of it, which is why it was never seen.
+        //
+        // THE HONEST TYPE IS THE MICROPHONE. This service is foreground because it
+        // holds the mic for the wake word; that type is not budgeted, and claiming it
+        // alone is both true and survivable. Claiming dataSync alongside it bought
+        // nothing and cost the service its life after a few hours of listening.
+        //
+        // API 30 OR LATER FOR THE MICROPHONE TYPE. TypeMicrophone is 0x80 and arrived
+        // in API 30; Android 10 does not know that bit, rejects a StartForeground
+        // claiming it, and then kills the process for not having gone foreground -
+        // measured on a P30 (API 29), the wake word listening and the app dead ten
+        // seconds later. There, dataSync is the whole vocabulary the platform has,
+        // and that platform has no budget to exhaust.
         if (Listener is not null &&
             Build.VERSION.SdkInt >= BuildVersionCodes.R &&
             CheckSelfPermission(global::Android.Manifest.Permission.RecordAudio)
                 == global::Android.Content.PM.Permission.Granted)
         {
-            types |= global::Android.Content.PM.ForegroundService.TypeMicrophone;
+            return global::Android.Content.PM.ForegroundService.TypeMicrophone;
         }
 
-        return types;
+        // NOT LISTENING, OR TOO OLD TO SAY SO. dataSync is what is left: on Android
+        // 10 it is the only word available, and with no listener running it is also
+        // the truthful one - whatever this service is doing then, it is not holding
+        // a microphone.
+        return global::Android.Content.PM.ForegroundService.TypeDataSync;
     }
 
     /// <summary>Stops the resident service and releases the models it holds.</summary>
