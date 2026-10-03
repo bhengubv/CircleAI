@@ -1,4 +1,4 @@
-﻿// CircleNeuronService.cs
+// CircleNeuronService.cs
 //
 // The resident device service: one process that owns the models, so the apps
 // don't each own their own.
@@ -461,11 +461,49 @@ public sealed partial class CircleNeuronService : Service
                     wanted = best?.ModelId;
                 }
 
+                // IF THE ONE IT CHOSE IS NOT HERE, USE THE BEST ONE THAT IS.
+                //
+                // The selector ranks the CATALOGUE and has no idea what was ever
+                // downloaded, so it can name a model this phone does not have while
+                // a better one sits on disk. Measured on a Circle OS device on
+                // 2026-10-03: it wanted Qwen3.5-0.8B-MNN, which was never downloaded,
+                // while a complete 1.17 GB Qwen3.5-2B and a 35B MoE were present -
+                // and the person was told their phone had no model at all.
+                //
+                // A download is still a deliberate act made on the setup screen with
+                // the size written next to it. This does not start one; it only
+                // refuses to ignore what somebody already chose to fetch.
+                if (!string.IsNullOrWhiteSpace(wanted) && !loader.ModelPresent(wanted!))
+                {
+                    var here = loader.BestInstalledChatModel();
+                    if (!string.IsNullOrWhiteSpace(here))
+                    {
+                        global::Android.Util.Log.Info(LogTag,
+                            "the selector wanted " + wanted + ", which is not on this phone; "
+                            + "using " + here + ", which is");
+                        wanted = here;
+                    }
+                }
+
                 if (string.IsNullOrWhiteSpace(wanted) || !loader.ModelPresent(wanted!))
                 {
                     Status = "no model on this device yet — set it up first";
                     State  = ServiceState.Idle;
-                    global::Android.Util.Log.Info(LogTag, Status);
+
+                    // WHICH ONE IT WANTED, BECAUSE "no model" CAN MEAN TWO THINGS and
+                    // they need opposite fixes. On a Circle OS device on 2026-10-03
+                    // this printed while a complete 1.17 GB Qwen3.5-2B sat on disk:
+                    // the selector had chosen something else and ModelPresent was
+                    // false for THAT, so a phone carrying a better model than the P30
+                    // was told it had none. Nothing in the log said which id was
+                    // being looked for, so the only way to tell the two apart was to
+                    // read the selector's source and guess.
+                    //
+                    // The status line stays plain - it is what a person reads - and
+                    // the detail goes to the log, where whoever is debugging is.
+                    global::Android.Util.Log.Info(LogTag, Status
+                        + " (wanted: " + (string.IsNullOrWhiteSpace(wanted) ? "nothing - the selector chose none" : wanted)
+                        + "; on disk: " + loader.InstalledIdsForLog() + ")");
                     Notify(Status);
                     return;
                 }
@@ -479,8 +517,15 @@ public sealed partial class CircleNeuronService : Service
                 // one, which is the one people actually use, did not.
                 global::Android.Util.Log.Info(LogTag, "model: " + wanted);
 
-                // AIOptions is a class, not a record, so the resolved id is pinned on
-                // the instance the factory made rather than on a copy of it.
+                // AND NOW IT IS ACTUALLY PINNED. This comment used to claim the id was
+                // "pinned on the instance the factory made" while ModelId was
+                // init-only, so the pin was a no-op: AIService selected again from
+                // the catalogue and downloaded whatever IT chose. Measured on a
+                // Circle OS device on 2026-10-03 - the service logged "model:
+                // Qwen3.5-2B-MNN" and then fetched a 0.8B nobody asked for, next to a
+                // complete 2B. Everything above this line decides; this makes the
+                // decision stick.
+                options.ModelId = wanted;
                 node = new NeuronNode(new AIService(
                     options,
                     modelLoader:          loader,

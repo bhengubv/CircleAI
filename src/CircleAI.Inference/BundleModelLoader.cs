@@ -233,6 +233,89 @@ public sealed class BundleModelLoader : IModelLoader
         }
         return Path.Combine(modelDir, ConfigFileName);
     }
+    /// <summary>The best chat model this device actually HAS, or null.</summary>
+    /// <remarks>
+    /// THE SELECTOR RANKS THE CATALOGUE, NOT THE PHONE. DeviceAwareModelSelector
+    /// scores every entry in the registry by capability, RAM and storage fit, and
+    /// has no idea which of them were ever downloaded - so it can name a model that
+    /// is not here while a better one sits on disk.
+    ///
+    /// Measured on a Circle OS device (Tensor G2, 7.6 GB) on 2026-10-03:
+    ///
+    ///   wanted:  Qwen3.5-0.8B-MNN          <- not downloaded
+    ///   on disk: Qwen3.5-2B-MNN, Qwen3.6-35B-A3B-MNN, SmolVLM-256M-Instruct-MNN
+    ///
+    /// A phone carrying a complete 1.17 GB 2B was told it had no model at all.
+    ///
+    /// NOT A CHANGE TO THE RANKER, deliberately - OPEN-GAPS E15 is what happens
+    /// when that is done on a bad measurement. This answers a different question
+    /// the ranker was never asked: of the models actually PRESENT, which is best.
+    /// The service uses it only when the ranker's own choice is missing.
+    /// </remarks>
+    public string? BestInstalledChatModel()
+    {
+        try
+        {
+            ThrowIfDisposed();
+            if (!Directory.Exists(_storageRoot)) return null;
+
+            string? best = null;
+            var bestRank = int.MinValue;
+
+            foreach (var dir in Directory.EnumerateDirectories(_storageRoot))
+            {
+                var name = Path.GetFileName(dir);
+                if (string.IsNullOrEmpty(name)) continue;
+
+                var entry = _registry.GetLatestModel(name);
+                if (entry is null || entry.Modality != ModelModality.Chat) continue;
+
+                // PRESENT, NOT MERELY NAMED. A half-finished download has a
+                // directory too, and handing one to an inference engine is how a
+                // phone gets a native crash instead of an answer.
+                if (!ModelPresent(name)) continue;
+
+                if (entry.QualityRank <= bestRank) continue;
+                bestRank = entry.QualityRank;
+                best = name;
+            }
+
+            return best;
+        }
+        catch { return null; }
+    }
+
+
+    /// <summary>The model directories actually sitting in the store, for a log line.</summary>
+    /// <remarks>
+    /// "NO MODEL ON THIS DEVICE" CAN MEAN TWO OPPOSITE THINGS. Either nothing is
+    /// downloaded, or something IS and the selector picked a different one - and
+    /// those need opposite fixes. On a Circle OS device on 2026-10-03 the second
+    /// happened while a complete 1.17 GB Qwen3.5-2B sat on disk, and nothing in the
+    /// log distinguished them.
+    ///
+    /// DIRECTORY NAMES, NOT A CENSUS. This is for a human reading a log, so it must
+    /// be cheap and must never throw - ModelPresent above is the real check, and it
+    /// costs a size comparison per model. Listing a folder costs nothing.
+    /// </remarks>
+    public string InstalledIdsForLog()
+    {
+        try
+        {
+            if (!Directory.Exists(_storageRoot)) return "nothing - the store does not exist";
+
+            var names = Directory.EnumerateDirectories(_storageRoot)
+                                 .Select(Path.GetFileName)
+                                 .Where(n => !string.IsNullOrEmpty(n))
+                                 .OrderBy(n => n)
+                                 .ToList();
+
+            return names.Count == 0 ? "nothing" : string.Join(", ", names);
+        }
+        catch (Exception ex) { return "could not be listed: " + ex.Message; }
+    }
+
+
 
     /// <summary>
     /// True when the model is cached AND passes its integrity check — the

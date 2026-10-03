@@ -60,7 +60,17 @@ public sealed class AIOptions
     /// <see cref="CircleAI.Inference.IModelSelector"/> — no consumer-side
     /// hardcoded model family name required.
     /// </summary>
-    public string? ModelId { get; init; }
+    /// <remarks>
+    /// SETTABLE, BECAUSE A HOST RESOLVES THIS AFTER BUILDING THE OPTIONS.
+    /// CircleNeuronService picks the model - the selector's choice, or the best one
+    /// actually on the phone when that choice is missing - and then hands these
+    /// options to AIService. Its own comment said "the resolved id is pinned on the
+    /// instance the factory made", and with init-only that was never possible: the
+    /// pin silently did nothing, AIService selected again from the catalogue, and on
+    /// a Circle OS device on 2026-10-03 it DOWNLOADED a 0.8B nobody asked for while
+    /// a complete 2B sat on disk. A question is not supposed to start a download.
+    /// </remarks>
+    public string? ModelId { get; set; }
 
     /// <summary>
     /// Optional absolute path to a GGUF model file. If set, the service skips
