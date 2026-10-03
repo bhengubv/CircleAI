@@ -232,12 +232,29 @@ public sealed class ServiceApplication : Application
         //
         // - the whole absolute tree recreated underneath a relative folder. A
         // writable working directory lets it make "prefixcache" and nothing below.
-        // THAT FIX IS NOW MADE: PrefixCacheService.PathFor returns a bare filename,
-        // so MNN builds "prefixcache/<key>.session" - one level, under the working
-        // directory NativeCacheDirectory put us in. Turned back on to find out
-        // whether the crash goes with it. Watch CIRCLEAI-KVMMAP, then watch for
-        // "Failed to create prefix cache file" and the threadpool fault.
-        CircleAI.Inference.QwenTextGenerator.AllowKvCacheMmap = true;
+        // AND kvcache_mmap GOES BACK OFF, because it buys nothing.
+        //
+        // The path fix works: PathFor now returns a bare filename, MNN builds
+        // "prefixcache/<key>.session", and the SIGSEGV that has haunted this since
+        // September is gone. The cache fills - 96 files, 25 MB, right key, right
+        // directory. And it does not make anything faster:
+        //
+        //   cold, no cache at all        prefill 5 559 ms
+        //   warm, 96 files on disk       prefill 4 951 ms
+        //   warm again, same files       prefill 5 014 ms
+        //
+        // Three loads of the same 193-token prompt. The two warm ones are within
+        // 1.3% of each other and the gap to cold is thermal noise. MNN is writing
+        // the KV and not reusing it - the attention implementation that logs here is
+        // CPULinearAttention, whose KV is not the shape a prefix cache replays, and
+        // our own prefix-hit/miss line cannot tell us either: it reads
+        // setPrefixCacheFile's return value, and the run that wrote all 25 MB logged
+        // "cache=on", which in our code means "not writing".
+        //
+        // So: 25 MB of disk and a code path that SIGSEGV'd twice, for no measured
+        // gain. Off. The path fix stays - it is correct, it is tested, and it is
+        // what makes this worth trying again on a model whose attention can use it.
+        // AllowKvCacheMmap is the one line that turns it back on.
 
 
         CircleNeuronService.OptionsFactory = () => new CircleAI.Hosting.AIOptions
