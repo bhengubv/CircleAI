@@ -159,8 +159,19 @@ public static class DownloadSidecar
         catch { return false; }
     }
 
-    /// <summary>Where the first segment begins: bytes already down before it was planned.</summary>
-    private static long Floor(string sidecarPath)
+    /// <summary>
+    /// Where the first segment begins: the contiguous prefix that was already on disk
+    /// when the segments were planned, or -1 when there is no usable marker.
+    /// </summary>
+    /// <remarks>
+    /// THIS IS "HOW FAR DID IT GET" FOR A RESUMING CALLER, and the file's length is
+    /// not. A segmented download preallocates its temp file to the full size, so a
+    /// 21.3 GB .tmp that is 45% fetched measures 21.3 GB - and a resume that trusts
+    /// the length concludes the file is finished and asks the server for bytes past
+    /// the end. That was hidden for as long as start-up housekeeping deleted the
+    /// .tmp every hour; keeping the bytes is what exposed it.
+    /// </remarks>
+    public static long Floor(string sidecarPath)
     {
         try
         {

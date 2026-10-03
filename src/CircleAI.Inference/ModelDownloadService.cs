@@ -706,6 +706,44 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             $"Download of '{uri}' failed. {last}", last ?? NetworkDiagnosis.Healthy, null);
     }
 
+    /// <summary>
+    /// The contiguous bytes of <paramref name="destPath"/> a resume can count on.
+    /// </summary>
+    /// <remarks>
+    /// A PREALLOCATED FILE IS NOT A FINISHED ONE, AND THE LENGTH CANNOT TELL THEM
+    /// APART. The segmented path extends its temp file to the full size up front so
+    /// eight workers can write at their own offsets, so a 21.3 GB .tmp measures
+    /// 21.3 GB from the first socket onwards. Taking that as "already have" makes
+    /// every resume conclude the file is complete, skip the parallel path (nothing
+    /// left to split) and then ask the server for a range past the end of the file.
+    ///
+    /// IT WAS HIDDEN BY THE OTHER BUG. Start-up housekeeping deleted the .tmp every
+    /// hour, so a resume never once saw a preallocated file; fixing the sweep to
+    /// KEEP those bytes is what exposed this. Measured on a Circle OS device,
+    /// 2026-10-04: a 21 346 165 150-byte .tmp holding 9 732 062 702 real bytes.
+    ///
+    /// With a marker present the honest answer is its floor - the prefix that was
+    /// there before the segments were planned - because everything above it is
+    /// per-segment and belongs to the segment plan, not to a sequential resume.
+    /// Without a marker the file is a sequential append and its length IS the
+    /// progress, which is the case this always got right.
+    /// </remarks>
+    private static long ExistingBytes(string destPath)
+    {
+        try
+        {
+            if (!File.Exists(destPath)) return 0;
+
+            var length = new FileInfo(destPath).Length;
+            var marker = DownloadSidecar.For(destPath);
+            if (!File.Exists(marker)) return length;
+
+            var floor = DownloadSidecar.Floor(marker);
+            return floor < 0 ? length : Math.Min(floor, length);
+        }
+        catch { return 0; }
+    }
+
     /// <summary>How many bytes before it is worth opening more than one socket.</summary>
     /// <remarks>
     /// Below this the handshakes cost more than the parallelism saves. Above it,
@@ -732,7 +770,7 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         Uri uri, string destPath, IProgress<double>? progress, CancellationToken ct)
     {
         // RESUME: continue from whatever survived the last attempt.
-        var existing = File.Exists(destPath) ? new FileInfo(destPath).Length : 0L;
+        var existing = ExistingBytes(destPath);
 
         // MANY SOCKETS FOR THE BIG ONES. A model bundle is one enormous weight
         // file and a handful of small ones, and the big file is the whole wait:
@@ -840,51 +878,34 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
 
         try
         {
+            // EACH SEGMENT RETRIES ITSELF, because one dead socket used to throw the
+            // other seven away. Measured on a Circle OS device, 2026-10-04: a 21.3 GB
+            // weight file reached 9.5 GB, then every socket went quiet and the whole
+            // parallel attempt would have been abandoned to the sequential path -
+            // which, seeing a file already preallocated to full length, starts from
+            // zero. Nine and a half gigabytes, thrown away by a hiccup.
+            //
+            // A segment is independently resumable from its own recorded offset, which
+            // is the entire reason the marker exists. Reconnecting one of them costs
+            // a round trip; abandoning all of them costs the download.
             await Task.WhenAll(bounds.Select(async (b, i) =>
             {
-                var from = starts[i];
-                if (from > b.End) return;                          // finished earlier
-
-                using var req = new HttpRequestMessage(HttpMethod.Get, uri);
-                req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(from, b.End);
-                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
-                    .ConfigureAwait(false);
-
-                // The tail-as-whole-file bug this file already documents applies
-                // here with more teeth: a server answering 200 would hand back
-                // the ENTIRE file for every segment, and eight of those written
-                // at eight offsets is 22 GB of garbage.
-                if (resp.StatusCode != System.Net.HttpStatusCode.PartialContent)
-                    throw new ModelDownloadException(
-                        $"Segment {i} of '{uri}' was answered {(int)resp.StatusCode}, not 206.",
-                        NetworkDiagnosis.Healthy, null);
-                if (resp.Content.Headers.ContentRange is not { From: { } gotFrom } || gotFrom != from)
-                    throw new ModelDownloadException(
-                        $"Segment {i} of '{uri}' started at the wrong offset.",
-                        NetworkDiagnosis.Healthy, null);
-
-                await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                using var handle = File.OpenHandle(destPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
-
-                var buf = new byte[81_920];
-                var pos = from;
-                var sinceFlush = 0L;
-                int n;
-                while ((n = await src.ReadAsync(buf, ct).ConfigureAwait(false)) > 0)
+                for (var attempt = 0; ; attempt++)
                 {
-                    await RandomAccess.WriteAsync(handle, buf.AsMemory(0, n), pos, ct).ConfigureAwait(false);
-                    pos += n;
-                    sinceFlush += n;
-
-                    long snapshot;
-                    lock (gate) { done += n; snapshot = done; starts[i] = pos; }
-                    progress?.Report(Math.Clamp((double)snapshot / total, 0, 1));
-
-                    // Cheap enough at 8 MB that a drop costs seconds, not the file.
-                    if (sinceFlush >= 8L * 1024 * 1024)
+                    try
                     {
-                        sinceFlush = 0;
+                        await PullSegmentAsync(uri, destPath, b, i, starts, gate, sidecar, bounds,
+                                               total, () => done, n => done += n, progress, ct)
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException
+                                            && attempt < SegmentAttempts - 1)
+                    {
+                        // Its bytes are on disk and its offset is in the marker, so the
+                        // next attempt asks for the remainder and nothing is re-fetched.
                         lock (gate) WriteSidecar(sidecar, bounds, starts);
+                        await Task.Delay(SegmentBackoff * (attempt + 1), ct).ConfigureAwait(false);
                     }
                 }
             })).ConfigureAwait(false);
@@ -898,6 +919,80 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         TryDelete(sidecar);
         progress?.Report(1.0);
         return true;
+    }
+
+    /// <summary>How many times one segment reconnects before the parallel attempt gives up.</summary>
+    private const int SegmentAttempts = 4;
+
+    /// <summary>Multiplied by the attempt number, so 3s, 6s, 9s.</summary>
+    private static readonly TimeSpan SegmentBackoff = TimeSpan.FromSeconds(3);
+
+    /// <summary>One segment, from wherever it has got to, to its end.</summary>
+    /// <remarks>
+    /// IT READS THROUGH <see cref="ReadOrStallAsync"/>, WHICH IT DID NOT BEFORE, AND
+    /// THAT IS THE WHOLE BUG. The sequential path learned this lesson already - the
+    /// remark on <see cref="StallTimeout"/> says a download sat silent and "nothing
+    /// was wrong except that nobody noticed" - and the segmented path, added later
+    /// for precisely the files big enough to need it, called Stream.ReadAsync raw.
+    ///
+    /// Measured on a Circle OS device, 2026-10-04: a 21.3 GB weight file reached
+    /// 9 732 062 702 bytes and stopped. Eight sockets quiet, the process alive, the
+    /// marker untouched for eighteen minutes, and not one line in the log - because
+    /// a read that never returns is not an error anybody can catch. The resume
+    /// machinery was all there and could not be reached.
+    /// </remarks>
+    private async Task PullSegmentAsync(
+        Uri uri, string destPath, Segment b, int i, long[] starts, object gate,
+        string sidecar, Segment[] bounds, long total,
+        Func<long> readDone, Action<long> addDone,
+        IProgress<double>? progress, CancellationToken ct)
+    {
+        long from;
+        lock (gate) from = starts[i];
+        if (from > b.End) return;                                  // finished earlier
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+        req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(from, b.End);
+        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+
+        // The tail-as-whole-file bug this file already documents applies here with
+        // more teeth: a server answering 200 would hand back the ENTIRE file for
+        // every segment, and eight of those written at eight offsets is 22 GB of
+        // garbage.
+        if (resp.StatusCode != System.Net.HttpStatusCode.PartialContent)
+            throw new ModelDownloadException(
+                $"Segment {i} of '{uri}' was answered {(int)resp.StatusCode}, not 206.",
+                NetworkDiagnosis.Healthy, null);
+        if (resp.Content.Headers.ContentRange is not { From: { } gotFrom } || gotFrom != from)
+            throw new ModelDownloadException(
+                $"Segment {i} of '{uri}' started at the wrong offset.",
+                NetworkDiagnosis.Healthy, null);
+
+        await using var src = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var handle = File.OpenHandle(destPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+
+        var buf = new byte[81_920];
+        var pos = from;
+        var sinceFlush = 0L;
+        int n;
+        while ((n = await ReadOrStallAsync(src, buf, ct).ConfigureAwait(false)) > 0)
+        {
+            await RandomAccess.WriteAsync(handle, buf.AsMemory(0, n), pos, ct).ConfigureAwait(false);
+            pos += n;
+            sinceFlush += n;
+
+            long snapshot;
+            lock (gate) { addDone(n); snapshot = readDone(); starts[i] = pos; }
+            progress?.Report(Math.Clamp((double)snapshot / total, 0, 1));
+
+            // Cheap enough at 8 MB that a drop costs seconds, not the file.
+            if (sinceFlush >= 8L * 1024 * 1024)
+            {
+                sinceFlush = 0;
+                lock (gate) WriteSidecar(sidecar, bounds, starts);
+            }
+        }
     }
 
     private readonly record struct Segment(long Start, long End);
@@ -1091,10 +1186,11 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
     /// </para>
     /// </remarks>
     private static async ValueTask<int> ReadOrStallAsync(
-        Stream source, Memory<byte> buffer, CancellationToken ct)
+        Stream source, Memory<byte> buffer, CancellationToken ct, TimeSpan? timeout = null)
     {
+        var limit = timeout ?? StallTimeout;
         using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        stall.CancelAfter(StallTimeout);
+        stall.CancelAfter(limit);
         try
         {
             return await source.ReadAsync(buffer, stall.Token).ConfigureAwait(false);
@@ -1102,9 +1198,19 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             throw new IOException(
-                $"The download stopped sending data for {StallTimeout.TotalSeconds:F0} seconds.");
+                $"The download stopped sending data for {limit.TotalSeconds:F0} seconds.");
         }
     }
+
+    /// <summary>The stall guard, at a tenth of a second rather than forty-five.</summary>
+    /// <remarks>
+    /// A seam only so the behaviour can be asserted without a test that waits out
+    /// the real window. The window itself is deliberately generous and is not a knob
+    /// callers get to turn - see <see cref="StallTimeout"/>.
+    /// </remarks>
+    internal static ValueTask<int> ReadOrStallForTesting(
+        Stream source, Memory<byte> buffer, TimeSpan timeout, CancellationToken ct)
+        => ReadOrStallAsync(source, buffer, ct, timeout);
 
     private static async Task<bool> VerifySha256Async(
         string filePath, string expectedHex, CancellationToken ct)
