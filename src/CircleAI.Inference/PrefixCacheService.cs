@@ -47,6 +47,16 @@ public sealed class PrefixCacheService
     private const int CapBytes = 500 * 1024 * 1024; // 500 MB
     private static readonly SemaphoreSlim _ioLock = new(1, 1);
 
+    /// <summary>
+    /// Where this service WOULD have put entries, and no longer does.
+    /// </summary>
+    /// <remarks>
+    /// MNN DECIDES, AND IT DECIDES &lt;cwd&gt;/prefixcache - it prepends that to
+    /// whatever name it is handed, so nothing has ever been written here. Kept
+    /// because the constructor's fallback still proves the process can create a
+    /// directory at all, and because a caller passing a root should not start
+    /// throwing. Read EntriesDirectory for the real location.
+    /// </remarks>
     private readonly string _root;
 
     /// <summary>
@@ -105,16 +115,81 @@ public sealed class PrefixCacheService
     }
 
     /// <summary>
-    /// Returns the cache path for <paramref name="key"/>. The returned path
-    /// may or may not exist; use <see cref="HasEntryAsync"/> to check.
+    /// The name to hand <c>setPrefixCacheFile</c> for <paramref name="key"/>.
+    /// RELATIVE, on purpose - see the remarks.
     /// </summary>
-    public string PathFor(string key) => Path.Combine(_root, $"{key}.session");
+    /// <remarks>
+    /// <para>
+    /// IT WAS ABSOLUTE AND THAT IS WHAT CRASHED THE PHONE. MNN does not use the
+    /// path it is given; it PREPENDS a relative <c>prefixcache/</c> to it. Handed
+    /// an absolute path, what it then tries to create is
+    /// </para>
+    /// <code>
+    /// prefixcache//data/user/0/com.bhengubv.circleai.service/files/.circleai/
+    ///   prefix-cache/a4638952cea37ebb_5da837afa18c1f67.session_0.k
+    /// </code>
+    /// <para>
+    /// - the whole absolute tree recreated underneath a relative folder. It cannot,
+    /// fails once per layer, and leaves a destroyed mutex that SIGSEGVs the next
+    /// <c>pthread_mutex_lock</c> inside <c>MNN::ThreadPool::enqueue</c>. Measured on
+    /// a P30 on 2026-09-22 and again on 2026-10-03, which is why <c>kvcache_mmap</c>
+    /// has been off between those dates.
+    /// </para>
+    /// <para>
+    /// A BARE FILENAME MAKES IT ONE LEVEL - <c>prefixcache/&lt;key&gt;.session</c> -
+    /// which MNN creates happily, under whatever working directory the process is
+    /// in. <see cref="NativeCacheDirectory"/> puts it beside the model.
+    /// </para>
+    /// <para>
+    /// WHAT LANDS ON DISK IS NOT THIS NAME. MNN appends its own suffixes, one pair
+    /// per layer: <c>&lt;key&gt;.session_0.k</c>, <c>_0.v</c>, <c>_1.k</c> and so
+    /// on. Nothing is ever written at this exact path, which is why everything
+    /// below looks for the prefix rather than the file.
+    /// </para>
+    /// </remarks>
+    public string PathFor(string key) => $"{key}.session";
+
+    /// <summary>
+    /// Where MNN actually writes, which is not <c>_root</c> and never was.
+    /// </summary>
+    /// <remarks>
+    /// READ AT CALL TIME, NOT CACHED. The working directory is set during the first
+    /// model load, and this type is a static singleton that may well be touched
+    /// before that - a captured value would be the one from before the move.
+    /// </remarks>
+    private static string EntriesDirectory
+        => Path.Combine(Directory.GetCurrentDirectory(), "prefixcache");
+
+    /// <summary>Every file MNN wrote for this key, across all layers.</summary>
+    private static FileInfo[] EntryFiles(string key)
+    {
+        try
+        {
+            var dir = new DirectoryInfo(EntriesDirectory);
+            return dir.Exists ? dir.GetFiles($"{key}.session*") : [];
+        }
+        catch { return []; }
+    }
 
     /// <summary>
     /// <c>true</c> when a cached entry exists for <paramref name="key"/>.
     /// </summary>
+    /// <remarks>
+    /// ANY LAYER COUNTS. A half-written set is still something MNN can be pointed
+    /// at, and it is the one who decides what to do with an incomplete one - we are
+    /// not in a position to judge it and guessing wrong costs a cold prefill either
+    /// way.
+    /// </remarks>
     public Task<bool> HasEntryAsync(string key, CancellationToken ct = default)
-        => Task.FromResult(File.Exists(PathFor(key)));
+        => Task.FromResult(EntryFiles(key).Length > 0);
+
+    /// <summary>Same question, for callers already on a synchronous path.</summary>
+    /// <remarks>
+    /// IT IS A DIRECTORY LISTING, NOT IO WORTH AWAITING, and the one caller that
+    /// needs it sits in the middle of building a generation request. The async
+    /// twin stays for the public surface.
+    /// </remarks>
+    public bool HasEntry(string key) => EntryFiles(key).Length > 0;
 
     /// <summary>
     /// Touch the entry's mtime so LRU eviction treats it as recently used.
@@ -122,9 +197,9 @@ public sealed class PrefixCacheService
     /// </summary>
     public void Touch(string key)
     {
-        var path = PathFor(key);
-        if (File.Exists(path))
-            File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+        foreach (var f in EntryFiles(key))
+            try { f.LastWriteTimeUtc = DateTime.UtcNow; }
+            catch { /* best effort; a cache is never a reason to fail */ }
     }
 
     /// <summary>
@@ -137,10 +212,15 @@ public sealed class PrefixCacheService
         await _ioLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var dir = new DirectoryInfo(_root);
+            // WHERE MNN WRITES, NOT WHERE WE ASKED IT TO. _root never held an
+            // entry: MNN builds its own prefixcache/ under the working directory.
+            var dir = new DirectoryInfo(EntriesDirectory);
             if (!dir.Exists) return;
 
-            var files = dir.EnumerateFiles("*.session")
+            // "*.session*", because what lands on disk is <key>.session_0.k and its
+            // siblings - the exact name PathFor returns is never a file. The old
+            // glob was "*.session" and would have matched nothing for ever.
+            var files = dir.EnumerateFiles("*.session*")
                            .OrderBy(f => f.LastWriteTimeUtc)
                            .ToList();
 

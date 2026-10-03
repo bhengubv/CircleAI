@@ -232,9 +232,12 @@ public sealed class ServiceApplication : Application
         //
         // - the whole absolute tree recreated underneath a relative folder. A
         // writable working directory lets it make "prefixcache" and nothing below.
-        // The fix is to hand setPrefixCacheFile a RELATIVE filename so it builds
-        // "prefixcache/<key>.session", which is one level and creatable. That is a
-        // change to PrefixCacheService and it is not made here.
+        // THAT FIX IS NOW MADE: PrefixCacheService.PathFor returns a bare filename,
+        // so MNN builds "prefixcache/<key>.session" - one level, under the working
+        // directory NativeCacheDirectory put us in. Turned back on to find out
+        // whether the crash goes with it. Watch CIRCLEAI-KVMMAP, then watch for
+        // "Failed to create prefix cache file" and the threadpool fault.
+        CircleAI.Inference.QwenTextGenerator.AllowKvCacheMmap = true;
 
 
         CircleNeuronService.OptionsFactory = () => new CircleAI.Hosting.AIOptions

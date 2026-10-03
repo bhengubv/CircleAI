@@ -753,7 +753,11 @@ public sealed class QwenTextGenerator : IChatGenerator
         // prompt alone, and loading one would throw the conversation away.
         bool loadedFromCache = false;
         bool writingCache = false;
-        if (!continuing && prefixCacheKey is not null && File.Exists(_prefixCache.PathFor(prefixCacheKey)))
+        // ASKED OF THE SERVICE, NOT OF THE PATH. PathFor returns the RELATIVE name
+        // MNN is handed; what lands on disk is prefixcache/<key>.session_0.k and its
+        // per-layer siblings, so File.Exists on that name was never going to be true
+        // once the path went relative - a cache that could fill and never be read.
+        if (!continuing && prefixCacheKey is not null && _prefixCache.HasEntry(prefixCacheKey))
         {
             loadedFromCache = MnnInterop.LoadSession(_model, _prefixCache.PathFor(prefixCacheKey));
             if (loadedFromCache) _prefixCache.Touch(prefixCacheKey);
