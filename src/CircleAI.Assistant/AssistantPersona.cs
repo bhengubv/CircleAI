@@ -137,6 +137,26 @@ public static class AssistantPersona
     // The invention guard (never make up a law, price, date, fact) stays: that
     // is the one a person cannot un-hear.
     //
+    // AND A PERMISSION CLAUSE DOES NOT UNDO A PROHIBITION. Tested 2026-10-04 on the
+    // P30's 0.8B: one sentence added after the invention guard - "Making something up
+    // IS the answer when somebody asks for a joke, a story or a message" - and three
+    // runs of "Tell me a joke":
+    //
+    //   "It seems we're chatting again. Do you have any other requests?"
+    //   "I'm sorry. I cannot create jokes as requested by my instructions."
+    //   "No joke, as I'm a machine."
+    //
+    // No better, and the last two name the culprit: the model is quoting this prompt
+    // back. "as requested by my instructions" is the invention guard; "as I'm a
+    // machine" is the not-a-person clause directly below. Both earn their place -
+    // one stops invented prices and dates, the other stops faked personhood - and a
+    // small model reads the pair as a blanket no.
+    //
+    // Reverted. The lesson is not a fourth wording: adding text has now failed three
+    // times (the directive block, the reworded directive, this). If a joke matters it
+    // belongs where the greeting and the capability answer went - answered by the
+    // app, which cannot be talked out of it.
+    //
     // AND A LIST OF RULES IS NOT A LIST OF CAPABILITIES. An earlier attempt added
     // a block of directives for small models on top of this, and it got steadily
     // worse at every step - measured over eight runs, the same question went from
