@@ -88,4 +88,62 @@ public class HousekeepingSweepTests : IDisposable
         Assert.Equal(0, CatalogueHousekeeping.SweepAbandoned(
             Path.Combine(_dir, "nope"), TimeSpan.FromHours(1)));
     }
+
+    [Fact]
+    public void A_resumable_download_is_not_litter_however_long_it_has_sat()
+    {
+        // THE 8.6 GB. Measured on a Circle OS device, 2026-10-04: an eight-socket
+        // fetch of a 21.3 GB weight file stopped, this sweep deleted the .tmp an
+        // hour later because idle looked like abandoned, and the next attempt
+        // started the 21.3 GB from zero. Then stopped. Then got swept. For three
+        // days, with a 2 B model answering in its place.
+        //
+        // A marker beside the file is the owner's progress, not rubbish: they chose
+        // this model with its size written next to it, and re-fetching bytes already
+        // paid for is the worse outcome - the same judgement the reclaim policy
+        // already makes about an installed model that stopped fitting.
+        var stale = Leftover("llm.mnn.weight.tmp", 4096, TimeSpan.FromDays(3));
+        var marker = stale + ".parts";
+        File.WriteAllLines(marker, ["0,2048,2047", "2048,2048,4095"]);
+
+        var freed = CatalogueHousekeeping.SweepAbandoned(_dir, TimeSpan.FromHours(1));
+
+        Assert.Equal(0, freed);
+        Assert.True(File.Exists(stale), "deleted a download that could have been resumed");
+        Assert.True(File.Exists(marker));
+    }
+
+    [Fact]
+    public void A_sweep_never_leaves_a_marker_without_its_bytes()
+    {
+        // The invariant, from both ends: what gets swept has no marker to begin
+        // with, and what has a marker does not get swept. Either way the pair
+        // "marker, no file" must not exist when this returns.
+        Leftover("llm.mnn.weight.tmp", 4096, TimeSpan.FromHours(6));              // no marker
+        var keep = Leftover("embeddings_bf16.bin.tmp", 2048, TimeSpan.FromDays(3)); // marker
+        File.WriteAllText(keep + ".parts", "0,1024,2047\n");
+
+        CatalogueHousekeeping.SweepAbandoned(_dir, TimeSpan.FromHours(1));
+
+        foreach (var marker in Directory.EnumerateFiles(_dir, "*.parts", SearchOption.AllDirectories))
+            Assert.True(File.Exists(marker[..^".parts".Length]),
+                "left a resume marker for bytes that are gone: " + marker);
+    }
+
+    [Fact]
+    public void A_marker_left_behind_by_the_old_sweep_is_cleared()
+    {
+        // Every device that ran the old sweep is carrying one of these: 278 bytes
+        // describing bytes that no longer exist. It does not heal itself, and the
+        // next resume that trusts it writes into a hole.
+        var model = Path.Combine(_dir, "Qwen3.6-35B-A3B-MNN");
+        Directory.CreateDirectory(model);
+        var orphan = Path.Combine(model, "llm.mnn.weight.tmp.parts");
+        File.WriteAllText(orphan, "1304821760,1656591935,3809989682\n");
+
+        var freed = CatalogueHousekeeping.SweepAbandoned(_dir, TimeSpan.FromHours(1));
+
+        Assert.False(File.Exists(orphan), "left a resume marker for bytes that are gone");
+        Assert.True(freed > 0);
+    }
 }

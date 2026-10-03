@@ -306,6 +306,14 @@ public sealed class BundleModelLoader : IModelLoader
     /// catalogue; hashing 21 GB to answer "how far did it get" would be worse than
     /// the question. A truncated file counts what it actually has, which is the
     /// honest answer to how much is left to fetch.
+    ///
+    /// AND THE BYTES IN FLIGHT COUNT, which is the half this first missed. Only the
+    /// FINISHED file names were looked at, so the 8.6 GB sitting in
+    /// llm.mnn.weight.tmp was reported as zero and a download two thirds of the way
+    /// through looked no different from one that had never started. DownloadSidecar
+    /// owns that reading, because the temp file's own LENGTH is not it: a segmented
+    /// fetch preallocates to the full size, so the file would claim 21.3 GB the
+    /// moment the first socket opened.
     /// </remarks>
     /// <returns>Bytes on disk and bytes needed. Both zero when the model is unknown.</returns>
     public (long Have, long Need) Progress(string modelName)
@@ -324,13 +332,10 @@ public sealed class BundleModelLoader : IModelLoader
             {
                 need += f.SizeBytes;
 
-                var path = Path.Combine(dir, f.Name);
-                if (!File.Exists(path)) continue;
-
-                // CAPPED AT WHAT IS WANTED. A file larger than the catalogue says is
-                // a different file, not progress, and counting it would report more
-                // downloaded than there is to download.
-                have += Math.Min(new FileInfo(path).Length, f.SizeBytes);
+                // CAPPED AT WHAT IS WANTED, inside Fetched. A file larger than the
+                // catalogue says is a different file, not progress, and counting it
+                // would report more downloaded than there is to download.
+                have += DownloadSidecar.Fetched(Path.Combine(dir, f.Name), f.SizeBytes);
             }
 
             return (have, need);
@@ -370,15 +375,35 @@ public sealed class BundleModelLoader : IModelLoader
         {
             if (!Directory.Exists(_storageRoot)) return "nothing - the store does not exist";
 
-            var names = Directory.EnumerateDirectories(_storageRoot)
-                                 .Select(Path.GetFileName)
-                                 .Where(n => !string.IsNullOrEmpty(n))
-                                 .OrderBy(n => n)
-                                 .ToList();
-
+            var names = InstalledIds();
             return names.Count == 0 ? "nothing" : string.Join(", ", names);
         }
         catch (Exception ex) { return "could not be listed: " + ex.Message; }
+    }
+
+    /// <summary>The model directories actually sitting in the store.</summary>
+    /// <remarks>
+    /// THE SENTENCE WAS BEING PARSED BACK INTO DATA. Callers that needed the LIST
+    /// were splitting InstalledIdsForLog on commas - so an empty store handed them
+    /// a model called "nothing", and a store that did not exist handed them one
+    /// called "nothing - the store does not exist". The prose version is for a
+    /// human; this is for code, and it is the one the prose is built from so the
+    /// two cannot drift.
+    /// </remarks>
+    public IReadOnlyList<string> InstalledIds()
+    {
+        try
+        {
+            if (!Directory.Exists(_storageRoot)) return [];
+
+            return Directory.EnumerateDirectories(_storageRoot)
+                            .Select(Path.GetFileName)
+                            .Where(n => !string.IsNullOrEmpty(n))
+                            .Select(n => n!)
+                            .OrderBy(n => n, StringComparer.Ordinal)
+                            .ToList();
+        }
+        catch { return []; }
     }
 
 

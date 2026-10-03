@@ -87,6 +87,7 @@ public sealed partial class CircleNeuronService : Service
     /// <summary>The live node, or null before the service has finished starting.</summary>
     public static NeuronNode? Node { get; private set; }
 
+
     /// <summary>What the service is doing, safe to show a user.</summary>
     public static string Status { get; private set; } = "not started";
 
@@ -143,6 +144,12 @@ public sealed partial class CircleNeuronService : Service
         if (Build.VERSION.SdkInt >= BuildVersionCodes.O) app.StartForegroundService(intent);
         else                                            app.StartService(intent);
     }
+
+    // THE SETUP READOUT AND THE RESUME ARE NOT HERE, AND THAT IS THE POINT.
+    // CircleAI.Inference.ModelSetup owns both, and ServiceApplication calls them on
+    // every start. They lived here first, hung off this service's "brain ready"
+    // line, and on the device they never ran once: this brain starts only when
+    // somebody asks a question, and nobody had.
 
     /// <summary>
     /// Which foreground-service types this start is actually claiming.
@@ -561,7 +568,23 @@ public sealed partial class CircleNeuronService : Service
 
             Status = node.IsReady ? "ready" : node.StatusMessage;
             State  = node.IsReady ? ServiceState.Ready : ServiceState.Failed;
-            if (node.IsReady) global::Android.Util.Log.Info(LogTag, "brain ready");
+            if (node.IsReady)
+            {
+                global::Android.Util.Log.Info(LogTag, "brain ready");
+
+                // THE RESUME USED TO HANG OFF THIS LINE, AND THAT WAS THE WRONG HOOK.
+                // A Circle OS device held 1.1 GB of a 22.8 GB Qwen3.6-35B-A3B with
+                // llm.mnn.weight never arrived, and the fix for it was wired here -
+                // where it never ran, because this brain only starts when somebody
+                // asks a question and nobody had. Verified on the device: the service
+                // process was up, bound, and had logged not one line under this tag.
+                //
+                // It belongs to the process that OWNS the models, beside the
+                // housekeeping sweep in ServiceApplication, which runs on every
+                // start whether or not anybody is chatting. One owner, so two
+                // gigabyte downloads cannot be started at once - which is the state
+                // the resume exists to clear rather than create.
+            }
             else global::Android.Util.Log.Warn(LogTag, "brain did not come up: " + Status);
 
             // Only once there is something worth releasing. Started earlier it

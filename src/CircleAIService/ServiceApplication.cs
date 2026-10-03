@@ -395,7 +395,7 @@ public sealed class ServiceApplication : Application
         // window is what makes it safe to run at start-up at all: a download in
         // flight is a .tmp being written to right now, and killing it would end a
         // fetch somebody is watching a progress bar for.
-        System.Threading.Tasks.Task.Run(() =>
+        System.Threading.Tasks.Task.Run(async () =>
         {
             try
             {
@@ -410,6 +410,37 @@ public sealed class ServiceApplication : Application
             catch (Exception ex)
             {
                 global::Android.Util.Log.Warn("CircleAI.Housekeeping", "sweep failed: " + ex.Message);
+            }
+
+            // AND THEN FINISH WHAT THE OWNER ALREADY STARTED - HERE, NOT ON THE BRAIN.
+            //
+            // A Circle OS device held 1.1 GB of a 22.8 GB Qwen3.6-35B-A3B, the
+            // smartest model on it, with llm.mnn.weight never arrived. The first fix
+            // for that hung off CircleNeuronService's "brain ready" line, and on the
+            // device it never ran once: that brain only starts when somebody asks a
+            // question, and nobody had. The service process was up, bound, and had
+            // logged not one line under its own tag.
+            //
+            // This is the process that OWNS the models, and it runs on every start
+            // whether or not anybody is chatting - so it is the one place a resume
+            // belongs. It is also the only place, which is what stops two gigabyte
+            // downloads being started at once.
+            //
+            // AFTER the sweep, deliberately: the sweep is what clears a resume marker
+            // whose bytes are gone, and resuming from one of those writes into a hole.
+            try
+            {
+                using var loader = new CircleAI.Inference.BundleModelLoader(
+                    ModelStore.Path, new CircleAI.Core.Models.ModelRegistryService());
+
+                await CircleAI.Inference.ModelSetup.ResumeUnfinishedAsync(
+                    loader,
+                    line => global::Android.Util.Log.Info("CircleAI.Setup", line))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn("CircleAI.Setup", "resume failed: " + ex.Message);
             }
         });
 

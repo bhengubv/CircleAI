@@ -817,13 +817,21 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
         if (total <= 0 || total - existing < ParallelThresholdBytes) return false;
         if (existing > total) return false;                       // stale/corrupt partial
 
-        var sidecar = destPath + ".parts";
+        var sidecar = DownloadSidecar.For(destPath);
         var bounds  = PlanSegments(existing, total, ParallelSegments);
-        var starts  = ReadSidecar(sidecar, bounds);
 
-        // Preallocate so every worker can write at its own offset. Done before
-        // the sidecar is trusted, because a file shorter than the recorded
-        // positions would silently swallow writes.
+        // THE FILE IS MEASURED BEFORE IT IS PADDED, AND THAT ORDER IS THE FIX.
+        // The preallocation below extends the file to the full length - so asking
+        // "can this file back what the marker claims?" after it ran could only ever
+        // answer yes, and a marker for bytes that no longer exist would be trusted.
+        // On a Circle OS device, start-up housekeeping had deleted an idle 8.6 GB
+        // .tmp and kept its marker; what saved that one was the segment-plan check,
+        // which is luck rather than a guard - a marker whose plan still matched would
+        // have resumed into 21.3 GB of zeroes and failed its SHA-256 hours later.
+        var onDisk = File.Exists(destPath) ? new FileInfo(destPath).Length : -1L;
+        var starts = ReadSidecar(sidecar, bounds, onDisk);
+
+        // Preallocate so every worker can write at its own offset.
         using (var fs = new FileStream(destPath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))
             if (fs.Length < total) fs.SetLength(total);
 
@@ -904,12 +912,36 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
     }
 
     /// <summary>Where each segment had got to, or its start when unknown.</summary>
-    private static long[] ReadSidecar(string path, Segment[] bounds)
+    /// <param name="path">The sidecar.</param>
+    /// <param name="bounds">The segment plan this run intends to use.</param>
+    /// <param name="fileLength">
+    /// The length of the file the sidecar describes, or -1 when it is not there.
+    /// </param>
+    /// <remarks>
+    /// A RESUME MARKER IS A CLAIM ABOUT A FILE, SO THE FILE GETS A VOTE. Everything
+    /// here used to be checked except the one thing that matters: whether the bytes
+    /// the marker points at still exist. They did not. Start-up housekeeping deleted
+    /// an idle 8.6 GB .tmp and left its marker behind, and the only reason the next
+    /// run did not resume into a hole was that the segment plan had changed too.
+    /// Missing file, or a file too short to hold the recorded positions, now means
+    /// start over - and the marker is deleted rather than left to mislead again.
+    /// </remarks>
+    private static long[] ReadSidecar(string path, Segment[] bounds, long fileLength)
     {
         var starts = bounds.Select(b => b.Start).ToArray();
         try
         {
             if (!File.Exists(path)) return starts;
+
+            // A RESUME MARKER IS A CLAIM ABOUT A FILE, SO THE FILE GETS A VOTE.
+            // Missing, or too short to hold the recorded positions, means the marker
+            // cannot be true - and it is deleted rather than left to mislead again.
+            if (!DownloadSidecar.Backed(path, fileLength))
+            {
+                TryDelete(path);
+                return starts;
+            }
+
             var lines = File.ReadAllLines(path);
             if (lines.Length != bounds.Length) return starts;      // plan changed; start over
 

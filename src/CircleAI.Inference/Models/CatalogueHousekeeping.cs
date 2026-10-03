@@ -119,6 +119,27 @@ public static class CatalogueHousekeeping
     /// somebody is watching a progress bar for. Anything touched inside the window is
     /// left alone, so the test for "abandoned" is time, not shape.
     /// </para>
+    /// <para>
+    /// IDLE IS NOT THE SAME AS ABANDONED, AND THIS SWEEP COST 8.6 GB BY ASSUMING IT
+    /// WAS. Measured on a Circle OS device, 2026-10-04: a 21.3 GB llm.mnn.weight.tmp
+    /// was being fetched over eight sockets, each recording its position in a
+    /// llm.mnn.weight.tmp.parts sidecar beside it. The fetch stopped; an hour later
+    /// this sweep deleted the .tmp — 8.6 GB of RESUMABLE progress, the whole point of
+    /// writing the sidecar — and kept the sidecar, which does not match *.tmp. The
+    /// next attempt found no file, planned fresh segments from zero, correctly
+    /// rejected the now-stale sidecar, and started the 21.3 GB again. Then stopped,
+    /// then got swept, then started again. Three days, a 2 B model answering in its
+    /// place, and nothing anywhere said why.
+    /// </para>
+    /// <para>
+    /// SO A SIDECAR MAKES ITS .tmp OFF LIMITS. Those bytes are not litter: somebody
+    /// chose this model with its size written next to it, and the sidecar is the
+    /// record of how far their choice got. It is the same judgement the reclaim
+    /// policy above already makes about an installed model that stopped fitting —
+    /// the bytes are already paid for, and re-fetching them is the worse outcome.
+    /// What IS swept is the mirror case: a sidecar whose .tmp is gone, which can only
+    /// mislead whoever reads it next.
+    /// </para>
     /// </remarks>
     public static long SweepAbandoned(string modelsDirectory, TimeSpan idleFor)
     {
@@ -134,10 +155,37 @@ public static class CatalogueHousekeeping
             {
                 try
                 {
+                    // RESUMABLE, THEREFORE NOT RUBBISH. Checked before the clock,
+                    // because age is exactly what a resumable download looks like.
+                    if (File.Exists(DownloadSidecar.For(tmp))) continue;
+
                     var fi = new FileInfo(tmp);
                     if (fi.LastWriteTimeUtc > cutoff) continue;   // still being written
                     var size = fi.Length;
                     fi.Delete();
+                    freed += size;
+
+                    // Never leave the marker without the bytes it describes - that
+                    // is the state this whole remark exists because of.
+                    try { File.Delete(DownloadSidecar.For(tmp)); } catch { }
+                }
+                catch { /* in use or vanished: leave it */ }
+            }
+
+            // AND THE ORPHANS ALREADY OUT THERE. Every device that ran the old sweep
+            // is carrying a sidecar for bytes that are gone; it is 278 bytes of
+            // active misinformation and it does not heal itself.
+            foreach (var orphan in Directory.EnumerateFiles(
+                         modelsDirectory,
+                         "*" + DownloadSidecar.TempSuffix + DownloadSidecar.Suffix,
+                         SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var owner = orphan[..^DownloadSidecar.Suffix.Length];
+                    if (File.Exists(owner)) continue;
+                    var size = new FileInfo(orphan).Length;
+                    File.Delete(orphan);
                     freed += size;
                 }
                 catch { /* in use or vanished: leave it */ }
