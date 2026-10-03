@@ -428,20 +428,35 @@ public sealed class ServiceApplication : Application
             //
             // AFTER the sweep, deliberately: the sweep is what clears a resume marker
             // whose bytes are gone, and resuming from one of those writes into a hole.
+            //
+            // AND THROUGH A FOREGROUND SERVICE, BECAUSE THIS PROCESS GETS FROZEN.
+            // The resume ran here directly first, and on the device it stopped dead
+            // three times at the same kind of point - 13.67 GB of 21.3 GB, process
+            // alive, sockets silent, nothing in the log. ActivityManager: this
+            // process was CACHED (curProcState=15) with the screen on and the phone
+            // charging, so Android's freezer had suspended its threads. A frozen
+            // thread cannot return from a read, and cannot run the stall-guard timer
+            // meant to notice either. ModelFetchService exists to hold the process
+            // up for the duration; it shows nothing when nothing is owed.
             try
             {
+                CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;
+
                 using var loader = new CircleAI.Inference.BundleModelLoader(
                     ModelStore.Path, new CircleAI.Core.Models.ModelRegistryService());
 
-                await CircleAI.Inference.ModelSetup.ResumeUnfinishedAsync(
-                    loader,
-                    line => global::Android.Util.Log.Info("CircleAI.Setup", line))
-                    .ConfigureAwait(false);
+                // The one unconditional line, said whether there is news or not.
+                global::Android.Util.Log.Info("CircleAI.Setup",
+                    "setup: " + CircleAI.Inference.ModelSetup.Describe(loader));
+
+                CircleAI.Device.ModelFetchService.StartIfAnythingIsOwed(this, loader);
             }
             catch (Exception ex)
             {
                 global::Android.Util.Log.Warn("CircleAI.Setup", "resume failed: " + ex.Message);
             }
+
+            await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(false);
         });
 
         // AND THE SKILL LIBRARY, off the UI thread: the first call unpacks 20 MB out

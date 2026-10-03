@@ -133,6 +133,49 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_parallel_attempt_keeps_its_bytes_instead_of_truncating_them()
+    {
+        // THE WORST OF THE FAMILY, AND THE ONE THAT ACTUALLY DESTROYED THE BYTES.
+        // Measured on a Circle OS device, 2026-10-04: 13 666 174 991 of
+        // 21 346 165 150 bytes were down when Android froze the process. The
+        // segments died, the parallel attempt gave up, and the SEQUENTIAL fallback
+        // opened FileMode.Create over a file with nothing contiguous at the front.
+        // Thirteen and a half gigabytes, truncated, and the next marker was a fresh
+        // plan from zero. A download that has to be resumed four times still
+        // finishes; one that restarts every time never does.
+        var handler = new RangeHandler { FailEverySegment = true };
+        using var http = new HttpClient(handler);
+        using var svc = new ModelDownloadService(_dir, http);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => svc.EnsureModelAsync(
+            "kept", new Uri("https://example.invalid/llm.mnn.weight"), null, null, default));
+
+        var marker = Directory.EnumerateFiles(_dir, "*.parts", SearchOption.AllDirectories).Single();
+        Assert.True(DownloadSidecar.Written(marker) > 0, "gave up without keeping anything");
+    }
+
+    [Fact]
+    public async Task A_segment_that_ends_early_is_not_mistaken_for_one_that_finished()
+    {
+        // A server closing cleanly part way returns 0 from the read, the loop exits,
+        // and the segment used to return as though its range were complete - so
+        // WhenAll succeeded, the marker was DELETED, and the caller was handed a
+        // file with a hole in it. The SHA-256 catches that hours later, on a phone,
+        // with nothing left to resume from.
+        var handler = new RangeHandler { EndEverySegmentEarly = true };
+        using var http = new HttpClient(handler);
+        using var svc = new ModelDownloadService(_dir, http);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => svc.EnsureModelAsync(
+            "short", new Uri("https://example.invalid/llm.mnn.weight"), null, null, default));
+
+        // Not presented as finished, and what did arrive is still resumable.
+        Assert.False(File.Exists(Path.Combine(_dir, "short", "llm.mnn.weight")));
+        var marker = Directory.EnumerateFiles(_dir, "*.parts", SearchOption.AllDirectories).Single();
+        Assert.True(DownloadSidecar.Written(marker) > 0);
+    }
+
+    [Fact]
     public async Task A_read_that_never_returns_becomes_an_ordinary_failure()
     {
         // THE FAULT ITSELF, at a tenth of a second instead of forty-five. A socket
@@ -183,6 +226,12 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
         /// <summary>Kill the first request for the segment covering this offset, after a few bytes.</summary>
         public long? BreakSegmentAtByte { get; init; }
 
+        /// <summary>Every segment dies part way through, every time: the frozen-process case.</summary>
+        public bool FailEverySegment { get; init; }
+
+        /// <summary>Every segment's body ends cleanly before its range does.</summary>
+        public bool EndEverySegmentEarly { get; init; }
+
         private int _broken;
         public int Breaks => _broken;
 
@@ -193,11 +242,14 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
             var from = range?.From ?? 0;
             var to = range?.To ?? Total - 1;
 
-            var breakIt = BreakSegmentAtByte is { } b
-                       && from <= b && b <= to
-                       && Interlocked.CompareExchange(ref _broken, 1, 0) == 0;
+            var breakIt = FailEverySegment
+                       || (BreakSegmentAtByte is { } b
+                           && from <= b && b <= to
+                           && Interlocked.CompareExchange(ref _broken, 1, 0) == 0);
 
-            var body = new RangeStream(from, to, breakAfter: breakIt ? 64 * 1024 : (long?)null);
+            var body = breakIt || EndEverySegmentEarly
+                ? new RangeStream(from, to, breakAfter: 64 * 1024, endCleanly: EndEverySegmentEarly)
+                : new RangeStream(from, to, breakAfter: null, endCleanly: false);
 
             var resp = new HttpResponseMessage(HttpStatusCode.PartialContent)
             {
@@ -210,8 +262,8 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
         }
     }
 
-    /// <summary>The generated body for one range, which can die part way through.</summary>
-    private sealed class RangeStream(long from, long to, long? breakAfter) : Stream
+    /// <summary>The generated body for one range, which can die or end short part way through.</summary>
+    private sealed class RangeStream(long from, long to, long? breakAfter, bool endCleanly) : Stream
     {
         private long _at = from;
         private long _served;
@@ -219,7 +271,11 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
         public override int Read(byte[] buffer, int offset, int count)
         {
             if (breakAfter is { } limit && _served >= limit)
+            {
+                // Cleanly: EOF, which is the case that used to read as "finished".
+                if (endCleanly) return 0;
                 throw new IOException("the connection went away");
+            }
 
             if (_at > to) return 0;
 

@@ -782,6 +782,28 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 .ConfigureAwait(false))
             return;
 
+        // AND THE FALLBACK MUST NOT BE WORSE THAN FAILING, WHICH IT WAS.
+        //
+        // Measured on a Circle OS device, 2026-10-04. A segmented fetch had
+        // 13 666 174 991 of 21 346 165 150 bytes down when Android froze the
+        // process; the segments died, the parallel attempt gave up, and this fell
+        // through to the sequential path - which, with nothing contiguous at the
+        // front of the file, opens FileMode.Create and TRUNCATES. Thirteen and a
+        // half gigabytes gone, and the next marker was a fresh plan from zero.
+        //
+        // So: if a marker records real progress, the sequential path is not a
+        // fallback, it is a demolition. Fail instead. The bytes stay, the marker
+        // stays, and the caller's own retry - or the next launch's resume sweep -
+        // comes back to them. A download that has to be resumed four times still
+        // finishes; one that restarts every time never does.
+        var marker = DownloadSidecar.For(destPath);
+        var recorded = DownloadSidecar.Written(marker);
+        if (recorded > 0)
+            throw new ModelDownloadException(
+                $"Could not finish the parallel download of '{uri}'. " +
+                $"{recorded} bytes are on disk and will be resumed; nothing was discarded.",
+                NetworkDiagnosis.Healthy, null);
+
         var response = await SendRangeAwareAsync(uri, existing, ct).ConfigureAwait(false);
         try
         {
@@ -993,6 +1015,18 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 lock (gate) WriteSidecar(sidecar, bounds, starts);
             }
         }
+
+        // A STREAM THAT ENDED IS NOT A SEGMENT THAT FINISHED. A server closing the
+        // connection cleanly part way through returns 0 from the read, the loop
+        // exits, and this used to return as though the range were complete - so
+        // Task.WhenAll succeeded, the marker was DELETED and the caller was told the
+        // file was whole. The SHA-256 then failed on a file with a hole in it and
+        // the whole download was thrown away, hours later, with nothing to resume
+        // from. Ending short is a failure, and the retry above knows what to do
+        // with one.
+        if (pos <= b.End)
+            throw new IOException(
+                $"Segment {i} stopped at {pos} with {b.End - pos + 1} bytes of its range left.");
     }
 
     private readonly record struct Segment(long Start, long End);
