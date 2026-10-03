@@ -33,6 +33,8 @@ public class WakeOpensAConversationTests : TestContext
         Services.AddSingleton<IConversation>(talk);
         Services.AddSingleton<IResidentAssistant>(resident);
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
+        // MainLayout starts the brain on open - on by default, never by a button.
+        Services.AddSingleton<IBrain>(new FakeBrain());
         Services.AddSingleton(new VoiceMark());
         Services.AddSingleton(new CapabilityRegistry([]));
 

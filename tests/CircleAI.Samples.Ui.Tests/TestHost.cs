@@ -136,6 +136,8 @@ internal static class TestHost
         s.AddSingleton<IConversation>(new FakeConversation());
         s.AddSingleton<IShareTarget>(new FakeShareTarget());
         s.AddSingleton<IAppPairing>(new FakePairing());
+        // MainLayout starts the brain on open - on by default, never by a button.
+        s.AddSingleton<IBrain>(new FakeBrain());
         s.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
         s.AddSingleton<IVoiceHost>(new FakeVoiceHost
         {

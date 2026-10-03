@@ -26,6 +26,8 @@ public class MarkAgreementTests : TestContext
         Services.AddSingleton(mark);
         Services.AddSingleton<IConversation>(new FakeConversation());
         Services.AddSingleton<IShareTarget>(new FakeShareTarget());
+        // MainLayout starts the brain on open - on by default, never by a button.
+        Services.AddSingleton<IBrain>(new FakeBrain());
         Services.AddSingleton<IResidentAssistant>(new FakeResidentAssistant());
         Services.AddSingleton(CapabilityRegistry.For(new FakeBrain(), new FakeSettings()));
         // MainLayout takes IDispatcher and IState<ConversationState>; a

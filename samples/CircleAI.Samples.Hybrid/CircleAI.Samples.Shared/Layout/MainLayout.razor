@@ -30,6 +30,8 @@
    cache, and the seam where it reaches long-term memory. See State/. *@
 @inject IDispatcher Dispatch
 @inject IState<ConversationState> Conversation
+@* THE BRAIN, SO IT CAN BE STARTED RATHER THAN WAITED FOR - see OnInitialized. *@
+@inject IBrain Brain
 
 <div class="app">
     @*
@@ -332,6 +334,29 @@
 
     protected override void OnInitialized()
     {
+
+        // ON BY DEFAULT. NOBODY SHOULD HAVE TO SWITCH THE BRAIN ON.
+        //
+        // Circle AI is two packages and the thin app holds no model, so the brain
+        // only ever started when something asked it a question. Open the app and it
+        // said "Circle AI stopped - this phone closed it" with a button marked Turn
+        // it on, which is the app asking a person to do its own startup. A phone
+        // that has been through an update, a reboot, or EMUI deciding to close a
+        // foreground service lands there every time.
+        //
+        // Binding IS starting - ConnectAsync binds with AutoCreate - so simply
+        // asking the brain how it is brings it up. Fire and forget: nothing on this
+        // layout waits for the answer, every screen already handles not-ready, and
+        // a brain that cannot start must not stop the app rendering.
+        //
+        // The switch stays where it always was, in Settings, with what it costs
+        // written beside it. On by default, off by choice - never off by neglect.
+        _ = Task.Run(async () =>
+        {
+            try { await Brain.StateAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Trouble.Say(ex); }
+        });
+
         Nav.LocationChanged += OnLocationChanged;
 
         // THE OTHER BUTTON, AND THE WAKE WORD. This mark shows a turn it did not

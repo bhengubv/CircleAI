@@ -449,8 +449,19 @@ internal sealed class FakeBrain : IBrain
     public bool Ready { get; init; } = true;
     public Exception? Throws { get; init; }
 
+    /// <summary>How many times anything asked this brain how it is.</summary>
+    /// <remarks>
+    /// MainLayout asks once when the app opens, because binding is what starts the
+    /// service and nobody should have to press Turn it on. OnByDefaultTests counts
+    /// it; everything else ignores it.
+    /// </remarks>
+    public int StateAsks;
+
     public Task<BrainState> StateAsync(CancellationToken ct = default)
-        => Task.FromResult(new BrainState(Ready, Ready ? "" : "no brain in a test"));
+    {
+        System.Threading.Interlocked.Increment(ref StateAsks);
+        return Task.FromResult(new BrainState(Ready, Ready ? "" : "no brain in a test"));
+    }
 
     public Task<string> AskAsync(
         string prompt, Action<string>? token = null, CancellationToken ct = default)
