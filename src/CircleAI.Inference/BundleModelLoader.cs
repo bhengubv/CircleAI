@@ -286,6 +286,72 @@ public sealed class BundleModelLoader : IModelLoader
     }
 
 
+    /// <summary>How much of a model is on disk, against how much it needs.</summary>
+    /// <remarks>
+    /// "PRESENT" IS A BOOLEAN AND A DOWNLOAD IS NOT. A 22.8 GB model that got 1.1 GB
+    /// in before something stopped it is neither here nor absent - and every surface
+    /// that asks ModelPresent is told the same thing it would be told about a model
+    /// nobody ever started. Found on a Circle OS device on 2026-10-04:
+    ///
+    ///   embeddings_bf16.bin        1 017 118 720   on disk
+    ///   llm.mnn.json                 118 970 661   on disk
+    ///   llm.mnn.weight            21 346 165 150   never arrived
+    ///   llm.mnn.weight.tmp.parts             278   a resume marker nobody read
+    ///
+    /// The census called it "not on this phone yet" and quoted the full 22.8 GB, so
+    /// the one fact that mattered - that five per cent of it was already down and
+    /// resumable - existed only in a directory listing.
+    ///
+    /// SIZES, NOT HASHES. This is asked on a loading screen about every model in the
+    /// catalogue; hashing 21 GB to answer "how far did it get" would be worse than
+    /// the question. A truncated file counts what it actually has, which is the
+    /// honest answer to how much is left to fetch.
+    /// </remarks>
+    /// <returns>Bytes on disk and bytes needed. Both zero when the model is unknown.</returns>
+    public (long Have, long Need) Progress(string modelName)
+    {
+        try
+        {
+            ThrowIfDisposed();
+            var entry = _registry.GetLatestModel(modelName);
+            if (entry?.BundleFiles is null || entry.BundleFiles.Count == 0) return (0, 0);
+
+            var dir = Path.Combine(_storageRoot, modelName);
+            long have = 0;
+            long need = 0;
+
+            foreach (var f in entry.BundleFiles)
+            {
+                need += f.SizeBytes;
+
+                var path = Path.Combine(dir, f.Name);
+                if (!File.Exists(path)) continue;
+
+                // CAPPED AT WHAT IS WANTED. A file larger than the catalogue says is
+                // a different file, not progress, and counting it would report more
+                // downloaded than there is to download.
+                have += Math.Min(new FileInfo(path).Length, f.SizeBytes);
+            }
+
+            return (have, need);
+        }
+        catch { return (0, 0); }
+    }
+
+    /// <summary>Has this model been started and not finished?</summary>
+    /// <remarks>
+    /// THE STATE THE CODE COULD NOT NAME. Missing, partial and present need three
+    /// different sentences and three different offers - start, carry on, or nothing -
+    /// and until now there were two.
+    /// </remarks>
+    public bool ModelPartial(string modelName)
+    {
+        if (ModelPresent(modelName)) return false;
+        var (have, need) = Progress(modelName);
+        return have > 0 && need > 0;
+    }
+
+
     /// <summary>The model directories actually sitting in the store, for a log line.</summary>
     /// <remarks>
     /// "NO MODEL ON THIS DEVICE" CAN MEAN TWO OPPOSITE THINGS. Either nothing is

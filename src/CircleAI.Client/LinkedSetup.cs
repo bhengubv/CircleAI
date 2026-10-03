@@ -1,4 +1,4 @@
-﻿// LinkedSetup.cs
+// LinkedSetup.cs
 //
 // Setting CircleAI up, from an app a person can actually open.
 //
@@ -104,7 +104,11 @@ public sealed class LinkedSetup(LinkedBrain brain)
             LinkSetupRows.Text(r, 0),
             LinkSetupRows.Flag(r, 1),
             LinkSetupRows.Number(r, 2),
-            LinkSetupRows.Text(r, 3))).ToList();
+            LinkSetupRows.Text(r, 3),
+            // THE FIFTH FIELD, AND READING IT IS HALF THE FIX. The service has always
+            // been able to measure a half-finished download; until 2026-10-04 the
+            // wire had four columns and the measurement died at this seam.
+            LinkSetupRows.Number(r, 4))).ToList();
 
         var present = rows.Count(r => r.Present);
         return new Census(rows, present, rows.Count,

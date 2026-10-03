@@ -1,4 +1,4 @@
-﻿// DeviceSetup.cs
+// DeviceSetup.cs
 //
 // First run on this phone, over the same FirstRun planner the native head uses.
 //
@@ -208,7 +208,7 @@ public sealed class DeviceSetup : ISetup
 
             return new Census(
                 census.Rows
-                    .Select(r => new CensusRow(r.Title, r.Present, r.Bytes, r.Detail))
+                    .Select(r => new CensusRow(r.Title, r.Present, r.Bytes, r.Detail, r.Have))
                     .ToList(),
                 census.Present,
                 census.Total,

@@ -1,4 +1,4 @@
-﻿// LinkVerbs.cs
+// LinkVerbs.cs
 //
 // The structured verbs a linked app can call beyond chat, and the scope each one
 // needs. Kept next to the grant + turn types, portable and desktop-tested, so the
@@ -222,13 +222,22 @@ public static class LinkSetupRows
         => new[] { title, bytes.ToString(System.Globalization.CultureInfo.InvariantCulture) };
 
     /// <summary>One census row: [title, present, bytes, detail].</summary>
-    public static IReadOnlyList<string> CensusRow(string title, bool present, long bytes, string detail)
+    /// <param name="have">
+    /// Bytes already on disk. The FIFTH FIELD, added 2026-10-04 because a download
+    /// that stopped halfway had nowhere to say so: a 22.8 GB model with 1.1 GB down
+    /// crossed this link reporting present=0 and bytes=22.8 GB, identical to one
+    /// nobody had ever started. The service measured it and could not send it.
+    /// Appended rather than inserted, so an older reader simply ignores it.
+    /// </param>
+    public static IReadOnlyList<string> CensusRow(
+        string title, bool present, long bytes, string detail, long have = 0)
         => new[]
         {
             title,
             present ? "1" : "0",
             bytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
             detail,
+            have.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
 
     /// <summary>Progress: a single row of [index, count, title, fraction, remainingSeconds, phase].</summary>

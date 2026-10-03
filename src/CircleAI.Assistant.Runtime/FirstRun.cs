@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 
 // FirstRun.cs
 //
@@ -65,7 +65,19 @@ public readonly record struct SetupStep(string Title, ModelModality Modality, Mo
 /// What it means here - "eleven languages", "not on this phone". The honest
 /// answer for this handset rather than what the catalogue could offer.
 /// </param>
-public readonly record struct CapabilityRow(string Title, bool Present, long Bytes, string Detail);
+public readonly record struct CapabilityRow(
+    string Title, bool Present, long Bytes, string Detail, long Have = 0)
+{
+    /// <summary>Started and not finished - neither here nor absent.</summary>
+    /// <remarks>
+    /// THE THIRD STATE, WHICH THIS TYPE COULD NOT EXPRESS. Present was a bool, so a
+    /// 22.8 GB model that got 1.1 GB in reported exactly like one nobody ever
+    /// started - same words, same full size, no sign that five per cent was already
+    /// down and resumable. Found on a Circle OS device on 2026-10-04, where the one
+    /// fact that mattered lived only in a directory listing.
+    /// </remarks>
+    public bool Partial => !Present && Have > 0 && Have < Bytes;
+}
 
 /// <summary>What this phone can do, and what it is still missing.</summary>
 /// <param name="Rows">Every capability, present or not, in a fixed order.</param>
@@ -388,7 +400,16 @@ public static class FirstRun
         {
             if (missing.TryGetValue(title, out var wanted))
             {
-                rows.Add(new CapabilityRow(title, false, wanted.TotalBytes, "not on this phone yet"));
+                // HOW FAR IT GOT, NOT JUST THAT IT IS NOT HERE. An interrupted
+                // download is resumable and says so; one that never started says
+                // that instead. They are different offers to a person - carry on,
+                // or begin - and they used to read identically.
+                var (have, _) = loader.Progress(wanted.Name);
+                rows.Add(new CapabilityRow(
+                    title, false, wanted.TotalBytes,
+                    have > 0 ? Gb(have) + " of " + Gb(wanted.TotalBytes) + " here - it will carry on"
+                             : "not on this phone yet",
+                    have));
                 continue;
             }
 
@@ -435,6 +456,12 @@ public static class FirstRun
 
         return new CapabilityCensus(rows, rows.Count(r => r.Present), rows.Count);
     }
+
+    /// <summary>Gigabytes, because nobody counts a download in bytes.</summary>
+    private static string Gb(long bytes)
+        => bytes >= 1_000_000_000
+            ? (bytes / 1_000_000_000d).ToString("0.#") + " GB"
+            : (bytes / 1_000_000d).ToString("0") + " MB";
 
     /// <summary>The row for voices that are here but were never in the plan.</summary>
     /// <remarks>

@@ -464,7 +464,7 @@ public sealed class CircleNeuronLinkService : Service
                 if (setup is null) return LinkRowsReply.Failure("setup not available");
                 var census = await setup.CensusAsync().ConfigureAwait(false);
                 return LinkRowsReply.Success(
-                    census.Rows.Select(c => LinkSetupRows.CensusRow(c.Title, c.Present, c.Bytes, c.Detail))
+                    census.Rows.Select(c => LinkSetupRows.CensusRow(c.Title, c.Present, c.Bytes, c.Detail, c.Have))
                                .ToList());
             }
 

@@ -1,4 +1,4 @@
-﻿// ISetup.cs
+// ISetup.cs
 //
 // First run: what this phone still needs, and fetching it.
 
@@ -44,7 +44,22 @@ public readonly record struct Readiness(
 /// <param name="Present">Whether the bytes are on this device.</param>
 /// <param name="Bytes">How big it is, or would be.</param>
 /// <param name="Detail">What it means here - "eleven languages", "not on this phone yet".</param>
-public sealed record CensusRow(string Title, bool Present, long Bytes, string Detail);
+public sealed record CensusRow(
+    string Title, bool Present, long Bytes, string Detail, long Have = 0)
+{
+    /// <summary>Started and not finished.</summary>
+    /// <remarks>
+    /// IT HAD NOWHERE TO SAY THIS. Present is a bool, so a 22.8 GB model that got
+    /// 1.1 GB in reported exactly like one nobody had ever started - and the thing a
+    /// person most needs to know, that it will carry on rather than begin again,
+    /// could not be said. Found on a Circle OS device on 2026-10-04.
+    ///
+    /// CARRIED OVER THE LINK, because this is the half with no screen. The thin app
+    /// renders what the service measured; a number the service knows and cannot send
+    /// is a number nobody sees.
+    /// </remarks>
+    public bool Partial => !Present && Have > 0 && Have < Bytes;
+}
 
 /// <summary>What this device can do, and what it is still missing.</summary>
 /// <param name="Rows">Every capability, present or not, in a fixed order.</param>
