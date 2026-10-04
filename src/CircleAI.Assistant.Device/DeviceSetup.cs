@@ -212,7 +212,7 @@ public sealed class DeviceSetup : ISetup
                     .ToList(),
                 census.Present,
                 census.Total,
-                $"{census.Present} of {census.Total} on this phone");
+                Census.Line(census.Present, census.Total));
         }, ct);
 
     /// <inheritdoc />

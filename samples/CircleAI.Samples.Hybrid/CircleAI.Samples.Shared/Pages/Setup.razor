@@ -306,10 +306,10 @@
         }
     }
 
-    static string Size(long bytes)
-        => bytes >= 1_000_000_000
-            ? $"{bytes / 1_000_000_000.0:0.#} GB"
-            : $"{bytes / 1_000_000.0:0} MB";
+    // One formatter, shared. This one was already decimal and already right; it is
+    // pointed at CensusRow.Size so a later edit cannot make three screens disagree
+    // about one model again.
+    static string Size(long bytes) => CensusRow.Size(bytes);
 
     async Task Start()
     {

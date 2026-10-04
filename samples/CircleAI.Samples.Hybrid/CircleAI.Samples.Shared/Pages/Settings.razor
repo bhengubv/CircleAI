@@ -1,4 +1,4 @@
-﻿@*
+@*
     Settings. Things you change.
 
     NO MARKETING ON THIS SCREEN. It carried a tab called "What it is for" and a
@@ -1286,7 +1286,9 @@ else
     static string Detail(AbilityRow row) => row.State switch
     {
         AbilityState.On => row.Blurb,
-        AbilityState.Available when row.Bytes is long b => $"{row.Blurb} · {b / 1_000_000} MB",
+        // INTEGER MB WITH NO GB ROLLOVER, which read "22798 MB" for a 22.8 GB
+        // bundle. Same shared formatter as the other two screens now.
+        AbilityState.Available when row.Bytes is long b => $"{row.Blurb} · {CensusRow.Size(b)}",
         AbilityState.TooBig => "Needs more memory than this phone has",
         AbilityState.NotCatalogued => "Nothing for this yet",
         _ => row.Blurb,

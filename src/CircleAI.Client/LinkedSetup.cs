@@ -112,8 +112,7 @@ public sealed class LinkedSetup(LinkedBrain brain)
 
         var present = rows.Count(r => r.Present);
         return new Census(rows, present, rows.Count,
-            rows.Count == 0 ? "CircleAI holds nothing yet."
-                            : $"{present} of {rows.Count} ready.");
+            Census.Line(present, rows.Count));
     }
 
     /// <summary>Fetch what the plan lists, reporting progress until it finishes.</summary>

@@ -59,6 +59,56 @@ public sealed record CensusRow(
     /// is a number nobody sees.
     /// </remarks>
     public bool Partial => !Present && Have > 0 && Have < Bytes;
+
+    /// <summary>The one line a screen shows for this row, in all three states.</summary>
+    /// <remarks>
+    /// EVERY SCREEN DERIVED THIS FOR ITSELF AND ONE OF THEM GOT IT WRONG.
+    /// Loading.razor rendered <c>row.Present ? row.Detail : Size(row.Bytes)</c> - so
+    /// Detail reached the screen ONLY for a row that was already finished, and the
+    /// partial sentence was thrown away. "1.1 GB of 22.8 GB here - it will carry on"
+    /// was built in FirstRun.Census, crossed the link in the fifth field added
+    /// specifically to carry it, was rebuilt into this record, and was then
+    /// discarded one ternary from the markup. <see cref="Partial"/> had no reader
+    /// anywhere outside its own tests.
+    ///
+    /// So the three-state answer lives on the type that has the three states. A
+    /// screen renders this and cannot re-derive it wrongly.
+    /// </remarks>
+    public string Says => Present || Partial ? Detail : Size(Bytes);
+
+    /// <summary>A model size, in the units the catalogue is persisted in.</summary>
+    /// <remarks>
+    /// ONE MODEL, THREE NUMBERS, THREE SCREENS. The same 22 797 996 902-byte bundle
+    /// read "22.8 GB" on the setup screen (decimal), "21.2 GB" on the loading screen
+    /// (binary), and "22798 MB" on the settings ability row (integer MB, no GB
+    /// rollover). A person comparing two screens is entitled to think one of them is
+    /// lying, and they would be right.
+    ///
+    /// DECIMAL, because the catalogue is. DeviceProbe.BytesPerGb is 10^9 and
+    /// ModelFit's remark on it is explicit about why - "the catalogue's unit wins
+    /// because it is persisted: 78 entries already carry values derived at 10^9, and
+    /// reinterpreting them would silently change what every one of them means".
+    /// A screen that renders a catalogued size in binary is quoting a different
+    /// number from the one the fit rule reasoned about.
+    /// </remarks>
+    public static string Size(long bytes)
+    {
+        // AND INVARIANT, WHICH A TEST CAUGHT BEFORE A PERSON DID. Interpolation uses
+        // the CURRENT culture, so this rendered "22,8 GB" on any comma-separator
+        // locale - af-ZA and zu-ZA among them, which is most of who this is for.
+        // That is not wrong on its own; it is wrong NEXT TO MemoryBudget.Human,
+        // which is already explicitly invariant, so one app would have shown a
+        // person both separators for the same kind of number. One owner, one base,
+        // one separator.
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        return bytes switch
+        {
+            <= 0            => "",
+            < 1_000_000     => string.Format(c, "{0:0} kB", bytes / 1_000.0),
+            < 1_000_000_000 => string.Format(c, "{0:0} MB", bytes / 1_000_000.0),
+            _               => string.Format(c, "{0:0.#} GB", bytes / 1_000_000_000.0),
+        };
+    }
 }
 
 /// <summary>What this device can do, and what it is still missing.</summary>
@@ -67,7 +117,20 @@ public sealed record CensusRow(
 /// <param name="Total">How many there are.</param>
 /// <param name="Summary">"3 of 5 on this phone", said once so a screen need not.</param>
 public sealed record Census(
-    IReadOnlyList<CensusRow> Rows, int Present, int Total, string Summary);
+    IReadOnlyList<CensusRow> Rows, int Present, int Total, string Summary)
+{
+    /// <summary>The summary sentence, written once.</summary>
+    /// <remarks>
+    /// TWO WORDINGS FOR ONE FACT. The on-device path said "3 of 5 on this phone"
+    /// and the linked path said "3 of 5 ready." - the same census, counted the same
+    /// way, described differently depending on which half of a two-APK product
+    /// happened to build it. A person switching between them is being told two
+    /// things.
+    /// </remarks>
+    public static string Line(int present, int total)
+        => total == 0 ? "Nothing on this phone yet."
+                      : $"{present} of {total} on this phone";
+}
 
 /// <summary>One thing setup will fetch.</summary>
 /// <param name="Title">What it gives the person - "the voice", not "MMS TTS".</param>

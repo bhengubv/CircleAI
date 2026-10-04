@@ -66,7 +66,7 @@
                     <span class="loading-mark-cell">@(row.Present ? "✓" : "↓")</span>
                     <span class="loading-title">@row.Title</span>
                     <span class="loading-detail">
-                        @(row.Present ? row.Detail : Size(row.Bytes))
+                        @row.Says
                     </span>
                 </div>
             }
@@ -398,13 +398,10 @@
         }
     }
 
-    static string Size(long bytes) => bytes switch
-    {
-        <= 0 => "",
-        < 1024L * 1024 => $"{bytes / 1024.0:0} KB",
-        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0} MB",
-        _ => $"{bytes / (1024.0 * 1024 * 1024):0.0} GB",
-    };
+    // THE LOCAL FORMATTER IS GONE, and it was the wrong base. This one was binary,
+    // so the same 22 797 996 902-byte bundle read "21.2 GB" here and "22.8 GB" on
+    // the setup screen. CensusRow.Size is decimal, which is the unit the catalogue
+    // is persisted in and therefore the unit the fit rule reasoned about.
 
     public void Dispose() => _left = true;
 }
