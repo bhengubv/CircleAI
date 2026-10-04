@@ -1,4 +1,4 @@
-﻿// DeviceModelAssessor.cs
+// DeviceModelAssessor.cs
 //
 // The default IModelAssessor. `compatible` is device-fit: the engine is one this
 // device ships, RAM fits, storage fits, and (when stated) VRAM fits — reusing the
@@ -241,12 +241,31 @@ public sealed class DeviceModelAssessor : IModelAssessor
 
         var assessed = 0;
         var compatibleCount = 0;
-        foreach (var e in _catalog.All())
+
+        // AllAssessed, not All, because a REFUSAL IS AN INPUT HERE AND NOT AN OUTPUT.
+        // This method rewrites `compatible` from declared metadata on every launch -
+        // and the declared metadata is what was wrong. A 22.8 GB MoE declaring
+        // 2.5 GB of RAM aborted a Tensor G2 with signal 6 and set lowmemorykiller on
+        // a dozen system apps; recomputing from that same 2.5 GB would say yes again
+        // every time, forever. What the device learned by trying outranks what the
+        // catalogue predicts, so a refused row is left refused and never re-ranked
+        // back into contention.
+        foreach (var a in _catalog.AllAssessed())
         {
-            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb, budgetBytes);
-            var rank = compatible ? RankFor(e, usableRamGb, _catalog.IsInstalled(e.Name)) : 0.0;
-            _catalog.SetAssessment(e.Name, compatible, rank);
+            var e = a.Entry;
             assessed++;
+
+            if (a.Refused)
+            {
+                // Still scored 0 and marked incompatible, so every reader agrees -
+                // but refused_reason is untouched, which is the whole point.
+                _catalog.SetAssessment(e.Name, compatible: false, rank: 0.0);
+                continue;
+            }
+
+            var compatible = IsCompatible(e, probe, usableRamGb, storageFreeGb, budgetBytes);
+            var rank = compatible ? RankFor(e, usableRamGb, a.Installed) : 0.0;
+            _catalog.SetAssessment(e.Name, compatible, rank);
             if (compatible) compatibleCount++;
         }
         return new AssessmentResult(assessed, compatibleCount);

@@ -50,6 +50,41 @@ public interface IModelCatalog
     void SetAssessment(string id, bool compatible, double rank);
 
     /// <summary>
+    /// Refuse this model on THIS device, from evidence, with the reason a person
+    /// can be told.
+    /// </summary>
+    /// <remarks>
+    /// AN ASSESSMENT IS A PREDICTION; THIS IS A RESULT, AND THE TWO MUST NOT SHARE
+    /// A COLUMN. <c>compatible</c> is recomputed from declared metadata every time
+    /// the assessor runs, so a verdict written there is erased by the next bootstrap
+    /// and the device forgets what it learned the hard way.
+    ///
+    /// Measured on a Circle OS device (Tensor G2, 7.6 GB) on 2026-10-04: a 22.8 GB
+    /// MoE declaring 2.5 GB of RAM aborted the process with signal 6 and set
+    /// lowmemorykiller on a dozen system apps. The declared number was wrong, so no
+    /// amount of recomputing from it would ever refuse the model. Only the attempt
+    /// knows.
+    ///
+    /// So a refusal is a separate, durable fact that the assessor READS and never
+    /// writes, and it outranks any later prediction.
+    /// </remarks>
+    void Refuse(string id, string reason);
+
+    /// <summary>Withdraw a refusal, because a person said so.</summary>
+    /// <remarks>
+    /// Nothing retries on its own - a native abort during load is not transient and
+    /// each attempt costs a dozen system apps. This exists so the device's verdict
+    /// is reversible by a human rather than permanent by accident.
+    /// </remarks>
+    void Pardon(string id);
+
+    /// <summary>What this device decided about one model, and why.</summary>
+    AssessedModel? Assessment(string id);
+
+    /// <summary>Everything this device holds, with its verdict, best first.</summary>
+    IReadOnlyList<AssessedModel> AllAssessed();
+
+    /// <summary>
     /// Record whether the model's bundle is currently present on disk. No-op when
     /// the id is unknown.
     /// </summary>
@@ -85,4 +120,37 @@ public interface IModelCatalog
 
     /// <summary>Total rows in the catalogue.</summary>
     int Count();
+}
+
+/// <summary>One catalogued model plus what THIS device decided about it.</summary>
+/// <param name="Entry">The catalogued facts, identical on every device.</param>
+/// <param name="Compatible">Whether the assessor predicts it runs here.</param>
+/// <param name="Rank">The assessor's score; higher wins.</param>
+/// <param name="Installed">Whether the bytes are on this device.</param>
+/// <param name="AssessedAt">When the prediction was last made, or null if never.</param>
+/// <param name="RefusedReason">
+/// Why this device refuses it from evidence, or null. Set by <see cref="IModelCatalog.Refuse"/>
+/// and never by the assessor.
+/// </param>
+/// <remarks>
+/// THREE COLUMNS WERE WRITE-ONLY AND NOTHING COULD ASK. compatible, rank and
+/// assessed_at were written on every assessment and projected by nothing: the
+/// private column list stopped at mmap_resident_gb, and Get/All/Compatible/Best all
+/// read into a plain ModelEntry. So no screen could say WHY a model won, no
+/// diagnostic could say the assessment was six months stale, and nothing could be
+/// told to a person except the catalogued size.
+/// </remarks>
+public sealed record AssessedModel(
+    ModelEntry Entry,
+    bool Compatible,
+    double Rank,
+    bool Installed,
+    DateTimeOffset? AssessedAt,
+    string? RefusedReason)
+{
+    /// <summary>Refused here from evidence, whatever the metadata predicts.</summary>
+    public bool Refused => !string.IsNullOrWhiteSpace(RefusedReason);
+
+    /// <summary>Usable on this device right now: predicted to fit, and not refused.</summary>
+    public bool Usable => Compatible && !Refused;
 }
