@@ -147,6 +147,46 @@ public sealed class CircleNeuronLinkService : Service
     private static void OnWoke(object? sender, string phrase)
         => System.Threading.Interlocked.Increment(ref _heard);
 
+    /// <summary>How much room models this phone cannot run are taking, if any.</summary>
+    private static long DeadWeightHere()
+    {
+        try
+        {
+            var root = CircleAI.Device.ModelFetchService.StorageDirectory;
+            if (CircleNeuronService.Catalogue is not { } cat || string.IsNullOrWhiteSpace(root))
+                return 0;
+
+            var sum = 0L;
+            foreach (var d in CircleAI.Inference.DeadWeight.On(cat, root!)) sum += d.Bytes;
+            return sum;
+        }
+        catch { return 0; }
+    }
+
+    /// <summary>Delete the bytes of every model this phone cannot run, on request.</summary>
+    /// <remarks>
+    /// THE VERDICT IS KEPT. Clearing the bytes does not pardon the model - it stopped
+    /// this phone and that is still true - so the same version will not be offered
+    /// again. Pardoning is a separate word somebody says on purpose.
+    /// </remarks>
+    private static long ClearWhatCannotRun()
+    {
+        try
+        {
+            var cat = CircleNeuronService.Catalogue;
+            var root = CircleAI.Device.ModelFetchService.StorageDirectory;
+            if (cat is null || string.IsNullOrWhiteSpace(root)) return 0;
+
+            return CircleAI.Inference.DeadWeight.Clear(
+                cat, root!, line => Log.Info(Tag, line));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn(Tag, "could not clear: " + ex.Message);
+            return 0;
+        }
+    }
+
     /// <summary>Has this device given up on a model after it stopped the phone?</summary>
     /// <remarks>Never throws: a device with no catalogue has refused nothing.</remarks>
     private static bool AnythingRefused()
@@ -361,13 +401,26 @@ public sealed class CircleNeuronLinkService : Service
         {
             case CircleAI.Assistant.SelfAsk.WhichBrain:
             {
+                var dead = DeadWeightHere();
                 var said = CircleAI.Assistant.AssistantPersona.WhichBrain(
                     ready:            CircleNeuronService.Node?.IsReady == true,
                     running:          !string.IsNullOrWhiteSpace(CircleNeuronService.RunningModel),
-                    gaveUpOnSomething: AnythingRefused());
+                    gaveUpOnSomething: AnythingRefused(),
+                    deadWeightSize:   dead > 0 ? CircleAI.Assistant.CensusRow.Size(dead) : null);
 
                 Log.Info(Tag, "serve: asked about itself, answered without the brain");
                 return LinkTurnReply.Success(said);
+            }
+
+            case CircleAI.Assistant.SelfAsk.ClearIt:
+            {
+                // THE ONLY PATH TO A DELETION, and it starts with somebody saying so.
+                // Circle AI offers this when it finds a model it cannot run taking up
+                // room; nothing reaches DeadWeight.Clear without the word.
+                var freed = ClearWhatCannotRun();
+                Log.Info(Tag, "serve: asked to clear dead weight; freed " + freed + " bytes");
+                return LinkTurnReply.Success(CircleAI.Assistant.AssistantPersona.ClearIt(
+                    freed > 0 ? CircleAI.Assistant.CensusRow.Size(freed) : null));
             }
 
             case CircleAI.Assistant.SelfAsk.TryAgain:

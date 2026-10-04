@@ -181,7 +181,12 @@ public sealed class ServiceApplication : Application
         // storage census uses, so "can I fetch this" is answered against the real disk.
         CircleNeuronLinkService.Setup = new DeviceSetup(
             new DeviceMicrophoneAccess(this),
-            new MemoryManager(new DeviceResourcesReader()));
+            new MemoryManager(new DeviceResourcesReader()),
+            // A LAMBDA, BECAUSE THE CATALOGUE IS BUILT FURTHER DOWN THIS METHOD.
+            // Reading it here would capture null forever and make the setup plan
+            // offer models this phone cannot run - which is the whole thing being
+            // fixed. Same shape as the LiveSkillStore accessor above.
+            catalogue: () => CircleAI.Device.CircleNeuronService.Catalogue);
 
         // THE BRAIN ITSELF, AND NOTHING HAS EVER ASKED FOR ONE. CircleNeuronService
         // hosts a NeuronNode only when a host sets OptionsFactory; left null it runs,

@@ -37,6 +37,14 @@ public enum SelfAsk
 
     /// <summary>"Try the big one again." — withdraw a refusal and use it.</summary>
     TryAgain,
+
+    /// <summary>"Clear it." — delete the bytes of a model this phone cannot run.</summary>
+    /// <remarks>
+    /// THE ANSWER TO AN OFFER, NOT AN IDLE INSTRUCTION. Circle AI says there is a
+    /// brain here it cannot run and how much room it takes; this is somebody saying
+    /// go ahead. Nothing deletes without it.
+    /// </remarks>
+    ClearIt,
 }
 
 /// <summary>Recognises the few things a person says about the assistant's own state.</summary>
@@ -87,12 +95,36 @@ public static class SelfRequest
         "give the big one another go",
     ];
 
+    /// <summary>
+    /// Telling it to reclaim the space a model it cannot run is taking.
+    /// </summary>
+    /// <remarks>
+    /// DELIBERATELY NOT "yes". A bare yes is the commonest word in a conversation
+    /// and binding a deletion of twenty-two gigabytes to it would be indefensible -
+    /// somebody agreeing with the previous sentence would lose a download. Every
+    /// phrase here names the action.
+    /// </remarks>
+    private static readonly string[] Clear =
+    [
+        "clear it",
+        "clear the big one",
+        "clear the big brain",
+        "get rid of it",
+        "get rid of the big one",
+        "delete it",
+        "delete the big one",
+        "free up the space",
+        "yes clear it",
+        "go ahead and clear it",
+    ];
+
     /// <summary>What <paramref name="said"/> is asking about the assistant, if anything.</summary>
     public static SelfAsk Of(string? said)
     {
         var text = Bare(said);
         if (text.Length == 0) return SelfAsk.None;
 
+        foreach (var c in Clear)  if (text == c) return SelfAsk.ClearIt;
         foreach (var r in Retry)  if (text == r) return SelfAsk.TryAgain;
         foreach (var s in Status) if (text == s) return SelfAsk.WhichBrain;
         return SelfAsk.None;

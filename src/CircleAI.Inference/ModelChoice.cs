@@ -1,4 +1,4 @@
-﻿// ModelChoice.cs
+// ModelChoice.cs
 //
 // Which model this phone should use for a job. Asked in ONE place.
 //
@@ -78,13 +78,29 @@ public static class ModelChoice
     /// over with a model the device cannot load.
     /// </para>
     /// </remarks>
+    /// <param name="catalog">
+    /// This device's own verdicts. Null keeps the old behaviour, which is what every
+    /// caller without one gets.
+    /// </param>
     public static ModelEntry? For(
         ModelModality modality,
         ModelRegistryService registry,
         BundleModelLoader loader,
-        DeviceProbe probe)
+        DeviceProbe probe,
+        CircleAI.Core.Models.IModelCatalog? catalog = null)
     {
-        var candidates = registry.AllModels.Where(m => m.Modality == modality).ToList();
+        var candidates = registry.AllModels
+            .Where(m => m.Modality == modality)
+            // AND NOT ONE THIS DEVICE HAS ALREADY REFUSED OR CANNOT RUN.
+            //
+            // Every screen that names a model comes through here, so without this
+            // the display and the runtime answer differently: on a Circle OS device
+            // holding a complete 22.8 GB MoE, the installed-first rule below would
+            // have named it as the chosen Chat model on the abilities screen while
+            // CircleNeuronService refused to load it. "One rule, one answer" is
+            // written three comments down and the rule had grown a second answer.
+            .Where(m => ModelOffer.Worth(catalog, m.Name))
+            .ToList();
 
         // PRESENT, NOT VERIFIED - and the difference is nine seconds.
         //
@@ -102,6 +118,26 @@ public static class ModelChoice
         // is a job for install and repair, not for every question somebody asks.
         var installed = candidates.FirstOrDefault(m => loader.ModelPresent(m.Name));
         if (installed is not null) return installed;
+
+        // WHAT TO OFFER, AND NOT FROM FREE RAM IF THERE IS ANYTHING BETTER.
+        //
+        // Fits reads DeviceProbe.UsableRamGb, which comes off MemAvailable - whatever
+        // is spare this second. That is the right input for "can I load it now" and
+        // the wrong one for "is this worth offering": with 1.8 GB free of 7.6 GB it
+        // calls a 1.4 GB model too big, so an abilities row would read "Needs more
+        // memory than this phone has" on a phone that runs it fine, and read
+        // differently again a minute later.
+        //
+        // The catalogue's assessment is made once per launch and is stable, so it is
+        // preferred whenever it exists. Fits remains the answer for a caller with no
+        // catalogue, which is every one that has not been given it yet.
+        var assessed = catalog is null
+            ? null
+            : candidates.Where(m => catalog.Assessment(m.Name) is { Compatible: true, AssessedAt: not null })
+                        .OrderByDescending(m => m.QualityRank)
+                        .ThenBy(m => m.MinRamGb)
+                        .FirstOrDefault();
+        if (assessed is not null) return assessed;
 
         return candidates
             .Where(m => Fits(m, probe))

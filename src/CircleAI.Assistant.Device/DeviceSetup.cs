@@ -53,12 +53,32 @@ public sealed class DeviceSetup : ISetup
     public DeviceSetup(
         IMicrophoneAccess microphone,
         MemoryManager? memory = null,
-        ISpokenLanguage? spoken = null)
+        ISpokenLanguage? spoken = null,
+        Func<CircleAI.Core.Models.IModelCatalog?>? catalogue = null)
     {
         _microphone = microphone;
         _memory = memory;
         _spoken = spoken;
+        _catalogue = catalogue;
     }
+
+    /// <summary>This device's verdicts about its models, read when needed.</summary>
+    /// <remarks>
+    /// A FUNC AND NOT THE OBJECT, because the host builds this before it builds the
+    /// catalogue and an ordering dependency between two lines of OnCreate is a bug
+    /// waiting for somebody to reorder them. The same shape as
+    /// <c>new LiveSkillStore(() =&gt; CircleNeuronLinkService.Skills)</c> two dozen
+    /// lines above it.
+    /// </remarks>
+    private readonly Func<CircleAI.Core.Models.IModelCatalog?>? _catalogue;
+
+    /// <summary>
+    /// Everything that means "do not offer this": the owner turned it off, this
+    /// phone was killed by it, or this phone cannot run it.
+    /// </summary>
+    private Func<string, bool> NotOffered()
+        => CircleAI.Inference.ModelOffer.NotWorthOffering(
+               _catalogue?.Invoke(), DeclinedModels.Is);
 
     /// <summary>Run something on the UI thread and wait for it.</summary>
     /// <remarks>
@@ -188,8 +208,12 @@ public sealed class DeviceSetup : ISetup
             // been on Plan the whole time and only the native sample passed it,
             // so on this head - the one that ships - removing an ability and
             // reopening the app quietly downloaded it again.
+            // AND WHAT THIS PHONE CANNOT RUN, which is the other half of the same
+            // question. A Circle OS device was offered a 22.8 GB model at an honest
+            // size, accepted it, and the load aborted the process and took a dozen
+            // system apps with it. The offer was the defect.
             return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                 declined: DeclinedModels.Is, language: Language)
+                                 declined: NotOffered(), language: Language)
                 .Select(s => new SetupItem(s.Title, s.Model.TotalBytes))
                 .ToList();
         }, ct);
@@ -233,7 +257,7 @@ public sealed class DeviceSetup : ISetup
                 // actually spends somebody's data, so a forgotten refusal here
                 // costs them megabytes rather than only a wrong list.
                 var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                          declined: DeclinedModels.Is, language: Language);
+                                          declined: NotOffered(), language: Language);
 
                 // PREVENTION FOR THE ESSENTIALS TOO. First run is the largest
                 // download Circle AI ever asks for; refusing upfront with the

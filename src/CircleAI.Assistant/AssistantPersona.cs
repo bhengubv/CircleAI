@@ -184,15 +184,45 @@ public static class AssistantPersona
     /// NO MODEL ID IN ANY BRANCH. A person asking which brain it is using is not
     /// asking for a quantisation suffix.
     /// </remarks>
-    public static string WhichBrain(bool ready, bool running, bool gaveUpOnSomething)
-        => !running           ? NothingItCanRun
-         : !ready             ? NotUpYet
-         : gaveUpOnSomething  ? OnTheSmallerBrain
-         :                      RunningWell;
+    /// <param name="deadWeightSize">
+    /// How much room a model it cannot run is taking, already formatted, or null.
+    /// </param>
+    public static string WhichBrain(
+        bool ready, bool running, bool gaveUpOnSomething, string? deadWeightSize = null)
+    {
+        var state = !running          ? NothingItCanRun
+                  : !ready            ? NotUpYet
+                  : gaveUpOnSomething ? OnTheSmallerBrain
+                  :                     RunningWell;
+
+        // AND THE OFFER RIDES ALONG WITH IT, because this is the moment somebody is
+        // already asking about the brain and there is no unprompted channel to the
+        // speaker - the binder is request/response and CircleNeuronLinkService says
+        // so outright. Twenty-two gigabytes of unusable model existed only in a
+        // dumpsys reading before this; a person asking what it is running is the
+        // natural moment to be told what is sitting there for nothing.
+        return string.IsNullOrWhiteSpace(deadWeightSize)
+            ? state
+            : state + " " + DeadWeight(deadWeightSize!);
+    }
 
     /// <summary>The answer to "try the big one again".</summary>
     public static string TryAgain(bool somethingWasRefused)
         => somethingWasRefused ? WillTryAgain : NothingToTryAgain;
+
+    /// <summary>What it says when there is nothing taking up room for nothing.</summary>
+    public const string NothingToClear = "There is nothing here I cannot use.";
+
+    /// <summary>What it says after clearing the space.</summary>
+    public static string Cleared(string size)
+        => $"Done. That is {size} back.";
+
+    /// <summary>The answer to "clear it".</summary>
+    /// <param name="freedSize">
+    /// How much came back, already formatted, or null when there was nothing to do.
+    /// </param>
+    public static string ClearIt(string? freedSize)
+        => string.IsNullOrWhiteSpace(freedSize) ? NothingToClear : Cleared(freedSize!);
 
     // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
     // assistant told it was "IT!", on a product called Circle AI.
