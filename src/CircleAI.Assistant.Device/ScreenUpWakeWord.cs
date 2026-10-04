@@ -1,4 +1,4 @@
-﻿// ScreenUpWakeWord.cs
+// ScreenUpWakeWord.cs
 //
 // The wake word, running in this process, for the phones that will not let a
 // service hold the microphone.
@@ -53,6 +53,17 @@ namespace CircleAI.Assistant.Device;
 public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
 {
     private const string Tag = "CircleAI.ScreenWake";
+
+    /// <summary>
+    /// A log line with dots for decimal points, whatever the phone's locale is.
+    /// </summary>
+    /// <remarks>
+    /// Interpolation uses the current culture, so this read "peak 0,015" on a device
+    /// set to af-ZA - fine to a person, and a nuisance the moment a log is pasted
+    /// into anything that parses numbers.
+    /// </remarks>
+    private static string Invariant(FormattableString s)
+        => s.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private readonly string _bundleDir;
     private readonly string? _keywordsFile;
@@ -192,6 +203,13 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
             var peak = 0f;
             var sum = 0.0;
 
+            // HOW OFTEN THIS SAYS SO. The decision lives in CircleAI.Assistant
+            // because this library is net10.0-android and no test project can
+            // reference one of those - the exact wall OPEN-GAPS records for
+            // ModelChoice, where "the one rule that decides what a person is
+            // offered was the one rule nothing asserted".
+            var watch = new CircleAI.Assistant.MicWatch();
+
             await foreach (var chunk in mic.CaptureAsync(ct).ConfigureAwait(false))
             {
                 // PCM16 little-endian to float in [-1, 1]. NOT scaled to the
@@ -216,13 +234,40 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
 
                 kws.AcceptWaveform(pcm.AsSpan(0, samples));
 
-                // Roughly every 5 s at 16 kHz. Cheap, and it is the only evidence
-                // that the microphone is actually delivering sound.
-                if (since >= 80_000)
+                // SILENCE IS THE NEWS, NOT THE HEARTBEAT. A dead microphone
+                // delivers zeros; a quiet room delivers a peak around 0.015 with a
+                // mean near 0.0018, measured on a P30 on 2026-10-04 - two orders of
+                // magnitude apart, so the two cases the remark above cares about are
+                // distinguishable from the signal itself and do not need a line
+                // every five seconds to tell them apart.
+                var mean = since > 0 ? sum / since : 0.0;
+                switch (watch.Observe(samples, peak))
                 {
-                    Log.Info(Tag, $"mic alive: {chunks} chunks, peak {peak:F3}, mean {sum / since:F4}");
-                    since = 0; peak = 0f; sum = 0;
+                    case CircleAI.Assistant.MicSay.Nothing:
+                        continue;
+
+                    case CircleAI.Assistant.MicSay.WentSilent:
+                        Log.Warn(Tag, Invariant(
+                            $"mic SILENT: {chunks} chunks and no signal at all - peak {peak:F3}"));
+                        break;
+
+                    case CircleAI.Assistant.MicSay.StillSilent:
+                        Log.Warn(Tag, Invariant(
+                            $"mic STILL silent: {chunks} chunks, nothing arriving"));
+                        break;
+
+                    case CircleAI.Assistant.MicSay.CameBack:
+                        Log.Info(Tag, Invariant(
+                            $"mic back: {chunks} chunks, peak {peak:F3}, mean {mean:F4}"));
+                        break;
+
+                    default:
+                        Log.Info(Tag, Invariant(
+                            $"mic alive: {chunks} chunks, peak {peak:F3}, mean {mean:F4}"));
+                        break;
                 }
+
+                since = 0; peak = 0f; sum = 0;
             }
         }
         catch (OperationCanceledException)
