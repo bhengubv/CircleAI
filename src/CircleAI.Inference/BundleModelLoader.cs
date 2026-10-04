@@ -282,11 +282,18 @@ public sealed class BundleModelLoader : IModelLoader
                 // phone gets a native crash instead of an answer.
                 if (!ModelPresent(name)) continue;
 
-                // AND IT HAS TO FIT, WHICH THIS DID NOT ASK AND IT TOOK THE PHONE
-                // DOWN WITH IT. Ranking by QualityRank alone makes this fallback
-                // OVERRULE the selector it is standing in for: the selector applies
-                // the fit gate, this did not, so the heaviest thing on disk won
-                // whatever the device could hold.
+                // AND IT HAS TO BE SOMETHING THIS PHONE COULD EVER HOLD, which this
+                // did not ask and it took the phone down with it. Ranking by
+                // QualityRank alone made this fallback OVERRULE the selector it
+                // stands in for, so the heaviest thing on disk won whatever the
+                // device could hold.
+                //
+                // CouldEverHold AND NOT Fits, and that distinction cost a regression.
+                // Fits reads FREE RAM, so with 1.8 GB spare on a 7.6 GB phone it
+                // refused a complete 1.4 GB model too and the service reported "no
+                // model on this device yet" with the model sitting on disk. This
+                // fallback answers a durable question - of what is HERE, what could
+                // this phone ever run - and free RAM is not a durable input.
                 //
                 // Measured on a Circle OS device (Tensor G2, 7.6 GB) on 2026-10-04,
                 // the moment a 22.8 GB Qwen3.6-35B-A3B finished downloading:
@@ -300,7 +307,7 @@ public sealed class BundleModelLoader : IModelLoader
                 // It did not just fail to answer. It aborted and took a dozen system
                 // apps with it, because the fit gate the selector had already applied
                 // was discarded here. The selector was RIGHT and this overrode it.
-                if (probe is not null && !ModelChoice.Fits(entry, probe)) continue;
+                if (probe is not null && !ModelFit.CouldEverHold(entry, probe)) continue;
 
                 // AND NOT ONE THIS PHONE HAS ALREADY BEEN KILLED BY. The fit gate
                 // above is a prediction from declared metadata; this is the result of

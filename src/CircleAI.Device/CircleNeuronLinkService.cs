@@ -147,6 +147,50 @@ public sealed class CircleNeuronLinkService : Service
     private static void OnWoke(object? sender, string phrase)
         => System.Threading.Interlocked.Increment(ref _heard);
 
+    /// <summary>Has this device given up on a model after it stopped the phone?</summary>
+    /// <remarks>Never throws: a device with no catalogue has refused nothing.</remarks>
+    private static bool AnythingRefused()
+    {
+        try
+        {
+            var cat = CircleNeuronService.Catalogue;
+            if (cat is null) return false;
+            foreach (var a in cat.AllAssessed()) if (a.Refused) return true;
+            return false;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Withdraw every refusal, and report how many there were.</summary>
+    /// <remarks>
+    /// EVERY ONE, BECAUSE A PERSON SAID "THE BIG ONE" AND NOT AN ID. Asking which of
+    /// two refused models they meant is the kind of question that makes somebody stop
+    /// talking to a thing. In practice a phone refuses one model - the one too big for
+    /// it - and lifting all of them is what the words mean.
+    ///
+    /// It only clears the verdict. The next start tries the model again and, if it
+    /// aborts again, CrashVerdict writes the refusal straight back - so the worst case
+    /// is one more crash, which is exactly what the person asked for.
+    /// </remarks>
+    private static int PardonEverythingRefused()
+    {
+        try
+        {
+            var cat = CircleNeuronService.Catalogue;
+            if (cat is null) return 0;
+
+            var n = 0;
+            foreach (var a in cat.AllAssessed())
+            {
+                if (!a.Refused) continue;
+                cat.Pardon(a.Entry.Name);
+                n++;
+            }
+            return n;
+        }
+        catch { return 0; }
+    }
+
     /// <summary>What this device can do and what Circle AI holds on it.</summary>
     /// <remarks>
     /// The client's own answer was "Nothing for this yet" - truthful, since it holds
@@ -296,6 +340,45 @@ public sealed class CircleNeuronLinkService : Service
         {
             Log.Info(Tag, "serve: a greeting, answered without the brain");
             return LinkTurnReply.Success(CircleAI.Assistant.AssistantPersona.Greeting);
+        }
+
+        // AND THE THINGS A PERSON SAYS ABOUT THE ASSISTANT ITSELF, which have to be
+        // answered HERE for the same reason the greeting is - except more so.
+        //
+        // Every one of these is about the state of the model, and the state worth
+        // asking about is "it did not come up". Below this point the method returns
+        // "brain warming up, try again shortly" when the node is not ready - so a
+        // person asking "are you ready?" of a phone whose brain has died would be
+        // told to try again shortly, forever, and a person saying "try the big one
+        // again" could never reach the refusal they were trying to lift. The one
+        // moment these matter is the moment there is nothing to answer with.
+        //
+        // THE REFUSAL HAD NO WAY BACK BEFORE THIS. CrashVerdict writes one when a
+        // load aborts the process; IModelCatalog.Pardon withdraws it; nothing
+        // reached Pardon, so a device that refused something wrongly refused it
+        // forever and the only recovery was deleting a database over adb.
+        switch (CircleAI.Assistant.SelfRequest.Of(turn.Message))
+        {
+            case CircleAI.Assistant.SelfAsk.WhichBrain:
+            {
+                var said = CircleAI.Assistant.AssistantPersona.WhichBrain(
+                    ready:            CircleNeuronService.Node?.IsReady == true,
+                    running:          !string.IsNullOrWhiteSpace(CircleNeuronService.RunningModel),
+                    gaveUpOnSomething: AnythingRefused());
+
+                Log.Info(Tag, "serve: asked about itself, answered without the brain");
+                return LinkTurnReply.Success(said);
+            }
+
+            case CircleAI.Assistant.SelfAsk.TryAgain:
+            {
+                // ANNOUNCED, NOT CONFIRMED - the spoken instruction IS the
+                // authorisation. It does it and says what it did.
+                var pardoned = PardonEverythingRefused();
+                Log.Info(Tag, "serve: asked to try again; pardoned " + pardoned + " model(s)");
+                return LinkTurnReply.Success(
+                    CircleAI.Assistant.AssistantPersona.TryAgain(pardoned > 0));
+            }
         }
 
 

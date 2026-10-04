@@ -113,6 +113,87 @@ public static class AssistantPersona
     /// </remarks>
     public const string NothingHeard = "I did not catch that.";
 
+    // ── What it says about itself ────────────────────────────────────────────
+    //
+    // VOICE IS THE PRIMARY SURFACE, so these are heard and not read. That rules out
+    // model ids, gigabyte figures and decimals - aether-surface-dishes-not-test-tubes
+    // says ship the dish, and nobody wants "Qwen3.6-35B-A3B-MNN requires 30.3
+    // gigabytes" spoken at them. A person has a big brain and a small one.
+    //
+    // AND THEY ARE SAID WITH THE MODEL DOWN, which is the point of them existing at
+    // all: the state worth asking about is "it did not come up", and a sentence that
+    // needs the model to produce it is a sentence nobody hears when it matters.
+
+    /// <summary>What it says when it is running the model it meant to.</summary>
+    public const string RunningWell = "I am ready.";
+
+    /// <summary>What it says when it is up, but not on the model somebody expected.</summary>
+    /// <remarks>
+    /// THE HONEST VERSION OF A SILENT DOWNGRADE. A Circle OS device ran a 2 B for
+    /// three days while the 22.8 GB model its owner had chosen sat half-downloaded,
+    /// and said nothing at all. Being on the smaller one is fine; not saying so is
+    /// not.
+    /// </remarks>
+    public const string OnTheSmallerBrain =
+        "I am using the smaller brain. The big one stopped this phone, so I left it alone.";
+
+    /// <summary>What it says when the brain has not come up at all.</summary>
+    public const string NotUpYet = "My brain is still coming up. Give me a moment.";
+
+    /// <summary>What it says when nothing it can run is on the phone.</summary>
+    public const string NothingItCanRun =
+        "There is no brain on this phone I can run yet.";
+
+    /// <summary>What it says after being told to use a model it had refused.</summary>
+    /// <remarks>
+    /// ANNOUNCED, NOT CONFIRMED. announce-dont-confirm-the-instruction-is-the-auth:
+    /// somebody who says "try the big one again" has already decided, and asking
+    /// them whether they are sure is asking the same question twice. It says what it
+    /// did and what the risk is, in one breath, and does it.
+    /// </remarks>
+    public const string WillTryAgain =
+        "Alright, I will try the big brain again next time I start. "
+        + "If it stops the phone again I will go back to the smaller one.";
+
+    /// <summary>What it says when told to try again and there is nothing refused.</summary>
+    public const string NothingToTryAgain = "There is nothing I have given up on.";
+
+    /// <summary>What it says about a model that is here and cannot be run.</summary>
+    /// <remarks>
+    /// THE OFFER, NOT THE DELETION. feedback_never_delete_without_asking, and 22 GB
+    /// is a lot of somebody's data to reclaim on a hunch. It states the fact and
+    /// waits.
+    /// </remarks>
+    public static string DeadWeight(string size)
+        => $"There is a brain here this phone cannot run, taking up {size}. "
+         + "Say the word and I will clear it.";
+
+    /// <summary>The answer to "which brain are you using?".</summary>
+    /// <param name="ready">Whether the brain is up and answering.</param>
+    /// <param name="running">Whether anything was chosen to run at all.</param>
+    /// <param name="gaveUpOnSomething">
+    /// Whether this device has refused a model after it stopped the phone.
+    /// </param>
+    /// <remarks>
+    /// PRIMITIVES, NOT A CATALOGUE, because this project has zero project references
+    /// on purpose - a WebAssembly client loads it, so it holds data, interfaces and
+    /// pure decisions and nothing that touches a file. The caller reads the facts and
+    /// passes them in; the wording lives here with the rest of the persona, per
+    /// persona-must-live-where-the-answer-is-built.
+    ///
+    /// NO MODEL ID IN ANY BRANCH. A person asking which brain it is using is not
+    /// asking for a quantisation suffix.
+    /// </remarks>
+    public static string WhichBrain(bool ready, bool running, bool gaveUpOnSomething)
+        => !running           ? NothingItCanRun
+         : !ready             ? NotUpYet
+         : gaveUpOnSomething  ? OnTheSmallerBrain
+         :                      RunningWell;
+
+    /// <summary>The answer to "try the big one again".</summary>
+    public static string TryAgain(bool somethingWasRefused)
+        => somethingWasRefused ? WillTryAgain : NothingToTryAgain;
+
     // THE OLD NAME WAS IN THE MODEL'S OWN IDENTITY. Every reply came from an
     // assistant told it was "IT!", on a product called Circle AI.
     //

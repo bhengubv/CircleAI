@@ -94,8 +94,61 @@ public sealed class ModelChoiceTests : IDisposable
         Assert.NotNull(pick);
         var entry = registry.GetLatestModel(pick!);
         Assert.NotNull(entry);
-        Assert.True(ModelChoice.Fits(entry!, probe),
-            $"{pick} wants {entry!.MinRamGb} GB and was handed to a 1.4 GB handset");
+        Assert.True(ModelFit.CouldEverHold(entry!, probe),
+            $"{pick} needs more than this handset's whole memory and was handed to it");
+    }
+
+    [Fact]
+    public void A_busy_moment_does_not_make_the_phone_forget_the_model_it_has()
+    {
+        // THE REGRESSION THE FIRST VERSION OF THAT GATE CAUSED, pinned so it cannot
+        // come back. ModelChoice.Fits reads FREE RAM, so on a Circle OS device at
+        // versionCode 53 with 1.8 GB spare of 7.6 GB it refused a COMPLETE 1.4 GB
+        // Qwen3.5-2B and the service reported "no model on this device yet" with the
+        // model sitting on disk. The phone had not changed; the moment had.
+        //
+        // The fallback answers a durable question - of what is HERE, what could this
+        // phone ever run - so it must survive a moment when memory is tight.
+        var registry = new ModelRegistryService();
+        var twoB = registry.AllModels.Single(m => m.Name == "Qwen3.5-2B-MNN");
+
+        var busy = new DeviceProbe(
+            RamAvailableBytes: 1_841_836_032,          // 1.8 GB spare, as measured
+            StorageFreeBytes:  99L * 1_000_000_000,
+            Gpu:               GpuKind.None,
+            CpuCores:          8,
+            Thermal:           ThermalClass.Passive,
+            Connectivity:      Connectivity.Online)
+        { RamTotalBytes = 7_824_695_296 };             // 7.6 GB total, as measured
+
+        Assert.False(ModelChoice.Fits(twoB, busy),
+            "the volatile gate is supposed to refuse it at this moment");
+        Assert.True(ModelFit.CouldEverHold(twoB, busy),
+            "the durable gate must still admit a model the phone can obviously hold");
+
+        // And the model that actually aborted stays out, at the same moment.
+        var moe = registry.AllModels.Single(m => m.Name == "Qwen3.6-35B-A3B-MNN");
+        Assert.False(ModelFit.CouldEverHold(moe, busy),
+            "22.8 GB of weights on a 7.6 GB phone must never be a candidate");
+    }
+
+    [Fact]
+    public void A_device_that_cannot_measure_its_memory_is_not_refused_everything()
+    {
+        // Zero means unmeasured, and refusing every model on that basis is how the
+        // smallest phones get told they can do nothing at all.
+        var registry = new ModelRegistryService();
+        var twoB = registry.AllModels.Single(m => m.Name == "Qwen3.5-2B-MNN");
+
+        var blind = new DeviceProbe(
+            RamAvailableBytes: 0,
+            StorageFreeBytes:  32L * 1_000_000_000,
+            Gpu:               GpuKind.None,
+            CpuCores:          4,
+            Thermal:           ThermalClass.Passive,
+            Connectivity:      Connectivity.Online);
+
+        Assert.True(ModelFit.CouldEverHold(twoB, blind));
     }
 
     [Fact]

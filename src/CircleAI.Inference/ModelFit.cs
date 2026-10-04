@@ -1,4 +1,4 @@
-﻿// ModelFit.cs
+// ModelFit.cs
 //
 // ONE ANSWER TO "DOES THIS MODEL FIT THIS DEVICE".
 //
@@ -154,6 +154,51 @@ public static class ModelFit
     public static bool Fits(ModelEntry e, double usableRamGb, double storageFreeGb,
                             bool? mmapAllowed = null)
         => FitsRam(e, usableRamGb, mmapAllowed) && FitsStorage(e, storageFreeGb);
+
+    /// <summary>
+    /// Could this device EVER hold this model, whatever happens to be free now?
+    /// </summary>
+    /// <remarks>
+    /// A DURABLE QUESTION NEEDS A DURABLE INPUT, AND Fits DOES NOT HAVE ONE.
+    /// <see cref="DeviceProbe.UsableRamGb"/> is derived from FREE RAM, which is
+    /// whatever is spare this second - correct for "can I load it right now", wrong
+    /// for "is this model a candidate on this phone at all". DeviceProbe's own remark
+    /// already draws that distinction for storage: free space answers whether a
+    /// download can land now, and TOTAL answers how much of the device may ever be
+    /// claimed, "and only the second is stable". Nobody had applied it to RAM.
+    /// <para>
+    /// MEASURED, AS A REGRESSION I CAUSED. Putting Fits on the installed-model
+    /// fallback stopped a 22.8 GB MoE being loaded on a 7.6 GB phone - and then, on
+    /// that same phone at versionCode 53 with 1.8 GB free, it refused the complete
+    /// 1.4 GB Qwen3.5-2B as well and reported "no model on this device yet" while the
+    /// 2B sat on disk. 1 798 668 kB available x 0.85 = 1.565 GB usable against the
+    /// 2B's declared 1.9. The phone had not changed; the moment had.
+    /// </para>
+    /// <para>
+    /// So the fallback asks THIS instead. It is deliberately crude and therefore
+    /// non-volatile: weights larger than the whole device's memory can never run
+    /// here, and no amount of waiting changes that. It refuses the 35 B (22.8 GB of
+    /// weights, 30.3 GB declared, against 7.64 GB of RAM) and admits the 2 B. The
+    /// finer judgement stays with the selector, and when the finer judgement is
+    /// wrong, <see cref="CrashVerdict"/> is what catches it now - a durable gate for
+    /// the absurd case, a remembered crash for the marginal one.
+    /// </para>
+    /// </remarks>
+    public static bool CouldEverHold(ModelEntry e, DeviceProbe probe)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(probe);
+
+        // RamTotalBytes is supplied by a platform head and falls back to the
+        // available figure on desktop, where the two are close. Zero means the
+        // device could not be measured, and refusing everything on that basis is
+        // how the smallest phones get told they can do nothing.
+        var totalBytes = probe.RamTotalBytes > 0 ? probe.RamTotalBytes : probe.RamAvailableBytes;
+        if (totalBytes <= 0) return true;
+
+        var totalGb = totalBytes / DeviceProbe.BytesPerGb;
+        return EagerGb(e) <= totalGb + Eps;
+    }
 
     /// <summary>Whether it fits, given a probe.</summary>
     public static bool Fits(ModelEntry e, DeviceProbe probe, bool? mmapAllowed = null)

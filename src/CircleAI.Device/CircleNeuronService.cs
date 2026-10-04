@@ -90,6 +90,15 @@ public sealed partial class CircleNeuronService : Service
     /// </summary>
     public static CircleAI.Core.Models.IModelCatalog? Catalogue { get; set; }
 
+    /// <summary>The model this service actually chose, or null before it has.</summary>
+    /// <remarks>
+    /// IT EXISTED IN ONE LOG LINE AND NOWHERE ELSE. "model: Qwen3.5-2B-MNN" went to
+    /// logcat and the decision was then unavailable to anything that might have to
+    /// say it out loud - so a person asking which brain it was using could only be
+    /// answered by a developer with a cable. Set where the choice is pinned.
+    /// </remarks>
+    public static string? RunningModel { get; private set; }
+
     /// <summary>Where the crash breadcrumb is written. Set by the host.</summary>
     /// <remarks>
     /// NOT the model store: InstalledIds enumerates that directory and would read a
@@ -620,6 +629,7 @@ public sealed partial class CircleNeuronService : Service
                 // complete 2B. Everything above this line decides; this makes the
                 // decision stick.
                 options.ModelId = wanted;
+                RunningModel    = wanted;
                 node = new NeuronNode(new AIService(
                     options,
                     modelLoader:          loader,
@@ -704,6 +714,7 @@ public sealed partial class CircleNeuronService : Service
         {
             (Node?.Brain as IDisposable)?.Dispose();
             Node = null;
+            RunningModel = null;
         }
 
         // Hand the callback back. A ComponentCallbacks2 left registered against a
