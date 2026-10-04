@@ -84,6 +84,19 @@ public sealed partial class CircleNeuronService : Service
     /// </remarks>
     public static Func<AIOptions>? OptionsFactory { get; set; }
 
+    /// <summary>
+    /// What this device has learned about its own models. Set by the host; null
+    /// means it has learned nothing and refuses nothing.
+    /// </summary>
+    public static CircleAI.Core.Models.IModelCatalog? Catalogue { get; set; }
+
+    /// <summary>Where the crash breadcrumb is written. Set by the host.</summary>
+    /// <remarks>
+    /// NOT the model store: InstalledIds enumerates that directory and would read a
+    /// state folder as a model called ".state".
+    /// </remarks>
+    public static string? StateDirectory { get; set; }
+
     /// <summary>The live node, or null before the service has finished starting.</summary>
     public static NeuronNode? Node { get; private set; }
 
@@ -422,6 +435,27 @@ public sealed partial class CircleNeuronService : Service
             // only branch that logged was "no brain was asked for".
             Status = "loading the model…";
             State  = ServiceState.Loading;
+
+            // DECLARED OUT HERE so the breadcrumb below can name it. It is resolved
+            // inside the lock that builds the node, and that block has closed before
+            // the load it has to describe.
+            string? wanted = null;
+
+            // DID THE LAST ONE OF THESE KILL THE PHONE? A breadcrumb that survived
+            // is proof the process died inside the load, and it names the model. A
+            // native abort runs no managed handler, so this is the ONLY place that
+            // failure can be noticed - the catch at the bottom of this method never
+            // fired for it, Status was never written, and nothing was logged.
+            if (StateDirectory is { } crumbDir)
+            {
+                var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(crumbDir);
+                CircleAI.Inference.CrashVerdict.Record(
+                    Catalogue, crumb, line => global::Android.Util.Log.Warn(LogTag, line));
+
+                // Cleared either way: a breadcrumb read twice would refuse a second
+                // model on the strength of the first one's death.
+                CircleAI.Assistant.DeviceDiagnostics.EndRisky(crumbDir);
+            }
             global::Android.Util.Log.Info(LogTag, Status);
             Notify(Status);
 
@@ -480,7 +514,7 @@ public sealed partial class CircleNeuronService : Service
                 // So: if the chosen model is not on disk, say so and stop. The client
                 // reads that as "not set up", which is exactly what it is, and offers
                 // the download through the path built for it.
-                var wanted = options.ModelId;
+                wanted = options.ModelId;
                 if (string.IsNullOrWhiteSpace(wanted))
                 {
                     var best = selector.BestFit(DeviceProbe.Snapshot(), options.RequiredCapabilities);
@@ -506,7 +540,9 @@ public sealed partial class CircleNeuronService : Service
                     // model on disk regardless of fit: on 2026-10-04 that was a
                     // 22.8 GB MoE on a 7.6 GB phone, and loading it aborted the
                     // process and set lowmemorykiller on a dozen system apps.
-                    var here = loader.BestInstalledChatModel(DeviceProbe.Snapshot());
+                    var here = loader.BestInstalledChatModel(
+                        DeviceProbe.Snapshot(),
+                        refused: id => CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, id));
                     if (!string.IsNullOrWhiteSpace(here))
                     {
                         global::Android.Util.Log.Info(LogTag,
@@ -539,6 +575,33 @@ public sealed partial class CircleNeuronService : Service
                     return;
                 }
 
+                // AND NOT THE ONE THAT KILLED THE PHONE, whichever route chose it.
+                // The filter above only guards the installed-fallback; the selector's
+                // own pick and an explicitly configured ModelId both arrive here
+                // ungated, and on the device that found this the selector was not the
+                // route that chose the fatal model anyway. One check, after every
+                // route, is the only version of this that cannot be walked around.
+                if (CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, wanted))
+                {
+                    var instead = loader.BestInstalledChatModel(
+                        DeviceProbe.Snapshot(),
+                        refused: id => CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, id));
+
+                    global::Android.Util.Log.Warn(LogTag,
+                        wanted + " is refused on this phone ("
+                        + CircleAI.Inference.CrashVerdict.Reason + "); "
+                        + (instead is null ? "nothing else is here" : "using " + instead));
+
+                    if (string.IsNullOrWhiteSpace(instead))
+                    {
+                        Status = "the brain this phone can run is not here yet";
+                        State  = ServiceState.Idle;
+                        Notify(Status);
+                        return;
+                    }
+                    wanted = instead;
+                }
+
                 // AND SAY WHICH ONE, WHICH NOTHING EVER DID. The shade and the log
                 // both read "loading the model…" on a phone holding seven of them,
                 // chosen by a fit rule nobody can see the output of - so when an
@@ -569,7 +632,24 @@ public sealed partial class CircleNeuronService : Service
 
             // Warm it here, not on the first question. The whole reason this is a
             // service is so nobody waits 13-23 s mid-sentence.
-            await node.Brain.StartAsync().ConfigureAwait(false);
+            // THE MARK THAT OUTLIVES AN ABORT. Written and flushed to disk before the
+            // call, deleted after it returns - so a file still here on the next start
+            // is proof the process died in there, and it names which model was being
+            // loaded. The managed catch at the bottom of this method cannot see a
+            // SIGABRT; nothing can, from inside the process. This is read at the top
+            // of this method.
+            var risky = StateDirectory;
+            if (risky is not null)
+                CircleAI.Assistant.DeviceDiagnostics.BeginRisky(
+                    risky, CircleAI.Inference.CrashVerdict.Breadcrumb(wanted ?? "the model"));
+            try
+            {
+                await node.Brain.StartAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                if (risky is not null) CircleAI.Assistant.DeviceDiagnostics.EndRisky(risky);
+            }
 
             Status = node.IsReady ? "ready" : node.StatusMessage;
             State  = node.IsReady ? ServiceState.Ready : ServiceState.Failed;

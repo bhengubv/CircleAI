@@ -23,6 +23,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
+// WHY IT LIVES IN CircleAI.Assistant AND NOT CircleAI.Assistant.Runtime.
+//
+// The service process is what loads models now, and CircleAI.Device - where that
+// load happens - could not see this class. The two ways to fix that were to
+// reference Assistant.Runtime from Device, which drags Voice, Search, Translation
+// and Documents in for one file of System.IO (and, per
+// android-natives-ride-in-through-library-aars, their natives with them), or to put
+// the file where it already belonged. Its namespace was ALREADY CircleAI.Assistant
+// and it uses nothing but the BCL, so moving it changed no namespace and no caller.
+// CircleAI.Assistant keeps its zero project references.
+
 namespace CircleAI.Assistant;
 
 /// <summary>On-device failure reporting for a machine with no debugger attached.</summary>

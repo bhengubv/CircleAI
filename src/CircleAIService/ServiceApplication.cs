@@ -438,6 +438,73 @@ public sealed class ServiceApplication : Application
             // thread cannot return from a read, and cannot run the stall-guard timer
             // meant to notice either. ModelFetchService exists to hold the process
             // up for the duration; it shows nothing when nothing is owed.
+            // THE VERDICT STORE IS OPENED HERE AND ASSESSED LATER, and the split is
+            // the point.
+            //
+            // AddModelCatalogue exists, wires SqliteModelCatalog + DeviceModelAssessor
+            // + CatalogueFeedWriter, is tested by ModelCatalogueWiringTests - and had
+            // ZERO CALLERS. The live path built `new DeviceAwareModelSelector(registry)`
+            // and ranked the shipped JSON instead, which is this repo's signature
+            // defect (OPEN-GAPS A'4, A7, E12, E13) sitting in the place it costs a
+            // person their phone. There is no DI container in this process, so the
+            // catalogue is built directly and handed over as a static, the same way
+            // OptionsFactory, Facts, Listener and StorageDirectory already are.
+            //
+            // MEASURED ON A P30 AT versionCode 51, WHICH IS WHY THIS IS TWO STEPS.
+            // The whole thing ran in the background task below, and the log came back
+            // in this order:
+            //
+            //   15:46:19.464  model: Qwen3.5-0.8B-MNN       <- chosen
+            //   15:46:23.937  catalogue: 90 assessed        <- four seconds later
+            //
+            // The model was picked before the catalogue existed, so on the launch
+            // after a crash the refusal would not have been there to read. Opening the
+            // database is a file handle and a CREATE TABLE IF NOT EXISTS - microseconds
+            // - and that alone is enough to answer "is this model refused". Seeding
+            // ninety rows and assessing them against the device is the slow half and
+            // nothing waits on it.
+            try
+            {
+                var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI");
+                System.IO.Directory.CreateDirectory(circleDir);
+
+                var catalogue = new CircleAI.Inference.SqliteModelCatalog(
+                    "Data Source=" + System.IO.Path.Combine(circleDir, "catalogue.db"));
+
+                var stateDir = System.IO.Path.Combine(circleDir, "state");
+                System.IO.Directory.CreateDirectory(stateDir);
+
+                // Visible to the brain BEFORE it picks anything.
+                CircleAI.Device.CircleNeuronService.Catalogue = catalogue;
+                CircleAI.Device.CircleNeuronService.StateDirectory = stateDir;
+
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        var result = CircleAI.Inference.CatalogueBootstrap.Run(
+                            catalogue,
+                            CircleAI.Inference.DeviceModelAssessor.ForThisBuild(catalogue),
+                            CircleAI.Core.DeviceProbe.Snapshot(),
+                            modelsDirectory: ModelStore.Path);
+
+                        global::Android.Util.Log.Info("CircleAI.Setup",
+                            $"catalogue: {result.Assessed} assessed, {result.Compatible} run on this device");
+                    }
+                    catch (Exception ex)
+                    {
+                        global::Android.Util.Log.Warn("CircleAI.Setup",
+                            "catalogue could not be assessed: " + ex.Message);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                // A device with no catalogue refuses nothing and selects as it always
+                // did. Worse than having one; far better than no brain at all.
+                global::Android.Util.Log.Warn("CircleAI.Setup", "catalogue unavailable: " + ex.Message);
+            }
+
             try
             {
                 CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;

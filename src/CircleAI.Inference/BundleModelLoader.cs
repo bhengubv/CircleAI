@@ -256,7 +256,10 @@ public sealed class BundleModelLoader : IModelLoader
     /// The device, so this cannot hand back something that does not fit. Omitting it
     /// keeps the old behaviour and is only correct when the caller has no probe.
     /// </param>
-    public string? BestInstalledChatModel(DeviceProbe? probe = null)
+    /// <param name="refused">
+    /// Models this device has already refused from evidence. Null refuses nothing.
+    /// </param>
+    public string? BestInstalledChatModel(DeviceProbe? probe = null, Func<string, bool>? refused = null)
     {
         try
         {
@@ -298,6 +301,15 @@ public sealed class BundleModelLoader : IModelLoader
                 // apps with it, because the fit gate the selector had already applied
                 // was discarded here. The selector was RIGHT and this overrode it.
                 if (probe is not null && !ModelChoice.Fits(entry, probe)) continue;
+
+                // AND NOT ONE THIS PHONE HAS ALREADY BEEN KILLED BY. The fit gate
+                // above is a prediction from declared metadata; this is the result of
+                // an attempt. On the device that found it, the prediction said yes to
+                // a 22.8 GB MoE on 7.6 GB because the metadata claimed 2.5 GB, and
+                // the attempt aborted the process and took a dozen system apps down.
+                // A guard that only ever recomputes the prediction picks it again
+                // every launch, forever.
+                if (refused is not null && refused(name)) continue;
 
                 if (entry.QualityRank <= bestRank) continue;
                 bestRank = entry.QualityRank;
