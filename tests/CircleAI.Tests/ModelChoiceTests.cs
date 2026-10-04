@@ -54,6 +54,86 @@ public sealed class ModelChoiceTests : IDisposable
     // ── Fits ─────────────────────────────────────────────────────────────────
 
     [Fact]
+    public void The_installed_fallback_never_overrules_the_fit_gate()
+    {
+        // IT TOOK THE PHONE DOWN. BestInstalledChatModel stands in for the selector
+        // when the selector's pick is not downloaded, and it ranked by QualityRank
+        // alone - so it handed back the heaviest model on disk whatever the device
+        // could hold, discarding the fit gate the selector had already applied.
+        //
+        // Measured on a Circle OS device (Tensor G2, 7.6 GB) on 2026-10-04, the
+        // moment a 22.8 GB Qwen3.6-35B-A3B finished downloading:
+        //
+        //   the selector wanted Qwen3-1.7B-MNN, which is not on this phone;
+        //   using Qwen3.6-35B-A3B-MNN, which is
+        //   -> Process com.bhengubv.circleai.service has died: signal 6 (Aborted)
+        //   -> lowmemorykiller: Kill 'com.android.contacts' ... 'camera2'
+        //      ... 'calendar' ... 'za.co.circleos.settings' (ten more)
+        //
+        // The selector was RIGHT and this overrode it.
+        var registry = new ModelRegistryService();
+        var probe = Device(1.4);
+
+        // Every chat model in the catalogue, "downloaded".
+        var chat = registry.AllModels.Where(m => m.Modality == ModelModality.Chat).ToList();
+        Assert.NotEmpty(chat);
+        foreach (var m in chat)
+        {
+            var dir = Path.Combine(_empty, m.Name);
+            Directory.CreateDirectory(dir);
+            foreach (var f in m.BundleFiles ?? [])
+            {
+                using var fs = new FileStream(Path.Combine(dir, f.Name), FileMode.Create);
+                fs.SetLength(f.SizeBytes);
+            }
+        }
+
+        using var loader = new BundleModelLoader(_empty, registry);
+        var pick = loader.BestInstalledChatModel(probe);
+
+        Assert.NotNull(pick);
+        var entry = registry.GetLatestModel(pick!);
+        Assert.NotNull(entry);
+        Assert.True(ModelChoice.Fits(entry!, probe),
+            $"{pick} wants {entry!.MinRamGb} GB and was handed to a 1.4 GB handset");
+    }
+
+    [Fact]
+    public void The_installed_fallback_still_picks_the_best_thing_that_does_fit()
+    {
+        // The gate must be live in BOTH directions here too: a fallback that returns
+        // nothing is a phone told it has no model while holding several.
+        var registry = new ModelRegistryService();
+        var probe = Device(8, storageGb: 64);
+
+        foreach (var m in registry.AllModels.Where(m => m.Modality == ModelModality.Chat))
+        {
+            var dir = Path.Combine(_empty, m.Name);
+            Directory.CreateDirectory(dir);
+            foreach (var f in m.BundleFiles ?? [])
+            {
+                using var fs = new FileStream(Path.Combine(dir, f.Name), FileMode.Create);
+                fs.SetLength(f.SizeBytes);
+            }
+        }
+
+        using var loader = new BundleModelLoader(_empty, registry);
+        var pick = loader.BestInstalledChatModel(probe);
+        Assert.NotNull(pick);
+
+        var chosen = registry.GetLatestModel(pick!)!;
+        var better = registry.AllModels
+            .Where(m => m.Modality == ModelModality.Chat
+                     && ModelChoice.Fits(m, probe)
+                     && m.QualityRank > chosen.QualityRank)
+            .Select(m => m.Name)
+            .ToList();
+
+        Assert.True(better.Count == 0,
+            "a better model also fits here and was passed over: " + string.Join(", ", better));
+    }
+
+    [Fact]
     public void A_model_bigger_than_the_phones_memory_does_not_fit()
     {
         var registry = new ModelRegistryService();

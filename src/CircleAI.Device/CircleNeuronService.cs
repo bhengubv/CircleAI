@@ -501,7 +501,12 @@ public sealed partial class CircleNeuronService : Service
                 // refuses to ignore what somebody already chose to fetch.
                 if (!string.IsNullOrWhiteSpace(wanted) && !loader.ModelPresent(wanted!))
                 {
-                    var here = loader.BestInstalledChatModel();
+                    // THE PROBE GOES IN, because standing in for the selector is not
+                    // licence to overrule it. Without it this picked the heaviest
+                    // model on disk regardless of fit: on 2026-10-04 that was a
+                    // 22.8 GB MoE on a 7.6 GB phone, and loading it aborted the
+                    // process and set lowmemorykiller on a dozen system apps.
+                    var here = loader.BestInstalledChatModel(DeviceProbe.Snapshot());
                     if (!string.IsNullOrWhiteSpace(here))
                     {
                         global::Android.Util.Log.Info(LogTag,

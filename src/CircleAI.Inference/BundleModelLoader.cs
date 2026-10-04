@@ -252,7 +252,11 @@ public sealed class BundleModelLoader : IModelLoader
     /// the ranker was never asked: of the models actually PRESENT, which is best.
     /// The service uses it only when the ranker's own choice is missing.
     /// </remarks>
-    public string? BestInstalledChatModel()
+    /// <param name="probe">
+    /// The device, so this cannot hand back something that does not fit. Omitting it
+    /// keeps the old behaviour and is only correct when the caller has no probe.
+    /// </param>
+    public string? BestInstalledChatModel(DeviceProbe? probe = null)
     {
         try
         {
@@ -274,6 +278,26 @@ public sealed class BundleModelLoader : IModelLoader
                 // directory too, and handing one to an inference engine is how a
                 // phone gets a native crash instead of an answer.
                 if (!ModelPresent(name)) continue;
+
+                // AND IT HAS TO FIT, WHICH THIS DID NOT ASK AND IT TOOK THE PHONE
+                // DOWN WITH IT. Ranking by QualityRank alone makes this fallback
+                // OVERRULE the selector it is standing in for: the selector applies
+                // the fit gate, this did not, so the heaviest thing on disk won
+                // whatever the device could hold.
+                //
+                // Measured on a Circle OS device (Tensor G2, 7.6 GB) on 2026-10-04,
+                // the moment a 22.8 GB Qwen3.6-35B-A3B finished downloading:
+                //
+                //   the selector wanted Qwen3-1.7B-MNN, which is not on this phone;
+                //   using Qwen3.6-35B-A3B-MNN, which is
+                //   -> Process ... has died: signal 6 (Aborted)
+                //   -> lowmemorykiller: Kill 'com.android.contacts' ... 'camera2'
+                //      ... 'calendar' ... 'za.co.circleos.settings' (ten more)
+                //
+                // It did not just fail to answer. It aborted and took a dozen system
+                // apps with it, because the fit gate the selector had already applied
+                // was discarded here. The selector was RIGHT and this overrode it.
+                if (probe is not null && !ModelChoice.Fits(entry, probe)) continue;
 
                 if (entry.QualityRank <= bestRank) continue;
                 bestRank = entry.QualityRank;
