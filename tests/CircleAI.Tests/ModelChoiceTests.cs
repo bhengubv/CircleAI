@@ -83,8 +83,7 @@ public sealed class ModelChoiceTests : IDisposable
             Directory.CreateDirectory(dir);
             foreach (var f in m.BundleFiles ?? [])
             {
-                using var fs = new FileStream(Path.Combine(dir, f.Name), FileMode.Create);
-                fs.SetLength(f.SizeBytes);
+                SparseStore.Write(Path.Combine(dir, f.Name), f.SizeBytes);
             }
         }
 
@@ -165,8 +164,7 @@ public sealed class ModelChoiceTests : IDisposable
             Directory.CreateDirectory(dir);
             foreach (var f in m.BundleFiles ?? [])
             {
-                using var fs = new FileStream(Path.Combine(dir, f.Name), FileMode.Create);
-                fs.SetLength(f.SizeBytes);
+                SparseStore.Write(Path.Combine(dir, f.Name), f.SizeBytes);
             }
         }
 

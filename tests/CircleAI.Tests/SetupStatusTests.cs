@@ -50,9 +50,7 @@ public sealed class SetupStatusTests : IDisposable
 
     private static void Sparse(string path, long length)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        using var fs = new FileStream(path, FileMode.Create);
-        fs.SetLength(length);
+        SparseStore.Write(path, length);
     }
 
     [Fact]

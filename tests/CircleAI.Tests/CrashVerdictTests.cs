@@ -186,9 +186,7 @@ public sealed class CrashVerdictTests : IDisposable
             System.IO.Directory.CreateDirectory(dir);
             foreach (var f in m.BundleFiles!)
             {
-                using var fs = new System.IO.FileStream(
-                    System.IO.Path.Combine(dir, f.Name), System.IO.FileMode.Create);
-                fs.SetLength(f.SizeBytes);
+                SparseStore.Write(System.IO.Path.Combine(dir, f.Name), f.SizeBytes);
             }
         }
 

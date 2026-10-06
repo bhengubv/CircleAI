@@ -160,8 +160,7 @@ public sealed class ModelOfferTests : IDisposable
             Directory.CreateDirectory(dir);
             foreach (var f in m.BundleFiles!)
             {
-                using var fs = new FileStream(Path.Combine(dir, f.Name), FileMode.Create);
-                fs.SetLength(f.SizeBytes);
+                SparseStore.Write(Path.Combine(dir, f.Name), f.SizeBytes);
             }
             _cat.Upsert(m);
             _cat.SetInstalled(m.Name, true);
@@ -181,8 +180,7 @@ public sealed class ModelOfferTests : IDisposable
     {
         var dir = Path.Combine(_store, name);
         Directory.CreateDirectory(dir);
-        using var fs = new FileStream(Path.Combine(dir, "llm.mnn.weight"), FileMode.Create);
-        fs.SetLength(bytes);
+        SparseStore.Write(Path.Combine(dir, "llm.mnn.weight"), bytes);
         return dir;
     }
 

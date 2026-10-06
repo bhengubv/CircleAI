@@ -41,8 +41,7 @@ public class DownloadSidecarTests : IDisposable
 
     private void Write(string name, long length)
     {
-        using var fs = new FileStream(Path_(name), FileMode.Create);
-        fs.SetLength(length);
+        SparseStore.Write(Path_(name), length);
     }
 
     [Fact]

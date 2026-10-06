@@ -113,7 +113,7 @@ public sealed class SegmentedDownloadRetryTests : IDisposable
         // It was invisible for as long as housekeeping deleted the .tmp every hour.
         // Keeping those bytes - which is the whole point - is what exposed it.
         var temp = Path.Combine(_dir, "half.tmp");
-        using (var fs = new FileStream(temp, FileMode.Create)) fs.SetLength(Total);
+        SparseStore.Write(temp, Total);
         File.WriteAllLines(DownloadSidecar.For(temp),
         [
             $"0,{Total / 4},{Total / 2 - 1}",
