@@ -2,10 +2,10 @@
 //
 // TWO registry files ship, and they must agree on the facts that break users.
 //
-//   src/CircleAI.Core/registry.json                 — keyed by model name.
+//   src/CircleAI/Core/registry.json                 — keyed by model name.
 //                                                     The OUTPUT FORMAT of
 //                                                     tools/recalibrate-registry-sha.
-//   src/CircleAI.Core/Models/embedded_registry.json — array form, plus runtime
+//   src/CircleAI/Core/Models/embedded_registry.json — array form, plus runtime
 //                                                     fields (QualityRank,
 //                                                     FallbackModelId,
 //                                                     Capabilities, MinRamGb).
@@ -57,8 +57,8 @@ public sealed class RegistryDriftTests
         }
     }
 
-    private static string LegacyPath   => Path.Combine(RepoRoot, "src", "CircleAI.Core", "registry.json");
-    private static string EmbeddedPath => Path.Combine(RepoRoot, "src", "CircleAI.Core", "Models", "embedded_registry.json");
+    private static string LegacyPath   => Path.Combine(RepoRoot, "src", "CircleAI", "Core", "registry.json");
+    private static string EmbeddedPath => Path.Combine(RepoRoot, "src", "CircleAI", "Core", "Models", "embedded_registry.json");
 
     private sealed record FileFact(string Name, string Sha, long Size);
 

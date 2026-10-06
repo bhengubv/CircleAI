@@ -25,7 +25,7 @@ public class VoiceCatalogueTests
         var dir = AppContext.BaseDirectory;
         for (var i = 0; i < 8 && dir is not null; i++)
         {
-            var candidate = Path.Combine(dir, "src", "CircleAI.Core", "Models", "embedded_registry.json");
+            var candidate = Path.Combine(dir, "src", "CircleAI", "Core", "Models", "embedded_registry.json");
             if (File.Exists(candidate))
                 return JsonDocument.Parse(File.ReadAllText(candidate)).RootElement;
             dir = Path.GetDirectoryName(dir);

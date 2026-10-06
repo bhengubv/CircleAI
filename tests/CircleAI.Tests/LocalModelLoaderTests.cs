@@ -8,7 +8,7 @@ namespace CircleAI.Tests;
 /// <summary>
 /// Tests for <see cref="LocalModelLoader"/> that do NOT require network access
 /// or real model files. Model names match the real ModelScope entries in
-/// <c>src/CircleAI.Core/registry.json</c> (Qwen3-*-MNN family).
+/// <c>src/CircleAI/Core/registry.json</c> (Qwen3-*-MNN family).
 /// </summary>
 public sealed class LocalModelLoaderTests : IDisposable
 {

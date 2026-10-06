@@ -19,6 +19,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace CircleAI.Samples.Ui.Tests;
 
+// Alias, inside the namespace. These are page components and, since 3.8.0,
+// also namespaces in the single CircleAI assembly; an enclosing namespace
+// beats a using-alias declared outside it.
+using Home = CircleAI.Samples.Shared.Pages.Home;
+
 public class HomeClaimTests : TestContext
 {
     private void Wire(

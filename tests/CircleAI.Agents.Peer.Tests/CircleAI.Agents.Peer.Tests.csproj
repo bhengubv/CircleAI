@@ -24,8 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Agents.Peer\CircleAI.Agents.Peer.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 
 </Project>

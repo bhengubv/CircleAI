@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Personal\CircleAI.Personal.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 
 </Project>

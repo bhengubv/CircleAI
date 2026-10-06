@@ -21,7 +21,7 @@
   -->
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 
 </Project>

@@ -8,6 +8,6 @@
     <NoWarn>$(NoWarn);CA1861</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

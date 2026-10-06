@@ -13,6 +13,6 @@
   <ItemGroup>
     <!-- The REAL session and the REAL transcriber. A harness that stubbed either
          would only prove the harness. -->
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

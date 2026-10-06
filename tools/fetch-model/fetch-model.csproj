@@ -15,6 +15,6 @@
     <!-- Deliberately references the real loader rather than re-implementing
          the fetch: the point of this tool is to exercise BundleModelLoader
          end to end against the live CDN, not to prove the CDN serves files. -->
-    <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

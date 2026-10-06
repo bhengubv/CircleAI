@@ -1,7 +1,7 @@
 // recalibrate-registry-sha
 //
-// Anti-rot tooling for src/CircleAI.Core/registry.json (and its sibling
-// src/CircleAI.Core/Models/embedded_registry.json).
+// Anti-rot tooling for src/CircleAI/Core/registry.json (and its sibling
+// src/CircleAI/Core/Models/embedded_registry.json).
 //
 // Both catalog files share the same per-model bundle entries:
 //   • registry.json                — flat dict keyed by ModelId
@@ -53,9 +53,9 @@ internal static class Program
 
     private static readonly string RepoRoot = FindRepoRoot();
     private static readonly string RegistryPath
-        = Path.Combine(RepoRoot, "src", "CircleAI.Core", "registry.json");
+        = Path.Combine(RepoRoot, "src", "CircleAI", "Core", "registry.json");
     private static readonly string EmbeddedRegistryPath
-        = Path.Combine(RepoRoot, "src", "CircleAI.Core", "Models", "embedded_registry.json");
+        = Path.Combine(RepoRoot, "src", "CircleAI", "Core", "Models", "embedded_registry.json");
 
     public static async Task<int> Main(string[] args)
     {

@@ -189,7 +189,7 @@ public class VoiceCoverageTests
             dir = Path.GetDirectoryName(dir);
 
         Assert.NotNull(dir);
-        var path = Path.Combine(dir!, "src", "CircleAI.Core", "Models", "embedded_registry.json");
+        var path = Path.Combine(dir!, "src", "CircleAI", "Core", "Models", "embedded_registry.json");
         Assert.True(File.Exists(path), $"registry not found at {path}");
         return path;
     }

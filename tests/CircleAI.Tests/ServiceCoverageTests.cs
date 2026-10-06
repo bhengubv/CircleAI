@@ -38,14 +38,39 @@ public class ServiceCoverageTests
         => Path.Combine(Repo(), "tools", "gen-services", "gen_services.py");
 
     private static string CapabilitiesPath()
-        => Path.Combine(Repo(), "src", "CircleAI.Assistant", "Capabilities.cs");
+        => Path.Combine(Repo(), "src", "CircleAI", "Assistant", "Capabilities.cs");
 
-    /// <summary>Every project directory under src/, by short name.</summary>
+    /// <summary>Every module under src/, by short name.</summary>
+    /// <remarks>
+    /// A module used to be a project directory called src/CircleAI.Foo. From 3.8.0
+    /// the 169 libraries are subfolders of src/CircleAI - a class never needed a
+    /// folder of its own, let alone a project - so the folder name IS the short
+    /// name there. The handful that are still their own project (the two app heads,
+    /// the MAUI library and the three android-only libraries) keep the prefix, and
+    /// are still modules, so both are counted.
+    /// </remarks>
     private static IReadOnlyList<string> Modules()
-        => Directory.GetDirectories(Path.Combine(Repo(), "src"), "CircleAI.*")
-            .Select(d => Path.GetFileName(d)!["CircleAI.".Length..])
+    {
+        var src = Path.Combine(Repo(), "src");
+
+        var merged = Directory.GetDirectories(Path.Combine(src, "CircleAI"))
+            .Select(d => Path.GetFileName(d)!);
+
+        // The StartsWith is not redundant: a Win32 search filter of "CircleAI.*"
+        // ALSO matches a name with no dot, so it returns src/CircleAI itself and the
+        // prefix strip then runs off the end of the string.
+        var standalone = Directory.GetDirectories(src, "CircleAI.*")
+            .Select(d => Path.GetFileName(d)!)
+            .Where(n => n.StartsWith("CircleAI.", StringComparison.Ordinal))
+            .Select(n => n["CircleAI.".Length..]);
+
+        return merged.Concat(standalone)
+            .Where(n => !string.Equals(n, "bin", StringComparison.Ordinal)
+                     && !string.Equals(n, "obj", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
+    }
 
     [Fact]
     public void There_are_modules_to_cover()

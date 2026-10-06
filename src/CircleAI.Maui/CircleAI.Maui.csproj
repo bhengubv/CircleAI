@@ -42,23 +42,18 @@
       explicitly so MauiInferenceService compiles without conditional guards.
     -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions"
-                      Version="9.0.0"
+                      Version="10.*"
                       Condition="$(TargetFramework) == 'net9.0'" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- IDeviceContext lives in the AI Core; no circular dependency. -->
-    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
     <!-- IButlerService, IPushNotificationSender, IThermalThrottleService -->
-    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
     <!-- IAudioCapture, AudioFormat used by MauiAudioCapture (all TFMs) -->
-    <ProjectReference Include="..\CircleAI.Voice\CircleAI.Voice.csproj" />
     <!-- IVideoCapture used by MauiCameraCapture (all TFMs) -->
-    <ProjectReference Include="..\CircleAI.Vision\CircleAI.Vision.csproj" />
     <!-- IWearableBoard used by HealthBoardBridge -->
-    <ProjectReference Include="..\CircleAI.Wearable\CircleAI.Wearable.csproj" />
     <!-- ChildSafetyBoard receives location check-ins from LocationBridge -->
-    <ProjectReference Include="..\CircleAI.Safety.Child\CircleAI.Safety.Child.csproj" />
   </ItemGroup>
 
 </Project>

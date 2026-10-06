@@ -221,7 +221,19 @@ public sealed class CapabilityManifestTests
         // "(none)" is the deliberate marker for a capability with no project.
         if (string.IsNullOrWhiteSpace(pkg) || pkg == "(none)") return;
 
-        var dir = Path.Combine(RepoRoot, "src", pkg!);
-        Assert.True(Directory.Exists(dir), $"{id}: Package '{pkg}' has no src/{pkg} directory.");
+        // A package is still named CircleAI.Hosting in the manifest - that is the
+        // library a reader looks for - but from 3.8.0 it lives at
+        // src/CircleAI/Hosting, because the 169 libraries became folders in one
+        // project. The six that are still their own project are unchanged. Both
+        // places count, so a correct manifest entry does not read as a missing one.
+        var standalone = Path.Combine(RepoRoot, "src", pkg!);
+        var merged = pkg!.StartsWith("CircleAI.", StringComparison.Ordinal)
+            ? Path.Combine(RepoRoot, "src", "CircleAI", pkg!["CircleAI.".Length..])
+            : null;
+
+        Assert.True(
+            Directory.Exists(standalone) || (merged is not null && Directory.Exists(merged)),
+            $"{id}: Package '{pkg}' is at neither src/{pkg} nor src/CircleAI/" +
+            $"{(merged is null ? pkg : Path.GetFileName(merged))}.");
     }
 }

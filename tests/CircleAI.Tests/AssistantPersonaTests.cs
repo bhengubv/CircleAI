@@ -101,7 +101,7 @@ public sealed class AssistantPersonaTests
         // two paths disagreed in the first place. CircleAISession must point at
         // the persona, not restate it.
         var source = File.ReadAllText(Path.Combine(
-            Root(), "src", "CircleAI.Assistant.Runtime", "CircleAISession.cs"));
+            Root(), "src", "CircleAI", "Assistant.Runtime", "CircleAISession.cs"));
 
         Assert.Contains("AssistantPersona.Prompt", source, StringComparison.Ordinal);
         Assert.DoesNotContain("You are Circle AI -", source, StringComparison.Ordinal);
@@ -152,7 +152,7 @@ public sealed class AssistantPersonaTests
         foreach (var head in new[]
                  {
                      Path.Combine(Root(), "src", "CircleAIService", "ServiceApplication.cs"),
-                     Path.Combine(Root(), "src", "CircleAI.Assistant.Runtime", "CircleAISession.cs"),
+                     Path.Combine(Root(), "src", "CircleAI", "Assistant.Runtime", "CircleAISession.cs"),
                  })
         {
             var source = File.ReadAllText(head);

@@ -37,10 +37,10 @@ public sealed class DocumentedCountTests
         Assert.Equal(78, SampleLanguages.All.Count);
 
         // If this moved, these say seventy-eight and now do not:
-        //   src/CircleAI.Assistant/BuiltInWakePhrases.cs   - header
-        //   src/CircleAI.Assistant/IWakePhrases.cs         - header and the
+        //   src/CircleAI/Assistant/BuiltInWakePhrases.cs   - header
+        //   src/CircleAI/Assistant/IWakePhrases.cs         - header and the
         //                                                    <remarks> on Phrases
-        //   src/CircleAI.Assistant/LanguageSuggestion.cs   - two places
+        //   src/CircleAI/Assistant/LanguageSuggestion.cs   - two places
         //   docs/OPEN-GAPS.md                              - section A-triple-prime
         // The abilities screen reads this property directly and needs no edit,
         // which is the difference between a number that is counted and one that

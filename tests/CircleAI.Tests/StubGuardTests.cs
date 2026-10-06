@@ -74,13 +74,12 @@ public class StubGuardTests
 
         var offenders = new List<string>();
 
-        // Top-level CS files only per package: src/CircleAI.Foo/*.cs (no recursion into subdirs;
-        // packages put their *.cs at the package root, which keeps the scan O(packages × top-files)
+        // Top-level CS files only per package (no recursion into subdirs; a package puts
+        // its *.cs at the package root, which keeps the scan O(packages × top-files)
         // instead of O(packages × entire tree including obj/bin).
-        foreach (var pkgDir in Directory.EnumerateDirectories(srcRoot!).OrderBy(p => p))
+        foreach (var pkgDir in PackageDirs(srcRoot!).OrderBy(p => p, StringComparer.Ordinal))
         {
             var pkgName = Path.GetFileName(pkgDir);
-            if (!pkgName.StartsWith("CircleAI.", StringComparison.Ordinal)) continue;
 
             var csFiles = EnumerateSourceFiles(pkgDir).ToList();
             if (csFiles.Count == 0) continue;
@@ -135,7 +134,7 @@ public class StubGuardTests
         Assert.NotNull(srcRoot);
 
         var offenders = new List<string>();
-        foreach (var pkgDir in Directory.EnumerateDirectories(srcRoot!))
+        foreach (var pkgDir in PackageDirs(srcRoot!))
         foreach (var f in EnumerateSourceFiles(pkgDir))
         {
             var name = Path.GetFileNameWithoutExtension(f);
@@ -211,6 +210,37 @@ public class StubGuardTests
     /// (e.g. CircleAI.Memory/Sync/*.cs), so this is comprehensive without walking
     /// dozens of generated-output trees.
     /// </summary>
+    /// <summary>Every package directory under src/, in either layout.</summary>
+    /// <remarks>
+    /// A package used to be src/CircleAI.Foo. From 3.8.0 the 169 libraries are
+    /// subfolders of src/CircleAI and the six that are still their own project
+    /// (two app heads, the MAUI library, three android-only libraries) sit beside
+    /// it. Enumerating only the direct children of src/ would reduce this guard to
+    /// seven directories and let a stub anywhere in the merged tree through, which
+    /// is exactly the silent hole it exists to prevent.
+    /// </remarks>
+    private static IEnumerable<string> PackageDirs(string srcRoot)
+    {
+        var merged = Path.Combine(srcRoot, "CircleAI");
+        if (Directory.Exists(merged))
+        {
+            foreach (var d in Directory.EnumerateDirectories(merged))
+            {
+                var n = Path.GetFileName(d);
+                if (n is "bin" or "obj") continue;
+                yield return d;
+            }
+        }
+
+        foreach (var d in Directory.EnumerateDirectories(srcRoot))
+        {
+            var n = Path.GetFileName(d);
+            // Not redundant: a "CircleAI.*" search filter also matches the dot-less
+            // "CircleAI", and that one is handled above.
+            if (n.StartsWith("CircleAI.", StringComparison.Ordinal)) yield return d;
+        }
+    }
+
     private static IEnumerable<string> EnumerateSourceFiles(string pkgDir)
     {
         foreach (var f in Directory.EnumerateFiles(pkgDir, "*.cs", SearchOption.TopDirectoryOnly))
@@ -242,8 +272,13 @@ public class StubGuardTests
             var srcCandidate = Path.Combine(dir, "src");
             if (Directory.Exists(srcCandidate))
             {
-                // Must contain CircleAI.Core to be the right src/.
-                if (Directory.Exists(Path.Combine(srcCandidate, "CircleAI.Core")))
+                // Must contain the Core library to be the right src/. It is
+                // src/CircleAI/Core from 3.8.0 and was src/CircleAI.Core before;
+                // accepting both means this walk does not silently return null and
+                // turn three guards into three Assert.NotNull failures that say
+                // nothing about stubs.
+                if (Directory.Exists(Path.Combine(srcCandidate, "CircleAI", "Core")) ||
+                    Directory.Exists(Path.Combine(srcCandidate, "CircleAI.Core")))
                 {
                     return srcCandidate;
                 }

@@ -1,0 +1,167 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI — one folder, one assembly, one package.
+    ═══════════════════════════════════════════════════════════════════════════
+    3.7.0 shipped 174 NuGet ids because there were 174 project folders, and
+    there were 174 project folders because that is how the code grew — not
+    because a class needs a folder of its own. A consumer had to know which of
+    the 174 to reference and resolve them all at one version, and the release
+    half-published twice because 174 moving parts across two feeds cannot be
+    driven by hand.
+
+    The 169 libraries are now plain subfolders here and NOT ONE LINE OF C#
+    CHANGED. Namespaces are declared in the files, so `CircleAI.Core` is still
+    `CircleAI.Core` whether it lives in its own project or in Core/. The files
+    were moved with `git mv`, so every one keeps its history.
+
+    THE SUBFOLDERS ARE LOAD-BEARING, so don't flatten them further: 43 files
+    are called Contracts.cs, 41 NullImplementations.cs and 24
+    ServiceCollectionExtensions.cs. They coexist because they sit in different
+    folders and different namespaces.
+
+    They also make the embedded resource names come out right on their own. A
+    resource is named $(RootNamespace) + its path, so Core/Models/x.json under
+    root namespace CircleAI is "CircleAI.Core.Models.x.json" — exactly the
+    string the six call sites already hardcode. Only capabilities.json needs
+    naming by hand, because it lives at the repo root rather than in a folder.
+
+    WHAT IS DELIBERATELY STILL ITS OWN PROJECT, and why:
+      CircleAIService            an app — Android service head, OutputType Exe
+      CircleAI.Inference.Server  an app — Exe on the Web SDK
+      CircleAI.Maui              drags the MAUI workload and five platform TFMs
+      CircleAI.Device            }
+      CircleAI.Client            } android-only; CircleAI.Core has never
+      CircleAI.Assistant.Device  } compiled for android, and under that target
+                                   `Activity` is ambiguous between
+                                   Android.App.Activity and
+                                   System.Diagnostics.Activity in two of its files
+    The two apps each declare `Program` in the global namespace, so merging
+    either would be a hard collision rather than a merge.
+  -->
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <AssemblyName>CircleAI</AssemblyName>
+    <RootNamespace>CircleAI</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+
+    <!-- CircleAI.Federation marks its own types experimental and suppressed the
+         diagnostic in its csproj. That csproj is gone, so the suppression moves here. -->
+    <NoWarn>$(NoWarn);CIRCLEAI_FED_001</NoWarn>
+
+    <PackageId>CircleAI</PackageId>
+    <Description>Circle AI — the on-device assistant runtime: inference, memory, skills, voice, vision and the device substrate, in one assembly.</Description>
+    <PackageTags>circleai;on-device;llm;inference;assistant</PackageTags>
+  </PropertyGroup>
+
+  <!-- Three of the old projects carried an AssemblyInfo.cs saying the same
+       things. Two identical assembly attributes in one compilation is an error,
+       not a merge, so the files come out and the attributes are declared once. -->
+  <ItemGroup>
+    <Compile Remove="Embeddings\AssemblyInfo.cs" />
+    <Compile Remove="Hosting\AssemblyInfo.cs" />
+    <Compile Remove="Inference\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>CircleAI.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.DisableRuntimeMarshalling" />
+    <!-- Dropped by accident when the three AssemblyInfo.cs files were excluded.
+         CircleAI.Inference declared it so the P/Invoke loader looks beside the
+         assembly for natives that NativeRuntimeFetcher unpacks there at run time. -->
+    <AssemblyAttribute Include="System.Runtime.InteropServices.DefaultDllImportSearchPaths">
+      <_Parameter1>System.Runtime.InteropServices.DllImportSearchPath.AssemblyDirectory | System.Runtime.InteropServices.DllImportSearchPath.SafeDirectories | System.Runtime.InteropServices.DllImportSearchPath.UserDirectories</_Parameter1>
+      <_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- NATIVE PAYLOAD. CircleAI.Inference.csproj and CircleAI.Embeddings.Local.csproj
+       each carried this glob, and deleting them took the natives with it: the build
+       stayed green and twelve tests died at run time with
+       "DllNotFoundException: mnnbridge". The Link metadata is the load-bearing part -
+       it is what puts the files under bin/{tfm}/runtimes/{RID}/native/ for a project
+       that references this one, not just for this project itself.
+       Voice/runtimes holds libespeak-ng.so, referenced by path from CircleAIService. -->
+  <ItemGroup>
+    <None Include="Inference\runtimes\**\*.*;Embeddings.Local\runtimes\**\*.*;Voice\runtimes\**\*.*"
+          Pack="true" PackagePath="runtimes/">
+      <Link>runtimes/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Inference/CircleAI.Inference.targets registers the MNN native libraries and
+       copies them beside the output. It used to be imported by
+       CircleAI.Inference.csproj; that csproj is gone, so without this line nothing
+       imports it and the first call into the engine dies with
+       "DllNotFoundException: mnnbridge" at RUN time while every build stays green -
+       which is the exact failure Directory.Build.targets was written about. -->
+  <Import Project="Inference\CircleAI.Inference.targets" />
+
+  <!-- Hosting.Mcp uses minimal-API types and Hosting.Multiplayer uses SignalR,
+       so the shared framework is referenced the way their own csprojs did it. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Paths now match the names the callers use, so these need no LogicalName.
+       capabilities.json is the exception: it sits at the repo root. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Charts\Assets\Fonts\DejaVuSans.ttf" />
+    <EmbeddedResource Include="Charts\Assets\Fonts\DejaVuSans-Bold.ttf" />
+    <EmbeddedResource Include="Core\registry.json" />
+    <EmbeddedResource Include="Core\Models\embedded_registry.json" />
+    <EmbeddedResource Include="Core\Models\VoiceConfigs\*.json" />
+    <EmbeddedResource Include="Documents\Assets\Fonts\DejaVuSans.ttf" />
+    <EmbeddedResource Include="Documents\Assets\Fonts\DejaVuSans-Bold.ttf" />
+    <EmbeddedResource Include="Runtime\NativeRuntimes\embedded_native_registry.json" />
+    <EmbeddedResource Include="Security.Defense\Data\defense-blocklist.txt" />
+    <EmbeddedResource Include="Skills\consumer.db" />
+    <EmbeddedResource Include="..\..\capabilities.json"
+                      LogicalName="CircleAI.Skills.capabilities.json" />
+  </ItemGroup>
+
+  <!-- The union of what the 169 libraries referenced. Four packages from the
+       old tree-wide union are absent because only the excluded apps used them:
+       Microsoft.AspNetCore.Authentication.JwtBearer, Microsoft.Extensions.Hosting.Systemd
+       and .Hosting.WindowsServices belonged to CircleAI.Inference.Server, and
+       Microsoft.Maui.Essentials to CircleAI.Maui.
+
+       THE MICROSOFT.EXTENSIONS FAMILY IS ONE VERSION ON BOTH LEGS. Pinning 9.0.0
+       for net9.0 fails NU1605 four times: AetherNet.Messaging 3.0.0 needs
+       Logging.Abstractions >= 10.0.2 and Options 10.* needs
+       DependencyInjection.Abstractions >= 10.0.12, so a 9.0.0 pin on the same graph
+       is a downgrade. These target netstandard2.0, so net9.0 takes 10.x fine. -->
+  <ItemGroup>
+    <PackageReference Include="AetherNet.Core" Version="3.0.0" />
+    <PackageReference Include="AetherNet.Messaging" Version="3.0.0" />
+    <PackageReference Include="AetherNet.Security" Version="3.0.0" />
+    <PackageReference Include="AetherNet.Transport" Version="3.0.0" />
+    <PackageReference Include="Fluxor" Version="6.9.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.65.0" />
+    <PackageReference Include="MQTTnet" Version="4.3.6.1152" />
+    <PackageReference Include="MailKit" Version="4.7.1.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.*" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.21.0" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <PackageReference Include="Scriban" Version="7.2.4" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="Whisper.net" Version="1.8.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
+    <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+  </ItemGroup>
+
+</Project>

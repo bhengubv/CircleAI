@@ -24,9 +24,7 @@
          Readiness / SetupItem / Census / SetupProgressReport the in-process screens
          use. CircleAI.Assistant has zero project references of its own, so this costs
          one small assembly and cannot cycle. -->
-    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
-    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
-    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
     <!-- HOW A MODEL IS FOUND. CircleNeuronService hosts the device's one brain, and
          AIService cannot resolve a model without a loader and a selector - it threw
          "AIService needs either AIOptions.ModelPath or an IModelLoader" and the node
@@ -34,15 +32,10 @@
          here. Pinning a path instead would hardcode a model name, which is the one
          thing model acquisition must never do. Only the service references this
          project, so the thin app carries none of it. -->
-    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
     <!-- The cross-app link door (CircleNeuronLinkService) authorizes callers by
          the link grant policy and the biometric/PIN gate contract. -->
-    <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
-    <ProjectReference Include="..\CircleAI.Aether\CircleAI.Aether.csproj" />
     <!-- The link's memory / skills / discovery verbs serve these directly:
          the person's memory, the built-in skill pack, the capability manifest. -->
-    <ProjectReference Include="..\CircleAI.Memory\CircleAI.Memory.csproj" />
-    <ProjectReference Include="..\CircleAI.Skills\CircleAI.Skills.csproj" />
   </ItemGroup>
 
 </Project>

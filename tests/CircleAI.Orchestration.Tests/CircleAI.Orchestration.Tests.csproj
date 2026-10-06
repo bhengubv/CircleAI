@@ -21,7 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Orchestration\CircleAI.Orchestration.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

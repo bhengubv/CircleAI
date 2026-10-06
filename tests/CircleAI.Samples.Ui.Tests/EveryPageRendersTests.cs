@@ -31,6 +31,12 @@ using Microsoft.AspNetCore.Components.Rendering;
 
 namespace CircleAI.Samples.Ui.Tests;
 
+// Alias, inside the namespace. These are page components and, since 3.8.0,
+// also namespaces in the single CircleAI assembly; an enclosing namespace
+// beats a using-alias declared outside it.
+using Home = CircleAI.Samples.Shared.Pages.Home;
+using Music = CircleAI.Samples.Shared.Pages.Music;
+
 public class EveryPageRendersTests : TestContext
 {
     public EveryPageRendersTests() => this.WireEverything();

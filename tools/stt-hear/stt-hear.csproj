@@ -18,6 +18,6 @@
          and the subtitle writer under test here are the ones on the phone.
 
          Whisper.net and its per-RID natives come through CircleAI.Voice. -->
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

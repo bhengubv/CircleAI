@@ -51,7 +51,7 @@
       "Status": "shipping",
       "Summary": "Picks the best model the current device can actually hold, from capability + RAM + storage.",
       "Package": "CircleAI.Inference",
-      "EntryPoint": "src/CircleAI.Inference/DeviceAwareModelSelector.cs#BestFit",
+      "EntryPoint": "src/CircleAI/Inference/DeviceAwareModelSelector.cs#BestFit",
       "Seam": "CircleAI.Inference.IModelSelector",
       "VerifiedBy": [ "DeviceAwareModelSelectorTests", "DeviceAwareModelSelectorRegistryTests" ],
       "Measured": {
@@ -71,12 +71,12 @@
       "Status": "shipping",
       "Summary": "Nine SHA-pinned MNN model bundles (Qwen3 and Qwen2.5-Instruct ladders) with fallback chains.",
       "Package": "CircleAI.Core",
-      "EntryPoint": "src/CircleAI.Core/Models/embedded_registry.json",
+      "EntryPoint": "src/CircleAI/Core/Models/embedded_registry.json",
       "Seam": "CircleAI.Core.Models.ModelRegistryService",
       "VerifiedBy": [ "ModelRegistryServiceTests", "DeviceAwareModelSelectorRegistryTests" ],
       "Limits": [
         "Text LLMs only. No speech (ASR/TTS), no vision, no VAD, no wake-word entries — which is the single reason the voice stack cannot be acquired the same catalogue-driven way.",
-        "A second, older registry (src/CircleAI.Core/registry.json) still exists and can drift."
+        "A second, older registry (src/CircleAI/Core/registry.json) still exists and can drift."
       ]
     },
     {
@@ -85,7 +85,7 @@
       "Status": "partial",
       "Summary": "Fetches a model's multi-file bundle on first use, verifying every file by SHA-256.",
       "Package": "CircleAI.Inference",
-      "EntryPoint": "src/CircleAI.Inference/BundleModelLoader.cs#DownloadModelAsync",
+      "EntryPoint": "src/CircleAI/Inference/BundleModelLoader.cs#DownloadModelAsync",
       "Seam": "CircleAI.Core.IModelLoader",
       "VerifiedBy": [],
       "Measured": {
@@ -106,7 +106,7 @@
       "Status": "partial",
       "Summary": "Runs Qwen-family models locally through the MNN engine, streaming tokens as they decode.",
       "Package": "CircleAI.Inference",
-      "EntryPoint": "src/CircleAI.Inference/QwenTextGenerator.cs",
+      "EntryPoint": "src/CircleAI/Inference/QwenTextGenerator.cs",
       "Seam": "CircleAI.Inference.IChatGenerator",
       "VerifiedBy": [ "QwenTextGeneratorTests" ],
       "Measured": {
@@ -116,7 +116,7 @@
       },
       "Requires": [
         "Model weights — none ship; smallest catalogued bundle is 433 MB.",
-        "CRITICAL for .NET Android hosts using a ProjectReference: the native libs live under src/CircleAI.Inference/runtimes/<rid>/native/, which is the NuGet PACKAGE convention. They do NOT flow across a ProjectReference, so the APK ships with zero MNN libraries and the first inference throws 'System.DllNotFoundException: mnnbridge'. The host must add explicit <AndroidNativeLibrary Include=\"...runtimes/android-arm64/native/*.so\"><Abi>arm64-v8a</Abi></AndroidNativeLibrary> items. See samples/CircleAI.Samples.Android for the pattern.",
+        "CRITICAL for .NET Android hosts using a ProjectReference: the native libs live under src/CircleAI/Inference/runtimes/<rid>/native/, which is the NuGet PACKAGE convention. They do NOT flow across a ProjectReference, so the APK ships with zero MNN libraries and the first inference throws 'System.DllNotFoundException: mnnbridge'. The host must add explicit <AndroidNativeLibrary Include=\"...runtimes/android-arm64/native/*.so\"><Abi>arm64-v8a</Abi></AndroidNativeLibrary> items. See samples/CircleAI.Samples.Android for the pattern.",
         "On Android: AIOptions.NativeLibDir set to ApplicationInfo.NativeLibraryDir."
       ],
       "Limits": [
@@ -130,7 +130,7 @@
       "Status": "shipping",
       "Summary": "Describes registered tools to the model, parses its tool call, executes it, and feeds the result back.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/ToolPromptRenderer.cs#Render",
+      "EntryPoint": "src/CircleAI/Hosting/ToolPromptRenderer.cs#Render",
       "Seam": "CircleAI.Tools.IToolBridge",
       "VerifiedBy": [ "ToolPromptRendererTests", "Circle33ToolCallingTests" ],
       "Measured": {
@@ -152,7 +152,7 @@
       "Status": "partial",
       "Summary": "Threads full history through each turn and can snapshot the session to survive a restart.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/Neuron/NeuronNode.cs#StreamAsync",
+      "EntryPoint": "src/CircleAI/Hosting/Neuron/NeuronNode.cs#StreamAsync",
       "Seam": "CircleAI.Hosting.Chat.IPersistableChatRuntime",
       "VerifiedBy": [ "NeuronNodeTests" ],
       "Measured": {
@@ -174,7 +174,7 @@
       "Status": "partial",
       "Summary": "Decides per turn whether the warm generalist answers or a specialist should.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/Neuron/HeuristicNeuronRouter.cs#Route",
+      "EntryPoint": "src/CircleAI/Hosting/Neuron/HeuristicNeuronRouter.cs#Route",
       "Seam": "CircleAI.Hosting.Neuron.INeuronRouter",
       "VerifiedBy": [ "NeuronRouterTests" ],
       "Measured": {
@@ -194,7 +194,7 @@
       "Status": "partial",
       "Summary": "Keeps one generalist permanently warm and admits a second specialist only if RAM allows.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/Neuron/ResidentSlotManager.cs",
+      "EntryPoint": "src/CircleAI/Hosting/Neuron/ResidentSlotManager.cs",
       "Seam": "CircleAI.Hosting.AIOptions.Router",
       "VerifiedBy": [ "ResidentSlotManagerTests" ],
       "Measured": {
@@ -213,7 +213,7 @@
       "Status": "partial",
       "Summary": "Under memory pressure, evicts the specialist and hot-swaps down to a smaller model.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/AIService.cs#BrownoutAsync",
+      "EntryPoint": "src/CircleAI/Hosting/AIService.cs#BrownoutAsync",
       "Seam": "CircleAI.Hosting.IMemoryPressureSource",
       "VerifiedBy": [ "DeviceAwareModelSelectorRegistryTests" ],
       "Measured": {
@@ -232,7 +232,7 @@
       "Status": "partial",
       "Summary": "Lets the assistant answer 'what can you do?' from THIS manifest rather than invention, and refuse to claim what it cannot yet do.",
       "Package": "CircleAI.Skills",
-      "EntryPoint": "src/CircleAI.Skills/CapabilityManifestSkillStore.cs#SearchAsync",
+      "EntryPoint": "src/CircleAI/Skills/CapabilityManifestSkillStore.cs#SearchAsync",
       "Seam": "CircleAI.Skills.ISkillStore",
       "VerifiedBy": [ "CapabilityManifestSkillStoreTests", "CompositeSkillStoreTests" ],
       "Measured": {
@@ -253,7 +253,7 @@
       "Status": "partial",
       "Summary": "Grounds answers to real South-African life tasks - a CV, a grant, tenant rights, a clinic visit, load-shedding, starting a small business, mental-health help, raising children - from a curated skill pack behind every grounded Services tile.",
       "Package": "CircleAI.Skills",
-      "EntryPoint": "src/CircleAI.Skills/ConsumerSkillPack.cs#Shared",
+      "EntryPoint": "src/CircleAI/Skills/ConsumerSkillPack.cs#Shared",
       "Seam": "CircleAI.Skills.ISkillStore",
       "VerifiedBy": [ "ConsumerSkillPackTests" ],
       "Limits": [
@@ -269,7 +269,7 @@
       "Status": "partial",
       "Summary": "Lets a person add their own SKILL.md — from any source — into a writable store, so the assistant becomes customised to them.",
       "Package": "CircleAI.Skills",
-      "EntryPoint": "src/CircleAI.Skills/SkillPackLoader.cs#ImportMarkdownAsync",
+      "EntryPoint": "src/CircleAI/Skills/SkillPackLoader.cs#ImportMarkdownAsync",
       "Seam": "CircleAI.Skills.ISkillStore",
       "VerifiedBy": [ "UserSkillIngestTests" ],
       "Limits": [
@@ -285,7 +285,7 @@
       "Status": "scaffold",
       "Summary": "Local speech-to-text, text-to-speech, VAD and wake-word spotting with no cloud round trip.",
       "Package": "CircleAI.Voice",
-      "EntryPoint": "src/CircleAI.Voice/VoicePipeline.cs",
+      "EntryPoint": "src/CircleAI/Voice/VoicePipeline.cs",
       "Seam": "CircleAI.Voice.IVoiceTranscriber, ITtsEngine, IWakeWordDetector, IVoiceActivityDetector",
       "VerifiedBy": [ "EnergyVadDetectorTests" ],
       "Requires": [ "Host-supplied weights for ASR and TTS. None ship and none are catalogued." ],
@@ -307,7 +307,7 @@
       "Status": "partial",
       "Summary": "Speech-to-text and text-to-speech via twelve hosted backends behind one contract.",
       "Package": "CircleAI.Speech.Cloud",
-      "EntryPoint": "src/CircleAI.Speech.Cloud/ServiceCollectionExtensions.cs",
+      "EntryPoint": "src/CircleAI/Speech.Cloud/ServiceCollectionExtensions.cs",
       "Seam": "CircleAI.Speech contracts",
       "VerifiedBy": [ "Circle33CloudSttTests", "Circle33CloudTtsTests" ],
       "Requires": [ "Per-provider API keys — none supplied, so this is unverified against any live provider." ],
@@ -338,7 +338,7 @@
       "Status": "partial",
       "Summary": "Open ASR + TTS models catalogued on Hugging Face, selected per device by modality — acquisition works; on-device synthesis does not yet.",
       "Package": "CircleAI.Core",
-      "EntryPoint": "src/CircleAI.Inference/SpeechModelSelector.cs#BestFor",
+      "EntryPoint": "src/CircleAI/Inference/SpeechModelSelector.cs#BestFor",
       "Seam": "CircleAI.Inference.ISpeechModelSelector",
       "VerifiedBy": [ "SpeechModelSelectorTests", "ModelModalityTests", "RegistryDriftTests", "PiperVoiceConfigTests" ],
       "Measured": {
@@ -367,7 +367,7 @@
       "Status": "scaffold",
       "Summary": "Answers questions about an image.",
       "Package": "CircleAI.Inference",
-      "EntryPoint": "src/CircleAI.Inference/KimiVlGenerator.cs",
+      "EntryPoint": "src/CircleAI/Inference/KimiVlGenerator.cs",
       "Seam": "CircleAI.Inference.IChatGenerator",
       "VerifiedBy": [ "DeviceAwareModelSelectorRegistryTests" ],
       "Limits": [
@@ -381,7 +381,7 @@
       "Status": "scaffold",
       "Summary": "CircleAI as a standalone service app other apps link to — install it once, authorise the model download, and let another app share this one brain instead of shipping its own, approving the link with a fingerprint, pattern or PIN.",
       "Package": "CircleAI.Linking",
-      "EntryPoint": "src/CircleAI.Linking/LinkAuthorizer.cs#AuthorizeAsync",
+      "EntryPoint": "src/CircleAI/Linking/LinkAuthorizer.cs#AuthorizeAsync",
       "Seam": "CircleAI.Linking.LinkGate, CircleAI.Linking.ILinkGrantStore",
       "VerifiedBy": [ "LinkingTests" ],
       "Limits": [
@@ -397,7 +397,7 @@
       "Status": "partial",
       "Summary": "Given a failure (message + stack + context), categorises it and recommends quick-fix / patch / defer, drafting a patch when it can - a recommendation the consumer acts on, never an action Circle AI takes itself.",
       "Package": "CircleAI.Hosting",
-      "EntryPoint": "src/CircleAI.Hosting/SelfHealing/FailureAnalyst.cs#AnalyseAsync",
+      "EntryPoint": "src/CircleAI/Hosting/SelfHealing/FailureAnalyst.cs#AnalyseAsync",
       "Seam": "CircleAI.Hosting.SelfHealing.IFailureAnalyst",
       "VerifiedBy": [ "FailureAnalystTests" ],
       "Requires": [

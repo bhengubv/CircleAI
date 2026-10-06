@@ -45,7 +45,7 @@ var json = new JsonSerializerOptions
         _comment = "X-SAMPA (NchltPhonemizer) -> IPA (Mimic3-family voices). "
                  + "Longest-match on WHOLE tokens; 'g' is U+0261 LATIN SMALL LETTER SCRIPT G, "
                  + "not ASCII 'g'. An unmapped phone must be reported, never dropped silently.",
-        _source = "src/CircleAI.Voice/XsampaToIpa.cs",
+        _source = "src/CircleAI/Voice/XsampaToIpa.cs",
         knownPhones = XsampaToIpa.KnownPhones.OrderBy(p => p, StringComparer.Ordinal).ToArray(),
         cases = cases.Select(c =>
         {
@@ -116,7 +116,7 @@ var json = new JsonSerializerOptions
                  + "longest-match: scores are not monotone in piece length, and this vocabulary is "
                  + "built so the two disagree. Normalise NFKC, replace ' ' with U+2581, prepend one. "
                  + "Unknown characters fall back to <0xNN> BYTE pieces and are never dropped.",
-        _source = "src/CircleAI.Voice/SentencePieceUnigram.cs",
+        _source = "src/CircleAI/Voice/SentencePieceUnigram.cs",
         fallbackPenalty = 10.0,
         vocab,
         scores,
@@ -139,7 +139,7 @@ var json = new JsonSerializerOptions
         _comment = "RIFF/WAVE reading. WALK THE CHUNKS — data does not always start at byte 44; "
                  + "a LIST or fact chunk before it is normal and assuming otherwise reads metadata "
                  + "as audio. Samples are mono float in [-1,1]; multi-channel is averaged.",
-        _source = "src/CircleAI.Voice/WavIo.cs",
+        _source = "src/CircleAI/Voice/WavIo.cs",
         cases,
     };
     Write(Path.Combine(outDir, "voice_wav_io.json"), payload);
@@ -192,7 +192,7 @@ var json = new JsonSerializerOptions
                  + "[BOS, PAD, id, PAD, id, PAD, ..., EOS], with BOS/EOS emitted only when the map "
                  + "has them. Unknown symbols are SKIPPED and REPORTED, never fatal. Approximations "
                  + "are reported separately because they are a compromise, not a success.",
-        _source = "src/CircleAI.Voice/PiperVoiceConfig.cs",
+        _source = "src/CircleAI/Voice/PiperVoiceConfig.cs",
         configs = configs.Select(c =>
         {
             var json = JsonSerializer.Serialize(new
@@ -274,7 +274,7 @@ var json = new JsonSerializerOptions
                  + "could not map. tokens.txt splits on the LAST space, because the symbol itself "
                  + "may be a space. With add_blank, a blank opens the utterance and follows every "
                  + "token.",
-        _source = "src/CircleAI.Voice/LexiconTokeniser.cs",
+        _source = "src/CircleAI/Voice/LexiconTokeniser.cs",
         tokens,
         lexicon = lexicon.Select(e => new { word = e.Word, phonemes = e.Phonemes }).ToArray(),
         blank = 0,
@@ -296,7 +296,7 @@ var json = new JsonSerializerOptions
     {
         _comment = "The canonical PCM format the voice components expect. Most open-source ASR "
                  + "engines (sherpa-onnx, Vosk) take this directly.",
-        _source = "src/CircleAI.Voice/AudioFormat.cs",
+        _source = "src/CircleAI/Voice/AudioFormat.cs",
         pcm16Mono16k = new
         {
             sampleRate = AudioFormat.Pcm16Mono16k.SampleRate,
@@ -344,7 +344,7 @@ var json = new JsonSerializerOptions
                  + "VITS model ends every utterance with falling prosody, so cutting at a comma "
                  + "makes each clause land like a finished sentence. The last segment always "
                  + "has a pause of 0 — trailing silence at the end of a passage serves nothing.",
-        _source = "src/CircleAI.Voice/SentenceSplitter.cs",
+        _source = "src/CircleAI/Voice/SentenceSplitter.cs",
         maxCharsPerSegment = SentenceSplitter.MaxCharsPerSegment,
         pauses = new { sentence = 280, clause = 200, paragraph = 400, forced = 60 },
         cases = cases.Select(c => new
@@ -391,7 +391,7 @@ var json = new JsonSerializerOptions
                  + "ordinary lowercase words would mispronounce native words to fix foreign "
                  + "ones, which insults the speaker in their own language. Separators ride "
                  + "along with the run they FOLLOW, so a language change never strands a comma.",
-        _source = "src/CircleAI.Voice/LanguageSpanSplitter.cs",
+        _source = "src/CircleAI/Voice/LanguageSpanSplitter.cs",
         split = splitCases.Select(t => new
         {
             text = t,
@@ -441,7 +441,7 @@ var json = new JsonSerializerOptions
                  + "vowel orders, so consonant = (cp-0x1200)/8 and vowel = (cp-0x1200)%8. Six "
                  + "rows are LABIALISED (the consonant carries a built-in /w/); writing them "
                  + "plain turns 'enkwan' into 'enkan' and silently changes the word.",
-        _source = "src/CircleAI.Voice/GeezRomanizer.cs",
+        _source = "src/CircleAI/Voice/GeezRomanizer.cs",
         isEthiopic = ethiopicCases.Select(t => new
         {
             text = t,
@@ -500,7 +500,7 @@ var json = new JsonSerializerOptions
                  + "Ports assert the filtered waveform to 1e-6 using THESE coefficients, and "
                  + "their own derived coefficients to 1e-9 relative: pow/sin/cos are not "
                  + "bit-identical across languages, but add and multiply are.",
-        _source = "src/CircleAI.Voice/ToneShaper.cs",
+        _source = "src/CircleAI/Voice/ToneShaper.cs",
         waveformTolerance = 1e-6,
         coefficientTolerance = 1e-9,
         settings = new
@@ -625,7 +625,7 @@ var json = new JsonSerializerOptions
                  + "what makes agglutinative isiZulu tractable. The data here is a SYNTHETIC "
                  + "mini-language — the real dictionaries are 15 000 words and live in "
                  + "Data/nchlt. Rules sort most-specific-first and the sort MUST BE STABLE.",
-        _source = "src/CircleAI.Voice/NchltPhonemizer.cs",
+        _source = "src/CircleAI/Voice/NchltPhonemizer.cs",
         dict = dictText,
         rules = rulesText,
         phoneMap = phoneMapText,

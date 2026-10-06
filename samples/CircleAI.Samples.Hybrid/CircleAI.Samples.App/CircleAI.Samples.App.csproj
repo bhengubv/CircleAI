@@ -147,9 +147,7 @@
     <!-- Light, and none of them carries a model: Career is SQLite profile storage,
          Documents renders a CV with pure-managed PDFsharp, Music is arithmetic. Their
          dependency graphs were checked — neither reaches CircleAI.Inference. -->
-    <ProjectReference Include="..\..\..\src\CircleAI.Career\CircleAI.Career.csproj" />
-    <ProjectReference Include="..\..\..\src\CircleAI.Documents\CircleAI.Documents.csproj" />
-    <ProjectReference Include="..\..\..\src\CircleAI.Music\CircleAI.Music.csproj" />
+    <ProjectReference Include="..\..\..\src\CircleAI\CircleAI.csproj" />
     <!-- Shared light utilities: paths, settings, memory pressure, the skill index.
          No engine and no model in any of them — the app is thin because it carries
          no CircleAI.Inference, not because it carries no AppPaths. -->
@@ -159,7 +157,6 @@
          radios ... and takes its identity from the separate AetherNetService app". -->
     <ProjectReference Include="..\..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
     <!-- The cross-app link grant store + policy, wired onto the link service. -->
-    <ProjectReference Include="..\..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />
     <!-- The CV interview: its script, its profile store and the renderer. The
          screen only maps an answer onto a field - the questions and the document
          are this library's, so both apps run one interview. -->

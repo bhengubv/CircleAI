@@ -24,21 +24,15 @@
 
   <ItemGroup>
     <!-- Companion + bridge + embeddings — the three surfaces the server exposes. -->
-    <ProjectReference Include="..\CircleAI.Core\CircleAI.Core.csproj" />
-    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
-    <ProjectReference Include="..\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
-    <ProjectReference Include="..\CircleAI.Hosting.InferenceBridge\CircleAI.Hosting.InferenceBridge.csproj" />
-    <ProjectReference Include="..\CircleAI.Runtime\CircleAI.Runtime.csproj" />
-    <ProjectReference Include="..\CircleAI.Companion\CircleAI.Companion.csproj" />
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
     <!-- Skills + capability catalogue, for the /v1/capabilities and /v1/skills endpoints. -->
-    <ProjectReference Include="..\CircleAI.Skills\CircleAI.Skills.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- ASP.NET Core JWT bearer + Windows service hosting (no-op on Linux/macOS). -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.*" />
   </ItemGroup>
 
   <!-- appsettings.json + appsettings.Development.json are auto-included by

@@ -33,8 +33,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 var root = FindRepoRoot() ?? throw new InvalidOperationException("repo root (capabilities.json) not found");
-var keyedPath = Path.Combine(root, "src", "CircleAI.Core", "registry.json");
-var embeddedPath = Path.Combine(root, "src", "CircleAI.Core", "Models", "embedded_registry.json");
+var keyedPath = Path.Combine(root, "src", "CircleAI", "Core", "registry.json");
+var embeddedPath = Path.Combine(root, "src", "CircleAI", "Core", "Models", "embedded_registry.json");
 var checkOnly = args.Contains("--check");
 
 var keyed = JsonNode.Parse(File.ReadAllText(keyedPath))!.AsObject();
@@ -45,7 +45,7 @@ var embedded = JsonNode.Parse(File.ReadAllText(embeddedPath))!.AsObject();
 // inherits the corrected pin through the ordinary DeepClone below, and the two
 // cannot disagree — rather than correcting the copy and leaving the original
 // wrong, which is how this drifted in the first place.
-var voiceConfigDir = Path.Combine(root, "src", "CircleAI.Core", "Models", "VoiceConfigs");
+var voiceConfigDir = Path.Combine(root, "src", "CircleAI", "Core", "Models", "VoiceConfigs");
 var keyedRepins = RepinFromShippedBytes(
     keyed.Where(kv => kv.Value is JsonObject).Select(kv => (kv.Key, (JsonObject)kv.Value!)),
     voiceConfigDir);

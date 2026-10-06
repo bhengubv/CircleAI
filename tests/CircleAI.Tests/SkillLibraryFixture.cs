@@ -56,7 +56,7 @@ public sealed class SkillLibraryFixture : IDisposable
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "src", "CircleAI.Skills", "assets", "skills.db.zip");
+            var candidate = Path.Combine(dir.FullName, "src", "CircleAI", "Skills", "assets", "skills.db.zip");
             if (File.Exists(candidate)) return candidate;
             dir = dir.Parent;
         }

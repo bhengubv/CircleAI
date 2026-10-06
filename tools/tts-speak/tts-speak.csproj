@@ -13,7 +13,7 @@
   <ItemGroup>
     <!-- Drives the REAL engine, not a copy of it — the point is to prove
          OnnxTtsEngine speaks, end to end. -->
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

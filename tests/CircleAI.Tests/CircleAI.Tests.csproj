@@ -28,63 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Embeddings\CircleAI.Embeddings.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Embeddings.Local\CircleAI.Embeddings.Local.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Vision\CircleAI.Vision.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Video\CircleAI.Video.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Companion.Proactive\CircleAI.Companion.Proactive.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Hosting.CloudFallback\CircleAI.Hosting.CloudFallback.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Speech\CircleAI.Speech.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Speech.Cloud\CircleAI.Speech.Cloud.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Vision.Cloud\CircleAI.Vision.Cloud.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Plugins\CircleAI.Plugins.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Hosting.Mcp\CircleAI.Hosting.Mcp.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Hosting.Multiplayer\CircleAI.Hosting.Multiplayer.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Telephony\CircleAI.Telephony.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Telephony.Twilio\CircleAI.Telephony.Twilio.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Telephony.Telnyx\CircleAI.Telephony.Telnyx.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Telephony.Plivo\CircleAI.Telephony.Plivo.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Realtime\CircleAI.Realtime.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Realtime.Cloud\CircleAI.Realtime.Cloud.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Domain\CircleAI.Domain.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Tools.Catalog\CircleAI.Tools.Catalog.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Inputs\CircleAI.Inputs.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Spatial\CircleAI.Spatial.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Observer\CircleAI.Observer.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.ContentPolicy\CircleAI.ContentPolicy.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.ModelAlignment\CircleAI.ModelAlignment.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Inference.Server.Enterprise\CircleAI.Inference.Server.Enterprise.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Observability\CircleAI.Observability.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Operator\CircleAI.Operator.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.SDD\CircleAI.SDD.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Banking\CircleAI.Banking.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Markets\CircleAI.Markets.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Pipelines\CircleAI.Pipelines.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Workflows\CircleAI.Workflows.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Visualization\CircleAI.Visualization.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Collaboration\CircleAI.Collaboration.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.CRM\CircleAI.CRM.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.BuildFarm\CircleAI.BuildFarm.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.DepBot\CircleAI.DepBot.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.DocAnalytics\CircleAI.DocAnalytics.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Testing\CircleAI.Testing.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Distribution\CircleAI.Distribution.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.MediaHub\CircleAI.MediaHub.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.WindowsAutomation\CircleAI.WindowsAutomation.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.MicroAgents\CircleAI.MicroAgents.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Research\CircleAI.Research.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Games\CircleAI.Games.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.AutonomousBiz\CircleAI.AutonomousBiz.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.CodeUnderstanding\CircleAI.CodeUnderstanding.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.DevTools\CircleAI.DevTools.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Hosting\CircleAI.Hosting.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Inference\CircleAI.Inference.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Memory\CircleAI.Memory.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Memory.Sql\CircleAI.Memory.Sql.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Search\CircleAI.Search.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Tools\CircleAI.Tools.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Voice\CircleAI.Voice.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
     <!--
       REFERENCED NOW, NOT COMPILED IN BY PATH.
 
@@ -105,18 +49,6 @@
       store could not be tested at all until this changed, and every future type
       would have needed another two lines here before a test could see it.
     -->
-    <ProjectReference Include="..\..\src\CircleAI.Assistant\CircleAI.Assistant.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Assistant.Runtime\CircleAI.Assistant.Runtime.csproj" />
     <ProjectReference Include="..\..\src\CircleAI.Maui\CircleAI.Maui.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Skills\CircleAI.Skills.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security\CircleAI.Security.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Identity\CircleAI.Identity.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Aether\CircleAI.Aether.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Linking\CircleAI.Linking.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.AetherNet\CircleAI.AetherNet.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Mesh.Hosting\CircleAI.Mesh.Hosting.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Security.AetherNet\CircleAI.Security.AetherNet.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Companion\CircleAI.Companion.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Personal.Finance\CircleAI.Personal.Finance.csproj" />
   </ItemGroup>
 </Project>

@@ -16,6 +16,6 @@
          field — the keyed file says "Text" where the runtime enum says "Chat" —
          and writing a word the runtime cannot parse takes the whole catalogue
          down at startup, not just that entry. -->
-    <ProjectReference Include="..\..\src\CircleAI.Core\CircleAI.Core.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
   </ItemGroup>
 </Project>

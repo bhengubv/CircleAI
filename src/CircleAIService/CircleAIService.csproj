@@ -91,7 +91,7 @@
     <!-- The engines. This app owns model selection and loading, so it is the one
          package that needs them; the client has no inference dependency at all, which
          is the entire point of the split. -->
-    <ProjectReference Include="..\CircleAI.Inference\CircleAI.Inference.csproj" />
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
 
     <!-- The assistant's device half: the microphone and speaker, the recogniser and
          the voice (ServiceSpeech), the model store, the skill library, VoiceWiring. -->
@@ -117,7 +117,7 @@
       is what keeps it off this app's licence, and it is why the phonemiser is invoked
       rather than referenced.
     -->
-    <AndroidNativeLibrary Include="..\CircleAI.Voice\runtimes\android-arm64\native\libespeak-ng.so"
+    <AndroidNativeLibrary Include="..\CircleAI\Voice\runtimes\android-arm64\native\libespeak-ng.so"
                           Abi="arm64-v8a" />
     <AndroidAsset Include="..\CircleAI.Voice\assets\espeak-ng-data.zip"
                   Link="espeak-ng-data.zip" />
@@ -169,7 +169,6 @@
          leg broke the Android build with CS0012 - a type "defined in an assembly
          that is not referenced", which reads as a missing package and is a missing
          transitive. Named explicitly, for both. -->
-    <ProjectReference Include="..\CircleAI.Hosting\CircleAI.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

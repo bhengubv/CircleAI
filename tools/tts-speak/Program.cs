@@ -565,7 +565,7 @@ async Task<int> RunSherpa(string[] a)
 async Task<int> RunG2p(string[] a)
 {
     var lang = a.Length > 1 ? a[1] : "zul";
-    var dataDir = Path.Combine("src", "CircleAI.Voice", "Data", "nchlt");
+    var dataDir = Path.Combine("src", "CircleAI", "Voice", "Data", "nchlt");
     if (!Directory.Exists(dataDir))
     {
         Console.Error.WriteLine($"FAIL: NCHLT data dir not found: '{Path.GetFullPath(dataDir)}'");

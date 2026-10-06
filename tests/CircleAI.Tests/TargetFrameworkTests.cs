@@ -84,21 +84,26 @@ public class TargetFrameworkTests
     [Fact]
     public void The_assistant_trio_in_particular_is_reachable_from_net9()
     {
-        // Called out by name because these three are THE PRODUCT. The sample app
-        // is a thin client; src/CircleAI.Assistant* is what a developer adopts,
-        // and all three were net10-only while the documentation said otherwise.
-        foreach (var name in new[]
-        {
-            "CircleAI.Assistant",
-            "CircleAI.Assistant.Runtime",
-            "CircleAI.Assistant.Sweep",
-        })
-        {
-            var project = Path.Combine(Root(), "src", name, name + ".csproj");
-            Assert.True(File.Exists(project), $"{name} not found at {project}");
+        // Called out by name because these three are THE PRODUCT. The sample app is
+        // a thin client; the assistant trio is what a developer adopts, and all
+        // three were once net10-only while the documentation said otherwise.
+        //
+        // From 3.8.0 they have no csproj of their own - they are folders inside the
+        // single CircleAI project - so the question "is the trio reachable from
+        // net9" is now a question about ONE project file. Checking it is still
+        // worth doing: that project multi-targets, and dropping net9.0 from it
+        // would strand a net9 consumer from the whole product in one edit rather
+        // than three.
+        var project = Path.Combine(Root(), "src", "CircleAI", "CircleAI.csproj");
+        Assert.True(File.Exists(project), $"the product project is not at {project}");
+        Assert.Contains("net9.0", File.ReadAllText(project), StringComparison.Ordinal);
 
-            var xml = File.ReadAllText(project);
-            Assert.Contains("net9.0", xml, StringComparison.Ordinal);
+        foreach (var folder in new[] { "Assistant", "Assistant.Runtime", "Assistant.Sweep" })
+        {
+            var dir = Path.Combine(Root(), "src", "CircleAI", folder);
+            Assert.True(Directory.Exists(dir),
+                $"the trio member '{folder}' is not at {dir} - if it moved, this test is " +
+                "asserting net9 reachability for code that is no longer there.");
         }
     }
 

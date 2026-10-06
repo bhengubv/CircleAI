@@ -48,12 +48,10 @@
          WavIo - with no Whisper and no ONNX voices behind them. Those are the
          service's, and taking CircleAI.Voice here would put 18.3 MB of
          libonnxruntime.so into every client that opens a microphone. -->
-    <ProjectReference Include="..\CircleAI.Audio\CircleAI.Audio.csproj" />
-    <ProjectReference Include="..\CircleAI.Linking\CircleAI.Linking.csproj" />
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
     <!-- IBrain, so a client can drop in LinkedBrain where it had a local one.
          CircleAI.Assistant is the contracts assembly and keeps its own reference
          count near zero, so this adds contracts and not an engine. -->
-    <ProjectReference Include="..\CircleAI.Assistant\CircleAI.Assistant.csproj" />
   </ItemGroup>
 
   <ItemGroup>
