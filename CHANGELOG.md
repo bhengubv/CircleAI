@@ -4,6 +4,72 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] — 2026-10-06 — **One folder, one DLL, one package**
+
+`nuget.org` needs one id: **CircleAI**. 3.7.0 shipped 174, because there were 174
+project folders — and there were 174 project folders because that is how the code
+grew, not because a class needs a folder, let alone a project, to hold its name.
+
+### Changed — the shape, not the code
+
+- **The 169 libraries are subfolders of `src/CircleAI`**, compiled into a single
+  `CircleAI.dll` per target framework (`net9.0`, `net10.0`). **No production C# moved
+  or changed for the merge**: namespaces are declared in the files, so `CircleAI.Core`
+  is still `CircleAI.Core` from `Core/`. Every file moved with `git mv` — 1,427
+  recorded renames — and keeps its history.
+- **403 project references become 45. 175 project files in `src/` become 7.**
+- A package reference to `CircleAI` replaces whichever subset of ids a consumer
+  used to name. Nothing is republished under a new id, so no existing reference
+  breaks — the 173 older ids simply stop moving at 3.7.0.
+
+### Still their own project
+
+`CircleAIService` and `CircleAI.Inference.Server` are executables that both declare
+`Program` in the global namespace. `CircleAI.Maui` carries the MAUI workload and five
+platform targets. `CircleAI.Device`, `CircleAI.Client` and `CircleAI.Assistant.Device`
+are android-only, and `CircleAI.Core` has never compiled for android — under that
+target `Activity` is ambiguous between `Android.App.Activity` and
+`System.Diagnostics.Activity`.
+
+### Fixed — what the deleted project files were carrying
+
+- The `runtimes/**` glob with its `Link` metadata, which is what puts the native
+  binaries under a *consuming* project's `bin/{tfm}/runtimes/{RID}/native/`. Without
+  it every build stayed green and twelve tests died at run time with
+  `DllNotFoundException: mnnbridge`.
+- The import of `Inference/CircleAI.Inference.targets`, `DefaultDllImportSearchPaths`,
+  and `CircleAIService`'s path to `libespeak-ng.so`.
+
+### Changed — three P/Invokes, which is the real cost of one assembly
+
+`DisableRuntimeMarshalling` was `CircleAI.Inference`'s alone — MNN's parameter
+structs carry C++ bools the runtime marshaller will not treat as blittable — and it
+now governs all 169. `GlobalMemoryStatusEx` and TurboVec's `IndexSave`/`IndexLoad`
+moved to source-generated `[LibraryImport]`. They compiled perfectly and threw at the
+call site, which is what that attribute always does.
+
+One assembly also puts all of its namespaces in scope for every consumer, so five UI
+test files needed a using-alias **inside** the namespace: `Home`, `Music` and `Career`
+are page components *and* now namespaces, and a name from an enclosing namespace beats
+an alias declared outside it.
+
+### Changed — `AetherNetIsolationTests` keeps its guarantee, changes its measure
+
+It walked the project graph for an `AetherNet.*` package reference; one assembly makes
+that answer permanently yes, because `Aether/` and `AetherNet/` are in it. The rule was
+never about assemblies — the borrow/serve code must not reach for a carrier — so it now
+scans the `Mesh`, `Mesh.Hosting` and `Assistant` sources for any `AetherNet` reference.
+Stricter in one way: it catches a bare `using` no project file mentions. Weaker in
+another: a dependency pulled in through a helper elsewhere in the merged assembly would
+not be caught. That is the honest cost of one DLL.
+
+### Verification
+
+**16/16 suites, 5,208 tests, 0 failed.** One `CircleAI.dll` per target, and it is the
+only `CircleAI*.dll` in the output.
+
+---
+
 ## [3.7.0] — 2026-10-06 — **The split, and a phone that decides for itself**
 
 Circle AI becomes two APKs — a thin app and `CircleAIService`, which owns every
