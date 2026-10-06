@@ -179,4 +179,61 @@
              Text="[CircleAI] Dropped @(_CircleAIGlibcNative->Count()) glibc native(s) that the RID graph offered to this Android build." />
   </Target>
 
+  <!--
+    A RELEASE APK THAT IS NOT SIGNED WITH THE SHARED KEY IS NOT A FAILING BUILD.
+    ──────────────────────────────────────────────────────────────────────────
+    Directory.Build.props already explains the hazard at length: with
+    AndroidKeyStore unset the SDK's _ResolveAndroidSigningKey falls back to the
+    platform debug keystore, and you get a Release APK that installs, runs, passes
+    every suite, and can be shipped nowhere. The explanation was written on
+    2026-10-01 and nothing enforced it.
+
+    So on 2026-10-02 and 2026-10-03, with the block in place and
+    ANDROID_KEYSTORE_PASS correctly unset on the dev box, two Release APKs were
+    built and both were wrong - and both builds exited 0:
+
+      com.bhengubv.circleai.hybrid-Signed.apk    debug certificate (O=Android, C=US)
+      com.bhengubv.circleai.service-Signed.apk   DOES NOT VERIFY - no META-INF/MANIFEST.MF
+
+    The "-Signed" in the filename is not a claim about the signer. Only what
+    apksigner reports for the certificate is; the exact command is in the Message
+    at the bottom of this target, where a flag may legally contain two hyphens.
+
+    THREE WAYS THIS GUARD WOULD SILENTLY DO NOTHING, all hit before:
+      - BeforeTargets="Build" runs AFTER $(BuildDependsOn), which already contains
+        the signing. Hence PrepareForBuild.
+      - Hooking _ResolveAndroidSigningKey does not fire at all.
+      - '$(OutputType)' == 'Exe' is FALSE for an Android app: the csproj says Exe
+        and the SDK rewrites it to Library. Gate on AndroidApplication, which is
+        execution-time only - which is also why this lives in a Target and cannot
+        be a PropertyGroup condition in Directory.Build.props.
+
+    The password is never an environment variable on a dev box. It is read per
+    invocation from thegeeknetwork\Deployment\deployment-credentials.ps1
+    ($SIGNING_CREDENTIALS.ANDROID_KEYSTORE_PASSWORD) and passed as -p:, or Visual
+    Studio's Archive flow supplies it from TheGeekAlias.keyInfo. Debug builds never
+    reach here, so nothing blocks testing.
+  -->
+  <Target Name="_CircleAIRefuseUnsignedRelease"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(Configuration)' == 'Release'
+                     And '$(TargetPlatformIdentifier)' == 'android'
+                     And '$(AndroidApplication)' == 'true'">
+
+    <Error Code="CIRCLEAI010"
+           Condition="'$(AndroidKeyStore)' != 'true'"
+           Text="[CircleAI] Release Android build with AndroidKeyStore != true. The SDK would fall back to the platform DEBUG keystore and still exit 0, producing an APK that installs and runs and can be shipped nowhere. Build Debug, or supply the signing properties." />
+
+    <Error Code="CIRCLEAI011"
+           Condition="'$(AndroidSigningKeyPass)' == '' Or '$(AndroidSigningStorePass)' == ''"
+           Text="[CircleAI] Release Android build with no signing password, so the APK would come out debug-signed or with no MANIFEST.MF. Pass it for this invocation only - read $SIGNING_CREDENTIALS.ANDROID_KEYSTORE_PASSWORD from thegeeknetwork\Deployment\deployment-credentials.ps1 and add -p:AndroidSigningKeyPass=... -p:AndroidSigningStorePass=... - or use Visual Studio's Archive flow. Never setx it." />
+
+    <Error Code="CIRCLEAI012"
+           Condition="'$(AndroidSigningKeyStore)' != '' And !Exists('$(AndroidSigningKeyStore)')"
+           Text="[CircleAI] Release Android build points at a keystore that is not there: '$(AndroidSigningKeyStore)'. Canonical copy lives under %LOCALAPPDATA%\Xamarin\Mono for Android\Keystore\TheGeekAlias\." />
+
+    <Message Importance="high"
+             Text="[CircleAI] Release APK will be signed with alias '$(AndroidSigningKeyAlias)'. Verify the artefact with: apksigner verify --print-certs &lt;apk&gt;" />
+  </Target>
+
 </Project>
