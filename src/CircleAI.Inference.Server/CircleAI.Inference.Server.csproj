@@ -24,7 +24,13 @@
 
   <ItemGroup>
     <!-- Companion + bridge + embeddings — the three surfaces the server exposes. -->
-    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
+    <!-- The PACKAGE, not the project. This is how CircleAI is consumed
+         everywhere else, so the Windows service consumes it the same way: it
+         builds against exactly what a customer restores, and a package that
+         does not restore cannot be hidden by a working local tree. CircleAI
+         3.8.0 did not restore on Android and a project reference here would
+         never have said so. -->
+    <PackageReference Include="CircleAI" Version="3.8.1" />
     <!-- Skills + capability catalogue, for the /v1/capabilities and /v1/skills endpoints. -->
   </ItemGroup>
 
