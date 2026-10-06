@@ -4,6 +4,108 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] — 2026-10-06 — **The split, and a phone that decides for itself**
+
+Circle AI becomes two APKs — a thin app and `CircleAIService`, which owns every
+model — and the device stops being told what it can run and starts measuring it.
+84 commits. The through-line is that a declared number can be a lie: a 22.8 GB
+model claimed it needed 2.5 GB, a fallback with no fit gate believed it, and
+loading it aborted the process and took a dozen system apps with it.
+
+### Added — the two-APK split
+
+- **Thin app + `CircleAIService`** — the service owns every model, the app owns the
+  speaker and the screen, and they talk over an Android binder
+  (`CircleNeuronLinkService`, `LinkVerb` row codec). The shape follows
+  AetherNetService and Aether rather than inventing a third one.
+- **A Windows head for the service**, so the same service exists off Android.
+- **Voice end to end over the link** — the client records, the service transcribes
+  and speaks, and the wake word runs a whole turn. Speaking moved to the service;
+  the client kept the speaker.
+- **Answers with no model loaded.** "What can you do?" is answered in **73 ms**
+  with no generator constructed. `AssistantPersona` is the single owner of every
+  spoken sentence.
+
+### Added — it decides, and it says so
+
+- **One fit rule.** `ModelFit` is the only answer to "does this model fit this
+  device", and it refuses to invent an mmap discount without a *measured*
+  resident figure. Budget is a share of the handset's disk, not one number for
+  every phone; the form-factor ceiling is sized off the disk and leaves the phone
+  10 GB.
+- **The device learns from its own crashes.** A native abort during load writes a
+  verdict against that model, and selection never returns it again — one strike,
+  recorded, reversible only by a person. A **prediction** and a **result** no
+  longer share a column.
+- **It never offers what it cannot run**, and a model whose memory claim cannot be
+  checked is not offered at all. An *unassessed* row is not a refusal — on a first
+  launch everything is unassessed, and treating that as "cannot run" would offer
+  nothing on the one run whose job is to offer everything.
+- **The refusal can be argued with, out loud** — a spoken pardon, and an offer to
+  clear a brain the phone cannot run. "Clear it" is deliberately not "yes".
+
+### Fixed — the download that could not finish
+
+A 22.8 GB fetch restarted from zero every hour for three days while a 2B answered
+in its place, and nothing said a word. Five separate defects:
+
+- **Start-up housekeeping was deleting the download it was meant to keep** — a
+  `*.tmp` sweep destroyed resumable progress and kept the `.parts` marker.
+- **A segmented fetch preallocates**, so a `.tmp`'s own length is never evidence of
+  what has arrived. `DownloadSidecar` is now the single owner of the marker.
+- **`Present` was a bool**, so a half-finished 22.8 GB download looked like nothing.
+- **A segmented read that never returns** left a download nobody could rescue.
+- **Android was freezing the process.** A cached process has its threads suspended,
+  so the socket read never returns *and the in-process stall timer is frozen too*.
+  The fetch now owns a `dataSync` foreground service. Measured: 21 346 165 150
+  bytes at ~11 MB/s, SHA-256 verified, with another app in the foreground.
+- **`microphone`, not `dataSync`, for the listener** — Android 14+ budgets
+  `dataSync` daily, and once spent `startForeground` is refused and the service
+  never starts at all.
+
+### Added — a second backend, and images
+
+- **llama.cpp bridge** alongside MNN, with both backends gated by what the loaded
+  build can actually read, so GGUF models can be offered honestly.
+- **Image generation is real** — an ONNX generator with Qwen-Image catalogued.
+- **MNN prefix cache alive** after three weeks of SIGSEGV; it needed a relative
+  path. Then measured, found worthless, and switched back off.
+- **The GPU backend loads** after shipping unused all along — and is 22× slower
+  than CPU on a Kirin 710, so it stays off by default. Engaging is not improving.
+
+### Fixed — release engineering
+
+- **A Release APK no longer debug-signs in silence.**
+  `_CircleAIRefuseUnsignedRelease` refuses the build instead. Both heads had been
+  built Release and both were wrong: one carried the platform debug certificate,
+  the other had no `META-INF/MANIFEST.MF` at all, and both builds exited 0.
+- **Tests that filled the disk.** `FileStream.SetLength` on NTFS physically extends
+  the file, and four tests materialised the catalogue's real sizes — 22.8 GB and
+  17.7 GB bundles — in parallel. `SparseStore` sets `FSCTL_SET_SPARSE` first, so a
+  stand-in costs nothing. 93 tests in 43 s where three alone took 1m09s, 1m57s and
+  2m25s.
+
+### Verification
+
+**10 043 tests, 0 failed**, across net9.0 and net10.0, 16 suites, with 0 GB of disk
+delta over the whole run. Proven on hardware at `versionCode 56`: the 35B present
+and refused, the 2B answering in its place, and the dead-weight offer spoken once.
+
+---
+
+## [3.6.0] — 2026-09-22 — **mmap un-cursed (`kvcache_mmap OFF`)**
+
+Recorded late and deliberately brief. 3.6.0 was published to nuget.org between
+2026-09-22 and 2026-09-25 for 171 package ids **without a `CHANGELOG.md` entry and
+without a `v3.6.0` tag**, so there is no commit anyone can point at as its content
+and no honest way to reconstruct 577 commits after the fact. Its headline was the
+mmap un-curse: `kvcache_mmap OFF` ended a crash loop and let a big model run on a
+small phone, with per-model mmap decided by need rather than treated as a property
+of the model, and a real-RAM probe installed before the catalogue bootstrap. The
+gap is left visible rather than back-filled with invention.
+
+---
+
 ## [3.5.0] — 2026-07-18 — **The Neuron — on-device concierge, ported to all 8 languages + multilingual docs**
 
 Adds the **Neuron**: a private, on-device second brain that decides, per turn,
