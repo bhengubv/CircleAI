@@ -46,9 +46,17 @@ $pkgs = @(Get-ChildItem $nupkgs -Filter 'CircleAI*.nupkg' |
 if ($pkgs.Count -eq 0) { throw "no nupkgs in $nupkgs - run pack-$version.ps1 first" }
 Write-Output "PACKAGES TO PUSH: $($pkgs.Count)"
 
+# WARNING, AND THE BUG THIS FIXES. Everything a PowerShell function writes to the
+# OUTPUT stream becomes its return value, so `$f1 = Push-Feed ...` captured every
+# Write-Host line into $f1 instead of printing it. The 3.7.0 run therefore logged
+# four lines total - credentials, the count, a blank, and the verification header -
+# with no per-feed progress and no failure list at all. $f1 was an array of strings,
+# so the final `if ($f1 -gt 0) { throw }` compared an array to an integer and never
+# fired: a run where all 174 pushes failed would have looked identical.
+# Narration goes to the HOST stream, which is not capturable; only the count is returned.
 function Push-Feed([string]$Label, [string]$Source, [string]$Key) {
-    Write-Output ''
-    Write-Output "=== $Label ==="
+    Write-Host ''
+    Write-Host "=== $Label ==="
     $pushed = 0; $skipped = 0; $failed = @{}
     $i = 0
     foreach ($p in $pkgs) {
@@ -64,13 +72,13 @@ function Push-Feed([string]$Label, [string]$Source, [string]$Key) {
             $failed[$p.Name] = ($msg -replace [regex]::Escape($Key), '<redacted>')
         }
         if ($i % 20 -eq 0 -or $i -eq $pkgs.Count) {
-            Write-Output "  $i/$($pkgs.Count): pushed=$pushed skipped=$skipped failed=$($failed.Count)"
+            Write-Host "  $i/$($pkgs.Count): pushed=$pushed skipped=$skipped failed=$($failed.Count)"
         }
     }
-    Write-Output "  PUSHED:  $pushed"
-    Write-Output "  SKIPPED: $skipped (already at $version on this feed)"
-    Write-Output "  FAILED:  $($failed.Count)"
-    $failed.GetEnumerator() | Select-Object -First 10 | ForEach-Object { Write-Output "    $($_.Key): $($_.Value)" }
+    Write-Host "  PUSHED:  $pushed"
+    Write-Host "  SKIPPED: $skipped (already at $version on this feed)"
+    Write-Host "  FAILED:  $($failed.Count)"
+    $failed.GetEnumerator() | Select-Object -First 10 | ForEach-Object { Write-Host "    $($_.Key): $($_.Value)" }
     return $failed.Count
 }
 
@@ -96,6 +104,6 @@ if ($not.Count -gt 0) {
     $not | Select-Object -First 15 | ForEach-Object { Write-Output "    $_" }
 }
 
-if ($f1 -gt 0 -or $f2 -gt 0) { throw "push failed for $f1 package(s) on nuget.org and $f2 on GitHub Packages" }
+if ([int]$f1 -gt 0 -or [int]$f2 -gt 0) { throw "push failed for $f1 package(s) on nuget.org and $f2 on GitHub Packages" }
 Write-Output ''
 Write-Output "DONE. $($pkgs.Count) packages, both feeds."
