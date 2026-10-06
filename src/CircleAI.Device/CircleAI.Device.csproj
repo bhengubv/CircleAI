@@ -25,6 +25,10 @@
          use. CircleAI.Assistant has zero project references of its own, so this costs
          one small assembly and cannot cycle. -->
     <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
+    <!-- CircleNeuronService names ILogger<> in its own signatures. That used to
+         arrive transitively through eight project references; there is one now,
+         and the compiler wants the assembly named where it is used (CS0012). -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
     <!-- HOW A MODEL IS FOUND. CircleNeuronService hosts the device's one brain, and
          AIService cannot resolve a model without a loader and a selector - it threw
          "AIService needs either AIOptions.ModelPath or an IModelLoader" and the node

@@ -65,7 +65,7 @@
 
     <!-- Android's versionCode. It MUST increase on every build somebody could install
          over, or the install is refused with no useful message. -->
-    <ApplicationVersion>56</ApplicationVersion>
+    <ApplicationVersion>57</ApplicationVersion>
     <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
 
     <!-- Plain APK so `adb install` works without a bundletool step. Also: a Release
@@ -119,9 +119,9 @@
     -->
     <AndroidNativeLibrary Include="..\CircleAI\Voice\runtimes\android-arm64\native\libespeak-ng.so"
                           Abi="arm64-v8a" />
-    <AndroidAsset Include="..\CircleAI.Voice\assets\espeak-ng-data.zip"
+    <AndroidAsset Include="..\CircleAI\Voice\assets\espeak-ng-data.zip"
                   Link="espeak-ng-data.zip" />
-    <AndroidAsset Include="..\CircleAI.Skills\assets\skills.db.zip"
+    <AndroidAsset Include="..\CircleAI\Skills\assets\skills.db.zip"
                   Link="skills.db.zip" />
   </ItemGroup>
 

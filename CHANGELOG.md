@@ -4,6 +4,81 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.1] — 2026-10-06 — **3.8.0 does not restore on Android**
+
+**Anyone referencing `CircleAI 3.8.0` from an Android project gets `NETSDK1082`.**
+Use this version instead; 3.8.0 cannot be fixed in place, because a published
+version is immutable.
+
+### Fixed — ASP.NET Core code does not belong in an assembly that ships to a phone
+
+`Hosting.Mcp` (minimal API) and `Hosting.Multiplayer` (SignalR) were folded into the
+single `CircleAI` assembly in 3.8.0, which made the whole assembly require
+`Microsoft.AspNetCore.App`. A `FrameworkReference` is transitive, so every Android
+consumer failed to restore:
+
+```
+error NETSDK1082: There was no runtime pack for Microsoft.AspNetCore.App
+available for the specified RuntimeIdentifier 'android-arm64'
+```
+
+Marking it `PrivateAssets="all"` only moved the failure later — the AOT compiler
+loads every method in the assembly, and `MultiplayerHub` names
+`Microsoft.AspNetCore.SignalR.Core`, which has no Android build:
+
+```
+error : AOT of image CircleAI.dll failed
+  Could not load file or assembly 'Microsoft.AspNetCore.SignalR.Core'
+```
+
+Both folders now live in `src/CircleAI.Inference.Server`, the only thing that can
+host them. Nothing in production referenced either — only two test files.
+`CircleAI` has no ASP.NET Core dependency at all.
+
+### Fixed — three more things the merge left behind, none visible to `dotnet test`
+
+- **`CircleAI.Device` had no package references of its own.** It used to pick up
+  `Microsoft.Extensions.Logging.Abstractions` through eight project references; after
+  the merge it has one, and `CircleNeuronService` names `ILogger<>` in its own
+  signatures — `CS0012`.
+- **Two `AndroidAsset` paths still pointed at moved folders** —
+  `espeak-ng-data.zip` (11.9 MB) and `skills.db.zip` (4.9 MB) — `XA2001`. The 3.8.0
+  rewire handled `ProjectReference` and nothing else.
+- **A stale `obj/Release` produced a mix of 3.7.0.0 and 3.8.0.0 assemblies** in one
+  APK. A fresh timestamp is a copy, not a recompile.
+
+### Added — `tests/CircleAI.DeviceTests`, the first suite that can see the Android heads
+
+Every one of the other sixteen suites targets `net9.0`/`net10.0`, and a `net10.0`
+project cannot reference a `net10.0-android` one. So `CircleAI.Device`,
+`CircleAI.Client`, `CircleAI.Assistant.Device`, `CircleAIService` and
+`CircleAI.Samples.App` were unreachable from every test in the repo — by
+construction. **"5,208 tests, 0 failed" was never a statement about any of them**, and
+3.8.0 shipped on the strength of it.
+
+It is a MAUI app hosting xUnit through DeviceRunners, so the assertions need a device
+or emulator. The cheap half needs neither: `dotnet build -f net10.0-android` resolves
+the whole Android graph and catches `NETSDK1082`, a dangling reference or a
+linker-stripped assembly in under a minute. **That belongs in the gate**, and is now
+in it.
+
+Its assertions read the shipped assembly by reflection rather than `typeof()`, so
+they measure what survived trimming into the APK: all four head assemblies load, all
+report one version, and `CircleAI.Core.Models.embedded_registry.json` still resolves.
+
+### Android
+
+`versionCode` 56 → 57 on both heads, with assemblies at `3.8.1.0`. 3.8.0's APKs were
+stamped `3.8.0.0` but built from an already-corrected tree, so that number meant two
+different things — the same incoherence as the 3.7.0 cut.
+
+### Verification
+
+16 suites, **5,208 tests, 0 failed**, plus `dotnet build -f net10.0-android`, plus
+both Release APKs published and signed.
+
+---
+
 ## [3.8.0] — 2026-10-06 — **One folder, one DLL, one package**
 
 `nuget.org` needs one id: **CircleAI**. 3.7.0 shipped 174, because there were 174

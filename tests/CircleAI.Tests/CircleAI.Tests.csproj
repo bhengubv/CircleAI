@@ -29,6 +29,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
+    <!-- Circle32McpTests and Circle32MultiplayerTests: that code is ASP.NET Core
+         and moved to the server head, which is the only thing that can host it. -->
+    <ProjectReference Include="..\..\src\CircleAI.Inference.Server\CircleAI.Inference.Server.csproj" />
     <!--
       REFERENCED NOW, NOT COMPILED IN BY PATH.
 

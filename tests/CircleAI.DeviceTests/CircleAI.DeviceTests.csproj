@@ -1,0 +1,95 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CircleAI.DeviceTests — the first test project that can see the Android heads.
+    ═══════════════════════════════════════════════════════════════════════════
+    THE GAP THIS CLOSES. All sixteen other suites target net9.0/net10.0, and a
+    net10.0 project cannot reference a net10.0-android one. So CircleAI.Device,
+    CircleAI.Client, CircleAI.Assistant.Device, CircleAIService and
+    CircleAI.Samples.App were unreachable from every test in the repo — by
+    construction, not by oversight. "5,208 tests, 0 failed" was never a statement
+    about any of them, and on 2026-10-06 that was quoted as if it were: 3.8.0 went
+    to nuget.org carrying a transitive Microsoft.AspNetCore.App FrameworkReference,
+    and every Android consumer of it fails with NETSDK1082. A green suite plus a
+    green pack said nothing, because nothing in either built an Android head.
+
+    WHY IT IS AN EXE AND NOT A LIBRARY. An android test assembly needs an android
+    host to execute, so there is no headless `dotnet test` for it on this box. The
+    runner is therefore a MAUI app: DeviceRunners (mattleibow/DeviceRunners, the
+    infrastructure the .NET MAUI team recommends and dotnet/maui itself uses) hosts
+    xUnit inside the app, and the tests run on a device or emulator.
+
+    TWO LEVELS OF VALUE, AND THE FIRST IS THE CHEAP ONE:
+      1. `dotnet build -f net10.0-android` on this project compiles every Android
+         head's dependency graph. That alone catches NETSDK1082, a dangling
+         reference, a linker-stripped assembly or a broken manifest — no device
+         needed, in under a minute. This is what belongs in the gate.
+      2. `dotnet test -f net10.0-android` against the P30 or an emulator runs the
+         assertions. That needs hardware and is the thing screenshots are not.
+
+    The tests live in this assembly rather than a separate library, because a
+    separate library would itself have to be net10.0-android and would add a
+    project for nothing.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <RootNamespace>CircleAI.DeviceTests</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+
+    <ApplicationTitle>Circle AI device tests</ApplicationTitle>
+    <ApplicationId>com.bhengubv.circleai.devicetests</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!-- Debug-signed on purpose: this never ships. The release-signing guard in
+         Directory.Build.targets only fires for Release, so a Debug build of a test
+         app needs no keystore. -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+
+    <!-- The MAUI app owns its entry point. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+
+    <!-- It is a test host, not a product assembly. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Reused from the sample head rather than duplicated: an icon of its own would
+       be two more files to keep in step for an app that only ever runs tests. -->
+  <ItemGroup>
+    <MauiIcon Include="..\..\samples\CircleAI.Samples.Hybrid\CircleAI.Samples.App\Resources\AppIcon\appicon.svg"
+              ForegroundFile="..\..\samples\CircleAI.Samples.Hybrid\CircleAI.Samples.App\Resources\AppIcon\appiconfg.svg"
+              Color="#2196F3" />
+    <MauiSplashScreen Include="..\..\samples\CircleAI.Samples.Hybrid\CircleAI.Samples.App\Resources\Splash\splash.svg"
+                      Color="#2c3e50" BaseSize="128,128" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.utility" Version="2.9.3" />
+    <PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.12" />
+    <PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.*" />
+  </ItemGroup>
+
+  <!-- THE WHOLE POINT: the heads no other suite can reach. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
+    <ProjectReference Include="..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
+  </ItemGroup>
+
+  <!-- Test classes are found by reflection, so the linker cannot trace them and
+       would strip the lot. Without this the app launches and reports zero tests,
+       which is indistinguishable from everything passing. -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="CircleAI.DeviceTests" RootMode="all" />
+  </ItemGroup>
+
+</Project>

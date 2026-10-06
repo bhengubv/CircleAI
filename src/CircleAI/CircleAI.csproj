@@ -104,11 +104,15 @@
        which is the exact failure Directory.Build.targets was written about. -->
   <Import Project="Inference\CircleAI.Inference.targets" />
 
-  <!-- Hosting.Mcp uses minimal-API types and Hosting.Multiplayer uses SignalR,
-       so the shared framework is referenced the way their own csprojs did it. -->
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
+  <!-- NO FrameworkReference. Hosting.Mcp (minimal API) and Hosting.Multiplayer
+       (SignalR) used to live here and needed Microsoft.AspNetCore.App. That is
+       server code and it cannot ship inside a phone app: a FrameworkReference is
+       transitive, so the Android heads failed restore with NETSDK1082, and hiding
+       it with PrivateAssets only moved the failure to AOT - the precompiler loads
+       every method in the assembly and MultiplayerHub names
+       Microsoft.AspNetCore.SignalR.Core, which has no android build. Both folders
+       are now in src/CircleAI.Inference.Server, their only plausible host; nothing
+       in production referenced them. -->
 
   <!-- Paths now match the names the callers use, so these need no LogicalName.
        capabilities.json is the exception: it sits at the repo root. -->
