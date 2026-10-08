@@ -154,6 +154,38 @@ public sealed class ServiceApplication : Application
             global::Android.Util.Log.Warn("CircleAI.Voice", "phonemiser not wired: " + ex.Message);
         }
 
+        // SAY WHICH ENGINES ACTUALLY LOADED, BECAUSE SILENCE READ AS SUCCESS.
+        // LlamaGenerator.NativeVersion documents itself as "a fact to report, not a
+        // crash" and nothing reported it. It mattered on 2026-10-09: libllamabridge
+        // .so had been built on 28 September, left in a gitignored directory, and
+        // never staged into runtimes/ - so the GGUF engine was absent from every
+        // APK and the only trace was an Android runtime warning that a p/invoke
+        // "may fail". Once TryGetVersion was changed to ask NativeLibrary.TryLoad
+        // instead of throwing, even that warning stopped, and the absence of a
+        // complaint became indistinguishable from a working engine. A 46 MB native
+        // library is either doing something or it is dead weight, and the build
+        // cannot tell you which.
+        //
+        // OFF THE MAIN THREAD, for the same reason the voice wiring is: this is the
+        // first dlopen of libllama.so and its three ggml dependencies.
+        _ = System.Threading.Tasks.Task.Factory.StartNew(() =>
+        {
+            try
+            {
+                var gguf = CircleAI.Inference.LlamaGenerator.NativeVersion;
+                global::Android.Util.Log.Info("CircleAI.Engines", gguf is null
+                    ? "gguf: NO BACKEND - libllamabridge.so did not load. A .gguf model cannot be opened on this device."
+                    : $"gguf: {gguf}");
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn("CircleAI.Engines", $"gguf: probe failed - {ex.GetType().Name}: {ex.Message}");
+            }
+        },
+        System.Threading.CancellationToken.None,
+        System.Threading.Tasks.TaskCreationOptions.LongRunning,
+        System.Threading.Tasks.TaskScheduler.Default);
+
         // WHERE A SIDELOADED VOICE AND THE JAPANESE DICTIONARY ARE FOUND. Three
         // statics that the client used to set against ITS external files directory,
         // which was the wrong process: the code that reads them is here. The

@@ -158,6 +158,24 @@
              Text="[CircleAI] No libespeak-ng.so under $(_CircleAIVoiceRoot)android-arm64/native/. Phonemization fails on device, so speech comes out with no phonemes rather than failing loudly." />
 
     <!--
+      THE GGUF ENGINE, AND ITS WHOLE DEPENDENCY CHAIN. libllamabridge.so is a thin
+      shim: it NEEDS libllama, libggml, libggml-cpu and libggml-base, and bundling
+      the shim alone is a dlopen failure one link further down - the exact mistake
+      the header of this file warns about for whisper's ggml siblings.
+      So the check names the DEEPEST dependency, not the shim: libggml-base is the
+      leaf, and if it is present the four above it were staged in the same copy.
+      libllamabridge is checked too, because it is the one a p/invoke names and the
+      one whose absence logs "Shared library 'llamabridge' not loaded".
+      These were built on 2026-09-28 into native/llama-bridge/build-android/, which
+      is gitignored, and sat there unstaged until 2026-10-09 - built, working, and
+      never shipped. Same shape as the MNN bug, found the same way: by reading what
+      a device actually said.
+    -->
+    <Warning Code="CIRCLEAI005"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And Exists('$(_CircleAIMnnRoot)android-arm64/native/libllamabridge.so') And !Exists('$(_CircleAIMnnRoot)android-arm64/native/libggml-base.so')"
+             Text="[CircleAI] libllamabridge.so is staged but libggml-base.so is not. The GGUF engine will fail at dlopen with a missing dependency rather than reporting no backend - LlamaInterop.TryGetVersion returns null and the catalogue's PTQ1_0 chat model becomes unusable with no stated reason. Copy libllama.so, libggml.so, libggml-cpu.so and libggml-base.so from native/llama-bridge/build-android/bin/." />
+
+    <!--
       ONLY A PROJECT THAT ACTUALLY BUILDS AN APK MAY SAY ANYTHING ABOUT ONE.
       This message used to fire on every android build of the LIBRARY, which
       produces no APK, announcing "no MNN in the APK" while the head's APK
