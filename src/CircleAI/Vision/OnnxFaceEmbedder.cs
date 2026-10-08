@@ -12,13 +12,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 // Aliased because this file shares one assembly with the MAUI-targeting android
 // leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls into scope.
-using Image = SixLabors.ImageSharp.Image;
 
 namespace CircleAI.Vision;
 
@@ -56,26 +52,30 @@ public sealed class OnnxFaceEmbedder : IFaceEmbedder, IDisposable
         ArgumentNullException.ThrowIfNull(face);
         ct.ThrowIfCancellationRequested();
 
-        using var image = Image.Load<Rgb24>(imageBytes.ToArray());
+        var image = ImageDecoder.Decode(imageBytes.Span);
         var region = ClampRegion(face.Region, image.Width, image.Height);
-        using var crop = image.Clone(ctx => ctx.Crop(new Rectangle(region.X, region.Y, region.Width, region.Height))
-                                              .Resize(_opts.InputSize, _opts.InputSize));
+        var crop = image.Crop(region.X, region.Y, region.Width, region.Height)
+                        .Resize(_opts.InputSize, _opts.InputSize);
 
         var tensor = new DenseTensor<float>(new[] { 1, 3, _opts.InputSize, _opts.InputSize });
-        crop.ProcessPixelRows(accessor =>
+
+        // ArcFace expects BGR mean-subtracted + scaled: (pixel - 127.5) / 128.0.
+        // THE CHANNEL SWAP IS LOAD-BEARING. The buffer is RGB and the tensor's
+        // channel 0 takes BLUE - reading it in order would feed the model a
+        // red/blue-swapped face, which does not fail, it just returns an
+        // embedding that matches nothing. Same order as the ImageSharp version
+        // it replaces, where row[x].B went to channel 0.
+        var px = crop.Pixels;
+        for (var y = 0; y < crop.Height; y++)
         {
-            for (var y = 0; y < accessor.Height; y++)
+            var o = y * crop.Width * RasterImage.Channels;
+            for (var x = 0; x < crop.Width; x++, o += RasterImage.Channels)
             {
-                var row = accessor.GetRowSpan(y);
-                for (var x = 0; x < row.Length; x++)
-                {
-                    // ArcFace expects BGR mean-subtracted + scaled. Common: (pixel - 127.5) / 128.0
-                    tensor[0, 0, y, x] = (row[x].B - 127.5f) / 128.0f;
-                    tensor[0, 1, y, x] = (row[x].G - 127.5f) / 128.0f;
-                    tensor[0, 2, y, x] = (row[x].R - 127.5f) / 128.0f;
-                }
+                tensor[0, 0, y, x] = (px[o + 2] - 127.5f) / 128.0f; // B
+                tensor[0, 1, y, x] = (px[o + 1] - 127.5f) / 128.0f; // G
+                tensor[0, 2, y, x] = (px[o]     - 127.5f) / 128.0f; // R
             }
-        });
+        }
 
         IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results;
         try

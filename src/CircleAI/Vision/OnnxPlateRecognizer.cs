@@ -15,14 +15,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 // Aliased because this file shares one assembly with the MAUI-targeting android
 // leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls, Microsoft.Maui.Graphics into scope.
-using Image = SixLabors.ImageSharp.Image;
-using Point = SixLabors.ImageSharp.Point;
 
 namespace CircleAI.Vision;
 
@@ -55,34 +50,17 @@ public sealed class OnnxPlateRecognizer : IPlateRecognizer, IDisposable
         ct.ThrowIfCancellationRequested();
         if (imageBytes.IsEmpty) return Array.Empty<PlateRecognitionResult>();
 
-        using var image = Image.Load<Rgb24>(imageBytes.ToArray());
+        var image = ImageDecoder.Decode(imageBytes.Span);
         var origW = image.Width;
         var origH = image.Height;
 
-        var scale = Math.Min((float)_opts.InputSize / origW, (float)_opts.InputSize / origH);
-        var newW  = (int)Math.Round(origW * scale);
-        var newH  = (int)Math.Round(origH * scale);
-        var padX  = (_opts.InputSize - newW) / 2;
-        var padY  = (_opts.InputSize - newH) / 2;
-
-        using var canvas = new Image<Rgb24>(_opts.InputSize, _opts.InputSize, new Rgb24(114, 114, 114));
-        using (var resized = image.Clone(ctx => ctx.Resize(newW, newH)))
-            canvas.Mutate(ctx => ctx.DrawImage(resized, new Point(padX, padY), 1.0f));
-
-        var tensor = new DenseTensor<float>(new[] { 1, 3, _opts.InputSize, _opts.InputSize });
-        canvas.ProcessPixelRows(accessor =>
-        {
-            for (var y = 0; y < accessor.Height; y++)
-            {
-                var row = accessor.GetRowSpan(y);
-                for (var x = 0; x < row.Length; x++)
-                {
-                    tensor[0, 0, y, x] = row[x].R / 255f;
-                    tensor[0, 1, y, x] = row[x].G / 255f;
-                    tensor[0, 2, y, x] = row[x].B / 255f;
-                }
-            }
-        });
+        // ONE OWNER FOR THE LETTERBOX. This file carried a byte-for-byte copy of
+        // the detector's scale/pad arithmetic, and both of them feed a decode step
+        // that inverts padX/padY/scale to map boxes back to the original frame. Two
+        // copies of that is two chances to round differently and shift the boxes in
+        // one model and not the other.
+        var (canvas, padX, padY, scale) = OnnxFaceDetector.LetterboxResize(image, _opts.InputSize);
+        var tensor = OnnxFaceDetector.ToTensor(canvas);
 
         IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results;
         try

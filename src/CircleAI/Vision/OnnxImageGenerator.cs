@@ -38,8 +38,6 @@ using System.Threading.Tasks;
 using CircleAI.Core;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace CircleAI.Vision;
 
@@ -225,7 +223,7 @@ public sealed class OnnxImageGenerator : IImageGenerator
     /// </summary>
     private static byte[] ToPng(Tensor<float> pixels, int w, int h)
     {
-        using var img = new Image<Rgb24>(w, h);
+        var img = RasterImage.Filled(w, h, 0, 0, 0);
 
         // Copied out of the ref-struct span: Tensor<T>.Dimensions is a
         // ReadOnlySpan, and a ref local cannot be captured by the local function
@@ -247,13 +245,15 @@ public sealed class OnnxImageGenerator : IImageGenerator
                     var b = (v + 1f) * 0.5f * 255f;          // [-1,1] -> [0,255]
                     return (byte)Math.Clamp(b, 0f, 255f);
                 }
-                img[x, y] = new Rgb24(C(0), C(1), C(2));
+                img.Set(x, y, C(0), C(1), C(2));
             }
         }
 
-        using var ms = new MemoryStream();
-        img.SaveAsPng(ms);
-        return ms.ToArray();
+        // RasterImage.EncodePng, not a graphics library's encoder: this was the
+        // ONE SaveAsPng call in the repository, and keeping ImageSharp for it meant
+        // keeping a 2D graphics dependency - and its three high-severity advisories
+        // and revenue-gated licence - for a header, a filter byte per row and a CRC.
+        return img.EncodePng();
     }
 
     /// <inheritdoc/>

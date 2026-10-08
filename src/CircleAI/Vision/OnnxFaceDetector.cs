@@ -14,14 +14,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 // Aliased because this file shares one assembly with the MAUI-targeting android
 // leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls, Microsoft.Maui.Graphics into scope.
-using Image = SixLabors.ImageSharp.Image;
-using Point = SixLabors.ImageSharp.Point;
 
 namespace CircleAI.Vision;
 
@@ -59,13 +54,12 @@ public sealed class OnnxFaceDetector : IFaceDetector, IDisposable
         ct.ThrowIfCancellationRequested();
         if (imageBytes.IsEmpty) return Array.Empty<DetectedFace>();
 
-        using var image = Image.Load<Rgb24>(imageBytes.ToArray());
+        var image = ImageDecoder.Decode(imageBytes.Span);
         var origW = image.Width;
         var origH = image.Height;
 
         var (resized, padX, padY, scale) = LetterboxResize(image, _opts.InputSize);
         var tensor = ToTensor(resized);
-        resized.Dispose();
 
         IDisposableReadOnlyCollection<DisposableNamedOnnxValue> results;
         try
@@ -88,7 +82,18 @@ public sealed class OnnxFaceDetector : IFaceDetector, IDisposable
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    private static (Image<Rgb24> Resized, int PadX, int PadY, float Scale) LetterboxResize(Image<Rgb24> image, int inputSize)
+    /// <summary>Scales to fit and centres on a grey canvas, preserving aspect ratio.</summary>
+    /// <remarks>
+    /// 114/114/114 is kept exactly: it is what YOLO letterboxes with, so it is
+    /// what the weights were trained to ignore. Black padding would be read as
+    /// image content and move the scores.
+    ///
+    /// The arithmetic is unchanged from the ImageSharp version - same Math.Min
+    /// scale, same Math.Round, same integer-divided padding - because PostprocessYolo
+    /// below inverts padX/padY/scale to map boxes back to the original frame. A
+    /// rounding difference here would shift every box it returns.
+    /// </remarks>
+    internal static (RasterImage Resized, int PadX, int PadY, float Scale) LetterboxResize(RasterImage image, int inputSize)
     {
         var scale = Math.Min((float)inputSize / image.Width, (float)inputSize / image.Height);
         var newW  = (int)Math.Round(image.Width * scale);
@@ -96,32 +101,32 @@ public sealed class OnnxFaceDetector : IFaceDetector, IDisposable
         var padX  = (inputSize - newW) / 2;
         var padY  = (inputSize - newH) / 2;
 
-        var canvas = new Image<Rgb24>(inputSize, inputSize, new Rgb24(114, 114, 114));
-        using (var resized = image.Clone(ctx => ctx.Resize(newW, newH)))
-        {
-            canvas.Mutate(ctx => ctx.DrawImage(resized, new Point(padX, padY), 1.0f));
-        }
+        var canvas = RasterImage.Filled(inputSize, inputSize, 114, 114, 114);
+        canvas.Draw(image.Resize(newW, newH), padX, padY);
         return (canvas, padX, padY, scale);
     }
 
-    private static DenseTensor<float> ToTensor(Image<Rgb24> image)
+    /// <summary>NCHW float tensor, channels planar, 0..1.</summary>
+    internal static DenseTensor<float> ToTensor(RasterImage image)
     {
         var w = image.Width;
         var h = image.Height;
         var tensor = new DenseTensor<float>(new[] { 1, 3, h, w });
-        image.ProcessPixelRows(accessor =>
+
+        // One linear walk over the packed buffer instead of a row accessor
+        // callback: the pixels are already contiguous RGB, so the index maths is
+        // the whole of what ProcessPixelRows was arranging.
+        var px = image.Pixels;
+        for (var y = 0; y < h; y++)
         {
-            for (var y = 0; y < accessor.Height; y++)
+            var o = y * w * RasterImage.Channels;
+            for (var x = 0; x < w; x++, o += RasterImage.Channels)
             {
-                var row = accessor.GetRowSpan(y);
-                for (var x = 0; x < row.Length; x++)
-                {
-                    tensor[0, 0, y, x] = row[x].R / 255f;
-                    tensor[0, 1, y, x] = row[x].G / 255f;
-                    tensor[0, 2, y, x] = row[x].B / 255f;
-                }
+                tensor[0, 0, y, x] = px[o]     / 255f;
+                tensor[0, 1, y, x] = px[o + 1] / 255f;
+                tensor[0, 2, y, x] = px[o + 2] / 255f;
             }
-        });
+        }
         return tensor;
     }
 
