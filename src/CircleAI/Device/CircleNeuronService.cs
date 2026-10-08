@@ -383,6 +383,7 @@ public sealed partial class CircleNeuronService : Service
         // before anything asks — otherwise the first answers are made on the GC
         // heap limit and the device looks like a wearable.
         AndroidDeviceMemory.Install(this);
+        AndroidConnectivity.Install(this);
 
         // The memory manager, before the models exist — so the first thing that
         // gets loaded is already being watched. Registered as a ComponentCallbacks2

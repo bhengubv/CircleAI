@@ -107,8 +107,51 @@ internal static unsafe partial class LlamaInterop
     /// present. Null means this device has no GGUF backend — a fact to report,
     /// not a crash.
     /// </summary>
+    /// <remarks>
+    /// ASKED ONCE PER PROCESS, AND ASKED QUIETLY. This is a hot property in
+    /// disguise: <c>LlamaGenerator.IsAvailable</c> is <c>NativeVersion is not
+    /// null</c>, and both <c>LlamaQuantSupport</c> and <c>DeviceModelAssessor</c>
+    /// read it while classifying models. Each read used to re-enter the p/invoke,
+    /// and on a device without the native library the Android runtime logs
+    ///
+    ///   monodroid-assembly: Shared library 'llamabridge' not loaded,
+    ///                       p/invoke 'llama_bridge_version' may fail
+    ///
+    /// once per attempt — three times during service startup on the P30 on
+    /// 2026-10-08 — and then throws DllNotFoundException, which this method
+    /// catches. Exception-driven control flow on a path taken for every model in
+    /// the catalogue, to re-answer a question whose answer cannot change while
+    /// the process lives.
+    ///
+    /// NativeLibrary.TryLoad asks the loader directly instead: it returns false
+    /// rather than throwing, so the absence of a GGUF backend costs one quiet
+    /// probe and no stack unwinding. The catches stay — TryLoad succeeding does
+    /// not guarantee the ENTRY POINT resolves, which is a different failure (a
+    /// stale .so built before an API change) and still must not crash.
+    /// </remarks>
     internal static string? TryGetVersion()
     {
+        if (Volatile.Read(ref _probed)) return _version;
+
+        var v = Probe();
+        _version = v;
+        Volatile.Write(ref _probed, true);
+        return v;
+    }
+
+    // A separate flag, not "_version is null", because null IS the answer on a
+    // device with no native library - and that is precisely the device that must
+    // not re-probe on every model in the catalogue. Two threads racing here both
+    // compute the same answer, so the worst case is one wasted probe.
+    private static bool _probed;
+    private static string? _version;
+
+    private static string? Probe()
+    {
+        // Does the loader have it at all? No exception either way.
+        if (!NativeLibrary.TryLoad(LibraryName, typeof(LlamaInterop).Assembly, null, out _))
+            return null;
+
         try
         {
             var p = VersionPtr();

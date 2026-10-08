@@ -53,6 +53,32 @@ public enum Connectivity
     Offline = 0,
     Mesh    = 1,
     Online  = 2,
+
+    /// <summary>
+    /// The link state could not be established. NOT the same as Offline.
+    /// </summary>
+    /// <remarks>
+    /// THIS EXISTS BECAUSE Offline = 0 MADE EVERY FAILURE LOOK LIKE AN ANSWER.
+    ///
+    /// OBSERVED, on the P30 (Android 10) on 2026-10-08, in CircleAI's own service
+    /// process — SELinux refused a socket ioctl to a .NET thread-pool thread:
+    ///
+    ///   avc: denied { ioctl } for pid=14525 comm=".NET TP Worker"
+    ///        ioctlcmd=0x8946 tclass=udp_socket permissive=0
+    ///
+    /// 0x8946 is SIOCGIFCONF — "list the network interfaces". INFERRED, not
+    /// proven: that this is the interface enumeration behind
+    /// <c>NetworkInterface.GetIsNetworkAvailable()</c>. What is certain either way
+    /// is that reporting Offline on a phone that is online is wrong, and that a
+    /// platform refusal must not be recorded as a measurement. A model download
+    /// then "correctly" refuses to start on a device that is perfectly online.
+    ///
+    /// Unknown is deliberately NOT 0 and deliberately not ordered beside the
+    /// others: code that asks "can I download" must treat Unknown as "find out"
+    /// (try it, let the attempt answer) and never as "no". Added at the end so the
+    /// existing three values keep their numbers.
+    /// </remarks>
+    Unknown = 3,
 }
 
 /// <summary>
@@ -197,6 +223,61 @@ public sealed record DeviceProbe(
     /// </summary>
     public static Func<PlatformMemory>? PlatformMemoryProbe { get; set; }
 
+    /// <summary>
+    /// Optional platform hook for link state, for the same reason as
+    /// <see cref="PlatformMemoryProbe"/>: Core cannot read it on a phone.
+    /// </summary>
+    /// <remarks>
+    /// On Android the only honest source is <c>ConnectivityManager</c>. Interface
+    /// enumeration — which is what <c>NetworkInterface.GetIsNetworkAvailable()</c>
+    /// does — needs the <c>SIOCGIFCONF</c> ioctl, and SELinux refuses it to an
+    /// untrusted app. It returns false rather than throwing, so without this hook
+    /// an online phone reports <see cref="Connectivity.Offline"/>.
+    ///
+    /// A head installs it at startup, beside the memory probe. Return
+    /// <see cref="Connectivity.Unknown"/> rather than guessing if the platform
+    /// will not say.
+    /// </remarks>
+    public static Func<Connectivity>? PlatformConnectivityProbe { get; set; }
+
+    /// <summary>
+    /// Link state: the platform hook if a head installed one, otherwise interface
+    /// enumeration — and <see cref="Connectivity.Unknown"/> when neither can say.
+    /// </summary>
+    /// <remarks>
+    /// THE CASE THIS EXISTS FOR. On Android,
+    /// <c>NetworkInterface.GetIsNetworkAvailable()</c> enumerates interfaces via the
+    /// <c>SIOCGIFCONF</c> ioctl, SELinux denies that to an untrusted app, and the
+    /// call returns FALSE instead of throwing. Reporting that as Offline is a
+    /// measurement-shaped guess, and it is wrong on a phone with working Wi-Fi.
+    ///
+    /// So on Android a negative answer from enumeration is treated as Unknown, not
+    /// Offline: the platform did not refuse to be online, it refused to be ASKED.
+    /// Everywhere else a negative answer is trustworthy and stays Offline. A head
+    /// that installs <see cref="PlatformConnectivityProbe"/> gets the real state
+    /// and none of this applies.
+    /// </remarks>
+    internal static Connectivity ReadConnectivity()
+    {
+        var hook = PlatformConnectivityProbe;
+        if (hook is not null)
+        {
+            try { return hook(); }
+            catch { return Connectivity.Unknown; }
+        }
+
+        try
+        {
+            if (NetworkInterface.GetIsNetworkAvailable()) return Connectivity.Online;
+            return OperatingSystem.IsAndroid() ? Connectivity.Unknown : Connectivity.Offline;
+        }
+        catch
+        {
+            // Threw rather than answered — never a basis for claiming offline.
+            return Connectivity.Unknown;
+        }
+    }
+
     /// <summary>Where <see cref="RamAvailableBytes"/> actually came from.</summary>
     public enum RamMeasurement
     {
@@ -316,9 +397,7 @@ public sealed record DeviceProbe(
             }
         }
 
-        var conn = NetworkInterface.GetIsNetworkAvailable()
-            ? Connectivity.Online
-            : Connectivity.Offline;
+        var conn = ReadConnectivity();
 
         // Heuristic thermal class when caller didn't supply one. Wearables
         // and phones must be flagged by the host; we default to Active

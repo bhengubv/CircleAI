@@ -95,6 +95,7 @@ public sealed class ServiceApplication : Application
         // fiction. It has to run before base.OnCreate, because base can start
         // components that probe.
         AndroidDeviceMemory.Install(this);
+        AndroidConnectivity.Install(this);
 
         base.OnCreate();
 

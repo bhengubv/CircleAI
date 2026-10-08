@@ -91,7 +91,20 @@ public sealed class NetworkPreflight : INetworkPreflight, IDisposable
 
         // Link layer first — cheapest, and distinguishes "no network at all"
         // from "network but broken", which have different remedies.
-        if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable())
+        //
+        // ONLY A DEFINITE "OFFLINE" SHORT-CIRCUITS. This used to call
+        // NetworkInterface.GetIsNetworkAvailable() directly and report NoLink on
+        // false. On Android that call enumerates interfaces through the
+        // SIOCGIFCONF ioctl, SELinux denies it, and it returns false without
+        // throwing - so this told every phone "no network interface is up" and
+        // advised the person to connect to Wi-Fi they were already on. Worse, it
+        // did so BEFORE the HTTP probe, so the one check that could have found the
+        // truth never ran.
+        //
+        // Unknown now falls through deliberately: a ten-second HEAD request is a
+        // cheap price for an answer, and it is the only authority that cannot be
+        // wrong about reachability.
+        if (CircleAI.Core.DeviceProbe.ReadConnectivity() == CircleAI.Core.Connectivity.Offline)
         {
             return new NetworkDiagnosis(
                 NetworkFault.NoLink,

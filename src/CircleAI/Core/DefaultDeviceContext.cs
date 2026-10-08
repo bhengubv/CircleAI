@@ -80,18 +80,28 @@ public sealed class DefaultDeviceContext : IDeviceContext
     public bool?  IsCharging    => null;
 
     /// <summary>
-    /// "online" when <see cref="NetworkInterface.GetIsNetworkAvailable"/>
-    /// reports a usable interface, "none" otherwise. Hosts that detect a
-    /// mesh transport should override.
+    /// "online", "mesh", "none", or "unknown" — read through
+    /// <see cref="DeviceProbe"/> so one rule owns the answer.
     /// </summary>
-    public string? NetworkType
+    /// <remarks>
+    /// THIS USED TO SAY "none" WHENEVER IT COULD NOT TELL. It called
+    /// <c>NetworkInterface.GetIsNetworkAvailable()</c> directly, and on Android
+    /// that enumerates interfaces through an ioctl SELinux denies — returning
+    /// false, not throwing. So an online phone reported "none", and the catch
+    /// block that returns null never ran because nothing ever threw.
+    ///
+    /// It now goes through <see cref="DeviceProbe.ReadConnectivity"/>, which
+    /// prefers the platform hook an Android head installs and distinguishes
+    /// "unknown" from "none". Reimplementing the rule here is what produced two
+    /// owners and two answers for one fact in the first place.
+    /// </remarks>
+    public string? NetworkType => DeviceProbe.ReadConnectivity() switch
     {
-        get
-        {
-            try { return NetworkInterface.GetIsNetworkAvailable() ? "online" : "none"; }
-            catch { return null; }
-        }
-    }
+        Connectivity.Online  => "online",
+        Connectivity.Mesh    => "mesh",
+        Connectivity.Offline => "none",
+        _                    => "unknown",
+    };
 
     public float? CpuUsagePercent => null;
 

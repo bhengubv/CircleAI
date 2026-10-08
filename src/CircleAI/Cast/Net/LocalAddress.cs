@@ -33,7 +33,61 @@ public static class LocalAddress
     }
 
     /// <summary>First up, non-loopback, private (RFC 1918) IPv4 across all interfaces, or null.</summary>
+    /// <remarks>
+    /// ENUMERATION IS THE PART ANDROID MAY REFUSE. A socket ioctl of 0x8946
+    /// (SIOCGIFCONF — "list the interfaces") was observed denied by SELinux to this
+    /// app's own process on the P30. So this is guarded, and on failure falls back
+    /// to <see cref="RouteDerivedV4"/>, which asks the routing table instead of the
+    /// interface list and needs no such permission.
+    ///
+    /// The fallback matters because the caller of last resort is
+    /// <c>IPAddress.Loopback</c>, and handing a renderer 127.0.0.1 as "the address
+    /// to stream from" is not a degraded answer, it is a wrong one that cannot work.
+    /// </remarks>
     public static IPAddress? FirstPrivateV4()
+    {
+        try
+        {
+            var enumerated = EnumeratePrivateV4();
+            if (enumerated is not null) return enumerated;
+        }
+        catch
+        {
+            // Denied or unsupported. Fall through — never report "no address".
+        }
+
+        return RouteDerivedV4();
+    }
+
+    /// <summary>
+    /// The local address the OS would use to reach the internet, derived from the
+    /// routing table rather than the interface list.
+    /// </summary>
+    /// <remarks>
+    /// A UDP socket's <c>Connect</c> sends nothing — it only fixes the route — so
+    /// this reveals the outbound source address with no traffic, no permission and
+    /// no reachability requirement. 192.0.2.1 is TEST-NET-1 (RFC 5737): reserved,
+    /// never routed to a real host, and chosen so this cannot accidentally touch
+    /// somebody's machine.
+    /// </remarks>
+    private static IPAddress? RouteDerivedV4()
+    {
+        try
+        {
+            using var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            s.Connect(new IPAddress(new byte[] { 192, 0, 2, 1 }), 65530);
+            if (s.LocalEndPoint is IPEndPoint ep
+                && !IPAddress.IsLoopback(ep.Address)
+                && ep.Address.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return ep.Address;
+            }
+        }
+        catch (SocketException) { /* genuinely no route */ }
+        return null;
+    }
+
+    private static IPAddress? EnumeratePrivateV4()
     {
         foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
         {

@@ -131,12 +131,57 @@
     <Message Importance="high"
              Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' != ''"
              Text="[CircleAI] Bundling @(AndroidNativeLibrary->Count()) native lib(s) into the APK." />
+
+    <!--
+      THESE THREE CHECKS NAME A FILE, BECAUSE THE ONE THEY REPLACE COUNTED A LIST.
+
+      CIRCLEAI001 used to fire on '@(AndroidNativeLibrary)' == '' — the total
+      across every family. Whisper and espeak populate that item unconditionally,
+      so the total was never empty and the warning COULD NOT FIRE. That is not a
+      hypothetical: the v3.8.1 APKs shipped 291 native libraries with zero MNN and
+      zero turbovec, and this target printed a cheerful "Bundling 291 native
+      lib(s)" over the top of it. A guard whose condition cannot be met is worse
+      than no guard, because it reads like coverage.
+
+      CIRCLEAI002 already had the right shape — !Exists() on one named file — and
+      it is the reason the whisper gap was caught. Each family now gets the same,
+      and each one names the symptom a person would actually see.
+    -->
     <Warning Code="CIRCLEAI001"
-             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' == ''"
-             Text="[CircleAI] CircleAIBundleMnn is true but no MNN native libraries were found under $(_CircleAIMnnRoot). On-device inference will fail at runtime with DllNotFoundException: mnnbridge." />
+             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAIMnnRoot)android-arm64/native/libMNN.so')"
+             Text="[CircleAI] No libMNN.so under $(_CircleAIMnnRoot)android-arm64/native/. On-device inference will fail at runtime with DllNotFoundException: mnnbridge, while the abilities screen still offers model downloads." />
+    <Warning Code="CIRCLEAI003"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAITurboVecRoot)android-arm64/native/libturbovecbridge.so')"
+             Text="[CircleAI] No libturbovecbridge.so under $(_CircleAITurboVecRoot)android-arm64/native/. Local embeddings and semantic recall will fail on device; retrieval silently returns nothing rather than erroring." />
+    <Warning Code="CIRCLEAI004"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAIVoiceRoot)android-arm64/native/libespeak-ng.so')"
+             Text="[CircleAI] No libespeak-ng.so under $(_CircleAIVoiceRoot)android-arm64/native/. Phonemization fails on device, so speech comes out with no phonemes rather than failing loudly." />
+
+    <!--
+      ONLY A PROJECT THAT ACTUALLY BUILDS AN APK MAY SAY ANYTHING ABOUT ONE.
+      This message used to fire on every android build of the LIBRARY, which
+      produces no APK, announcing "no MNN in the APK" while the head's APK
+      carried eight MNN libraries. After the real MNN bug, a false reassurance in
+      the opposite direction is the last thing this file should emit.
+
+      WHY THE LIBRARY READS false AND THE HEAD READS true - one fact, two owners:
+        Directory.Build.targets:67            defaults it to TRUE  (android)
+        src/CircleAI/Inference/
+          CircleAI.Inference.targets:75       defaults it to FALSE (any platform)
+      Both are guarded on '== null or empty', so the FIRST evaluation wins.
+      CircleAI.csproj <Import>s Inference.targets in its body, which is evaluated
+      before Directory.Build.targets is imported at the end - so the library gets
+      false. CircleAIService only project-references the library, never imports
+      that file, so it gets true. Measured with -getProperty:CircleAIBundleMnn,
+      not inferred.
+      Both defaults are deliberate: false is the SHIPPED default for NuGet
+      consumers ("fetch at runtime, sensible on a server"), true is the
+      repo-local default for our own android heads. The bug was never the values,
+      it was a library being asked about an APK.
+    -->
     <Message Importance="high"
-             Condition="'$(CircleAIBundleMnn)' != 'true'"
-             Text="[CircleAI] CircleAIBundleMnn=false — no MNN in the APK. On-device inference requires a runtime fetch." />
+             Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(OutputType)' == 'Exe' And '$(CircleAIBundleMnn)' != 'true'"
+             Text="[CircleAI] CircleAIBundleMnn=false — no MNN in this APK. On-device inference requires a runtime fetch." />
 
     <!-- Whisper gets its OWN check. Counting all native libraries together
          would let a full set of MNN mask a completely absent whisper, which is
