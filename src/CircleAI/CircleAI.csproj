@@ -41,7 +41,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net9.0;net10.0;net10.0-android</TargetFrameworks>
     <AssemblyName>CircleAI</AssemblyName>
     <RootNamespace>CircleAI</RootNamespace>
     <Nullable>enable</Nullable>
@@ -147,6 +147,10 @@
     <PackageReference Include="AetherNet.Messaging" Version="3.0.0" />
     <PackageReference Include="AetherNet.Security" Version="3.0.0" />
     <PackageReference Include="AetherNet.Transport" Version="3.0.0" />
+    <!-- InferenceServer/ secures its endpoints with JWT bearer. PrivateAssets=all:
+         it is ASP.NET Core, has no android runtime pack, and a flowing reference is
+         what broke every android consumer of 3.8.0. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" PrivateAssets="all" />
     <PackageReference Include="Fluxor" Version="6.9.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.65.0" />
     <PackageReference Include="MQTTnet" Version="4.3.6.1152" />
@@ -167,5 +171,83 @@
     <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
   </ItemGroup>
+
+  <!-- Hosting.Mcp (minimal API) and Hosting.Multiplayer (SignalR) need the
+       ASP.NET Core shared framework. A FrameworkReference is TRANSITIVE and there
+       is no android runtime pack for it - that is what made CircleAI 3.8.0 fail
+       NETSDK1082 for every android consumer. The CONDITION on this ItemGroup is
+       what keeps it off android; the two folders come out of the android leg
+       below. See the note inside for why PrivateAssets is not the answer. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
+    <!-- NO PrivateAssets. The ItemGroup above is already conditioned off android,
+         which is what keeps NETSDK1082 away; PrivateAssets did something different
+         and worse. The library resolves Microsoft.Extensions.Hosting.Abstractions
+         FROM this shared framework, so the SDK drops the package copy from the
+         output - and hiding the framework from consumers then left them with
+         neither. 125 UI tests failed at run time with
+         "Could not load Microsoft.Extensions.Hosting.Abstractions, Version=10.0.0.0". -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- ── Android ──────────────────────────────────────────────────────────────
+       Assistant.Device, Client, Device and Maui are android-only, so their
+       sources are removed from the non-android legs rather than excluded from
+       the glob: that way one glob still describes the whole product and the
+       android leg is the one that subtracts nothing.
+
+       The Remove items sit at the END of the file on purpose. MSBuild processes
+       items in document order, so a Remove placed above the Compile Include it
+       refers to silently does nothing. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
+    <Compile Remove="Assistant.Device\**\*.cs" />
+    <Compile Remove="Client\**\*.cs" />
+    <Compile Remove="Device\**\*.cs" />
+  </ItemGroup>
+
+  <!-- ASP.NET Core has no android build, and the AOT compiler loads every method
+       in the assembly - so these two must not be COMPILED for android, not merely
+       have their framework reference hidden. Hiding it is what turned 3.8.0 from a
+       restore error into an AOT error. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <Compile Remove="Hosting.Mcp\**\*.cs" />
+    <Compile Remove="Hosting.Multiplayer\**\*.cs" />
+    <Compile Remove="InferenceServer\**\*.cs" />
+  </ItemGroup>
+
+  <!-- The android packager inspects every native file handed to it and fails
+       XA4301 "cannot determine ABI" on a linux or windows .so. The PACKAGE still
+       carries every RID - only the android build stops being offered the foreign
+       ones. A Remove, after the Include: a property set further down the file
+       expands to empty here, which is how the first attempt did nothing. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <None Remove="**\runtimes\linux-*\**" />
+    <None Remove="**\runtimes\win-*\**" />
+    <None Remove="**\runtimes\osx-*\**" />
+    <None Remove="**\runtimes\ios-*\**" />
+    <None Remove="**\runtimes\maccatalyst-*\**" />
+  </ItemGroup>
+
+  <!-- Essentials, NOT UseMaui. Eight files that came out of the app read the
+       device through Microsoft.Maui.Devices / .Networking / .ApplicationModel -
+       DeviceInfo, Connectivity, Permissions. Essentials supplies those. UseMaui
+       would also pull in Microsoft.Maui.Controls, whose attributes then land in
+       this assembly and break AOT for the headless CircleAIService. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.20" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <!-- NO UseMaui. CircleAI.Maui is its own project again precisely because this
+         flag put Microsoft.Maui.Controls attributes into the assembly, and the
+         headless CircleAIService - OutputType=Exe, no MAUI - then failed AOT with
+         "Can't find custom attr constructor ... Could not load Microsoft.Maui.Controls".
+         A background service must not be forced to become a MAUI app. -->
+    <!-- AndroidAudio.cs and its siblings are guarded by this; without it they
+         compile to empty files and the types read as a missing NAMESPACE. -->
+    <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
+  </PropertyGroup>
+
 
 </Project>

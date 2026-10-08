@@ -23,6 +23,10 @@ using Android.Content;
 using Android.OS;
 using CircleAI.Core;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls into scope.
+using Application = Android.App.Application;
+
 namespace CircleAI.Device;
 
 /// <summary>Reads this device's real memory and storage, and tells Core.</summary>

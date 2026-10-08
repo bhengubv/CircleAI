@@ -86,7 +86,6 @@
   <ItemGroup>
     <!-- The resident service, the link service and the consent activity all live here.
          This single reference is what makes this app the host. -->
-    <ProjectReference Include="..\CircleAI.Device\CircleAI.Device.csproj" Condition="$(TargetFramework.Contains('-android'))" />
 
     <!-- The engines. This app owns model selection and loading, so it is the one
          package that needs them; the client has no inference dependency at all, which
@@ -95,12 +94,10 @@
 
     <!-- The assistant's device half: the microphone and speaker, the recogniser and
          the voice (ServiceSpeech), the model store, the skill library, VoiceWiring. -->
-    <ProjectReference Include="..\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" Condition="$(TargetFramework.Contains('-android'))" />
 
     <!-- The client library, referenced by BOTH halves - exactly as AetherNetService
          references AetherNet.Node.Android. It carries AppPaths and SqliteAppStore,
          which both processes need to find their own storage. -->
-    <ProjectReference Include="..\CircleAI.Client\CircleAI.Client.csproj" Condition="$(TargetFramework.Contains('-android'))" />
   </ItemGroup>
 
   <ItemGroup>

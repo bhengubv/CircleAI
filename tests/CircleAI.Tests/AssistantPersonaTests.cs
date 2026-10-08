@@ -196,7 +196,7 @@ public sealed class AssistantPersonaTests
         // voice at the front of their question AND leave them talking into silence.
         // Source-level: the turn is Android-only and cannot be driven from here.
         var source = File.ReadAllText(Path.Combine(
-            Root(), "src", "CircleAI.Assistant.Device", "WakeTurn.cs"));
+            Root(), "src", "CircleAI", "Assistant.Device", "WakeTurn.cs"));
 
         var greets = source.IndexOf("AssistantPersona.Greeting", StringComparison.Ordinal);
         var hears  = source.IndexOf("await HearAsync(ct)", StringComparison.Ordinal);
@@ -214,7 +214,7 @@ public sealed class AssistantPersonaTests
         // Sharing one number is how a quiet room cost fifteen seconds of apparent
         // deadness after the phone had just spoken.
         var source = File.ReadAllText(Path.Combine(
-            Root(), "src", "CircleAI.Assistant.Device", "WakeTurn.cs"));
+            Root(), "src", "CircleAI", "Assistant.Device", "WakeTurn.cs"));
 
         Assert.Contains("FirstWord", source, StringComparison.Ordinal);
         Assert.Contains("AssistantPersona.NothingHeard", source, StringComparison.Ordinal);

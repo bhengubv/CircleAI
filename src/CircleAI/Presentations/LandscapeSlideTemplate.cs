@@ -16,6 +16,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using MigraDoc.DocumentObjectModel;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls into scope.
+using Border = MigraDoc.DocumentObjectModel.Border;
+
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Graphics.Color into scope.
+using Color = MigraDoc.DocumentObjectModel.Color;
+using Orientation = MigraDoc.DocumentObjectModel.Orientation;
+
 namespace CircleAI.Presentations;
 
 /// <summary>The one deck template for v1: landscape A4, one slide per page.</summary>

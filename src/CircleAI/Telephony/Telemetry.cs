@@ -8,6 +8,10 @@
 using System;
 using System.Diagnostics;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Android.App.Activity into scope.
+using Activity = System.Diagnostics.Activity;
+
 namespace CircleAI.Telephony;
 
 /// <summary>(3.3.0) Public ActivitySource for the voice loop.</summary>

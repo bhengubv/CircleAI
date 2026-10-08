@@ -18,6 +18,11 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls, Microsoft.Maui.Graphics into scope.
+using Image = SixLabors.ImageSharp.Image;
+using Point = SixLabors.ImageSharp.Point;
+
 namespace CircleAI.Vision;
 
 /// <param name="ModelPath">Path to a YOLO-family ONNX face-detection model.</param>

@@ -13,6 +13,10 @@
 using System.Collections.Generic;
 using MigraDoc.DocumentObjectModel;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls into scope.
+using Border = MigraDoc.DocumentObjectModel.Border;
+
 namespace CircleAI.Documents;
 
 /// <summary>The one CV template for v1: single column, ATS-friendly.</summary>

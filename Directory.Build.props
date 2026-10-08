@@ -7,6 +7,19 @@
 
     <!-- ========== VERSIONING ========== -->
     <Version>3.8.1</Version>
+
+    <!-- THE ANDROID SDK GLOBS EVERY .so UNDER THE PROJECT.
+         Sdk/AutoImport.props:57 is
+           <AndroidNativeLibrary Include="**\*.so"
+                                 Exclude="$(DefaultItemExcludes);$(DefaultExcludesInProjectFolder)" />
+         so DefaultItemExcludes is the only supported way to keep a file out of it.
+         Since the libraries became folders of src/CircleAI, the linux-, win- and
+         osx- native payloads sit INSIDE an android-targeting project for the first
+         time, and the packager fails XA4301 "cannot determine ABI" on each one.
+         Fifteen of them. The package still carries every RID - only the android
+         build stops being handed the foreign ones. -->
+    <DefaultItemExcludes Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">$(DefaultItemExcludes);**\runtimes\linux-*\**;**\runtimes\win-*\**;**\runtimes\osx-*\**;**\runtimes\ios-*\**;**\runtimes\maccatalyst-*\**</DefaultItemExcludes>
+
     <AssemblyVersion>3.8.1.0</AssemblyVersion>
     <FileVersion>3.8.1.0</FileVersion>
 

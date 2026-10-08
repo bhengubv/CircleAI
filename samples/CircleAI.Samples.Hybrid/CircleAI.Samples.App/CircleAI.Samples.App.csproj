@@ -155,7 +155,6 @@
          an app cannot reference another app. Everything this head needs to REACH it is
          in CircleAI.Client below - the same shape as AetherNet.Sample, which "runs no
          radios ... and takes its identity from the separate AetherNetService app". -->
-    <ProjectReference Include="..\..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
     <!-- The cross-app link grant store + policy, wired onto the link service. -->
     <!-- The CV interview: its script, its profile store and the renderer. The
          screen only maps an answer onto a field - the questions and the document

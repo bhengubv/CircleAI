@@ -39,7 +39,9 @@ using Android.Content;
 using Android.OS;
 using CircleAI.Inference;
 
+
 namespace CircleAI.Device;
+
 
 [Service(
     Name                  = "ai.circle.ModelFetchService",

@@ -28,9 +28,11 @@ using AndroidX.Core.App;
 using AVFoundation;
 using Foundation;
 using UIKit;
+
 #endif
 
 namespace CircleAI.Maui;
+
 
 /// <summary>
 /// (Phase A4 / A5) The platform-agnostic, hosted always-on listener. DI

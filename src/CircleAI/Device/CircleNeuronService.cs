@@ -33,7 +33,9 @@ using CircleAI.Inference;
 using CircleAI.Hosting;
 using CircleAI.Hosting.Neuron;
 
+
 namespace CircleAI.Device;
+
 
 /// <summary>
 /// Foreground service hosting one <see cref="NeuronNode"/> for the device.

@@ -21,6 +21,11 @@ using System.Collections.Generic;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Controls, Microsoft.Maui.Graphics into scope.
+using Colors = MigraDoc.DocumentObjectModel.Colors;
+using Border = MigraDoc.DocumentObjectModel.Border;
+
 namespace CircleAI.Documents;
 
 /// <summary>The one report template for v1: classic masthead + ordered sections.</summary>

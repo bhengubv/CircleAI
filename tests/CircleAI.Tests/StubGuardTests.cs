@@ -237,8 +237,30 @@ public class StubGuardTests
             var n = Path.GetFileName(d);
             // Not redundant: a "CircleAI.*" search filter also matches the dot-less
             // "CircleAI", and that one is handled above.
-            if (n.StartsWith("CircleAI.", StringComparison.Ordinal)) yield return d;
+            if (!n.StartsWith("CircleAI.", StringComparison.Ordinal)) continue;
+
+            // AN APPLICATION IS NOT A PACKAGE, AND A THIN ONE IS THE POINT. This guard
+            // measures shipped libraries: a library with 17 lines of code is a stub. An
+            // exe with 17 lines is the architecture - CircleAI.Inference.Server is one
+            // 41-line Program.cs because the 27 files that used to sit beside it moved
+            // into the one DLL, which is exactly where the product's logic belongs.
+            // Judging a host by lines of code would make every thin client an offender.
+            if (IsApplication(d)) continue;
+
+            yield return d;
         }
+    }
+
+    /// <summary>True when the directory's project builds an executable rather than a library.</summary>
+    private static bool IsApplication(string pkgDir)
+    {
+        foreach (var proj in Directory.EnumerateFiles(pkgDir, "*.csproj", SearchOption.TopDirectoryOnly))
+        {
+            var xml = File.ReadAllText(proj);
+            if (Regex.IsMatch(xml, @"<OutputType>\s*(Exe|WinExe)\s*</OutputType>", RegexOptions.IgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string pkgDir)

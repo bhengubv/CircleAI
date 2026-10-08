@@ -13,6 +13,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using CircleAI.CRM;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.ApplicationModel.Communication.Contact into scope.
+using Contact = CircleAI.CRM.Contact;
+using Activity = CircleAI.CRM.Activity;   // not Android.App.Activity: this file
+                                          // means the CRM record, and the android
+                                          // leg brings the platform type into scope.
+
 namespace CircleAI.BusinessOps;
 
 /// <summary>Adapters between BusinessOps and the CircleAI.CRM contact surface.</summary>

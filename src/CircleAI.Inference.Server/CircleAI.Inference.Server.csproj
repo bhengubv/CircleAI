@@ -30,7 +30,11 @@
          does not restore cannot be hidden by a working local tree. CircleAI
          3.8.0 did not restore on Android and a project reference here would
          never have said so. -->
-    <PackageReference Include="CircleAI" Version="3.8.1" />
+    <!-- The project, not the package. They are the same C# - the package is a
+         snapshot of it - and this head's own 27 files moved INTO the library, so a
+         snapshot taken before that move cannot contain them. Source is the truth;
+         the package is what customers restore. -->
+    <ProjectReference Include="..\CircleAI\CircleAI.csproj" />
     <!-- Skills + capability catalogue, for the /v1/capabilities and /v1/skills endpoints. -->
   </ItemGroup>
 

@@ -80,9 +80,6 @@
   <!-- THE WHOLE POINT: the heads no other suite can reach. -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\CircleAI\CircleAI.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Device\CircleAI.Device.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Client\CircleAI.Client.csproj" />
-    <ProjectReference Include="..\..\src\CircleAI.Assistant.Device\CircleAI.Assistant.Device.csproj" />
   </ItemGroup>
 
   <!-- Test classes are found by reflection, so the linker cannot trace them and

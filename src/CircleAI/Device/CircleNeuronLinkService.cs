@@ -34,7 +34,9 @@ using CircleAI.Memory;
 using CircleAI.Skills;
 using Java.Security;
 
+
 namespace CircleAI.Device;
+
 
 /// <summary>Exported bound service that serves the shared brain to a linked app.</summary>
 [Service(Name = "ai.circle.CircleNeuronLinkService", Exported = true)]

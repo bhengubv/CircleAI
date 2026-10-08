@@ -1,3 +1,4 @@
+using Microsoft.Maui.Devices;   // DeviceInfo. The app had MAUI implicit usings; a library does not.
 // DeviceFormFactor.cs
 //
 // What this head is: a real device, with the models on it.

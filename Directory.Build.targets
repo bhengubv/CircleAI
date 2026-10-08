@@ -65,7 +65,15 @@
   <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'android'">
     <!-- Bundle by default on Android. Reuses the SDK's existing knob name. -->
     <CircleAIBundleMnn Condition="'$(CircleAIBundleMnn)' == ''">true</CircleAIBundleMnn>
-    <_CircleAIRuntimesRoot>$(MSBuildThisFileDirectory)src/CircleAI.Inference/runtimes/</_CircleAIRuntimesRoot>
+    <!-- src/CircleAI.Inference/ became src/CircleAI/Inference/ at 3.8.1. The old path
+         survived the move, matched nothing, and the includes below are wildcards - so
+         MNN silently stopped being bundled. The result was a 74 MB signed APK carrying
+         291 native libraries and not one of them MNN: the exact nightmare the header of
+         this file describes. Embeddings.Local and Voice carry natives too and were never
+         covered here at all, so turbovec was equally absent. -->
+    <_CircleAIMnnRoot>$(MSBuildThisFileDirectory)src/CircleAI/Inference/runtimes/</_CircleAIMnnRoot>
+    <_CircleAITurboVecRoot>$(MSBuildThisFileDirectory)src/CircleAI/Embeddings.Local/runtimes/</_CircleAITurboVecRoot>
+    <_CircleAIVoiceRoot>$(MSBuildThisFileDirectory)src/CircleAI/Voice/runtimes/</_CircleAIVoiceRoot>
   </PropertyGroup>
 
   <!--
@@ -73,15 +81,15 @@
     (e.g. android-x64) costs nothing and needs no Exists() guard.
   -->
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleMnn)' == 'true'">
-    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-arm64/native/*.so">
+    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-arm64/native/*.so;$(_CircleAITurboVecRoot)android-arm64/native/*.so;$(_CircleAIVoiceRoot)android-arm64/native/*.so">
       <Abi>arm64-v8a</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-arm/native/*.so">
+    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-arm/native/*.so;$(_CircleAITurboVecRoot)android-arm/native/*.so;$(_CircleAIVoiceRoot)android-arm/native/*.so">
       <Abi>armeabi-v7a</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_CircleAIRuntimesRoot)android-x64/native/*.so">
+    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-x64/native/*.so;$(_CircleAITurboVecRoot)android-x64/native/*.so;$(_CircleAIVoiceRoot)android-x64/native/*.so">
       <Abi>x86_64</Abi>
     </AndroidNativeLibrary>
   </ItemGroup>
@@ -125,7 +133,7 @@
              Text="[CircleAI] Bundling @(AndroidNativeLibrary->Count()) native lib(s) into the APK." />
     <Warning Code="CIRCLEAI001"
              Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' == ''"
-             Text="[CircleAI] CircleAIBundleMnn is true but no MNN native libraries were found under $(_CircleAIRuntimesRoot). On-device inference will fail at runtime with DllNotFoundException: mnnbridge." />
+             Text="[CircleAI] CircleAIBundleMnn is true but no MNN native libraries were found under $(_CircleAIMnnRoot). On-device inference will fail at runtime with DllNotFoundException: mnnbridge." />
     <Message Importance="high"
              Condition="'$(CircleAIBundleMnn)' != 'true'"
              Text="[CircleAI] CircleAIBundleMnn=false — no MNN in the APK. On-device inference requires a runtime fetch." />

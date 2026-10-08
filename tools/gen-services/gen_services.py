@@ -54,7 +54,7 @@ INFRASTRUCTURE = (
     "Telephony", "Testing", "Tools", "Voice", "Wearable", "Web",
     "WindowsAutomation", "Workflows", "Vision.Cloud", "Companion", "Knowledge",
     "Memory", "Collaboration", "MediaHub", "Commerce.Integration",
-    "Inference.Server", "Safety.Child", "Personal",
+    "Inference.Server", "InferenceServer", "Safety.Child", "Personal",
 )
 
 # -- module -> (group, title, icon, opener, optional route) -------------------

@@ -26,6 +26,10 @@ using CircleAI.Core.Models;
 using CircleAI.Inference;
 using CircleAI.Memory;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and Microsoft.Maui.Controls is in scope here.
+using Application = Android.App.Application;
+
 namespace CircleAI.Service.Android;
 
 // WHAT THIS APP IS CALLED AND WHAT IT LOOKS LIKE, in one place.

@@ -26,7 +26,7 @@ namespace CircleAI.Tests;
 public sealed class ForegroundTypeTests
 {
     private static string Source() => File.ReadAllText(Path.Combine(
-        Root(), "src", "CircleAI.Device", "CircleNeuronService.cs"));
+        Root(), "src", "CircleAI", "Device", "CircleNeuronService.cs"));
 
     [Fact]
     public void The_microphone_is_claimed_on_its_own_not_alongside_dataSync()

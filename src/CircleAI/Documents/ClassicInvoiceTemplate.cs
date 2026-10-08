@@ -23,6 +23,10 @@ using System.Globalization;
 using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Graphics into scope.
+using Colors = MigraDoc.DocumentObjectModel.Colors;
+
 namespace CircleAI.Documents;
 
 /// <summary>The one invoice template for v1: classic, table-based, VAT-aware.</summary>

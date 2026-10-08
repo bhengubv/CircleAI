@@ -23,6 +23,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Fluxor;
 
+// Aliased because this file shares one assembly with the MAUI-targeting android
+// leg from 3.8.1, and MAUI's implicit usings bring Microsoft.Maui.Dispatching.IDispatcher into scope.
+using IDispatcher = Fluxor.IDispatcher;
+
 namespace CircleAI.Assistant;
 
 public sealed class MemoryEffects

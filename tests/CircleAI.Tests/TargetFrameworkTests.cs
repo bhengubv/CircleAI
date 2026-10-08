@@ -34,8 +34,12 @@ public class TargetFrameworkTests
     /// </remarks>
     private static readonly string[] PlatformOnly =
     [
-        "CircleAI.Assistant.Device",
-        "CircleAI.Device",
+        // CircleAI.Assistant.Device and CircleAI.Device used to be listed here. They
+        // are no longer projects: the one-DLL merge made them folders inside
+        // src/CircleAI, and the android-only halves are now excluded by a Compile
+        // Remove in CircleAI.csproj rather than by a project boundary. An exemption
+        // naming a project that no longer exists covers nothing, which is what the
+        // existence check below is for.
 
         // AN APPLICATION, AND NOW TWO OF THEM. CircleAIService is the service's
         // own package - net10.0-android for the bound service, net10.0 for the
