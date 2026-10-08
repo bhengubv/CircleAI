@@ -65,7 +65,7 @@
 
     <!-- Android's versionCode. It MUST increase on every build somebody could install
          over, or the install is refused with no useful message. -->
-    <ApplicationVersion>57</ApplicationVersion>
+    <ApplicationVersion>58</ApplicationVersion>
     <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
 
     <!-- Plain APK so `adb install` works without a bundletool step. Also: a Release
