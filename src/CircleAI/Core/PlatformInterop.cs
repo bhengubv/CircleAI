@@ -21,7 +21,7 @@ using CircleAI.Core;
 /// Loads native models via llama.cpp. Callers receive an opaque
 /// <see cref="SafeModelHandle"/> they can pass on to inference code.
 /// </summary>
-public static class PlatformInterop
+public static partial class PlatformInterop
 {
     private const string LibraryName = "llama";
 
@@ -64,6 +64,15 @@ public static class PlatformInterop
     //    CircleAI.Inference.LlamaCppInterop, kept here only because Core
     //    must not take a project reference on Inference). ------------------
 
+    // THE FOUR FLAGS ARE byte AND NOT bool, AND THAT IS NOT A STYLE CHOICE.
+    // [assembly: DisableRuntimeMarshalling] turns the whole assembly's P/Invokes
+    // into blit-only calls, and a bool is not blittable - the [MarshalAs(I1)] that
+    // used to convert it is exactly the runtime marshalling that is now switched
+    // off, so the struct could not legally cross a ref parameter. llama.cpp
+    // declares these as C `bool`, one byte each, so byte is what the native side
+    // already saw; nothing in C# reads or writes them - the struct is filled by
+    // llama_model_default_params and handed straight back - so there is no call
+    // site to convert. 0 is false, non-zero is true, if one ever needs reading.
     [StructLayout(LayoutKind.Sequential)]
     private struct LlamaModelParamsCompat
     {
@@ -76,23 +85,30 @@ public static class PlatformInterop
         public IntPtr progress_callback;
         public IntPtr progress_callback_user_data;
         public IntPtr kv_overrides;
-        [MarshalAs(UnmanagedType.I1)] public bool vocab_only;
-        [MarshalAs(UnmanagedType.I1)] public bool use_mmap;
-        [MarshalAs(UnmanagedType.I1)] public bool use_mlock;
-        [MarshalAs(UnmanagedType.I1)] public bool check_tensors;
+        public byte   vocab_only;
+        public byte   use_mmap;
+        public byte   use_mlock;
+        public byte   check_tensors;
     }
 
-    [DllImport(LibraryName, EntryPoint = "llama_backend_init")]
-    private static extern void llama_backend_init();
+    // LibraryImport, not DllImport: the source generator writes the marshalling
+    // code at compile time instead of asking a runtime marshaller that is disabled.
+    // CharSet/BestFitMapping/ThrowOnUnmappableChar are gone with it - they were
+    // instructions to that marshaller. StringMarshalling.Utf8 is what the old
+    // [MarshalAs(LPUTF8Str)] on the path meant, and it is what llama.cpp expects,
+    // so a model under a non-ASCII path still loads.
+    [LibraryImport(LibraryName, EntryPoint = "llama_backend_init")]
+    private static partial void llama_backend_init();
 
-    [DllImport(LibraryName, EntryPoint = "llama_model_default_params")]
-    private static extern LlamaModelParamsCompat llama_model_default_params();
+    [LibraryImport(LibraryName, EntryPoint = "llama_model_default_params")]
+    private static partial LlamaModelParamsCompat llama_model_default_params();
 
-    [DllImport(LibraryName, EntryPoint = "llama_model_load_from_file", CharSet = CharSet.Ansi, BestFitMapping = false, ThrowOnUnmappableChar = true)]
-    private static extern IntPtr llama_model_load_from_file(
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string path_model,
+    [LibraryImport(LibraryName, EntryPoint = "llama_model_load_from_file",
+        StringMarshalling = StringMarshalling.Utf8)]
+    private static partial IntPtr llama_model_load_from_file(
+        string path_model,
         ref LlamaModelParamsCompat @params);
 
-    [DllImport(LibraryName, EntryPoint = "llama_model_free")]
-    private static extern void llama_model_free(IntPtr model);
+    [LibraryImport(LibraryName, EntryPoint = "llama_model_free")]
+    private static partial void llama_model_free(IntPtr model);
 }

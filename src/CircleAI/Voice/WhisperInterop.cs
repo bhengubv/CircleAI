@@ -13,6 +13,7 @@
 //   iOS      -> libwhisper.dylib (or statically linked)
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace CircleAI.Voice;
@@ -199,7 +200,7 @@ internal unsafe struct WhisperFullParams
 /// whisper library name.
 /// </para>
 /// </remarks>
-internal static class WhisperInterop
+internal static partial class WhisperInterop
 {
     /// <summary>
     /// Resolved library name. Windows uses <c>whisper.dll</c>; Linux/Android
@@ -306,9 +307,22 @@ internal static class WhisperInterop
     /// A native pointer to the whisper context, or <see cref="IntPtr.Zero"/>
     /// on failure.
     /// </returns>
-    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl,
-        EntryPoint = "whisper_init_from_file_with_params", CharSet = CharSet.Ansi)]
-    public static extern IntPtr whisper_init_from_file_with_params(
+    // THE ONE ENTRY HERE THAT TAKES A STRING, AND THEREFORE THE ONE THAT HAD TO
+    // CHANGE. [assembly: DisableRuntimeMarshalling] leaves no runtime marshaller to
+    // turn a C# string into a char*, so CharSet.Ansi was an instruction to something
+    // that is no longer there; the source generator writes that conversion instead.
+    // Utf8 rather than Ansi on purpose: whisper.cpp opens the path with fopen and
+    // expects UTF-8, and CharSet.Ansi meant the Windows ANSI code page, which
+    // mangles any non-ASCII directory on the way in. The other entries in this
+    // class pass only blittable types and are left as DllImport.
+    //
+    // The SetDllImportResolver registration above still applies: the generator emits
+    // an ordinary P/Invoke stub for the same library name, so the Android
+    // nativeLibraryDir override continues to resolve it.
+    [LibraryImport(LibraryName, EntryPoint = "whisper_init_from_file_with_params",
+        StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    public static partial IntPtr whisper_init_from_file_with_params(
         string path_model,
         WhisperContextParams @params);
 

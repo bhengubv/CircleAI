@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace CircleAI.Voice;
@@ -28,24 +29,39 @@ namespace CircleAI.Voice;
 /// stays a thin binding and does not add a second lock.
 /// </para>
 /// </remarks>
-public sealed class OpenJTalkPhonemizer : IDisposable
+public sealed partial class OpenJTalkPhonemizer : IDisposable
 {
     private const string Lib = "openjtalk_g2p";
 
-    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr openjtalk_g2p_open(
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string dicDir);
+    // EVERY ENTRY HERE CARRIES EITHER JAPANESE TEXT OR A BYTE BUFFER, SO EVERY ONE
+    // NEEDED CONVERTING. [assembly: DisableRuntimeMarshalling] removes the runtime
+    // marshaller these relied on: [MarshalAs(LPUTF8Str)] on a string and a byte[]
+    // that had to be pinned and passed as a pointer were both its work. The source
+    // generator does the same job at compile time - StringMarshalling.Utf8 is the
+    // exact replacement for LPUTF8Str, and a byte[] becomes a pinned pointer the
+    // same way - so the native side sees precisely what it saw before.
+    //
+    // Getting this wrong would be quiet: openjtalk_g2p would receive a mangled or
+    // truncated pointer and return phonemes for the wrong text rather than failing,
+    // and Japanese is the one language where nobody here would read the output and
+    // notice. See japanese-tts-needs-open-jtalk and espeak-argv-eats-nonlatin.
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial IntPtr openjtalk_g2p_open(string dicDir);
 
-    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void openjtalk_g2p_close(IntPtr handle);
+    [LibraryImport(Lib)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial void openjtalk_g2p_close(IntPtr handle);
 
-    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int openjtalk_labels(
-        IntPtr handle, [MarshalAs(UnmanagedType.LPUTF8Str)] string text, byte[] outBuf, int outLen);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int openjtalk_labels(
+        IntPtr handle, string text, byte[] outBuf, int outLen);
 
-    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int openjtalk_g2p(
-        IntPtr handle, [MarshalAs(UnmanagedType.LPUTF8Str)] string text, byte[] outBuf, int outLen);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int openjtalk_g2p(
+        IntPtr handle, string text, byte[] outBuf, int outLen);
 
     private IntPtr _handle;
     private readonly byte[] _buffer = new byte[1 << 18];

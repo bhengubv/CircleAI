@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -28,7 +29,7 @@ namespace CircleAI.Voice;
 /// <see cref="IPhonemizer"/> that calls libespeak-ng in-process. Works wherever
 /// the native library + data can be loaded, including Android and iOS.
 /// </summary>
-public sealed class NativeEspeakPhonemizer : IPhonemizer, IDisposable
+public sealed partial class NativeEspeakPhonemizer : IPhonemizer, IDisposable
 {
     private const string Lib = "espeak-ng";
 
@@ -42,18 +43,36 @@ public sealed class NativeEspeakPhonemizer : IPhonemizer, IDisposable
     private bool _initialised;
     private bool _disposed;
 
-    [DllImport(Lib, EntryPoint = "espeak_Initialize", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int espeak_Initialize(int output, int bufLength, [MarshalAs(UnmanagedType.LPStr)] string? path, int options);
+    // LPStr BECOMES Utf8, AND ON THE PLATFORM THAT MATTERS THAT IS NOT A CHANGE.
+    // [assembly: DisableRuntimeMarshalling] leaves nothing to execute a
+    // [MarshalAs(LPStr)], so the source generator writes the conversion instead.
+    // LPStr meant "the platform's narrow encoding", and on Unix and Android .NET
+    // already marshals it as UTF-8 - so Android, the only place this library ships,
+    // sees identical bytes. On Windows it shifts from the ANSI code page to UTF-8,
+    // which only differs for a non-ASCII data directory, and there UTF-8 is what
+    // espeak-ng wants anyway.
+    //
+    // espeak_Initialize's path is nullable and stays nullable: a null string
+    // marshals to a null pointer, which is how espeak is told to find its own data.
+    [LibraryImport(Lib, EntryPoint = "espeak_Initialize", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int espeak_Initialize(int output, int bufLength, string? path, int options);
 
-    [DllImport(Lib, EntryPoint = "espeak_SetVoiceByName", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int espeak_SetVoiceByName([MarshalAs(UnmanagedType.LPStr)] string name);
+    [LibraryImport(Lib, EntryPoint = "espeak_SetVoiceByName", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int espeak_SetVoiceByName(string name);
 
     // const void **textptr — espeak advances the pointer as it consumes text.
-    [DllImport(Lib, EntryPoint = "espeak_TextToPhonemes", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr espeak_TextToPhonemes(ref IntPtr textptr, int textmode, int phonememode);
+    // An IntPtr by ref is blittable, so this one needed no marshalling even before;
+    // it is here because a by-ref parameter is itself what CA1420 objects to under
+    // disabled marshalling, and the generator emits the pin explicitly.
+    [LibraryImport(Lib, EntryPoint = "espeak_TextToPhonemes")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial IntPtr espeak_TextToPhonemes(ref IntPtr textptr, int textmode, int phonememode);
 
-    [DllImport(Lib, EntryPoint = "espeak_Terminate", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int espeak_Terminate();
+    [LibraryImport(Lib, EntryPoint = "espeak_Terminate")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    private static partial int espeak_Terminate();
 
     /// <summary>
     /// Absolute path to the directory CONTAINING <c>espeak-ng-data</c>. On
