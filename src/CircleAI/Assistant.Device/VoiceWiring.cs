@@ -37,14 +37,57 @@ public static class VoiceWiring
     static readonly object Gate = new();
     static bool _installed;
 
+    // The real factory, and the gate that says it has been chosen. Both exist so
+    // Install can return immediately while the expensive part runs elsewhere.
+    static readonly ManualResetEventSlim Chosen = new(initialState: false);
+    // Fully qualified like every other type in this file: CircleAI.Assistant.Device
+    // has no using for CircleAI.Voice, and adding one here would collide with
+    // Android.* names the rest of the file already has to qualify around.
+    static Func<string, CircleAI.Voice.IPhonemizer>? _chosen;
+
+    /// <summary>
+    /// How long a caller asking for a phonemizer will wait for wiring to finish.
+    /// </summary>
+    /// <remarks>
+    /// Generous on purpose: the only thing it is waiting for is an 11.9 MB unpack
+    /// that happens once per install, measured at 317 ms on a P30. If this is ever
+    /// hit, something is wrong and falling back is better than throwing into a
+    /// synthesis call.
+    /// </remarks>
+    static readonly TimeSpan ChosenTimeout = TimeSpan.FromSeconds(20);
+
     /// <summary>
     /// Makes sure the process can turn text into phonemes. Safe to call repeatedly.
     /// </summary>
     /// <remarks>
-    /// Phonemes come from the SEPARATE espeak G2P app (com.bhengubv.espeakng) across
-    /// a process boundary — espeak-ng is GPL and is never linked into CircleAI. If
-    /// that app is absent the phonemizer throws a clear reason when it is used,
-    /// which SpokenReply now surfaces on screen rather than swallowing.
+    /// RETURNS IMMEDIATELY, AND THAT IS THE POINT. This used to do its work inline,
+    /// and the only caller is ServiceApplication.OnCreate — the service's MAIN
+    /// thread. Measured on a P30 on 2026-10-08, from the service's own log:
+    ///
+    ///   23:09:04.978 → 05.295   espeak data unpacked          317 ms
+    ///   23:09:05.295 → 05.427   native load + phonemize probe 132 ms
+    ///   23:09:05.675            Choreographer: Skipped 92 frames!
+    ///
+    /// Android's own words for it: "The application may be doing too much work on
+    /// its main thread." A service with no UI still owns the main looper, and
+    /// blocking it delays every binder call, every lifecycle callback and the
+    /// foreground notification — so a linked app asking a question during startup
+    /// waits on a zip extraction.
+    ///
+    /// THE FACTORY IS STILL SET SYNCHRONOUSLY, because null is a load-bearing value
+    /// here: CircleAISpeaker reads it and answers "on-device phonemizer not wired",
+    /// and PersonalSpeech null-checks it. Deferring the ASSIGNMENT would turn a
+    /// slow startup into a silent loss of speech for anything that asked early. So
+    /// a waiting factory goes in at once and the work happens on a pool thread;
+    /// whoever asks first waits for the choice instead of the main thread paying
+    /// for it up front. After the first run there is nothing to unpack and the
+    /// wait is the native probe alone.
+    ///
+    /// Phonemes come from in-process espeak where the native library is present,
+    /// and otherwise from the SEPARATE espeak G2P app (com.bhengubv.espeakng)
+    /// across a process boundary. If that app is absent too, the phonemizer throws
+    /// a clear reason when it is used, which SpokenReply surfaces on screen rather
+    /// than swallowing.
     /// <para>
     /// Called from every activity that can reach the speaker, because which one
     /// runs first depends on how the app was opened: the launcher, a notification,
@@ -56,12 +99,61 @@ public static class VoiceWiring
         lock (Gate)
         {
             if (_installed) return;
+            _installed = true;
 
             // Application context, not the activity: this outlives whichever screen
             // happened to install it, and holding an activity in a static is how a
             // process-wide hook leaks a window.
             var app = context.ApplicationContext ?? context;
 
+            // In place before this method returns, so nothing ever reads null.
+            CircleAI.Assistant.Voice.CircleAISpeaker.MobilePhonemizerFactory = voice =>
+            {
+                if (!Chosen.Wait(ChosenTimeout))
+                {
+                    // Never throw into a synthesis call over a slow unpack. The
+                    // out-of-process route is the same fallback Choose would pick.
+                    Log.Warn(Tag, $"phonemizer: wiring still not finished after {ChosenTimeout.TotalSeconds:0}s — using the separate app");
+                    return new OutOfProcessEspeakPhonemizer(app, voice);
+                }
+                return (_chosen ?? (v => new OutOfProcessEspeakPhonemizer(app, v)))(voice);
+            };
+
+            // The 11.9 MB unpack and the native probe. Long-running on purpose:
+            // this is I/O plus a dlopen, not a queue of short work items, and
+            // borrowing a pool thread for 450 ms would otherwise starve it.
+            _ = Task.Factory.StartNew(
+                () => Choose(app),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+        }
+    }
+
+    /// <summary>Picks the phonemizer this device can actually use, off the main thread.</summary>
+    static void Choose(Context app)
+    {
+        try
+        {
+            ChooseCore(app);
+        }
+        catch (Exception ex)
+        {
+            // Install used to be wrapped in a try/catch by its caller, which cannot
+            // see an exception on a pool thread. Keep the same outcome: a warning
+            // and the out-of-process fallback, never an unobserved crash.
+            Log.Warn(Tag, $"phonemiser not wired: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            // Released even on failure. A caller blocked on this must get the
+            // fallback rather than wait out the full timeout.
+            Chosen.Set();
+        }
+    }
+
+    static void ChooseCore(Context app)
+    {
             // ESPEAK IS IN THIS APK NOW. It lived in a second package only because
             // linking GPL code here would have forced a relicense; with that
             // constraint lifted it links in, and the one-APK rule — an app may
@@ -82,9 +174,10 @@ public static class VoiceWiring
                     var probe = new CircleAI.Voice.NativeEspeakPhonemizer("en-us").Phonemize("test");
                     if (probe.Count > 0)
                     {
-                        CircleAI.Assistant.Voice.CircleAISpeaker.MobilePhonemizerFactory =
-                            voice => new CircleAI.Voice.NativeEspeakPhonemizer(voice);
-                        _installed = true;
+                        // _chosen, not the public static: the public one is already
+                        // the waiting factory Install put there, and whoever is
+                        // blocked on Chosen is waiting for exactly this line.
+                        _chosen = voice => new CircleAI.Voice.NativeEspeakPhonemizer(voice);
                         Log.Info(Tag, $"phonemizer: espeak IN-PROCESS ({probe.Count} symbols, data={espeakData})");
                         return;
                     }
@@ -99,12 +192,9 @@ public static class VoiceWiring
             // Fallback, not the plan: the separate GPL app, if the user happens to
             // have it. Kept because an arm64-only .so means x86_64 has no
             // in-process espeak, and a missing voice beats a crash.
-            CircleAI.Assistant.Voice.CircleAISpeaker.MobilePhonemizerFactory =
-                voice => new OutOfProcessEspeakPhonemizer(app, voice);
+            _chosen = voice => new OutOfProcessEspeakPhonemizer(app, voice);
 
-            _installed = true;
             Log.Warn(Tag, "phonemizer: in-process espeak unavailable — falling back to the separate app");
-        }
     }
 
     /// <summary>
