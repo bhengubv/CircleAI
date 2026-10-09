@@ -105,11 +105,45 @@ public sealed class ServiceApplication : Application
         var grants = System.IO.Path.Combine(FilesDir!.AbsolutePath, "link-grants.json");
         CircleNeuronLinkService.Grants = new FileLinkGrantStore(grants);
 
-        // NOBODY IS TRUSTED BY DEFAULT. An empty first-party set means every client,
-        // including our own sample, is approved once by the person with device auth
-        // rather than waved through on a signature. Populating this is a deliberate
-        // decision about which packages ship as "ours", not a convenience.
-        CircleNeuronLinkService.FirstPartySignatures = new HashSet<string>(StringComparer.Ordinal);
+        // OUR OWN APPS ARE FIRST PARTY, AND THE SET USED TO BE EMPTY.
+        //
+        // What was here said "NOBODY IS TRUSTED BY DEFAULT ... populating this is a
+        // deliberate decision about which packages ship as 'ours', not a
+        // convenience" - and then populated nothing. LinkGate's doc is explicit
+        // about what that means: "Empty means every caller is treated as
+        // third-party." So AutoApprove, the whole reason the gate has four outcomes
+        // instead of three, could never fire.
+        //
+        // WHAT IT COST, on the P30 on 2026-10-09 after a pm clear:
+        //
+        //     CircleAI is not ready
+        //     not linked for Chat - approve in Circle AI first
+        //
+        // The person's own assistant, on their own phone, asking them to authorise
+        // it to talk to itself - with a biometric sheet. That is the same defect as
+        // the "Turn it on" button: a default that is off, and the work handed back.
+        //
+        // FIRST PARTY MEANS SAME SIGNING KEY, which is the boundary Android itself
+        // uses for signature-level permissions. An app signed with this key is one
+        // we shipped; anybody who holds the key can already publish updates to these
+        // packages, so trusting it grants nothing that was being withheld.
+        //
+        // STATED PLAINLY, BECAUSE IT IS A REAL WIDENING: every app signed with this
+        // key now reaches the brain AND the person's memory with no prompt. Third
+        // parties are unaffected - they still get NeedAuth and a device-auth sheet.
+        //
+        // Read from the OS, never pasted in: a hard-coded digest is wrong the day
+        // the key rotates, and the failure is a person being asked to approve their
+        // own assistant. If it cannot be read the set stays empty and everything
+        // prompts, which is the old behaviour and the safe way to fail.
+        var ownSignature = CircleNeuronLinkService.OwnSignatureDigest(this);
+        CircleNeuronLinkService.FirstPartySignatures = ownSignature is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>([ownSignature], StringComparer.Ordinal);
+
+        global::Android.Util.Log.Info("CircleAI.Setup", ownSignature is null
+            ? "link: could not read our own signing key; every caller will be prompted"
+            : "link: our own signing key is trusted; apps we signed need no approval");
 
         // THE PERSON'S MEMORY, AND THE RECALL / REMEMBER VERBS WERE DEAD WITHOUT IT.
         // CircleNeuronLinkService.Memory defaults to null, and null is answered with

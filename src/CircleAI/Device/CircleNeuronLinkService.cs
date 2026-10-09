@@ -796,6 +796,28 @@ public sealed class CircleNeuronLinkService : Service
     /// LinkConsentActivity so the service and the consent screen judge a caller's
     /// identity the same way.
     /// </summary>
+    /// <summary>
+    /// This app's own signing digest — the definition of "first party".
+    /// </summary>
+    /// <remarks>
+    /// COMPUTED, NEVER WRITTEN DOWN. A digest pasted into source is wrong the day
+    /// the key is rotated and nobody notices until a person is asked to approve
+    /// their own assistant. Asking the OS for it costs one PackageManager call at
+    /// startup and cannot drift.
+    /// <para>
+    /// Null when the signature cannot be read, which is the safe way round: the
+    /// caller then has no first-party entry and everything is prompted, exactly as
+    /// before.
+    /// </para>
+    /// </remarks>
+    public static string? OwnSignatureDigest(Context context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return context.PackageName is { Length: > 0 } package
+            ? SignatureDigestOf(context, package)
+            : null;
+    }
+
     internal static string? SignatureDigestOf(Context context, string package)
     {
         try

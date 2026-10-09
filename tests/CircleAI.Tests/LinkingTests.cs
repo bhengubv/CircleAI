@@ -89,6 +89,35 @@ public sealed class LinkingTests
     }
 
     [Fact]
+    public async Task An_empty_first_party_set_makes_our_own_app_a_stranger()
+    {
+        // THE DEFECT THIS PINS WAS IN THE WIRING, NOT THE GATE.
+        //
+        // LinkGate has always been right and has always been tested - with a
+        // POPULATED set, as NewGate does above. The Android host handed it
+        // `new HashSet<string>(...)` and nothing else, under a comment saying
+        // nobody is trusted by default, so AutoApprove - the entire reason this
+        // enum has four values instead of three - could never fire.
+        //
+        // On the P30, after a pm clear, that read:
+        //
+        //     CircleAI is not ready
+        //     not linked for Chat - approve in Circle AI first
+        //
+        // The person's own assistant asking them to authorise it to talk to
+        // itself, behind a biometric sheet. ServiceApplication now seeds the set
+        // with its own signing digest, read from the OS rather than pasted in.
+        //
+        // This test is the cost of emptying it again, written down.
+        var store = new InMemoryLinkGrantStore();
+        var noneTrusted = new LinkGate(store, new HashSet<string>(StringComparer.Ordinal));
+
+        var d = await noneTrusted.DecideAsync(new LinkRequest("com.geek.app", FirstParty), Now);
+
+        Assert.Equal(LinkDecisionKind.NeedAuth, d.Kind);
+    }
+
+    [Fact]
     public async Task Gate_third_party_needs_auth_without_a_grant()
     {
         var (gate, _) = NewGate();
