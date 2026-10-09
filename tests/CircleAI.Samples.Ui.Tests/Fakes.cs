@@ -34,7 +34,17 @@ internal sealed class FakeVoiceHost : IVoiceHost
 /// <summary>Setup that is already finished, unless a test says otherwise.</summary>
 internal sealed class FakeSetup : ISetup
 {
-    public Readiness Readiness { get; init; } =
+    /// <summary>
+    /// Settable, not init-only, so a test can make the phone become ready WHILE a
+    /// screen is already on it.
+    /// </summary>
+    /// <remarks>
+    /// It was init-only, and that quietly made one whole class of bug untestable:
+    /// anything about a screen NOTICING a change. Home sat on "Finish setting it
+    /// up" through a 270 MB service-side download on the P30 and a fake whose
+    /// readiness could never move could not have caught it.
+    /// </remarks>
+    public Readiness Readiness { get; set; } =
         new(ReadyStage.Ready, "Tap and talk", "", true);
 
     public bool IsRunning => false;
@@ -473,9 +483,33 @@ internal sealed class FakeBrain : IBrain
             ready, ready ? "" : Ready ? "loading the model" : "no brain in a test"));
     }
 
+    /// <summary>How many questions actually reached the brain.</summary>
+    /// <remarks>
+    /// Chat used to return SILENTLY from Send when the brain reported not-ready,
+    /// so a person pressed Send and nothing happened at all. Counting the asks is
+    /// the only way to tell "it answered badly" from "it was never asked".
+    /// </remarks>
+    public int Asks;
+
+    /// <remarks>
+    /// DELIBERATELY IGNORES <see cref="Ready"/>. Asking is what starts a real
+    /// brain - the bind is AutoCreate - so a fake that refused while not ready
+    /// would be modelling the bug rather than the service.
+    /// </remarks>
     public Task<string> AskAsync(
         string prompt, Action<string>? token = null, CancellationToken ct = default)
-        => Throws is not null ? Task.FromException<string>(Throws) : Task.FromResult(Answer);
+    {
+        System.Threading.Interlocked.Increment(ref Asks);
+        if (Throws is not null) return Task.FromException<string>(Throws);
+
+        // IT STREAMS, BECAUSE THE REAL ONE DOES AND THE SCREENS ONLY READ THE
+        // STREAM. Chat fills its bubble from the token callback and DELETES the
+        // bubble in its finally when nothing arrived - so a fake that only
+        // returned a value made the whole reply disappear, and a test asserting
+        // the answer was on screen failed against correct screen code.
+        token?.Invoke(Answer);
+        return Task.FromResult(Answer);
+    }
 
     public Task<string> SeeAsync(
         string question, byte[] image,

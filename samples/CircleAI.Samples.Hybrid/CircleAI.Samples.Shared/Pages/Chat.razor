@@ -71,7 +71,7 @@
                 }
                 else
                 {
-                    <div class="empty-line">Not ready yet</div>
+                    <div class="empty-line">Getting ready</div>
                     <div class="empty-sub">@_status</div>
 
                     @*
@@ -97,16 +97,23 @@
                     }
 
                     @*
-                        THE INSTRUCTION, MADE PRESSABLE - but only where pressing
-                        it does something. On the phone this is a download waiting
-                        to be started; in a browser the message is "install the
-                        app to have a conversation", and a button offering to turn
-                        that on would be a button that cannot.
+                        NO "TURN IT ON" BUTTON. It used to sit here, and on
+                        2026-10-09 the owner put the objection plainly: "when you
+                        speak to someone do you ask them to turn their brain on
+                        first?" You do not. The app being open IS the service
+                        running - the bind is AutoCreate - so there is nothing for
+                        a person to switch on, and the button sent them to a
+                        settings page that could not help either.
+
+                        What it was really covering was a client that never
+                        rebound after the phone killed the service. That is fixed
+                        in CircleAiLinkClient, which now waits out the restart and
+                        asks again. This screen's job is to say it is coming, not
+                        to hand over the work.
+
+                        The composer below stays up throughout, so the question
+                        can be typed while that happens.
                     *@
-                    @if (Host.IsOnDevice)
-                    {
-                        <a class="empty-go" href="settings">Turn it on</a>
-                    }
                 }
             </div>
         }
@@ -206,24 +213,42 @@
         conversation you can read and not continue still needs its box in place
         rather than vanishing under you.
     *@
-    @if (_ready || _turns.Count > 0)
-    {
+    @*
+        THE COMPOSER IS ALWAYS THERE NOW - 2026-10-09.
+
+        It used to be withdrawn whenever _ready was false, and the controls
+        disabled on top of that. So when the phone killed the service - which on
+        this P30 is iAware doing it to a foreground service, measured - the app
+        did not just fail to answer, it took the keyboard away and offered a
+        button marked "Turn it on" instead. A person with a question could not
+        even type it.
+
+        _ready is a snapshot of a service that comes and goes under memory
+        pressure. Gating the one control a person needs on it meant the app was
+        least usable exactly when it was most frustrating.
+
+        ASKING IS WHAT STARTS IT. The bind is AutoCreate, so the service exists
+        for as long as the app does, and CircleAiLinkClient now waits out a
+        restart and retries instead of handing back a dead binder. Send is safe
+        to press before _ready: it waits, then answers.
+
+        _busy still gates, because that one is about THIS app having a turn in
+        flight, which is a real reason to wait.
+    *@
     <div class="composer">
         <div class="composer-field">
             @* Same as the CV answer box: a controlled value re-applied on
                every render drops characters while somebody is typing. *@
             <input class="input" placeholder="Type a message"
                    aria-label="Your message"
-                   disabled="@(!_ready)"
                    @bind="_draft" @bind:event="oninput"
                    @onkeydown="OnKey" />
 
-            <button class="mic" @onclick="Listen" disabled="@(!_ready || _busy)"
+            <button class="mic" @onclick="Listen" disabled="@_busy"
                     aria-label="Use the mic">🎙</button>
-            <button class="send" @onclick="Send" disabled="@(!_ready || _busy)">Send</button>
+            <button class="send" @onclick="Send" disabled="@_busy">Send</button>
         </div>
     </div>
-    }
 </div>
 
 @code {
@@ -270,7 +295,13 @@
     async Task Send()
     {
         var text = _draft.Trim();
-        if (text.Length == 0 || _busy || !_ready) return;
+
+        // NO !_ready GUARD. It returned SILENTLY - the person pressed Send, the
+        // draft stayed in the box and absolutely nothing happened, which is the
+        // "no response" this whole change is about. Asking is what starts the
+        // brain, and the link client waits out a restart, so the ask goes through
+        // and either answers or says why in a bubble.
+        if (text.Length == 0 || _busy) return;
 
         _turns.Add(new Utterance(true, text));
         _draft = "";

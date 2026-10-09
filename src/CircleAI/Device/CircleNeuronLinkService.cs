@@ -353,6 +353,44 @@ public sealed class CircleNeuronLinkService : Service
         return grant is null ? $"not linked for {required} — approve in Circle AI first" : null;
     }
 
+    /// <summary>How long a question waits for a cold brain before giving up.</summary>
+    /// <remarks>
+    /// MEASURED, NOT CHOSEN: a cold model load is 13-23 s on the P30 and about 19 s
+    /// for a 2 B on a Tensor G2. The budget is comfortably past the slow end,
+    /// because the cost of waiting is a person watching a thinking bubble and the
+    /// cost of not waiting is being told to ask again - which is what this replaces.
+    /// </remarks>
+    private static readonly TimeSpan BrainWarmUp = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// The resident node once it is ready, or null if it never got there.
+    /// </summary>
+    /// <remarks>
+    /// THE WAITING IS ReadinessWait'S, NOT THIS METHOD'S. The first version of
+    /// this was its own poll loop right here - device-proven and impossible to
+    /// test, because this is a private static on an Android Service and the
+    /// net9/net10 suites cannot see it. A budget, a poll interval and an
+    /// off-by-one at each end should not rest on one person watching a phone.
+    /// <para>
+    /// What is left here is the only part that IS Android: what "ready" means on
+    /// this device, and where the lines go. ReadinessWaitTests covers the rest.
+    /// </para>
+    /// <para>
+    /// This runs on a binder thread, which is why the budget is bounded: the pool
+    /// is 16 and a turn that waited forever would eventually take the link down
+    /// for every caller.
+    /// </para>
+    /// </remarks>
+    private static async Task<CircleAI.Hosting.Neuron.NeuronNode?> WaitForBrainAsync(TimeSpan budget)
+    {
+        var up = await CircleAI.Inference.ReadinessWait.UntilAsync(
+            ready: () => CircleNeuronService.Node?.IsReady == true,
+            budget: budget,
+            say:   line => Log.Info(Tag, "serve: the brain is " + line)).ConfigureAwait(false);
+
+        return up ? CircleNeuronService.Node : null;
+    }
+
     private async Task<LinkTurnReply> ServeAskAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
     {
         var turn = LinkTurnCodec.TryDecodeRequest(requestMap);
@@ -437,14 +475,31 @@ public sealed class CircleNeuronLinkService : Service
         }
 
 
-        // Make sure the resident brain is up; a cold model load is seconds long.
+        // THE QUESTION IS THE INSTRUCTION TO START, AND THEN TO WAIT FOR WHAT
+        // STARTED. This block used to call Start and check IsReady in the very next
+        // statement - so on any phone where the brain was not already resident it
+        // could not possibly be ready, and the person got
+        //
+        //     brain warming up, try again shortly
+        //
+        // A cold model load is THIRTEEN TO TWENTY-THREE SECONDS on the P30. Asking
+        // again inside that window returns the same sentence, so "shortly" meant
+        // "keep asking until you happen to catch it", which is the same defect as
+        // the Turn it on button: the app knowing exactly what is happening and
+        // handing the work back to the person. (2026-10-09, after an iAware kill
+        // restarted the service mid-conversation.)
         try { CircleNeuronService.Start(this); }
         catch (Exception ex) { Log.Warn(Tag, "start: " + ex.Message); }
 
-        var node = CircleNeuronService.Node;
-        Log.Info(Tag, $"serve: node={(node is null ? "null" : node.IsReady ? "ready" : "not ready")}");
-        if (node is null || !node.IsReady)
-            return LinkTurnReply.Failure("brain warming up, try again shortly");
+        var node = await WaitForBrainAsync(BrainWarmUp).ConfigureAwait(false);
+        if (node is null)
+        {
+            // Still not up after the budget. This one IS worth saying, because
+            // something is actually wrong rather than merely slow.
+            Log.Warn(Tag, $"serve: the brain did not come up within {BrainWarmUp.TotalSeconds:N0}s");
+            return LinkTurnReply.Failure(
+                "Circle AI could not get its brain started on this phone. Ask again in a moment.");
+        }
 
         var sb = new StringBuilder();
         await foreach (var chunk in node.StreamAsync(new[] { new ChatTurn("user", turn.Message) })

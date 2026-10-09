@@ -75,9 +75,17 @@ public class ChatScreenTests : TestContext
     [Fact]
     public void It_says_what_is_missing_rather_than_inviting_a_question()
     {
-        // A TEXT BOX ON A PHONE WITH NO MODEL IS A PROMISE IT CANNOT KEEP. The
-        // reason has to be the thing on screen, because "Ask it something"
+        // The reason has to be the thing on screen, because "Ask it something"
         // followed by silence is indistinguishable from a broken app.
+        //
+        // THE HEADLINE CHANGED ON 2026-10-09, from "Not ready yet" to "Getting
+        // ready". "Not ready yet" was a verdict, and it sat above a button
+        // marked "Turn it on" asking the person to perform the app's own
+        // startup. The service is running whenever the app is open - the bind is
+        // AutoCreate - so there was never anything for them to switch on.
+        //
+        // What is still pinned, and is the part that mattered: the SPECIFIC
+        // reason is on screen, not a generic apology.
         this.WireEverything();
         Services.AddSingleton<IBrain>(new FakeBrain
         {
@@ -87,7 +95,9 @@ public class ChatScreenTests : TestContext
         var chat = RenderComponent<Chat>();
 
         chat.WaitForAssertion(() =>
-            Assert.Contains("Not ready yet", chat.Find(".empty").TextContent));
+            Assert.Contains("Getting ready", chat.Find(".empty").TextContent));
+
+        Assert.DoesNotContain("Turn it on", chat.Markup);
     }
 
     [Fact]

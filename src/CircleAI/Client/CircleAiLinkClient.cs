@@ -28,11 +28,94 @@ namespace CircleAI.Client;
 public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, IDisposable
 {
     private readonly Context _context;
-    private readonly TaskCompletionSource<IBinder?> _bound =
+
+    // THE BINDER IS NOT A ONE-SHOT, AND TREATING IT AS ONE IS WHY A PERSON WAS
+    // ASKED TO SWITCH THE BRAIN ON.
+    //
+    // Measured on the P30 on 2026-10-09:
+    //
+    //   19:03:49  Killing 8610:…circleai.service (adj 100):
+    //             iAwareK[abnormProc](adj:-10000,type:service)
+    //   19:04:21  …circleai.service back up as pid 11233, brain loaded, 593 MB
+    //   19:05:25  W/CircleAI.Link(8465): transact failed: DeadObjectException
+    //   19:06:03  W/CircleAI.Link(8465): transact failed: DeadObjectException
+    //
+    // The service was ALIVE from 19:04:21 and the app went on transacting with the
+    // corpse. _bound was a single TaskCompletionSource: once it carried a binder,
+    // OnServiceDisconnected's TrySetResult(null) was a no-op, and so was the
+    // TrySetResult on the RECONNECT. Bind.AutoCreate had done its job and handed
+    // back a fresh binder; this class threw it away and kept the dead one forever.
+    //
+    // So every ask failed with "Circle AI stopped - ask again and it will start up",
+    // asking again did exactly the same thing, and under it sat a button asking a
+    // person to go and start the brain themselves. You do not ask someone to turn
+    // their brain on before you speak to them.
+    //
+    // The app being open IS the service running - the bind is AutoCreate and lives
+    // as long as the app does. These three fields make the client believe that:
+    // _live is the binder currently thought good, _bound is a waiter that is
+    // REPLACED on every death so the next caller waits for the restart instead of
+    // being handed a corpse, and _gate keeps the swap atomic against the binder
+    // threadpool, which delivers the callbacks.
+    private readonly object _gate = new();
+    private TaskCompletionSource<IBinder?> _bound =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private IBinder? _live;
     private bool _isBound;
 
+    /// <summary>
+    /// How long a call waits for the service to come back before giving up.
+    /// </summary>
+    /// <remarks>
+    /// Measured: iAware killed it at 19:03:49 and Android had it serving again by
+    /// 19:04:21 - 32 seconds, on a phone with its swap exhausted. The old code gave
+    /// it none at all. This is deliberately longer than that worst case, because
+    /// the alternative to waiting is the screen that started all this.
+    /// </remarks>
+    private static readonly TimeSpan RestartGrace = TimeSpan.FromSeconds(45);
+
     private CircleAiLinkClient(Context context) => _context = context;
+
+    /// <summary>
+    /// The binder to use right now, waiting out a restart if the service has died.
+    /// </summary>
+    private async Task<IBinder?> LiveBinderAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        Task<IBinder?> waiter;
+        lock (_gate)
+        {
+            if (_live is not null) return _live;
+            waiter = _bound.Task;
+        }
+
+        return await WaitOrNull(waiter, timeout, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Drops a binder that has just thrown <see cref="DeadObjectException"/>, so the
+    /// next caller waits for the reconnect rather than reusing it.
+    /// </summary>
+    /// <remarks>
+    /// DONE FROM THE FAILURE, NOT ONLY FROM OnServiceDisconnected, because the
+    /// callback can arrive after the transact that discovered the death - and a
+    /// caller that has already been handed the dead binder would otherwise burn its
+    /// one retry on the same corpse.
+    /// <para>
+    /// The reference check matters: by the time a slow caller reports its failure
+    /// the service may already be back and _live may hold the NEW binder. Clearing
+    /// it then would throw away a good connection on the strength of stale news.
+    /// </para>
+    /// </remarks>
+    private void Invalidate(IBinder dead)
+    {
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_live, dead)) return;
+            _live = null;
+            if (_bound.Task.IsCompleted)
+                _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
 
     /// <summary>Is the CircleAI standalone installed on this device?</summary>
     /// <remarks>Requires the host manifest's &lt;queries&gt; entry (Android 11+),
@@ -78,7 +161,10 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         client._isBound = app.BindService(intent, client, Bind.AutoCreate);
         if (!client._isBound) { client.Dispose(); return null; }
 
-        var binder = await WaitOrNull(client._bound.Task, timeout ?? TimeSpan.FromSeconds(10), ct)
+        // THROUGH THE SAME HELPER AS EVERY OTHER CALLER, so the field is read under
+        // the lock. OnServiceConnected arrives on the binder threadpool and can land
+        // before this line does.
+        var binder = await client.LiveBinderAsync(timeout ?? TimeSpan.FromSeconds(10), ct)
             .ConfigureAwait(false);
         if (binder is null) { client.Dispose(); return null; }
         return client;
@@ -86,27 +172,82 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
 
     /// <summary>Ask the shared brain one turn. Blocks internally until it answers,
     /// off the calling thread.</summary>
-    public async Task<LinkTurnReply> AskAsync(
+    public Task<LinkTurnReply> AskAsync(
         string sessionId, string message, bool agentic = false, CancellationToken ct = default)
-    {
-        var binder = await _bound.Task.ConfigureAwait(false);
-        if (binder is null) return LinkTurnReply.Failure("not connected to Circle AI");
+        => TransactAsync(
+            LinkIpc.TransactAsk,
+            data => WriteMap(data, LinkTurnCodec.Encode(new LinkTurnRequest(sessionId, message, agentic))),
+            reply => LinkTurnCodec.DecodeReply(ReadMap(reply)),
+            LinkTurnReply.Failure,
+            ct);
 
-        return await Task.Run(() =>
+    /// <summary>
+    /// One transaction, surviving the service being killed underneath it.
+    /// </summary>
+    /// <remarks>
+    /// ALL THREE TRANSACTS GO THROUGH HERE so the recovery cannot be applied to two
+    /// of them and forgotten on the third - which is exactly the shape of defect
+    /// this repo keeps finding.
+    /// <para>
+    /// ONE RETRY, NOT A LOOP. A second DeadObjectException after a fresh bind means
+    /// the service is dying on this specific work rather than being evicted, and
+    /// retrying that forever is how a phone ends up in a kill-restart cycle with a
+    /// person watching a spinner. One retry covers the eviction, which is the case
+    /// that actually happens.
+    /// </para>
+    /// <para>
+    /// The write happens INSIDE the retry, not once outside it: a Parcel is consumed
+    /// by a transact and cannot be sent twice.
+    /// </para>
+    /// </remarks>
+    private async Task<T> TransactAsync<T>(
+        int code,
+        Action<Parcel> write,
+        Func<Parcel, T> read,
+        Func<string, T> failure,
+        CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
         {
-            var data = Parcel.Obtain();
-            var reply = Parcel.Obtain();
-            try
+            var binder = await LiveBinderAsync(RestartGrace, ct).ConfigureAwait(false);
+            if (binder is null)
+                return failure("Circle AI is still starting up. Ask again in a moment.");
+
+            var outcome = await Task.Run(() =>
             {
-                data!.WriteInterfaceToken(LinkIpc.Descriptor);
-                WriteMap(data, LinkTurnCodec.Encode(new LinkTurnRequest(sessionId, message, agentic)));
-                binder.Transact(LinkIpc.TransactAsk, data, reply, (TransactionFlags)0);
-                reply!.ReadException();
-                return LinkTurnCodec.DecodeReply(ReadMap(reply));
+                var data = Parcel.Obtain();
+                var reply = Parcel.Obtain();
+                try
+                {
+                    data!.WriteInterfaceToken(LinkIpc.Descriptor);
+                    write(data);
+                    binder.Transact(code, data, reply, (TransactionFlags)0);
+                    reply!.ReadException();
+                    return (Value: read(reply), Dead: false);
+                }
+                catch (global::Android.OS.DeadObjectException)
+                {
+                    // Not reported yet - the caller gets an answer from the retry.
+                    return (Value: default(T)!, Dead: true);
+                }
+                catch (Exception ex) { return (Value: failure(Why(ex)), Dead: false); }
+                finally { data?.Recycle(); reply?.Recycle(); }
+            }, ct).ConfigureAwait(false);
+
+            if (!outcome.Dead) return outcome.Value;
+
+            Invalidate(binder);
+
+            if (attempt > 0)
+            {
+                global::Android.Util.Log.Warn("CircleAI.Link",
+                    "the service died twice on the same call; not retrying again");
+                return failure("Circle AI could not answer just now. Ask again.");
             }
-            catch (Exception ex) { return LinkTurnReply.Failure(Why(ex)); }
-            finally { data?.Recycle(); reply?.Recycle(); }
-        }, ct).ConfigureAwait(false);
+
+            global::Android.Util.Log.Info("CircleAI.Link",
+                "the service was closed by the phone; waiting for it to come back and asking again");
+        }
     }
 
     /// <summary>Recall the person's memory for a situation. Needs a <c>Memory</c> grant.
@@ -231,10 +372,19 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
 
         return ex switch
         {
-            // The host process is gone - killed, crashed, or updated underneath us.
-            // It restarts on the next bind, so "ask again" is true rather than kind.
+            // THIS SHOULD NO LONGER REACH A PERSON. TransactAsync catches
+            // DeadObjectException before here, drops the dead binder, waits for
+            // Bind.AutoCreate to bring the service back and asks again - so a
+            // kill is absorbed rather than reported.
+            //
+            // The sentence that used to live here was
+            // "Circle AI stopped — this phone closed it. Ask again and it will
+            // start up." It was WRONG TWICE: the client never rebound, so asking
+            // again did the same thing forever; and it put the restart on the
+            // person, who then got a "Turn it on" button under it. Nobody asks
+            // someone to turn their brain on before speaking to them.
             global::Android.OS.DeadObjectException =>
-                "Circle AI stopped — this phone closed it. Ask again and it will start up.",
+                "Circle AI is still starting up. Ask again in a moment.",
 
             // Over the binder's ~1 MB budget, which is shared across the process.
             global::Android.OS.TransactionTooLargeException =>
@@ -246,27 +396,13 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
 
     /// <summary>Transacts one structured verb. Mirrors <see cref="AskAsync"/>: blocks
     /// internally, off the calling thread.</summary>
-    private async Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)
-    {
-        var binder = await _bound.Task.ConfigureAwait(false);
-        if (binder is null) return LinkRowsReply.Failure("not connected to Circle AI");
-
-        return await Task.Run(() =>
-        {
-            var data = Parcel.Obtain();
-            var reply = Parcel.Obtain();
-            try
-            {
-                data!.WriteInterfaceToken(LinkIpc.Descriptor);
-                WriteMap(data, LinkVerbCodec.Encode(req));
-                binder.Transact(LinkIpc.TransactVerb, data, reply, (TransactionFlags)0);
-                reply!.ReadException();
-                return LinkVerbCodec.DecodeReply(ReadMap(reply));
-            }
-            catch (Exception ex) { return LinkRowsReply.Failure(Why(ex)); }
-            finally { data?.Recycle(); reply?.Recycle(); }
-        }, ct).ConfigureAwait(false);
-    }
+    private Task<LinkRowsReply> VerbAsync(LinkVerbRequest req, CancellationToken ct)
+        => TransactAsync(
+            LinkIpc.TransactVerb,
+            data => WriteMap(data, LinkVerbCodec.Encode(req)),
+            reply => LinkVerbCodec.DecodeReply(ReadMap(reply)),
+            LinkRowsReply.Failure,
+            ct);
 
     /// <inheritdoc/>
     /// <summary>Transcribe audio this app recorded, using the service's recogniser.</summary>
@@ -305,26 +441,23 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         if (!LinkAudio.Fits(req.Audio.Length, out var refusal))
             return LinkAudioReply.Failure(refusal!);
 
-        var binder = await _bound.Task.ConfigureAwait(false);
-        if (binder is null) return LinkAudioReply.Failure("not connected to Circle AI");
+        // A WRITE THAT REFUSES MUST NOT LOOK LIKE A TRANSACT THAT FAILED. The codec
+        // can decline before anything is sent; that is this caller's mistake and is
+        // not retryable, so it is carried out as a value rather than an exception.
+        string? writeRefusal = null;
 
-        return await Task.Run(() =>
-        {
-            var data = Parcel.Obtain();
-            var reply = Parcel.Obtain();
-            try
+        var result = await TransactAsync(
+            LinkIpc.TransactAudio,
+            data =>
             {
-                data!.WriteInterfaceToken(LinkIpc.Descriptor);
                 if (!LinkAudioCodec.TryWriteRequest(new ParcelWriter(data), req, out var why))
-                    return LinkAudioReply.Failure(why!);
+                    writeRefusal = why;
+            },
+            reply => LinkAudioCodec.ReadReply(new ParcelReader(reply)),
+            LinkAudioReply.Failure,
+            ct).ConfigureAwait(false);
 
-                binder.Transact(LinkIpc.TransactAudio, data, reply, (TransactionFlags)0);
-                reply!.ReadException();
-                return LinkAudioCodec.ReadReply(new ParcelReader(reply));
-            }
-            catch (Exception ex) { return LinkAudioReply.Failure(Why(ex)); }
-            finally { data?.Recycle(); reply?.Recycle(); }
-        }, ct).ConfigureAwait(false);
+        return writeRefusal is not null ? LinkAudioReply.Failure(writeRefusal) : result;
     }
 
     /// <summary>Adapts a <see cref="Parcel"/> to the codec's writer.</summary>
@@ -348,10 +481,45 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         public byte[] ReadBytes() => parcel.CreateByteArray() ?? Array.Empty<byte>();
     }
 
-    public void OnServiceConnected(ComponentName? name, IBinder? service) => _bound.TrySetResult(service);
+    /// <remarks>
+    /// CALLED AGAIN ON EVERY RESTART, which is the whole point. Bind.AutoCreate
+    /// keeps the binding alive across the service process dying, so Android brings
+    /// it back and calls this a second, third, nth time. The old body was
+    /// <c>_bound.TrySetResult(service)</c> - a no-op once the first binder had
+    /// landed - so every one of those restarts was discarded.
+    /// </remarks>
+    public void OnServiceConnected(ComponentName? name, IBinder? service)
+    {
+        lock (_gate)
+        {
+            _live = service;
+
+            // A completed waiter cannot carry the new binder, so it is replaced
+            // before being completed. Anyone already awaiting the old one is
+            // released by the TrySetResult below it.
+            if (_bound.Task.IsCompleted)
+                _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            _bound.TrySetResult(service);
+        }
+    }
 
     /// <inheritdoc/>
-    public void OnServiceDisconnected(ComponentName? name) => _bound.TrySetResult(null);
+    /// <remarks>
+    /// A FRESH, UNCOMPLETED WAITER - not a null result. Completing with null would
+    /// make every later call fail fast with "not connected" during the second or
+    /// two before Android restarts the service, which is the same unhelpful answer
+    /// in different words. An uncompleted waiter makes the next caller WAIT for the
+    /// restart, up to <see cref="RestartGrace"/>, and then answer normally.
+    /// </remarks>
+    public void OnServiceDisconnected(ComponentName? name)
+    {
+        lock (_gate)
+        {
+            _live = null;
+            _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
 
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
