@@ -16,7 +16,19 @@ public enum ReadyStage
     /// <summary>Everything is up.</summary>
     Ready,
 
-    /// <summary>Something needed is missing and will not arrive on its own.</summary>
+    /// <summary>Something needed is missing.</summary>
+    /// <remarks>
+    /// THIS USED TO SAY "and will not arrive on its own", AND THAT STOPPED BEING
+    /// TRUE ON 2026-10-09. ModelFetchService now starts the first-run downloads
+    /// by itself, so a phone in this stage is usually one that IS filling up -
+    /// it just has not finished.
+    /// <para>
+    /// Which is why a screen showing this must keep re-reading. Home sat on
+    /// "Finish setting it up" for the whole of a 270 MB fetch and only corrected
+    /// when the app was restarted, because its refresh was wired to downloads the
+    /// APP drives and the service's are invisible to it.
+    /// </para>
+    /// </remarks>
     NeedsSetup,
 }
 

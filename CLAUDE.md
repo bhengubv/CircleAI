@@ -170,6 +170,39 @@ Do NOT use `InstallKeepingData`: **that target does not exist.** It fails with
 so. Verify a deploy with `adb shell dumpsys package <pkg>` — `lastUpdateTime`
 moving means it landed, `firstInstallTime` NOT moving means the data survived.
 
+### `-t:Install` installs nothing on the current SDK — build, then `adb install -r`
+
+Measured 2026-10-09 on `10.0.400-preview.0.26322.102`, deploying `CircleAIService`
+to the P30. The command above **exits 0, writes a fresh signed APK, and does not
+install it** — `lastUpdateTime` never moves.
+
+Re-run at `-v n` and the reason is visible: MSBuild logs
+`Project "CircleAIService.csproj" on node 1 (Install target(s))` on entry, and
+then **no target whose name contains "Install" ever executes**. The build ends at
+`_BuildApkEmbed`. There is no `MSB4057`, so the target exists — it simply does
+nothing, and there is not one `adb` line in 1817 lines of output.
+
+So the deploy is two steps, and the second one is the install:
+
+```bash
+dotnet build <proj> -c Release -f net10.0-android -m:1 -p:AndroidPackageFormat=apk \
+  -p:AndroidKeyStore=true -p:AndroidSigningKeyStore=<ks> -p:AndroidSigningKeyAlias=<alias> \
+  -p:AndroidSigningKeyPass=<pw> -p:AndroidSigningStorePass=<pw>
+```
+
+```bash
+adb -s <serial> install -r <proj>/bin/Release/net10.0-android/<pkg>-Signed.apk
+```
+
+`adb install -r` is an in-place update: it moves `lastUpdateTime`, leaves
+`firstInstallTime` alone, and **keeps the model store** — 270 MB on the P30 that
+session, up to 22.8 GB on Circle OS. Sign with the real key or the certificate
+will not match the installed app and `-r` is refused; an unsigned Release
+silently debug-signs, which is what the `CIRCLEAI012` guard exists to catch.
+
+Do not reach for "uninstall first" to get past this. It works and it costs the
+models, and it is never necessary — the install above replaces the app in place.
+
 **One fact with two owners always ends up with two answers.** The language count,
 the model choice, the wake phrase and the app language each lived in three or
 four places in the sample, and every one of them disagreed. When adding

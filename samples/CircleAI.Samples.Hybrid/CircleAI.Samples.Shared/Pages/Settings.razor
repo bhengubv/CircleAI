@@ -864,6 +864,53 @@ else
             ? "It answers to its name with the screen off."
             : "Listen for the wake phrase with the screen off.");
 
+    /// <summary>
+    /// Asks the service WHY it is not listening, so an off switch can say so.
+    /// </summary>
+    /// <remarks>
+    /// EVERYTHING IS MEANT TO BE ON BY DEFAULT, AND THIS ONE LOOKED LIKE THE
+    /// OWNER HAD TURNED IT OFF. WakeEnabled defaults to true and ResidentPrefs
+    /// defaults to yes, so a fresh install listens - but the checkbox reads
+    /// Resident.IsListening LIVE, deliberately, because an OEM that kills the
+    /// service would otherwise leave a remembered `true` claiming the microphone
+    /// is open when it is not. That part is right.
+    ///
+    /// What was wrong is what it SAID while off. _residentHint was only ever set
+    /// inside ToggleResident, so on load it was null and the subtitle fell back
+    /// to "Listen for the wake phrase with the screen off." - an invitation,
+    /// reading as "available, tick me". Measured on the P30 on 2026-10-09: the
+    /// box was clear and that line was showing while the real reason was that the
+    /// 7 MB wake bundle had not downloaded yet. A person sees a switch they never
+    /// touched, off, with no reason given.
+    ///
+    /// The service already knows - ToggleResident's own remarks say it is "the
+    /// one that knows whether the microphone was refused, the wake bundle is
+    /// missing, or something else already holds the device". Nobody asked it
+    /// except after a toggle. RefreshAsync answers the same question without
+    /// starting or stopping anything.
+    /// </remarks>
+    async Task RefreshResidentReason()
+    {
+        try
+        {
+            _residentOn = Resident.IsListening;
+
+            // Only when it is OFF. Listening needs no excuse, and overwriting the
+            // hint while it runs would replace "It answers to its name" with a
+            // status line nobody asked for.
+            if (_residentOn == true) { _residentHint = null; return; }
+
+            var status = await Resident.RefreshAsync();
+            _residentHint = string.IsNullOrWhiteSpace(status.Hint) ? null : status.Hint;
+        }
+        catch
+        {
+            // A service that cannot be reached is itself the reason, and saying
+            // nothing here would put the generic invitation back on screen.
+            _residentHint = "Cannot reach the assistant service to ask why.";
+        }
+    }
+
     /// <summary>Turns the resident listener on or off, and says what happened.</summary>
     /// <remarks>
     /// The hint comes from the service, not from this screen: it is the one that
@@ -1440,8 +1487,10 @@ else
         }
 
         // The Phone tab reads the service live, and the abilities list does not -
-        // so it has to be told, exactly as ToggleResident has to tell it.
-        _residentOn = Resident.IsListening;
+        // so it has to be told, exactly as ToggleResident has to tell it. And it
+        // is told WHY, not just whether: an off switch the owner never touched
+        // has to account for itself.
+        await RefreshResidentReason();
         _residentNonce++;
         try { _abilities = await Facts.AbilitiesAsync(); }
         catch { /* the switch worked; the list can be stale until reload */ }

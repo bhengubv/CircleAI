@@ -300,6 +300,65 @@
         AppLifecycle.Resumed -= OnResumed;
     }
 
+    /// <summary>How often the headline is re-read while the phone is filling up.</summary>
+    /// <remarks>
+    /// Slow enough to be nothing on a battery - one cheap readiness read - and
+    /// fast enough that a part landing is reflected while somebody is still
+    /// looking at the screen rather than after they give up on it.
+    /// </remarks>
+    static readonly TimeSpan FillPoll = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Re-reads the headline while anything is still arriving.
+    /// </summary>
+    /// <remarks>
+    /// THE SERVICE DOWNLOADS AND THIS SCREEN COULD NOT SEE IT.
+    ///
+    /// Measured on the P30 on 2026-10-09: ModelFetchService fetched 269.8 MB in
+    /// 75 seconds, all four models landed, and Home went on saying
+    ///
+    ///     Finish setting it up
+    ///     Some of it is still missing. Tap to get the rest.
+    ///
+    /// until the app was force-stopped and relaunched. Every refresh this screen
+    /// had was wired to a download the APP drives - FollowSetupAsync's progress
+    /// callback, OnPartLandedAsync - and the first-run fetch now runs in the
+    /// SERVICE, whose progress this process never sees.
+    ///
+    /// POLLED, NOT PUSHED, deliberately. The link is a binder: request/response,
+    /// with no channel back - the same reason Heard is a counter this side reads
+    /// rather than an event the service raises. Inventing a push channel for one
+    /// headline would be a transport to maintain forever.
+    ///
+    /// IT STOPS WHEN THERE IS NOTHING LEFT TO WATCH. Ready is the end state; past
+    /// that, OnResumed covers anything that changes while the app is away, and a
+    /// timer that never stops is how a screen quietly costs battery for a day.
+    ///
+    /// Compared by value before touching the UI - Readiness is a readonly record
+    /// struct - so a phone that is simply still downloading re-renders nothing.
+    /// </remarks>
+    async Task WatchWhileItFillsUpAsync()
+    {
+        while (!_gone && _ready.Stage != ReadyStage.Ready)
+        {
+            try { await Task.Delay(FillPoll); } catch { return; }
+            if (_gone) return;
+
+            Readiness fresh;
+            try { fresh = await Setup.ReadinessAsync(); }
+            catch { continue; }   // a failed read leaves the headline where it was
+
+            if (_gone) return;
+            if (fresh.Equals(_ready)) continue;
+
+            await InvokeAsync(() =>
+            {
+                _ready = fresh;
+                StateHasChanged();
+            });
+        }
+    }
+
     /// <summary>Follow the download the loading screen left running.</summary>
     /// <remarks>
     /// ATTACHES, NEVER STARTS. RunAsync is idempotent by contract - "calling it
@@ -419,6 +478,12 @@
         // the bundle is done - so this screen, not that one, is where the rest of
         // it is watched. Not awaited: the whole point is that Home renders now.
         if (Setup.IsRunning) _ = FollowSetupAsync();
+
+        // AND THE DOWNLOAD THIS PROCESS CANNOT SEE. IsRunning is about a fetch
+        // the APP drives; ModelFetchService runs its own in the service process,
+        // and nothing above would ever notice it finishing. Same fire-and-forget
+        // reason: Home renders now. It stops itself once everything is up.
+        _ = WatchWhileItFillsUpAsync();
 
         // Which app this is, and - if it is the interpreter - between whom.
         // Guarded: a settings read that fails must not take Home down with it.

@@ -1020,11 +1020,50 @@ public sealed partial class CircleNeuronService : Service
             // Remembered so a renewal can repeat it rather than re-deriving it.
             _lastText = text;
 
+            // POSTED ONLY WHEN IT CHANGED, AND THAT IS NOT AN OPTIMISATION.
+            // KeepNotificationAlive ticks every 30 seconds and calls
+            // Notify(_lastText) - the same string - so this posted 2 880 identical
+            // notifications a day. Measured on the P30 on 2026-10-09:
+            //
+            //   post_frequency{pkg=...circleai.service, day=1, count=2970, demoted=2970}
+            //   post_frequency{pkg=...circleai.service, day=2, count=3101, demoted=3101}
+            //
+            // EVERY ONE DEMOTED. WhatsApp posts 10-21 a day on the same handset.
+            // Android had effectively muted the channel, which means the foreground
+            // notice a person relies on to see a 2.8 GB download was being
+            // suppressed BECAUSE it repeated itself - the disclosure this file
+            // spends two paragraphs insisting must always be visible.
+            //
+            // The renewal's real job is ArmReaper, the dead-man's switch for a
+            // notification that outlives its process on EMUI, and that still runs
+            // on every tick. Re-posting unchanged text was never what kept the
+            // notice alive; Android does not expire it, and an FGS notification
+            // cannot be dismissed while the service runs. A genuine change - the
+            // microphone opening, the model finishing, an error - still posts the
+            // instant it happens, because this compares the FINAL text, after
+            // MicrophoneDisclosure has had its say.
+            if (string.Equals(text, _lastPosted, StringComparison.Ordinal)) return;
+
             if (GetSystemService(NotificationService) is NotificationManager nm)
+            {
                 nm.Notify(NotificationId, BuildNotification(text));
+                _lastPosted = text;
+            }
         }
         catch { /* the notification is a courtesy; never take the service down for it */ }
     }
+
+    /// <summary>
+    /// The text actually handed to NotificationManager, so an unchanged renewal
+    /// can be skipped.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately separate from <see cref="_lastText"/>, which is what the
+    /// renewal REPEATS and must keep being set even on a skipped post - otherwise
+    /// a renewal after a skip would repeat a stale string. Null until the first
+    /// successful post, so the first notification is never swallowed.
+    /// </remarks>
+    private string? _lastPosted;
 }
 
 /// <summary>Binder handing a same-process client the live node.</summary>
