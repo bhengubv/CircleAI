@@ -237,8 +237,39 @@ public static class FirstRun
                 // had an English voice would count that as its Japanese one and
                 // fetch nothing. Note this asks the loader, not the registry:
                 // what matters is bytes on disk, not what we know about.
+                // AND PRESENT IS ONLY DONE IF THIS PHONE CAN RUN IT.
+                //
+                // Measured on the P30, 2026-10-09, on a true cold first run. The
+                // plan fetched Qwen3.5-4B - 2.85 GB of weights declaring 3.8 GB of
+                // RAM - onto a device reporting 3.867 GB, loading it got the
+                // service killed by iAwareF[LowMem], and once CouldEverHold grew
+                // the headroom that stopped the crash the phone was left like this:
+                //
+                //     no model on this device yet - set it up first
+                //       (wanted: Qwen3.5-0.8B-MNN; on disk: ..., Qwen3.5-4B-MNN, ...)
+                //
+                // A chat model WAS on disk, so this slot counted as done and
+                // nothing was ever fetched - while the selector refused the only
+                // one there and the phone had no brain at all. Bytes on disk are
+                // not an ability; a model this device cannot load fills nothing.
+                //
+                // CouldEverHold, NOT the local Fits, deliberately: Fits also asks
+                // FitsStorage, which is about free space for a DOWNLOAD and is
+                // meaningless for a model already here - on a nearly full phone it
+                // would declare a perfectly good resident model missing and start
+                // fetching a second one.
+                //
+                // Only the by-modality branch, because only it has a substitute to
+                // offer. A NAMED entry that is present but unrunnable has nothing
+                // to replace it with, so reporting it missing would just produce a
+                // row nobody can ever clear.
+                //
+                // This leaves the unrunnable model on disk taking its 2.85 GB.
+                // Saying so and offering to clear it is Part 5 of the plan and is
+                // deliberately not done here.
                 if (registry.AllModels.Any(m => m.Modality == modality
                                              && (speaks is null || SpeaksIt(m, speaks))
+                                             && CircleAI.Inference.ModelFit.CouldEverHold(m, probe)
                                              && loader.ModelPresent(m.Name)))
                     continue;
 

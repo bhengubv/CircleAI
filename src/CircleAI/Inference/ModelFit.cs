@@ -197,8 +197,66 @@ public static class ModelFit
         if (totalBytes <= 0) return true;
 
         var totalGb = totalBytes / DeviceProbe.BytesPerGb;
-        return EagerGb(e) <= totalGb + Eps;
+        return EagerGb(e) <= (totalGb * ResidentShare) + Eps;
     }
+
+    /// <summary>
+    /// The most of a device's TOTAL memory one model's weights may ever claim.
+    /// </summary>
+    /// <remarks>
+    /// THIS CONSTANT EXISTS BECAUSE THE RULE WITHOUT IT KILLED A PHONE, and the
+    /// rule without it was mine.
+    ///
+    /// CouldEverHold compared the weights against the whole of total RAM, so
+    /// anything up to 100% of the device passed. Measured on the P30 (3.6 GB)
+    /// on 2026-10-09, on a true cold first run:
+    ///
+    ///     22:07:03  fetching Qwen3.5-4B-MNN (2845944094 bytes)
+    ///     22:13:14  Qwen3.5-4B-MNN complete
+    ///     22:25:40  Killing 7743:...circleai.service (adj 100):
+    ///               iAwareF[LowMem](service)
+    ///
+    /// 2.85 GB of weights is 79% of that device. It downloaded for six minutes,
+    /// was selected, and the load got the whole service killed - the "the offer
+    /// was the defect" failure this file's own remarks describe, reintroduced by
+    /// the fix for the opposite problem. Before that fix the gate was Fits, on
+    /// FREE ram, which would have refused it; trading a volatile rule for a
+    /// durable one was right, and making the durable one 100% was not.
+    ///
+    /// AN OPERATING SYSTEM NEEDS ITS SHARE. On this handset MemAvailable sat
+    /// between 1.0 and 1.3 GB of 3.6 GB with no model loaded at all - 28 to 35% -
+    /// so a model may never assume anything close to the whole device.
+    ///
+    /// THE REAL NUMBERS, because they are closer than they look. EagerGb already
+    /// uses the DECLARED MinRamGb, not the file size, so the comparison was never
+    /// naive:
+    ///
+    ///   Qwen3.5-4B   weights 2.85 GB, MinRamGb 3.8  -> EagerGb 3.8
+    ///   the P30      MemTotal 3 776 516 kB          -> 3.867 GB
+    ///
+    /// 3.8 <= 3.867, so it passed - by 67 MB, on a declaration that it needs
+    /// essentially the entire phone. That is what 100% permits.
+    ///
+    /// WHY 0.90 AND NOT LESS, which is the uncomfortable half. The lower bound is
+    /// measured: 98% of the device got the service killed. The upper bound is NOT
+    /// mine to pick freely - Qwen3-8B declares MinRamGb 7.2 and ModelChoiceTests
+    /// pins that it is still selectable on an 8 GB handset, which is 90%. So the
+    /// catalogue itself asserts a model may claim 90% of a device, and anything
+    /// stricter here makes CouldEverHold contradict ModelChoice.Fits. Two owners
+    /// of "does it fit" disagreeing is this repo's oldest defect, so this sits
+    /// where they agree rather than inventing a third answer.
+    ///
+    /// SAY PLAINLY WHAT THAT MEANS: 0.90 is a thin margin, and it is set by a
+    /// catalogue claim rather than by measurement. It fixes the failure actually
+    /// observed and no more. The deeper disagreement - CouldEverHold judges on
+    /// EagerGb while ModelChoice.Fits may allow mmap, so the two can differ by
+    /// gigabytes on exactly the models where it matters - is NOT resolved here
+    /// and should not be resolved by quietly tightening this number.
+    ///
+    /// <see cref="CrashVerdict"/> remains the gate for the marginal case this
+    /// crude one lets through.
+    /// </remarks>
+    public const double ResidentShare = 0.90;
 
     /// <summary>Whether it fits, given a probe.</summary>
     public static bool Fits(ModelEntry e, DeviceProbe probe, bool? mmapAllowed = null)
