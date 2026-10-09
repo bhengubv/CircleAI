@@ -84,11 +84,17 @@ public static class ModelSetup
     /// <param name="say">Where to report; every line is safe to show a user.</param>
     /// <param name="ct">Cancellation.</param>
     /// <remarks>
-    /// THE DISTINCTION THAT MAKES THIS SAFE: it never STARTS a download. Bytes
-    /// already on disk are the owner's prior consent - they chose this model on the
-    /// setup screen with the size written next to it - so finishing it completes
-    /// their instruction rather than issuing a new one. A model at zero bytes is
-    /// left alone, which is the rule the setup screen exists to enforce.
+    /// THIS METHOD still never STARTS a download - it only finishes what has bytes
+    /// on disk - but IT IS NO LONGER THE WHOLE RULE, and this paragraph used to say
+    /// it was. <see cref="FetchNotStartedAsync"/> now begins downloads at zero
+    /// bytes, by the owner's decision, so that every ability is live from first run
+    /// instead of reading "Nothing for this yet" until somebody finds a button.
+    /// Read that method's remarks for what the change costs and what replaced the
+    /// setup screen as the disclosure.
+    ///
+    /// The split is still worth keeping: resuming is safe in any circumstance,
+    /// starting is not, so the two stay separate methods and a caller has to mean
+    /// it.
     ///
     /// ONE AT A TIME AND LARGEST FIRST, because these are gigabytes on a phone and
     /// two at once is how both end up half done - the state this exists to clear
@@ -134,4 +140,115 @@ public static class ModelSetup
     }
 
     private static IEnumerable<string> Ids(BundleModelLoader loader) => loader.InstalledIds();
+
+    /// <summary>
+    /// Everything the first-run plan wants that this device does not have a single
+    /// byte of yet.
+    /// </summary>
+    /// <remarks>
+    /// THE RULE THIS FILE USED TO ENFORCE HAS BEEN CHANGED DELIBERATELY, and the
+    /// comment on ResumeUnfinishedAsync no longer describes the behaviour, so read
+    /// this one. That rule was: "it never STARTS a download. Bytes already on disk
+    /// are the owner's prior consent - they chose this model on the setup screen
+    /// with the size written next to it. A model at zero bytes is left alone."
+    ///
+    /// The owner has decided otherwise: every ability is meant to be ON from first
+    /// run, and an ability that reads "Nothing for this yet" until somebody finds a
+    /// Start button is not on by anything. So the fetch now begins by itself.
+    ///
+    /// WHAT THAT COSTS, STATED PLAINLY BECAUSE IT IS SOMEBODY ELSE'S MONEY. On the
+    /// P30 the first-run plan is 3.4 GB - a 2.8 GB brain, 311 MB of eyes, 78 MB of
+    /// ears, 122 MB of South African voices, 63 MB of English voice, 7 MB of wake
+    /// word. On a metered South African connection that is a real amount of money
+    /// spent before anyone agreed to it. Setup.razor shows the "Altogether" total
+    /// precisely so a person on a metered link can decide, and that screen is now
+    /// no longer the gate.
+    ///
+    /// SO THE DISCLOSURE HAS TO CARRY THE WEIGHT THE GATE USED TO. The fetch is a
+    /// foreground service with a notification naming what is being fetched, and it
+    /// is cancellable. That is the whole of what stands between this and a surprise
+    /// on someone's bill, which is why it must not be made quieter.
+    ///
+    /// Ordered smallest first, the reverse of Unfinished: the small ones are the
+    /// wake word, a voice and the ears, so a few minutes in, the phone can hear its
+    /// name and answer - rather than a person waiting out a 2.8 GB brain before
+    /// anything at all works.
+    /// </remarks>
+    public static IReadOnlyList<(string Name, long Need)> NotStarted(
+        BundleModelLoader loader, IEnumerable<(string Name, long Bytes)> planned)
+    {
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(planned);
+
+        try
+        {
+            return planned
+                .Where(p => !string.IsNullOrWhiteSpace(p.Name))
+                .Where(p => !loader.ModelPresent(p.Name) && !loader.ModelPartial(p.Name))
+                .Select(p => (p.Name, Need: p.Bytes))
+                .OrderBy(p => p.Need)
+                .ToList();
+        }
+        catch { return []; }
+    }
+
+    /// <summary>
+    /// Fetches everything on the plan that has not been started, smallest first.
+    /// </summary>
+    /// <remarks>
+    /// ONE AT A TIME, for the same reason ResumeUnfinishedAsync does it: these are
+    /// gigabytes on a phone and two at once is how both end up half done.
+    ///
+    /// NEVER THROWS. A network that goes away must not take the service with it,
+    /// and whatever did land is resumable on the next launch by
+    /// ResumeUnfinishedAsync - which is unchanged, and is still the right thing for
+    /// bytes already on disk.
+    /// </remarks>
+    public static async Task FetchNotStartedAsync(
+        BundleModelLoader loader,
+        IEnumerable<(string Name, long Bytes)> planned,
+        Action<string> say,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(say);
+
+        try
+        {
+            var todo = NotStarted(loader, planned);
+            if (todo.Count == 0) { say("setup: nothing left to start"); return; }
+
+            say($"setup: starting {todo.Count} download(s), smallest first");
+
+            foreach (var (name, need) in todo)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    say($"fetching {name} ({need} bytes)");
+
+                    // THE CANCELLATION TOKEN IS NOT OPTIONAL HERE, and the first
+                    // version of this line dropped it by calling the two-argument
+                    // overload. That left the ct checked only BETWEEN models, so
+                    // "Stop" during the 2.8 GB brain did nothing for the rest of
+                    // the download. Since this fetch starts WITHOUT anybody
+                    // tapping anything, being able to stop it is the whole of
+                    // what replaced the setup screen as the consent - an
+                    // uncancellable unasked-for 3.4 GB is not a disclosure.
+                    await loader.DownloadModelAsync(name, progress: null, ct)
+                                .ConfigureAwait(false);
+                    say($"{name} complete");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    // Named, and then on to the next: one unreachable model must not
+                    // deny a person the other five.
+                    say($"{name} failed: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { say("first-run fetch failed: " + ex.Message); }
+    }
 }

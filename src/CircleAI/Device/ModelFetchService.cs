@@ -76,7 +76,44 @@ public sealed class ModelFetchService : Service
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(loader);
 
-        if (ModelSetup.Unfinished(loader).Count == 0) return;
+        // OWED NOW MEANS "MISSING", NOT ONLY "HALF DOWN". Unfinished() reads
+        // loader.InstalledIds(), which lists folders that EXIST - so a phone with
+        // nothing downloaded has no ids, owes nothing, and never starts. That is
+        // exactly the P30 on 2026-10-09: "setup: no engine components on this
+        // device", four abilities reading "Nothing for this yet", and a fetch
+        // service that correctly concluded there was nothing to resume.
+        //
+        // The check stays BEFORE the notification, which is the part of the
+        // original rule still worth keeping: a device with everything down shows
+        // no sign this exists.
+        if (ModelSetup.Unfinished(loader).Count > 0) { Launch(context); return; }
+
+        // Nothing partial. Ask whether anything is missing entirely - the
+        // first-run plan, the same one the setup screen would have shown.
+        try
+        {
+            var registry = new Core.Models.ModelRegistryService();
+            var plan = CircleAI.Assistant.FirstRun
+                .Plan(registry, loader, CircleAI.Core.DeviceProbe.Snapshot(), speech: true)
+                .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+
+            if (ModelSetup.NotStarted(loader, plan).Count == 0) return;
+        }
+        catch (Exception ex)
+        {
+            // Could not tell. Do NOT start on a guess: this spends somebody's
+            // data, and the one thing worse than a missed fetch is an unasked-for
+            // one begun because a plan would not compute.
+            global::Android.Util.Log.Warn(LogTag, "cannot tell what is missing, not starting: " + ex.Message);
+            return;
+        }
+
+        Launch(context);
+    }
+
+    /// <summary>Starts the foreground fetch service.</summary>
+    private static void Launch(Context context)
+    {
 
         lock (Gate) { if (_busy) return; }
 
@@ -101,7 +138,14 @@ public sealed class ModelFetchService : Service
     {
         lock (Gate)
         {
-            if (_busy) return StartCommandResult.NotSticky;
+            // STICKY HERE TOO, AND THIS IS NOT COSMETIC. Android keeps the LAST
+            // value OnStartCommand returned as the service's restart mode, so an
+            // ordinary "already fetching, ignore this one" return of NotSticky
+            // would quietly cancel the Sticky set by the start that is actually
+            // downloading - and the kill it is meant to survive would then end
+            // the download for good. The bug would only ever show up on a phone
+            // that got a second start AND was later killed, which is the P30.
+            if (_busy) return StartCommandResult.Sticky;
             _busy = true;
         }
 
@@ -127,8 +171,42 @@ public sealed class ModelFetchService : Service
                     return;
                 }
 
-                using var loader = new BundleModelLoader(root, new Core.Models.ModelRegistryService());
+                var registry = new Core.Models.ModelRegistryService();
+                using var loader = new BundleModelLoader(root, registry);
+
+                // FINISH WHAT IS HALF DOWN FIRST. Bytes already on disk are the
+                // nearest thing to a completed promise, and leaving them to start
+                // something new is how a device ends up with six half-models.
                 await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct).ConfigureAwait(false);
+
+                // THEN START WHAT WAS NEVER STARTED - the change the owner asked
+                // for on 2026-10-09. Every ability is meant to be on from first
+                // run, and one reading "Nothing for this yet" until somebody finds
+                // the Start button is not on by anything.
+                //
+                // The plan is the same one the setup screen shows, computed the
+                // same way, so this fetches exactly what that screen would have
+                // offered - including the fit rules that keep a 22.8 GB model off
+                // a phone that cannot hold it. What is gone is the tap, not the
+                // judgement.
+                //
+                // Smallest first inside FetchNotStartedAsync, so the wake word, a
+                // voice and the ears land in the first few minutes and the phone
+                // can hear its name long before the 2.8 GB brain arrives.
+                try
+                {
+                    var plan = CircleAI.Assistant.FirstRun
+                        .Plan(registry, loader, CircleAI.Core.DeviceProbe.Snapshot(), speech: true)
+                        .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes));
+
+                    await ModelSetup.FetchNotStartedAsync(loader, plan, Say, ct).ConfigureAwait(false);
+                }
+                catch (System.OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    // A plan that cannot be computed must not lose the resume above.
+                    global::Android.Util.Log.Warn(LogTag, "first-run plan failed: " + ex.Message);
+                }
             }
             catch (Exception ex)
             {
@@ -142,10 +220,33 @@ public sealed class ModelFetchService : Service
             }
         }, ct);
 
-        // NOT sticky: a restart with a null intent would start a second fetch, and
-        // two gigabyte downloads at once is the state this whole effort exists to
-        // clear rather than create. The next app launch starts it again.
-        return StartCommandResult.NotSticky;
+        // STICKY, AS OF 2026-10-09, AND THE OLD REASONING WAS WRONG.
+        //
+        // It used to say: "NOT sticky: a restart with a null intent would start a
+        // second fetch, and two gigabyte downloads at once is the state this whole
+        // effort exists to clear rather than create. The next app launch starts it
+        // again."
+        //
+        // The second-fetch fear does not survive reading the top of this method.
+        // A redelivery arrives as a fresh OnStartCommand, which takes the Gate and
+        // returns immediately if _busy - and after a process KILL the static is
+        // gone with the process, so there is nothing to double up with. The intent
+        // is never read here, so a null one changes nothing.
+        //
+        // What the old comment got wrong was the other half. "The next app launch
+        // starts it again" puts a multi-gigabyte download behind a person
+        // remembering to open the app. This phone is a P30 where iAware kills
+        // FOREGROUND services - measured, adj 100 on a service running at
+        // adj:-10000 - and where the swap runs out. So the case this must survive
+        // is precisely the one NotSticky refused to: killed at 60% of a 2.8 GB
+        // brain, with nobody opening anything for a day.
+        //
+        // The honest cost: after a kill on a phone that owes nothing, Android
+        // restarts this, it goes foreground, the loop finds nothing and stops - a
+        // notification visible for under a second. That is a far smaller price
+        // than a download that only resumes when somebody happens to launch the
+        // app, and the bytes already on disk are what make the resume cheap.
+        return StartCommandResult.Sticky;
     }
 
     public override void OnDestroy()

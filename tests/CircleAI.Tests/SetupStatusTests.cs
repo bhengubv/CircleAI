@@ -199,9 +199,16 @@ public sealed class SetupStatusTests : IDisposable
     [Fact]
     public void A_model_nobody_started_is_never_resumed()
     {
-        // The consent rule. Bytes on disk are the owner's prior instruction; zero
-        // bytes is not, and a service that fetches 22.8 GB nobody asked for is a
-        // worse failure than one that fetches nothing.
+        // THIS IS STILL TRUE OF **RESUME**, AND NO LONGER TRUE OF THE PRODUCT.
+        // The rule used to be the whole of it: bytes on disk are the owner's prior
+        // instruction, zero bytes is not, and a service that fetches 22.8 GB
+        // nobody asked for is a worse failure than one that fetches nothing.
+        //
+        // On 2026-10-09 the owner decided the other way - every ability on from
+        // first run - and ModelSetup.FetchNotStartedAsync now begins downloads at
+        // zero bytes. ResumeUnfinishedAsync is unchanged and must stay that way,
+        // because the two do different jobs and only one of them is safe to call
+        // in any circumstance. FirstRunFetchStartsByItselfTests covers the other.
         var registry = new ModelRegistryService();
         Directory.CreateDirectory(Path.Combine(_store, Biggest(registry).Name));
         var said = new System.Collections.Generic.List<string>();
