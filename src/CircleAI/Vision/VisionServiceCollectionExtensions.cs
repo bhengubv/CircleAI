@@ -154,6 +154,23 @@ public static class VisionServiceCollectionExtensions
             GeneratorIds.OnDeviceOnnx,
             (sp, _) => sp.GetRequiredService<CircleAI.Core.IImageGenerator>());
 
+        // AND AS THE CLOUD CONTRACT, so ImageGeneratorFallbackChain can hold it.
+        // Keyed with the same id the cloud providers use for theirs, which is what
+        // lets a host write a chain that tries this phone before it spends money:
+        //
+        //   services.AddImageGeneratorFallbackChain(sp => new[] {
+        //       sp.GetRequiredKeyedService<Vision.Cloud.IImageGenerator>(GeneratorIds.OnDeviceOnnx),
+        //       sp.GetRequiredKeyedService<Vision.Cloud.IImageGenerator>(VisionCloudServiceCollectionExtensions.GeneratorIds.OpenAi),
+        //   });
+        //
+        // Not registered unkeyed: Vision.Cloud already has an unkeyed slot in some
+        // hosts, and quietly becoming "the" image generator is how a device model
+        // would start answering requests a host had pointed at a cloud provider.
+        services.AddKeyedSingleton<CircleAI.Vision.Cloud.IImageGenerator>(
+            GeneratorIds.OnDeviceOnnx,
+            (sp, _) => new OnDeviceImageGeneratorAdapter(
+                sp.GetRequiredService<CircleAI.Core.IImageGenerator>()));
+
         return services;
     }
 
