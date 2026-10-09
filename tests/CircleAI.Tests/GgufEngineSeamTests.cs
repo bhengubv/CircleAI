@@ -224,6 +224,6 @@ public class GgufEngineSeamTests
 
         var row = cat.Get("too-big");
         Assert.NotNull(row);
-        Assert.False(cat.Compatible(ModelModality.Chat).Any(e => e.Name == "too-big"));
+        Assert.DoesNotContain(cat.Compatible(ModelModality.Chat), e => e.Name == "too-big");
     }
 }

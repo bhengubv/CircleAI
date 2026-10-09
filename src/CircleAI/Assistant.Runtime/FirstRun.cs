@@ -698,6 +698,42 @@ public static class FirstRun
     /// AndroidDeviceMemory.Install.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Whether a model is worth OFFERING on this phone - a different question
+    /// from whether it can be loaded this second.
+    /// </summary>
+    /// <remarks>
+    /// THIS USED TO BE ModelFit.Fits AND IT DEADLOCKED A PHONE. Fits gates on
+    /// DeviceProbe.UsableRamGb, which is derived from FREE ram, and a download
+    /// decision has no business depending on what is spare this second. Measured
+    /// on the P30 on 2026-10-09, with an empty model directory:
+    ///
+    ///   service starts, assesses the catalogue with ~750 MB free -> 6 compatible
+    ///   service finishes loading, ~200 MB free
+    ///   Setup asks for a plan -> Fits refuses everything -> plan is empty
+    ///   screen says "Everything it needs is already here. [Nothing to fetch]"
+    ///
+    /// So the phone could not fetch the models it needed BECAUSE it had no free
+    /// RAM, and a large part of the free RAM was gone because the service that
+    /// would do the fetching was resident. It could not heal itself, and the one
+    /// screen that exists to fix that reported success.
+    ///
+    /// You do not need a gigabyte of free RAM to DOWNLOAD a gigabyte. You need
+    /// disk. RAM is the question at load time, and CrashVerdict plus the selector
+    /// are what answer it then.
+    ///
+    /// SO THE OFFER ASKS TWO DURABLE QUESTIONS INSTEAD:
+    ///   CouldEverHold - could this handset EVER run this, against TOTAL ram.
+    ///                   Crude on purpose and therefore stable. It still refuses
+    ///                   the 22.8 GB MoE on a 7.6 GB phone, which is the Circle OS
+    ///                   disaster this whole gate was tightened for - "the offer
+    ///                   was the defect" - and it admits a 2 B that Fits refused
+    ///                   at 1.8 GB free while the file sat on disk.
+    ///   FitsStorage   - can the bytes actually land, against FREE disk. Volatile
+    ///                   by nature and correct here: free space is exactly the
+    ///                   right question for a download.
+    /// </remarks>
     static bool Fits(ModelEntry m, DeviceProbe probe)
-        => CircleAI.Inference.ModelFit.Fits(m, probe);
+        => CircleAI.Inference.ModelFit.CouldEverHold(m, probe)
+        && CircleAI.Inference.ModelFit.FitsStorage(m, probe.StorageFreeGb);
 }
