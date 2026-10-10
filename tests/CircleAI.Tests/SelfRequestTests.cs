@@ -152,10 +152,23 @@ public sealed class SelfRequestTests
     {
         // feedback_never_delete_without_asking. 22 GB is a lot of somebody's data to
         // reclaim on a hunch, so it says the number and stops.
+        //
+        // AND IT NOW NAMES THE ANSWER. This used to assert "Say the word" - and
+        // the sentence never said WHICH word, while SelfRequest wanted an exact
+        // utterance from a list of ten that did not include "yes". The first
+        // person to hear it said so immediately: "I have been responding but
+        // nothing happens."
+        //
+        // An offer that states a cost and then cannot be accepted is not
+        // caution, it is a dead end. Waiting is still the point; being
+        // answerable is the other half of it.
         var said = AssistantPersona.DeadWeight("22.8 GB");
 
         Assert.Contains("22.8 GB", said);
-        Assert.Contains("Say the word", said);
+        Assert.Contains("clear it", said, System.StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("deleted", said);
+
+        // Still waits: saying it does not do it.
+        Assert.Equal(SelfAsk.ClearIt, SelfRequest.Of("clear it", anOfferIsOpen: true));
     }
 }

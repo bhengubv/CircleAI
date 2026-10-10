@@ -213,6 +213,51 @@ public class SetupOfferSurvivesLowMemoryTests
     }
 
     [Fact]
+    public void Loading_asks_what_fits_NOW_and_offering_asks_what_could_EVER_fit()
+    {
+        // THE SAME LINE HAS NOW BEEN THE BUG THREE TIMES, each fix creating the
+        // next failure, because one rule was being made to answer two questions.
+        //
+        //  1. Fits (FREE ram) on the installed fallback. On a 7.6 GB phone with
+        //     1.8 GB spare it refused a complete 1.4 GB model and the service
+        //     said "no model on this device yet" with the model on disk.
+        //
+        //  2. CouldEverHold (TOTAL ram) replacing it. Fixed that, and on the
+        //     P30 on 2026-10-10 admitted Qwen3.5-2B - 1.9 GB declared, 49% of
+        //     the device - with 982 MB actually available:
+        //
+        //       Killing 7875:...circleai.service (adj 100): iAwareF[LowMem]
+        //       Killing 6840:com.huawei.lbs
+        //       Killing 8185:com.huawei.android.totemweather
+        //
+        //     A system-wide low-memory event, not just our process.
+        //
+        //  3. Both. OFFERING asks what this phone could ever hold, because a
+        //     download is durable and free RAM is not. LOADING asks what fits
+        //     right now, because that is literally the question. Neither answer
+        //     is wrong; using one for the other is.
+        var twoB = Model("qwen3.5-2b", gb: 1.39, minRamGb: 1.9);
+
+        // The P30 as measured: 3.867 GB total, 982 MB available.
+        var p30Now = new DeviceProbe(
+            RamAvailableBytes: 982_756L * 1024,
+            StorageFreeBytes: (long)(30 * 1_000_000_000d),
+            Gpu: GpuKind.None, CpuCores: 8,
+            Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
+        {
+            RamTotalBytes = 3_776_516L * 1024,
+            StorageTotalBytes = (long)(108 * 1_000_000_000d),
+        };
+
+        Assert.True(ModelFit.CouldEverHold(twoB, p30Now),
+            "it is a reasonable model for this phone and must still be OFFERED");
+
+        Assert.False(ModelFit.Fits(twoB, p30Now),
+            "but it cannot be LOADED with 982 MB free - this is the kill, and the "
+            + "load-time rule is the one that has to catch it");
+    }
+
+    [Fact]
     public void An_unmeasurable_device_is_not_told_it_can_do_nothing()
     {
         // RamTotalBytes is 0 when no platform head installed the probe. Refusing

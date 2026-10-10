@@ -267,9 +267,29 @@ public static class FirstRun
                 // This leaves the unrunnable model on disk taking its 2.85 GB.
                 // Saying so and offering to clear it is Part 5 of the plan and is
                 // deliberately not done here.
+                // AND NOT ONE THIS PHONE HAS ALREADY BEEN KILLED BY, which the
+                // first version of this check missed. CouldEverHold is a
+                // PREDICTION from declared metadata; `declined` carries the
+                // RESULT OF AN ATTEMPT - ModelOffer.NotWorthOffering folds in
+                // CrashVerdict's refusals - and a model that aborted this phone
+                // still satisfies the prediction perfectly well.
+                //
+                // Measured on the P30 on 2026-10-10. After the kills, every
+                // chat model on disk was refused, so the selector correctly
+                // found none and said:
+                //
+                //   no model on this device yet - set it up first
+                //     (wanted: Qwen3-0.6B-MNN; on disk: Qwen3.5-0.8B,
+                //      Qwen3.5-2B, Qwen3.5-4B, ...)
+                //
+                // and the plan STILL counted the brain slot as filled by those
+                // same refused models - so nothing fetched the one the phone
+                // could actually run. A refusal the offer path ignores is a
+                // refusal that cannot heal anything.
                 if (registry.AllModels.Any(m => m.Modality == modality
                                              && (speaks is null || SpeaksIt(m, speaks))
                                              && CircleAI.Inference.ModelFit.CouldEverHold(m, probe)
+                                             && (declined is null || !declined(m.Name))
                                              && loader.ModelPresent(m.Name)))
                     continue;
 

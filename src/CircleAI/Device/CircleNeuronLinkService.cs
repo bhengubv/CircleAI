@@ -177,10 +177,18 @@ public sealed class CircleNeuronLinkService : Service
     public static int VerdictSeq => Decisions.Sequence;
 
     /// <summary>Record something this device decided, for a client to speak.</summary>
-    public static void Decided(string? sentence)
+    /// <param name="sentence">What to say, from AssistantPersona.</param>
+    /// <param name="awaitingAnswer">
+    /// True when the sentence ends in an offer, so a plain "yes" counts as the
+    /// answer to it.
+    /// </param>
+    public static void Decided(string? sentence, bool awaitingAnswer = false)
     {
-        if (Decisions.Decided(sentence)) Log.Info(Tag, "decided: " + sentence);
+        if (Decisions.Decided(sentence, awaitingAnswer)) Log.Info(Tag, "decided: " + sentence);
     }
+
+    /// <summary>Is the assistant waiting for an answer to something it offered?</summary>
+    public static bool AwaitingAnswer => Decisions.AwaitingAnswer;
 
     /// <summary>How much room models this phone cannot run are taking, if any.</summary>
     /// <summary>
@@ -208,8 +216,10 @@ public sealed class CircleNeuronLinkService : Service
         var bytes = DeadWeightHere();
         if (bytes <= 0) return;
 
+        // awaitingAnswer: the sentence ends in an offer, so "yes" means yes
+        // until something else is decided or the offer is taken up.
         Decided(CircleAI.Assistant.AssistantPersona.DeadWeight(
-            CircleAI.Assistant.CensusRow.Size(bytes)));
+            CircleAI.Assistant.CensusRow.Size(bytes)), awaitingAnswer: true);
     }
 
     private static long DeadWeightHere()
@@ -499,7 +509,11 @@ public sealed class CircleNeuronLinkService : Service
         // load aborts the process; IModelCatalog.Pardon withdraws it; nothing
         // reached Pardon, so a device that refused something wrongly refused it
         // forever and the only recovery was deleting a database over adb.
-        switch (CircleAI.Assistant.SelfRequest.Of(turn.Message))
+        // THE OFFER'S OWN ANSWER IS ONLY HEARD IF WE SAY ONE IS OPEN. Without
+        // this argument a person replying "yes" to "say clear it and I will"
+        // was answered by the brain as though it were a new conversation - which
+        // is exactly what happened the first time anybody heard the offer.
+        switch (CircleAI.Assistant.SelfRequest.Of(turn.Message, AwaitingAnswer))
         {
             case CircleAI.Assistant.SelfAsk.WhichBrain:
             {
@@ -520,6 +534,7 @@ public sealed class CircleNeuronLinkService : Service
                 // Circle AI offers this when it finds a model it cannot run taking up
                 // room; nothing reaches DeadWeight.Clear without the word.
                 var freed = ClearWhatCannotRun();
+                Decisions.Answered();   // the offer has been taken up
                 Log.Info(Tag, "serve: asked to clear dead weight; freed " + freed + " bytes");
                 return LinkTurnReply.Success(CircleAI.Assistant.AssistantPersona.ClearIt(
                     freed > 0 ? CircleAI.Assistant.CensusRow.Size(freed) : null));

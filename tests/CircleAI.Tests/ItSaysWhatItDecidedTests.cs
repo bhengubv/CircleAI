@@ -163,6 +163,106 @@ public sealed class ItSaysWhatItDecidedTests
         Assert.Equal(3, log.Sequence);
     }
 
+    // ── an offer you can actually answer ─────────────────────────────────────
+
+    [Fact]
+    public void The_offer_says_which_word_to_say()
+    {
+        // "Say the word and I will clear it" NEVER SAID WHICH WORD, and the
+        // matcher wanted an exact utterance from a list of ten. Reported within
+        // minutes of it first being spoken aloud on the P30:
+        //
+        //     "I have been responding but nothing happens"
+        //
+        // An offer a person cannot answer is worse than no offer - it reads as
+        // the assistant ignoring them.
+        var offer = AssistantPersona.DeadWeight("2.8 GB");
+
+        Assert.Contains("clear it", offer, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Say the word", offer);
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("Yes.")]
+    [InlineData("yeah")]
+    [InlineData("ok")]
+    [InlineData("go ahead")]
+    [InlineData("do it")]
+    [InlineData("clear it")]
+    [InlineData("clear it please")]
+    [InlineData("ok clear it then")]
+    [InlineData("Hey B, clear it")]
+    public void A_person_answering_the_offer_is_understood(string said)
+    {
+        Assert.Equal(SelfAsk.ClearIt, SelfRequest.Of(said, anOfferIsOpen: true));
+    }
+
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("ok")]
+    [InlineData("go ahead")]
+    [InlineData("do it")]
+    public void But_none_of_them_delete_anything_when_nothing_was_offered(string said)
+    {
+        // THE GUARD THAT MAKES THE ABOVE SAFE. A bare "yes" must never clear
+        // gigabytes on its own - it means yes only because something just asked.
+        // Whisper mangles plenty of sentences into a stray "yes".
+        Assert.Equal(SelfAsk.None, SelfRequest.Of(said, anOfferIsOpen: false));
+    }
+
+    [Theory]
+    [InlineData("no")]
+    [InlineData("do not clear it")]
+    [InlineData("dont clear it")]
+    [InlineData("no clear it later")]
+    [InlineData("why would I clear it")]
+    [InlineData("cancel")]
+    public void Declining_is_not_agreeing(string said)
+    {
+        // The lenient pass matches a CLEAR phrase inside a short sentence, which
+        // without this would turn every refusal into an instruction.
+        Assert.NotEqual(SelfAsk.ClearIt, SelfRequest.Of(said, anOfferIsOpen: true));
+    }
+
+    [Fact]
+    public void An_offer_is_open_only_until_it_is_answered()
+    {
+        var log = new DecisionLog();
+
+        log.Decided(AssistantPersona.DeadWeight("2.8 GB"), awaitingAnswer: true);
+        Assert.True(log.AwaitingAnswer);
+
+        log.Answered();
+        Assert.False(log.AwaitingAnswer, "a cleared offer must not keep accepting yes");
+    }
+
+    [Fact]
+    public void An_ordinary_decision_does_not_leave_an_offer_open()
+    {
+        // "I am using the smaller one" is a statement, not a question, and a
+        // "yes" after it must not delete anything.
+        var log = new DecisionLog();
+
+        log.Decided(AssistantPersona.OnTheSmallerBrain);
+
+        Assert.False(log.AwaitingAnswer);
+        Assert.Equal(SelfAsk.None, SelfRequest.Of("yes", log.AwaitingAnswer));
+    }
+
+    [Fact]
+    public void A_later_decision_closes_an_earlier_offer()
+    {
+        // The phone moved on. A "yes" now is answering whatever it just said,
+        // not an offer from twenty minutes ago.
+        var log = new DecisionLog();
+
+        log.Decided(AssistantPersona.DeadWeight("2.8 GB"), awaitingAnswer: true);
+        log.Decided(AssistantPersona.OnTheSmallerBrain);
+
+        Assert.False(log.AwaitingAnswer);
+    }
+
     [Fact]
     public void The_sentences_are_the_personas_and_name_no_model()
     {

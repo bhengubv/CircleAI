@@ -31,6 +31,7 @@ public sealed class DecisionLog
     private readonly object _gate = new();
     private string? _last;
     private int _sequence;
+    private bool _awaitingAnswer;
 
     /// <summary>The most recent decision, or null if nothing has been decided.</summary>
     public string? Last { get { lock (_gate) return _last; } }
@@ -63,7 +64,7 @@ public sealed class DecisionLog
     /// polls see the number go up and find nothing to say.
     /// </para>
     /// </remarks>
-    public bool Decided(string? sentence)
+    public bool Decided(string? sentence, bool awaitingAnswer = false)
     {
         if (string.IsNullOrWhiteSpace(sentence)) return false;
 
@@ -71,9 +72,29 @@ public sealed class DecisionLog
         {
             if (string.Equals(sentence, _last, StringComparison.Ordinal)) return false;
             _last = sentence;
+            _awaitingAnswer = awaitingAnswer;
             _sequence++;
             return true;
         }
+    }
+
+    /// <summary>
+    /// Whether the last thing said was an offer still waiting for an answer.
+    /// </summary>
+    /// <remarks>
+    /// THIS IS WHAT MAKES "YES" SAFE. A bare "yes" must never delete gigabytes
+    /// on its own; it means yes only because something just asked. Without this
+    /// flag the only safe matcher is an exact phrase list, and an exact phrase
+    /// list is why the offer could not be answered at all - reported within
+    /// minutes of it first being spoken: "I have been responding but nothing
+    /// happens."
+    /// </remarks>
+    public bool AwaitingAnswer { get { lock (_gate) return _awaitingAnswer; } }
+
+    /// <summary>The offer was answered, or no longer applies.</summary>
+    public void Answered()
+    {
+        lock (_gate) _awaitingAnswer = false;
     }
 
     /// <summary>

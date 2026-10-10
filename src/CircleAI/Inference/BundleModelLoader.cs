@@ -266,8 +266,15 @@ public sealed class BundleModelLoader : IModelLoader
             ThrowIfDisposed();
             if (!Directory.Exists(_storageRoot)) return null;
 
-            string? best = null;
-            var bestRank = int.MinValue;
+            // TWO ANSWERS, BECAUSE THE QUESTION HAS TWO HALVES - see the long
+            // comment below. "Fits right now" and "could ever fit" are both
+            // real, both have taken a phone down when used alone, and the right
+            // pick is the best of the first and the SMALLEST of the second.
+            string? bestNow = null;
+            var bestNowRank = int.MinValue;
+
+            string? smallestEver = null;
+            var smallestEverGb = double.MaxValue;
 
             foreach (var dir in Directory.EnumerateDirectories(_storageRoot))
             {
@@ -318,10 +325,59 @@ public sealed class BundleModelLoader : IModelLoader
                 // every launch, forever.
                 if (refused is not null && refused(name)) continue;
 
-                if (entry.QualityRank <= bestRank) continue;
-                bestRank = entry.QualityRank;
-                best = name;
+                // BOTH RULES, NOT ONE, AND THIS IS THE THIRD TIME THIS LINE HAS
+                // BEEN THE BUG.
+                //
+                // The comment above is right that Fits is the wrong DURABLE
+                // question - it refused a complete 1.4 GB model on a 7.6 GB
+                // phone with 1.8 GB spare and reported "no model on this device
+                // yet". Replacing it with CouldEverHold fixed that and created
+                // the opposite failure, measured on the P30 on 2026-10-10:
+                //
+                //   MemAvailable 982 MB, Qwen3.5-2B declares 1.9 GB
+                //   -> Killing 7875:...circleai.service (adj 100): iAwareF[LowMem]
+                //   -> Killing 6840:com.huawei.lbs
+                //   -> Killing 8185:com.huawei.android.totemweather
+                //
+                // Not just our process - a system-wide low-memory event, from
+                // loading a model that is only 49% of total RAM. CouldEverHold
+                // said yes because 1.9 < 3.867 x 0.90, and free RAM is exactly
+                // what it deliberately ignores.
+                //
+                // So: prefer the best model that fits RIGHT NOW, and keep the
+                // smallest one this phone could EVER hold as the answer when
+                // nothing fits now. The old regression cannot come back, because
+                // a phone that is momentarily full still names a model instead
+                // of claiming it has none - it just names a smaller one.
+                // A NULL PROBE ASKS NO FIT QUESTION AT ALL, so everything counts
+                // as fitting and the highest rank wins - the behaviour before any
+                // of this. My first version of this branch required a probe, which
+                // silently turned a probe-less caller into "pick the smallest",
+                // the opposite of what the comment below it promised.
+                if (probe is null || ModelFit.Fits(entry, probe))
+                {
+                    if (entry.QualityRank > bestNowRank)
+                    {
+                        bestNowRank = entry.QualityRank;
+                        bestNow = name;
+                    }
+                    continue;
+                }
+
+                // Does not fit this second. Remember it as a last resort, smallest
+                // first - if nothing fits now, the least-bad is the one most
+                // likely to actually load.
+                var needGb = ModelFit.EagerGb(entry);
+                if (needGb < smallestEverGb)
+                {
+                    smallestEverGb = needGb;
+                    smallestEver = name;
+                }
             }
+
+            // A probe-less caller gets the old behaviour: no fit question was
+            // asked, so whatever ranked highest among what is present wins.
+            var best = bestNow ?? smallestEver;
 
             return best;
         }

@@ -296,15 +296,24 @@ public sealed class ModelOfferTests : IDisposable
     [Fact]
     public void Asking_what_it_runs_is_told_about_the_dead_weight_too()
     {
-        // THE OFFER RIDES ON THE STATUS ANSWER, because the binder is
-        // request/response and there is no unprompted channel to the speaker. Before
-        // this, 22.8 GB of unusable model existed only in a dumpsys reading.
+        // THE OFFER RIDES ON THE STATUS ANSWER, and it is no longer the only way
+        // it reaches a person. This comment used to say "there is no unprompted
+        // channel to the speaker" - Part 3 built one: DecisionLog holds the
+        // verdict, LinkVerb.Verdict carries it, and Home polls and speaks it. The
+        // binder is still request/response; the polling is what gets round that.
+        //
+        // Keeping it on the status answer anyway, because somebody who ASKS what
+        // it is running should hear about the wasted room in the same breath
+        // rather than waiting for the next announcement.
         var said = AssistantPersona.WhichBrain(
             ready: true, running: true, gaveUpOnSomething: true, deadWeightSize: "22.8 GB");
 
         Assert.Contains("smaller brain", said);
         Assert.Contains("22.8 GB", said);
-        Assert.Contains("Say the word", said);
+
+        // AND IT NAMES THE ANSWER. "Say the word" never said which word, so the
+        // offer could not be taken up - see SelfRequestTests.
+        Assert.Contains("clear it", said, System.StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

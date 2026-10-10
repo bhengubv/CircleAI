@@ -164,9 +164,19 @@ public static class AssistantPersona
     /// is a lot of somebody's data to reclaim on a hunch. It states the fact and
     /// waits.
     /// </remarks>
+    /// <remarks>
+    /// IT SAYS WHICH WORD, because "say the word" did not and the offer was
+    /// therefore unanswerable. Reported 2026-10-10: "I have been responding but
+    /// nothing happens." Of course it did nothing - the sentence asked for a
+    /// word it never named, and the matcher wanted an exact utterance from a
+    /// fixed list that did not include "yes".
+    ///
+    /// An offer a person cannot answer is worse than no offer: it looks like the
+    /// assistant is ignoring them.
+    /// </remarks>
     public static string DeadWeight(string size)
         => $"There is a brain here this phone cannot run, taking up {size}. "
-         + "Say the word and I will clear it.";
+         + "Say “clear it” and I will.";
 
     /// <summary>The answer to "which brain are you using?".</summary>
     /// <param name="ready">Whether the brain is up and answering.</param>

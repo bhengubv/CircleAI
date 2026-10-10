@@ -118,8 +118,49 @@ public static class SelfRequest
         "go ahead and clear it",
     ];
 
+    /// <summary>
+    /// Plain agreement - only ever meaningful while an offer is open.
+    /// </summary>
+    /// <remarks>
+    /// THE ANSWER A PERSON ACTUALLY GIVES. The dead-weight offer was announced,
+    /// and the only accepted replies were whole utterances like "clear it" and
+    /// "delete the big one". Nobody answers an offer that way. They say "yes".
+    ///
+    /// Reported on 2026-10-10, within minutes of hearing it for the first time:
+    /// "I have been responding but nothing happens."
+    ///
+    /// DANGEROUS WITHOUT THE GUARD, which is why it is a separate list behind a
+    /// parameter. A bare "yes" with no offer open must never delete 2.85 GB -
+    /// it could be the tail of any sentence a transcriber mangled. These count
+    /// only when the assistant has just asked.
+    /// </remarks>
+    private static readonly string[] Agreement =
+    [
+        "yes", "yeah", "yep", "yup", "ok", "okay", "sure",
+        "go ahead", "go on", "do it", "please do", "please", "yes please",
+        "that is fine", "thats fine", "fine", "clear", "do that",
+    ];
+
     /// <summary>What <paramref name="said"/> is asking about the assistant, if anything.</summary>
-    public static SelfAsk Of(string? said)
+    /// <param name="said">What the person said.</param>
+    /// <param name="anOfferIsOpen">
+    /// True when the assistant has just offered to clear something and is
+    /// waiting for an answer. Only then does plain agreement mean yes.
+    /// </param>
+    /// <remarks>
+    /// MATCHED AS A WHOLE UTTERANCE AND THEN, FAILING THAT, LENIENTLY. The strict
+    /// pass stays first and is unchanged: "are you ready to book the table" must
+    /// not be heard as a question about the assistant.
+    ///
+    /// But strict-only is why the offer could not be answered. "clear it please",
+    /// "yes clear it then" and "ok clear it" all failed an exact comparison
+    /// against "clear it", and a person has no way to know which of ten phrasings
+    /// the machine wants. So a CLEAR instruction is also recognised when the
+    /// utterance is a short one that contains it - short, because "do not clear
+    /// it" and "why would I clear it" are not instructions, and length is the
+    /// cheap guard against a sentence that merely mentions it.
+    /// </remarks>
+    public static SelfAsk Of(string? said, bool anOfferIsOpen = false)
     {
         var text = Bare(said);
         if (text.Length == 0) return SelfAsk.None;
@@ -127,7 +168,31 @@ public static class SelfRequest
         foreach (var c in Clear)  if (text == c) return SelfAsk.ClearIt;
         foreach (var r in Retry)  if (text == r) return SelfAsk.TryAgain;
         foreach (var s in Status) if (text == s) return SelfAsk.WhichBrain;
+
+        // Nothing matched exactly. Anything below here needs an open offer.
+        if (!anOfferIsOpen) return SelfAsk.None;
+
+        foreach (var a in Agreement) if (text == a) return SelfAsk.ClearIt;
+
+        // "clear it please", "ok clear it then" - the instruction with the
+        // politeness a person actually uses. Five words is enough for every
+        // natural phrasing and short of anything that could be a refusal.
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length <= 5 && !Negated(words))
+        {
+            foreach (var c in Clear) if (text.Contains(c, StringComparison.Ordinal)) return SelfAsk.ClearIt;
+        }
+
         return SelfAsk.None;
+    }
+
+    /// <summary>"do not clear it" is not an instruction to clear it.</summary>
+    private static bool Negated(string[] words)
+    {
+        foreach (var w in words)
+            if (w is "not" or "dont" or "never" or "no" or "cancel" or "stop" or "wait" or "why")
+                return true;
+        return false;
     }
 
     /// <summary>
