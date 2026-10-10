@@ -500,7 +500,18 @@ public sealed partial class CircleNeuronService : Service
                 var options  = factory();
                 var registry = new ModelRegistryService();
                 var loader   = new BundleModelLoader(options.ModelStorageDirectory!, registry);
-                var selector = new DeviceAwareModelSelector(registry);
+                // THE ASSESSED CATALOGUE, WHERE THERE IS ONE. This line was
+                // `new DeviceAwareModelSelector(registry)` and it is the reason
+                // the catalogue had no callers: SqliteModelCatalog, the assessor
+                // and CatalogModelSelector were all built and tested while the
+                // live path re-derived fit from the shipped JSON. So a crash
+                // verdict written by CrashVerdict.Record could be read by
+                // IsRefused and still not reach the selection itself.
+                //
+                // Preferring falls back to the registry until the first
+                // assessment lands, because CatalogueBootstrap runs on a
+                // background task and BestFit throws on an unassessed catalogue.
+                var selector = CircleAI.Inference.CatalogModelSelector.Preferring(Catalogue, registry);
 
                 // THE BRAIN LOADS WHAT IS THERE. IT DOES NOT FETCH.
                 //
@@ -560,6 +571,15 @@ public sealed partial class CircleNeuronService : Service
                         global::Android.Util.Log.Info(LogTag,
                             "the selector wanted " + wanted + ", which is not on this phone; "
                             + "using " + here + ", which is");
+
+                        // AND SAID OUT LOUD, NOT ONLY TO LOGCAT. This is exactly
+                        // the decision a person is entitled to hear: the thing
+                        // they are talking to is not the one the device would
+                        // have chosen. The sentence is AssistantPersona's; the
+                        // sequence number is what lets a client speak it once.
+                        CircleNeuronLinkService.Decided(
+                            CircleAI.Assistant.AssistantPersona.OnTheSmallerBrain);
+
                         wanted = here;
                     }
                 }
@@ -593,6 +613,9 @@ public sealed partial class CircleNeuronService : Service
                 // ungated, and on the device that found this the selector was not the
                 // route that chose the fatal model anyway. One check, after every
                 // route, is the only version of this that cannot be walked around.
+                // A REFUSAL IS A DECISION, AND IT USED TO BE SILENT. The phone
+                // worked out, from a crash it survived, that it will not run
+                // this again - and the only trace was a log line.
                 if (CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, wanted))
                 {
                     var instead = loader.BestInstalledChatModel(
@@ -608,9 +631,19 @@ public sealed partial class CircleNeuronService : Service
                     {
                         Status = "the brain this phone can run is not here yet";
                         State  = ServiceState.Idle;
+                        CircleNeuronLinkService.Decided(
+                            CircleAI.Assistant.AssistantPersona.NothingItCanRun);
                         Notify(Status);
                         return;
                     }
+
+                    // IT GAVE UP ON ONE AND PICKED ANOTHER. A person who watched
+                    // their phone die loading something deserves to be told it
+                    // will not be tried again, rather than quietly getting a
+                    // different answer from a different model.
+                    CircleNeuronLinkService.Decided(
+                        CircleAI.Assistant.AssistantPersona.OnTheSmallerBrain);
+
                     wanted = instead;
                 }
 

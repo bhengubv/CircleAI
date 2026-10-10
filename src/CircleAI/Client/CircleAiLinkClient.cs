@@ -344,6 +344,21 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     public Task<LinkRowsReply> PermissionsAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Permissions), ct);
 
+    /// <summary>
+    /// The last thing the device decided for itself, with a sequence number.
+    /// </summary>
+    /// <remarks>
+    /// POLL THIS AND SPEAK IT WHEN THE NUMBER GOES UP. The number is what makes
+    /// polling safe: a client that remembers the last one it spoke cannot miss a
+    /// decision taken between two asks, and cannot say the same thing twice.
+    /// <para>
+    /// No rows means the device has decided nothing worth saying, which is the
+    /// normal state of a phone that is simply working.
+    /// </para>
+    /// </remarks>
+    public Task<LinkRowsReply> VerdictAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Verdict), ct);
+
     /// <summary>What Circle AI holds here: lines, then total and freeable as the last two rows.</summary>
     public Task<LinkRowsReply> FootprintAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.Footprint), ct);

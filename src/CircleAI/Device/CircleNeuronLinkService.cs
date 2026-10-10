@@ -149,7 +149,69 @@ public sealed class CircleNeuronLinkService : Service
     private static void OnWoke(object? sender, string phrase)
         => System.Threading.Interlocked.Increment(ref _heard);
 
+    /// <summary>
+    /// The last thing this device decided for itself, and a number that only
+    /// goes up.
+    /// </summary>
+    /// <remarks>
+    /// PART 3: IT SAYS SO, OUT LOUD. Everything this device works out about its
+    /// own models - that the big brain will not fit, that it was killed by one
+    /// and will not try again - was reachable only by ASKING. SelfRequest
+    /// answers "which brain are you using?" perfectly well and nobody thinks to
+    /// ask it. The bar is Alexa: it decides, it acts, and it tells you.
+    ///
+    /// HOLD-AND-POLL, NOT PUSH, the same shape as Heard directly above: a binder
+    /// is request/response and there is no channel back.
+    ///
+    /// THE POLICY IS DecisionLog'S, not this file's. Do-not-repeat-yourself and
+    /// never-go-backwards are the only logic here, and an Android Service cannot
+    /// be reached by the net9/net10 suites - the same reason the brain warm-up
+    /// wait moved to ReadinessWait.
+    /// </remarks>
+    private static readonly CircleAI.Assistant.DecisionLog Decisions = new();
+
+    /// <summary>The most recent decision, or null.</summary>
+    public static string? LastVerdict => Decisions.Last;
+
+    /// <summary>How many distinct decisions this run has announced.</summary>
+    public static int VerdictSeq => Decisions.Sequence;
+
+    /// <summary>Record something this device decided, for a client to speak.</summary>
+    public static void Decided(string? sentence)
+    {
+        if (Decisions.Decided(sentence)) Log.Info(Tag, "decided: " + sentence);
+    }
+
     /// <summary>How much room models this phone cannot run are taking, if any.</summary>
+    /// <summary>
+    /// Say that something unusable is taking up room, if it is. Never deletes.
+    /// </summary>
+    /// <remarks>
+    /// PART 5: SAY WHAT IS DEAD WEIGHT, OFFER, NEVER ACT. DeadWeightHere and
+    /// ClearWhatCannotRun have both existed for a while and both only ran when
+    /// somebody ASKED - so a phone could sit with 2.85 GB of a brain it had been
+    /// killed by, know it precisely, and never mention it. That is the P30 right
+    /// now.
+    ///
+    /// Housekeeping deliberately will not reclaim a model that stopped fitting -
+    /// "free space comes back, a fit rule gets corrected, and the bytes are
+    /// already paid for" - and a model refused BY MEASUREMENT is the one case
+    /// where that reasoning does not hold, because the correction already
+    /// happened and went the other way.
+    ///
+    /// SO IT SAYS SO AND STOPS. The sentence AssistantPersona.DeadWeight builds
+    /// ends in an offer, and the only path to a deletion is still somebody
+    /// answering it - SelfAsk.ClearIt. Nothing here removes a byte.
+    /// </remarks>
+    public static void AnnounceDeadWeightIfAny()
+    {
+        var bytes = DeadWeightHere();
+        if (bytes <= 0) return;
+
+        Decided(CircleAI.Assistant.AssistantPersona.DeadWeight(
+            CircleAI.Assistant.CensusRow.Size(bytes)));
+    }
+
     private static long DeadWeightHere()
     {
         try
@@ -569,6 +631,22 @@ public sealed class CircleNeuronLinkService : Service
                 return LinkRowsReply.Success(rows
                     .Select(r => LinkSetupRows.Permission(r.Title, r.Why, r.Granted, r.Runtime))
                     .ToList());
+            }
+
+            case LinkVerb.Verdict:
+            {
+                // NO AUTHORISATION CHECK BEYOND THE ONE ABOVE, and nothing here
+                // reads the person's data: it is one sentence this device wrote
+                // about its own models. Cheap enough to poll, which is the point.
+                //
+                // EMPTY IS THE NORMAL ANSWER. A phone that has decided nothing
+                // worth saying says nothing, rather than repeating "I am ready"
+                // at whatever rate the client happens to poll.
+                var said = LastVerdict;
+                if (string.IsNullOrWhiteSpace(said)) return LinkRowsReply.Success([]);
+
+                return LinkRowsReply.Success(
+                    [[VerdictSeq.ToString(System.Globalization.CultureInfo.InvariantCulture), said!]]);
             }
 
             case LinkVerb.Footprint:

@@ -76,6 +76,14 @@ public sealed class ServiceDeviceFacts(LinkedBrain brain) : IDeviceFacts
 
     /// <inheritdoc />
     /// <remarks>
+    /// STRAIGHT THROUGH. The decision belongs to the process that owns the
+    /// models, and this app's job is to say it out loud - not to form one.
+    /// </remarks>
+    public Task<(int Seq, string? Said)> VerdictAsync(CancellationToken ct = default)
+        => _link.VerdictAsync(ct);
+
+    /// <inheritdoc />
+    /// <remarks>
     /// ANDROID'S OWN SCREEN FOR THAT PACKAGE, because this app cannot grant another
     /// app's permissions and should not look as though it can. The intent names the
     /// service by package, any app may launch it, and it needs no permission of its

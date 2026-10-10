@@ -228,7 +228,17 @@ public sealed class DeviceSetup : ISetup
             // speech: true for the same reason PlanAsync passes it - this head
             // compiles the voice stack in, and a census that counted a voice a
             // chat-only build cannot open would be describing a different app.
-            var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(), speech: true, language: Language);
+            // NotOffered() HERE TOO, AND IT WAS MISSING. PlanAsync passes it and
+            // this did not, so the rows a person READS and the work the app DOES
+            // were computed from different lists: a model this phone had been
+            // killed by, or cannot run, was filtered out of the plan and still
+            // counted in the census. Census's own header calls itself "the same
+            // list Plan walks" - it was not.
+            //
+            // The P30 showed the cost on 2026-10-09: a 2.85 GB brain it could
+            // not load, sitting in the count of what it has.
+            var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(),
+                                         speech: true, declined: NotOffered(), language: Language);
 
             return new Census(
                 census.Rows

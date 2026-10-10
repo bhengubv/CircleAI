@@ -181,9 +181,34 @@ public sealed class DeviceFacts : IDeviceFacts
     /// the ability download can ask BEFORE it spends data or fills the disk.</summary>
     private readonly MemoryManager _memory;
 
+    /// <summary>
+    /// This device's verdicts about its models, read when needed.
+    /// </summary>
+    /// <remarks>
+    /// A LAMBDA FOR THE SAME REASON DeviceSetup TAKES ONE: the catalogue is built
+    /// later in ServiceApplication.OnCreate than this is, so reading it eagerly
+    /// captures null forever - and null here means every screen goes back to
+    /// re-deriving fit from the shipped JSON while the runtime uses the assessed
+    /// catalogue. That is the two-owners split Part 1 exists to close, reopened
+    /// one layer up.
+    /// </remarks>
+    private readonly Func<CircleAI.Core.Models.IModelCatalog?>? _catalogue;
+
+    /// <summary>What this device refuses or cannot run, for the screens.</summary>
+    /// <remarks>
+    /// NOT "Catalogue" - this type already has one, and it is a completely
+    /// different thing: the static Ability[] listing what the app can do. Naming
+    /// this the same was CS0102, caught by the android leg of the suite.
+    /// </remarks>
+    private CircleAI.Core.Models.IModelCatalog? Verdicts => _catalogue?.Invoke();
+
     /// <summary>The constructor DI resolves: the Blazor head's screens, plus the
     /// Memory Manager the download gate consults.</summary>
     public DeviceFacts(MemoryManager memory) : this(BlazorScreens, memory) { }
+
+    /// <summary>The service's constructor: screens, memory, and the catalogue.</summary>
+    public DeviceFacts(MemoryManager memory, Func<CircleAI.Core.Models.IModelCatalog?>? catalogue)
+        : this(BlazorScreens, memory, catalogue) { }
 
     /// <param name="screens">The ability titles this head can actually open.</param>
     /// <param name="memory">The footprint budget the download path asks first.</param>
@@ -195,8 +220,10 @@ public sealed class DeviceFacts : IDeviceFacts
     /// already warns about above. Kept private so DI only ever sees the memory-only
     /// ctor and always gets the Blazor screens.
     /// </remarks>
-    private DeviceFacts(IEnumerable<string> screens, MemoryManager memory)
+    private DeviceFacts(IEnumerable<string> screens, MemoryManager memory,
+                        Func<CircleAI.Core.Models.IModelCatalog?>? catalogue = null)
     {
+        _catalogue = catalogue;
         _screens = new HashSet<string>(screens, StringComparer.Ordinal);
         _memory = memory;
     }
@@ -216,16 +243,25 @@ public sealed class DeviceFacts : IDeviceFacts
     /// catalogue will run here.
     /// </para>
     /// </remarks>
+    /// <param name="verdicts">
+    /// This device's assessments, so the answer matches what the runtime would
+    /// actually load. A PARAMETER because this is static and the instance's
+    /// accessor is not reachable from here - and defaulted to null because the
+    /// one existing caller is a test. Passing null re-derives fit from the
+    /// shipped JSON, which is the old behaviour and the wrong one wherever a
+    /// catalogue exists.
+    /// </param>
     public static ModelEntry? ChoiceFor(
         string title,
         ModelRegistryService registry,
         BundleModelLoader loader,
-        DeviceProbe probe)
+        DeviceProbe probe,
+        CircleAI.Core.Models.IModelCatalog? verdicts = null)
     {
         var a = Catalogue.FirstOrDefault(x => x.Title == title);
         return a is null || a.NeedsNoModel
             ? null
-            : ModelChoice.For(a.Modality, registry, loader, probe);
+            : ModelChoice.For(a.Modality, registry, loader, probe, verdicts);
     }
 
     private static string StorageDir => ModelStore.Path;
@@ -324,7 +360,7 @@ public sealed class DeviceFacts : IDeviceFacts
                 // it needed 22797 MB. One rule, one answer.
                 var chosen = a.NeedsNoModel
                     ? null
-                    : ModelChoice.For(a.Modality, registry, loader, probe);
+                    : ModelChoice.For(a.Modality, registry, loader, probe, Verdicts);
 
                 // Size, not SHA-256 - see ModelChoice.For.
                 var present = chosen is not null && loader.ModelPresent(chosen.Name);
@@ -505,7 +541,7 @@ public sealed class DeviceFacts : IDeviceFacts
                 // THE FOURTH PLACE, and a readout that named a different model
                 // from the one the row above it offered is a diagnostics screen
                 // actively misleading whoever came to it to diagnose something.
-                var m = ModelChoice.For(a.Modality, registry, loader, probe);
+                var m = ModelChoice.For(a.Modality, registry, loader, probe, Verdicts);
                 if (m is null) continue;
                 technical.Add($"{a.Title}: {m.Name}\n{Size(m.TotalBytes)} · needs "
                             + $"{m.MinRamGb:0.#} GB · {m.Repo}");
@@ -550,7 +586,7 @@ public sealed class DeviceFacts : IDeviceFacts
         // THE THIRD PLACE THIS CHOICE WAS MADE, and the one that actually spends
         // somebody's data. A download that picked a different model from the one
         // the row advertised would be the worst of the three to get wrong.
-        var best = ModelChoice.For(entry.Modality, registry, loader, probe);
+        var best = ModelChoice.For(entry.Modality, registry, loader, probe, Verdicts);
         if (best is null) return "Nothing that fits this phone.";
 
         // PREVENTION, NOT CURE — the Memory Manager is asked BEFORE the download,

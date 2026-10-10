@@ -451,7 +451,13 @@ public sealed class ServiceApplication : Application
         {
             global::Android.Util.Log.Warn("CircleAI.Wake", "could not resume listening: " + ex.Message);
         }
-        CircleNeuronLinkService.Facts    = new DeviceFacts(footprint);
+        // THE CATALOGUE GOES IN HERE TOO. Without it every ability row re-derived
+        // fit from the shipped JSON while the runtime selected from the assessed
+        // catalogue - so a model this phone had been killed by could be named on
+        // a screen as the one it uses. Same lambda shape as DeviceSetup above,
+        // and for the same reason: the catalogue is built later in this method.
+        CircleNeuronLinkService.Facts    = new DeviceFacts(
+            footprint, catalogue: () => CircleAI.Device.CircleNeuronService.Catalogue);
 
         // HOUSEKEEPING, ON INIT, BECAUSE NOTHING WAS DOING IT HERE. The catalogue
         // bootstrap used to run in the hybrid app with reclaimInferior: true, and it
@@ -566,6 +572,13 @@ public sealed class ServiceApplication : Application
 
                         global::Android.Util.Log.Info("CircleAI.Setup",
                             $"catalogue: {result.Assessed} assessed, {result.Compatible} run on this device");
+
+                        // AND IF ANY OF IT IS DEAD WEIGHT, SAY SO. This is the
+                        // first moment the device knows: the assessment has just
+                        // run, so it can finally tell "a model I cannot use" from
+                        // "a model I have not judged yet". It says it once and
+                        // offers; nothing here deletes anything.
+                        CircleAI.Device.CircleNeuronLinkService.AnnounceDeadWeightIfAny();
                     }
                     catch (Exception ex)
                     {

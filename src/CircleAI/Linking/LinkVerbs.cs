@@ -124,6 +124,23 @@ public enum LinkVerb
     /// has no reason to open for an app that never appears in a launcher.
     /// </remarks>
     Permissions,
+
+    /// <summary>
+    /// The last thing this device decided for itself, and a sequence number.
+    /// </summary>
+    /// <remarks>
+    /// APPENDED, NEVER INSERTED. The verb is sent as its integer value, so a
+    /// client built before this one keeps the meaning of every verb it knows -
+    /// the same rule the census row's fifth field was added under.
+    ///
+    /// Two columns: the sequence number, then the sentence. A client speaks the
+    /// sentence when the number it reads is higher than the number it last
+    /// spoke, which is how a poll cannot miss a decision and cannot repeat one.
+    ///
+    /// Empty rows mean this run has decided nothing worth saying, which is the
+    /// normal state of a phone that is simply working.
+    /// </remarks>
+    Verdict,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>

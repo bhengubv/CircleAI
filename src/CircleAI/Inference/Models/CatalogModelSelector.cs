@@ -33,6 +33,52 @@ public sealed class CatalogModelSelector : IModelSelector
         => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
 
     /// <inheritdoc/>
+    /// <summary>
+    /// Has THIS device actually assessed the catalogue yet?
+    /// </summary>
+    /// <remarks>
+    /// Rows alone are not enough. A freshly seeded catalogue has every model in
+    /// it with compatible = 0 and assessed_at NULL, and selecting from that
+    /// returns the SMALLEST capability match flagged NothingFits - a wrong answer
+    /// delivered confidently, which is worse than the honest fallback.
+    /// </remarks>
+    public static bool HasBeenAssessed(IModelCatalog? catalogue)
+    {
+        if (catalogue is null) return false;
+        try { return catalogue.AllAssessed().Any(a => a.AssessedAt is not null); }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// The selector this device should use: the assessed catalogue once it has
+    /// been assessed, and the registry-derived one until then.
+    /// </summary>
+    /// <param name="catalogue">The assessed catalogue, or null where there is none.</param>
+    /// <param name="registry">The registry for the fallback; null builds its own.</param>
+    /// <remarks>
+    /// ONE PLACE, BECAUSE FIVE PLACES IS WHAT WENT WRONG. CatalogModelSelector,
+    /// SqliteModelCatalog, DeviceModelAssessor and AddModelCatalogue were all
+    /// built, tested and committed, and five production sites went on calling
+    /// `new DeviceAwareModelSelector(registry)` - so the assessed catalogue had
+    /// zero callers and the crash verdicts written into it could not reach a
+    /// decision. docs/OPEN-GAPS.md records that four times over.
+    ///
+    /// THE FALLBACK IS DELIBERATE AND NARROW. CatalogueBootstrap runs on a
+    /// background task at startup, so a brain can be asked for before the first
+    /// assessment lands - and BestFit THROWS when nothing in the catalogue
+    /// satisfies the capability. Swapping blind would have turned a startup race
+    /// into a crash on the one path a person is waiting on. This is still a
+    /// second rule, but it is ONE, it is named, and it is tested; five implicit
+    /// bypasses were none of those things.
+    /// </remarks>
+    public static IModelSelector Preferring(
+        IModelCatalog? catalogue, ModelRegistryService? registry = null)
+        => HasBeenAssessed(catalogue)
+            ? new CatalogModelSelector(catalogue!)
+            : registry is null
+                ? new DeviceAwareModelSelector()
+                : new DeviceAwareModelSelector(registry);
+
     public ModelSelection BestFit(DeviceProbe probe, ChatCapability required)
         => BestFit(probe, required, minQualityRank: 0);
 

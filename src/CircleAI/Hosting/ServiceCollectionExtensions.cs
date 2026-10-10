@@ -162,11 +162,19 @@ public static class ServiceCollectionExtensions
         });
 
         // ---------------------------------------------------------------
-        // IModelSelector — DeviceAwareModelSelector reads the registry,
-        // filters by capability + device fit, ranks by QualityRank.
+        // IModelSelector — the ASSESSED CATALOGUE when the host registered
+        // one (AddModelCatalogue), and the registry-derived selector until
+        // then. GetService, not GetRequiredService: a catalogue is optional
+        // and a host without one must still resolve a selector.
+        //
+        // This used to hard-code DeviceAwareModelSelector, which meant
+        // AddModelCatalogue could be called and change nothing about what
+        // actually got loaded.
         // ---------------------------------------------------------------
         services.TryAddSingleton<IModelSelector>(sp =>
-            new DeviceAwareModelSelector(sp.GetRequiredService<ModelRegistryService>()));
+            CircleAI.Inference.CatalogModelSelector.Preferring(
+                sp.GetService<CircleAI.Core.Models.IModelCatalog>(),
+                sp.GetRequiredService<ModelRegistryService>()));
 
         // ---------------------------------------------------------------
         // IModelLoader — BundleModelLoader understands the multi-file MNN

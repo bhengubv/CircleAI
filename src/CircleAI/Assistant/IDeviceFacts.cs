@@ -196,4 +196,31 @@ public interface IDeviceFacts
     /// </remarks>
     Task<bool> OpenPermissionsAsync(CancellationToken ct = default)
         => Task.FromResult(false);
+
+    /// <summary>
+    /// The last thing the device decided for itself, and a sequence number.
+    /// </summary>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>
+    /// The sequence number, and the sentence to say. A null sentence means the
+    /// device has decided nothing worth saying - the normal state of a phone
+    /// that is simply working.
+    /// </returns>
+    /// <remarks>
+    /// PART 3: IT DECIDES, IT ACTS, AND IT TELLS YOU. Everything a device worked
+    /// out about its own models - that the big brain will not fit, that it was
+    /// killed by one and will not try it again, that something unusable is
+    /// taking up room - was reachable only by ASKING it. Nobody thinks to ask.
+    ///
+    /// SPEAK IT WHEN THE NUMBER GOES UP, and remember the number you spoke. The
+    /// link is a binder, so this is polled; the sequence is what stops a poll
+    /// missing a decision taken between two asks, and stops it saying the same
+    /// thing twice. DecisionLog.HasSomethingNewFor is the same comparison on the
+    /// other side, written down once so clients cannot each get it subtly wrong.
+    ///
+    /// Defaulted, because a browser head decides nothing about models and should
+    /// not have to say so in code.
+    /// </remarks>
+    Task<(int Seq, string? Said)> VerdictAsync(CancellationToken ct = default)
+        => Task.FromResult((0, (string?)null));
 }

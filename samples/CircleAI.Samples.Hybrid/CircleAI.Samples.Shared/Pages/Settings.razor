@@ -1508,10 +1508,15 @@ else
         await JS.InvokeVoidAsync("circleaiTheme.set", _light);
     }
 
-    static string Size(long bytes)
-        => bytes >= 1_000_000
-            ? $"{bytes / 1_000_000.0:0.#} MB"
-            : $"{Math.Max(1, bytes / 1024)} KB";
+    // THE SHARED FORMATTER, NOT A FOURTH ONE. This was the last local copy, and
+    // it had both faults CensusRow.Size exists to prevent: interpolation uses the
+    // CURRENT culture, so it rendered "1 234,5 MB" on af-ZA and zu-ZA - most of
+    // who this is built for - right next to ability rows already rendering
+    // invariant; and it had no GB rollover, so a 2 GB document read "2000 MB".
+    //
+    // The ability row two hundred lines down already calls CensusRow.Size. One
+    // screen with two owners of the same number is how they drift apart.
+    static string Size(long bytes) => CensusRow.Size(bytes);
 
     async Task Delete(StoredDocument doc)
     {

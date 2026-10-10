@@ -20,6 +20,12 @@
 @inject VoiceMark Mark
 @inject ISpokenLanguage Spoken
 @inject IWhereAmI Where
+@* OPTIONAL ON PURPOSE - resolved, not injected. A plain @inject IDeviceFacts
+   makes this screen refuse to render anywhere the capability is not registered,
+   and "say what you decided" is not worth taking Home down for: a browser head
+   decides nothing about models, and three hand-rolled test wirings fell over
+   the moment it became required. Asking the provider keeps it a courtesy. *@
+@inject IServiceProvider Provider
 @inject CapabilityRegistry Can
 @* Where a capability narrates each step it takes - see IAnnounces. *@
 @inject IAnnounces Announcer
@@ -308,6 +314,19 @@
     /// </remarks>
     static readonly TimeSpan FillPoll = TimeSpan.FromSeconds(3);
 
+    /// <summary>How often to check once there is nothing left to arrive.</summary>
+    /// <remarks>
+    /// THE LOOP DOES NOT STOP AT READY ANY MORE, and the first version of it
+    /// did. A device decides things long after setup finishes - it is killed by
+    /// a model and gives up on it, or finds something unusable taking up room -
+    /// and a watcher that exited at Ready would have those verdicts reach a
+    /// person only on the next app resume, if ever.
+    ///
+    /// Twenty seconds rather than three, because once the phone is ready this is
+    /// the only reason to wake at all, and a verdict is a rare event.
+    /// </remarks>
+    static readonly TimeSpan IdlePoll = TimeSpan.FromSeconds(20);
+
     /// <summary>
     /// Re-reads the headline while anything is still arriving.
     /// </summary>
@@ -337,12 +356,78 @@
     /// Compared by value before touching the UI - Readiness is a readonly record
     /// struct - so a phone that is simply still downloading re-renders nothing.
     /// </remarks>
+    /// <summary>The highest decision this screen has already said out loud.</summary>
+    /// <remarks>
+    /// A NUMBER, NOT A FLAG, and this is the client half of the contract
+    /// DecisionLog describes. Remembering only "have I said something" would
+    /// make a second decision silent; remembering the sentence would make a
+    /// device that changed its mind back silent. The number is the only thing
+    /// that gets both right.
+    ///
+    /// Starts at zero, so the first verdict of a run is spoken once - which is
+    /// correct even when the service has been running a while, because it is
+    /// new to THIS screen.
+    /// </remarks>
+    int _spokenVerdict;
+
+    /// <summary>
+    /// Say what the device has decided, if it has decided something new.
+    /// </summary>
+    /// <remarks>
+    /// PART 3, THE LAST STEP: the device works out that the big brain will not
+    /// fit, or that it was killed by one and will not try again, or that
+    /// something unusable is taking up room - and a person hears it, instead of
+    /// it sitting in logcat where only a developer with a cable will ever look.
+    ///
+    /// ANNOUNCED, NOT CONFIRMED. It states what it decided; it asks only where
+    /// there is a real cost, which is the dead-weight offer, and even that is
+    /// answered by speaking rather than by a dialog.
+    ///
+    /// SWALLOWS EVERYTHING. A verdict that cannot be read or cannot be spoken is
+    /// not a reason to disturb a screen somebody is using.
+    /// </remarks>
+    async Task SpeakAnyVerdictAsync()
+    {
+        try
+        {
+            if (Provider.GetService(typeof(IDeviceFacts)) is not IDeviceFacts facts) return;
+
+            var (seq, said) = await facts.VerdictAsync();
+            if (_gone || seq <= _spokenVerdict || string.IsNullOrWhiteSpace(said)) return;
+
+            // MARKED BEFORE SPEAKING, not after. SayAsync takes seconds, the
+            // poll is every three, and a slow voice would otherwise let the next
+            // tick start the same sentence again.
+            _spokenVerdict = seq;
+            await Talk.SayAsync(said!);
+        }
+        catch { /* nothing it decided is worth breaking a screen over */ }
+    }
+
     async Task WatchWhileItFillsUpAsync()
     {
-        while (!_gone && _ready.Stage != ReadyStage.Ready)
+        while (!_gone)
         {
-            try { await Task.Delay(FillPoll); } catch { return; }
+            var filling = _ready.Stage != ReadyStage.Ready;
+
+            try { await Task.Delay(filling ? FillPoll : IdlePoll); } catch { return; }
             if (_gone) return;
+
+            // HAS IT DECIDED ANYTHING? Folded into the poll that is already
+            // running rather than given a second timer: two timers on one screen
+            // is how a phone quietly loses an hour of battery, and this question
+            // is cheap - one sentence the service already holds.
+            //
+            // Asked whether or not anything is still arriving, because the
+            // verdicts that matter most - killed by a model, gave up on it -
+            // happen on a phone that finished setting up days ago.
+            await SpeakAnyVerdictAsync();
+            if (_gone) return;
+
+            // The headline only needs re-reading while something is still
+            // coming. Once Ready, OnResumed covers anything that changes while
+            // the app is away.
+            if (!filling) continue;
 
             Readiness fresh;
             try { fresh = await Setup.ReadinessAsync(); }

@@ -79,6 +79,28 @@ public sealed class LinkedDeviceFacts(LinkedBrain brain)
             LinkSetupRows.Flag(r, 3)))];
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// SILENCE ON EVERY FAILURE, and that is the right default here. No link, a
+    /// refused reply, no rows - all of them mean "nothing to say", and inventing
+    /// a sentence out of a broken call would have the phone announcing a verdict
+    /// it never reached.
+    /// </remarks>
+    public async Task<(int Seq, string? Said)> VerdictAsync(CancellationToken ct = default)
+    {
+        var client = await brain.LinkAsync(ct).ConfigureAwait(false);
+        if (client is null) return (0, null);
+
+        var reply = await client.VerdictAsync(ct).ConfigureAwait(false);
+        if (!reply.Ok || reply.Rows.Count == 0) return (0, null);
+
+        var row = reply.Rows[0];
+        var said = LinkSetupRows.Text(row, 1);
+        return string.IsNullOrWhiteSpace(said)
+            ? (0, null)
+            : ((int)LinkSetupRows.Number(row, 0), said);
+    }
+
     /// <summary>What Circle AI holds on this phone.</summary>
     /// <remarks>
     /// THE LAST TWO ROWS ARE THE TOTALS, not lines — the service appends them so a

@@ -65,7 +65,11 @@ public static class Program
             // and the alternative is editing a config file to try the other one.
             var wanted = Environment.GetEnvironmentVariable("CIRCLEAI_MODEL");
             if (string.IsNullOrWhiteSpace(wanted))
-                wanted = new DeviceAwareModelSelector(registry)
+                // Through Preferring like every other site. This host builds no
+                // assessed catalogue, so it resolves to the registry selector -
+                // the same behaviour as before, now stated rather than assumed,
+                // and one line to change if a catalogue is ever added here.
+                wanted = CatalogModelSelector.Preferring(catalogue: null, registry)
                     .BestFit(DeviceProbe.Snapshot(), ChatCapability.Default)?.ModelId;
 
             if (string.IsNullOrWhiteSpace(wanted))
@@ -99,7 +103,7 @@ public static class Program
                 options,
                 modelLoader:      loader,
                 generatorFactory: null,
-                modelSelector:    new DeviceAwareModelSelector(registry),
+                modelSelector:    CatalogModelSelector.Preferring(catalogue: null, registry),
                 modelRegistry:    registry);
 
             await using var endpoint = new HttpLoopbackEndpoint(options);

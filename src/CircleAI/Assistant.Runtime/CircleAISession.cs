@@ -252,7 +252,12 @@ public sealed class CircleAISession : IAsyncDisposable
 
             _loader   = new BundleModelLoader(modelDir, _registry);
             _speech   = new SpeechModelSelector(_registry);
-            var selector = new DeviceAwareModelSelector(_registry);
+            // Through Preferring, like the service. An in-process session holds
+            // no assessed catalogue - the one that exists belongs to the service
+            // process that owns the models - so this resolves to the registry
+            // selector. Stated here rather than assumed, so the day a session
+            // does get one it is a parameter and not a hunt through five files.
+            var selector = CatalogModelSelector.Preferring(catalogue: null, _registry);
 
             var options = new AIOptions
             {
