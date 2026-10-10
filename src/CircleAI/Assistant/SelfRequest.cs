@@ -162,7 +162,56 @@ public static class SelfRequest
     /// </remarks>
     public static SelfAsk Of(string? said, bool anOfferIsOpen = false)
     {
-        var text = Bare(said);
+        var direct = Match(Bare(said), anOfferIsOpen);
+        if (direct != SelfAsk.None) return direct;
+
+        // AND AGAIN ON THE LAST LINE, WHICH IS WHERE THE PERSON'S WORDS ACTUALLY
+        // ARE.
+        //
+        // This is why the dead-weight offer could not be taken up even after it
+        // started naming its own answer. The typed screen does not send what was
+        // typed: Recalling.Ask prepends what the device remembers, so the
+        // service receives
+        //
+        //     Here is what you already know about this person:
+        //     - ...
+        //     - ...
+        //
+        //     clear it
+        //
+        // and a matcher comparing the WHOLE utterance sees none of its phrases.
+        // Measured on the P30 on 2026-10-10: "clear it" went straight past the
+        // switch and the brain replied "I have processed the information you
+        // provided", while 4.8 GB stayed exactly where it was.
+        //
+        // The preamble is always above and the utterance always last, so the
+        // last non-empty line is the thing to ask about. Done here rather than
+        // in the client because the decision belongs to the process that owns
+        // the models - a client that pre-matched would need to act on it too.
+        var last = LastLine(said);
+        return last is null ? SelfAsk.None : Match(Bare(last), anOfferIsOpen);
+    }
+
+    /// <summary>The last non-empty line, or null when there is only one.</summary>
+    private static string? LastLine(string? said)
+    {
+        if (string.IsNullOrWhiteSpace(said)) return null;
+
+        // Split on BOTH, because the composed prompt is built with
+        // Environment.NewLine and this library runs on Android, Windows and the
+        // browser - a \n-only split leaves a trailing \r on every line and
+        // nothing ever matches.
+        var lines = said.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length <= 1) return null;   // single line: already tried
+
+        for (var i = lines.Length - 1; i >= 0; i--)
+            if (!string.IsNullOrWhiteSpace(lines[i])) return lines[i];
+
+        return null;
+    }
+
+    private static SelfAsk Match(string text, bool anOfferIsOpen)
+    {
         if (text.Length == 0) return SelfAsk.None;
 
         foreach (var c in Clear)  if (text == c) return SelfAsk.ClearIt;

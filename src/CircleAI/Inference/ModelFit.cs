@@ -197,7 +197,7 @@ public static class ModelFit
         if (totalBytes <= 0) return true;
 
         var totalGb = totalBytes / DeviceProbe.BytesPerGb;
-        return EagerGb(e) <= (totalGb * ResidentShare) + Eps;
+        return EagerGb(e) <= ResidentCeilingGb(totalGb) + Eps;
     }
 
     /// <summary>
@@ -235,28 +235,57 @@ public static class ModelFit
     ///   the P30      MemTotal 3 776 516 kB          -> 3.867 GB
     ///
     /// 3.8 <= 3.867, so it passed - by 67 MB, on a declaration that it needs
-    /// essentially the entire phone. That is what 100% permits.
+    /// essentially the entire phone. That is what 100% permits, and the load got
+    /// the service killed by iAwareF[LowMem].
     ///
-    /// WHY 0.90 AND NOT LESS, which is the uncomfortable half. The lower bound is
-    /// measured: 98% of the device got the service killed. The upper bound is NOT
-    /// mine to pick freely - Qwen3-8B declares MinRamGb 7.2 and ModelChoiceTests
-    /// pins that it is still selectable on an 8 GB handset, which is 90%. So the
-    /// catalogue itself asserts a model may claim 90% of a device, and anything
-    /// stricter here makes CouldEverHold contradict ModelChoice.Fits. Two owners
-    /// of "does it fit" disagreeing is this repo's oldest defect, so this sits
-    /// where they agree rather than inventing a third answer.
+    /// A RESERVE, NOT A PERCENTAGE, AND THAT CORRECTION MATTERS. The first fix
+    /// was a share of total memory, set to 0.90 because Qwen3-8B declares 7.2 GB
+    /// and a test asserted it stays selectable on an 8 GB handset. That reasoning
+    /// was circular - the ceiling was set by a catalogue claim nobody had
+    /// measured - and it is also the wrong SHAPE. Android needs roughly the same
+    /// ABSOLUTE amount of memory on a 4 GB phone as on an 8 GB one; it does not
+    /// need twice as much just because the phone has twice as much. A percentage
+    /// is therefore too tight on big devices and far too loose on small ones,
+    /// which is exactly where this product lives.
     ///
-    /// SAY PLAINLY WHAT THAT MEANS: 0.90 is a thin margin, and it is set by a
-    /// catalogue claim rather than by measurement. It fixes the failure actually
-    /// observed and no more. The deeper disagreement - CouldEverHold judges on
-    /// EagerGb while ModelChoice.Fits may allow mmap, so the two can differ by
-    /// gigabytes on exactly the models where it matters - is NOT resolved here
-    /// and should not be resolved by quietly tightening this number.
+    /// 1.5 GB is what the P30 actually keeps busy with no model loaded at all:
+    /// MemAvailable sat between 0.85 and 1.28 GB of 3.867 GB across a whole day
+    /// of measurements, so 2.6-3.0 GB was never ours to claim.
     ///
-    /// <see cref="CrashVerdict"/> remains the gate for the marginal case this
-    /// crude one lets through.
+    /// What the reserve decides, against what was measured:
+    ///
+    ///   P30   3.867 GB -> ceiling 2.37 GB   refuses the 4B (3.8, killed it),
+    ///                                       admits the 2B (1.9, which ran)
+    ///   8 GB  8.0 GB   -> ceiling 6.5 GB    refuses Qwen3-8B (7.2) - and that
+    ///                                       is the honest answer: 7.2 GB
+    ///                                       declared on an 8 GB phone leaves
+    ///                                       Android 800 MB, which is the P30's
+    ///                                       failure scaled up.
+    ///
+    /// THE PROPORTIONAL FLOOR stops a reserve bigger than the device telling the
+    /// smallest phones they can run nothing - the failure DeviceProbe's
+    /// MeasurementWarning exists to shout about. Below about 2.5 GB total the
+    /// floor takes over and the finer gates do the judging.
+    ///
+    /// AND IT IS NOT THE LOAD-TIME RULE. ModelFit.Fits, on free RAM, is what
+    /// decides whether a model can be loaded right now; this decides only
+    /// whether it is worth OWNING. A correction to an earlier comment of mine:
+    /// the two do NOT differ by mmap - not one model in the catalogue carries a
+    /// measured MmapResidentGb, so WillMmap is false everywhere and both rules
+    /// read EagerGb. They differ in free versus total, and nothing else.
     /// </remarks>
-    public const double ResidentShare = 0.90;
+    public const double OsReserveGb = 1.5;
+
+    /// <summary>The least of a device's memory a model may ever be offered.</summary>
+    /// <remarks>
+    /// The floor under <see cref="OsReserveGb"/>, so a small phone is not told it
+    /// can run nothing at all.
+    /// </remarks>
+    public const double LeastShare = 0.40;
+
+    /// <summary>The most memory one model's weights may ever claim here.</summary>
+    public static double ResidentCeilingGb(double totalGb)
+        => Math.Max(totalGb - OsReserveGb, totalGb * LeastShare);
 
     /// <summary>Whether it fits, given a probe.</summary>
     public static bool Fits(ModelEntry e, DeviceProbe probe, bool? mmapAllowed = null)

@@ -264,6 +264,60 @@ public sealed class ItSaysWhatItDecidedTests
     }
 
     [Fact]
+    public void An_instruction_still_counts_when_the_recall_preamble_is_in_front_of_it()
+    {
+        // THE ACTUAL REASON "NOTHING HAPPENS", found only by taking the offer up
+        // on the phone after the wording and the matcher were both fixed.
+        //
+        // The typed screen does not send what was typed. Recalling.Ask prepends
+        // what the device remembers, so the service receives the person's words
+        // as the LAST LINE of a composed prompt - and a matcher comparing the
+        // whole utterance sees none of its phrases.
+        //
+        // Measured on the P30 on 2026-10-10: "clear it" went past the switch and
+        // the brain answered "I have processed the information you provided",
+        // while 4.8 GB of unusable model stayed exactly where it was.
+        var composed =
+            "Here is what you already know about this person:" + System.Environment.NewLine
+            + "- their name is Thabo" + System.Environment.NewLine
+            + "- they live in Johannesburg" + System.Environment.NewLine
+            + System.Environment.NewLine
+            + "clear it";
+
+        Assert.Equal(SelfAsk.ClearIt, SelfRequest.Of(composed, anOfferIsOpen: true));
+    }
+
+    [Fact]
+    public void Asking_about_itself_survives_the_preamble_too()
+    {
+        // The same blindness hid every self-request, not just the offer - a
+        // person asking which brain it is using got the brain's guess about the
+        // question instead of the fact.
+        var composed =
+            "Here is what you already know about this person:" + System.Environment.NewLine
+            + "- their name is Thabo" + System.Environment.NewLine
+            + System.Environment.NewLine
+            + "which brain are you using";
+
+        Assert.Equal(SelfAsk.WhichBrain, SelfRequest.Of(composed));
+    }
+
+    [Fact]
+    public void A_preamble_that_merely_mentions_clearing_does_not_delete_anything()
+    {
+        // ONLY THE LAST LINE IS THE PERSON SPEAKING. A remembered fact that
+        // happens to contain the phrase must never be read as an instruction -
+        // the memory is data, not a command.
+        var composed =
+            "Here is what you already know about this person:" + System.Environment.NewLine
+            + "- they asked me to clear it last week" + System.Environment.NewLine
+            + System.Environment.NewLine
+            + "what is the weather like";
+
+        Assert.Equal(SelfAsk.None, SelfRequest.Of(composed, anOfferIsOpen: true));
+    }
+
+    [Fact]
     public void The_sentences_are_the_personas_and_name_no_model()
     {
         // SHIP THE DISH, NOT THE TEST TUBE. These are spoken aloud, so a model

@@ -183,7 +183,22 @@ public class SetupOfferSurvivesLowMemoryTests
         };
 
         Assert.True(ModelFit.CouldEverHold(fourB, eightGb),
-            "3.8 GB declared is under half of an 8 GB phone and must still be offered there");
+            "3.8 GB declared is well inside an 8 GB phone and must still be offered there");
+
+        // THE CEILING IS A RESERVE, NOT A PERCENTAGE, and this is why that
+        // matters. Android needs roughly the same ABSOLUTE amount of memory on a
+        // small phone as on a large one - it does not need twice as much because
+        // the phone has twice as much. A share is therefore too tight at the top
+        // and far too loose at the bottom, which is exactly where this product
+        // lives. 1.5 GB is what the P30 keeps busy with no model loaded at all:
+        // MemAvailable sat between 0.85 and 1.28 GB of 3.867 GB all day.
+        Assert.Equal(2.367, ModelFit.ResidentCeilingGb(3.867), precision: 3);
+        Assert.Equal(6.5,   ModelFit.ResidentCeilingGb(8.0),   precision: 3);
+
+        // And a phone too small for the reserve is not told it can run nothing -
+        // the failure DeviceProbe.MeasurementWarning exists to shout about. The
+        // proportional floor takes over and the finer gates do the judging.
+        Assert.Equal(0.8, ModelFit.ResidentCeilingGb(2.0), precision: 3);
     }
 
     [Fact]

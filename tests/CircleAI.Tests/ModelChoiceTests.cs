@@ -172,10 +172,27 @@ public sealed class ModelChoiceTests : IDisposable
         var pick = loader.BestInstalledChatModel(probe);
         Assert.NotNull(pick);
 
+        // COMPARED AGAINST THE RULE THE SELECTOR ACTUALLY USES, which it was not.
+        //
+        // This asked ModelChoice.Fits - free RAM only - while
+        // BestInstalledChatModel requires CouldEverHold AND Fits. Two different
+        // questions, so the test passed only while the two happened to agree,
+        // and it failed the moment CouldEverHold grew the headroom that stops a
+        // model taking the phone down. It then looked like the selector was
+        // passing over Qwen3-8B when the selector was right to refuse it: 7.2 GB
+        // declared on an 8 GB phone leaves Android 800 MB, which is the P30's
+        // iAware kill scaled up.
+        //
+        // What this test is FOR is unchanged and still pinned: the fallback must
+        // not return nothing, and must not pass over a better model it would
+        // accept. "Would accept" is the selector's own rule.
+        static bool Acceptable(ModelEntry m, DeviceProbe p)
+            => ModelFit.CouldEverHold(m, p) && ModelFit.Fits(m, p);
+
         var chosen = registry.GetLatestModel(pick!)!;
         var better = registry.AllModels
             .Where(m => m.Modality == ModelModality.Chat
-                     && ModelChoice.Fits(m, probe)
+                     && Acceptable(m, probe)
                      && m.QualityRank > chosen.QualityRank)
             .Select(m => m.Name)
             .ToList();
