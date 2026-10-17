@@ -479,6 +479,31 @@ namespace CircleAI.Core.Models
         public double? MmapResidentGb { get; init; }
 
         /// <summary>
+        /// A chat model this product no longer runs as its LLM, on any device.
+        /// </summary>
+        /// <remarks>
+        /// THE OWNER'S FLOOR, AS DATA: "nothing less than Qwen3.5 is the LLM"
+        /// (2026-10-16). Every route that picks the brain honours it: both selectors,
+        /// the installed-model fallback, the screens' ModelChoice and an explicit
+        /// ModelId. So a lesser model can never stand in for a missing Qwen3.5; the
+        /// missing one is fetched instead. Housekeeping treats a retired model as dead
+        /// weight once a model that is not retired has loaded on the device.
+        /// <para>
+        /// DATA, NOT A NAME IN CODE. The service must never hard-code which model it
+        /// runs; the registry says which models are retired, and a feed can change it.
+        /// </para>
+        /// </remarks>
+        public bool Retired { get; init; }
+
+        /// <summary>How this model is asked to generate: thinking, sampler, answer lengths.</summary>
+        /// <remarks>
+        /// DATA, LIKE THE FLOOR. The sampler was whatever the downloaded bundle's
+        /// config.json held - never read on this side - and thinking was switched off
+        /// in code for every model alike. Null keeps the bundle's own settings.
+        /// </remarks>
+        public CircleAI.Core.Models.GenerationProfile? Generation { get; init; }
+
+        /// <summary>
         /// Minimum free storage in gigabytes required to keep the bundle on
         /// disk after download. Default <c>0</c> means "no minimum stated."
         /// </summary>

@@ -106,10 +106,28 @@ public sealed class LinkedBrain : IBrain, IDisposable
         var client = await ConnectAsync(ct).ConfigureAwait(false);
         if (client is null) { Trace("ask: NOT CONNECTED"); return NotLinked(); }
 
-        Trace("ask: transacting");
-        var reply = await client.AskAsync(_session, prompt, agentic: false, ct)
-                                .ConfigureAwait(false);
-        Trace($"ask: replied ok={reply.Ok} error={reply.Error ?? "-"} len={(reply.Reply ?? string.Empty).Length}");
+        // AS A RECORD, NOT A BLOCKED TRANSACTION. The question is saved by the service
+        // with an id before it is answered, so leaving the screen, the app being killed
+        // or the service restarting does not lose it - and the answer streams in as it
+        // is written instead of arriving all at once. An older service gets the old ask.
+        Trace("ask: submitting");
+        var streamed = string.Empty;
+        var rid = Guid.NewGuid().ToString("N");
+        Journal(add: new PendingAsk(rid, prompt, DateTimeOffset.UtcNow));
+        var reply = await client.AskDurablyAsync(
+            prompt, CircleAI.Assistant.Recalling.Question(prompt), _session, spoken: false,
+            clientRequestId: rid,
+            partial: text =>
+            {
+                // FRAGMENTS, NOT THE WHOLE: the typed screen appends what it is given.
+                if (text.Length <= streamed.Length || !text.StartsWith(streamed, StringComparison.Ordinal)) return;
+                var delta = text[streamed.Length..];
+                streamed = text;
+                token?.Invoke(delta);
+            },
+            ct: ct).ConfigureAwait(false);
+        Trace($"ask: replied ok={reply.Ok} error={reply.Error ?? "-"} len={(reply.Reply ?? string.Empty).Length} streamed={streamed.Length}");
+        Journal(remove: rid);   // delivered to whoever asked
 
         // A REFUSAL IS AN ANSWER AND MUST TRAVEL THE SAME ROAD. Returning it without
         // calling `token` looks harmless and is not: the typed screen builds its
@@ -128,13 +146,11 @@ public sealed class LinkedBrain : IBrain, IDisposable
 
         var text = reply.Reply ?? string.Empty;
 
-        // NO STREAMING OVER THE LINK, and pretending otherwise would be worse than
-        // saying so. A binder transaction is request/response: the whole answer
-        // arrives at once, so the token callback fires once with all of it. A caller
-        // rendering token-by-token still works, it simply does not animate. Streaming
-        // would need a second transaction code and a callback binder, which is a wire
-        // change rather than something to fake here.
-        token?.Invoke(text);
+        // STREAMED AS IT WAS WRITTEN, from the ask's record; whatever was not streamed
+        // yet (an older service, or the cleaned final text's tail) goes now.
+        if (streamed.Length == 0) token?.Invoke(text);
+        else if (text.Length > streamed.Length && text.StartsWith(streamed, StringComparison.Ordinal))
+            token?.Invoke(text[streamed.Length..]);
         return text;
     }
 
@@ -235,6 +251,73 @@ public sealed class LinkedBrain : IBrain, IDisposable
 
     private static string NotLinked() =>
         "CircleAI is not linked to this app yet. Approve the link to use the shared brain.";
+
+    // ── questions this app has not seen the answer to ────────────────────────
+    //
+    // EVERY QUESTION IS WRITTEN DOWN HERE UNTIL ITS ANSWER REACHES THE SCREEN. If the
+    // app is closed - or killed - while the service is answering, the service keeps the
+    // question and its answer; this file is how the app remembers to go and get it.
+    // Asking again with the SAME request id is how it is fetched: the service answers
+    // with the ask it already has, and never asks the model a second time.
+
+    private sealed record PendingAsk(string Rid, string Prompt, DateTimeOffset At);
+
+    private static readonly object JournalGate = new();
+
+    private static string JournalPath => System.IO.Path.Combine(CircleAI.Assistant.Device.AppPaths.Data, "pending-asks.json");
+
+    private static void Journal(PendingAsk? add = null, string? remove = null)
+    {
+        lock (JournalGate)
+        {
+            try
+            {
+                var list = ReadJournal();
+                if (add is not null) list.Add(add);
+                if (remove is not null) list.RemoveAll(p => p.Rid == remove);
+                list.RemoveAll(p => DateTimeOffset.UtcNow - p.At > TimeSpan.FromDays(6));   // the service forgets at seven
+                System.IO.Directory.CreateDirectory(CircleAI.Assistant.Device.AppPaths.Data);
+                System.IO.File.WriteAllText(JournalPath, System.Text.Json.JsonSerializer.Serialize(list));
+            }
+            catch (Exception ex) { Trace("ask journal: " + ex.GetType().Name); }
+        }
+    }
+
+    private static System.Collections.Generic.List<PendingAsk> ReadJournal()
+    {
+        try
+        {
+            return System.IO.File.Exists(JournalPath)
+                ? System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.List<PendingAsk>>(System.IO.File.ReadAllText(JournalPath)) ?? new()
+                : new();
+        }
+        catch { return new(); }
+    }
+
+    /// <inheritdoc />
+    public async Task<System.Collections.Generic.IReadOnlyList<(string Question, string Answer)>> CollectUnseenAsync(CancellationToken ct = default)
+    {
+        var found = new System.Collections.Generic.List<(string, string)>();
+        System.Collections.Generic.List<PendingAsk> pending;
+        lock (JournalGate) pending = ReadJournal();
+        if (pending.Count == 0) return found;
+
+        var client = await ConnectAsync(ct).ConfigureAwait(false);
+        if (client is null || await client.ProtocolAsync(ct).ConfigureAwait(false) < 2) return found;
+
+        foreach (var p in pending)
+        {
+            var reply = await client.SubmitAskAsync(p.Rid, _session, p.Prompt,
+                CircleAI.Assistant.Recalling.Question(p.Prompt), ct: ct).ConfigureAwait(false);
+            if (!reply.Ok || reply.Rows.Count == 0 || LinkAskRows.ReadAsk(reply.Rows[0]) is not { IsFinal: true } done) continue;
+
+            var answer = done.State == CircleAI.Assistant.Requests.AskState.Succeeded ? done.Text : done.Sentence ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(answer)) found.Add((CircleAI.Assistant.Recalling.Question(p.Prompt), answer));
+            Journal(remove: p.Rid);
+        }
+        Trace($"ask journal: {found.Count} answer(s) collected that arrived while away");
+        return found;
+    }
 
     private async Task<CircleAiLinkClient?> ConnectAsync(CancellationToken ct)
     {

@@ -519,6 +519,13 @@ internal sealed class CapturingChatGenerator : IChatGenerator
     private readonly string _reply;
     public List<string?> CapturedSystemMessages { get; } = new();
 
+    /// <summary>
+    /// What the model is told on each call: the system turn and every user turn. The
+    /// per-turn notes ride at the head of the last user turn since MNN owns the chat
+    /// template (2026-10-17), so enrichment is asserted here, not in the system turn.
+    /// </summary>
+    public List<string?> CapturedPrompts { get; } = new();
+
     public CapturingChatGenerator(string reply = "captured") => _reply = reply;
 
     public Task<string> GenerateAsync(
@@ -530,6 +537,7 @@ internal sealed class CapturingChatGenerator : IChatGenerator
         var sys = messages.FirstOrDefault(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content;
         CapturedSystemMessages.Add(sys);
+        CapturedPrompts.Add(string.Join("\n", messages.Where(m => m.Role is "system" or "user").Select(m => m.Content)));
         return Task.FromResult(_reply);
     }
 
@@ -542,6 +550,7 @@ internal sealed class CapturingChatGenerator : IChatGenerator
         var sys = messages.FirstOrDefault(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))?.Content;
         CapturedSystemMessages.Add(sys);
+        CapturedPrompts.Add(string.Join("\n", messages.Where(m => m.Role is "system" or "user").Select(m => m.Content)));
         await Task.Yield();
         yield return _reply;
     }

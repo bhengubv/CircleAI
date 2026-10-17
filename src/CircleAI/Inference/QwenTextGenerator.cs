@@ -144,6 +144,109 @@ public sealed class QwenTextGenerator : IChatGenerator
 
     private bool _disposed;
 
+    /// <summary>The persona MNN was given as its system prompt at load, or null.</summary>
+    private readonly string? _mnnPersona;
+
+    /// <summary>
+    /// Tokens MNN's template adds around a system and a user turn plus the generation
+    /// prompt - an ESTIMATE, used only so a prompt's reported length includes them.
+    /// </summary>
+    private const int TemplateOverheadTokens = 14;
+
+    // WHAT MUST NEVER REACH A PERSON. A template marker or a thinking trace in the
+    // answer means the prompt shape broke; it is stripped, and logged without text.
+    private static readonly string[] LeakMarkers = { "<think>", "</think>", "<|im_start|>", "<|im_end|>", "Thinking Process:" };
+
+    /// <summary>
+    /// The content of the single user turn MNN is given: an instruction block when the
+    /// caller's system message is not the persona MNN holds, the earlier turns as plain
+    /// lines, then the question. Never a chat-template marker.
+    /// </summary>
+    internal static string MnnContent(IReadOnlyList<ChatMessage> messages, string? loadPersona)
+    {
+        ArgumentNullException.ThrowIfNull(messages);
+        string? system = null;
+        var turns = new List<ChatMessage>(messages.Count);
+        foreach (var m in messages)
+        {
+            if (string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase)) system ??= m.Content;
+            else turns.Add(m);
+        }
+
+        var lastUser = turns.FindLastIndex(m => !string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase));
+        var sb = new StringBuilder();
+
+        // A SYSTEM MESSAGE MNN DOES NOT ALREADY HOLD. The service passes the persona
+        // at load and sends none per turn; anything else (another head, an old
+        // caller) still has its instructions read - as plain words, never as a turn.
+        if (!string.IsNullOrWhiteSpace(system) && !string.Equals(system, loadPersona, StringComparison.Ordinal))
+            sb.Append(system!.Trim()).Append("\n\n");
+
+        if (lastUser > 0)
+        {
+            sb.Append("Earlier in this conversation:\n");
+            for (var i = 0; i < lastUser; i++)
+            {
+                var who = string.Equals(turns[i].Role, "assistant", StringComparison.OrdinalIgnoreCase) ? "You" : "User";
+                sb.Append(who).Append(": ").Append(Flatten(turns[i].Content)).Append('\n');
+            }
+            sb.Append('\n');
+        }
+
+        if (lastUser >= 0) sb.Append(turns[lastUser].Content ?? string.Empty);
+        return sb.ToString();
+
+        static string Flatten(string? text) => (text ?? string.Empty).Replace("\r", " ").Replace('\n', ' ').Trim();
+    }
+
+    /// <summary>A JSON string literal (quotes, backslashes, control characters escaped).</summary>
+    internal static string JsonEscape(string text) => System.Text.Json.JsonSerializer.Serialize(text);
+
+    private static string Sha8(string text)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(hash, 0, 4).ToLowerInvariant();
+    }
+
+    private static string StripLeaks(string text, ref bool leaked)
+    {
+        foreach (var marker in LeakMarkers)
+        {
+            if (text.IndexOf(marker, StringComparison.Ordinal) < 0) continue;
+            if (!leaked) Console.WriteLine("CIRCLEAI-LEAK kind=" + marker.Trim('<', '>', '|', ':', '/').Replace(' ', '-'));
+            leaked = true;
+            text = text.Replace(marker, string.Empty, StringComparison.Ordinal);
+        }
+        return text;
+    }
+
+    private static GenerationOptions CopyWithoutContinuation(GenerationOptions o) => new()
+    {
+        MaxTokens            = o.MaxTokens,
+        Temperature          = o.Temperature,
+        TopP                 = o.TopP,
+        TopK                 = o.TopK,
+        Seed                 = o.Seed,
+        StopSequences        = o.StopSequences,
+        IncludeReasoning     = o.IncludeReasoning,
+        Budget               = o.Budget,
+        RetrievalQuery       = o.RetrievalQuery,
+        Timing               = o.Timing,
+        UsePrefixCache       = false,
+        ContinueConversation = false,
+    };
+
+    private unsafe int CountTokens(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var buffer = new int[Math.Clamp(text.Length + 16, 64, 32768)];
+        fixed (int* p = buffer)
+        {
+            try { return Math.Max(0, MnnInterop.mnn_llm_tokenize(_model, text, p, buffer.Length)); }
+            catch { return -1; }
+        }
+    }
+
     /// <summary>
     /// Loads a model from disk (GGUF or native MNN format) and prepares it for generation.
     /// </summary>
@@ -374,11 +477,22 @@ public sealed class QwenTextGenerator : IChatGenerator
         catch { return 0; }
     }
 
+    /// <param name="modelPath">Absolute path to the model file.</param>
+    /// <param name="contextSize">Maximum context window in tokens.</param>
+    /// <param name="threads">CPU thread count (<c>null</c> for MNN default).</param>
+    /// <param name="templateEngine">Unused for MNN rendering; kept for source compatibility.</param>
+    /// <param name="systemPrompt">
+    /// The persona, given to MNN as its own system prompt before load. MNN's template is
+    /// then the ONE owner of the chat format; see <see cref="MnnContent"/>.
+    /// </param>
+    /// <param name="samplerJson">MNN sampler config from the model's GenerationProfile, applied before load.</param>
     public QwenTextGenerator(
         string                   modelPath,
         uint                     contextSize,
         int?                     threads,
-        IPromptTemplateEngine?   templateEngine)
+        IPromptTemplateEngine?   templateEngine,
+        string?                  systemPrompt = null,
+        string?                  samplerJson  = null)
     {
         // Ensure P/Invoke can find mnnbridge + its MNN core before the first
         // native call — works even on a bare `new QwenTextGenerator(path)`.
@@ -518,6 +632,33 @@ public sealed class QwenTextGenerator : IChatGenerator
         try { new MnnRuntimeConfig(handle.DangerousGetHandle()).TryDisableThinking(); }
         catch { /* bundle without a jinja context — a thinking model still works */ }
 
+        // ONE OWNER OF THE CHAT FORMAT, AND IT IS MNN.
+        //
+        // This class used to render full ChatML and hand it to
+        // mnn_llm_generate_stream_text - and the bridge runs apply_chat_template on
+        // whatever it is given (mnnbridge.cpp, generate_stream_text). So the persona,
+        // the question and an empty, already-closed assistant turn all became the
+        // CONTENT of one user turn, wrapped again in MNN's own template. That is the
+        // prompt the recorded failures were answered from: "IT! >", the stray
+        // "</think>", the memory heading read back as if it were the question.
+        //
+        // The persona is now MNN's system prompt, set here before load - the only
+        // moment MNN reads config - and every turn hands over the user's content
+        // alone. Thinking-off keeps working because it was always MNN's template
+        // that read it.
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            var ok = MnnInteropRt.mnn_llm_set_config(
+                handle.DangerousGetHandle(), "{\"system_prompt\":" + JsonEscape(systemPrompt!) + "}") == 0;
+            _mnnPersona = systemPrompt;
+            Console.WriteLine($"CIRCLEAI-TEMPLATE owner=mnn persona={Sha8(systemPrompt!)} accepted={ok} thinking=off");
+        }
+        if (!string.IsNullOrWhiteSpace(samplerJson))
+        {
+            var ok = MnnInteropRt.mnn_llm_set_config(handle.DangerousGetHandle(), samplerJson!) == 0;
+            Console.WriteLine($"CIRCLEAI-SAMPLER {samplerJson} accepted={ok}");
+        }
+
         int rc = MnnInterop.mnn_llm_load(handle);
         if (rc != 0)
         {
@@ -602,12 +743,18 @@ public sealed class QwenTextGenerator : IChatGenerator
             AllowSynchronousContinuations = false,
         });
 
-        // Catalog-driven: render through the model's own chat_template
-        // when the engine + bundle directory are available. Falls back
-        // to the hardcoded Qwen ChatML builder otherwise.
-        var fullPrompt = (_templateEngine is not null && !string.IsNullOrEmpty(_modelDirectory))
-            ? _templateEngine.Render(_modelDirectory!, messages, addGenerationPrompt: true)
-            : BuildQwenChatPrompt(messages);
+        // THE USER'S CONTENT, AND ONLY THAT. The bridge wraps whatever it is given
+        // in the model's own chat template (with the persona set at load as the
+        // system turn), so rendering ChatML here wrapped the template in itself -
+        // see the constructor. History rides inside the content as plain lines.
+        var fullPrompt = MnnContent(messages, _mnnPersona);
+
+        // NO PREFIX CACHE AND NO CONTINUATION FOR CONTENT-ONLY TURNS. Each turn is a
+        // fresh templated conversation, so "the KV already holds the earlier turns"
+        // is never true here; and a restored prefix on Qwen3.5's linear attention
+        // would be full-attention KV without the linear state - a silent wrong state.
+        prefixCacheKey = null;
+        options = options.ContinueConversation ? CopyWithoutContinuation(options) : options;
 
         // CONTINUE INSTEAD OF RE-READING, when this is provably the same
         // conversation carrying on. _kvText is the exact text the KV cache
@@ -640,6 +787,8 @@ public sealed class QwenTextGenerator : IChatGenerator
             ? options.StopSequences
             : DefaultStopSequences);
         var includeReasoning = options.IncludeReasoning;
+        var timing = options.Timing;
+        long nativeStart = 0;
 
         var work = Task.Run(async () =>
         {
@@ -650,6 +799,19 @@ public sealed class QwenTextGenerator : IChatGenerator
             await _generationLock.WaitAsync(ct).ConfigureAwait(false);
             try
             {
+                // HOW LONG THE PROMPT REALLY IS, counted by the model's own tokenizer
+                // under the same lock - the persona MNN holds, the content, and the
+                // template's own tokens (estimated). Milliseconds, and it is what turns
+                // "prefill took 26 s" into a rate somebody can act on.
+                if (timing is not null)
+                {
+                    var persona = CountTokens(_mnnPersona);
+                    var content = CountTokens(prompt);
+                    timing.PromptTokens = persona < 0 || content < 0 ? -1 : persona + content + TemplateOverheadTokens;
+                    timing.KvPath = continuing ? "continued" : "reset";
+                }
+
+                Interlocked.Exchange(ref nativeStart, System.Diagnostics.Stopwatch.GetTimestamp());
                 var answer = RunGeneration(prompt, resolvedBudget.MaxTokens, stopSequences,
                                            includeReasoning, prefixCacheKey, channel.Writer,
                                            continuing, ct);
@@ -683,10 +845,44 @@ public sealed class QwenTextGenerator : IChatGenerator
             }
         }, ct);
 
-        await foreach (var f in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-            yield return f;
+        long firstAt = 0;
+        var pieces = 0;
+        var leaked = false;
+        var finish = "eos";
+        try
+        {
+            await foreach (var f in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            {
+                var fragment = f;
+                if (fragment.Kind == ChatFragmentKind.Content && !string.IsNullOrEmpty(fragment.Text))
+                {
+                    if (firstAt == 0) firstAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                    pieces++;
+                    var cleaned = StripLeaks(fragment.Text, ref leaked);
+                    if (cleaned.Length != fragment.Text.Length) fragment = fragment with { Text = cleaned };
+                }
+                yield return fragment;
+            }
 
-        await work.ConfigureAwait(false);
+            await work.ConfigureAwait(false);
+            if (pieces >= resolvedBudget.MaxTokens - 1) finish = "length";
+        }
+        finally
+        {
+            if (timing is not null)
+            {
+                var started = Interlocked.Read(ref nativeStart);
+                var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (ct.IsCancellationRequested) finish = "cancel";
+                if (started > 0 && firstAt > 0)
+                {
+                    timing.PrefillMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(started, firstAt).TotalMilliseconds;
+                    timing.DecodeMs  = (long)System.Diagnostics.Stopwatch.GetElapsedTime(firstAt, now).TotalMilliseconds;
+                }
+                timing.OutputTokens = pieces;
+                timing.Finish ??= finish;
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -724,7 +920,17 @@ public sealed class QwenTextGenerator : IChatGenerator
     {
         if (_disposed) return;
         _disposed = true;
+
+        // NOT UNDER A RUNNING ANSWER. Freeing the native handle while MNN is still
+        // decoding on another thread is a use-after-free in native code; wait for the
+        // generation to let go (MNN cannot be interrupted mid-decode), bounded so a
+        // stuck one cannot hold the process up for ever.
+        var held = false;
+        try { held = _generationLock.Wait(TimeSpan.FromSeconds(10)); }
+        catch (ObjectDisposedException) { }
+
         _model.Dispose();
+        if (held) { try { _generationLock.Release(); } catch { } }
         _generationLock.Dispose();
         GC.SuppressFinalize(this);
     }

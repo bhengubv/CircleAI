@@ -141,6 +141,50 @@ public enum LinkVerb
     /// normal state of a phone that is simply working.
     /// </remarks>
     Verdict,
+
+    // -- QUESTIONS AS RECORDS, AND THE SERVICE SAYING WHAT IT IS DOING ----------
+    //
+    // APPENDED, AND THEY TRAVEL BY NAME. LinkVerbCodec sends a verb as its enum
+    // name (the remark on Verdict says integer; the codec has always sent the
+    // name), so an older service answers "unknown verb" for every one of these -
+    // which is exactly how a newer client learns to fall back to the blocking Ask.
+    // Hello is the probe a client makes first.
+
+    /// <summary>
+    /// The handshake: one row [hello, protocol, versionCode, bootId, pid, verbs].
+    /// Answered before authorisation - it says what this service speaks and nothing private.
+    /// </summary>
+    Hello,
+
+    /// <summary>
+    /// Accept a question. Returns at once with one ask row; the answer is followed with
+    /// <see cref="AskStatus"/>. The same client request id from the same caller is the same ask.
+    /// </summary>
+    AskSubmit,
+
+    /// <summary>One of this caller's asks: one ask row, with the answer text from the offset asked for.</summary>
+    AskStatus,
+
+    /// <summary>Withdraw one of this caller's asks: one ask row.</summary>
+    AskCancel,
+
+    /// <summary>This caller's recent asks, newest first: ask rows without their text.</summary>
+    AskList,
+
+    /// <summary>
+    /// Readiness: the brain and every component, recent failures and the supported
+    /// settings - or one [unchanged, seq] row when nothing changed since the caller's seq.
+    /// </summary>
+    Status,
+
+    /// <summary>The service's own health, as [health, key, value] rows.</summary>
+    Health,
+
+    /// <summary>First party only: put the recorded questions to the brain and report each verdict.</summary>
+    QualityRun,
+
+    /// <summary>Stop the setup run started by <see cref="SetupStart"/>. Downloaded bytes are kept.</summary>
+    SetupCancel,
 }
 
 /// <summary>One structured call across the link. Flat and string-shaped for the Bundle hop.</summary>
@@ -149,12 +193,23 @@ public enum LinkVerb
 /// <param name="Text">Remember: the fact to store.</param>
 /// <param name="Subject">Remember: the situation key to file it under (optional).</param>
 /// <param name="Limit">Recall: the most atoms to return.</param>
+/// <param name="Args">
+/// Named arguments for the verbs that need more than the four fields above (an ask's
+/// request id, session, lane...). Travel as extra map keys, so an older side ignores
+/// them. Keys are in <see cref="LinkAskRows"/>.
+/// </param>
 public sealed record LinkVerbRequest(
     LinkVerb Verb,
     string? Query = null,
     string? Text = null,
     string? Subject = null,
-    int Limit = 5);
+    int Limit = 5,
+    IReadOnlyDictionary<string, string>? Args = null)
+{
+    /// <summary>One named argument, or null.</summary>
+    public string? Arg(string key) =>
+        Args is not null && Args.TryGetValue(key, out var value) ? value : null;
+}
 
 /// <summary>A row-shaped answer: zero or more rows, each a few string fields.</summary>
 /// <remarks>
@@ -189,12 +244,28 @@ public static class LinkVerbs
         // opposite of protecting them.
         LinkVerb.Permissions  => LinkScope.Chat,
 
-        // Setting the service up is using it: see the note on the verbs themselves.
+        // READING THE SETUP IS USING IT; STARTING IT SPENDS DATA. The three reads stay
+        // on the chat floor. Starting and stopping a download is Setup, which our own
+        // apps get without asking (same signing key) and a third party has to be
+        // granted - "setup and model administration are first party" was the rule
+        // stated for this service, and a Chat grant was enough to start gigabytes.
         LinkVerb.SetupReadiness => LinkScope.Chat,
         LinkVerb.SetupPlan      => LinkScope.Chat,
         LinkVerb.SetupCensus    => LinkScope.Chat,
-        LinkVerb.SetupStart     => LinkScope.Chat,
+        LinkVerb.SetupStart     => LinkScope.Setup,
         LinkVerb.SetupProgress  => LinkScope.Chat,
+        LinkVerb.SetupCancel    => LinkScope.Setup,
+
+        // Questions and the service's state are the chat floor: they are what "may
+        // ask the assistant" means. Hello is answered before authorisation at all.
+        LinkVerb.Hello      => LinkScope.None,
+        LinkVerb.AskSubmit  => LinkScope.Chat,
+        LinkVerb.AskStatus  => LinkScope.Chat,
+        LinkVerb.AskCancel  => LinkScope.Chat,
+        LinkVerb.AskList    => LinkScope.Chat,
+        LinkVerb.Status     => LinkScope.Chat,
+        LinkVerb.Health     => LinkScope.Chat,
+        LinkVerb.QualityRun => LinkScope.ModelAdmin,
 
         // THE WAKE PHRASE IS WHAT THE MICROPHONE LISTENS FOR, so it is gated on Voice
         // rather than the chat floor: changing it changes what the service does with
@@ -215,6 +286,16 @@ public static class LinkVerbs
         LinkVerb.Footprint      => LinkScope.Chat,
         _                     => LinkScope.Chat,
     };
+
+    /// <summary>
+    /// Verbs only an app signed with the service's own key may call, whatever it was granted.
+    /// </summary>
+    /// <remarks>
+    /// The quality run puts a fixed set of questions to the brain back to back; it is
+    /// a test instrument, not a feature, and a third party has no business occupying
+    /// the brain with it.
+    /// </remarks>
+    public static bool FirstPartyOnly(LinkVerb verb) => verb is LinkVerb.QualityRun;
 }
 
 /// <summary>

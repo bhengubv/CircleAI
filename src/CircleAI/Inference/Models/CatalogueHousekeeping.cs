@@ -19,13 +19,29 @@
 //   4. Either K is compatible on THIS device, OR M is not — so we NEVER remove a
 //      model that runs here in favour of a better one that does not. On a device
 //      where nothing is compatible, the better installed model is still the keeper.
+//   5. K HAS LOADED ON THIS DEVICE (loaded_at), and is neither refused nor retired.
+//      Added 2026-10-16, when this policy was first switched on in the service.
+//      Without it the 0.6B would have been deleted the moment Qwen3.5-0.8B finished
+//      downloading - before the 0.8B had ever run on a P30 whose OS killed it
+//      mid-load on 2026-10-10. A replacement proves itself first; until then the
+//      model it would replace is the phone's only brain.
 // Rule 3 is why the Redmi keeps its 2 B alongside the 35 B (15x larger, a real
 // fallback for the un-soaked MoE) but the P30 sheds its 0.6 B for the 0.8 B.
+//
+// AND A RETIRED MODEL IS DEAD WEIGHT, whatever its size, once any model above the
+// floor has loaded here. "Nothing less than Qwen3.5 is the LLM": a retired model can
+// never be the brain again, so it is not a fallback; it is disk.
+//
+// CHAT ONLY. The same arithmetic would delete Piper's medium English voice for its
+// high one - similar size, higher rank - when a phone may be on the medium voice on
+// purpose, for speed. Voices are chosen by name and language, not by this ranking,
+// so they are not this rule's to judge.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CircleAI.Core;
 using CircleAI.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -55,35 +71,66 @@ public static class CatalogueHousekeeping
     /// catalogue's current <c>installed</c> and <c>compatible</c> state. Pure — no
     /// I/O. Order is stable (catalogue order).
     /// </summary>
-    public static IReadOnlyList<HousekeepingReclaim> Plan(IModelCatalog catalog)
+    /// <param name="catalog">This device's catalogue.</param>
+    /// <param name="keep">
+    /// Models that must not be reclaimed whatever the policy says - the one the brain
+    /// is running or loading. Null keeps nothing back.
+    /// </param>
+    public static IReadOnlyList<HousekeepingReclaim> Plan(IModelCatalog catalog, Func<string, bool>? keep = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
-        var installed = catalog.All().Where(e => catalog.IsInstalled(e.Name)).ToList();
+        var installed = catalog.AllAssessed()
+            .Where(a => a.Installed && a.Entry.Modality == ModelModality.Chat)
+            .ToList();
         if (installed.Count < 2) return Array.Empty<HousekeepingReclaim>();
 
-        // Compatible ids across the modalities actually present on disk.
-        var compatible = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var modality in installed.Select(e => e.Modality).Distinct())
-            foreach (var c in catalog.Compatible(modality))
-                compatible.Add(c.Name);
+        // THE ONLY MODELS ALLOWED TO REPLACE ANOTHER: loaded here, not refused, not
+        // retired. Proof, not prediction - `compatible` is today's free-RAM reading
+        // and says no to a model the P30 runs every day.
+        var keepers = installed
+            .Where(k => k.Proven && !k.Refused && !k.Entry.Retired)
+            .ToList();
+        if (keepers.Count == 0) return Array.Empty<HousekeepingReclaim>();
 
+        // BEST FIRST, AND A MODEL BEING REMOVED REPLACES NOTHING. Decided in one pass
+        // over a fixed list of keepers, a ladder of steps each within the size rule -
+        // 1.0 GB, 1.9 GB, 3.7 GB - removed both lower rungs, leaving 3.7x the size of
+        // the fallback rule 3 promises to keep. A replacement has strictly higher
+        // quality, so walking down from the best settles each one's fate before
+        // anything below asks it to stand in.
+        var planned = new HashSet<string>(StringComparer.Ordinal);
         var reclaim = new List<HousekeepingReclaim>();
-        foreach (var m in installed)
+        foreach (var a in installed.OrderByDescending(x => x.Entry.QualityRank))
         {
-            var mCompatible = compatible.Contains(m.Name);
-            var dominator = installed.FirstOrDefault(k =>
-                k.Name != m.Name &&
-                k.Modality == m.Modality &&
-                k.QualityRank > m.QualityRank &&
-                k.TotalBytes > 0 && m.TotalBytes > 0 &&
-                k.TotalBytes <= (long)(m.TotalBytes * SizeDominanceFactor) &&
-                (compatible.Contains(k.Name) || !mCompatible));
+            var m = a.Entry;
+            if (keep is not null && keep(m.Name)) continue;
 
-            if (dominator is not null)
+            if (m.Retired)
+            {
+                var best = keepers.OrderByDescending(k => k.Entry.QualityRank).First().Entry;
                 reclaim.Add(new HousekeepingReclaim(
                     m.Name,
-                    $"superseded by {dominator.Name} (quality {dominator.QualityRank} > {m.QualityRank}, similar size)"));
+                    $"retired below the brain's floor, and {best.Name} has loaded here"));
+                planned.Add(m.Name);
+                continue;
+            }
+
+            var dominator = keepers.FirstOrDefault(k =>
+                !planned.Contains(k.Entry.Name) &&
+                k.Entry.Name != m.Name &&
+                k.Entry.QualityRank > m.QualityRank &&
+                k.Entry.TotalBytes > 0 && m.TotalBytes > 0 &&
+                k.Entry.TotalBytes <= (long)(m.TotalBytes * SizeDominanceFactor) &&
+                (k.Compatible || !a.Compatible))?.Entry;
+
+            if (dominator is not null)
+            {
+                reclaim.Add(new HousekeepingReclaim(
+                    m.Name,
+                    $"superseded by {dominator.Name} (quality {dominator.QualityRank} > {m.QualityRank}, similar size, loaded here)"));
+                planned.Add(m.Name);
+            }
 
             // A MODEL THAT NO LONGER FITS IS NOT REMOVED, AND THAT IS DELIBERATE.
             // It was tried here and a test said no: Never_removes_a_model_that_runs
@@ -203,13 +250,27 @@ public static class CatalogueHousekeeping
     /// and clear its <c>installed</c> flag. Best-effort per model; never throws.
     /// Returns the number reclaimed.
     /// </summary>
-    public static int Reclaim(IModelCatalog catalog, string modelsDirectory, ILogger? logger = null)
+    /// <param name="catalog">This device's catalogue.</param>
+    /// <param name="modelsDirectory">Where the model folders live.</param>
+    /// <param name="logger">Verbose diagnostics; a no-op logger by default.</param>
+    /// <param name="keep">Models never to touch - the one the brain is running.</param>
+    /// <param name="say">
+    /// Where to report what was done, one line per model and a count at the end.
+    /// </param>
+    /// <remarks>
+    /// SAID, NOT ONLY LOGGED. ILogger reaches nothing on Android unless a host wires
+    /// a provider, so a deletion reported only there is a deletion nobody can see.
+    /// The count line is written even when it is zero: a sweep that says nothing is
+    /// indistinguishable from a sweep that never ran.
+    /// </remarks>
+    public static int Reclaim(IModelCatalog catalog, string modelsDirectory, ILogger? logger = null,
+                              Func<string, bool>? keep = null, Action<string>? say = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         var log = logger ?? NullLogger.Instance;
         if (string.IsNullOrWhiteSpace(modelsDirectory)) return 0;
 
-        var plan = Plan(catalog);
+        var plan = Plan(catalog, keep);
         var reclaimed = 0;
         foreach (var item in plan)
         {
@@ -219,20 +280,24 @@ public static class CatalogueHousekeeping
                 if (!File.Exists(Path.Combine(dir, "installed.json")))
                 {
                     log.LogDebug("Model housekeeping: {Id} has no installed.json; leaving it (not a complete download).", item.Id);
+                    say?.Invoke($"left {item.Id}: not a complete download");
                     continue;
                 }
                 Directory.Delete(dir, recursive: true);
                 catalog.SetInstalled(item.Id, false);
                 reclaimed++;
                 log.LogInformation("Model housekeeping: reclaimed {Id} — {Reason}.", item.Id, item.Reason);
+                say?.Invoke($"reclaimed {item.Id}: {item.Reason}");
             }
             catch (Exception ex)
             {
                 log.LogWarning(ex, "Model housekeeping: failed to reclaim {Id}; it stays on disk.", item.Id);
+                say?.Invoke($"could not reclaim {item.Id}: {ex.Message}");
             }
         }
         if (reclaimed > 0)
             log.LogInformation("Model housekeeping: reclaimed {Count} superseded model(s).", reclaimed);
+        say?.Invoke($"planned={plan.Count} reclaimed={reclaimed}");
         return reclaimed;
     }
 }

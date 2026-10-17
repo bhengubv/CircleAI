@@ -43,6 +43,9 @@ public static class CatalogueBootstrap
     /// already on disk has superseded (see <see cref="CatalogueHousekeeping"/>).
     /// Runs only off a measured probe. Off by default.
     /// </param>
+    /// <param name="keep">
+    /// Models housekeeping must not touch - the one the brain is running or loading.
+    /// </param>
     public static AssessmentResult Run(
         IModelCatalog catalog,
         IModelAssessor assessor,
@@ -51,7 +54,8 @@ public static class CatalogueBootstrap
         ModelRegistryService? seedFrom = null,
         ILogger? logger = null,
         string? modelsDirectory = null,
-        bool reclaimInferior = false)
+        bool reclaimInferior = false,
+        Func<string, bool>? keep = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(assessor);
@@ -64,6 +68,21 @@ public static class CatalogueBootstrap
             var seeded = CatalogueSeed.SeedFromEmbedded(catalog, seedFrom);
             if (seeded > 0)
                 log.LogInformation("Model catalogue: seeded {Count} row(s) from the embedded registry.", seeded);
+            else
+            {
+                // AN EXISTING CATALOGUE IS REFRESHED, NOT LEFT AS IT WAS ON THE DAY IT
+                // WAS SEEDED. Before the assessor runs, so a corrected rank or size is
+                // what it judges - see CatalogueSeed.ReSyncFromEmbedded.
+                var (refreshed, added) = CatalogueSeed.ReSyncFromEmbedded(catalog, seedFrom);
+                log.LogInformation(
+                    "Model catalogue: refreshed {Refreshed} row(s) and added {Added} new one(s) from the embedded registry; verdicts kept.",
+                    refreshed, added);
+
+                // Console as well, because ILogger reaches nothing on Android unless a
+                // host wires a provider - the same reason CIRCLEAI-PROMPT uses it. This
+                // is the line that proves a rank change reached the phone.
+                Console.WriteLine($"CIRCLEAI-CATALOGUE resync refreshed={refreshed} added={added} verdicts=kept");
+            }
         }
         catch (Exception ex)
         {
@@ -131,7 +150,10 @@ public static class CatalogueBootstrap
         {
             try
             {
-                CatalogueHousekeeping.Reclaim(catalog, modelsDir, log);
+                // Console, like the resync line above: ILogger reaches nothing on
+                // Android, and a deletion has to be visible somewhere.
+                CatalogueHousekeeping.Reclaim(catalog, modelsDir, log, keep,
+                    line => Console.WriteLine("CIRCLEAI-HOUSEKEEPING " + line));
             }
             catch (Exception ex)
             {

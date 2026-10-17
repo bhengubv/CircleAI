@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ cloud backup and device transfer: the same rule as
+     circle_backup_rules.xml - choices travel, questions and models do not. -->
+<data-extraction-rules>
+  <cloud-backup>
+    <exclude domain="file" path="CircleAI/asks.db" />
+    <exclude domain="file" path="CircleAI/asks.db-wal" />
+    <exclude domain="file" path="CircleAI/asks.db-shm" />
+    <exclude domain="file" path="CircleAI/state/" />
+    <exclude domain="file" path="CircleAI/models/" />
+    <exclude domain="file" path="models/" />
+    <exclude domain="file" path="skills/" />
+  </cloud-backup>
+  <device-transfer>
+    <exclude domain="file" path="CircleAI/asks.db" />
+    <exclude domain="file" path="CircleAI/asks.db-wal" />
+    <exclude domain="file" path="CircleAI/asks.db-shm" />
+    <exclude domain="file" path="CircleAI/state/" />
+  </device-transfer>
+</data-extraction-rules>

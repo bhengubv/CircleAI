@@ -420,7 +420,7 @@ public sealed class ContextEnrichmentTests : IDisposable
         await svc.AskAsync("what's my battery?");
 
         Assert.Single(gen.CapturedSystemMessages);
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         // A BAND, NOT A FIGURE. Standing context carries "Battery: low" (15% is
         // <= 25), not "15%": the model uses this to decline something expensive
         // on a dying phone, and the exact level is a tool call the same as the
@@ -445,7 +445,7 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         await svc.AskAsync("am I in BidBaas?");
 
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.Contains("tgn.bidbaas", sys);
     }
 
@@ -465,7 +465,7 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         await svc.AskAsync("hello");
 
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.DoesNotContain("[Device context]", sys);
     }
 
@@ -497,7 +497,7 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         await svc.AskAsync("tell me about the wallet");
 
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.Contains("[Relevant past exchanges", sys);
         Assert.Contains("SDPKT", sys);
     }
@@ -554,7 +554,7 @@ public sealed class ContextEnrichmentTests : IDisposable
 
         await svc.AskAsync("what's up?");
 
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.Contains("brief", sys, StringComparison.OrdinalIgnoreCase);
     }
 

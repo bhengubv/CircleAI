@@ -91,6 +91,11 @@ public static class ModelChoice
     {
         var candidates = registry.AllModels
             .Where(m => m.Modality == modality)
+            // NEVER A RETIRED ONE - "nothing less than Qwen3.5 is the LLM". The
+            // installed-first rule below named Qwen3-0.6B, the first entry in the
+            // registry, as the P30's brain on every screen and in the setup census,
+            // so the census counted the brain as done and nothing fetched Qwen3.5.
+            .Where(m => !m.Retired)
             // AND NOT ONE THIS DEVICE HAS ALREADY REFUSED OR CANNOT RUN.
             //
             // Every screen that names a model comes through here, so without this
@@ -139,12 +144,30 @@ public static class ModelChoice
                         .FirstOrDefault();
         if (assessed is not null) return assessed;
 
-        return candidates
+        var fitsNow = candidates
             .Where(m => Fits(m, probe))
             .OrderByDescending(m => m.QualityRank)
             .ThenBy(m => m.MinRamGb)
             .FirstOrDefault();
+        if (fitsNow is not null || modality != ModelModality.Chat) return fitsNow;
+
+        // THE BRAIN: THE SMALLEST THIS PHONE COULD EVER HOLD, WHEN NOTHING FITS NOW.
+        // The same rule as the selector's NothingFits answer and the service's
+        // installed-model fallback, so a screen, setup and the runtime cannot name
+        // three different brains. On the P30, with 0.4-1.0 GB free, nothing fits
+        // this second and this answers Qwen3.5-0.8B - not null, which told setup there
+        // was nothing to fetch, and never the 2B, which is what CouldEverHold alone
+        // would rank first.
+        return SmallestEverHeld(candidates, probe);
     }
+
+    /// <summary>The smallest of <paramref name="candidates"/> this device could ever hold.</summary>
+    public static ModelEntry? SmallestEverHeld(IEnumerable<ModelEntry> candidates, DeviceProbe probe)
+        => candidates
+            .Where(m => ModelFit.CouldEverHold(m, probe))
+            .OrderBy(m => m.MinRamGb)
+            .ThenBy(m => m.TotalBytes)
+            .FirstOrDefault();
 
     /// <summary>What is on this phone for this job, or null.</summary>
     /// <remarks>
@@ -164,7 +187,7 @@ public static class ModelChoice
     public static ModelEntry? Installed(
         ModelModality modality, ModelRegistryService registry, BundleModelLoader loader)
         => registry.AllModels
-            .Where(m => m.Modality == modality)
+            .Where(m => m.Modality == modality && !m.Retired)
             .FirstOrDefault(m => loader.ModelPresent(m.Name));
 
     /// <summary>Whether anything for this job is catalogued at all.</summary>

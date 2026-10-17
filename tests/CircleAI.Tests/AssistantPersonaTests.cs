@@ -60,7 +60,9 @@ public sealed class AssistantPersonaTests
         // CAPABILITY-HONEST, NOT SELF-AWARE. Carried over with the text; the one
         // line it must not cross outlives any reshuffle of where the text lives.
         Assert.Contains("not a person", AssistantPersona.Prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Never invent", AssistantPersona.Prompt, StringComparison.OrdinalIgnoreCase);
+        // THE SAME RULE, REWORDED ON 2026-10-17 when the prompt was cut for prefill: "never
+        // invent" became "say so instead of guessing". The rule is what is pinned.
+        Assert.Contains("instead of guessing", AssistantPersona.Prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Circle AI", AssistantPersona.Prompt, StringComparison.Ordinal);
     }
 
@@ -198,12 +200,28 @@ public sealed class AssistantPersonaTests
         var source = File.ReadAllText(Path.Combine(
             Root(), "src", "CircleAI", "Assistant.Device", "WakeTurn.cs"));
 
-        var greets = source.IndexOf("AssistantPersona.Greeting", StringComparison.Ordinal);
+        // THE CALLS, NOT THE CONSTANT. This used to find the first mention of
+        // AssistantPersona.Greeting and require it before HearAsync - a proxy
+        // that held while the greeting was synthesised inline. The greeting is
+        // now rendered ahead of time by WarmAsync and played by GreetAsync, both
+        // defined further down the file, so the constant's first mention moved
+        // below HearAsync while the turn still greeted first. Measuring the
+        // order of the two awaits is what the comment above always meant.
+        var greets = source.IndexOf("await GreetAsync(ct)", StringComparison.Ordinal);
         var hears  = source.IndexOf("await HearAsync(ct)", StringComparison.Ordinal);
 
         Assert.True(greets > 0, "the turn does not greet at all");
         Assert.True(hears > 0, "the turn does not capture at all");
         Assert.True(greets < hears, "the turn opens the microphone before it says hello");
+
+        // AND WHAT IT SAYS IS STILL THE PERSONA'S GREETING, in the warmed copy and
+        // in the live fallback alike - otherwise the warm-up could quietly start
+        // saying something nobody chose.
+        var warm = source.IndexOf("public static async Task WarmAsync", StringComparison.Ordinal);
+        var greet = source.IndexOf("private static async Task GreetAsync", StringComparison.Ordinal);
+        Assert.True(warm > 0 && greet > 0, "the warmed greeting has gone - this guard has moved");
+        Assert.True(source.IndexOf("AssistantPersona.Greeting", warm, StringComparison.Ordinal) > warm,
+            "the warmed greeting must be the persona's greeting");
     }
 
     [Fact]

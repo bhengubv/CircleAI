@@ -146,6 +146,15 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
             if (!LinkAudio.Fits(pcm.Length, out var refusal))
                 throw new InvalidOperationException(refusal);
 
+            // AND THIS PROCESS STOPS LISTENING FOR AS LONG AS IT WILL PLAY. The
+            // client plays this in ITS process, so its player marks its own
+            // OutLoud and the wake loop here never hears of it - measured on the
+            // P30 on 2026-10-16, the wake loop transcribed a whole answer back.
+            // The length is exact: the format is fixed, so bytes are seconds.
+            OutLoud.For(TimeSpan.FromSeconds(
+                pcm.Length / (double)(LinkAudioFormat.SampleRate * LinkAudioFormat.Channels
+                                      * (LinkAudioFormat.BitsPerSample / 8))));
+
             return pcm;
         }
         finally

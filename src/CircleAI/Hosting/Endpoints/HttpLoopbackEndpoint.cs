@@ -244,6 +244,14 @@ public sealed class HttpLoopbackEndpoint : IAIEndpoint
                 return;
             }
 
+            // QUESTIONS AS RECORDS, the same door the phone's apps use: GET, POST and
+            // DELETE on /v1, before the POST-only gate the /butler routes keep.
+            if ((context.Request.Url?.AbsolutePath ?? string.Empty).StartsWith("/v1/", StringComparison.Ordinal))
+            {
+                await HandleV1Async(context, ct).ConfigureAwait(false);
+                return;
+            }
+
             if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
             {
                 await WritePlainAsync(context, 405, "method not allowed").ConfigureAwait(false);
@@ -295,7 +303,6 @@ public sealed class HttpLoopbackEndpoint : IAIEndpoint
 
     private async Task HandleAskAsync(HttpListenerContext context, CancellationToken ct)
     {
-        var service = RequireService();
         var body = await ReadBodyAsync(context.Request, ct).ConfigureAwait(false);
         var payload = Deserialise<AskPayload>(body);
         if (payload is null || string.IsNullOrWhiteSpace(payload.Question))
@@ -304,8 +311,166 @@ public sealed class HttpLoopbackEndpoint : IAIEndpoint
             return;
         }
 
-        var answer = await service.AskAsync(payload.Question, ct).ConfigureAwait(false);
+        // THROUGH THE QUEUE WHEN THERE IS ONE: durable and in line like every other
+        // door, so this old route cannot jump the queue or lose a question.
+        if (Asks is { } asks)
+        {
+            var caller = CallerKey(context);
+            var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                caller, null, string.Empty, CircleAI.Assistant.Requests.AskLane.Foreground, payload.Question!));
+            if (!admission.Accepted || admission.Record is null)
+            {
+                await WritePlainAsync(context, 429, admission.Refusal ?? "busy").ConfigureAwait(false);
+                return;
+            }
+            var done = await asks.WaitAsync(caller, admission.Record.Id, TimeSpan.FromMinutes(3), ct).ConfigureAwait(false);
+            await WritePlainAsync(context, 200, done?.State == CircleAI.Assistant.Requests.AskState.Succeeded
+                ? done.Text : done?.Sentence ?? CircleAI.Assistant.Requests.AskSentences.StillLoading).ConfigureAwait(false);
+            return;
+        }
+
+        var answer = await RequireService().AskAsync(payload.Question, ct).ConfigureAwait(false);
         await WritePlainAsync(context, 200, answer).ConfigureAwait(false);
+    }
+
+    // ------------------------------------------------------------------
+    // /v1 - questions as records, readiness, health, quality
+    // ------------------------------------------------------------------
+
+    /// <summary>The request coordinator. When set, /v1/asks and /butler/ask go through it.</summary>
+    public CircleAI.Assistant.Requests.IAskFront? Asks { get; set; }
+
+    /// <summary>What the service reports about itself, for /v1/status.</summary>
+    public CircleAI.Assistant.Lifecycle.IReadinessTracker? Readiness { get; set; }
+
+    /// <summary>Health facts for /v1/health.</summary>
+    public Func<IReadOnlyList<KeyValuePair<string, string>>>? HealthFacts { get; set; }
+
+    /// <summary>Runs the recorded questions for /v1/quality, as the given caller.</summary>
+    public Func<string, CancellationToken, Task<CircleAI.Assistant.Quality.QualityReport>>? Quality { get; set; }
+
+    private static readonly JsonSerializerOptions V1Json = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = false,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+    };
+
+    // WHO IS ASKING, as far as a loopback caller can be told apart: everyone who holds
+    // the token is trusted alike, and the header only keeps their conversations apart.
+    private static string CallerKey(HttpListenerContext context)
+    {
+        var name = context.Request.Headers["X-Circle-Caller"];
+        return "loopback:" + (string.IsNullOrWhiteSpace(name) ? "default" : name!.Trim());
+    }
+
+    private sealed class SubmitPayload
+    {
+        public string? ClientRequestId { get; set; }
+        public string? SessionId { get; set; }
+        public string? Message { get; set; }
+        public string? Question { get; set; }
+        public string? Lane { get; set; }
+        public bool Spoken { get; set; }
+    }
+
+    private async Task HandleV1Async(HttpListenerContext context, CancellationToken ct)
+    {
+        var path = context.Request.Url?.AbsolutePath ?? string.Empty;
+        var method = context.Request.HttpMethod.ToUpperInvariant();
+        var query = context.Request.QueryString;
+        var caller = CallerKey(context);
+
+        if (path == "/v1/status" && method == "GET")
+        {
+            if (Readiness is not { } readiness) { await WritePlainAsync(context, 404, "no status").ConfigureAwait(false); return; }
+            var now = readiness.Current;
+            if (long.TryParse(query["after"], out var after) && now.Seq <= after)
+                await WriteV1Async(context, 200, new { unchanged = true, seq = now.Seq }).ConfigureAwait(false);
+            else
+                await WriteV1Async(context, 200, now).ConfigureAwait(false);
+            return;
+        }
+
+        if (path == "/v1/health" && method == "GET")
+        {
+            var facts = HealthFacts?.Invoke() ?? Array.Empty<KeyValuePair<string, string>>();
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var (k, v) in facts) map[k] = v;
+            await WriteV1Async(context, 200, map).ConfigureAwait(false);
+            return;
+        }
+
+        if (path == "/v1/quality" && method == "POST")
+        {
+            if (Quality is not { } quality) { await WritePlainAsync(context, 404, "no quality run").ConfigureAwait(false); return; }
+            await WriteV1Async(context, 200, await quality(caller, ct).ConfigureAwait(false)).ConfigureAwait(false);
+            return;
+        }
+
+        if (Asks is not { } asks) { await WritePlainAsync(context, 404, "no questions here").ConfigureAwait(false); return; }
+
+        if (path == "/v1/asks" && method == "POST")
+        {
+            var body = Deserialise<SubmitPayload>(await ReadBodyAsync(context.Request, ct).ConfigureAwait(false));
+            if (body is null || string.IsNullOrWhiteSpace(body.Message))
+            {
+                await WritePlainAsync(context, 400, "missing 'message'").ConfigureAwait(false);
+                return;
+            }
+            var lane = Enum.TryParse<CircleAI.Assistant.Requests.AskLane>(body.Lane, true, out var l) && l != CircleAI.Assistant.Requests.AskLane.Assistant
+                ? l : CircleAI.Assistant.Requests.AskLane.Foreground;
+            var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                caller, body.ClientRequestId, body.SessionId ?? string.Empty, lane, body.Message!, body.Question, body.Spoken));
+            if (!admission.Accepted || admission.Record is null)
+                await WriteV1Async(context, 429, new { error = admission.Refusal, kind = admission.Kind }).ConfigureAwait(false);
+            else
+                await WriteV1Async(context, 202, new { ask = admission.Record, position = admission.Position, duplicate = admission.Duplicate }).ConfigureAwait(false);
+            return;
+        }
+
+        if (path == "/v1/asks" && method == "GET")
+        {
+            var limit = int.TryParse(query["limit"], out var n) ? n : 20;
+            await WriteV1Async(context, 200, asks.List(caller, limit, query["open"] == "1")).ConfigureAwait(false);
+            return;
+        }
+
+        if (path.StartsWith("/v1/asks/", StringComparison.Ordinal))
+        {
+            var id = path["/v1/asks/".Length..];
+            if (method == "DELETE")
+            {
+                asks.Cancel(caller, id);
+                var gone = asks.Status(caller, id);
+                if (gone is null) await WritePlainAsync(context, 404, "no such ask").ConfigureAwait(false);
+                else await WriteV1Async(context, 200, gone).ConfigureAwait(false);
+                return;
+            }
+            if (method == "GET")
+            {
+                var after = long.TryParse(query["after"], out var a) ? a : -1;
+                var wait = int.TryParse(query["wait"], out var w) ? Math.Clamp(w, 0, 25_000) : 0;
+                var ask = after >= 0 && wait > 0
+                    ? await asks.WaitForChangeAsync(caller, id, after, TimeSpan.FromMilliseconds(wait), ct).ConfigureAwait(false)
+                    : asks.Status(caller, id);
+                if (ask is null) { await WritePlainAsync(context, 404, "no such ask").ConfigureAwait(false); return; }
+                var since = int.TryParse(query["since"], out var s) ? Math.Clamp(s, 0, ask.Text.Length) : 0;
+                await WriteV1Async(context, 200, new { ask = ask with { Text = ask.Text[since..] }, textOffset = since, textLength = ask.Text.Length, position = asks.PositionOf(id) }).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        await WritePlainAsync(context, 404, "not found").ConfigureAwait(false);
+    }
+
+    private static async Task WriteV1Async(HttpListenerContext context, int status, object payload)
+    {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, payload.GetType(), V1Json);
+        context.Response.StatusCode = status;
+        context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.ContentLength64 = bytes.Length;
+        await context.Response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
+        context.Response.OutputStream.Close();
     }
 
     private async Task HandleChatAsync(HttpListenerContext context, CancellationToken ct)

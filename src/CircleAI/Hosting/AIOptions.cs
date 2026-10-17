@@ -141,6 +141,23 @@ public sealed class AIOptions
     /// </summary>
     public bool WarmOnStart { get; init; } = true;
 
+    /// <summary>
+    /// The brain never downloads: a missing or damaged model throws
+    /// <see cref="CircleAI.Inference.ModelNotInstalledException"/> instead.
+    /// </summary>
+    /// <remarks>
+    /// For a host that owns downloads (the CircleAI service). Without it, a start that
+    /// finds no model fetches one inline - ungated, uncancellable, and inside the load
+    /// it is meant to be timing.
+    /// </remarks>
+    public bool NeverFetch { get; init; }
+
+    /// <summary>
+    /// The files were verified when they arrived and have not changed since; load
+    /// without hashing the weights again (about 9.4 s on a P30).
+    /// </summary>
+    public bool SkipLoadHash { get; init; }
+
     // ------------------------------------------------------------------
     // Tools
     // ------------------------------------------------------------------

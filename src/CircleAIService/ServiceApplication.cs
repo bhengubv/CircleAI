@@ -87,8 +87,272 @@ public sealed class ServiceApplication : Application
             new LiveSkillStore(() => CircleNeuronLinkService.Skills),
         ]);
 
+    /// <summary>The supervised brain, for memory signals. Main process only.</summary>
+    private CircleAI.Service.Droid.Inference.InferenceSupervisor? _supervisor;
+
+    /// <summary>Android asked this process to give memory back.</summary>
+    public override void OnTrimMemory([GeneratedEnum] global::Android.Content.TrimMemory level)
+    {
+        base.OnTrimMemory(level);
+        _supervisor?.OnTrimMemory((int)level);
+    }
+
+    /// <summary>
+    /// THE INFERENCE PROCESS GETS THE BRAIN'S OPTIONS AND NOTHING ELSE. OnCreate runs in
+    /// every process of this package; everything below it - grants, memory, voice, wake,
+    /// catalogue, downloads - belongs to the main process and must not run twice.
+    /// </summary>
+    private void OnCreateInferenceProcess()
+    {
+        AndroidDeviceMemory.Install(this);
+        base.OnCreate();
+        global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
+
+        var nativeDir = ApplicationInfo?.NativeLibraryDir;
+        CircleAI.Service.Droid.Inference.InferenceWorkerService.OptionsFactory = request => new CircleAI.Hosting.AIOptions
+        {
+            NativeLibDir          = nativeDir,
+            ModelStorageDirectory = request.ModelDirectory,
+            ModelId               = request.ModelId,
+            WarmOnStart           = true,
+            NeverFetch            = true,
+            SkipLoadHash          = request.SkipLoadHash,
+            SystemPrompt          = AssistantPersona.Prompt,
+            OverviewAnswer        = AssistantPersona.CanDoSpoken,
+
+            // THE EMBEDDED STORES ONLY. The 20 MB library is unpacked by the main
+            // process, and opening it here could race that unpack; the manifest - the
+            // assistant's honesty about itself - is embedded and is what matters most.
+            SkillStore = new CompositeSkillStore(
+            [
+                CapabilityManifestSkillStore.Default,
+                ConsumerSkillPack.Shared,
+            ]),
+        };
+    }
+
+    /// <summary>Who the recorded-question run asks as.</summary>
+    private const string QualityCaller = "internal:quality";
+
+    /// <summary>
+    /// Every question - from an app, the wake word or the OS assistant - goes through
+    /// one durable queue to a brain supervised in its own process.
+    /// </summary>
+    private void ComposeRequestPath()
+    {
+        try
+        {
+            var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI");
+            var stateDir = System.IO.Path.Combine(circleDir, "state");
+            System.IO.Directory.CreateDirectory(stateDir);
+
+            var readiness = new CircleAI.Assistant.Lifecycle.ReadinessTracker(
+                System.IO.Path.Combine(stateDir, "readiness.json"));
+            var connection = new CircleAI.Service.Droid.Inference.WorkerConnection(this);
+            var supervisor = new CircleAI.Service.Droid.Inference.InferenceSupervisor(
+                this, connection, readiness,
+                catalogue: () => CircleAI.Device.CircleNeuronService.Catalogue,
+                stateDirectory: stateDir,
+                modelStoreDirectory: ModelStore.Path,
+                optionsFactory: () => CircleNeuronService.OptionsFactory?.Invoke() ?? new CircleAI.Hosting.AIOptions(),
+                announce: (sentence, awaiting) => CircleNeuronLinkService.Decided(sentence, awaiting));
+            _supervisor = supervisor;
+
+            // THE FIRST CHOICE WAITS FOR THIS LAUNCH'S CATALOGUE, as the brain host's did:
+            // choosing from yesterday's ranks picked the wrong model on 2026-10-16.
+            var brain = new CatalogueGatedBrain(supervisor, () => CircleNeuronService.CatalogueReady);
+
+            var store = new CircleAI.Assistant.Requests.SqliteAskStore(System.IO.Path.Combine(circleDir, "asks.db"));
+
+            // THE DEVICE'S ONE MEMORY, read at ask time: it is opened elsewhere in start-up,
+            // and a question must find it whichever ran first. The quality run gets a fresh
+            // one of its own each time - its "clinic appointment" is a test, not something
+            // the person said.
+            CircleAI.Memory.IMemoryService? qualityMemory = null;
+            CircleAI.Memory.IMemoryService? MemoryFor(string caller) =>
+                caller == QualityCaller ? qualityMemory : CircleNeuronLinkService.Memory;
+            Func<string?> wakePhrase = () => CircleNeuronService.Listener?.Describe;
+
+            var shortcuts = new List<CircleAI.Assistant.Requests.IAskShortcut>
+            {
+                new CircleNeuronLinkService.SelfRequests(),
+                new CircleAI.Assistant.Requests.RememberShortcut(MemoryFor, wakePhrase),
+                new CircleAI.Assistant.Requests.RecallShortcut(MemoryFor, wakePhrase),
+            };
+            shortcuts.AddRange(CircleAI.Assistant.Requests.AskShortcuts.Standard(wakePhrase));
+
+            var coordinator = new CircleAI.Assistant.Requests.RequestCoordinator(
+                store, brain, CircleAI.Assistant.Requests.ServiceLimits.For(CircleAI.Core.DeviceProbe.Snapshot()),
+                readiness, conversations: null, shortcuts,
+                isFirstParty: key => CircleNeuronLinkService.FirstPartySignatures is { } sigs
+                                     && sigs.Any(s => key.EndsWith(":" + s[..Math.Min(16, s.Length)], StringComparison.Ordinal)),
+                log: line => global::Android.Util.Log.Info("CircleAI.Asks", line));
+            supervisor.SchedulerIdle = () => coordinator.IsIdle;
+
+            CircleNeuronService.Brain = brain;
+            CircleNeuronService.Asks = coordinator;
+            CircleNeuronService.Readiness = readiness;
+            CircleNeuronLinkService.VersionCode = VersionCodeOf(this);
+            CircleNeuronLinkService.HealthFacts = () => Health(coordinator, supervisor, readiness);
+            CircleAI.Service.Droid.Assistant.CircleAssistSession.RunSpokenTurn = phrase => WakeTurn.RunAsync(phrase);
+            CircleAI.Service.Droid.Assistant.CircleRecognitionService.Speech = () => CircleNeuronLinkService.Speech;
+            CircleAI.Service.Droid.Assistant.AssistantRole.Report(readiness, this);
+
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.LinkDescriptor, LinkIpc.Descriptor);
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.LinkProtocol, LinkIpc.Protocol.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.AudioMaxBytes, LinkAudio.MaxAudioBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.AudioFormat, "pcm16le-16000-mono");
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.TurnImages, "0");
+            readiness.Setting(CircleAI.Assistant.Lifecycle.ReadinessSettings.TurnAgentic, "0");
+
+            coordinator.Start();
+
+            // THE SOAK RUNS IN HERE, so it needs nothing from the phone but the service
+            // staying alive - and a restart in the middle of it is recorded, not fatal.
+            var soakDir = System.IO.Path.Combine(GetExternalFilesDir(null)?.AbsolutePath ?? stateDir, "soak");
+            var soak = new CircleAI.Assistant.Quality.SoakRunner(
+                coordinator, () => Health(coordinator, supervisor, readiness), soakDir,
+                log: line => global::Android.Util.Log.Info("CircleAI.Soak", line),
+                fault: supervisor.KillForTest);
+            CircleAI.Service.Droid.SoakReceiver.Runner = soak;
+            CircleAI.Service.Droid.SoakReceiver.BootId = readiness.BootId;
+            CircleAI.Service.Droid.SoakReceiver.Quality = () => _ = Task.Run(async () =>
+            {
+                // A FRESH MEMORY PER RUN, so "When is my clinic appointment?" is answered
+                // from this run's "Remember that...", never a pile of earlier ones.
+                var qualityDir = System.IO.Path.Combine(circleDir, "memory-quality");
+                (qualityMemory as IDisposable)?.Dispose();
+                qualityMemory = null;
+                try { if (System.IO.Directory.Exists(qualityDir)) System.IO.Directory.Delete(qualityDir, recursive: true); }
+                catch { /* a leftover only adds old answers to a test memory */ }
+                qualityMemory = new CircleAI.Memory.MemoryService(qualityDir);
+
+                var report = await new CircleAI.Assistant.Quality.QualityRunner(coordinator, QualityCaller)
+                    .RunAsync(null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
+                foreach (var item in report.Items)
+                    global::Android.Util.Log.Info("CircleAI.Quality",
+                        $"QUALITY {item.Id} {(item.Passed ? "PASS" : "FAIL")} {item.Reason} "
+                        + (item.Timing is { } t ? t.ToLogLine(item.Id) : string.Empty));
+                global::Android.Util.Log.Info("CircleAI.Quality", $"QUALITY summary {report.Passed}/{report.Total} model={report.ModelId}");
+                try
+                {
+                    System.IO.Directory.CreateDirectory(soakDir);
+                    System.IO.File.WriteAllText(System.IO.Path.Combine(soakDir, "quality.json"),
+                        System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch { /* the log has it */ }
+            });
+            if (soak.Running) soak.Start(null, readiness.BootId, resume: true);
+            CircleAI.Service.Droid.SoakReceiver.KillWorker = supervisor.KillForTest;
+            CircleAI.Service.Droid.SoakReceiver.Ask = text =>
+            {
+                var admission = coordinator.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                    "internal:adb", Guid.NewGuid().ToString("N"), "adb", CircleAI.Assistant.Requests.AskLane.Foreground, text, text));
+                global::Android.Util.Log.Info("CircleAI.Soak", admission.Accepted ? "ask " + admission.Record!.Id + " accepted" : "ask refused");
+            };
+
+            // A BETTER MODEL IS TRIED ONLY WHEN NOBODY IS WAITING AND THE PHONE IS ON
+            // CHARGE - and the working one keeps answering until the new one has passed.
+            _validation = new System.Threading.Timer(_ =>
+                _ = supervisor.ValidateCandidateIfDueAsync(CancellationToken.None)
+                              .ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted),
+                null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(15));
+
+            global::Android.Util.Log.Info("CircleAI.Asks", "request path ready: queue, readiness, supervised brain");
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Error("CircleAI.Asks", "request path not composed: " + ex);
+        }
+    }
+
+    private System.Threading.Timer? _validation;
+
+    private static long VersionCodeOf(global::Android.Content.Context context)
+    {
+        try
+        {
+            var info = context.PackageManager?.GetPackageInfo(context.PackageName!, 0);
+            return info is null ? 0 : OperatingSystem.IsAndroidVersionAtLeast(28) ? info.LongVersionCode : info.VersionCode;
+        }
+        catch { return 0; }
+    }
+
+    // WHAT THE SERVICE KNOWS ABOUT ITS OWN HEALTH - text-free, for the Health verb and
+    // the soak run.
+    private static IReadOnlyList<KeyValuePair<string, string>> Health(
+        CircleAI.Assistant.Requests.RequestCoordinator coordinator,
+        CircleAI.Service.Droid.Inference.InferenceSupervisor supervisor,
+        CircleAI.Assistant.Lifecycle.IReadinessTracker readiness)
+    {
+        string N(long v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var status = supervisor.Status;
+        var uptimeMs = global::Android.OS.SystemClock.ElapsedRealtime() - global::Android.OS.Process.StartElapsedRealtime;
+        return new List<KeyValuePair<string, string>>
+        {
+            new("pid", N(global::Android.OS.Process.MyPid())),
+            new("uptimeSec", N(uptimeMs / 1000)),
+            new("rssKb", N(CircleAI.Service.Droid.Inference.InferenceWorkerService.ProcKb("/proc/self/status", "VmRSS:"))),
+            new("threads", N(CircleAI.Service.Droid.Inference.InferenceWorkerService.ProcKb("/proc/self/status", "Threads:"))),
+            new("gcHeapBytes", N(GC.GetTotalMemory(false))),
+            new("memAvailableKb", N(CircleAI.Service.Droid.Inference.InferenceWorkerService.ProcKb("/proc/meminfo", "MemAvailable:"))),
+            new("queueDepth", N(coordinator.QueueDepth)),
+            new("currentAsk", coordinator.CurrentAskId ?? string.Empty),
+            new("brainPhase", status.Phase.ToString()),
+            new("brainModel", status.ModelId ?? string.Empty),
+            new("workerPid", status.ProcessId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty),
+            new("pendingCandidate", supervisor.PendingCandidate ?? string.Empty),
+            new("readinessSeq", N(readiness.Seq)),
+            new("bootId", readiness.BootId),
+            new("heard", N(CircleNeuronLinkService.Heard)),
+        };
+    }
+
+    /// <summary>
+    /// The supervised brain, holding its first choice until this launch's catalogue is ready.
+    /// </summary>
+    private sealed class CatalogueGatedBrain(
+        CircleAI.Service.Droid.Inference.InferenceSupervisor inner, Func<Task?> catalogueReady)
+        : CircleAI.Assistant.Requests.IBrainWorker
+    {
+        private int _waited;
+
+        public CircleAI.Assistant.Requests.BrainWorkerStatus Status => inner.Status;
+
+        public event EventHandler<CircleAI.Assistant.Requests.BrainWorkerStatus>? StatusChanged
+        {
+            add => inner.StatusChanged += value;
+            remove => inner.StatusChanged -= value;
+        }
+
+        public async Task EnsureReadyAsync(CancellationToken ct)
+        {
+            if (Interlocked.Exchange(ref _waited, 1) == 0 && catalogueReady() is { } ready)
+            {
+                try { await ready.WaitAsync(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false); }
+                catch (TimeoutException) { /* select from what the catalogue holds */ }
+                catch (OperationCanceledException) { throw; }
+                catch { /* a broken bootstrap costs the freshest ranks, never the brain */ }
+            }
+            await inner.EnsureReadyAsync(ct).ConfigureAwait(false);
+        }
+
+        public IAsyncEnumerable<CircleAI.Assistant.Requests.BrainChunk> GenerateAsync(
+            CircleAI.Assistant.Requests.BrainJob job, CancellationToken ct) => inner.GenerateAsync(job, ct);
+
+        public Task ReleaseAsync(CancellationToken ct) => inner.ReleaseAsync(ct);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+
     public override void OnCreate()
     {
+        if (CircleAI.Service.Droid.ProcessRole.IsInferenceProcess())
+        {
+            OnCreateInferenceProcess();
+            return;
+        }
+
         // MEASURE THE DEVICE BEFORE ANYTHING ASKS WHAT FITS. DeviceProbe reads the
         // GC heap limit on Android — about 100 MB inside the sandbox — unless a head
         // installs the real hook, so every model-fit decision would be made against a
@@ -406,6 +670,14 @@ public sealed class ServiceApplication : Application
         // WakeTurn, in the product.
         WakeTurn.Speech = CircleNeuronLinkService.Speech;
 
+        // AND WARM IT NOW, NOT AT THE FIRST WAKE. Measured on the one wake that
+        // fired in four days on the P30: seven seconds between the owner saying
+        // the name and hearing "Hi.", four of them the voice model opening for
+        // the first time. Not awaited - the service has a microphone to open,
+        // and a voice that cannot warm only leaves the greeting synthesised
+        // live, exactly as it was.
+        _ = Task.Run(() => WakeTurn.WarmAsync());
+
         var resident = new ResidentListeningControl(this);
         resident.Woke += (_, phrase) =>
         {
@@ -435,6 +707,96 @@ public sealed class ServiceApplication : Application
         //
         // ResidentPrefs is the record of what they chose. It defaults to yes, so a
         // fresh install listens; an explicit no is written now and is obeyed here.
+        //
+        // THE CATALOGUE, BEFORE ANYTHING CAN START THE BRAIN - and resuming listening,
+        // just below, can. It used to be opened inside the background task after the
+        // download sweep, so whether the brain found a catalogue, a crash verdict or
+        // anything to wait for was a race: on the P30 on 2026-10-16 the catalogue won
+        // by about 130 ms. In order, and each step for a reason:
+        //
+        //   1. Open it. A file handle, a CREATE TABLE IF NOT EXISTS and a write-ahead
+        //      log - milliseconds - and enough to answer "is this model refused".
+        //   2. Record how the last load ended, BEFORE the bootstrap: its housekeeping
+        //      removes a model in favour of one that has loaded here and is not
+        //      refused, so a death recorded afterwards could let a model on its second
+        //      strike serve as the replacement. See CircleNeuronService.RecordLastLoad.
+        //   3. Bootstrap in the background - refresh from the registry, reconcile what
+        //      is on disk, assess, then housekeeping - and hand the brain the task, so
+        //      it chooses from this launch's ranks and not the last one's.
+        //
+        // AddModelCatalogue exists, wires SqliteModelCatalog + DeviceModelAssessor +
+        // CatalogueFeedWriter, is tested by ModelCatalogueWiringTests - and had ZERO
+        // CALLERS. There is no DI container in this process, so the catalogue is built
+        // directly and handed over as a static, the same way OptionsFactory, Facts,
+        // Listener and StorageDirectory already are.
+        // THE ONE DOOR FOR QUESTIONS, AND THE BRAIN IN ITS OWN PROCESS. Built before the
+        // catalogue so the supervisor - not the old rule that made every surviving
+        // breadcrumb a strike - judges how the last run ended.
+        ComposeRequestPath();
+
+        try
+        {
+            var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI");
+            System.IO.Directory.CreateDirectory(circleDir);
+
+            var catalogue = new CircleAI.Inference.SqliteModelCatalog(
+                "Data Source=" + System.IO.Path.Combine(circleDir, "catalogue.db"));
+
+            var stateDir = System.IO.Path.Combine(circleDir, "state");
+            System.IO.Directory.CreateDirectory(stateDir);
+
+            CircleAI.Device.CircleNeuronService.Catalogue = catalogue;
+            CircleAI.Device.CircleNeuronService.StateDirectory = stateDir;
+
+            // CLASSIFIED, NOT COUNTED. On API 29 every death that left a breadcrumb used
+            // to be a strike - a reboot, an update, the low-memory killer - and two of
+            // them refused the only brain the phone could run.
+            _supervisor?.RecoverFromPreviousRun();
+
+            CircleAI.Device.CircleNeuronService.CatalogueReady = System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    // HOUSEKEEPING'S MODEL HALF, SWITCHED ON. The sweep's comment below
+                    // promised it and nothing did it: the bootstrap ran with
+                    // reclaimInferior off, so a superseded model sat on the phone for
+                    // good. It runs inside the bootstrap, after the assessment, because
+                    // its rules read the verdicts - the rules in CatalogueHousekeeping:
+                    // chat models only, never in favour of a model that has not loaded
+                    // on this phone, and never the model the brain is running.
+                    var result = CircleAI.Inference.CatalogueBootstrap.Run(
+                        catalogue,
+                        CircleAI.Inference.DeviceModelAssessor.ForThisBuild(catalogue),
+                        CircleAI.Core.DeviceProbe.Snapshot(),
+                        modelsDirectory: ModelStore.Path,
+                        reclaimInferior: true,
+                        keep: id => string.Equals(
+                            id, CircleAI.Device.CircleNeuronService.RunningModel, StringComparison.Ordinal));
+
+                    global::Android.Util.Log.Info("CircleAI.Setup",
+                        $"catalogue: {result.Assessed} assessed, {result.Compatible} run on this device");
+
+                    // AND IF ANY OF IT IS DEAD WEIGHT, SAY SO. This is the first moment
+                    // the device knows: the assessment has just run, so it can tell "a
+                    // model I cannot use" from "a model I have not judged yet". It says
+                    // it once and offers; a model REFUSED from evidence is never deleted
+                    // here - that takes a person's yes.
+                    CircleAI.Device.CircleNeuronLinkService.AnnounceDeadWeightIfAny();
+                }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Warn("CircleAI.Setup",
+                        "catalogue could not be assessed: " + ex.Message);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            // A device with no catalogue refuses nothing and selects as it always did.
+            // Worse than having one; far better than no brain at all.
+            global::Android.Util.Log.Warn("CircleAI.Setup", "catalogue unavailable: " + ex.Message);
+        }
+
         try
         {
             if (ResidentPrefs.WasRunning(this))
@@ -520,80 +882,10 @@ public sealed class ServiceApplication : Application
             // thread cannot return from a read, and cannot run the stall-guard timer
             // meant to notice either. ModelFetchService exists to hold the process
             // up for the duration; it shows nothing when nothing is owed.
-            // THE VERDICT STORE IS OPENED HERE AND ASSESSED LATER, and the split is
-            // the point.
             //
-            // AddModelCatalogue exists, wires SqliteModelCatalog + DeviceModelAssessor
-            // + CatalogueFeedWriter, is tested by ModelCatalogueWiringTests - and had
-            // ZERO CALLERS. The live path built `new DeviceAwareModelSelector(registry)`
-            // and ranked the shipped JSON instead, which is this repo's signature
-            // defect (OPEN-GAPS A'4, A7, E12, E13) sitting in the place it costs a
-            // person their phone. There is no DI container in this process, so the
-            // catalogue is built directly and handed over as a static, the same way
-            // OptionsFactory, Facts, Listener and StorageDirectory already are.
-            //
-            // MEASURED ON A P30 AT versionCode 51, WHICH IS WHY THIS IS TWO STEPS.
-            // The whole thing ran in the background task below, and the log came back
-            // in this order:
-            //
-            //   15:46:19.464  model: Qwen3.5-0.8B-MNN       <- chosen
-            //   15:46:23.937  catalogue: 90 assessed        <- four seconds later
-            //
-            // The model was picked before the catalogue existed, so on the launch
-            // after a crash the refusal would not have been there to read. Opening the
-            // database is a file handle and a CREATE TABLE IF NOT EXISTS - microseconds
-            // - and that alone is enough to answer "is this model refused". Seeding
-            // ninety rows and assessing them against the device is the slow half and
-            // nothing waits on it.
-            try
-            {
-                var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI");
-                System.IO.Directory.CreateDirectory(circleDir);
-
-                var catalogue = new CircleAI.Inference.SqliteModelCatalog(
-                    "Data Source=" + System.IO.Path.Combine(circleDir, "catalogue.db"));
-
-                var stateDir = System.IO.Path.Combine(circleDir, "state");
-                System.IO.Directory.CreateDirectory(stateDir);
-
-                // Visible to the brain BEFORE it picks anything.
-                CircleAI.Device.CircleNeuronService.Catalogue = catalogue;
-                CircleAI.Device.CircleNeuronService.StateDirectory = stateDir;
-
-                System.Threading.Tasks.Task.Run(() =>
-                {
-                    try
-                    {
-                        var result = CircleAI.Inference.CatalogueBootstrap.Run(
-                            catalogue,
-                            CircleAI.Inference.DeviceModelAssessor.ForThisBuild(catalogue),
-                            CircleAI.Core.DeviceProbe.Snapshot(),
-                            modelsDirectory: ModelStore.Path);
-
-                        global::Android.Util.Log.Info("CircleAI.Setup",
-                            $"catalogue: {result.Assessed} assessed, {result.Compatible} run on this device");
-
-                        // AND IF ANY OF IT IS DEAD WEIGHT, SAY SO. This is the
-                        // first moment the device knows: the assessment has just
-                        // run, so it can finally tell "a model I cannot use" from
-                        // "a model I have not judged yet". It says it once and
-                        // offers; nothing here deletes anything.
-                        CircleAI.Device.CircleNeuronLinkService.AnnounceDeadWeightIfAny();
-                    }
-                    catch (Exception ex)
-                    {
-                        global::Android.Util.Log.Warn("CircleAI.Setup",
-                            "catalogue could not be assessed: " + ex.Message);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                // A device with no catalogue refuses nothing and selects as it always
-                // did. Worse than having one; far better than no brain at all.
-                global::Android.Util.Log.Warn("CircleAI.Setup", "catalogue unavailable: " + ex.Message);
-            }
-
+            // (The catalogue used to be opened here, after the sweep - which the brain
+            // could beat. It is opened in OnCreate now, before anything can start the
+            // brain; see "THE CATALOGUE, BEFORE ANYTHING CAN START THE BRAIN".)
             try
             {
                 CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;

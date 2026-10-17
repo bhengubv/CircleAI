@@ -6,9 +6,13 @@
 // without any signal — which presents to a user as "the assistant forgot",
 // i.e. as a bad model rather than as a dropped feature.
 //
-// Enrichment now applies in both cases, with the caller's own instructions
-// first and never rewritten, and SystemPromptEnrichment.OnlyWhenAbsent restores
-// the old behaviour for hosts that genuinely want total prompt control.
+// Enrichment still applies in both cases and the caller's own instructions are
+// never rewritten. WHERE it goes changed (2026-10-17): MNN now owns the chat template
+// and holds the persona as its own system prompt, so the system turn must stay
+// byte-identical turn after turn and the per-turn notes ride at the head of the LAST
+// user message instead. These tests pin that: the system turn is the caller's (or the
+// SDK's) prompt and nothing else, the notes are with the question, and the
+// conversation itself is untouched.
 
 using System.Collections.Generic;
 using System.Linq;
@@ -54,42 +58,45 @@ public sealed class SystemPromptEnrichmentTests
             SystemPromptEnrichment  = mode,
         });
 
-    private static async Task<string> SystemTurn(AIService svc, params ChatMessage[] messages)
+    private static async Task<(string System, string LastUser)> Turns(AIService svc, params ChatMessage[] messages)
     {
         var prepared = await svc.PrepareMessagesAsync(messages, "where am i?", CancellationToken.None);
         var system = prepared.FirstOrDefault(m =>
             string.Equals(m.Role, "system", System.StringComparison.OrdinalIgnoreCase));
-        return system?.Content ?? "";
+        var user = prepared.LastOrDefault(m =>
+            string.Equals(m.Role, "user", System.StringComparison.OrdinalIgnoreCase));
+        return (system?.Content ?? "", user?.Content ?? "");
     }
 
     [Fact]
     public async Task CallerOwnsSystemTurn_StillGetsEnrichment()
     {
-        // The regression. Previously "Durban" never reached the model here.
+        // The regression this file was written for: "Durban" must reach the model.
         await using var svc = Build(SystemPromptEnrichment.Always);
 
-        var content = await SystemTurn(svc,
+        var (system, user) = await Turns(svc,
             new ChatMessage("system", "CALLER-PROMPT"),
             new ChatMessage("user", "where am i?"));
 
-        Assert.Contains("CALLER-PROMPT", content);
-        Assert.Contains("Durban", content);
+        Assert.Equal("CALLER-PROMPT", system);
+        Assert.Contains("Durban", user);
     }
 
     [Fact]
     public async Task CallerInstructionsComeFirst()
     {
-        // Grounding is appended AFTER the caller's instructions — it must never
-        // read as though it overrides them.
+        // The caller's instructions are the system turn, untouched; the notes are in
+        // the user turn after it - so they can never read as overriding them.
         await using var svc = Build(SystemPromptEnrichment.Always);
 
-        var content = await SystemTurn(svc,
+        var (system, user) = await Turns(svc,
             new ChatMessage("system", "CALLER-PROMPT"),
             new ChatMessage("user", "where am i?"));
 
-        Assert.True(content.IndexOf("CALLER-PROMPT", System.StringComparison.Ordinal)
-                    < content.IndexOf("Durban", System.StringComparison.Ordinal),
-            "Caller's own instructions must precede appended grounding.");
+        Assert.DoesNotContain("Durban", system);
+        Assert.True(user.IndexOf("Durban", System.StringComparison.Ordinal)
+                    < user.IndexOf("where am i?", System.StringComparison.Ordinal),
+            "The notes lead the question, never follow it.");
     }
 
     [Fact]
@@ -99,11 +106,12 @@ public sealed class SystemPromptEnrichmentTests
         // AIOptions.SystemPrompt here would silently contradict the caller.
         await using var svc = Build(SystemPromptEnrichment.Always);
 
-        var content = await SystemTurn(svc,
+        var (system, user) = await Turns(svc,
             new ChatMessage("system", "CALLER-PROMPT"),
             new ChatMessage("user", "where am i?"));
 
-        Assert.DoesNotContain("SDK-DEFAULT-PROMPT", content);
+        Assert.DoesNotContain("SDK-DEFAULT-PROMPT", system);
+        Assert.DoesNotContain("SDK-DEFAULT-PROMPT", user);
     }
 
     [Fact]
@@ -111,30 +119,30 @@ public sealed class SystemPromptEnrichmentTests
     {
         await using var svc = Build(SystemPromptEnrichment.OnlyWhenAbsent);
 
-        var content = await SystemTurn(svc,
+        var (system, user) = await Turns(svc,
             new ChatMessage("system", "CALLER-PROMPT"),
             new ChatMessage("user", "where am i?"));
 
-        Assert.Contains("CALLER-PROMPT", content);
-        Assert.DoesNotContain("Durban", content);
+        Assert.Equal("CALLER-PROMPT", system);
+        Assert.DoesNotContain("Durban", user);
     }
 
     [Fact]
     public async Task NoCallerSystemTurn_GetsBasePromptAndEnrichment()
     {
-        // Unchanged path — must not regress while fixing the other one.
         await using var svc = Build(SystemPromptEnrichment.Always);
 
-        var content = await SystemTurn(svc, new ChatMessage("user", "where am i?"));
+        var (system, user) = await Turns(svc, new ChatMessage("user", "where am i?"));
 
-        Assert.Contains("SDK-DEFAULT-PROMPT", content);
-        Assert.Contains("Durban", content);
+        Assert.Equal("SDK-DEFAULT-PROMPT", system);   // byte-identical: MNN holds it
+        Assert.Contains("Durban", user);
     }
 
     [Fact]
     public async Task ConversationTurns_SurviveIntact()
     {
-        // Composition must not drop or reorder the actual conversation.
+        // Composition must not drop or reorder the actual conversation; only the
+        // question being answered carries the notes, and it still ends with itself.
         await using var svc = Build(SystemPromptEnrichment.Always);
 
         var prepared = await svc.PrepareMessagesAsync(
@@ -152,6 +160,9 @@ public sealed class SystemPromptEnrichmentTests
             .Select(m => m.Content)
             .ToList();
 
-        Assert.Equal(new[] { "first", "reply", "where am i?" }, nonSystem);
+        Assert.Equal(3, nonSystem.Count);
+        Assert.Equal("first", nonSystem[0]);
+        Assert.Equal("reply", nonSystem[1]);
+        Assert.EndsWith("where am i?", nonSystem[2]);
     }
 }

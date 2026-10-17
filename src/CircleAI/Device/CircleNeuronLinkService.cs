@@ -434,33 +434,50 @@ public sealed class CircleNeuronLinkService : Service
     /// </remarks>
     private static readonly TimeSpan BrainWarmUp = TimeSpan.FromSeconds(45);
 
-    /// <summary>
-    /// The resident node once it is ready, or null if it never got there.
-    /// </summary>
+    /// <summary>How long an older app's blocking ask holds its binder thread.</summary>
     /// <remarks>
-    /// THE WAITING IS ReadinessWait'S, NOT THIS METHOD'S. The first version of
-    /// this was its own poll loop right here - device-proven and impossible to
-    /// test, because this is a private static on an Android Service and the
-    /// net9/net10 suites cannot see it. A budget, a poll interval and an
-    /// off-by-one at each end should not rest on one person watching a phone.
-    /// <para>
-    /// What is left here is the only part that IS Android: what "ready" means on
-    /// this device, and where the lines go. ReadinessWaitTests covers the rest.
-    /// </para>
-    /// <para>
-    /// This runs on a binder thread, which is why the budget is bounded: the pool
-    /// is 16 and a turn that waited forever would eventually take the link down
-    /// for every caller.
-    /// </para>
+    /// A cold load plus a long answer on the P30; past it the ask carries on in the queue.
+    /// Bounded because the binder pool is shared with every cheap verb.
     /// </remarks>
-    private static async Task<CircleAI.Hosting.Neuron.NeuronNode?> WaitForBrainAsync(TimeSpan budget)
-    {
-        var up = await CircleAI.Inference.ReadinessWait.UntilAsync(
-            ready: () => CircleNeuronService.Node?.IsReady == true,
-            budget: budget,
-            say:   line => Log.Info(Tag, "serve: the brain is " + line)).ConfigureAwait(false);
+    private static readonly TimeSpan LegacyAskBudget = TimeSpan.FromSeconds(150);
 
-        return up ? CircleNeuronService.Node : null;
+    // THE START-AND-WAIT USED TO BE A PRIVATE METHOD HERE, AND THAT IS WHY THE
+    // WAKE TURN NEVER GOT IT. It was correct, it was device-proven, and it was
+    // unreachable: a private static on an Android Service that neither test leg
+    // can see and no other surface can call. WakeTurn.AskAsync answered the same
+    // question with `return null` for a month, and nothing could have caught it
+    // except somebody standing in front of a P30 with the service killed.
+    //
+    // It is CircleAI.Assistant.ColdTurn now - one owner, both surfaces, both legs.
+    // What remains in this file is the Android: what "ready" means here, which
+    // context starts the service, and where the lines go.
+    //
+    // The budget stays bounded because this runs on a binder thread: the pool is
+    // 16 and a turn that waited forever would eventually take the link down for
+    // every caller.
+
+    /// <summary>Stream one answer out of the resident node, cleaned for every reader.</summary>
+    /// <remarks>
+    /// CLEANED HERE, WHERE IT IS PRODUCED, because this answer has three consumers
+    /// and they must not each strip it their own way: the chat bubble, "Read it
+    /// out", and the spoken turn that runs with the screen off. A P30 rendered
+    /// "**Joke:**" literally in the bubble on 2026-10-02, and the same string is
+    /// what the voice would have said aloud, asterisks included.
+    /// </remarks>
+    private static async Task<string?> StreamTheAnswerAsync(string message, CancellationToken ct)
+    {
+        var node = CircleNeuronService.Node;
+        if (node is null) return null;
+
+        var sb = new StringBuilder();
+        await foreach (var chunk in node.StreamAsync(new[] { new ChatTurn("user", message) })
+                           .ConfigureAwait(false))
+        {
+            ct.ThrowIfCancellationRequested();
+            sb.Append(chunk);
+        }
+
+        return CircleAI.Assistant.PlainReply.Clean(sb.ToString());
     }
 
     private async Task<LinkTurnReply> ServeAskAsync(int uid, IReadOnlyDictionary<string, string> requestMap)
@@ -471,6 +488,29 @@ public sealed class CircleNeuronLinkService : Service
 
         var denied = await AuthorizeAsync(uid, LinkScope.Chat).ConfigureAwait(false);
         if (denied is not null) { Log.Info(Tag, "serve: denied - " + denied); return LinkTurnReply.Failure(denied); }
+
+        // AN OLDER APP'S BLOCKING ASK IS STILL A RECORD. It is submitted like every
+        // other question - saved, queued, answered by the same worker - and this
+        // thread waits for it, as that app expects. If the wait runs out, the ask is
+        // NOT dropped: it is answered anyway and kept, and the app is told it is
+        // still being worked on rather than that it failed.
+        if (CircleNeuronService.Asks is { } asks && CallerKeyOf(uid) is { } caller)
+        {
+            var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                caller, ClientRequestId: null, turn.SessionId ?? string.Empty,
+                CircleAI.Assistant.Requests.AskLane.Foreground, turn.Message, Agentic: turn.Agentic));
+            if (!admission.Accepted || admission.Record is null)
+                return LinkTurnReply.Failure(admission.Refusal ?? CircleAI.Assistant.Requests.AskSentences.Busy);
+
+            var done = await asks.WaitAsync(caller, admission.Record.Id, LegacyAskBudget, CancellationToken.None).ConfigureAwait(false);
+            return done switch
+            {
+                { State: CircleAI.Assistant.Requests.AskState.Succeeded } => LinkTurnReply.Success(done.Text),
+                { IsFinal: true } => LinkTurnReply.Failure(done.Sentence ?? CircleAI.Assistant.Requests.AskSentences.CouldNotAnswer),
+                _ => LinkTurnReply.Failure(CircleAI.Assistant.Requests.AskSentences.StillLoading),
+            };
+        }
+
         Log.Info(Tag, "serve: authorised, starting the brain");
 
         // A GREETING IS NOT A QUESTION, AND IT NEVER REACHES THE MODEL.
@@ -565,30 +605,29 @@ public sealed class CircleNeuronLinkService : Service
         // the Turn it on button: the app knowing exactly what is happening and
         // handing the work back to the person. (2026-10-09, after an iAware kill
         // restarted the service mid-conversation.)
-        try { CircleNeuronService.Start(this); }
-        catch (Exception ex) { Log.Warn(Tag, "start: " + ex.Message); }
+        // ONE OWNER FOR BOTH SURFACES. This block was the start-then-wait, and the
+        // screen-off wake turn had its own version of the same question that
+        // answered it with silence. ColdTurn is that rule, lifted somewhere both
+        // can reach and both test legs can see; what is left here is the Android.
+        //
+        // NO VOICE ON THIS PATH, deliberately: the app on the other end does the
+        // speaking, so the excuse travels back in the reply instead of being said.
+        var served = await CircleAI.Assistant.ColdTurn.AnswerAsync(
+            ready:   () => CircleNeuronService.Node?.IsReady == true,
+            start:   () => CircleNeuronService.Start(this),
+            ask:     token => StreamTheAnswerAsync(turn.Message, token),
+            say:     null,
+            budget:  BrainWarmUp,
+            givenUp: () => CircleNeuronService.State == CircleNeuronService.ServiceState.Failed,
+            log:     line => Log.Info(Tag, "serve: the brain is " + line)).ConfigureAwait(false);
 
-        var node = await WaitForBrainAsync(BrainWarmUp).ConfigureAwait(false);
-        if (node is null)
+        if (!served.Answered)
         {
-            // Still not up after the budget. This one IS worth saying, because
-            // something is actually wrong rather than merely slow.
             Log.Warn(Tag, $"serve: the brain did not come up within {BrainWarmUp.TotalSeconds:N0}s");
-            return LinkTurnReply.Failure(
-                "Circle AI could not get its brain started on this phone. Ask again in a moment.");
+            return LinkTurnReply.Failure(served.Excuse ?? CircleAI.Assistant.AssistantPersona.CouldNotStart);
         }
 
-        var sb = new StringBuilder();
-        await foreach (var chunk in node.StreamAsync(new[] { new ChatTurn("user", turn.Message) })
-                           .ConfigureAwait(false))
-            sb.Append(chunk);
-
-        // CLEANED HERE, WHERE IT IS PRODUCED, because this answer has three consumers
-        // and they must not each strip it their own way: the chat bubble, "Read it
-        // out", and the spoken turn that runs with the screen off. A P30 rendered
-        // "**Joke:**" literally in the bubble on 2026-10-02, and the same string is
-        // what the voice would have said aloud, asterisks included.
-        return LinkTurnReply.Success(CircleAI.Assistant.PlainReply.Clean(sb.ToString()));
+        return LinkTurnReply.Success(served.Answer!);
     }
 
     /// <summary>
@@ -602,11 +641,87 @@ public sealed class CircleNeuronLinkService : Service
         var req = LinkVerbCodec.TryDecodeRequest(requestMap);
         if (req is null) return LinkRowsReply.Failure("unknown verb");
 
+        // THE HANDSHAKE IS ANSWERED BEFORE AUTHORISATION. It says what this service
+        // speaks and nothing private, and a client that cannot learn that cannot know
+        // whether to use questions-as-records or the blocking ask.
+        if (req.Verb == LinkVerb.Hello) return Hello();
+
         var denied = await AuthorizeAsync(uid, LinkVerbs.RequiredScope(req.Verb)).ConfigureAwait(false);
         if (denied is not null) return LinkRowsReply.Failure(denied);
 
+        if (LinkVerbs.FirstPartyOnly(req.Verb) && !IsFirstParty(uid))
+            return LinkRowsReply.Failure("only Circle AI's own apps may do that");
+
         switch (req.Verb)
         {
+            case LinkVerb.AskSubmit:
+            case LinkVerb.AskStatus:
+            case LinkVerb.AskCancel:
+            case LinkVerb.AskList:
+                return await ServeAskVerbAsync(uid, req).ConfigureAwait(false);
+
+            case LinkVerb.Status:
+            {
+                var readiness = CircleNeuronService.Readiness;
+                if (readiness is null) return LinkRowsReply.Failure("status not available");
+                var after = long.TryParse(req.Arg(LinkAskRows.ArgAfterSeq), out var a) ? a : -1;
+                var now = readiness.Current;
+                if (after >= 0 && now.Seq <= after) return LinkRowsReply.Success(new[] { LinkAskRows.Unchanged(now.Seq) });
+
+                // THIS CALLER'S OWN GRANTS ride along, so an app can see what it may do.
+                var scopes = CallerScopes(uid);
+                var rows = LinkAskRows.Status(now).ToList();
+                if (scopes is not null) rows.Add(new[] { "setting", CircleAI.Assistant.Lifecycle.ReadinessSettings.CallerScopes, scopes });
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.Health:
+                return LinkRowsReply.Success((HealthFacts?.Invoke() ?? Array.Empty<KeyValuePair<string, string>>())
+                    .Select(p => LinkAskRows.Health(p.Key, p.Value)).ToList());
+
+            case LinkVerb.QualityRun:
+            {
+                var asks = CircleNeuronService.Asks;
+                if (asks is null) return LinkRowsReply.Failure("questions are not available");
+                var key = CallerKeyOf(uid) ?? "internal:quality";
+
+                // A RUN IS MINUTES OF WORK ON A PHONE, so it is started here and its
+                // verdicts are logged and kept; the reply says it began.
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var report = await new CircleAI.Assistant.Quality.QualityRunner(asks, key)
+                            .RunAsync(null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
+                        LastQuality = report;
+                        foreach (var item in report.Items)
+                            Log.Info(Tag, $"QUALITY {item.Id} {(item.Passed ? "PASS" : "FAIL")} {item.Reason} "
+                                          + (item.Timing is { } t ? t.ToLogLine(item.Id) : string.Empty));
+                        Log.Info(Tag, $"QUALITY summary {report.Passed}/{report.Total} model={report.ModelId}");
+                    }
+                    catch (Exception ex) { Log.Warn(Tag, "quality run failed: " + ex.GetType().Name); }
+                });
+
+                var last = LastQuality;
+                var rows = new List<IReadOnlyList<string>>();
+                if (last is not null)
+                {
+                    rows.AddRange(last.Items.Select(i => LinkAskRows.Quality(i.Id, i.Passed, i.Reason, i.Answer, i.Timing)));
+                    rows.Add(LinkAskRows.QualitySummary(last.Passed, last.Total, last.ModelId));
+                }
+                return LinkRowsReply.Success(rows);
+            }
+
+            case LinkVerb.SetupCancel:
+            {
+                lock (_setupLock)
+                {
+                    try { _setupCancel?.Cancel(); } catch (ObjectDisposedException) { }
+                }
+                Log.Info(Tag, "setup: cancelled by the caller; downloaded bytes are kept");
+                return LinkRowsReply.Success(Array.Empty<IReadOnlyList<string>>());
+            }
+
             case LinkVerb.ResidentStatus:
             case LinkVerb.ResidentStart:
             case LinkVerb.ResidentStop:
@@ -769,13 +884,21 @@ public sealed class CircleNeuronLinkService : Service
 
                     _setupAt = null;
                     _setupFailed = null;
+                    _setupCancel?.Dispose();
+                    _setupCancel = new CancellationTokenSource();
+                    var stop = _setupCancel.Token;
 
                     var progress = new Progress<SetupProgressReport>(p => _setupAt = p);
                     _setupRun = Task.Run(async () =>
                     {
                         try
                         {
-                            await setup.RunAsync(progress, CancellationToken.None).ConfigureAwait(false);
+                            await setup.RunAsync(progress, stop).ConfigureAwait(false);
+
+                            // SAID ON SUCCESS TOO. Only a failure was logged, so on the
+                            // P30 on 2026-10-16 a run that finished and a run still going
+                            // looked identical from outside the phone.
+                            Log.Info(Tag, "setup run finished");
                         }
                         catch (Exception ex)
                         {
@@ -881,7 +1004,201 @@ public sealed class CircleNeuronLinkService : Service
 
         var package = packages[0]!;
         var signature = SignatureDigestOf(this, package);
-        return signature is null ? null : (package, signature);
+        if (signature is null) return null;
+
+        // ONE UID, SEVERAL PACKAGES, ONE SIGNATURE - or nobody. A shared uid is how a
+        // system component can arrive here as several packages; taking the first one
+        // silently would key a caller's grants and conversation to the wrong package.
+        // Packages under one uid that are signed differently are refused outright.
+        for (var i = 1; i < packages.Length; i++)
+            if (packages[i] is { } other && SignatureDigestOf(this, other) != signature) return null;
+
+        return (package, signature);
+    }
+
+    // ── questions as records ─────────────────────────────────────────────────
+
+    /// <summary>The last quality run's report, for the next QualityRun call to return.</summary>
+    private static CircleAI.Assistant.Quality.QualityReport? LastQuality;
+
+    /// <summary>The service's own health facts, for the Health verb. Set by the host.</summary>
+    public static Func<IReadOnlyList<KeyValuePair<string, string>>>? HealthFacts { get; set; }
+
+    /// <summary>This build's versionCode, for the handshake. Set by the host.</summary>
+    public static long VersionCode { get; set; }
+
+    private static CancellationTokenSource? _setupCancel;
+
+    /// <summary>
+    /// The queue's name for a caller: package and a short signing digest. Derived from
+    /// the binder's calling uid - never from anything the caller says about itself.
+    /// </summary>
+    private string? CallerKeyOf(int uid) =>
+        CallerIdentity(uid) is { } id ? id.Package + ":" + id.Signature[..Math.Min(16, id.Signature.Length)] : null;
+
+    private bool IsFirstParty(int uid) =>
+        CallerIdentity(uid) is { } id && FirstPartySignatures?.Contains(id.Signature) == true;
+
+    private string? CallerScopes(int uid)
+    {
+        if (CallerIdentity(uid) is not { } id) return null;
+        if (FirstPartySignatures?.Contains(id.Signature) == true) return "first-party";
+        return null;
+    }
+
+    private static LinkRowsReply Hello()
+    {
+        var verbs = Enum.GetNames<LinkVerb>();
+        var boot = CircleNeuronService.Readiness?.BootId ?? string.Empty;
+        return LinkRowsReply.Success(new[]
+        {
+            LinkAskRows.Hello(LinkIpc.Protocol, VersionCode, boot, global::Android.OS.Process.MyPid(), verbs),
+        });
+    }
+
+    // A BOUNDED NUMBER OF WAITING POLLS. A poll may wait a moment for news, which holds
+    // a binder thread; past this many at once the rest are answered straight away, so
+    // polling can never starve the pool the cheap verbs share.
+    private static readonly SemaphoreSlim Waiters = new(6, 6);
+
+    private async Task<LinkRowsReply> ServeAskVerbAsync(int uid, LinkVerbRequest req)
+    {
+        var asks = CircleNeuronService.Asks;
+        if (asks is null) return LinkRowsReply.Failure("questions are not available yet");
+        var caller = CallerKeyOf(uid);
+        if (caller is null) return LinkRowsReply.Failure("unknown caller");
+
+        switch (req.Verb)
+        {
+            case LinkVerb.AskSubmit:
+            {
+                var message = req.Arg(LinkAskRows.ArgMessage) ?? req.Text;
+                if (string.IsNullOrWhiteSpace(message)) return LinkRowsReply.Failure("no message");
+
+                var lane = Enum.TryParse<CircleAI.Assistant.Requests.AskLane>(req.Arg(LinkAskRows.ArgLane), out var l)
+                    ? l : CircleAI.Assistant.Requests.AskLane.Foreground;
+                // THE ASSISTANT LANE IS FOR SOMEBODY WHO SPOKE TO THE PHONE, and only
+                // the phone itself puts questions there; Background needs its grant.
+                if (lane == CircleAI.Assistant.Requests.AskLane.Assistant) lane = CircleAI.Assistant.Requests.AskLane.Foreground;
+                if (lane == CircleAI.Assistant.Requests.AskLane.Background
+                    && await AuthorizeAsync(uid, LinkScope.Background).ConfigureAwait(false) is not null)
+                    lane = CircleAI.Assistant.Requests.AskLane.Foreground;
+
+                var admission = asks.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                    CallerKey: caller,
+                    ClientRequestId: req.Arg(LinkAskRows.ArgRequestId),
+                    SessionId: req.Arg(LinkAskRows.ArgSession) ?? string.Empty,
+                    Lane: lane,
+                    Message: message!,
+                    Question: req.Arg(LinkAskRows.ArgQuestion),
+                    Spoken: req.Arg(LinkAskRows.ArgSpoken) == "1",
+                    Agentic: req.Arg(LinkAskRows.ArgAgentic) == "1",
+                    SideEffectFree: req.Arg(LinkAskRows.ArgSideEffectFree) != "0"));
+
+                if (!admission.Accepted || admission.Record is null)
+                    return LinkRowsReply.Failure(admission.Refusal ?? CircleAI.Assistant.Requests.AskSentences.Busy);
+                return LinkRowsReply.Success(new[]
+                {
+                    LinkAskRows.Ask(admission.Record, admission.Position, textFrom: 0, includeText: true, duplicate: admission.Duplicate),
+                });
+            }
+
+            case LinkVerb.AskStatus:
+            {
+                var id = req.Query;
+                if (string.IsNullOrWhiteSpace(id)) return LinkRowsReply.Failure("no ask id");
+                var since = int.TryParse(req.Arg(LinkAskRows.ArgSince), out var s) ? s : 0;
+                var after = long.TryParse(req.Arg(LinkAskRows.ArgAfterSeq), out var a) ? a : -1;
+                var waitMs = int.TryParse(req.Arg(LinkAskRows.ArgWaitMs), out var w) ? Math.Clamp(w, 0, 1500) : 0;
+
+                CircleAI.Assistant.Requests.AskRecord? ask;
+                if (waitMs > 0 && after >= 0 && await Waiters.WaitAsync(0).ConfigureAwait(false))
+                {
+                    try { ask = await asks.WaitForChangeAsync(caller, id!, after, TimeSpan.FromMilliseconds(waitMs), CancellationToken.None).ConfigureAwait(false); }
+                    finally { Waiters.Release(); }
+                }
+                else ask = asks.Status(caller, id!);
+
+                if (ask is null) return LinkRowsReply.Failure("no such ask");
+                return LinkRowsReply.Success(new[] { LinkAskRows.Ask(ask, asks.PositionOf(ask.Id), since) });
+            }
+
+            case LinkVerb.AskCancel:
+            {
+                var id = req.Query;
+                if (string.IsNullOrWhiteSpace(id)) return LinkRowsReply.Failure("no ask id");
+                asks.Cancel(caller, id!);
+                var ask = asks.Status(caller, id!);
+                return ask is null
+                    ? LinkRowsReply.Failure("no such ask")
+                    : LinkRowsReply.Success(new[] { LinkAskRows.Ask(ask, -1, int.MaxValue) });
+            }
+
+            default:   // AskList
+            {
+                var open = req.Arg(LinkAskRows.ArgOpenOnly) == "1";
+                return LinkRowsReply.Success(asks.List(caller, req.Limit, open)
+                    .Select(r => LinkAskRows.Ask(r, asks.PositionOf(r.Id), includeText: false)).ToList());
+            }
+        }
+    }
+
+    /// <summary>
+    /// The things a person says about the assistant itself, answered without the brain -
+    /// from the queue, like every other shortcut.
+    /// </summary>
+    /// <remarks>
+    /// MODEL ADMINISTRATION IS FIRST PARTY. "Clear it" deletes files and "try the big one
+    /// again" lifts every refusal; any Chat-scoped app saying "yes" while an offer was
+    /// open used to trigger the deletion. Now only the phone itself (the wake turn and
+    /// the assistant session) and our own apps can - an offer is answered by somebody
+    /// who could have heard it.
+    /// </remarks>
+    public sealed class SelfRequests : CircleAI.Assistant.Requests.IAskShortcut
+    {
+        /// <inheritdoc />
+        public string Name => "self";
+
+        /// <inheritdoc />
+        public ValueTask<string?> TryAnswerAsync(CircleAI.Assistant.Requests.AskRecord ask, CancellationToken ct)
+        {
+            var admin = ask.CallerKey.StartsWith("internal:", StringComparison.Ordinal)
+                        || (FirstPartySignatures is { } trusted
+                            && trusted.Any(sig => ask.CallerKey.EndsWith(":" + sig[..Math.Min(16, sig.Length)], StringComparison.Ordinal)));
+
+            switch (CircleAI.Assistant.SelfRequest.Of(ask.Asked, admin && AwaitingAnswer))
+            {
+                case CircleAI.Assistant.SelfAsk.WhichBrain:
+                {
+                    var dead = DeadWeightHere();
+                    return ValueTask.FromResult<string?>(CircleAI.Assistant.AssistantPersona.WhichBrain(
+                        ready:             CircleNeuronService.Brain?.Status.Phase == CircleAI.Assistant.Lifecycle.BrainPhase.Ready
+                                           || CircleNeuronService.Node?.IsReady == true,
+                        running:           !string.IsNullOrWhiteSpace(CircleNeuronService.RunningModel),
+                        gaveUpOnSomething: AnythingRefused(),
+                        deadWeightSize:    dead > 0 ? CircleAI.Assistant.CensusRow.Size(dead) : null));
+                }
+
+                case CircleAI.Assistant.SelfAsk.ClearIt when admin:
+                {
+                    var freed = ClearWhatCannotRun();
+                    Decisions.Answered();
+                    Log.Info(Tag, "asked to clear dead weight; freed " + freed + " bytes");
+                    return ValueTask.FromResult<string?>(CircleAI.Assistant.AssistantPersona.ClearIt(
+                        freed > 0 ? CircleAI.Assistant.CensusRow.Size(freed) : null));
+                }
+
+                case CircleAI.Assistant.SelfAsk.TryAgain when admin:
+                {
+                    var pardoned = PardonEverythingRefused();
+                    Log.Info(Tag, "asked to try again; pardoned " + pardoned + " model(s)");
+                    return ValueTask.FromResult<string?>(CircleAI.Assistant.AssistantPersona.TryAgain(pardoned > 0));
+                }
+
+                default:
+                    return ValueTask.FromResult<string?>(null);
+            }
+        }
     }
 
     /// <summary>

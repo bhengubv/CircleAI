@@ -26,14 +26,32 @@ public sealed class SkillContextBuilder
     /// model — measured: an unbounded block took a Huawei sweep from 4m33s to
     /// over 20 minutes.
     /// </param>
-    public SkillContextBuilder(ISkillStore store, int maxSkills = 5, int maxChars = 1500)
+    public SkillContextBuilder(ISkillStore store, int maxSkills = 5, int maxChars = 0)
     {
         ArgumentNullException.ThrowIfNull(store);
         if (maxSkills < 1) throw new ArgumentOutOfRangeException(nameof(maxSkills), "Must be at least 1.");
-        if (maxChars < 100) throw new ArgumentOutOfRangeException(nameof(maxChars), "Must be at least 100.");
+        if (maxChars != 0 && maxChars < 100) throw new ArgumentOutOfRangeException(nameof(maxChars), "Must be at least 100.");
         _store = store;
         _maxSkills = maxSkills;
-        _maxChars = maxChars;
+        _maxChars = maxChars > 0 ? maxChars : DeviceBudget();
+    }
+
+    /// <summary>The skills block's size for this device, when the caller names none.</summary>
+    /// <remarks>
+    /// EVERY CHARACTER IS PREFILL. Measured on the P30 on 2026-10-17 after the template
+    /// fix: a capability-tile question carried 561 prompt tokens and spent 15.3 s
+    /// reading them, most of it this block at its 1,500-character ceiling. 600 on a
+    /// phone of 4.5 GB or less keeps the most relevant skill and its first lines;
+    /// larger devices keep the old ceiling.
+    /// </remarks>
+    public static int DeviceBudget()
+    {
+        try
+        {
+            var total = CircleAI.Core.DeviceProbe.Snapshot().RamTotalBytes;
+            return total > 0 && total <= 4.5 * 1024 * 1024 * 1024 ? 600 : 1500;
+        }
+        catch { return 1500; }
     }
 
     /// <summary>
@@ -85,14 +103,21 @@ public sealed class SkillContextBuilder
         // enrichment=131 and still wrong. Nothing is the right amount here.
         if (matches.Count == 0) return string.Empty;
 
-        var candidates = matches.Take(_maxSkills).ToList();
+        var candidates = HeadFirst(userQuery, matches).Take(_maxSkills).ToList();
 
-        Console.WriteLine($"CIRCLEAI-SKILLS full q=\"{userQuery}\" hits={matches.Count} "
+        // NEVER THE QUESTION ITSELF: this line used to print it whole, and a composed
+        // question carries a person's remembered facts. Its length is enough to debug.
+        Console.WriteLine($"CIRCLEAI-SKILLS q={userQuery.Length} chars hits={matches.Count} budget={_maxChars} "
                         + $"chosen={string.Join(",", candidates.Select(c => c.Id))}");
 
         // Load full detail so we can include instructions.
+        //
+        // NOT "AVAILABLE SKILLS", AND NO MARKDOWN. Under that heading the P30's 0.8B
+        // read a skill as something it could do - "I can provide basic animal care" -
+        // and "**" is a thing a spoken answer must never contain. The id stays, plain:
+        // asking by it is how the body is looked back up.
         var sb = new StringBuilder();
-        sb.AppendLine("## Available Skills");
+        sb.AppendLine("## What may help");
 
         foreach (var summary in candidates)
         {
@@ -100,25 +125,22 @@ public sealed class SkillContextBuilder
 
             // Hard character budget. On a 4096-token window a few verbose skills
             // can crowd out the actual conversation, which is how this block
-            // silently degraded answer quality AND speed on-device.
-            if (sb.Length >= _maxChars)
-            {
-                sb.AppendLine();
-                sb.AppendLine("(further skills omitted to preserve context budget)");
-                break;
-            }
+            // silently degraded answer quality AND speed on-device. Nothing is said
+            // about what was left out: every character here is prefill.
+            if (sb.Length >= _maxChars) break;
 
             var detail = await _store.GetAsync(summary.Id, cancellationToken).ConfigureAwait(false);
             if (detail is null) continue;
 
             sb.AppendLine();
-            sb.AppendLine($"**{detail.Id}** — {detail.Description}");
+            sb.AppendLine($"{detail.Id} — {Plain(detail.Description)}");
             if (!string.IsNullOrWhiteSpace(detail.Instructions))
             {
                 var remaining = Math.Max(0, _maxChars - sb.Length);
-                var text = detail.Instructions.Length > remaining
-                    ? detail.Instructions[..remaining] + " …"
-                    : detail.Instructions;
+                var body = Plain(detail.Instructions);
+                var text = body.Length > remaining
+                    ? body[..remaining] + " …"
+                    : body;
                 foreach (var line in text.Split('\n'))
                     sb.AppendLine($"  {line}");
             }
@@ -126,4 +148,58 @@ public sealed class SkillContextBuilder
 
         return sb.ToString().TrimEnd();
     }
+
+    /// <summary><paramref name="text"/> without the markdown emphasis a skill was written in.</summary>
+    /// <remarks>
+    /// THE SKILL BODIES ARE MARKDOWN - "your **clinic checks your..." in the meal skill -
+    /// and what is put in front of a model is what comes back out of it. A spoken answer
+    /// must never carry "**", and the asterisks are prefill that buys nothing.
+    /// </remarks>
+    private static string Plain(string? text) =>
+        (text ?? string.Empty).Replace("**", string.Empty, StringComparison.Ordinal)
+                              .Replace("__", string.Empty, StringComparison.Ordinal);
+
+    /// <summary>The matches, with those about the question's last word first.</summary>
+    /// <remarks>
+    /// THE LAST WORD OF A REQUEST IS USUALLY WHAT IT IS ABOUT. "Help me plan meals" reduces
+    /// to {plan, meals}; the store ranked "Plan your money this month" first, because
+    /// "plan" is in its name and its tags, and on the P30 on 2026-10-17 the 0.8B answered a
+    /// meal question with a budget - 22 sentences in 43 s. "Feeding your family well" was
+    /// in the same hits, matched on "meals". Only the 600-character budget's first skill
+    /// reaches a phone, so the order is the answer.
+    /// <para>
+    /// A STABLE PARTITION, NOT A RE-RANK: when nothing matches the last word ("deal with a
+    /// government office" - no skill mentions an office), the store's order stands.
+    /// </para>
+    /// </remarks>
+    internal static IEnumerable<SkillSummary> HeadFirst(string query, IReadOnlyList<SkillSummary> matches)
+    {
+        var terms = CircleAI.Core.SearchTerms.Significant(query);
+        if (terms.Count < 2 || matches.Count < 2) return matches;
+
+        var head = terms[^1];
+        var about = matches.Where(m => Mentions(m, head)).ToList();
+        return about.Count == 0 ? matches : about.Concat(matches.Where(m => !about.Contains(m)));
+    }
+
+    /// <summary>Whether a skill's id, name, tags or description carry <paramref name="term"/>.</summary>
+    /// <remarks>
+    /// "meal" finds "meals", "plant" finds "planting": one word may start the other, when
+    /// both are four letters or more and differ by three at most.
+    /// </remarks>
+    private static bool Mentions(SkillSummary skill, string term)
+    {
+        var text = string.Join(' ', skill.Id, skill.Name, skill.Description, string.Join(' ', skill.Tags ?? Array.Empty<string>()));
+        foreach (var word in text.Split(WordBreaks, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (string.Equals(word, term, StringComparison.OrdinalIgnoreCase)) return true;
+            if (word.Length < 4 || term.Length < 4 || Math.Abs(word.Length - term.Length) > 3) continue;
+            if (word.StartsWith(term, StringComparison.OrdinalIgnoreCase) || term.StartsWith(word, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static readonly char[] WordBreaks =
+        [' ', '-', '_', '.', ',', ';', ':', '(', ')', '/', '\'', '"', '!', '?', '—', '–'];
 }

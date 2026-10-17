@@ -270,12 +270,18 @@ public sealed class AIService : IAIService
             var contextSize = _options.ContextSize
                 ?? DeviceTierDefaults.ContextWindow(_resolvedDeviceTier);
 
+            // THE PERSONA AND THE SAMPLER GO IN BEFORE LOAD, which is the only moment
+            // MNN reads them - see QwenTextGenerator's constructor for why the persona
+            // must be MNN's system prompt and never a ChatML block of ours.
             var generator = _generatorFactory is not null
                 ? _generatorFactory(modelPath)
                 : new QwenTextGenerator(
                     modelPath,
                     contextSize: (uint)Math.Max(1, contextSize),
-                    threads: _options.ThreadCount);
+                    threads: _options.ThreadCount,
+                    templateEngine: null,
+                    systemPrompt: _options.SystemPrompt,
+                    samplerJson: ProfileFor(_resolvedModelId)?.SamplerConfigJson());
 
             if (generator is null)
                 throw new InvalidOperationException("Generator factory returned null.");
@@ -287,11 +293,18 @@ public sealed class AIService : IAIService
 
             if (_options.WarmOnStart)
             {
+                // A FAILED WARM-UP IS A FAILED START. This used to log "warm-up failed;
+                // continuing anyway" and report ready - so a model whose first prefill
+                // had already failed was announced as answering, and the first person
+                // to ask found out. Now the generator is let go and the start throws.
                 try { await WarmUpAsync(ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Butler warm-up failed; continuing anyway.");
+                    _logger.LogWarning(ex, "Butler warm-up failed; the brain is not ready.");
+                    _generator = null;
+                    (generator as IDisposable)?.Dispose();
+                    throw new InvalidOperationException("The model loaded but its first answer failed: " + ex.Message, ex);
                 }
             }
 
@@ -480,9 +493,11 @@ public sealed class AIService : IAIService
         // configured. Byte-identical to the single-slot path when Router is null.
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
-        var prepared = await PrepareMessagesAsync(messages, userQuery, ct)
+        var callOptions = options ?? _options.DefaultGenerationOptions;
+        var prepared = await PrepareMessagesAsync(messages, userQuery, ct,
+                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
             .ConfigureAwait(false);
-        var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+        var effectiveOptions = callOptions;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
         //
@@ -542,9 +557,11 @@ public sealed class AIService : IAIService
         // Neuron slot selection (generalist unless a router routes to a specialist).
         var generator = await SelectSlotAsync(userQuery, hasImage, ct).ConfigureAwait(false);
 
-        var prepared = await PrepareMessagesAsync(messages, userQuery, ct)
+        var callOptions = options ?? _options.DefaultGenerationOptions;
+        var prepared = await PrepareMessagesAsync(messages, userQuery, ct,
+                retrievalQuery: callOptions?.RetrievalQuery, timing: callOptions?.Timing)
             .ConfigureAwait(false);
-        var effectiveOptions = options ?? _options.DefaultGenerationOptions;
+        var effectiveOptions = callOptions;
 
         // AND THE CACHE THIS SERVICE WROTE IS THE CACHE IT READS.
         //
@@ -981,6 +998,43 @@ public sealed class AIService : IAIService
         await StartAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>The registry's generation profile for a model, or null.</summary>
+    /// <remarks>Never throws: an unreadable registry keeps the bundle's own sampler.</remarks>
+    private CircleAI.Core.Models.GenerationProfile? ProfileFor(string? modelId)
+    {
+        if (string.IsNullOrWhiteSpace(modelId)) return null;
+        try
+        {
+            if (_modelRegistry is not null)
+                return _modelRegistry.GetLatestModel(modelId!)?.Generation;
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            return registry.GetLatestModel(modelId!)?.Generation;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Whether the registry retires this model below the brain's floor.</summary>
+    /// <remarks>Never throws: an unreadable registry retires nothing.</remarks>
+    private bool IsRetired(string modelId)
+    {
+        try
+        {
+            if (_modelRegistry is not null)
+                return _modelRegistry.GetLatestModel(modelId)?.Retired == true;
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            return registry.GetLatestModel(modelId)?.Retired == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private async Task<string> ResolveModelPathAsync(CancellationToken ct)
     {
         // 1. Explicit path wins — used by tests and devs pinning a local file.
@@ -1004,6 +1058,23 @@ public sealed class AIService : IAIService
         //    via AIOptions, currently fixed to Default), SDK answers the model.
         var modelId      = _options.ModelId;
         var autoSelected = false;
+
+        // NOT A RETIRED ONE, EVEN WHEN PINNED. "Nothing less than Qwen3.5 is the LLM"
+        // holds on every route, and a pinned ModelId - the desktop head's
+        // CIRCLEAI_MODEL, any DI host's AIOptions - is the route that walks around
+        // the selector. It would also be downloaded here if missing.
+        if (!string.IsNullOrWhiteSpace(modelId) && IsRetired(modelId!))
+        {
+            if (_modelSelector is null)
+                throw new InvalidOperationException(
+                    $"AIOptions.ModelId '{modelId}' is retired below the brain's floor " +
+                    "(nothing less than Qwen3.5 is the LLM), and no IModelSelector is " +
+                    "registered to choose instead.");
+
+            _logger.LogWarning(
+                "AIOptions.ModelId {ModelId} is retired below the brain's floor; choosing instead.", modelId);
+            modelId = null;
+        }
 
         if (string.IsNullOrWhiteSpace(modelId))
         {
@@ -1061,10 +1132,15 @@ public sealed class AIService : IAIService
         // ModelExists checks the weight file, which is the thing that actually
         // has to be there.
         var existing = _modelLoader.GetModelPath(modelId!);
-        if (!string.IsNullOrEmpty(existing) &&
-            System.IO.File.Exists(existing) &&
-            _modelLoader.ModelExists(modelId!))
+        if (!string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing) && Complete(modelId!))
             return existing;
+
+        // THE BRAIN LOADS WHAT IS THERE; IT DOES NOT FETCH - when the host says so.
+        // A download here ran inline, ungated, uncancellable and inside the load's
+        // breadcrumb; the service owns downloads and wants to be told instead.
+        if (_options.NeverFetch)
+            throw new ModelNotInstalledException(modelId!,
+                damaged: !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing));
 
         // 4. Fetch via the loader.
         ct.ThrowIfCancellationRequested();
@@ -1178,9 +1254,11 @@ public sealed class AIService : IAIService
         // only that GetModelPath's file exists accepts a bundle whose config.json
         // arrived and whose weights did not.
         var existing = _modelLoader.GetModelPath(modelId);
-        var modelPath = !string.IsNullOrEmpty(existing) &&
-                        System.IO.File.Exists(existing) &&
-                        _modelLoader.ModelExists(modelId)
+        var present = !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing) && Complete(modelId);
+        if (!present && _options.NeverFetch)
+            throw new ModelNotInstalledException(modelId,
+                damaged: !string.IsNullOrEmpty(existing) && System.IO.File.Exists(existing));
+        var modelPath = present
             ? existing
             : await _modelLoader.DownloadModelAsync(modelId).ConfigureAwait(false);
         if (string.IsNullOrEmpty(modelPath) || !System.IO.File.Exists(modelPath))
@@ -1212,8 +1290,23 @@ public sealed class AIService : IAIService
         return new QwenTextGenerator(
             modelPath,
             contextSize: (uint)Math.Max(1, contextSize),
-            threads: _options.ThreadCount);
+            threads: _options.ThreadCount,
+            templateEngine: null,
+            systemPrompt: _options.SystemPrompt,
+            samplerJson: ProfileFor(modelId)?.SamplerConfigJson());
     }
+
+    /// <summary>Whether a model's files are complete enough to load.</summary>
+    /// <remarks>
+    /// THE HASH IS PAID ONCE, NOT ON EVERY START. ModelExists SHA-256s the whole weight
+    /// file - about 9.4 s on the P30, on every cold start. A host that verified the
+    /// files when they arrived (and checks that they have not changed since) sets
+    /// SkipLoadHash, and the load trusts the size check instead.
+    /// </remarks>
+    private bool Complete(string modelId) =>
+        _options.SkipLoadHash && _modelLoader is BundleModelLoader bundles
+            ? bundles.ModelPresent(modelId)
+            : _modelLoader!.ModelExists(modelId);
 
     /// <summary>
     /// Neuron slot selection. With no router configured this returns the
@@ -1397,11 +1490,15 @@ public sealed class AIService : IAIService
         IReadOnlyList<ChatMessage> messages,
         string userQuery,
         CancellationToken ct,
-        bool forceTools = false)
+        bool forceTools = false,
+        string? retrievalQuery = null,
+        TurnTimingRecorder? timing = null)
     {
+        var enrichStarted = TurnTimingRecorder.Now();
+
         // Enrichment is computed ONCE and used differently depending on whether
         // the caller owns the system turn.
-        var enrichment = await BuildEnrichmentAsync(userQuery, ct).ConfigureAwait(false);
+        var enrichment = await BuildEnrichmentAsync(userQuery, ct, retrievalQuery).ConfigureAwait(false);
 
         // Tool descriptions are a CAPABILITY CONTRACT. If a ToolBridge is
         // registered and the model is never told the tools exist, tool calling
@@ -1491,25 +1588,18 @@ public sealed class AIService : IAIService
         var hasSystem = messages.Any(m =>
             string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase));
 
-        // GROUNDING BELONGS IN THE SYSTEM MESSAGE — where it started, and where
-        // it has to be for a KV cache to survive between turns.
+        // THE SYSTEM TURN IS THE PERSONA AND NOTHING ELSE; THE NOTES RIDE WITH THE QUESTION.
         //
-        // It was moved onto the newest user turn on the theory that grounding is
-        // volatile and volatile things belong last. That was wrong twice over.
-        // The grounding here is a fixed list of skill names, identical on every
-        // turn; and attaching it to whichever turn is newest makes it MOVE, so
-        // rendering turn two silently rewrote turn one and broke the very prefix
-        // the change was meant to preserve. Verified by logging the prompt the
-        // model actually received rather than reasoning about it.
-        //
-        // In the system message it sits in front of the whole conversation and
-        // never shifts, so the prefix stays byte-identical and only genuinely
-        // new text needs prefilling.
-        //
-        // What must stay stable to keep that true: see the note on rounding the
-        // clock in BuildEnrichmentAsync. Anything that changes here costs one
-        // full re-prefill of the conversation, so change it rarely and on
-        // purpose.
+        // This used to argue that grounding belongs in the system message so a KV
+        // prefix survives between turns. That served string continuation, which no
+        // longer happens: MNN owns the chat template, holds the persona as its own
+        // system prompt from load, and every turn is a fresh templated conversation
+        // (QwenTextGenerator). What IS true now is that a system message that changes
+        // per turn cannot be MNN's system prompt at all - so per-turn notes (skills,
+        // memory, device context, tools) go at the head of the LAST user message, in a
+        // fixed delimited form, and the system turn stays byte-identical. On the P30
+        // the 0.8B once answered the memory heading itself (E11); the delimiter and
+        // the instruction not to repeat it are what that cost.
         var extra = (hasSystem && _options.SystemPromptEnrichment != SystemPromptEnrichment.Always)
             ? toolBlock
             : Combine(enrichment, toolBlock);
@@ -1528,31 +1618,23 @@ public sealed class AIService : IAIService
             $"query={userQuery?.Length ?? 0} hasSystem={hasSystem}");
 
         var prepared = new List<ChatMessage>(messages.Count + 1);
+        if (!hasSystem && !string.IsNullOrWhiteSpace(_options.SystemPrompt))
+            prepared.Add(new ChatMessage("system", _options.SystemPrompt));
 
-        if (hasSystem)
+        var lastUser = -1;
+        for (var i = messages.Count - 1; i >= 0; i--)
+            if (string.Equals(messages[i].Role, "user", StringComparison.OrdinalIgnoreCase)) { lastUser = i; break; }
+
+        for (var i = 0; i < messages.Count; i++)
         {
-            var pending = extra;
-            foreach (var m in messages)
-            {
-                if (pending.Length > 0 &&
-                    string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
-                {
-                    prepared.Add(new ChatMessage("system", Combine(m.Content, pending)));
-                    pending = string.Empty;
-                }
-                else
-                {
-                    prepared.Add(m);
-                }
-            }
+            var m = messages[i];
+            if (i == lastUser && !string.IsNullOrWhiteSpace(extra))
+                prepared.Add(new ChatMessage("user", WithNotes(extra, m.Content)) { ImageBytes = m.ImageBytes });
+            else
+                prepared.Add(m);
         }
-        else
-        {
-            var combined = Combine(_options.SystemPrompt, extra);
-            if (!string.IsNullOrWhiteSpace(combined))
-                prepared.Add(new ChatMessage("system", combined));
-            prepared.AddRange(messages);
-        }
+
+        if (timing is not null) timing.EnrichMs = TurnTimingRecorder.Since(enrichStarted);
 
         // THE KEY THE PREFIX CACHE WILL ACTUALLY USE. Two turns that agree on
         // this share a cached prefill; two that differ by one character do not,
@@ -1566,6 +1648,19 @@ public sealed class AIService : IAIService
 
         return prepared;
     }
+
+    /// <summary>The notes and the question as one user message.</summary>
+    /// <remarks>
+    /// ONE FIXED SHAPE, so a model sees the same boundary every turn and the notes can
+    /// never be mistaken for the question.
+    /// <para>
+    /// NOT "BACKGROUND". On the P30 on 2026-10-17 the 0.8B took that word to be the
+    /// person's: "based on your background", "I can summarize the background as".
+    /// </para>
+    /// </remarks>
+    internal static string WithNotes(string notes, string question) =>
+        "Facts for you - use them if they help, never repeat or mention them:\n"
+        + notes.Trim() + "\n\nThe question: " + (question ?? string.Empty);
 
     /// <summary>
     /// What the host's bridge offers. Empty when there is no bridge, so callers
@@ -1815,7 +1910,7 @@ public sealed class AIService : IAIService
     }
 
     private async Task<string> BuildEnrichmentAsync(
-        string userQuery, CancellationToken ct)
+        string userQuery, CancellationToken ct, string? retrievalQuery = null)
     {
         var sb = new StringBuilder();
 
@@ -1927,8 +2022,11 @@ public sealed class AIService : IAIService
         //
         // Guarded, because a hook that throws must not take the turn down: the
         // worst case is retrieving on the prompt, which is what happened before.
-        var lookFor = userQuery;
-        if (_options.RetrievalQuery is not null)
+        // A PER-CALL QUESTION WINS: a shared service gets the raw question with each
+        // ask (GenerationOptions.RetrievalQuery), which is better than any rule a head
+        // can apply to the composed message after the fact.
+        var lookFor = string.IsNullOrWhiteSpace(retrievalQuery) ? userQuery : retrievalQuery!;
+        if (string.IsNullOrWhiteSpace(retrievalQuery) && _options.RetrievalQuery is not null)
         {
             try { lookFor = _options.RetrievalQuery(userQuery) ?? userQuery; }
             catch (Exception ex) { EnrichmentFailed("retrieval-query", ex); }

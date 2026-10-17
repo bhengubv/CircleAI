@@ -150,8 +150,13 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
     // ParseCapabilities — unknown labels are dropped) and pollute chat
     // selection. A future speech selector queries the registry by modality
     // separately.
+    //
+    // AND NEVER A RETIRED ONE. The owner's floor - "nothing less than Qwen3.5 is the
+    // LLM" - is a registry fact (ModelEntry.Retired), applied here so BestFit,
+    // AllCandidates and ChainFor all honour it, and a fallback chain stops at the
+    // floor instead of walking down to a lesser model.
     private IEnumerable<ModelEntry> EnumerateEntries()
-        => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat);
+        => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat && !e.Retired);
 
     /// <summary>
     /// Candidates for a specific capability.
@@ -187,8 +192,9 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
     /// </remarks>
     private IEnumerable<ModelEntry> EnumerateEntries(ChatCapability required)
         => required.HasFlag(ChatCapability.Vision)
-            ? _registry.AllModels.Where(e => e.Modality is ModelModality.Chat
-                                                        or ModelModality.Vision)
+            ? _registry.AllModels.Where(e => (e.Modality is ModelModality.Chat
+                                                         or ModelModality.Vision)
+                                             && !e.Retired)
             : EnumerateEntries();
 
     /// <inheritdoc/>

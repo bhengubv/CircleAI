@@ -117,4 +117,16 @@ public interface IBrain
     /// </para>
     /// </remarks>
     int MaxImageEdge { get; }
+
+    /// <summary>
+    /// Questions this app asked whose answers arrived while nobody was watching - the
+    /// screen was left, the app was closed, the service restarted - each once.
+    /// </summary>
+    /// <remarks>
+    /// A DEFAULT OF NONE, so an in-process brain (which loses nothing it was not
+    /// already holding) and every test fake need no change. The linked brain answers
+    /// from the service, where an accepted question is a record that outlives the app.
+    /// </remarks>
+    Task<IReadOnlyList<(string Question, string Answer)>> CollectUnseenAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<(string Question, string Answer)>>(Array.Empty<(string, string)>());
 }

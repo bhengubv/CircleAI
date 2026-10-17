@@ -67,25 +67,37 @@ public static class AppLifecycle
     public static void RaisePaused() => Raise(Paused);
 
     /// <summary>Raised by the host when the OS reports memory pressure.</summary>
-    public static void RaiseMemoryIsShort() => Raise(MemoryIsShort);
+    /// <returns>How many listeners in this process were told.</returns>
+    /// <remarks>
+    /// A COUNT, BECAUSE THE HOST USED TO CLAIM THE WORK INSTEAD. The app logged
+    /// "evicting the specialist, keeping the generalist" on every pressure signal -
+    /// five times in eight minutes on the P30 on 2026-10-16 - while nothing in the
+    /// process was listening: the only subscriber, DeviceBrain, had left the app
+    /// along with the models. A number cannot pretend.
+    /// </remarks>
+    public static int RaiseMemoryIsShort() => Raise(MemoryIsShort);
 
     /// <summary>
     /// Call every handler, and let none of them stop the others.
     /// </summary>
+    /// <returns>How many handlers were called, whether or not they threw.</returns>
     /// <remarks>
     /// ONE PAGE THROWING MUST NOT COST THE REST THEIR NOTIFICATION. These fire
     /// from a platform callback - `OnResume`, `OnTrimMemory` - where an escaping
     /// exception is an ANR or a crash rather than a handled error, and the
     /// subscriber that threw is usually the least important one.
     /// </remarks>
-    private static void Raise(Action? handlers)
+    private static int Raise(Action? handlers)
     {
-        if (handlers is null) return;
+        if (handlers is null) return 0;
 
+        var told = 0;
         foreach (var handler in handlers.GetInvocationList().Cast<Action>())
         {
+            told++;
             try { handler(); }
             catch { /* a stale headline is not worth an ANR */ }
         }
+        return told;
     }
 }

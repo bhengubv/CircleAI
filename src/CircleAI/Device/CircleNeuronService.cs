@@ -108,8 +108,182 @@ public sealed partial class CircleNeuronService : Service
     /// </remarks>
     public static string? StateDirectory { get; set; }
 
+    /// <summary>
+    /// Completes when the catalogue has been refreshed, assessed and tidied. Set by
+    /// the host; null means there is nothing to wait for.
+    /// </summary>
+    /// <remarks>
+    /// THE BRAIN CHOSE FROM A CATALOGUE THAT WAS ABOUT TO CHANGE. Measured on the
+    /// P30 on 2026-10-16: the selector picked at 02:12:00, the refresh that raised
+    /// Qwen3.5-0.8B's rank landed at 02:12:08, and the assessment at 02:12:15 - so
+    /// it ranked yesterday's numbers, tied the 0.8B with Qwen2.5-1.5B and took the
+    /// wrong one. Waiting costs the bootstrap's time on a cold start only, and the
+    /// bootstrap now writes through a write-ahead log instead of syncing the disk
+    /// some 180 times.
+    /// </remarks>
+    public static System.Threading.Tasks.Task? CatalogueReady { get; set; }
+
+    /// <summary>The longest a brain start waits for <see cref="CatalogueReady"/>.</summary>
+    /// <remarks>
+    /// Bounded because a catalogue that never finishes must not cost the phone its
+    /// brain; past this it selects from whatever the catalogue holds, and says so.
+    /// </remarks>
+    internal static readonly TimeSpan CatalogueWait = TimeSpan.FromSeconds(30);
+
+    /// <summary>Whether <see cref="RecordLastLoad"/> has run in this process.</summary>
+    private static volatile bool _lastLoadRecorded;
+
+    /// <summary>
+    /// Read the breadcrumb the last load left, if it died there, and turn it into a
+    /// strike against that model - once per process.
+    /// </summary>
+    /// <param name="context">This process, for Android's record of why it last ended.</param>
+    /// <param name="catalogue">Where verdicts are kept. Null records nothing.</param>
+    /// <param name="stateDirectory">Where the breadcrumb is written.</param>
+    /// <remarks>
+    /// A breadcrumb that survived is proof the process died inside a load, and it
+    /// names the model. A native abort runs no managed handler, so this is the ONLY
+    /// place that failure can be noticed.
+    /// <para>
+    /// A HOST CALLS THIS BEFORE THE CATALOGUE BOOTSTRAP, and the order matters. The
+    /// bootstrap's housekeeping removes a model in favour of one that has loaded here
+    /// and is not refused - so a death recorded AFTER it could let a model on its
+    /// second strike serve as the replacement, delete what it replaced, and then be
+    /// refused itself. It used to run at the top of the brain's start, which raced
+    /// the catalogue being assigned at all: on the P30 on 2026-10-16 the catalogue won
+    /// by about 130 ms.
+    /// </para>
+    /// </remarks>
+    public static void RecordLastLoad(Context context, CircleAI.Core.Models.IModelCatalog? catalogue, string stateDirectory)
+    {
+        if (_lastLoadRecorded) return;
+        _lastLoadRecorded = true;
+
+        try
+        {
+            // FIRST, THE REFUSALS THE OLD ONE-STRIKE RULE GOT WRONG. They are
+            // already written and nothing re-reads them, so changing the rule alone
+            // would leave Qwen3.5-0.8B refused on the P30 for ever. Each comes back
+            // on one strike; idempotent - see CrashVerdict.Reconsider.
+            CircleAI.Inference.CrashVerdict.Reconsider(
+                catalogue, line => global::Android.Util.Log.Warn(LogTag, line));
+
+            var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(stateDirectory);
+            CircleAI.Inference.CrashVerdict.Record(
+                catalogue, crumb, line => global::Android.Util.Log.Warn(LogTag, line),
+                killedByTheSystem: LastDeathWasTheSystems(context));
+
+            // Cleared either way: a breadcrumb read twice would refuse a second model
+            // on the strength of the first one's death.
+            CircleAI.Assistant.DeviceDiagnostics.EndRisky(stateDirectory);
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn(LogTag, "could not read the last load's breadcrumb: " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Wait, bounded, for <see cref="CatalogueReady"/>, saying how long it took.
+    /// </summary>
+    /// <remarks>
+    /// A selection made from the catalogue as it stood before this launch refreshed
+    /// it is a selection made from stale ranks. Never throws: a catalogue that is
+    /// late or broken costs the phone its freshest ranking, never its brain.
+    /// </remarks>
+    private static async System.Threading.Tasks.Task WaitForCatalogueAsync()
+    {
+        if (CatalogueReady is not { } ready)
+        {
+            global::Android.Util.Log.Warn(LogTag, "no catalogue bootstrap to wait for; selecting from what is stored");
+            return;
+        }
+
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await ready.WaitAsync(CatalogueWait).ConfigureAwait(false);
+            global::Android.Util.Log.Info(LogTag,
+                $"catalogue ready after {waited.ElapsedMilliseconds} ms; selecting");
+        }
+        catch (TimeoutException)
+        {
+            global::Android.Util.Log.Warn(LogTag,
+                $"catalogue still settling after {CatalogueWait.TotalSeconds:0} s; selecting from what it holds");
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn(LogTag, "catalogue bootstrap failed: " + ex.Message);
+        }
+    }
+
     /// <summary>The live node, or null before the service has finished starting.</summary>
+    /// <remarks>
+    /// Only for a host that runs the brain IN this process. The CircleAI service runs it
+    /// in its ":inference" process instead and sets <see cref="Brain"/>; there this stays
+    /// null and every question goes through <see cref="Asks"/>.
+    /// </remarks>
     public static NeuronNode? Node { get; private set; }
+
+    /// <summary>
+    /// The supervised brain, when the host runs it in another process. Set by the host
+    /// before <see cref="Start"/>; when set, this service holds the foreground and the
+    /// microphone and asks the brain to load, but builds no node of its own.
+    /// </summary>
+    public static CircleAI.Assistant.Requests.IBrainWorker? Brain { get; set; }
+
+    /// <summary>The one door questions come in by (the request coordinator). Set by the host.</summary>
+    public static CircleAI.Assistant.Requests.IAskFront? Asks { get; set; }
+
+    /// <summary>What the service reports about itself. Set by the host.</summary>
+    public static CircleAI.Assistant.Lifecycle.IReadinessTracker? Readiness { get; set; }
+
+    private static bool _watchingReadiness;
+
+    /// <summary>Ask the supervised brain to load, and keep the shade saying what it is doing.</summary>
+    /// <remarks>
+    /// THE PRELOAD, NOT THE LOAD. The brain loads in its own process; this only asks
+    /// for it early - at start and on every wake - so the 13-23 s are paid before the
+    /// question rather than after it. A failure here is reported by the supervisor to
+    /// readiness, and the question that follows waits in the queue.
+    /// </remarks>
+    private async System.Threading.Tasks.Task PreloadAsync()
+    {
+        var brain = Brain;
+        if (brain is null) return;
+
+        if (Readiness is { } readiness && !_watchingReadiness)
+        {
+            _watchingReadiness = true;
+            readiness.Changed += (_, snapshot) => OnReadiness(snapshot);
+            OnReadiness(readiness.Current);
+        }
+
+        try
+        {
+            await brain.EnsureReadyAsync(System.Threading.CancellationToken.None).ConfigureAwait(false);
+            Memory?.StartIdleWatch();
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Info(LogTag, "the brain is not up yet: " + ex.GetType().Name);
+        }
+    }
+
+    private static void OnReadiness(CircleAI.Assistant.Lifecycle.ReadinessSnapshot snapshot)
+    {
+        var brain = snapshot.Brain;
+        Status = CircleAI.Assistant.Lifecycle.ReadinessSentences.For(brain);
+        State = brain.Phase switch
+        {
+            CircleAI.Assistant.Lifecycle.BrainPhase.Ready   => ServiceState.Ready,
+            CircleAI.Assistant.Lifecycle.BrainPhase.Loading => ServiceState.Loading,
+            CircleAI.Assistant.Lifecycle.BrainPhase.Failed  => ServiceState.Failed,
+            _                                               => ServiceState.Idle,
+        };
+        RunningModel = brain.Phase == CircleAI.Assistant.Lifecycle.BrainPhase.Ready ? brain.ModelId : null;
+        _running?.Notify(Status);
+    }
 
 
     /// <summary>What the service is doing, safe to show a user.</summary>
@@ -401,7 +575,10 @@ public sealed partial class CircleNeuronService : Service
             }
         }
 
-        _ = System.Threading.Tasks.Task.Run(BuildNodeAsync);
+        // THE MODEL IS ANOTHER PROCESS'S WHEN THE HOST SAYS SO. With a supervised brain
+        // this service only asks it to load; without one (a host that keeps the brain
+        // in this process) it builds the node as before.
+        _ = System.Threading.Tasks.Task.Run(Brain is not null ? PreloadAsync : BuildNodeAsync);
         return StartCommandResult.Sticky;
     }
 
@@ -453,23 +630,20 @@ public sealed partial class CircleNeuronService : Service
             // the load it has to describe.
             string? wanted = null;
 
-            // DID THE LAST ONE OF THESE KILL THE PHONE? A breadcrumb that survived
-            // is proof the process died inside the load, and it names the model. A
-            // native abort runs no managed handler, so this is the ONLY place that
-            // failure can be noticed - the catch at the bottom of this method never
-            // fired for it, Status was never written, and nothing was logged.
-            if (StateDirectory is { } crumbDir)
-            {
-                var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(crumbDir);
-                CircleAI.Inference.CrashVerdict.Record(
-                    Catalogue, crumb, line => global::Android.Util.Log.Warn(LogTag, line));
+            // DID THE LAST ONE OF THESE KILL THE PHONE? Normally answered already, by
+            // the host, before the catalogue bootstrap - see RecordLastLoad. Asked
+            // here only for a host that never did.
+            if (!_lastLoadRecorded && StateDirectory is { } crumbDir)
+                RecordLastLoad(this, Catalogue, crumbDir);
 
-                // Cleared either way: a breadcrumb read twice would refuse a second
-                // model on the strength of the first one's death.
-                CircleAI.Assistant.DeviceDiagnostics.EndRisky(crumbDir);
-            }
             global::Android.Util.Log.Info(LogTag, Status);
             Notify(Status);
+
+            // THE CATALOGUE FIRST, AND OUTSIDE THE LOCK. The selection below reads
+            // it, and an await cannot sit inside a lock - the first version of this
+            // wait did, which does not compile (CS1996) on the only target that
+            // builds this file, while every test leg, which excludes it, stayed green.
+            await WaitForCatalogueAsync().ConfigureAwait(false);
 
             NeuronNode node;
             lock (Gate)
@@ -511,6 +685,8 @@ public sealed partial class CircleNeuronService : Service
                 // Preferring falls back to the registry until the first
                 // assessment lands, because CatalogueBootstrap runs on a
                 // background task and BestFit throws on an unassessed catalogue.
+                // (This method waited for that bootstrap before taking the lock -
+                // see WaitForCatalogueAsync.)
                 var selector = CircleAI.Inference.CatalogModelSelector.Preferring(Catalogue, registry);
 
                 // THE BRAIN LOADS WHAT IS THERE. IT DOES NOT FETCH.
@@ -538,6 +714,17 @@ public sealed partial class CircleNeuronService : Service
                 // reads that as "not set up", which is exactly what it is, and offers
                 // the download through the path built for it.
                 wanted = options.ModelId;
+
+                // NOT EVEN WHEN IT IS NAMED EXPLICITLY. "Nothing less than Qwen3.5
+                // is the LLM" holds on every route, and a configured ModelId is the
+                // one that walks around the selector.
+                if (!string.IsNullOrWhiteSpace(wanted) && registry.GetLatestModel(wanted!) is { Retired: true })
+                {
+                    global::Android.Util.Log.Warn(LogTag,
+                        wanted + " is retired below the brain's floor; choosing instead");
+                    wanted = null;
+                }
+
                 if (string.IsNullOrWhiteSpace(wanted))
                 {
                     var best = selector.BestFit(DeviceProbe.Snapshot(), options.RequiredCapabilities);
@@ -702,6 +889,10 @@ public sealed partial class CircleNeuronService : Service
             if (node.IsReady)
             {
                 global::Android.Util.Log.Info(LogTag, "brain ready");
+
+                // A CLEAN LOAD FORGIVES THE STRIKES. They count deaths IN A ROW; a
+                // model that has just loaded showed an earlier death was the phone's.
+                CircleAI.Inference.CrashVerdict.Loaded(Catalogue, wanted);
 
                 // THE RESUME USED TO HANG OFF THIS LINE, AND THAT WAS THE WRONG HOOK.
                 // A Circle OS device held 1.1 GB of a 22.8 GB Qwen3.6-35B-A3B with
@@ -894,6 +1085,64 @@ public sealed partial class CircleNeuronService : Service
                 pending);
         }
         catch { /* a missing dead-man's switch must never take the service down */ }
+    }
+
+    /// <summary>
+    /// Whether Android says this service's last death was plainly not the model's.
+    /// </summary>
+    /// <remarks>
+    /// THE PLATFORM'S WORD, WHERE IT GIVES ONE. From Android 11 the system records
+    /// why each process ended. A breadcrumb that survived proves only that the
+    /// process died inside a load; this says whether it was stopped by the person,
+    /// updated underneath itself (which every adb install mid-load does), or lost a
+    /// process it was bound to - none of which is the model's doing.
+    /// <para>
+    /// A LOW-MEMORY KILL IS NOT EXEMPT, on purpose. A model too big for the phone
+    /// dies by exactly that kill on every load, and exempting it would let it loop
+    /// for ever. Those stay with the two-strike rule in CrashVerdict.
+    /// </para>
+    /// <para>
+    /// Before Android 11 there is no record, and this answers false: the two-strike
+    /// rule alone decides, which is still far better than one.
+    /// </para>
+    /// </remarks>
+    private static bool LastDeathWasTheSystems(Context context)
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(30)) return false;
+
+        try
+        {
+            var am = (ActivityManager?)context.GetSystemService(Context.ActivityService);
+            var exits = am?.GetHistoricalProcessExitReasons(context.PackageName, 0, 1);
+            if (exits is null || exits.Count == 0) return false;
+
+            // THE DOCUMENTED INTEGERS, NOT THE BINDING'S NAMES. Android's REASON_*
+            // values are public, stable API (ApplicationExitInfo); comparing on them
+            // compiles whether the binding surfaces Reason as an int or as an enum,
+            // and does not depend on how it chose to name the members.
+            //
+            // EXIT_SELF (1) IS NOT ON THIS LIST. Nothing in this codebase exits its own
+            // process, so a self-exit during a load is a native library calling exit()
+            // - which is the model's failure, not the platform's.
+            const int PermissionChange = 8, UserRequested = 10,
+                      UserStopped = 11, DependencyDied = 12,
+                      PackageStateChange = 15, PackageUpdated = 16;   // the last two: API 34
+
+            var why = (int)exits[0].Reason;
+            var notTheModel =
+                   why is PermissionChange or UserRequested or UserStopped or DependencyDied
+                || (OperatingSystem.IsAndroidVersionAtLeast(34) && why is PackageStateChange or PackageUpdated);
+
+            global::Android.Util.Log.Info(LogTag,
+                $"last exit: reason={why} ({exits[0].Description ?? "no description"}) - "
+                + (notTheModel ? "not held against the model" : "counted as a strike if it was mid-load"));
+            return notTheModel;
+        }
+        catch
+        {
+            // No record is not evidence either way; the strike rule decides.
+            return false;
+        }
     }
 
     /// <summary>Cancels the dead-man's alarm, for an ORDERLY stop that removes the notice itself.</summary>

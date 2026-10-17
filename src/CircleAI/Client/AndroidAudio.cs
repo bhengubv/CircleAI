@@ -56,8 +56,30 @@ public sealed class AndroidAudioCapture : IAudioCapture
         // aggressive comms-grade suppression that eats the consonants a keyword
         // spotter needs. It is one constant, and it is the single highest-value
         // line in this file.
+        // SWITCHABLE SO IT CAN BE MEASURED, AND THE DEFAULT IS UNCHANGED.
+        //
+        // Measured on a P30 on 2026-10-12: this capture wrote down the exact
+        // samples it handed the spotter while its owner said "Hey B!" at normal
+        // distance, and the phone's own recorder app recorded the same phrase in
+        // the same room four minutes later:
+        //
+        //     recorder app   peak 0,449   median per-second RMS 0,0446
+        //     this capture   peak 0,187   median per-second RMS 0,0014
+        //
+        // Our loudest second was 0,0080, below the 0,0083 an empty room
+        // measures. The recorder's audio fires the shipped keyword eight times
+        // through the identical decoder; ours fires none, and could not.
+        //
+        // The paragraph above is not being overruled on that - it carries its
+        // own measurement and may still be right. CapturePolicy only makes the
+        // combinations selectable by marker file, so which part of this chain
+        // costs 30 dB is answered by captures rather than by argument.
+        var policy = CircleAI.Voice.CapturePolicy.From(
+            global::Android.App.Application.Context.GetExternalFilesDir(null)?.AbsolutePath);
+
         _record = new AudioRecord(
-            AudioSource.VoiceRecognition, SampleRate, ChannelIn.Mono, Encoding.Pcm16bit, bufferSize);
+            policy.RawMic ? AudioSource.Mic : AudioSource.VoiceRecognition,
+            SampleRate, ChannelIn.Mono, Encoding.Pcm16bit, bufferSize);
 
         if (_record.State != State.Initialized)
         {
@@ -72,7 +94,7 @@ public sealed class AndroidAudioCapture : IAudioCapture
             yield break;
         }
 
-        AttachFarFieldEffects(_record.AudioSessionId);
+        AttachFarFieldEffects(_record.AudioSessionId, policy);
         _record.StartRecording();
         var buffer = new byte[3200]; // 100 ms at 16 kHz mono 16-bit
         var empty = 0;               // consecutive reads that returned nothing
@@ -132,7 +154,7 @@ public sealed class AndroidAudioCapture : IAudioCapture
     /// it.
     /// </para>
     /// </remarks>
-    private void AttachFarFieldEffects(int sessionId)
+    private void AttachFarFieldEffects(int sessionId, CircleAI.Voice.CapturePolicy policy)
     {
         // NAMED, NOT COUNTED, AND THE ABSENT ONES NAMED TOO.
         //
@@ -167,17 +189,35 @@ public sealed class AndroidAudioCapture : IAudioCapture
             }
         }
 
-        Try("AGC", Android.Media.Audiofx.AutomaticGainControl.IsAvailable,
-            () => Android.Media.Audiofx.AutomaticGainControl.Create(sessionId));
-        Try("noise suppressor", Android.Media.Audiofx.NoiseSuppressor.IsAvailable,
-            () => Android.Media.Audiofx.NoiseSuppressor.Create(sessionId));
-        // Echo cancellation matters once the device can talk back: without it the
-        // assistant's own voice reaches the microphone and it answers itself.
-        Try("echo canceller", Android.Media.Audiofx.AcousticEchoCanceler.IsAvailable,
-            () => Android.Media.Audiofx.AcousticEchoCanceler.Create(sessionId));
+        if (!policy.NoEffects)
+        {
+            Try("AGC", Android.Media.Audiofx.AutomaticGainControl.IsAvailable,
+                () => Android.Media.Audiofx.AutomaticGainControl.Create(sessionId));
+            Try("noise suppressor", Android.Media.Audiofx.NoiseSuppressor.IsAvailable,
+                () => Android.Media.Audiofx.NoiseSuppressor.Create(sessionId));
+
+            // Echo cancellation matters once the device can talk back: without it the
+            // assistant's own voice reaches the microphone and it answers itself.
+            //
+            // AND IT IS THE STANDING SUSPECT FOR THE 30 dB THIS CAPTURE LOSES. An
+            // AEC is built for a voice call and expects a playback reference to
+            // cancel against; given none, some implementations suppress the near
+            // end instead. Detachable on its own so that can be tested without
+            // also giving up AGC and noise suppression.
+            if (!policy.NoEchoCanceller)
+            {
+                Try("echo canceller", Android.Media.Audiofx.AcousticEchoCanceler.IsAvailable,
+                    () => Android.Media.Audiofx.AcousticEchoCanceler.Create(sessionId));
+            }
+            else off.Add("echo canceller (detached by marker)");
+        }
+        else
+        {
+            off.Add("ALL effects (detached by marker)");
+        }
 
         Android.Util.Log.Info("CircleAI.Kws",
-            $"capture: VoiceRecognition, on=[{string.Join(", ", on)}]"
+            $"capture: {policy.Describe()}, on=[{string.Join(", ", on)}]"
             + (off.Count == 0 ? "" : $" missing=[{string.Join(", ", off)}]"));
 
         // SAID OUT LOUD, because it is the difference between a phone you can
@@ -233,6 +273,17 @@ public sealed class AndroidAudioPlayer : IAudioPlayer
             .SetBufferSizeInBytes(Math.Max(min, pcm.Length))!
             .SetTransferMode(AudioTrackMode.Static)!
             .Build();
+
+        // AND SAY SO WHILE IT PLAYS, because the comment below was right about
+        // the danger and only covered one of the two microphones.
+        //
+        // The wait below stops the TURN's capture restarting mid-sentence. The
+        // WAKE loop is a second microphone, always open in the service, and it
+        // never knew - so it recorded the assistant and transcribed it. Pulled
+        // off the P30 on 2026-10-12, the wake loop's own capture reads "I AM
+        // USING THE SMALLER BRAIN THE BIG ONE STOPPED THIS PHONE SO I LEFT IT
+        // ALONE", which is this phone, talking to itself.
+        using var mouth = OutLoud.While();
 
         var bytes = pcm.ToArray();
         track.Write(bytes, 0, bytes.Length);

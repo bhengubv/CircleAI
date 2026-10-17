@@ -173,6 +173,72 @@ public class SqliteModelCatalogTests
     }
 
     [Fact]
+    public void RESYNC_CHANGES_THE_RANK_AND_KEEPS_EVERYTHING_THIS_DEVICE_DECIDED()
+    {
+        // THE BUG IT EXISTS FOR, 2026-10-16. Qwen3.5-0.8B was tied at rank 7
+        // with Qwen2.5-1.5B and lost the tie. Raising its rank in the shipped
+        // registry would have changed nothing on the P30, because the catalogue
+        // there was seeded once and never refreshed - and the selector ranks the
+        // catalogue.
+        using var c = NewCatalog();
+        c.Upsert(Entry("Qwen3.5-0.8B-MNN", qualityRank: 7));
+        c.SetAssessment("Qwen3.5-0.8B-MNN", compatible: true, rank: 7.25);
+        c.SetInstalled("Qwen3.5-0.8B-MNN", true);
+
+        Assert.True(c.ReSync(Entry("Qwen3.5-0.8B-MNN", qualityRank: 8, license: "Apache-2.0")));
+
+        var e = c.Get("Qwen3.5-0.8B-MNN")!;
+        Assert.Equal(8, e.QualityRank);
+        Assert.Equal("Apache-2.0", e.License);
+
+        // And NOT ONE THING THIS DEVICE DECIDED HAS MOVED.
+        var verdict = c.AllAssessed().Single(a => a.Entry.Name == "Qwen3.5-0.8B-MNN");
+        Assert.True(verdict.Compatible);
+        Assert.Equal(7.25, verdict.Rank, 6);
+        Assert.True(c.IsInstalled("Qwen3.5-0.8B-MNN"), "a same-version refresh keeps the copy on disk");
+    }
+
+    [Fact]
+    public void RESYNC_NEVER_PARDONS_A_MODEL_THIS_DEVICE_REFUSED()
+    {
+        // THE TRAP. Upsert is INSERT OR REPLACE with refused_reason NULL, so
+        // refreshing facts through it would quietly re-admit every refused model
+        // - including ones that killed the service. Pardoning is a deliberate act.
+        using var c = NewCatalog();
+        c.Upsert(Entry("Qwen3.5-4B-MNN", qualityRank: 11));
+        c.Refuse("Qwen3.5-4B-MNN", "aborted on this phone");
+
+        c.ReSync(Entry("Qwen3.5-4B-MNN", qualityRank: 12));
+
+        var verdict = c.AllAssessed().Single(a => a.Entry.Name == "Qwen3.5-4B-MNN");
+        Assert.Equal("aborted on this phone", verdict.RefusedReason);
+        Assert.Equal(12, verdict.Entry.QualityRank);
+    }
+
+    [Fact]
+    public void Resync_of_a_new_version_clears_installed_because_the_copy_is_stale()
+    {
+        // The same rule Upsert follows: a re-pin makes what is on disk out of date.
+        using var c = NewCatalog();
+        c.Upsert(Entry("Qwen3.5-0.8B-MNN", version: "3.5"));
+        c.SetInstalled("Qwen3.5-0.8B-MNN", true);
+
+        c.ReSync(Entry("Qwen3.5-0.8B-MNN", version: "3.6"));
+
+        Assert.False(c.IsInstalled("Qwen3.5-0.8B-MNN"));
+    }
+
+    [Fact]
+    public void Resync_of_an_unknown_model_does_nothing_and_says_so()
+    {
+        // Adding a model is Upsert's job; a refresh that invented rows would
+        // add them with no assessment and nobody deciding to.
+        using var c = NewCatalog();
+        Assert.False(c.ReSync(Entry("Never-Seen-MNN")));
+        Assert.Null(c.Get("Never-Seen-MNN"));
+    }
+
+    [Fact]
     public void Unknown_ids_read_as_absent()
     {
         using var cat = NewCatalog();

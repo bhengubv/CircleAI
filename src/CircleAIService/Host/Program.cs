@@ -72,31 +72,22 @@ public static class Program
                 wanted = CatalogModelSelector.Preferring(catalogue: null, registry)
                     .BestFit(DeviceProbe.Snapshot(), ChatCapability.Default)?.ModelId;
 
-            if (string.IsNullOrWhiteSpace(wanted))
-            {
-                Console.Error.WriteLine("No model in the catalogue fits this machine.");
-                return 2;
-            }
-
-            if (!loader.ModelPresent(wanted!))
-            {
-                Console.Error.WriteLine($"Model '{wanted}' is not on this machine.");
-                Console.Error.WriteLine($"Put it under {store}, or set CIRCLEAI_MODEL to one that is.");
-                return 2;
-            }
-
-            Console.WriteLine($"model: {wanted}");
+            // A MISSING MODEL NO LONGER ENDS THE SERVICE. It serves its status - "no
+            // brain here yet" - and keeps every question it is asked waiting for one,
+            // instead of exiting with a code nobody reads.
+            var present = !string.IsNullOrWhiteSpace(wanted) && loader.ModelPresent(wanted!);
+            Console.WriteLine(present
+                ? $"model: {wanted}"
+                : $"no model here yet ({(string.IsNullOrWhiteSpace(wanted) ? "nothing fits this machine" : wanted + " is not under " + store)}); questions will wait for one");
 
             var options = new AIOptions
             {
                 ModelStorageDirectory = store,
                 ModelId               = wanted,
-
-                // NOT WarmOnStart. The phone pays the cold start up front because
-                // somebody is watching a notification that says "loading"; a desktop
-                // service starts at login with nobody looking, and loading a model
-                // nobody has asked for yet is gigabytes held against a maybe.
-                WarmOnStart = false,
+                WarmOnStart           = true,
+                NeverFetch            = true,
+                SystemPrompt          = CircleAI.Assistant.AssistantPersona.Prompt,
+                OverviewAnswer        = CircleAI.Assistant.AssistantPersona.CanDoSpoken,
             };
 
             var service = new AIService(
@@ -106,8 +97,69 @@ public static class Program
                 modelSelector:    CatalogModelSelector.Preferring(catalogue: null, registry),
                 modelRegistry:    registry);
 
-            await using var endpoint = new HttpLoopbackEndpoint(options);
+            // THE SAME REQUEST PATH AS THE PHONE: durable questions, one worker, readiness.
+            var data = DataDirectory();
+            Directory.CreateDirectory(data);
+            var readiness = new CircleAI.Assistant.Lifecycle.ReadinessTracker(Path.Combine(data, "readiness.json"));
+            await using var brain = new InProcessBrainWorker(async ct =>
+            {
+                if (!present) throw new ModelNotInstalledException(wanted ?? "(none)", damaged: false);
+                await service.StartAsync(ct).ConfigureAwait(false);
+                return new InProcessBrain(service, wanted!);
+            }, log: line => Console.WriteLine(line));
+            brain.StatusChanged += (_, s) => readiness.Report(new CircleAI.Assistant.Lifecycle.ComponentState(
+                CircleAI.Assistant.Lifecycle.ReadinessComponents.Brain, s.Phase, s.Step, s.LastFailure?.Kind,
+                CircleAI.Assistant.Lifecycle.PauseReason.None,
+                s.LastFailure is { } f ? CircleAI.Assistant.Lifecycle.ReadinessSentences.For(f.Kind)
+                                       : CircleAI.Assistant.Lifecycle.ReadinessSentences.For(
+                                             CircleAI.Assistant.Lifecycle.ComponentState.Of("brain", s.Phase, "", s.Since)),
+                s.ModelId, s.Since, null, s.RetryAfter));
+            readiness.Report(CircleAI.Assistant.Lifecycle.ComponentState.Of(
+                CircleAI.Assistant.Lifecycle.ReadinessComponents.Brain,
+                present ? CircleAI.Assistant.Lifecycle.BrainPhase.Installed : CircleAI.Assistant.Lifecycle.BrainPhase.NoModel,
+                present ? CircleAI.Assistant.Lifecycle.ReadinessSentences.Installed : CircleAI.Assistant.Lifecycle.ReadinessSentences.NoModel,
+                DateTimeOffset.UtcNow, wanted));
+
+            using var store2 = new CircleAI.Assistant.Requests.SqliteAskStore(Path.Combine(data, "asks.db"));
+
+            // ONE MEMORY FOR THIS MACHINE'S SERVICE, as the phone has one for the device.
+            using var memory = new CircleAI.Memory.MemoryService(Path.Combine(data, "memory"));
+            var shortcuts = new List<CircleAI.Assistant.Requests.IAskShortcut>
+            {
+                new CircleAI.Assistant.Requests.RememberShortcut(_ => memory),
+                new CircleAI.Assistant.Requests.RecallShortcut(_ => memory),
+            };
+            shortcuts.AddRange(CircleAI.Assistant.Requests.AskShortcuts.Standard());
+
+            await using var coordinator = new CircleAI.Assistant.Requests.RequestCoordinator(
+                store2, brain, CircleAI.Assistant.Requests.ServiceLimits.For(DeviceProbe.Snapshot()),
+                readiness, conversations: null, shortcuts,
+                isFirstParty: _ => true, log: line => Console.WriteLine(line));
+            coordinator.Start();
+
+            await using var endpoint = new HttpLoopbackEndpoint(options)
+            {
+                Asks = coordinator,
+                Readiness = readiness,
+                HealthFacts = () => new List<KeyValuePair<string, string>>
+                {
+                    new("pid", Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    new("workingSetBytes", Environment.WorkingSet.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    new("gcHeapBytes", GC.GetTotalMemory(false).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    new("queueDepth", coordinator.QueueDepth.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    new("currentAsk", coordinator.CurrentAskId ?? string.Empty),
+                    new("brainPhase", brain.Status.Phase.ToString()),
+                    new("brainModel", brain.ModelId ?? string.Empty),
+                },
+                Quality = (caller, ct) => new CircleAI.Assistant.Quality.QualityRunner(coordinator, caller)
+                    .RunAsync(null, TimeSpan.FromMinutes(3), ct),
+            };
             await endpoint.StartAsync(service, stopping.Token).ConfigureAwait(false);
+
+            // THE SERVICE EXE OWNS THE MODEL, so it loads it now unless asked not to: a
+            // question should not be the thing that pays for the load.
+            if (present && Environment.GetEnvironmentVariable("CIRCLEAI_LAZY") != "1")
+                _ = brain.EnsureReadyAsync(stopping.Token).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
 
             // THE PORT AND THE TOKEN ARE THE WHOLE INTERFACE, so they are printed
             // rather than left for somebody to find in a log. The endpoint generates
@@ -131,6 +183,14 @@ public static class Program
             Console.Error.WriteLine("CircleAI service could not start: " + ex.Message);
             return 1;
         }
+    }
+
+    /// <summary>Where the service keeps its questions and state (CIRCLEAI_DATA overrides).</summary>
+    private static string DataDirectory()
+    {
+        var set = Environment.GetEnvironmentVariable("CIRCLEAI_DATA");
+        if (!string.IsNullOrWhiteSpace(set)) return set!;
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CircleAI", "service");
     }
 
     /// <summary>Where this machine keeps the models.</summary>

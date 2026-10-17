@@ -43,4 +43,17 @@ public enum LinkScope
     /// </para>
     /// </remarks>
     Voice = 8,
+
+    // APPENDED. The wire carries the int, so a new flag goes on the end and an older
+    // service simply never grants it. Our own apps (same signing key) are minted
+    // whatever they ask for; a third party must be granted these by the person.
+
+    /// <summary>Start or stop model downloads - it spends the person's data and storage.</summary>
+    Setup = 16,
+
+    /// <summary>Administer the models: clear dead weight, lift a refusal, run the quality check.</summary>
+    ModelAdmin = 32,
+
+    /// <summary>Queue work nobody is watching in the background lane.</summary>
+    Background = 64,
 }

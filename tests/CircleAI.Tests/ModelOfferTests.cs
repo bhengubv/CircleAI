@@ -102,12 +102,34 @@ public sealed class ModelOfferTests : IDisposable
     public void An_assessed_and_incompatible_model_is_not_offered()
     {
         // The whole point of Part 4: a row the assessor judged against THIS device
-        // and rejected never reaches a download offer.
-        _cat.Upsert(Model("huge") with { MinRamGb = 500, TotalBytes = 500_000_000_000 });
+        // and rejected never reaches a download offer. (A voice here: for the BRAIN
+        // the veto moved - see the next test.)
+        _cat.Upsert(Model("huge") with
+        {
+            Modality = ModelModality.Tts, MinRamGb = 500, TotalBytes = 500_000_000_000,
+        });
         DeviceModelAssessor.MnnOnly(_cat).Assess(Phone());
 
         Assert.NotNull(_cat.Assessment("huge")!.AssessedAt);
         Assert.False(ModelOffer.Worth(_cat, "huge"));
+    }
+
+    [Fact]
+    public void For_the_brain_the_fit_rule_does_the_refusing_not_the_boot_time_verdict()
+    {
+        // `compatible` is the assessor's reading of FREE RAM at boot. On the P30 on
+        // 2026-10-16 it said no to every Qwen3.5 there is, and as a veto that meant
+        // setup planned no brain at all. For chat models the veto is now the shared
+        // fit rule's - the best that fits now, else the smallest this phone could
+        // EVER hold - which still never offers a model this phone cannot hold.
+        var huge = Model("huge-brain") with { MinRamGb = 500, TotalBytes = 500_000_000_000 };
+        _cat.Upsert(huge);
+        DeviceModelAssessor.MnnOnly(_cat).Assess(Phone());
+
+        Assert.False(_cat.Assessment("huge-brain")!.Compatible);
+        Assert.True(ModelOffer.Worth(_cat, "huge-brain"));            // not this bit's veto...
+        Assert.False(ModelFit.CouldEverHold(huge, Phone()));          // ...the rule's, and it says no
+        Assert.Null(ModelChoice.SmallestEverHeld([huge], Phone()));
     }
 
     [Fact]

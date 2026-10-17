@@ -179,6 +179,69 @@ public sealed class ZipformerKwsSpotter : IDisposable
     /// </remarks>
     public event EventHandler<KwsProgress>? KeywordProgress;
 
+    /// <summary>Which graph file was chosen, and whether it is the one asked for.</summary>
+    /// <param name="Kind">encoder / decoder / joiner.</param>
+    /// <param name="Path">The file that will be loaded.</param>
+    /// <param name="IsQuantized">Whether that file is the int8 build.</param>
+    /// <param name="AsAsked">
+    /// False when the bundle had no copy at the requested precision. The file is
+    /// still usable; the CALLER'S ASSUMPTION about it is not.
+    /// </param>
+    public readonly record struct GraphPick(string Kind, string Path, bool IsQuantized, bool AsAsked);
+
+    /// <summary>Picks one graph out of a bundle's files at the precision asked for.</summary>
+    /// <remarks>
+    /// A PURE FUNCTION OVER FILE NAMES, AND THAT IS THE WHOLE POINT. The rule it
+    /// replaces lived inside a local function inside a constructor that needs
+    /// three ONNX graphs, a tokens file and a bpe model on disk - so no test
+    /// could construct one, no test could reach the rule, and the one case that
+    /// mattered (a bundle shipping only ONE precision) went unexamined until a
+    /// phone sat deaf for four months. Names in, choice out, asserted on both
+    /// framework legs in microseconds.
+    /// </remarks>
+    /// <param name="files">Every .onnx path in the bundle.</param>
+    /// <param name="kind">encoder / decoder / joiner.</param>
+    /// <param name="preferQuantized">True to want int8, false to want float.</param>
+    /// <exception cref="FileNotFoundException">No file of that kind at any precision.</exception>
+    public static GraphPick PickGraph(
+        IReadOnlyList<string> files, string kind, bool preferQuantized)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+
+        var ofKind = files
+            .Where(p => System.IO.Path.GetFileName(p).Contains(kind, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (ofKind.Count == 0)
+            throw new FileNotFoundException($"no *{kind}*.onnx in the bundle");
+
+        static bool Int8(string p) =>
+            System.IO.Path.GetFileName(p).Contains("int8", StringComparison.OrdinalIgnoreCase);
+
+        var wanted = ofKind.FirstOrDefault(p => Int8(p) == preferQuantized);
+        if (wanted is not null) return new GraphPick(kind, wanted, preferQuantized, true);
+
+        // ONLY ONE PRECISION SHIPPED. Taking it is right - half a wake word beats
+        // none - but the caller asked for the other one and must be told, because
+        // every threshold it holds was calibrated against the precision it thinks
+        // it is running.
+        var only = ofKind[0];
+        return new GraphPick(kind, only, Int8(only), false);
+    }
+
+    /// <summary>True when the encoder actually loaded is the int8 build.</summary>
+    /// <remarks>
+    /// READ THIS BEFORE BELIEVING A THRESHOLD. The gate is calibrated against the
+    /// float graph's output distribution; on int8 the same phrase scores an order
+    /// of magnitude lower and no threshold rescues it, because a keyword token
+    /// must win a place in the beam on its acoustic score ALONE - the context
+    /// boost is added after selection, not before it.
+    /// </remarks>
+    public bool EncoderIsQuantized { get; }
+
+    /// <summary>True when every graph loaded is at the precision that was asked for.</summary>
+    public bool RunningAsAsked { get; }
+
     /// <summary>Loads a bundle directory (encoder/decoder/joiner + tokens + keywords).</summary>
     /// <param name="directory">Extracted bundle path.</param>
     /// <param name="keywordsFile">Defaults to keywords.txt beside the models.</param>
@@ -195,21 +258,53 @@ public sealed class ZipformerKwsSpotter : IDisposable
         // distribution is flat enough that keyword tokens sat around p=0.01 where
         // the float graphs put them above 0.3. Nothing errors; the wake word
         // simply never fires. Float is the default and int8 is opt-in.
-        string Find(string contains, string ext = ".onnx")
-        {
-            var all = Directory.GetFiles(directory, "*" + ext)
-                .Where(p => Path.GetFileName(p).Contains(contains, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (all.Count == 0) throw new FileNotFoundException($"no *{contains}*{ext} in {directory}");
+        //
+        // AND THEN THE GUARD ABOVE DEFEATED ITSELF, FOR FOUR MONTHS.
+        //
+        // The rule was `FirstOrDefault(matches preference) ?? all[0]` - and the
+        // bundle we actually ship, KWS-Zipformer-HeyB, contains ONLY
+        // encoder.int8.onnx. There is no float copy. So the filter matched
+        // nothing, the `?? all[0]` fallback handed back the int8 encoder anyway,
+        // and the precaution written three lines above became a comment
+        // describing a bug instead of preventing one. No error. No log line.
+        //
+        // Measured on a P30 on 2026-10-11, before this was found: "Hey B"
+        // compiles to "_HE Y _B", the first two tokens matched 1,796 times, and
+        // "_B" was never emitted once in ~14,000 frames - peak 0.0320, which is
+        // the comment's own int8 figure rather than its float one.
+        //
+        // A SILENT FALLBACK TO THE KNOWN-BAD GRAPH IS NOT A FALLBACK, IT IS THE
+        // FAULT WEARING THE GUARD'S CLOTHES. It still loads - refusing would take
+        // the wake word off a phone that at least has a chance on a longer
+        // phrase - but it now says so, by name, every single time.
+        var opts = new SessionOptions { InterOpNumThreads = 1, IntraOpNumThreads = 1 };
 
-            bool IsInt8(string p) => Path.GetFileName(p).Contains("int8", StringComparison.OrdinalIgnoreCase);
-            return all.FirstOrDefault(p => IsInt8(p) == preferQuantized) ?? all[0];
+        var encoderPick = PickGraph(Directory.GetFiles(directory, "*.onnx"), "encoder", preferQuantized);
+        var decoderPick = PickGraph(Directory.GetFiles(directory, "*.onnx"), "decoder", preferQuantized);
+        var joinerPick  = PickGraph(Directory.GetFiles(directory, "*.onnx"), "joiner",  preferQuantized);
+
+        EncoderIsQuantized = encoderPick.IsQuantized;
+        RunningAsAsked     = encoderPick.AsAsked && decoderPick.AsAsked && joinerPick.AsAsked;
+
+        foreach (var pick in new[] { encoderPick, decoderPick, joinerPick })
+        {
+            if (pick.AsAsked) continue;
+
+            // THE LINE THAT WOULD HAVE SAVED FOUR MONTHS. It names the graph, the
+            // precision, and the consequence - because "loaded a different file"
+            // means nothing to whoever reads this at two in the morning, and
+            // "the wake word cannot fire" means everything.
+            VoiceTrace.Write(
+                $"kws: WANTED the {(preferQuantized ? "int8" : "float")} {pick.Kind} and this bundle has only "
+                + $"{Path.GetFileName(pick.Path)} - running {(pick.IsQuantized ? "QUANTIZED" : "float")}. "
+                + (pick.IsQuantized
+                    ? "int8 flattens the output distribution: keyword tokens land near p=0,01 where float puts them above 0,3, so the phrase may NEVER complete."
+                    : "float was not asked for but is the safer of the two."));
         }
 
-        var opts = new SessionOptions { InterOpNumThreads = 1, IntraOpNumThreads = 1 };
-        _encoder = new InferenceSession(Find("encoder"), opts);
-        _decoder = new InferenceSession(Find("decoder"), opts);
-        _joiner  = new InferenceSession(Find("joiner"),  opts);
+        _encoder = new InferenceSession(encoderPick.Path, opts);
+        _decoder = new InferenceSession(decoderPick.Path, opts);
+        _joiner  = new InferenceSession(joinerPick.Path,  opts);
 
         // From the model, not from memory.
         var meta = _encoder.ModelMetadata.CustomMetadataMap;
@@ -581,6 +676,127 @@ public sealed class ZipformerKwsSpotter : IDisposable
         return ys;
     }
 
+    /// <summary>What a half-matched phrase is waiting for, and what arrived instead.</summary>
+    /// <remarks>
+    /// ONE LINE PER DISTINCT STALL, not one per frame. The decode runs 25 frames
+    /// a second in bursts of eight, and a hypothesis sits in the beam unchanged
+    /// until it is pruned - so printing every frame would bury the one transition
+    /// that matters under a hundred copies of itself. Keyed on what is actually
+    /// being reported, so a stall that persists prints once and a stall that
+    /// CHANGES prints again.
+    /// <para>
+    /// IT REPORTS THE DEEPEST HYPOTHESIS, for the same reason the progress event
+    /// does: the leader is almost always the all-blank path, because blank is the
+    /// most likely symbol on nearly every frame.
+    /// </para>
+    /// </remarks>
+    private void TraceStall(List<Hyp> prev, float[][] acoustic)
+    {
+        var deepest = -1;
+        for (var i = 0; i < prev.Count; i++)
+            if (prev[i].State.Level > 0
+                && (deepest < 0 || prev[i].State.Level > prev[deepest].State.Level))
+                deepest = i;
+
+        if (deepest < 0) { _lastStall = null; return; }
+
+        var state = prev[deepest].State;
+        var scores = acoustic[deepest];
+
+        // EVERY OUT-EDGE, NOT THE BEST ONE, because at a shared node there is
+        // more than one and the phrase label cannot be trusted. PrefixPhrase is
+        // stamped when a node is first CREATED, so the node for "Hey" is named
+        // after whichever phrase was registered first - with "Hey B" and "Hey
+        // Circle AI" both loaded it always reads "Hey B", even on the hypothesis
+        // that is still free to become the other one. The edges are the honest
+        // answer: they say what would actually be accepted next.
+        var wants = new System.Text.StringBuilder();
+        foreach (var id in state.Next.Keys)
+        {
+            if (id < 0 || id >= scores.Length) continue;
+            if (wants.Length > 0) wants.Append(" | ");
+            wants.Append(System.FormattableString.Invariant(
+                $"{Piece(id)} p={Math.Exp(scores[id]):F4}"));
+        }
+
+        if (wants.Length == 0) { _lastStall = null; return; }
+
+        // AND WHAT THE MODEL ACTUALLY OFFERED - THE TOP NON-BLANK, NOT THE TOP.
+        //
+        // THE FIRST VERSION PRINTED THE ARGMAX AND THE ARGMAX IS USELESS HERE.
+        // Measured on a P30 on 2026-10-11: blank won 13,788 of 13,969 traced
+        // frames, about 98%. That is not a fault - a transducer emits blank to
+        // advance time and a real token only on the frame the sound lands - so
+        // "got <blank> p=0,99" was printed thirteen thousand times and said
+        // nothing at all. The column answered the wrong question.
+        //
+        // What names the failure is which REAL tokens the model was weighing
+        // while the graph waited. Three of them, because one is a coin toss
+        // between near-homophones and the interesting case is precisely a wanted
+        // token sitting just below a wrong one.
+        var top = new int[TopCandidates];
+        for (var n = 0; n < TopCandidates; n++) top[n] = -1;
+
+        for (var v = 0; v < scores.Length; v++)
+        {
+            if (v == Blank || v == _unkId) continue;
+
+            for (var n = 0; n < TopCandidates; n++)
+            {
+                if (top[n] >= 0 && scores[v] <= scores[top[n]]) continue;
+                for (var m = TopCandidates - 1; m > n; m--) top[m] = top[m - 1];
+                top[n] = v;
+                break;
+            }
+        }
+
+        var got = new System.Text.StringBuilder();
+        foreach (var id in top)
+        {
+            if (id < 0) continue;
+            if (got.Length > 0) got.Append(" | ");
+            got.Append(System.FormattableString.Invariant(
+                $"{Piece(id)} p={Math.Exp(scores[id]):F4}"));
+        }
+
+        // Blank's own share, kept as one number rather than one line: it says
+        // whether this frame carried a sound at all.
+        var blank = Math.Exp(scores[Blank]);
+
+        // INVARIANT, because this machine writes decimals with a comma and these
+        // numbers are read next to a threshold written with a dot.
+        var line = System.FormattableString.Invariant(
+            $"kws: at {state.Level}/{state.PrefixLength} of \"{state.PrefixPhrase}\" - wants {wants}, heard {got} (blank {blank:F2})");
+
+        if (line == _lastStall) return;
+        _lastStall = line;
+        VoiceTrace.Write(line);
+    }
+
+    /// <summary>A token id as the text the model was trained on.</summary>
+    /// <remarks>
+    /// Blank and unknown are named rather than rendered, because their pieces are
+    /// unprintable and "got &lt;blank&gt;" is the commonest and most informative
+    /// answer there is: it means the model heard no token at all, as opposed to
+    /// hearing a different one.
+    /// </remarks>
+    private string Piece(int id)
+    {
+        if (id == Blank) return "<blank>";
+        if (id == _unkId) return "<unk>";
+        return _tokenText.TryGetValue(id, out var t) ? t : $"<{id}>";
+    }
+
+    private string? _lastStall;
+
+    /// <summary>How many real tokens the stall trace names.</summary>
+    /// <remarks>
+    /// Three. One cannot show a wanted token sitting just below a wrong one,
+    /// which is the whole case this exists to catch; ten would put the vocabulary
+    /// in the log. Three fits a line and covers a near-homophone set.
+    /// </remarks>
+    private const int TopCandidates = 3;
+
     private Dictionary<string, Hyp> StartHyps()
     {
         var h = new Hyp { Ys = StartContext(), State = Graph.Root };
@@ -612,6 +828,32 @@ public sealed class ZipformerKwsSpotter : IDisposable
             for (var i = 0; i < prev.Count; i++)
                 acoustic[i] = LogSoftmax(JoinerLogits(enc, DecoderFor(prev[i].Ys)));
             _vocab = acoustic[0].Length;
+
+            // WHAT THE PHRASE IS WAITING FOR, AND WHAT THE MODEL GAVE INSTEAD.
+            //
+            // THE ONE NUMBER THAT NAMES A STALL, AND NOTHING HAS EVER PRINTED IT.
+            // Measured on a P30 on 2026-10-11: "Hey B" reached 2 of 3 tokens
+            // dozens of times over an hour and never 3, at probabilities up to
+            // 0,83 against a gate of 0,20. The gate was therefore not the
+            // problem - a wake fires only at the graph's end node - but nothing
+            // on the device could say WHICH token was missing or what arrived in
+            // its place, so the cause was three competing stories and no
+            // evidence.
+            //
+            // The phrase compiles to three pieces: "_HE Y _B" (proven against
+            // the registry's sha256 for keywords.txt, 832f9367..., since the
+            // bundle itself is not in the repo). So the question is precisely
+            // "what does the model emit where _B is expected", and this is the
+            // only place in the decode where both halves of that comparison
+            // exist: prev[i].State knows what the graph wants next, acoustic[i]
+            // is what this frame actually scored, and _tokenText renders either
+            // one as text.
+            //
+            // SILENT UNLESS A PHRASE IS ACTUALLY UNDER WAY. Level > 0 means some
+            // hypothesis has already matched a token, which never happens in an
+            // empty room - so this costs nothing until somebody speaks, and then
+            // says exactly what went wrong.
+            if (VoiceTrace.Enabled) TraceStall(prev, acoustic);
 
             var ranked = new double[prev.Count * _vocab];
             for (var i = 0; i < prev.Count; i++)

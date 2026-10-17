@@ -206,9 +206,13 @@ public sealed class TheCatalogueIsTheSelectorTests
         private static InvalidOperationException Boom() => new("database is locked");
 
         public void Upsert(ModelEntry entry) => throw Boom();
+        public bool ReSync(ModelEntry entry) => throw Boom();
         public void SetAssessment(string id, bool compatible, double rank) => throw Boom();
         public void Refuse(string id, string reason) => throw Boom();
         public void Pardon(string id) => throw Boom();
+        public int Strike(string id) => throw Boom();
+        public void RecordLoad(string id) => throw Boom();
+        public int ForgiveFirstStrikes(string reason) => throw Boom();
         public AssessedModel? Assessment(string id) => throw Boom();
         public IReadOnlyList<AssessedModel> AllAssessed() => throw Boom();
         public void SetInstalled(string id, bool installed) => throw Boom();

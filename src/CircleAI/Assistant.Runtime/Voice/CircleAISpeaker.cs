@@ -577,7 +577,34 @@ public sealed class CircleAISpeaker : IDisposable
                 ? MobilePhonemizerFactory!("en-us")          // out-of-process espeak service
                 : new EspeakPhonemizer("en-us", espeak);     // shell to the binary
 
-        var engine = new OnnxTtsEngine(onnx, phonemizer);
+        // KEPT BETWEEN SENTENCES, BECAUSE THROWING IT AWAY COST THREE TO NINE
+        // SECONDS OF EVERY SPOKEN REPLY.
+        //
+        // Measured on a P30, from the device's own tts lines on 2026-10-11/12.
+        // Nine of twelve syntheses that session logged "(INCLUDING model open)":
+        //
+        //     21 chars -> 1393 ms audio in  2911 ms                    <- session already open
+        //      3 chars ->  487 ms audio in  6672 ms (INCLUDING model open)
+        //     29 chars -> 1695 ms audio in 10706 ms (INCLUDING model open)
+        //     39 chars -> 1950 ms audio in 12182 ms
+        //
+        // Three characters cost as much as thirty-nine, which is the signature
+        // of a fixed cost rather than synthesis: the load dominates and the
+        // words barely register. The owner's own words were "translate and
+        // transcribe are real-time but voice lags so bad" - and that is the
+        // difference. Those paths hold their model; this one built a new ONNX
+        // session for every sentence and let it go.
+        //
+        // KEYED ON EVERYTHING THAT CHANGES THE VOICE, so switching language or
+        // speaker still gets a correct engine rather than a stale one. A
+        // handful of entries, because a device ships a handful of voices.
+        //
+        // NOT A FIX FOR MEMORY PRESSURE, AND SHOULD NOT PRETEND TO BE. This
+        // phone runs at 95-100% swap, so the OS may evict the model underneath
+        // us whatever this cache believes; then the next sentence pays the load
+        // again and says so in the log. What this removes is the cost we were
+        // choosing to pay.
+        var engine = TtsEngines.For(onnx, phonemizer, PreferredSpeakerId, PreferredLanguageId);
 
         // THE TWO LINES THAT WERE MISSING. Ignored by single-speaker voices, which
         // declare no sid/langid input, so this is safe on the fallback path too.
@@ -704,7 +731,13 @@ public sealed class CircleAISpeaker : IDisposable
                 phonemizer = new EspeakPhonemizer("en-us", espeak);
             }
 
-            var en = new OnnxTtsEngine(onnx, phonemizer);
+            // FROM THE CACHE, LIKE THE SA VOICE - and this was the one that mattered.
+            // English is the voice most answers are spoken in, and it was the one
+            // still built fresh: every turn opened the model again. Measured on the
+            // P30 on 2026-10-16, the first sentence of an English answer read "39
+            // chars -> 2066 ms audio in 4826 ms (INCLUDING model open)" an hour
+            // after the service had already warmed a voice.
+            var en = TtsEngines.For(onnx, phonemizer);
             await en.PrepareAsync(ct).ConfigureAwait(false);
 
             Report(log, $"english : {EnglishVoice} on {Path.GetFileName(onnx)} (espeak G2P, WER 0.00)");
@@ -749,7 +782,11 @@ public sealed class CircleAISpeaker : IDisposable
             }
 
             // Null phonemizer deliberately: the lexicon replaces it entirely.
-            var en = new OnnxTtsEngine(onnx, null);
+            //
+            // FROM THE CACHE, with the speaker in the key: two lexicon voices on
+            // the same model but different speakers are different voices, and the
+            // cache must not hand one back for the other.
+            var en = TtsEngines.For(onnx, null, SpeakerFor(modelId));
 
             // A SPEAKER INDEX MEANS NOTHING ACROSS MODELS. PreferredSpeakerId is
             // 128 because that speaker was measured best in Vits-11ZA; VITS-jp has
@@ -882,10 +919,29 @@ public sealed class CircleAISpeaker : IDisposable
     }
 
     /// <summary>Frees both voices. Either may be absent; neither may be leaked.</summary>
+    /// <summary>Releases this speaker - and deliberately NOT its voices.</summary>
+    /// <remarks>
+    /// THE VOICES BELONG TO TtsEngines, AND DISPOSING THEM HERE WAS WHY THE CACHE
+    /// NEVER WORKED.
+    /// <para>
+    /// This used to dispose both engines. Once they came from the shared cache,
+    /// that meant every speaker - and CircleAITtsProbe makes and disposes one per
+    /// render - closed the session of an engine the cache would hand straight to
+    /// the next caller. It did not crash, which is what let it hide: Dispose
+    /// nulls the session and OnnxTtsEngine.EnsureSession, finding none, quietly
+    /// opens the model again. So the cache returned the same object every time
+    /// and the model was reloaded every time, and the only saving was one
+    /// allocation. The log said "INCLUDING model open" on every turn and the fix
+    /// that was meant to remove it was believed to have done so.
+    /// </para>
+    /// <para>
+    /// Releasing voices is TtsEngines.CloseAll's job - under memory pressure,
+    /// where one reload is the right trade against being killed.
+    /// </para>
+    /// </remarks>
     public void Dispose()
     {
-        _sa.Dispose();
-        _en?.Dispose();
+        // Nothing of ours to release: both engines are owned by TtsEngines.
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

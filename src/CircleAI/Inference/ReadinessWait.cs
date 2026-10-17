@@ -76,6 +76,25 @@ public static class ReadinessWait
     /// <param name="now">The clock. Null means <see cref="DateTime.UtcNow"/>.</param>
     /// <param name="delay">The sleep. Null means <see cref="Task.Delay(TimeSpan, CancellationToken)"/>.</param>
     /// <param name="ct">Cancellation. A cancelled wait answers false; it does not throw.</param>
+    /// <param name="givenUp">
+    /// Asked alongside <paramref name="ready"/>: true means it is never coming up
+    /// and the budget is pointless.
+    /// <para>
+    /// MEASURED, AND THE REASON THIS PARAMETER EXISTS. CircleNeuronService's own
+    /// remarks record it: the service reported a terminal failure in about two
+    /// seconds and the connection still waited its full ninety-second timeout,
+    /// "because polling a ready-flag cannot tell the difference between
+    /// still-loading and never-going-to. To a person that is an app that hangs."
+    /// A budget is for something slow. Spending it on something broken is 43
+    /// seconds of silence with the answer already known.
+    /// </para>
+    /// <para>
+    /// Null means "nothing can tell me", which is the honest default and the old
+    /// behaviour: wait out the budget. A throw is "not given up", for the same
+    /// reason a throw from <paramref name="ready"/> is "not ready" - a probe that
+    /// fails during startup is the normal case.
+    /// </para>
+    /// </param>
     /// <returns>True if it became ready inside the budget.</returns>
     /// <remarks>
     /// CHECKED BEFORE THE FIRST SLEEP, always. A caller whose thing is already up
@@ -94,7 +113,8 @@ public static class ReadinessWait
         Action<string>? say = null,
         Func<DateTime>? now = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<bool>? givenUp = null)
     {
         ArgumentNullException.ThrowIfNull(ready);
 
@@ -119,6 +139,18 @@ public static class ReadinessWait
             }
 
             if (ct.IsCancellationRequested) return false;
+
+            // IT HAS SAID SO ITSELF. Checked AFTER ready, so a thing that managed
+            // both is taken at its best, and before the budget, because the whole
+            // point is not to spend the rest of it.
+            if (givenUp is not null)
+            {
+                bool over;
+                try { over = givenUp(); }
+                catch { over = false; }
+                if (over) { say?.Invoke("not coming up"); return false; }
+            }
+
             if (clock() >= until) return false;
 
             if (!waited)

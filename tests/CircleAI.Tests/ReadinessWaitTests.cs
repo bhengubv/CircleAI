@@ -212,4 +212,79 @@ public sealed class ReadinessWaitTests
 
         Assert.Empty(said);
     }
+
+    // ── a thing that has given up is not worth waiting for ───────────────────
+
+    [Fact]
+    public async Task A_budget_is_not_spent_on_something_that_has_already_failed()
+    {
+        // CircleNeuronService's own remarks record this measurement: the service
+        // reported a terminal failure in about two seconds and the connection
+        // still waited its full ninety-second timeout, "because polling a
+        // ready-flag cannot tell the difference between still-loading and
+        // never-going-to. To a person that is an app that hangs."
+        var clock = new FakeClock();
+        var said = new List<string>();
+        var looks = 0;
+
+        var up = await ReadinessWait.UntilAsync(
+            ready: () => { looks++; return false; },
+            budget: TimeSpan.FromSeconds(45),
+            say: said.Add,
+            now: clock.Now, delay: clock.Delay,
+            givenUp: () => looks >= 2);
+
+        Assert.False(up);
+        Assert.True(clock.Slept < TimeSpan.FromSeconds(1),
+            $"waited {clock.Slept.TotalSeconds:N1}s for something that had already failed");
+        Assert.Contains("not coming up", said[^1]);
+    }
+
+    [Fact]
+    public async Task Ready_beats_given_up_when_both_answer_yes()
+    {
+        // A race between the load finishing and the state turning terminal: the
+        // brain is up, so the answer is yes. Taking it at its worst would throw
+        // away a working model over the order two flags happened to be set in.
+        var up = await ReadinessWait.UntilAsync(
+            ready: () => true,
+            budget: TimeSpan.FromSeconds(45),
+            givenUp: () => true);
+
+        Assert.True(up);
+    }
+
+    [Fact]
+    public async Task A_failing_probe_is_not_read_as_having_given_up()
+    {
+        // Same rule as ready: a probe that throws during startup is the normal
+        // case, not a verdict. Reading it as "never coming up" would abandon
+        // every cold start where the service object does not exist yet.
+        var clock = new FakeClock();
+        var checks = 0;
+
+        var up = await ReadinessWait.UntilAsync(
+            ready: () => ++checks >= 10,
+            budget: TimeSpan.FromSeconds(45),
+            now: clock.Now, delay: clock.Delay,
+            givenUp: () => throw new InvalidOperationException("no service yet"));
+
+        Assert.True(up);
+    }
+
+    [Fact]
+    public async Task Without_a_way_to_ask_it_waits_out_the_budget_as_before()
+    {
+        // The honest default. Null means "nothing can tell me", not "assume the
+        // worst" - and it keeps every existing caller's behaviour exactly.
+        var clock = new FakeClock();
+
+        var up = await ReadinessWait.UntilAsync(
+            ready: () => false,
+            budget: TimeSpan.FromSeconds(45),
+            now: clock.Now, delay: clock.Delay);
+
+        Assert.False(up);
+        Assert.True(clock.Slept >= TimeSpan.FromSeconds(44));
+    }
 }

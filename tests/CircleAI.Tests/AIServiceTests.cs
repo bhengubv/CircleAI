@@ -514,10 +514,12 @@ public sealed class AIServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task WarmOnStart_GeneratorThrowsNonCancelException_ServiceStartsAnyway()
+    public async Task WarmOnStart_GeneratorThrowsNonCancelException_StartFailsAndTheNextAskStartsAgain()
     {
-        // Contract: warm-up exceptions (other than OperationCanceledException) are
-        // swallowed with a warning log.  The service must reach _started = true.
+        // Contract (2026-10-17): a failed warm-up is a failed start. It used to be
+        // swallowed with a warning and the service reported ready over a model whose
+        // first answer had already failed - so the first person to ask found out. Now
+        // StartAsync throws, IsReady stays false, and the next question starts it again.
         var failOnce = new ThrowOnFirstCallGenerator("after-warmup-reply");
         var opts = new AIOptions
         {
@@ -527,11 +529,11 @@ public sealed class AIServiceTests : IDisposable
         };
         await using var svc = new AIService(opts, generatorFactory: _ => failOnce);
 
-        // StartAsync must NOT throw even though warm-up fails.
         var startEx = await Record.ExceptionAsync(() => svc.StartAsync());
-        Assert.Null(startEx);
+        Assert.NotNull(startEx);
+        Assert.False(svc.IsReady);
 
-        // Service must be operational after recovery.
+        // The next question starts it again, and this time the warm-up succeeds.
         var reply = await svc.AskAsync("hello");
         Assert.Equal("after-warmup-reply", reply);
     }
@@ -1551,7 +1553,7 @@ public sealed class AIServiceEdgeCaseTests : IDisposable
             generatorFactory: _ => new WarmupOceGenerator());
 
         // StartAsync must propagate the OCE — NOT swallow it as it does for
-        // other exceptions (see WarmOnStart_GeneratorThrowsNonCancelException_ServiceStartsAnyway).
+        // other exceptions either, any more (see WarmOnStart_GeneratorThrowsNonCancelException_StartFailsAndTheNextAskStartsAgain).
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => svc.StartAsync());
 

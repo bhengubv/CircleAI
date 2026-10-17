@@ -95,6 +95,29 @@ public static class WakeTurn
             // and it has to arrive while they are still deciding whether to carry on.
             try { Earcon.Woke(); } catch { /* a tone is never worth the turn */ }
 
+            // AND THE BRAIN STARTS ON THE NAME, NOT ON THE QUESTION.
+            //
+            // THE CHEAPEST SECONDS IN THE WHOLE TURN, AND THEY WERE BEING THROWN
+            // AWAY. A cold load is 13 to 23 s on the P30; the greeting, the
+            // microphone, the person speaking and Whisper transcribing are another
+            // 4 to 8 - and all of that used to happen with the brain untouched,
+            // because nothing asked it to start until the question was in hand.
+            // Starting here runs the load UNDERNEATH the part of the turn that was
+            // going to happen anyway, so a phone that would have answered at 20 s
+            // answers at 13, and a warm one is unaffected.
+            //
+            // Fire-and-forget by nature - Start only posts an intent - and
+            // swallowed, because ColdTurn asks again and waits properly later.
+            // This is an optimisation, never the mechanism.
+            try
+            {
+                CircleNeuronService.Start(global::Android.App.Application.Context);
+                if (CircleNeuronService.Brain is { } brain)
+                    _ = brain.EnsureReadyAsync(CancellationToken.None).ContinueWith(
+                        t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            }
+            catch (Exception ex) { Log.Warn(Tag, "could not start the brain early: " + ex.Message); }
+
             took = true;
             await CircleNeuronService.StopListeningAsync(ct).ConfigureAwait(false);
 
@@ -122,7 +145,9 @@ public static class WakeTurn
             // answered without a hello beats no answer.
             try
             {
-                await SayAsync(AssistantPersona.Greeting, ct).ConfigureAwait(false);
+                // FROM THE WARMED COPY - see WarmAsync for the seven seconds this
+                // used to cost on the first wake after the service started.
+                await GreetAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex) { Log.Warn(Tag, "could not greet: " + ex.Message); }
@@ -141,7 +166,9 @@ public static class WakeTurn
                 return;
             }
 
-            Log.Info(Tag, "heard: " + question);
+            // NEVER THE WORDS THEMSELVES. What a person says to their phone is not a
+            // log line; its length is enough to tell a question from nothing.
+            Log.Info(Tag, "heard: " + question!.Length + " chars");
 
             // AND IF ALL THEY SAID WAS THE NAME AGAIN, IT HAS ALREADY ANSWERED. The
             // greeting went out before the microphone opened; saying it twice is
@@ -154,11 +181,33 @@ public static class WakeTurn
 
             try { Earcon.Heard(); } catch { /* as above */ }
 
-            var answer = await AskAsync(question!, ct).ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(answer)) return;
+            // SPOKEN AS IT IS WRITTEN, ONE SENTENCE AT A TIME - AND THIS PATH WAS
+            // THE ONE THAT NEVER GOT IT.
+            //
+            // SpokenReply was built in September for exactly this complaint ("big
+            // gaps between speech input and Circle AI response") and wired into the
+            // app's turn loop only. The screen-off turn - the one somebody uses
+            // without picking the phone up - still generated the WHOLE answer, then
+            // synthesised the WHOLE of it, then played it: measured on a P30 at 21,7
+            // s of thinking followed by a render before any sound. The first
+            // sentence now costs its own render instead of the paragraph's, and the
+            // voice works through the rest while the model is still writing.
+            //
+            // AND THE HOLDING LINE GOES THROUGH THE SAME MOUTH, which is the only
+            // arrangement in which it cannot talk over the answer: one queue, one
+            // reader, strict order. Two players on one speaker is worse than
+            // silence.
+            await using var mouth = new SpokenReply(
+                (sentence, tok) => SayAsync(PlainReply.Clean(sentence), tok), ct);
 
-            Log.Info(Tag, "answer: " + answer!.Length + " chars");
-            await SayAsync(answer!, ct).ConfigureAwait(false);
+            var answer = await AskAsync(question!, mouth, ct).ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(answer))
+                Log.Info(Tag, "answer: " + answer!.Length + " chars");
+
+            // The sentences are already in flight; this waits for the last word to
+            // finish rather than for the text to.
+            await mouth.CompleteAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -212,30 +261,96 @@ public static class WakeTurn
         var spoken = new List<byte>();
         var clock = Stopwatch.StartNew();
 
+        // THE QUESTION IS NOW CAPTURED BY THE GATE THE WAKE WORD USES, AND KEPT
+        // WHOLE. Both halves of that were wrong, and they were found from the one
+        // wake that fired in four days of continuous listening on the P30:
+        //
+        //     06:43:50  HEARD "Hey B" in "HAY B"
+        //     06:44:15  captured 20480 bytes in 15180 ms
+        //     06:44:17  stt: 0,6 s audio ... 0 chars
+        //     06:44:17  nothing was said
+        //
+        // Fifteen seconds of listening kept 0,64 seconds of audio. The wake had
+        // worked, the owner asked his question, and 96 per cent of it was thrown
+        // away before a recogniser ever saw it.
+        //
+        // THE FIRST HALF: A THRESHOLD FROM THE WRONG INSTRUMENT. This used
+        // EnergyVadDetector at its default 0,02 RMS - a number taken from a
+        // close-talking microphone. Through this phone's capture path the
+        // owner's voice reads 0,002 to 0,016, so almost every frame of the
+        // question scored as silence and only a plosive or two cleared the bar.
+        // It is the same defect SpeechGate had at 0,004, living in a second
+        // owner; one fact with two owners ends up with two answers, and here
+        // the second answer was "nobody spoke".
+        //
+        // THE SECOND HALF: KEEPING FRAMES INSTEAD OF A QUESTION. Even with the
+        // right threshold, adding only the frames that cleared it chops the
+        // utterance into pieces - the quiet syllables, the consonants and the
+        // gaps between words are exactly the frames a level test rejects, and a
+        // recogniser needs all of them. And the loop ended the question at the
+        // first gap it saw, which with a 300 ms silence count is the space
+        // between two words.
+        //
+        // So the gate decides only WHEN the question starts and ends, and
+        // everything between those two moments is kept, plus a moment before
+        // the start so the first syllable is not clipped. The gate's own
+        // hangover is a full second, so a pause to think is not an ending.
         try
         {
             await using var mic = new AndroidAudioCapture();
-            var vad = new EnergyVadDetector();
+            // LearnsWhileOpen = false: a fresh gate that learned from the question
+            // would take the question as the room and shut mid-sentence. See it.
+            var gate = new CircleAI.Voice.SpeechGate { MostOpen = Longest, LearnsWhileOpen = false };
 
-            await foreach (var segment in vad
-                               .DetectAsync(mic.CaptureAsync(deadline.Token), deadline.Token)
-                               .ConfigureAwait(false))
+            // The last few blocks before the gate opened. A gate opens on the
+            // block that clears its bar, and the attack of the first word is
+            // quieter than its middle - without these it is clipped every time.
+            var before = new Queue<byte[]>();
+            const int BeforeBlocks = 3;     // ~300 ms at the capture's 100 ms blocks
+
+            var started = false;
+            var pcm = new float[1600];
+
+            await foreach (var chunk in mic.CaptureAsync(deadline.Token).ConfigureAwait(false))
             {
-                if (segment.IsSpeech)
+                // THE ACKNOWLEDGEMENT IS STILL IN THE ROOM. This listens straight
+                // after the phone has spoken, and the tail of its own sentence
+                // reaches the microphone off the walls - which this gate would
+                // otherwise open on, and call the question.
+                if (CircleAI.Voice.OutLoud.Now) continue;
+
+                var bytes = chunk.ToArray();
+                var samples = bytes.Length / 2;
+                if (samples > pcm.Length) pcm = new float[samples];
+                for (var i = 0; i < samples; i++)
+                    pcm[i] = (short)(bytes[i * 2] | (bytes[i * 2 + 1] << 8)) / 32768f;
+
+                if (gate.Wants(pcm.AsSpan(0, samples)))
                 {
-                    spoken.AddRange(segment.Audio.ToArray());
-                    continue;
+                    if (!started)
+                    {
+                        started = true;
+                        foreach (var b in before) spoken.AddRange(b);
+                        before.Clear();
+                    }
+                    spoken.AddRange(bytes);
+                }
+                else if (!started)
+                {
+                    before.Enqueue(bytes);
+                    while (before.Count > BeforeBlocks) before.Dequeue();
                 }
 
-                // Silence AFTER something was said is the end of the question.
-                // Silence before it is somebody who has not started yet.
-                if (spoken.Count > 0) break;
+                // The gate closing after something was said is the end of the
+                // question. Not "else if": a stretch that reaches Longest ends
+                // on a block that WAS kept, and that is still an ending.
+                if (started && gate.Closed) break;
 
                 // AND SILENCE THAT NEVER BECOMES ANYTHING IS ITS OWN ANSWER. Without
                 // this the loop runs the full Longest deadline on a room where nobody
                 // spoke, which is fifteen seconds of a phone doing nothing visible
                 // after it has just said hello.
-                if (clock.Elapsed > FirstWord) break;
+                if (!started && clock.Elapsed > FirstWord) break;
             }
         }
         catch (OperationCanceledException)
@@ -249,15 +364,156 @@ public static class WakeTurn
         return await speech.TranscribeAsync(spoken.ToArray(), null, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Put the question to the brain this process is already hosting.</summary>
-    private static async Task<string?> AskAsync(string question, CancellationToken ct)
+    /// <summary>Put the question to the brain, starting and waiting for it if need be.</summary>
+    /// <remarks>
+    /// THIS METHOD IS WHY "VOICE STILL DOESN'T RESPOND TO ME". It used to read
+    /// <c>if (node is null || !node.IsReady) { Log.Warn("nothing to ask"); return
+    /// null; }</c> - and the caller returns on a null answer, so on any phone where
+    /// EMUI had killed the service the whole turn ended without a sound. The person
+    /// said "Hey B", heard a hello and a beep, asked their question, and got
+    /// nothing. Measured on a P30 on 2026-10-10.
+    /// <para>
+    /// The link path had been fixed for exactly this a day earlier and this one was
+    /// not, because the rule was a private static on an Android Service that no test
+    /// leg could see. <see cref="ColdTurn"/> now owns it for both, and whether a
+    /// turn can end in silence is asserted on net9 and net10.
+    /// </para>
+    /// </remarks>
+    private static async Task<string?> AskAsync(
+        string question, SpokenReply mouth, CancellationToken ct)
     {
-        var node = CircleNeuronService.Node;
-        if (node is null || !node.IsReady)
+        // THROUGH THE QUEUE, LIKE EVERY OTHER QUESTION, when the host has one. The wake
+        // turn used to ask the in-process node directly and contend for its lock with
+        // every app's question, with no record and no priority. Now it is an ask in the
+        // Assistant lane - first in line - and it is spoken as it is written.
+        if (CircleNeuronService.Asks is { } front)
+            return await AskThroughQueueAsync(front, question, mouth, ct).ConfigureAwait(false);
+
+        var result = await ColdTurn.AnswerAsync(
+            ready:   () => CircleNeuronService.Node?.IsReady == true,
+            start:   () => CircleNeuronService.Start(global::Android.App.Application.Context),
+            ask:     token => AskTheNodeAsync(question, mouth, token),
+
+            // ENQUEUED, NOT SPOKEN. Handing the line to the same mouth is what
+            // makes an overlap impossible; the newline is what makes it a complete
+            // sentence, so it is taken straight away instead of waiting in the
+            // buffer to be glued to the front of the answer.
+            say:     (line, _) => { mouth.Push(line + "\n"); return Task.CompletedTask; },
+
+            // THE FIRST SOUND, NOT THE LAST WORD. Without this the filler would be
+            // decided on whether the whole answer had arrived, and could be queued
+            // behind sentences already being spoken.
+            started: mouth.Started,
+
+            givenUp: () => CircleNeuronService.State == CircleNeuronService.ServiceState.Failed,
+            log:     line => Log.Info(Tag, "the brain is " + line),
+            ct:      ct).ConfigureAwait(false);
+
+        // ALREADY IN THE QUEUE, BOTH OF THEM. ColdTurn has the mouth, so the
+        // holding line and the excuse are in front of or instead of the answer by
+        // the time this returns - and an empty answer is now correct rather than
+        // silent, because something was said either way.
+        if (result.Excuse is not null) Log.Warn(Tag, "said instead: " + result.Excuse);
+
+        return result.Answer;
+    }
+
+    /// <summary>Who a spoken question is from, as the queue knows it.</summary>
+    public const string CallerKey = "internal:assistant";
+
+    private static string _session = Guid.NewGuid().ToString("N");
+    private static DateTimeOffset _lastSpoken = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// The conversation a spoken question belongs to: the same one for five minutes, so
+    /// "Hey B, and how far is that?" follows on from the question before it.
+    /// </summary>
+    internal static string SpokenSession()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastSpoken > TimeSpan.FromMinutes(5)) _session = Guid.NewGuid().ToString("N");
+        _lastSpoken = now;
+        return _session;
+    }
+
+    private static async Task<string?> AskThroughQueueAsync(
+        CircleAI.Assistant.Requests.IAskFront front, string question, SpokenReply mouth, CancellationToken ct)
+    {
+        var admission = front.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+            CallerKey: CallerKey,
+            ClientRequestId: Guid.NewGuid().ToString("N"),
+            SessionId: SpokenSession(),
+            Lane: CircleAI.Assistant.Requests.AskLane.Assistant,
+            Message: question,
+            Question: question,
+            Spoken: true));
+
+        if (!admission.Accepted || admission.Record is null)
         {
-            Log.Warn(Tag, "brain is not ready - nothing to ask");
+            mouth.Push((admission.Refusal ?? AssistantPersona.CouldNotStart) + "\n");
             return null;
         }
+
+        var id = admission.Record.Id;
+        long seq = admission.Record.Seq;
+        var pushed = string.Empty;
+        var held = false;
+        var waiting = Stopwatch.StartNew();
+
+        while (!ct.IsCancellationRequested)
+        {
+            var ask = await front.WaitForChangeAsync(CallerKey, id, seq, TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+            if (ask is null) return null;
+            seq = ask.Seq;
+
+            // SPEAK WHAT IS NEW. The record carries the answer so far; the mouth cleans
+            // and speaks it a sentence at a time, as it did when this streamed itself.
+            if (ask.Text.Length > pushed.Length && ask.Text.StartsWith(pushed, StringComparison.Ordinal))
+            {
+                mouth.Push(ask.Text[pushed.Length..]);
+                pushed = ask.Text;
+            }
+
+            // A HOLDING LINE, ONCE, when the brain is still loading and nothing has been
+            // said - the same courtesy ColdTurn gave, from the record's own state.
+            if (!held && pushed.Length == 0 && waiting.Elapsed > TimeSpan.FromSeconds(4)
+                && ask.State is CircleAI.Assistant.Requests.AskState.WaitingForModel)
+            {
+                mouth.Push(AssistantPersona.NotUpYet + "\n");
+                held = true;
+            }
+
+            if (!ask.IsFinal) continue;
+
+            if (ask.State == CircleAI.Assistant.Requests.AskState.Succeeded)
+            {
+                // THE FINAL TEXT IS CLEANED, THE PARTIAL WAS NOT. Whatever of it has not
+                // been spoken yet is the part after what was pushed - in either form.
+                var cleanPushed = PlainReply.Clean(pushed);
+                if (pushed.Length == 0) mouth.Push(ask.Text);
+                else if (ask.Text.StartsWith(pushed, StringComparison.Ordinal)) mouth.Push(ask.Text[pushed.Length..]);
+                else if (cleanPushed.Length > 0 && ask.Text.StartsWith(cleanPushed, StringComparison.Ordinal))
+                    mouth.Push(ask.Text[cleanPushed.Length..]);
+                mouth.Push("\n");
+                return ask.Text;
+            }
+
+            if (pushed.Length == 0)
+                mouth.Push((ask.Sentence ?? CircleAI.Assistant.Requests.AskSentences.CouldNotAnswer) + "\n");
+            Log.Warn(Tag, $"spoken ask {id} ended {ask.State} ({ask.Kind})");
+            return null;
+        }
+
+        try { front.Cancel(CallerKey, id); } catch { /* going away */ }
+        return null;
+    }
+
+    /// <summary>Stream one answer out of the resident node, speaking as it goes.</summary>
+    private static async Task<string?> AskTheNodeAsync(
+        string question, SpokenReply mouth, CancellationToken ct)
+    {
+        var node = CircleNeuronService.Node;
+        if (node is null) return null;
 
         var answer = new System.Text.StringBuilder();
         await foreach (var chunk in node
@@ -266,6 +522,16 @@ public static class WakeTurn
         {
             ct.ThrowIfCancellationRequested();
             answer.Append(chunk);
+
+            // PUSHED RAW, AND CLEANED A SENTENCE AT A TIME WHERE IT IS SPOKEN.
+            //
+            // NOT PER FRAGMENT. PlainReply.Clean returns "" for anything blank, so
+            // the single-space chunk a model emits between words would vanish and
+            // "Hello world" would be said as "Helloworld"; and its code-fence state
+            // does not survive between calls, so a fence split across two fragments
+            // corrupts both. A sentence is the smallest unit that is safe to clean,
+            // and it is exactly the unit the voice is handed.
+            mouth.Push(chunk);
         }
 
         // The same cleaning the link does, for the same reason and more so: this one
@@ -278,6 +544,81 @@ public static class WakeTurn
     /// THE SAME VOICE THE LINK SERVES, so a spoken answer and an answer read aloud in
     /// an app sound like the same assistant rather than two of them.
     /// </remarks>
+    /// <summary>The greeting, already rendered, so a wake never waits for a voice to load.</summary>
+    private static byte[]? _greeting;
+
+    /// <summary>
+    /// Renders the greeting before anybody says the wake word.
+    /// </summary>
+    /// <remarks>
+    /// SEVEN SECONDS OF NOTHING, MEASURED ON THE ONE WAKE THAT FIRED IN FOUR DAYS.
+    /// <para>
+    ///     06:43:50  HEARD "Hey B" in "HAY B"
+    ///     06:43:59  tts: 3 chars -> 626 ms audio in 4438 ms (INCLUDING model open)
+    ///     06:43:59  rendered 3 chars -> 626 ms audio in 7066 ms
+    /// </para>
+    /// <para>
+    /// A person said its name and waited seven seconds to hear "Hi." - long
+    /// enough to conclude it had not heard, and long enough that whatever they
+    /// said next went into a microphone that was not yet listening for it. Four
+    /// of those seconds were the voice model opening for the first time: the
+    /// very next sentence, twenty-one characters, took 2,7 s with the model
+    /// already open.
+    /// </para>
+    /// <para>
+    /// AckBank exists for exactly this and its header says so - "synthesising
+    /// 'Yes?' at wake time would cost the same seconds it exists to cover" - but
+    /// it renders through CircleAITtsProbe rather than the voice this turn speaks
+    /// with, into a cache directory that belongs to whichever app process called
+    /// it. Wiring it here would buy the speed with a greeting in a different
+    /// voice from the answer, which its own remark warns against. So the turn
+    /// warms ITS OWN voice and keeps its own greeting: rendering it once opens
+    /// the model, which the engine cache then keeps open for every answer after.
+    /// </para>
+    /// <para>
+    /// NEVER FATAL AND NEVER AWAITED BY STARTUP. A voice that cannot warm leaves
+    /// the turn exactly as it was - greeting synthesised live - rather than
+    /// holding up a service that has a microphone to open.
+    /// </para>
+    /// </remarks>
+    public static async Task WarmAsync(CancellationToken ct = default)
+    {
+        var speech = Speech;
+        if (speech is null) return;
+
+        try
+        {
+            var clock = Stopwatch.StartNew();
+            var pcm = await speech.SpeakAsync(AssistantPersona.Greeting, null, ct).ConfigureAwait(false);
+            if (pcm.Length == 0)
+            {
+                Log.Warn(Tag, "greeting could not be warmed: the voice produced nothing");
+                return;
+            }
+
+            _greeting = pcm;
+            Log.Info(Tag, $"greeting warmed in {clock.ElapsedMilliseconds} ms - a wake will not wait for the voice to load");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warn(Tag, "greeting could not be warmed: " + ex.Message); }
+    }
+
+    /// <summary>Says hello, from the warmed copy when there is one.</summary>
+    private static async Task GreetAsync(CancellationToken ct)
+    {
+        var warm = _greeting;
+        if (warm is not { Length: > 0 })
+        {
+            await SayAsync(AssistantPersona.Greeting, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await using var player = new AndroidAudioPlayer();
+        await player.PlayAsync(
+            warm, LinkAudioFormat.SampleRate, LinkAudioFormat.Channels, LinkAudioFormat.BitsPerSample, ct)
+            .ConfigureAwait(false);
+    }
+
     private static async Task SayAsync(string answer, CancellationToken ct)
     {
         var speech = Speech;

@@ -7,7 +7,7 @@
     is 60-150 MB and is downloaded on request, so without this the first "Hear it"
     fails in a way that looks like a broken server.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 	<uses-permission android:name="android.permission.INTERNET" />
 	<!--
 	    RECORD_AUDIO must be in the manifest or requestPermissions is a SILENT
@@ -122,5 +122,23 @@
 	             android:supportsRtl="true"
 	             android:icon="@mipmap/appicon"
 	             android:roundIcon="@mipmap/appicon_round"
-	             android:hasFragileUserData="true"></application>
+	             android:hasFragileUserData="true">
+		<!--
+		    THE SERVICE'S COMPONENTS LEAK IN, AND THEY ARE NOT THIS APP'S.
+
+		    This app references src/CircleAI, whose Android leg carries the service's
+		    [Service], [Activity] and [BroadcastReceiver] attributes - so the generated
+		    manifest declared an exported link service, the brain host, the fetch
+		    service, the consent screen, the reaper and the boot receiver in THIS app,
+		    none of which it runs: the brain lives in com.bhengubv.circleai.service.
+		    An exported LINK service here is one more door into an app that has no
+		    brain behind it. Removed by name.
+		-->
+		<service android:name="ai.circle.CircleNeuronLinkService" tools:node="remove" />
+		<service android:name="ai.circle.CircleNeuronService" tools:node="remove" />
+		<service android:name="ai.circle.ModelFetchService" tools:node="remove" />
+		<activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
+		<receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
+		<receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />
+	</application>
 </manifest>

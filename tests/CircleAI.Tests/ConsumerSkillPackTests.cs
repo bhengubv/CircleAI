@@ -86,7 +86,7 @@ public sealed class ConsumerSkillPackTests
 
         var block = await builder.BuildContextAsync(OpenerFor("Work rights"));
 
-        Assert.Contains("## Available Skills", block);
+        Assert.Contains("## What may help", block);
         // Either work skill leading is fine — both are domain-grounded; the 1500-
         // char budget usually fits only the first. The point is a consumer skill
         // for work reached the prompt at all.

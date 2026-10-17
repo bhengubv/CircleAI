@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Circle AI as the phone's assistant: the session that handles an assist request and
+     the recogniser it declares. Named by the generated component names. -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="ai.circle.CircleAssistSessionService"
+    android:recognitionService="ai.circle.CircleRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="true" />

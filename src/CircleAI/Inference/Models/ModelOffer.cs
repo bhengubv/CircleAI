@@ -51,6 +51,20 @@ public static class ModelOffer
             // A refusal is evidence and stands whether or not anything was assessed.
             if (a.Refused) return false;
 
+            // And a retired model is below the floor - "nothing less than Qwen3.5 is
+            // the LLM" - so it is never offered at all.
+            if (a.Entry.Retired) return false;
+
+            // THE BRAIN'S FIT IS NOT THIS BIT'S TO JUDGE. `compatible` is the
+            // assessor's reading of FREE RAM at boot, and on the P30 - 0.44 GB free,
+            // swap near full, on 2026-10-16 - it said no to every Qwen3.5 there is. As
+            // a veto that meant setup planned no brain and every screen named none,
+            // while the selector, correctly, wanted Qwen3.5-0.8B. The brain is chosen
+            // by one rule everywhere - the best that fits now, else the smallest this
+            // phone could EVER hold (ModelChoice) - and that rule still keeps a 22.8 GB
+            // model off a 7.6 GB phone: it neither fits now nor ever could.
+            if (a.Entry.Modality == CircleAI.Core.ModelModality.Chat) return true;
+
             // UNASSESSED IS UNKNOWN. See the header: treating it as "no" empties the
             // first-run offer, which is the one run that has to work.
             if (a.AssessedAt is null) return true;

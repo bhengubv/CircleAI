@@ -39,6 +39,15 @@ public static class LinkVerbCodec
     public const string KeyRowCount = "rows";
     /// <summary>Prefix for a row entry: <c>r0</c>, <c>r1</c>, …</summary>
     public const string RowPrefix = "r";
+    /// <summary>
+    /// Prefix for a named argument: <c>a.rid</c>, <c>a.session</c>, …
+    /// </summary>
+    /// <remarks>
+    /// EXTRA KEYS, SO BOTH DIRECTIONS STAY COMPATIBLE. Each side decodes only the keys
+    /// it knows: an older service ignores arguments it was never told about, and an
+    /// older client never sends any. The dot keeps them clear of the row keys above.
+    /// </remarks>
+    public const string ArgPrefix = "a.";
 
     // The verb names as they travel on the wire. Bump nothing here without bumping
     // LinkIpc.Descriptor — both sides must agree.
@@ -65,6 +74,10 @@ public static class LinkVerbCodec
         if (req.Query is not null)   map[KeyQuery]   = req.Query;
         if (req.Text is not null)    map[KeyText]    = req.Text;
         if (req.Subject is not null) map[KeySubject] = req.Subject;
+        if (req.Args is not null)
+            foreach (var (key, value) in req.Args)
+                if (!string.IsNullOrEmpty(key) && value is not null)
+                    map[ArgPrefix + key] = value;
         return map;
     }
 
@@ -82,7 +95,14 @@ public static class LinkVerbCodec
         var limit = int.TryParse(limitText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) && l > 0
             ? l : DefaultLimit;
 
-        return new LinkVerbRequest(verb, query, text, subject, limit);
+        Dictionary<string, string>? args = null;
+        foreach (var (key, value) in map)
+        {
+            if (!key.StartsWith(ArgPrefix, StringComparison.Ordinal) || key.Length == ArgPrefix.Length) continue;
+            (args ??= new Dictionary<string, string>(StringComparer.Ordinal))[key[ArgPrefix.Length..]] = value;
+        }
+
+        return new LinkVerbRequest(verb, query, text, subject, limit, args);
     }
 
     // ── reply ────────────────────────────────────────────────────────────────

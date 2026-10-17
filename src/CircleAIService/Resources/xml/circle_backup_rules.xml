@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6-11 backup: keep what a person chose, never what they said, never the
+     models. asks.db holds people's questions and answers; state/ is crash evidence
+     that means nothing on another phone; the model store is gigabytes. -->
+<full-backup-content>
+  <exclude domain="file" path="CircleAI/asks.db" />
+  <exclude domain="file" path="CircleAI/asks.db-wal" />
+  <exclude domain="file" path="CircleAI/asks.db-shm" />
+  <exclude domain="file" path="CircleAI/state/" />
+  <exclude domain="file" path="CircleAI/models/" />
+  <exclude domain="file" path="models/" />
+  <exclude domain="file" path="skills/" />
+</full-backup-content>

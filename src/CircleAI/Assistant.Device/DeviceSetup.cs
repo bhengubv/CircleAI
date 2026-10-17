@@ -80,6 +80,17 @@ public sealed class DeviceSetup : ISetup
         => CircleAI.Inference.ModelOffer.NotWorthOffering(
                _catalogue?.Invoke(), DeclinedModels.Is);
 
+    /// <summary>Models that have loaded on this device: proof that a brain here runs here.</summary>
+    private Func<string, bool> Proven()
+    {
+        var catalogue = _catalogue?.Invoke();
+        return id =>
+        {
+            try { return catalogue?.Assessment(id)?.Proven == true; }
+            catch { return false; }
+        };
+    }
+
     /// <summary>Run something on the UI thread and wait for it.</summary>
     /// <remarks>
     /// WAS MainThread.InvokeOnMainThreadAsync, which is MAUI. Android's own main
@@ -126,8 +137,9 @@ public sealed class DeviceSetup : ISetup
             using var registry = new ModelRegistryService();
             using var loader = new BundleModelLoader(StorageDir, registry);
 
+            // NOT A RETIRED ONE: a complete Qwen3-0.6B is not a brain any more.
             bool Has(ModelModality m) => registry.AllModels
-                .Any(e => e.Modality == m && loader.ModelPresent(e.Name));
+                .Any(e => e.Modality == m && !e.Retired && loader.ModelPresent(e.Name));
 
             var voice = Has(ModelModality.Tts);
             var ears = Has(ModelModality.Asr);
@@ -139,7 +151,22 @@ public sealed class DeviceSetup : ISetup
             const string lead = "Tap and talk";
 
             if (voice && ears && brain)
-                return new Readiness(ReadyStage.Ready, lead, "", CanTalk: true);
+            {
+                // FILES ON DISK ARE NOT A BRAIN THAT ANSWERS. This said "Tap and talk"
+                // while the brain was loading, had failed, or refused everything it held.
+                // The brain's own state, from the one tracker that owns it, says which.
+                var now = CircleAI.Device.CircleNeuronService.Readiness?.Current.Brain;
+                return now?.Phase switch
+                {
+                    CircleAI.Assistant.Lifecycle.BrainPhase.Loading =>
+                        new Readiness(ReadyStage.CanListen, lead, "Getting its brain ready - the first answer may take a moment.", CanTalk: true),
+                    CircleAI.Assistant.Lifecycle.BrainPhase.Failed or CircleAI.Assistant.Lifecycle.BrainPhase.Paused =>
+                        new Readiness(ReadyStage.CanListen, lead, CircleAI.Assistant.Lifecycle.ReadinessSentences.For(now), CanTalk: true),
+                    CircleAI.Assistant.Lifecycle.BrainPhase.NoModel =>
+                        new Readiness(ReadyStage.NeedsSetup, "Finish setting it up", CircleAI.Assistant.Lifecycle.ReadinessSentences.NoModel, CanTalk: false),
+                    _ => new Readiness(ReadyStage.Ready, lead, "", CanTalk: true),
+                };
+            }
 
             // "GETTING READY" IS ONLY TRUE WHILE SOMETHING IS ACTUALLY COMING.
             //
@@ -213,7 +240,7 @@ public sealed class DeviceSetup : ISetup
             // size, accepted it, and the load aborted the process and took a dozen
             // system apps with it. The offer was the defect.
             return FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                 declined: NotOffered(), language: Language)
+                                 declined: NotOffered(), language: Language, proven: Proven())
                 .Select(s => new SetupItem(s.Title, s.Model.TotalBytes))
                 .ToList();
         }, ct);
@@ -238,7 +265,8 @@ public sealed class DeviceSetup : ISetup
             // The P30 showed the cost on 2026-10-09: a 2.85 GB brain it could
             // not load, sitting in the count of what it has.
             var census = FirstRun.Census(registry, loader, DeviceProbe.Snapshot(),
-                                         speech: true, declined: NotOffered(), language: Language);
+                                         speech: true, declined: NotOffered(), language: Language,
+                                         proven: Proven());
 
             return new Census(
                 census.Rows
@@ -267,7 +295,7 @@ public sealed class DeviceSetup : ISetup
                 // actually spends somebody's data, so a forgotten refusal here
                 // costs them megabytes rather than only a wrong list.
                 var steps = FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: true,
-                                          declined: NotOffered(), language: Language);
+                                          declined: NotOffered(), language: Language, proven: Proven());
 
                 // PREVENTION FOR THE ESSENTIALS TOO. First run is the largest
                 // download Circle AI ever asks for; refusing upfront with the
@@ -477,8 +505,9 @@ public sealed class DeviceSetup : ISetup
             using var registry = new ModelRegistryService();
             using var loader = new BundleModelLoader(StorageDir, registry);
 
+            // NOT A RETIRED ONE: a complete Qwen3-0.6B is not a brain any more.
             bool Has(ModelModality m) => registry.AllModels
-                .Any(e => e.Modality == m && loader.ModelPresent(e.Name));
+                .Any(e => e.Modality == m && !e.Retired && loader.ModelPresent(e.Name));
 
             var steps = new List<TourStep>();
             var budget = remaining.TotalSeconds;

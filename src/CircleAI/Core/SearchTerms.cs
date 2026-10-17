@@ -36,15 +36,22 @@ public static class SearchTerms
     /// on "do you". It is not a linguistics project; it is the words that were
     /// actually seen causing spurious matches on a phone, plus their obvious
     /// neighbours.
+    /// <para>
+    /// "QUESTION" AND "HELP" JOINED ON 2026-10-17, from the P30's quality run. "I have
+    /// a health question" was answered out of "Looking after your animals", because
+    /// that skill is tagged both animal-health AND question - the only skill matching
+    /// two of the two words, so it outranked the clinic. "Help" sits in the tags of
+    /// four unrelated skills. Neither word names what somebody is asking about.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Stopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "a", "an", "and", "any", "are", "as", "at", "be", "by", "can", "could",
         "did", "do", "does", "for", "from", "get", "give", "had", "has", "have",
-        "how", "i", "if", "in", "is", "it", "its", "make", "may", "me", "my", "of",
-        "on", "or", "please", "should", "show", "so", "some", "tell", "that", "the",
-        "their", "them", "then", "there", "these", "they", "this", "to", "us",
-        "was", "we", "were", "what", "when", "where", "which", "who", "why",
+        "help", "how", "i", "if", "in", "is", "it", "its", "make", "may", "me", "my", "of",
+        "on", "or", "please", "question", "questions", "should", "show", "so", "some",
+        "tell", "that", "the", "their", "them", "then", "there", "these", "they", "this",
+        "to", "us", "was", "we", "were", "what", "when", "where", "which", "who", "why",
         "will", "with", "would", "you", "your",
     };
 

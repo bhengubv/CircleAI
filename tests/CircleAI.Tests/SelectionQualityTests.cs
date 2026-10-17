@@ -69,8 +69,10 @@ public sealed class SelectionQualityTests
         Assert.Equal(SelectionQuality.NothingFits, pick.Quality);
 
         // Still returns the smallest rather than throwing — the fallback
-        // contract is unchanged, only now it is HONEST about itself.
-        Assert.Equal("Qwen3-0.6B-MNN", pick.ModelId);
+        // contract is unchanged, only now it is HONEST about itself. The smallest
+        // ELIGIBLE one: "nothing less than Qwen3.5 is the LLM" (2026-10-16), so the
+        // retired Qwen3-0.6B this used to name is no longer an answer.
+        Assert.Equal("Qwen3.5-0.8B-MNN", pick.ModelId);
     }
 
     [Fact]
@@ -123,14 +125,19 @@ public sealed class SelectionQualityTests
     {
         // A "what could run here" listing that marked the 14B as Good on a
         // 1.1 GB phone would be actively misleading.
+        // (The 14B and 0.6B this was written against are retired below the floor
+        // - "nothing less than Qwen3.5 is the LLM" - so it asks the same question of
+        // the Qwen3.5 family, and checks no retired model is listed at all.)
         var candidates = new DeviceAwareModelSelector().AllCandidates(Device(1.1));
 
         Assert.NotEmpty(candidates);
+        Assert.DoesNotContain(candidates, c => c.ModelId.StartsWith("Qwen3-", StringComparison.Ordinal)
+                                            || c.ModelId.StartsWith("Qwen2", StringComparison.Ordinal));
 
-        var big = Assert.Single(candidates, c => c.ModelId == "Qwen3-14B-MNN");
+        var big = Assert.Single(candidates, c => c.ModelId == "Qwen3.5-4B-MNN");
         Assert.Equal(SelectionQuality.NothingFits, big.Quality);
 
-        var small = Assert.Single(candidates, c => c.ModelId == "Qwen3-0.6B-MNN");
+        var small = Assert.Single(candidates, c => c.ModelId == "Qwen3.5-0.8B-MNN");
         Assert.Equal(SelectionQuality.Good, small.Quality);
     }
 }

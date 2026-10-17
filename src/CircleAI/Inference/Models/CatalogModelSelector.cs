@@ -113,8 +113,12 @@ public sealed class CatalogModelSelector : IModelSelector
         // exist without a ModelId). Otherwise hand back the smallest capability-
         // matching entry flagged NothingFits, so a constrained device still gets
         // the least-bad option and the caller can escalate to cloud fallback.
+        //
+        // NEVER A RETIRED ONE, EVEN AS THE LEAST-BAD OPTION. "Nothing less than
+        // Qwen3.5 is the LLM": a phone that cannot hold any eligible model is told
+        // so; it is not handed a lesser one.
         var anyCapabilityMatch = ModalitiesFor(required)
-            .SelectMany(m => _catalog.All().Where(e => e.Modality == m))
+            .SelectMany(m => _catalog.All().Where(e => e.Modality == m && !e.Retired))
             .Where(e => Satisfies(e, required))
             .OrderBy(e => e.MinRamGb)
             .ThenBy(e => e.TotalBytes)
@@ -144,12 +148,14 @@ public sealed class CatalogModelSelector : IModelSelector
     public IReadOnlyList<string> ChainFor(string headModelId)
     {
         if (string.IsNullOrWhiteSpace(headModelId)) return Array.Empty<string>();
-        if (_catalog.Get(headModelId) is null) return Array.Empty<string>();
+        if (_catalog.Get(headModelId) is null or { Retired: true }) return Array.Empty<string>();
 
+        // The chain stops at the floor: a fallback that is retired is not a fallback.
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var chain = new List<string>();
         var cursor = headModelId;
-        while (!string.IsNullOrWhiteSpace(cursor) && seen.Add(cursor) && _catalog.Get(cursor) is { } entry)
+        while (!string.IsNullOrWhiteSpace(cursor) && seen.Add(cursor)
+               && _catalog.Get(cursor) is { Retired: false } entry)
         {
             chain.Add(entry.Name);
             cursor = entry.FallbackModelId ?? string.Empty;

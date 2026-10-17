@@ -374,6 +374,37 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
 
     private ZipformerKwsSpotter.KwsProgress? _best;
 
+    /// <summary>The deepest sighting of each phrase, so a tie cannot hide one.</summary>
+    private readonly Dictionary<string, ZipformerKwsSpotter.KwsProgress> _bestEach =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether a new sighting beats the one being held.</summary>
+    /// <param name="held">What is kept now, or null for nothing yet.</param>
+    /// <param name="seen">What just arrived.</param>
+    /// <remarks>
+    /// STATIC AND PUBLIC SO IT CAN BE ASSERTED, which the rule it replaces could
+    /// not be: it lived inside a lambda in a constructor that needs three ONNX
+    /// graphs and a tokens file, so no test project could reach it and the tie
+    /// case went unexamined until a phone showed it. Tokens first because depth
+    /// is the evidence; probability only settles a draw.
+    /// <para>
+    /// A TIE DOES NOT DISPLACE, and that is deliberate here while being exactly
+    /// the wrong behaviour one level up. Within one phrase, keeping the incumbent
+    /// on an equal sighting is free - they say the same thing. ACROSS phrases it
+    /// silently hid one, which is why the caller keeps a sighting per phrase
+    /// rather than calling this once over all of them.
+    /// </para>
+    /// </remarks>
+    public static bool IsDeeper(
+        ZipformerKwsSpotter.KwsProgress? held, ZipformerKwsSpotter.KwsProgress seen)
+    {
+        ArgumentNullException.ThrowIfNull(seen);
+
+        if (held is null) return true;
+        if (seen.Matched != held.Matched) return seen.Matched > held.Matched;
+        return seen.MeanProbability > held.MeanProbability;
+    }
+
     /// <summary>
     /// The closest stage one has come to a phrase since this was last called,
     /// and null when it has not come close to one at all.
@@ -390,8 +421,44 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
         return b;
     }
 
+    /// <summary>
+    /// The closest stage one has come to EACH phrase since this was last called.
+    /// </summary>
+    /// <remarks>
+    /// WHY THIS IS NOT JUST <see cref="TakeBestProgress"/> IN A LOOP. Every wake
+    /// phrase in the book opens with the same word, so on a device with two
+    /// registered the beam reports both at one matched token constantly - and the
+    /// single-best field keeps whichever it saw first, for ever. Measured on a
+    /// P30 on 2026-10-11 with "Hey B" and "Hey Circle AI" both loaded: an hour of
+    /// logs named "Hey B" every time and "Hey Circle AI" not once, so there was
+    /// no way to tell a phrase nobody was saying from a phrase that was not
+    /// progressing. Two phrases, two answers.
+    /// <para>
+    /// Reading clears it, for the same reason the single one does. Empty means
+    /// stage one came close to nothing at all, which is itself the finding.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<ZipformerKwsSpotter.KwsProgress> TakeBestPerPhrase()
+    {
+        if (_bestEach.Count == 0) return [];
+
+        var all = _bestEach.Values
+            .OrderByDescending(p => p.Matched)
+            .ThenByDescending(p => p.MeanProbability)
+            .ToList();
+
+        _bestEach.Clear();
+        return all;
+    }
+
     /// <summary>The phrases stage one is listening for.</summary>
     public IReadOnlyList<string> Keywords => _spotter.Keywords;
+
+    /// <inheritdoc cref="ZipformerKwsSpotter.EncoderIsQuantized"/>
+    public bool EncoderIsQuantized => _spotter.EncoderIsQuantized;
+
+    /// <inheritdoc cref="ZipformerKwsSpotter.RunningAsAsked"/>
+    public bool RunningAsAsked => _spotter.RunningAsAsked;
 
     /// <inheritdoc cref="ZipformerKwsSpotter.TokenCountOf"/>
     public int TokenCountOf(string phrase) => _spotter.TokenCountOf(phrase);
@@ -421,11 +488,22 @@ public sealed class ConfirmedKeywordSpotter : IDisposable
         // is 0.5" - a number to move - and "nothing happened", which is not a
         // finding at all. Kept as the deepest sighting rather than logged here:
         // it fires per frame, and a line per frame is not a log, it is a flood.
+        // AND KEPT PER PHRASE, NOT ONE OVERALL, because one overall cannot answer
+        // the question people actually ask of it.
+        //
+        // Measured on a P30 on 2026-10-11, with "Hey B" and "Hey Circle AI" both
+        // registered. Every phrase in the book begins with the same word, so both
+        // branches sit at Matched = 1 almost constantly - and `>` means a tie
+        // never displaces the incumbent, so the FIRST phrase in the file won every
+        // window and the second was never named once in an hour of logs. The
+        // question "is the long phrase making progress or is nobody saying it"
+        // was unanswerable, which is the same silence this field exists to break.
         _spotter.KeywordProgress += (_, p) =>
         {
-            if (_best is null || p.Matched > _best.Matched ||
-                (p.Matched == _best.Matched && p.MeanProbability > _best.MeanProbability))
-                _best = p;
+            if (IsDeeper(_best, p)) _best = p;
+
+            _bestEach.TryGetValue(p.Phrase, out var mine);
+            if (IsDeeper(mine, p)) _bestEach[p.Phrase] = p;
         };
 
         // Collected, not judged, inside the event: the detection arrives mid-decode

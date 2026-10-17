@@ -149,6 +149,9 @@
          meaningless off the phone, and Resources/** would be fed to a resource
          compiler that is not there. -->
     <Compile Remove="ServiceApplication.cs" />
+    <!-- The inference process, its supervisor and the assistant entry point are Android
+         components; the desktop head runs the brain in-process. -->
+    <Compile Remove="Droid\**" />
     <None Remove="Resources\**" />
     <None Remove="Platforms\**" />
   </ItemGroup>

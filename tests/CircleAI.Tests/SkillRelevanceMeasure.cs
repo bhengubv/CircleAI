@@ -102,6 +102,56 @@ public class SkillRelevanceMeasure : IClassFixture<SkillLibraryFixture>
         "good morning",
     ];
 
+    /// <summary>What the phone was actually asked, word for word, off its own log.</summary>
+    public static TheoryData<string> WhatThePhoneWasAsked() =>
+    [
+        // 2026-10-16, P30. "Hey B" transcribed as "Happy"; the prompt carried
+        // enrichment=1609 chars and prefill took 18,9 s of a 21,6 s answer.
+        "Happy, how are you doing today? What is the general temperature today?",
+        // 2026-10-12, P30, the same afternoon a single wake fired.
+        "Hey, B. What date is it today?",
+    ];
+
+    [Theory]
+    [MemberData(nameof(WhatThePhoneWasAsked))]
+    public void WHAT_THE_PHONE_INJECTS_FOR_WHAT_IT_WAS_ACTUALLY_ASKED(string question)
+    {
+        // A MEASUREMENT OF THE STORE THE PHONE USES, which the greeting ruler
+        // below is not. ServiceApplication composes the capability manifest, the
+        // consumer pack and the 1,378-skill library; the greeting ruler opens the
+        // library alone. On 2026-10-16 the phone, asked about the weather, chose
+        //
+        //     electricity-and-load-shedding,
+        //     composio-awesome-codex-skills/happy-scribe-automation, ...
+        //
+        // twelve hits, 1609 characters, about twelve seconds of prefill on a P30
+        // that reads prompts at roughly 32 tokens a second. "Happy" is the wake
+        // phrase misheard. Nothing in that list is what the person asked about.
+        using var library = new SqliteSkillStore(Db, identifyingMatchOnly: true);
+        using var composite = new CompositeSkillStore(
+        [
+            CapabilityManifestSkillStore.Default,
+            ConsumerSkillPack.Shared,
+            library,
+        ]);
+
+        var builder = new SkillContextBuilder(composite);
+        var block = builder.BuildContextAsync(question).GetAwaiter().GetResult();
+        var hits = composite.SearchAsync(question).GetAwaiter().GetResult();
+
+        _out.WriteLine($"[{question}]");
+        _out.WriteLine($"  {hits.Count} hits, {block.Length} chars injected, ~{block.Length / 4} tokens");
+        foreach (var h in hits.Take(12)) _out.WriteLine($"    {h.Id}");
+
+        // THE NUMBER THE FIX HAD TO MOVE, AND IT MOVED TO ZERO. Before
+        // SqliteSkillStore.Covering this question injected 12 skills and 1,637
+        // characters - every one sharing exactly one word with it, nine of them
+        // through Porter reducing "general" and "generator" to the same stem.
+        // Nothing in the library shares two words with a question about the
+        // weather, so nothing belongs in the prompt.
+        Assert.Equal(0, block.Length);
+    }
+
     [Theory]
     [MemberData(nameof(Greetings))]
     public void A_greeting_costs_the_model_nothing(string greeting)

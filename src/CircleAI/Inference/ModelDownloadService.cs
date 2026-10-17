@@ -167,11 +167,12 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
             if (File.Exists(filePath)) File.Delete(filePath);
             File.Move(tempPath, filePath);
         }
-        catch
+        catch (InvalidOperationException) when (!File.Exists(tempPath))
         {
-            if (File.Exists(tempPath)) File.Delete(tempPath);
-            throw;
+            throw;   // the hash failed and the bad file is already gone
         }
+        // KEPT ON ANY OTHER FAILURE - cancellation and transient faults included - so
+        // the next attempt resumes from the bytes already on disk.
         return filePath;
     }
 
@@ -389,14 +390,16 @@ public sealed class ModelDownloadService : IModelDownloadService, IDisposable
                 doneBytes += file.SizeBytes;
                 Report(file.Name, doneBytes, DownloadPhase.Downloading);
             }
-            catch
+            catch (InvalidOperationException) when (!File.Exists(tempPath))
             {
-                if (File.Exists(tempPath))
-                {
-                    try { File.Delete(tempPath); } catch { }
-                }
-                throw;
+                throw;   // the hash failed and the bad file is already gone
             }
+            // THE BYTES STAY. This catch used to delete the .tmp on ANY exception -
+            // cancellation, a network that outlasted every retry, the "N bytes are on
+            // disk and will be resumed" error itself - so an orderly stop of the fetch
+            // service threw away the file in progress and only a process death kept it.
+            // The .tmp and its .parts marker are the resume; only a hash mismatch, above,
+            // deletes anything.
         }
 
         Report(string.Empty, totalBytes, DownloadPhase.Complete);

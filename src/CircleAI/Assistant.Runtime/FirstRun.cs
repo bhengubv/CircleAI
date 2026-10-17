@@ -187,9 +187,15 @@ public static class FirstRun
     /// the other direction: setup would quietly re-fetch, on the next resume, the
     /// thing they just chose to remove.
     /// </param>
+    /// <param name="proven">
+    /// Models that have loaded on this device before. A brain here that has run here
+    /// fills the brain slot even when this moment is too busy for it to fit. Null
+    /// knows of none.
+    /// </param>
     public static IReadOnlyList<SetupStep> Plan(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
-        bool speech, Func<string, bool>? declined = null, string? language = null)
+        bool speech, Func<string, bool>? declined = null, string? language = null,
+        Func<string, bool>? proven = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
@@ -286,24 +292,73 @@ public static class FirstRun
                 // same refused models - so nothing fetched the one the phone
                 // could actually run. A refusal the offer path ignores is a
                 // refusal that cannot heal anything.
-                if (registry.AllModels.Any(m => m.Modality == modality
-                                             && (speaks is null || SpeaksIt(m, speaks))
-                                             && CircleAI.Inference.ModelFit.CouldEverHold(m, probe)
-                                             && (declined is null || !declined(m.Name))
-                                             && loader.ModelPresent(m.Name)))
-                    continue;
-
-                // The same choice the abilities screen makes, deliberately: best that
-                // fits, smallest among equals. Two places asking "which model" and
-                // disagreeing would mean setup installs one thing and the screen
-                // reports another.
-                pick = registry.AllModels
-                    .Where(m => m.Modality == modality && Fits(m, probe))
+                //
+                // AND A RETIRED MODEL FILLS NOTHING. "Nothing less than Qwen3.5 is the
+                // LLM": on the P30 a complete Qwen3-0.6B counted as the brain, so this
+                // slot was done and Qwen3.5 was never fetched - the second half of why
+                // that phone ran a lesser model for a week.
+                var eligible = registry.AllModels
+                    .Where(m => m.Modality == modality && !m.Retired)
                     .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
-                    .OrderByDescending(m => m.QualityRank)
-                    .ThenBy(m => m.MinRamGb)
-                    .FirstOrDefault();
+                    .ToList();
+
+                var presentHoldable = eligible
+                    .Where(m => CircleAI.Inference.ModelFit.CouldEverHold(m, probe)
+                                && loader.ModelPresent(m.Name))
+                    .ToList();
+
+                if (modality != ModelModality.Chat && presentHoldable.Count > 0)
+                    continue;
+
+                if (modality == ModelModality.Chat)
+                {
+                    // THE BRAIN IS CHOSEN THE WAY THE RUNTIME CHOOSES IT: the best
+                    // that fits this phone RIGHT NOW, else the smallest it could ever
+                    // hold - ModelChoice's rule, the selector's NothingFits and the
+                    // service's installed-model fallback, one answer in four places.
+                    //
+                    // Ranking by quality among everything it could EVER hold - this
+                    // slot's old rule - picks Qwen3.5-2B for the P30: 1.9 GB against
+                    // a 2.37 GB ceiling. Loading that 2B with ~1 GB free is what set
+                    // off the system-wide low-memory kills on 2026-10-10. So this
+                    // would download 1.39 GB to crash the phone, twice, before the
+                    // two-strike rule refused it and the 0.8B was fetched after all.
+                    pick = eligible
+                        .Where(m => CircleAI.Inference.ModelFit.Fits(m, probe))
+                        .OrderByDescending(m => m.QualityRank)
+                        .ThenBy(m => m.MinRamGb)
+                        .FirstOrDefault()
+                        ?? CircleAI.Inference.ModelChoice.SmallestEverHeld(
+                               eligible.Where(m => CircleAI.Inference.ModelFit.FitsStorage(m, probe.StorageFreeGb)),
+                               probe);
+
+                    // DONE ONLY IF A BRAIN HERE CAN ACTUALLY BE THE BRAIN: the one the
+                    // rule just picked, one that fits this phone right now, or one that
+                    // has loaded on it before. "Could ever hold" alone counted a
+                    // Qwen3.5-2B as the P30's brain - 1.9 GB against a 2.37 GB ceiling -
+                    // and that is the model whose load set off the low-memory kills on
+                    // 2026-10-10. With it on disk the 0.8B would never have been
+                    // fetched, the fallback would have loaded the 2B again, and two
+                    // strikes later the phone would have had no brain and nothing
+                    // fetching one.
+                    if ((pick is not null && loader.ModelPresent(pick.Name))
+                        || presentHoldable.Any(m => CircleAI.Inference.ModelFit.FitsRam(m, probe.UsableRamGb))
+                        || (proven is not null && presentHoldable.Any(m => proven(m.Name))))
+                        continue;
+                }
+                else
+                {
+                    // The same choice the abilities screen makes, deliberately: best
+                    // that fits, smallest among equals. Two places asking "which
+                    // model" and disagreeing would mean setup installs one thing and
+                    // the screen reports another.
+                    pick = eligible
+                        .Where(m => Fits(m, probe))
+                        .OrderByDescending(m => m.QualityRank)
+                        .ThenBy(m => m.MinRamGb)
+                        .FirstOrDefault();
+                }
             }
 
             // NO ENTRY IS NOT AN ERROR HERE. A phone too small for any chat model
@@ -438,12 +493,13 @@ public static class FirstRun
     /// </remarks>
     public static CapabilityCensus Census(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
-        bool speech, Func<string, bool>? declined = null, string? language = null)
+        bool speech, Func<string, bool>? declined = null, string? language = null,
+        Func<string, bool>? proven = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
 
-        var missing = Plan(registry, loader, probe, speech, declined)
+        var missing = Plan(registry, loader, probe, speech, declined, proven: proven)
             .ToDictionary(s => s.Title, s => s.Model, StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<CapabilityRow>();
@@ -470,8 +526,10 @@ public static class FirstRun
             var entry = named is not null
                 ? registry.AllModels.FirstOrDefault(m =>
                       string.Equals(m.Name, named, StringComparison.OrdinalIgnoreCase))
+                // Not a retired one: the P30's census reported "the brain" as the
+                // Qwen3-0.6B on disk, because it is the registry's first chat entry.
                 : registry.AllModels.FirstOrDefault(m =>
-                      m.Modality == modality && loader.ModelPresent(m.Name));
+                      m.Modality == modality && !m.Retired && loader.ModelPresent(m.Name));
 
             rows.Add(new CapabilityRow(title, true, entry?.TotalBytes ?? 0,
                                        Detail(entry, modality, language)));

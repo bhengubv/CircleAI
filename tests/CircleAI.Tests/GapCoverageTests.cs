@@ -62,7 +62,7 @@ public sealed class StreamAsyncEnrichmentTests : IDisposable
             chunks.Add(c);
 
         Assert.Single(gen.CapturedSystemMessages);
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.Contains("tgn.panik", sys);
         Assert.Contains("Battery", sys);
     }
@@ -90,7 +90,7 @@ public sealed class StreamAsyncEnrichmentTests : IDisposable
         await foreach (var _ in svc.StreamAsync(new[] { new ChatMessage("user", "hi") })) { }
 
         Assert.Single(gen.CapturedSystemMessages);
-        var sys = gen.CapturedSystemMessages[0]!;
+        var sys = gen.CapturedPrompts[0]!;
         Assert.Contains("detailed", sys, StringComparison.OrdinalIgnoreCase);
     }
 }

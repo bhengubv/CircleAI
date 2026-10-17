@@ -46,8 +46,23 @@
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+  <!-- THE ASSISTANT HANDS OFF TO THE CIRCLE AI APP when the phone is unlocked, and
+       from Android 11 an app another app cannot see cannot be launched by it. -->
+  <queries>
+    <package android:name="com.bhengubv.circleai.hybrid" />
+  </queries>
+
   <!-- The label and the icon are on [Application] in ServiceApplication.cs, which
        WINS over anything set here - a label written in this file is discarded
-       without a word. Only the two attributes nothing else owns live here. -->
-  <application android:allowBackup="true" android:supportsRtl="true" />
+       without a word.
+
+       BACKUP KEEPS WHAT A PERSON CHOSE, NOT WHAT THEY SAID. Grants, the wake phrase,
+       memory and the model verdicts are backed up; the questions and answers in
+       asks.db, the crash state and the gigabytes of models are not (see the rules).
+       hasFragileUserData: uninstalling asks whether to keep the data, because the
+       models alone are gigabytes a person paid for in data. -->
+  <application android:allowBackup="true" android:supportsRtl="true"
+               android:fullBackupContent="@xml/circle_backup_rules"
+               android:dataExtractionRules="@xml/circle_data_extraction_rules"
+               android:hasFragileUserData="true" />
 </manifest>

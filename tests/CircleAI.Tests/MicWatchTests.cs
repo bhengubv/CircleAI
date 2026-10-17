@@ -162,4 +162,62 @@ public sealed class MicWatchTests
         Assert.Equal(MicSay.Nothing, w.Observe(Rate, QuietRoom));   // 1 s
         Assert.Equal(MicSay.Nothing, w.Observe(Rate, QuietRoom));   // 2 s
     }
+
+    // ── telling "nobody spoke" from "the model heard nothing" ────────────────
+    //
+    // THE HEARTBEAT ABOVE ANSWERS THE WRONG HALF OF THE QUESTION. It proves the
+    // microphone is alive; it cannot say whether the spotter heard anything, and
+    // on 2026-10-11 that gap cost a whole device session. A person said "Hey B"
+    // several times into a P30, the capture recorded peak 0.453 against a 0.063
+    // quiet baseline - so the audio unquestionably arrived - and 157,000 lines of
+    // logcat contained no score, no near miss and no detection. Nothing on the
+    // phone could say whether the model reached 2 of 3 tokens just under the gate
+    // or matched nothing at all, and those two call for opposite fixes.
+
+    /// <summary>Measured on a P30 on 2026-10-11, in the room where it failed.</summary>
+    private const float ThatRoomQuiet = 0.063f;
+
+    /// <summary>The same phone, the same room, a person saying the wake phrase.</summary>
+    private const float SomebodySpeaking = 0.453f;
+
+    [Fact]
+    public void Speech_is_told_apart_from_the_room_it_was_spoken_in()
+    {
+        Assert.True(SomebodySpeaking > MicWatch.SpeechPeak,
+            "a person saying the wake phrase must register as speech");
+        Assert.True(ThatRoomQuiet < MicWatch.SpeechPeak,
+            "the room that phone was sitting in must not");
+    }
+
+    [Fact]
+    public void The_speech_line_is_drawn_from_that_rooms_numbers_and_not_the_other_ones()
+    {
+        // A DIFFERENT NUMBER FROM SilenceThreshold, DELIBERATELY, and somebody
+        // tidying them into one would reintroduce the bug. SilenceThreshold
+        // separates a dead microphone from a quiet room (0 against 0.015, two
+        // orders of magnitude). This separates a quiet room from a voice (0.063
+        // against 0.453, less than one). The second line cannot be derived from
+        // the first, and that room was four times noisier than the one
+        // SilenceThreshold's remarks were measured in.
+        Assert.True(MicWatch.SpeechPeak > MicWatch.SilenceThreshold * 50);
+        Assert.True(ThatRoomQuiet > MicWatch.SilenceThreshold * 10,
+            "the room itself already sits well above the dead-microphone line");
+    }
+
+    [Fact]
+    public void A_near_miss_is_reported_every_time_rather_than_backed_off()
+    {
+        // THE BACKOFF IS ON THE REASSURANCE, as this file's own header says. A
+        // near miss is the event, not reassurance: a person trying the phrase six
+        // times in a minute must leave six lines, and MicWatch's own schedule
+        // would have left one. So the gap is short and fixed, and strictly
+        // shorter than even the FIRST heartbeat interval.
+        var firstHeartbeat = TimeSpan.FromSeconds(new MicWatch().Probe / (double)Rate);
+
+        Assert.True(MicWatch.NearMissGap < firstHeartbeat,
+            $"{MicWatch.NearMissGap.TotalSeconds:N1}s is not shorter than the "
+            + $"{firstHeartbeat.TotalSeconds:N1}s heartbeat it must not inherit");
+        Assert.True(MicWatch.NearMissGap >= TimeSpan.FromSeconds(1),
+            "shorter than one attempt at a phrase would split an utterance in two");
+    }
 }

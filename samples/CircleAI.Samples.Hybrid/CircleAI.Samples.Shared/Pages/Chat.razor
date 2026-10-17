@@ -263,6 +263,19 @@
         var state = await Brain.StateAsync();
         _ready = state.Ready;
 
+        // ANSWERS THAT ARRIVED WHILE THIS SCREEN WAS GONE. A question is a record in
+        // the service now; leaving the screen or closing the app no longer throws its
+        // answer away, and this is where it is shown.
+        try
+        {
+            foreach (var (question, answer) in await Brain.CollectUnseenAsync())
+            {
+                _turns.Add(new Utterance(true, question));
+                _turns.Add(new Utterance(false, Strip(answer)));
+            }
+        }
+        catch { /* nothing to show is never a reason not to open the chat */ }
+
         // A TILE ARRIVES AS A QUESTION, not as a category. The grid's whole point
         // is getting somebody past the blank page, so the opener is put in the box
         // rather than sent - they can edit it, which somebody nudged into a

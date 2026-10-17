@@ -71,8 +71,14 @@ public sealed class ModelChoiceTests : IDisposable
         //      ... 'calendar' ... 'za.co.circleos.settings' (ten more)
         //
         // The selector was RIGHT and this overrode it.
+        //
+        // A 3 GiB DEVICE, not the 1.4 GiB this was written against. Under the floor
+        // ("nothing less than Qwen3.5 is the LLM", 2026-10-16) a 1.4 GiB device can
+        // hold no eligible model at all - the honest answer there is nothing, pinned
+        // below - and this test is about the gate, so it needs a device where some
+        // installed models fit and the 22.8 GB one plainly does not.
         var registry = new ModelRegistryService();
-        var probe = Device(1.4);
+        var probe = Device(3.0);
 
         // Every chat model in the catalogue, "downloaded".
         var chat = registry.AllModels.Where(m => m.Modality == ModelModality.Chat).ToList();
@@ -95,6 +101,11 @@ public sealed class ModelChoiceTests : IDisposable
         Assert.NotNull(entry);
         Assert.True(ModelFit.CouldEverHold(entry!, probe),
             $"{pick} needs more than this handset's whole memory and was handed to it");
+
+        // AND WHERE NO ELIGIBLE MODEL CAN BE HELD, NOTHING - never a lesser model
+        // standing in. The retired Qwen3-0.6B is on disk here and fits; it is still
+        // not the answer.
+        Assert.Null(loader.BestInstalledChatModel(Device(1.4)));
     }
 
     [Fact]

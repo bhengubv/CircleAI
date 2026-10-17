@@ -319,6 +319,24 @@ namespace CircleAI.Inference
         /// </remarks>
         public bool ContinueConversation { get; init; } = false;
 
+        /// <summary>
+        /// What to search skills and memory for on this call, when it is not the last
+        /// user message - the question alone, without the facts a caller attached to it.
+        /// </summary>
+        /// <remarks>
+        /// PER CALL, BECAUSE ONE SERVICE ANSWERS MANY APPS. AIOptions.RetrievalQuery is a
+        /// rule for one head; a shared service gets the raw question with each ask, and
+        /// searching the composed message instead put a person's remembered facts into
+        /// the skill search - and into logcat with it. Null falls back to the head's rule.
+        /// </remarks>
+        public string? RetrievalQuery { get; init; }
+
+        /// <summary>
+        /// Where this call records how long each part took. Filled by the generator and
+        /// the service as the answer is produced; null measures nothing.
+        /// </summary>
+        public TurnTimingRecorder? Timing { get; init; }
+
         /// <summary>The same options, with the prefix cache switched on.</summary>
         /// <remarks>
         /// A COPY, BECAUSE THE PROPERTIES ARE INIT-ONLY and this is a class rather
@@ -346,6 +364,8 @@ namespace CircleAI.Inference
             IncludeReasoning     = IncludeReasoning,
             Budget               = Budget,
             ContinueConversation = ContinueConversation,
+            RetrievalQuery       = RetrievalQuery,
+            Timing               = Timing,
             UsePrefixCache       = true,
         };
     }

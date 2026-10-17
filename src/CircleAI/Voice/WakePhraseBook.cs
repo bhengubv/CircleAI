@@ -278,6 +278,32 @@ public sealed class WakePhraseBook
             return new WakePhrase(trimmed, Array.Empty<string>(), WakePhraseVerdict.Unusable,
                 "Type something to say.", threshold, boost);
 
+        // TOKENIZED EXACTLY AS TYPED, AND A SPELLING "FIX" WAS MEASURED AND
+        // REMOVED HERE - DO NOT PUT IT BACK WITHOUT NEW EVIDENCE.
+        //
+        // On 2026-10-11 this rewrote lone letters into how they are said, so
+        // "Hey B!" tokenized as "_HE Y _BE E" instead of "_HE Y _B". The
+        // reasoning was good and every number supporting it was real: the
+        // vocabulary orders by frequency and holds B=34, _BE=43, _B=68, so the
+        // keyword asked for the rarest; _B never once won a frame on the device;
+        // and the fourth token lifted the verdict from Caution to Good.
+        //
+        // It was wrong. A 55,6 s recording of the owner saying the phrase at
+        // normal distance, run through the real decoder in the device's exact
+        // configuration, settled it:
+        //
+        //     _HE Y _B       fired 8    <- what already shipped
+        //     _HE Y _BE E    fired 0    <- the "fix"
+        //     _HE Y _BE      fired 5
+        //     _HE Y B        fired 6
+        //
+        // The model emits _BE readily in ordinary words - seven times in a
+        // minute of this speaker's natural speech - and does NOT emit it for
+        // this speaker's spoken letter B. Frequency in the vocabulary is not
+        // the same question as what the acoustic model produces for one
+        // utterance, and only audio can answer the second.
+        //
+        // See HeyBOnRealVoiceTests, which keeps that comparison runnable.
         var tokens = _tokenizer.Encode(trimmed);
 
         if (!_tokenizer.CanRepresent(trimmed, out var unknown))
@@ -375,7 +401,25 @@ public sealed class WakePhraseBook
 
             var text = label ?? string.Concat(tokens)
                 .Replace(SentencePieceTokenizer.WordStart, ' ').Trim();
-            book._phrases.Add(book.Evaluate(text, threshold, boost) with { Tokens = tokens });
+
+            var judged = book.Evaluate(text, threshold, boost);
+
+            // A FILE WRITTEN BY AN OLDER BUILD IS RE-SPELLED ON THE WAY IN.
+            //
+            // Without this the fix ships and changes nothing for anybody who
+            // already has the app: the phrase file on a P30 holds "_HE Y _B"
+            // from the build that wrote it, and keeping the stored tokens would
+            // keep the spotter waiting for a token the model does not say.
+            //
+            // SO THE STORED TOKENS ARE KEPT ONLY WHEN WE CANNOT DO BETTER. A
+            // line with a @label carries the text a person typed, so it can be
+            // re-tokenized from scratch and should be. A line WITHOUT one is
+            // reconstructed from its own pieces, which round-trips only roughly
+            // - there the stored tokens are the better record and are left
+            // alone.
+            var canRespell = label is not null && judged.Tokens.Count > 0;
+
+            book._phrases.Add(canRespell ? judged : judged with { Tokens = tokens });
         }
         return book;
 

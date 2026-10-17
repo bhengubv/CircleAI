@@ -219,18 +219,23 @@ public sealed class DeviceAwareModelSelectorRegistryTests
         // The code ordered by QualityRank DESC and returned the LARGEST instead.
         var pick = new DeviceAwareModelSelector().BestFit(Device(0.25, storageGb: 1),
                                                           ChatCapability.Default);
-        Assert.Equal("Qwen3-0.6B-MNN", pick.ModelId);
+        // The smallest ELIGIBLE model: below the floor ("nothing less than Qwen3.5
+        // is the LLM", 2026-10-16) the retired Qwen3-0.6B is no longer an answer.
+        Assert.Equal("Qwen3.5-0.8B-MNN", pick.ModelId);
     }
 
     // ── fallback chain (RT-08 brownout) ──────────────────────────────────────
 
     [Fact]
-    public void ChainFor_WalksTheFallbackChainDownToTheSmallest()
+    public void ChainFor_NeverWalksBelowTheFloor()
     {
-        var chain = new DeviceAwareModelSelector().ChainFor("Qwen3-4B-MNN");
-        Assert.Equal(
-            new[] { "Qwen3-4B-MNN", "Qwen3-1.7B-MNN", "Qwen3-0.6B-MNN" },
-            chain);
+        // The walk itself is pinned against an in-memory registry in
+        // FallbackChainTests. What this pins is the floor: the embedded Qwen3 chain
+        // (4B -> 1.7B -> 0.6B) is retired, so a brownout can never step down into it.
+        var selector = new DeviceAwareModelSelector();
+
+        Assert.Empty(selector.ChainFor("Qwen3-4B-MNN"));
+        Assert.Equal(new[] { "Qwen3.5-4B-MNN" }, selector.ChainFor("Qwen3.5-4B-MNN"));
     }
 }
 

@@ -328,6 +328,13 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
                     """;
                 cmd.Parameters.AddWithValue("$q", SafeMatch(terms));
                 var hits = ReadSummaries(cmd, cancellationToken);
+
+                // AND IN IDENTIFYING MODE A SKILL MUST COVER MORE THAN ONE WORD.
+                // See Covering for the measurement - twelve skills, 1,609
+                // characters, about twelve seconds of prefill on a P30, from a
+                // question about the weather.
+                if (_identifyingOnly) hits = Covering(hits, terms);
+
                 // A SEARCH THAT RAN AND FOUND NOTHING IS AN ANSWER, NOT A FAILURE.
                 //
                 // This used to be "if (hits.Count > 0)", falling through to the
@@ -452,6 +459,129 @@ public sealed class SqliteSkillStore : ISkillStore, IDisposable
     /// be strictly worse than the flooding this exists to stop - so the rarest
     /// term survives. That keeps the floor at today's behaviour.
     /// </remarks>
+    /// <summary>
+    /// How many distinguishing words a question needs before one word in common
+    /// stops being enough.
+    /// </summary>
+    /// <remarks>
+    /// FIVE, AND IT IS FITTED - SAID PLAINLY SO NOBODY MISTAKES IT FOR A LAW.
+    /// <para>
+    /// The first version required two words of every question with two or more,
+    /// and it broke five services tiles at once. Their openers are short and say
+    /// their subject in one word, with filler beside it that no skill contains:
+    /// "I have a legal question" is [legal, question] and the legal skill covers
+    /// only "legal"; "Help me deal with a government office" is [help, deal,
+    /// government, office] and the grant skill covers only "government". A rule
+    /// that drops those is worse than the defect it fixes.
+    /// </para>
+    /// <para>
+    /// What separates them from the question that cost twelve seconds is LENGTH.
+    /// The more words a question has, the likelier it is that one incidental word
+    /// coincides with some skill - and a chatty spoken question has a lot of
+    /// incidental words. Measured: the bad question reduced to five distinct
+    /// words, every tile opener to four or fewer, OPEN-GAPS E15's to four with its
+    /// right answers covering two. Five is the smallest count that drops the first
+    /// and keeps all of the rest. The SHAPE is principled; the number is the one
+    /// these cases allow, and SkillRelevanceMeasure and ConsumerSkillPackTests pin
+    /// every one of them so a better number has to keep passing them.
+    /// </para>
+    /// </remarks>
+    public const int LongQuestion = 5;
+
+    /// <summary>
+    /// How many of a long question's distinguishing words a skill has to share.
+    /// </summary>
+    /// <remarks>
+    /// Between OR, which this store must keep, and AND, which it tried and had to
+    /// back out.
+    /// </remarks>
+    public const int WordsAMatchMustCover = 2;
+
+    /// <summary>Keeps only the hits that share enough of the question's words.</summary>
+    /// <remarks>
+    /// ONE WORD IN COMMON IS A COINCIDENCE, AND ON THIS INDEX IT IS OFTEN NOT EVEN THAT.
+    /// <para>
+    /// Measured on the P30 on 2026-10-16. Asked "Happy, how are you doing today?
+    /// What is the general temperature today?" - "Hey B" transcribed as "Happy" -
+    /// the phone injected twelve skills, 1,609 characters, into a prompt that then
+    /// took 18,9 s to prefill of a 21,6 s answer:
+    /// </para>
+    /// <para>
+    ///     happy-scribe-automation        ("happy")
+    ///     scrape-do-automation           ("doing")
+    ///     changelog-generator x2, jest-generator, small-script-generator,
+    ///     tailored-resume-generator, thesys-generative-ui,
+    ///     audiocraft-audio-generation, figma-generate-library,
+    ///     figma-generate-design          ("general")
+    ///     electricity-and-load-shedding
+    /// </para>
+    /// <para>
+    /// Nine of those from ONE WORD, and not by prefix: the index tokenises with
+    /// Porter, which reduces general, generator, generate, generation and
+    /// generative all to "gener". To this search "the general temperature" and
+    /// "a changelog generator" share a word. Every skill on the list matched the
+    /// question on exactly one word, and none was what the person asked about.
+    /// </para>
+    /// <para>
+    /// WHY NOT AND, WHICH WOULD ALSO HAVE DROPPED THEM. OPEN-GAPS E15: requiring
+    /// every word made "threat modeling for a mobile app" exclude threat-modeling
+    /// and security-threat-model, because "mobile" and "app" were incidental
+    /// context. Both of those share TWO words with the question, so two is the
+    /// line that keeps E15's answer and drops a coincidence.
+    /// </para>
+    /// <para>
+    /// AND ONLY FOR A LONG QUESTION. A short one - every services tile opener -
+    /// says its subject in a single word and still needs only that word; see
+    /// <see cref="LongQuestion"/> for the five tiles that broke when it did not.
+    /// </para>
+    /// <para>
+    /// The order is untouched: what survives keeps its bm25 rank. This decides
+    /// the hit SET, the same way Discriminating does, and not the ranking - the
+    /// ranker is the thing E15 says not to fix.
+    /// </para>
+    /// </remarks>
+    private IReadOnlyList<SkillSummary> Covering(IReadOnlyList<SkillSummary> hits, List<string> terms)
+    {
+        // A SHORT QUESTION STILL NEEDS ONLY ONE WORD - see LongQuestion for the
+        // five tiles that broke when it did not.
+        var distinct = terms.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (distinct.Count < LongQuestion || hits.Count == 0) return hits;
+
+        var need = WordsAMatchMustCover;
+
+        var covered = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var term in distinct)
+        {
+            foreach (var id in IdsMatching(term))
+                covered[id] = covered.TryGetValue(id, out var n) ? n + 1 : 1;
+        }
+
+        var kept = new List<SkillSummary>(hits.Count);
+        foreach (var h in hits)
+            if (covered.TryGetValue(h.Id, out var n) && n >= need) kept.Add(h);
+
+        return kept;
+    }
+
+    /// <summary>Every skill one word matches, through the same stemming as the search.</summary>
+    private HashSet<string> IdsMatching(string term)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "SELECT skill_id FROM skills_fts WHERE skills_fts MATCH $q;";
+            cmd.Parameters.AddWithValue("$q", SafeMatch([term]));
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) ids.Add(r.GetString(0));
+        }
+        catch (SqliteException)
+        {
+            // A word FTS5 refuses covers nothing, which is the honest count.
+        }
+        return ids;
+    }
+
     private List<string> Discriminating(List<string> terms)
     {
         if (terms.Count <= 1) return terms;

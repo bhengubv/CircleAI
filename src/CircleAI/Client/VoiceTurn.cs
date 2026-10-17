@@ -48,6 +48,24 @@ public sealed class VoiceTurn
     /// <summary>Hard ceiling on one turn.</summary>
     public TimeSpan MaxLength { get; init; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>How much voice the turn must hear before a silence can end it.</summary>
+    /// <remarks>
+    /// THREE HUNDRED MILLISECONDS - longer than a click, shorter than a word.
+    /// <para>
+    /// Without it, ONE loud block was "speech". Measured on the P30 on
+    /// 2026-10-16: the turn opened at 17:10:47, a single sound peaked at 0,008,
+    /// and the person's breath before asking became "silence after speech". It
+    /// ended at 17:10:49 with 1,7 s kept and Whisper wrote a comma, while the
+    /// person asked their whole question from 17:10:51 - heard in full by the
+    /// wake loop listening alongside, and by nothing that was going to answer it.
+    /// </para>
+    /// <para>
+    /// Until this much has been heard, the turn is still waiting for them to
+    /// start, so NoSpeechTimeout applies and not EndOfSpeech.
+    /// </para>
+    /// </remarks>
+    public TimeSpan MinSpeech { get; init; } = TimeSpan.FromMilliseconds(300);
+
     /// <summary>How far above the room's own noise counts as speech.</summary>
     /// <remarks>
     /// A MULTIPLE OF THE MEASURED FLOOR, not a fixed level. A fixed threshold is a
@@ -120,6 +138,9 @@ public sealed class VoiceTurn
         var floor = 0.0;
         floorAtEnd = 0.0;
 
+        // How much of what has been heard sounded like a voice - see MinSpeech.
+        var speechSoFar = TimeSpan.Zero;
+
         await foreach (var chunk in capture.CaptureAsync(deadline.Token).ConfigureAwait(false))
         {
             var now = DateTimeOffset.UtcNow;
@@ -133,6 +154,16 @@ public sealed class VoiceTurn
                 sum += s * s;
             }
             var rms = n > 0 ? Math.Sqrt(sum / n) : 0;
+            var chunkLength = TimeSpan.FromSeconds(n / 16_000.0);
+
+            // THE APP'S OWN SOUNDS ARE NOT THE PERSON. A chime or a spoken prompt
+            // played as listening starts reaches this microphone too, and a turn
+            // that opens on the device's own voice and then hears the person
+            // pause to breathe ends before they have said a word. Skipped BEFORE
+            // anything is measured or kept, so it sets no floor, no peak, and
+            // never reaches the transcriber.
+            if (OutLoud.Now) continue;
+
             if (rms > peakRms) peakRms = rms;
 
             if (floorSamples.Count < 3)
@@ -159,7 +190,27 @@ public sealed class VoiceTurn
 
             if (rms > floor * SpeechOverNoise || rms > AbsoluteSpeechLevel)
             {
-                if (!heardAnything) { heardAnything = true; SpeechStarted?.Invoke(this, EventArgs.Empty); }
+                speechSoFar += chunkLength;
+
+                // ONE LOUD BLOCK IS NOT SOMEBODY TALKING.
+                //
+                // Measured on the P30 on 2026-10-16. The turn opened at
+                // 17:10:47, heard something at a peak of 0,008 - the press, a
+                // breath, the room - and called that speech. The person then
+                // drew breath before asking, and that pause was "silence after
+                // speech": the turn ended at 17:10:49 having kept 1,7 s, and
+                // Whisper wrote a single comma. They asked their whole question
+                // from 17:10:51 into a microphone that had stopped recording for
+                // them - the wake loop, listening alongside, heard all of it.
+                //
+                // So a turn only counts as having heard someone once it has
+                // heard MinSpeech of them. A tap or a click is one block; a
+                // spoken word is several.
+                if (!heardAnything && speechSoFar >= MinSpeech)
+                {
+                    heardAnything = true;
+                    SpeechStarted?.Invoke(this, EventArgs.Empty);
+                }
                 lastVoice = now;
             }
 

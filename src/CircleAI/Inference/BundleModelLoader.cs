@@ -131,12 +131,26 @@ public sealed class BundleModelLoader : IModelLoader
         return await DownloadCoreAsync(modelName, rich, CancellationToken.None).ConfigureAwait(false);
     }
 
-    private async Task<string> DownloadCoreAsync(
+    private Task<string> DownloadCoreAsync(
         string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress, CancellationToken ct)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
 
+        // ONE DOWNLOAD PER MODEL IN THIS PROCESS - see InFlightDownloads. Two paths
+        // in the service, each with its own loader, fetched the same 548 MB at once on
+        // the P30 and wrote the same .tmp until one of them died.
+        var key = Path.GetFullPath(Path.Combine(_storageRoot, modelName));
+        return InFlightDownloads.RunAsync(
+            key, progress,
+            relay => DownloadOnceAsync(modelName, relay, ct),
+            joined: _ => Console.WriteLine(
+                $"CIRCLEAI-DOWNLOAD {modelName}: joined the download already in flight"));
+    }
+
+    private async Task<string> DownloadOnceAsync(
+        string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress, CancellationToken ct)
+    {
         var entry = _registry.GetLatestModel(modelName)
             ?? throw new ArgumentException(
                 $"Model '{modelName}' is not in the registry.", nameof(modelName));
@@ -283,6 +297,12 @@ public sealed class BundleModelLoader : IModelLoader
 
                 var entry = _registry.GetLatestModel(name);
                 if (entry is null || entry.Modality != ModelModality.Chat) continue;
+
+                // NOT A RETIRED ONE, HOWEVER COMPLETE ON DISK. This fallback is the
+                // route that put Qwen3-0.6B in charge of the P30 while the model it
+                // stands in for was missing. "Nothing less than Qwen3.5 is the LLM":
+                // a missing Qwen3.5 is fetched, never substituted.
+                if (entry.Retired) continue;
 
                 // PRESENT, NOT MERELY NAMED. A half-finished download has a
                 // directory too, and handing one to an inference engine is how a
@@ -526,6 +546,24 @@ public sealed class BundleModelLoader : IModelLoader
     /// truncated download fails the size check; a bit-flip it will not catch,
     /// and does not need to - the load path still hashes.
     /// </remarks>
+    /// <summary>Whether the registry retires this model below the brain's floor.</summary>
+    /// <remarks>
+    /// "Nothing less than Qwen3.5 is the LLM": a retired model is never loaded, so
+    /// nothing should spend somebody's data finishing its download either.
+    /// </remarks>
+    public bool IsRetired(string modelName)
+    {
+        try
+        {
+            ThrowIfDisposed();
+            return _registry.GetLatestModel(modelName)?.Retired == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public bool ModelPresent(string modelName)
     {
         try

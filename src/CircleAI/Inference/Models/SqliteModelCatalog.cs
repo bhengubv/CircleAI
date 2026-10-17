@@ -46,7 +46,40 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         _clock = clock ?? TimeProvider.System;
         _conn = new SqliteConnection(connectionString);
         _conn.Open();
+        UseWriteAheadLog();
         EnsureSchema();
+    }
+
+    /// <summary>Write-ahead log, synced at checkpoints rather than on every write.</summary>
+    /// <remarks>
+    /// SIXTEEN SECONDS OF STARTUP WAS DISK SYNCS. Every write here is its own
+    /// transaction, and in SQLite's default rollback-journal mode each one is a
+    /// journal file created, synced and deleted. Startup makes about 180 of them:
+    /// a refresh of every row from the registry, then an assessment of every row.
+    /// Measured on the P30 on 2026-10-16: the refresh landed 9 s after the service
+    /// started and the assessment at 16 s. The brain had chosen its model at 1 s,
+    /// from ranks the refresh was about to correct.
+    /// <para>
+    /// NORMAL SYNC IN WAL MODE STILL SURVIVES A PROCESS CRASH, and that is the
+    /// durability this table depends on. A refusal or a strike is written because
+    /// the process may die in the next instant, and a commit in WAL mode is in the
+    /// OS's hands as soon as the write returns. What NORMAL gives up is the last
+    /// commits on a power cut, and every launch re-derives this table anyway.
+    /// </para>
+    /// <para>
+    /// Best-effort: an in-memory database answers "memory" and stays as it is,
+    /// which is the right outcome for the tests.
+    /// </para>
+    /// </remarks>
+    private void UseWriteAheadLog()
+    {
+        try
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;";
+            cmd.ExecuteNonQuery();
+        }
+        catch { /* a catalogue in the default journal mode is slower, not wrong */ }
     }
 
     private void EnsureSchema()
@@ -88,7 +121,18 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
                 -- never touches it, because `compatible` is recomputed on every
                 -- bootstrap and a verdict stored there is forgotten by the next one.
                 refused_reason     TEXT,
-                refused_at         TEXT
+                refused_at         TEXT,
+                -- HOW MANY TIMES IN A ROW THE PROCESS DIED WHILE LOADING IT. A death
+                -- is evidence, not a verdict: see CrashVerdict for why one is not
+                -- enough to refuse a model on a phone the OS kills for memory.
+                load_strikes       INTEGER NOT NULL DEFAULT 0,
+                -- A REGISTRY FACT: this LLM is below the product's floor ("nothing
+                -- less than Qwen3.5 is the LLM") and is never selected as the brain.
+                retired            INTEGER NOT NULL DEFAULT 0,
+                -- WHEN A LOAD LAST COMPLETED ON THIS DEVICE. Proof the model runs
+                -- here, which no prediction is. Housekeeping will not remove a model
+                -- in favour of one that has never loaded.
+                loaded_at          TEXT
             );
             CREATE INDEX IF NOT EXISTS ix_models_pick
                 ON models (modality, compatible, rank DESC);
@@ -101,6 +145,9 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         // not here. There was no migration step at all before this.
         AddColumnIfMissing("refused_reason", "TEXT");
         AddColumnIfMissing("refused_at", "TEXT");
+        AddColumnIfMissing("load_strikes", "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing("retired", "INTEGER NOT NULL DEFAULT 0");
+        AddColumnIfMissing("loaded_at", "TEXT");
     }
 
     /// <summary>Adds a column to <c>models</c> when it is not there yet.</summary>
@@ -129,12 +176,13 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         "id, version, quantization, url, checksum, repo, source, modality, engine, " +
         "total_bytes, bundle_files, min_ram_gb, min_storage_gb, min_vram_gb, " +
         "capabilities, quality_rank, fallback_model_id, memory_hint_bytes, " +
-        "architecture, language, license, mmap_resident_gb";   // appended: keeps ordinals stable
+        "architecture, language, license, mmap_resident_gb, " +   // appended: keeps ordinals stable
+        "retired";                                                   // 22
 
-    // WHAT THIS DEVICE DECIDED, which nothing could read before. Appended AFTER
-    // Columns so the entry ordinals 0-21 that ReadEntries depends on are untouched;
-    // these start at 22.
-    private const string Verdict = "compatible, rank, installed, assessed_at, refused_reason";
+    // WHAT THIS DEVICE DECIDED, which nothing could read before. Selected AFTER
+    // Columns, so the entry ordinals 0-22 that MapEntry reads are untouched; these
+    // start at 23 (ReadAssessed). Appending an entry column moves them by one.
+    private const string Verdict = "compatible, rank, installed, assessed_at, refused_reason, loaded_at";
 
     // ── Write ──────────────────────────────────────────────────────────────
 
@@ -169,12 +217,61 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
                      $totalBytes, $bundleFiles, $minRamGb, $minStorageGb, $minVramGb,
                      $capabilities, $qualityRank, $fallbackModelId, $memoryHintBytes,
                      $architecture, $language, $license, $mmapResidentGb,
+                     $retired,
                      0, 0, $installed, NULL, NULL, NULL);
                 """;
 
             BindEntry(cmd, entry);
             cmd.Parameters.AddWithValue("$installed", installed ? 1 : 0);
             cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <inheritdoc />
+    public bool ReSync(ModelEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (string.IsNullOrWhiteSpace(entry.Name)) return false;
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+
+            var (hadRow, priorVersion, priorInstalled) = ReadInstalledState(entry.Name);
+            if (!hadRow) return false;
+
+            // Same rule as Upsert: a re-pin makes any copy on disk stale.
+            var installed = string.Equals(priorVersion, entry.Version, StringComparison.Ordinal)
+                && priorInstalled;
+
+            using var cmd = _conn.CreateCommand();
+            // EVERY REGISTRY COLUMN, AND NOT ONE VERDICT COLUMN. compatible, rank,
+            // assessed_at, refused_reason and refused_at are what THIS DEVICE
+            // decided, and refreshing what the registry says about a model is no
+            // reason to forget them. BindEntry binds the same parameters Upsert
+            // uses, so the two cannot drift apart.
+            cmd.CommandText = """
+                UPDATE models SET
+                    version = $version, quantization = $quantization, url = $url,
+                    checksum = $checksum, repo = $repo, source = $source,
+                    modality = $modality, engine = $engine, total_bytes = $totalBytes,
+                    bundle_files = $bundleFiles, min_ram_gb = $minRamGb,
+                    min_storage_gb = $minStorageGb, min_vram_gb = $minVramGb,
+                    capabilities = $capabilities, quality_rank = $qualityRank,
+                    fallback_model_id = $fallbackModelId,
+                    memory_hint_bytes = $memoryHintBytes, architecture = $architecture,
+                    language = $language, license = $license,
+                    mmap_resident_gb = $mmapResidentGb, retired = $retired,
+                    installed = $installed,
+                    -- A proof of loading belongs to the version that loaded. SET
+                    -- expressions read the OLD row, so this compares old to new.
+                    loaded_at = CASE WHEN version = $version THEN loaded_at ELSE NULL END
+                WHERE id = $id;
+                """;
+
+            BindEntry(cmd, entry);
+            cmd.Parameters.AddWithValue("$installed", installed ? 1 : 0);
+            return cmd.ExecuteNonQuery() > 0;
         }
     }
 
@@ -240,6 +337,61 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
     }
 
     /// <inheritdoc />
+    public int Strike(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return 0;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE models SET load_strikes = load_strikes + 1 WHERE id = $id;
+                SELECT load_strikes FROM models WHERE id = $id;
+                """;
+            cmd.Parameters.AddWithValue("$id", id);
+            var n = cmd.ExecuteScalar();
+            return n is null or DBNull ? 0 : Convert.ToInt32(n, System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <inheritdoc />
+    public void RecordLoad(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            using var cmd = _conn.CreateCommand();
+            cmd.CommandText = "UPDATE models SET load_strikes = 0, loaded_at = $at WHERE id = $id;";
+            cmd.Parameters.AddWithValue("$at", _clock.GetUtcNow().ToString("O"));
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <inheritdoc />
+    public int ForgiveFirstStrikes(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return 0;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            using var cmd = _conn.CreateCommand();
+            // ONLY REFUSALS THE OLD RULE MADE, and they are identified exactly: the
+            // old reason AND no strikes recorded, because the column did not exist
+            // when they were written. A refusal the two-strike rule makes always has
+            // load_strikes >= 2, so it can never be caught by this.
+            cmd.CommandText = """
+                UPDATE models
+                SET refused_reason = NULL, refused_at = NULL, load_strikes = 1
+                WHERE refused_reason = $reason AND load_strikes = 0;
+                """;
+            cmd.Parameters.AddWithValue("$reason", reason);
+            return cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <inheritdoc />
     public void Pardon(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -248,7 +400,10 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
             ThrowIfDisposed();
             using var cmd = _conn.CreateCommand();
             cmd.CommandText =
-                "UPDATE models SET refused_reason = NULL, refused_at = NULL WHERE id = $id;";
+                // A PARDON IS A FRESH START, so the strikes go with the verdict. Left
+                // behind, one more death would refuse a model a person had just
+                // chosen to give another chance.
+                "UPDATE models SET refused_reason = NULL, refused_at = NULL, load_strikes = 0 WHERE id = $id;";
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
         }
@@ -334,9 +489,13 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         {
             ThrowIfDisposed();
             using var cmd = _conn.CreateCommand();
+            // NOT RETIRED: the owner's floor ("nothing less than Qwen3.5 is the LLM")
+            // is enforced here, where every catalogue selection reads, rather than in
+            // each caller that might forget it.
             cmd.CommandText = $"""
                 SELECT {Columns} FROM models
                 WHERE compatible = 1 AND modality = $modality AND refused_reason IS NULL
+                  AND retired = 0
                 ORDER BY rank DESC, min_ram_gb ASC, id ASC;
                 """;
             cmd.Parameters.AddWithValue("$modality", (int)modality);
@@ -354,6 +513,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
             cmd.CommandText = $"""
                 SELECT {Columns} FROM models
                 WHERE compatible = 1 AND modality = $modality AND refused_reason IS NULL
+                  AND retired = 0
                 ORDER BY rank DESC, min_ram_gb ASC, id ASC
                 LIMIT 1;
                 """;
@@ -431,6 +591,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         cmd.Parameters.AddWithValue("$language", (object?)e.Language ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$license", (object?)e.License ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$mmapResidentGb", (object?)e.MmapResidentGb ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$retired", e.Retired ? 1 : 0);
     }
 
     // Column order MUST match `Columns`.
@@ -442,11 +603,12 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         while (r.Read())
             results.Add(new AssessedModel(
                 Entry:         MapEntry(r),
-                Compatible:    !r.IsDBNull(22) && r.GetInt64(22) != 0,
-                Rank:          r.IsDBNull(23) ? 0 : r.GetDouble(23),
-                Installed:     !r.IsDBNull(24) && r.GetInt64(24) != 0,
-                AssessedAt:    r.IsDBNull(25) ? null : ReadStamp(r.GetString(25)),
-                RefusedReason: r.IsDBNull(26) ? null : r.GetString(26)));
+                Compatible:    !r.IsDBNull(23) && r.GetInt64(23) != 0,
+                Rank:          r.IsDBNull(24) ? 0 : r.GetDouble(24),
+                Installed:     !r.IsDBNull(25) && r.GetInt64(25) != 0,
+                AssessedAt:    r.IsDBNull(26) ? null : ReadStamp(r.GetString(26)),
+                RefusedReason: r.IsDBNull(27) ? null : r.GetString(27),
+                LoadedAt:      r.IsDBNull(28) ? null : ReadStamp(r.GetString(28))));
         return results;
     }
 
@@ -465,7 +627,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
         return results;
     }
 
-    /// <summary>Ordinals 0-21, the {Columns} list, mapped once.</summary>
+    /// <summary>Ordinals 0-22, the {Columns} list, mapped once.</summary>
     /// <remarks>
     /// WRITTEN TWICE IS WRITTEN WRONG. Twenty-two ordinals read by hand is exactly
     /// the shape that drifts when a column is appended, and a second copy in the
@@ -504,6 +666,7 @@ public sealed class SqliteModelCatalog : IModelCatalog, IDisposable
             Language        = reader.IsDBNull(19) ? null : reader.GetString(19),
             License         = reader.IsDBNull(20) ? null : reader.GetString(20),
             MmapResidentGb  = reader.IsDBNull(21) ? null : reader.GetDouble(21),
+            Retired         = !reader.IsDBNull(22) && reader.GetInt64(22) != 0,
         };
     }
 }

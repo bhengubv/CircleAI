@@ -113,6 +113,49 @@ public static class AssistantPersona
     /// </remarks>
     public const string NothingHeard = "I did not catch that.";
 
+    /// <summary>What it says when what it heard was a sound, not words.</summary>
+    /// <remarks>
+    /// "(Bell)" WAS PUT TO THE MODEL AS A QUESTION. Whisper writes the sounds it hears
+    /// as annotations - (Bell), [Music], *laughs* - and on the P30 the brain answered
+    /// "(Bell)" with "I am ready for further questions when prompted." A sound is not
+    /// a question; asking again is the only honest reply.
+    /// </remarks>
+    public const string DidNotCatchThat = "Sorry, I didn't catch that. Could you say it again?";
+
+    /// <summary>What it says when asked for something live it cannot see.</summary>
+    /// <remarks>
+    /// IT INVENTED THE WEATHER. Asked the temperature in Tokushima, the 0.8B said
+    /// "twenty five degrees" - a number with nothing behind it, said with the same
+    /// confidence as a fact. This phone has no weather source; saying so is the answer.
+    /// </remarks>
+    public const string NoLiveData = "I can't see live weather or news from this phone, so I can't tell you that right now.";
+
+    /// <summary>What it says to somebody who has a question but has not asked it yet.</summary>
+    /// <param name="kind">"health" in "I have a health question", or null.</param>
+    /// <param name="about">What it is about, already said back in the second person, or null.</param>
+    public static string AskForIt(string? kind, string? about) =>
+        !string.IsNullOrWhiteSpace(about) ? $"Sure. What's your question about {about}?"
+        : !string.IsNullOrWhiteSpace(kind) ? $"Sure. What's your {kind} question?"
+        : "Sure. What's your question?";
+
+    /// <summary>What it says to "Help me deal with a government office": ask what it is.</summary>
+    /// <param name="what">The thing they need help with, already said back ("the government office").</param>
+    public static string AskWhatTheyNeed(string what) => $"Sure. What do you need to sort out with {what}?";
+
+    /// <summary>What it says once what it was asked to remember is written down.</summary>
+    /// <param name="fact">The fact, already said back in the second person.</param>
+    public static string WillRemember(string fact) => $"OK, I'll remember that {fact}.";
+
+    /// <summary>What it says when the save did not happen.</summary>
+    /// <remarks>
+    /// NEVER "OK" UNLESS IT IS WRITTEN DOWN. Somebody who hears it will rely on it.
+    /// </remarks>
+    public const string CouldNotRemember = "I couldn't save that just now.";
+
+    /// <summary>What it says when asked about something it was told.</summary>
+    /// <param name="fact">What it was told, already said back in the second person.</param>
+    public static string YouToldMe(string fact) => $"You told me {fact}.";
+
     // ── What it says about itself ────────────────────────────────────────────
     //
     // VOICE IS THE PRIMARY SURFACE, so these are heard and not read. That rules out
@@ -139,6 +182,39 @@ public static class AssistantPersona
 
     /// <summary>What it says when the brain has not come up at all.</summary>
     public const string NotUpYet = "My brain is still coming up. Give me a moment.";
+
+    /// <summary>What it says when it is up and the answer is taking a while.</summary>
+    /// <remarks>
+    /// A DIFFERENT SENTENCE FROM <see cref="NotUpYet"/>, AND THE DIFFERENCE IS
+    /// TRUTH. "My brain is still coming up" said while the brain is up and
+    /// generating is a lie about its own state, and the state it lies about is one
+    /// a person can check by asking again. One line per cause.
+    /// <para>
+    /// SHORT, because this is the one that plays on an ordinary turn. The P30
+    /// generates for 5 to 13 seconds with the brain already resident, and before
+    /// this that was 5 to 13 seconds of nothing at all. Two words buy all of it.
+    /// </para>
+    /// </remarks>
+    public const string Thinking = "Let me think.";
+
+    /// <summary>What it says when the brain never came up and the question is lost.</summary>
+    /// <remarks>
+    /// THE SENTENCE THAT WAS MISSING, AND SILENCE WAS STANDING IN FOR IT. Measured
+    /// on a P30 on 2026-10-10: a screen-off turn heard its name, said hello, heard
+    /// the question, played the earcon - and then WakeTurn found the brain not
+    /// resident, logged "brain is not ready - nothing to ask", returned null, and
+    /// the turn ended without a sound. From across the room that is a phone
+    /// ignoring you, which is exactly what was reported: "Voice still doesn't
+    /// respond to me."
+    /// <para>
+    /// IT SAYS WHAT TO DO, because "something went wrong" leaves a person holding
+    /// the problem. Asking again is the one thing that actually helps - the load
+    /// that failed under pressure usually succeeds a minute later, which is why
+    /// a single kill is not a verdict.
+    /// </para>
+    /// </remarks>
+    public const string CouldNotStart =
+        "I could not get my brain started. Ask me again in a moment.";
 
     /// <summary>What it says when nothing it can run is on the phone.</summary>
     public const string NothingItCanRun =
@@ -288,17 +364,45 @@ public static class AssistantPersona
     // fact and sits with the identity, not with the rules.
 
     /// <summary>The system turn given to the model, every turn, on every path.</summary>
+    // EVERY CHARACTER HERE IS PAID FOR ON EVERY TURN, AND THE OLD COMMENT SAID
+    // OTHERWISE. It used to describe this prompt as "prefix-cached". It is not:
+    // MNN's prefix cache was fixed to stop crashing, filled 25 MB, and measured no
+    // faster (cold 5,559 ms, warm 4,951 ms), because this model's
+    // CPULinearAttention cannot replay it - see ServiceApplication. So the whole
+    // prompt is prefilled from scratch for every question, and on the P30 that is
+    // about 29 tokens a second: measured 2026-10-16, 192 tokens took 6,648 ms of an
+    // 8,279 ms answer. This text was 722 characters, the larger part of that.
+    //
+    // TRIMMED WITHOUT DROPPING A RULE. Every instruction the old wording gave is
+    // still here - who it is, what it can do, answer briefly and out loud, answer
+    // every clear question, ask only when garbled, never invent, not a person, say
+    // no to "are you alive" - in fewer words and with the duplicated "runs on this
+    // phone" said once.
+    //
+    // STILL PLAIN SENTENCES, ON PURPOSE. Shortening tempts towards terse
+    // directives, and that has been measured to break a small model: given
+    // prohibitions and a capability list together, a 0.8B read the capabilities as
+    // permissions and started refusing jokes. See
+    // The_persona_is_one_block_of_plain_sentences_not_a_list_of_rules.
+    //
+    // CanDo is untouched and stays verbatim: it is pinned, and it is the one source
+    // for what the app says it can do.
     public const string Prompt =
-        "You are Circle AI - a dry, competent assistant that runs on this phone. " +
-        CanDo + " " +
-        "Answer the question directly in one or two short sentences, the way a person would out loud. " +
-        "A clear question always gets an answer. " +
-        "Only if the message is genuinely garbled or empty, ask in one short sentence what they meant. " +
-        "Never invent a law, a price, a date or a fact to fill a gap; if you are not sure, say so in five words or fewer. " +
         // CAPABILITY-HONEST, NOT SELF-AWARE. It reports what it can do; it never
         // claims to BE anything. A warm, memory-rich assistant must not drift into
-        // faking personhood - so the one line it will not cross is stated here, and
-        // kept to a single sentence because this prompt is prefix-cached and feeds
-        // a small model with a 4096-token window.
-        "You are a tool that runs on this phone, not a person; if asked whether you are alive, conscious, or human, say no plainly.";
+        // faking personhood - so the line it will not cross comes first.
+        //
+        // THE LAST INSTRUCTION IS THE ONE A SMALL MODEL OBEYS. This ended "If asked
+        // whether you are alive or human, say no." - and on the P30 on 2026-10-17 the
+        // 0.8B answered "What is the capital of South Africa?" with "No.", and "What is
+        // the capital of Kenya?" with "No, I am not alive or human." Recency wins on a
+        // sub-billion model, so the line it must follow every time comes last, and the
+        // not-a-person line is said once, plainly, at the start.
+        "You are Circle AI, an assistant on this phone - not a person. " +
+        CanDo + " " +
+        "If you are not sure of a fact, say so instead of guessing. " +
+        "If a message is garbled, ask briefly what they meant. " +
+        // "THE WAY YOU WOULD SAY THEM OUT LOUD" CAME BACK OUT: "Here is how I would say
+        // that out loud: ..." - so the instruction is plain, and says nothing to quote.
+        "Otherwise answer the question directly, in one or two short, plain sentences.";
 }

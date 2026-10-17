@@ -1,4 +1,4 @@
-﻿// CircleAiLinkClient.cs
+// CircleAiLinkClient.cs
 //
 // The host-app side of the cross-app link: find the shared brain, bind it, ask.
 //
@@ -61,7 +61,7 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     private TaskCompletionSource<IBinder?> _bound =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IBinder? _live;
-    private bool _isBound;
+    private volatile bool _isBound;   // written by the binder callbacks, a delayed rebind and Dispose
 
     /// <summary>
     /// How long a call waits for the service to come back before giving up.
@@ -87,6 +87,12 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
             if (_live is not null) return _live;
             waiter = _bound.Task;
         }
+
+        // A CLIENT WITH NO BINDING AT ALL HAS NOTHING TO WAIT FOR. A rebind after a
+        // package update can fail while the installer still holds the package, and
+        // then no callback will ever arrive - so the call that needs the service is
+        // the one that binds again.
+        if (!_isBound) Rebind();
 
         return await WaitOrNull(waiter, timeout, ct).ConfigureAwait(false);
     }
@@ -180,6 +186,172 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
             reply => LinkTurnCodec.DecodeReply(ReadMap(reply)),
             LinkTurnReply.Failure,
             ct);
+
+    // ── questions as records (link protocol 2) ────────────────────────────────
+
+    // -1 NOT ASKED YET, 0 AN OLDER SERVICE, 2+ RECORDS. Forgotten whenever the binding
+    // dies, because the service that comes back may be a newer one.
+    private volatile int _protocol = -1;
+
+    /// <summary>The service's protocol revision; 0 for a service that predates questions-as-records.</summary>
+    public async Task<int> ProtocolAsync(CancellationToken ct = default)
+    {
+        if (_protocol >= 0) return _protocol;
+        var reply = await VerbAsync(new LinkVerbRequest(LinkVerb.Hello), ct).ConfigureAwait(false);
+        if (reply.Ok) return _protocol = Math.Max(1, LinkAskRows.ReadHello(reply.Rows).Protocol);
+
+        // ONLY "unknown verb" PROVES AN OLDER SERVICE. Anything else - a service
+        // restarting - says nothing, and must not pin this client to the old road.
+        if (reply.Error == "unknown verb") return _protocol = 0;
+        return 0;
+    }
+
+    /// <summary>Submit a question; one ask row back. The same request id is the same ask.</summary>
+    public Task<LinkRowsReply> SubmitAskAsync(
+        string clientRequestId, string sessionId, string message, string? question = null,
+        CircleAI.Assistant.Requests.AskLane lane = CircleAI.Assistant.Requests.AskLane.Foreground,
+        bool spoken = false, bool agentic = false, CancellationToken ct = default)
+    {
+        var args = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [LinkAskRows.ArgRequestId] = clientRequestId,
+            [LinkAskRows.ArgSession]   = sessionId ?? string.Empty,
+            [LinkAskRows.ArgMessage]   = message,
+            [LinkAskRows.ArgLane]      = lane.ToString(),
+            [LinkAskRows.ArgSpoken]    = spoken ? "1" : "0",
+            [LinkAskRows.ArgAgentic]   = agentic ? "1" : "0",
+        };
+        if (!string.IsNullOrWhiteSpace(question)) args[LinkAskRows.ArgQuestion] = question!;
+        return VerbAsync(new LinkVerbRequest(LinkVerb.AskSubmit, Args: args), ct);
+    }
+
+    /// <summary>One of this app's asks, with answer text from <paramref name="since"/>; may wait briefly for news.</summary>
+    public Task<LinkRowsReply> AskStatusAsync(string askId, int since = 0, long afterSeq = -1, int waitMs = 0, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.AskStatus, Query: askId, Args: new Dictionary<string, string>
+        {
+            [LinkAskRows.ArgSince]    = since.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [LinkAskRows.ArgAfterSeq] = afterSeq.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [LinkAskRows.ArgWaitMs]   = waitMs.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        }), ct);
+
+    /// <summary>Withdraw one of this app's asks.</summary>
+    public Task<LinkRowsReply> CancelAskAsync(string askId, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.AskCancel, Query: askId), ct);
+
+    /// <summary>This app's recent asks, newest first.</summary>
+    public Task<LinkRowsReply> ListAsksAsync(int limit = 20, bool openOnly = false, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.AskList, Limit: limit,
+            Args: new Dictionary<string, string> { [LinkAskRows.ArgOpenOnly] = openOnly ? "1" : "0" }), ct);
+
+    /// <summary>The service's readiness; one [unchanged] row when nothing changed since <paramref name="afterSeq"/>.</summary>
+    public Task<LinkRowsReply> StatusAsync(long afterSeq = -1, CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Status, Args: new Dictionary<string, string>
+        {
+            [LinkAskRows.ArgAfterSeq] = afterSeq.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        }), ct);
+
+    /// <summary>The service's health facts.</summary>
+    public Task<LinkRowsReply> HealthAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.Health), ct);
+
+    /// <summary>First party only: start a quality run; returns the previous run's verdicts.</summary>
+    public Task<LinkRowsReply> QualityRunAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.QualityRun), ct);
+
+    /// <summary>Stop the setup run; downloaded bytes are kept.</summary>
+    public Task<LinkRowsReply> SetupCancelAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.SetupCancel), ct);
+
+    /// <summary>
+    /// Ask a question that survives this app and the service restarting: submitted with
+    /// a request id, followed until it is answered, its text reported as it grows.
+    /// </summary>
+    /// <param name="message">What to put to the model (it may carry this app's own context).</param>
+    /// <param name="question">The question alone, when <paramref name="message"/> was composed.</param>
+    /// <param name="sessionId">This app's conversation id.</param>
+    /// <param name="spoken">The answer will be read aloud.</param>
+    /// <param name="partial">Called with the whole answer so far, each time it grows.</param>
+    /// <param name="clientRequestId">Pass the id of an ask this app already submitted to pick it up again.</param>
+    /// <param name="ct">Stops following; the ask is withdrawn.</param>
+    /// <remarks>
+    /// A RETRY IS THE SAME ASK. Re-submitting after the service died sends the same
+    /// request id, which the service answers with the ask it already has - never a
+    /// second generation of the same question. An older service gets the blocking ask.
+    /// </remarks>
+    public async Task<LinkTurnReply> AskDurablyAsync(
+        string message, string? question, string sessionId, bool spoken = false,
+        Action<string>? partial = null, string? clientRequestId = null, CancellationToken ct = default)
+    {
+        if (await ProtocolAsync(ct).ConfigureAwait(false) < 2)
+            return await AskAsync(sessionId, message, agentic: false, ct).ConfigureAwait(false);
+
+        var rid = clientRequestId ?? Guid.NewGuid().ToString("N");
+        var give = DateTimeOffset.UtcNow.AddMinutes(6);
+        LinkAskView? view = null;
+        while (view is null)
+        {
+            var submitted = await SubmitAskAsync(rid, sessionId, message, question, spoken: spoken, ct: ct).ConfigureAwait(false);
+            if (submitted.Ok && submitted.Rows.Count > 0) { view = LinkAskRows.ReadAsk(submitted.Rows[0]); break; }
+            if (submitted.Error == "unknown verb")
+            {
+                _protocol = 0;
+                return await AskAsync(sessionId, message, agentic: false, ct).ConfigureAwait(false);
+            }
+            // REFUSED AT THE DOOR (busy, too long) IS AN ANSWER, not a reason to retry.
+            if (submitted.Error is { } refusal && !refusal.StartsWith("Circle AI", StringComparison.Ordinal))
+                return LinkTurnReply.Failure(refusal);
+            if (DateTimeOffset.UtcNow > give) return LinkTurnReply.Failure(submitted.Error ?? "Circle AI could not answer just now.");
+            await Task.Delay(1000, ct).ConfigureAwait(false);
+        }
+        if (view is null) return LinkTurnReply.Failure("Circle AI could not take that question.");
+
+        var text = view.TextOffset == 0 ? view.Text : string.Empty;
+        if (text.Length > 0) partial?.Invoke(text);
+        var seq = view.Seq;
+
+        try
+        {
+            while (!view.IsFinal)
+            {
+                ct.ThrowIfCancellationRequested();
+                var polled = await AskStatusAsync(view.Id, text.Length, seq, waitMs: 1200, ct).ConfigureAwait(false);
+                if (!polled.Ok || polled.Rows.Count == 0 || LinkAskRows.ReadAsk(polled.Rows[0]) is not { } next)
+                {
+                    // THE SERVICE WENT AWAY. The ask did not: it is on disk with its id,
+                    // and the next poll after the rebind reads where it got to.
+                    if (DateTimeOffset.UtcNow > give) return LinkTurnReply.Failure("Circle AI is still working on that.");
+                    await Task.Delay(750, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                view = next;
+                seq = view.Seq;
+                if (view.TextOffset <= text.Length && view.Text.Length > 0)
+                {
+                    text = text[..view.TextOffset] + view.Text;
+                    partial?.Invoke(text);
+                }
+                else if (view.TextLength < text.Length)
+                {
+                    text = string.Empty;   // re-queued after a crash: the answer starts again
+                }
+            }
+        }
+        catch (System.OperationCanceledException)
+        {
+            try { await CancelAskAsync(view.Id, CancellationToken.None).ConfigureAwait(false); } catch { }
+            throw;
+        }
+
+        if (view.State == CircleAI.Assistant.Requests.AskState.Succeeded)
+        {
+            // THE FINAL TEXT IS CLEANED BY THE SERVICE; read it whole once.
+            var whole = await AskStatusAsync(view.Id, 0, -1, 0, CancellationToken.None).ConfigureAwait(false);
+            var final = whole.Ok && whole.Rows.Count > 0 && LinkAskRows.ReadAsk(whole.Rows[0]) is { } w ? w.Text : text;
+            return LinkTurnReply.Success(final);
+        }
+        return LinkTurnReply.Failure(view.Sentence ?? "Circle AI could not answer that.");
+    }
 
     /// <summary>
     /// One transaction, surviving the service being killed underneath it.
@@ -529,20 +701,123 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     /// </remarks>
     public void OnServiceDisconnected(ComponentName? name)
     {
+        _protocol = -1;   // the service that comes back may speak a different revision
         lock (_gate)
         {
             _live = null;
-            _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // ONLY A COMPLETED WAITER IS REPLACED, as in Invalidate and OnBindingDied.
+            // This replaced it unconditionally, so a caller already waiting on the
+            // fresh one Invalidate had just made - the transact that found the
+            // corpse - was orphaned: the reconnect completed the NEW waiter, and the
+            // caller sat out RestartGrace and failed with the service back up.
+            if (_bound.Task.IsCompleted)
+                _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        global::Android.Util.Log.Info("CircleAI.Link", "service disconnected; waiting for Android to restart it");
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// THE SERVICE WAS UPDATED, AND THIS BINDING WILL NEVER COME BACK BY ITSELF.
+    /// OnServiceDisconnected covers a process death: Bind.AutoCreate restarts the
+    /// service and OnServiceConnected hands over a fresh binder. A package update is
+    /// different. Android calls this instead, and the connection is dead for good:
+    /// "the application will need to unbind and rebind the connection to activate
+    /// it again."
+    /// <para>
+    /// Measured on the P30 on 2026-10-16. Visual Studio's Install target replaced
+    /// the service while the app stayed open, and no service process came back,
+    /// because nothing asked for one. Without this, every service update strands
+    /// an open app until somebody kills it, and every ask in the meantime waits out
+    /// RestartGrace and fails.
+    /// </para>
+    /// <para>
+    /// So it unbinds and binds again. The waiter is replaced exactly as on a
+    /// disconnect, so a caller already in flight waits for the new binder instead
+    /// of failing.
+    /// </para>
+    /// <para>
+    /// AFTER A PAUSE, AND AGAIN ON DEMAND. A bind made while the installer still
+    /// holds the package can fail, or be reported dead in turn, so the rebind waits
+    /// <see cref="RebindPause"/> first - and one that fails outright is retried by
+    /// the next call that needs the service (<see cref="LiveBinderAsync"/>), not
+    /// left as a client that can never reach it again.
+    /// </para>
+    /// </remarks>
+    public void OnBindingDied(ComponentName? name)
+    {
+        _protocol = -1;
+        lock (_gate)
+        {
+            _live = null;
+            if (_bound.Task.IsCompleted)
+                _bound = new TaskCompletionSource<IBinder?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        if (_isBound)
+        {
+            _isBound = false;
+            try { _context.UnbindService(this); } catch { /* already gone */ }
+        }
+
+        // SAID, because the first version of this was silent: after a service
+        // install on the P30 on 2026-10-16 nothing came back, and nothing in the
+        // log could tell "never called" from "called and the bind failed".
+        global::Android.Util.Log.Info("CircleAI.Link",
+            $"binding died (the service was updated or removed); binding again in {RebindPause.TotalSeconds:0} s");
+
+        _ = Task.Delay(RebindPause).ContinueWith(_ => Rebind(), TaskScheduler.Default);
+    }
+
+    /// <summary>How long a dead binding waits before binding again.</summary>
+    private static readonly TimeSpan RebindPause = TimeSpan.FromSeconds(2);
+
+    /// <summary>Bind the service again unless a binding is already held.</summary>
+    /// <remarks>Never throws. Safe from any thread: bindService is.</remarks>
+    private void Rebind()
+    {
+        lock (_rebindGate)
+        {
+            // A disposed client binding again would leak the binding for good.
+            if (_isBound || _disposed) return;
+
+            var intent = new Intent(LinkIpc.BindAction);
+            intent.SetPackage(LinkIpc.HostPackage);
+            try { _isBound = _context.BindService(intent, this, Bind.AutoCreate); }
+            catch (Exception ex)
+            {
+                _isBound = false;   // the next call that needs the service tries again
+                global::Android.Util.Log.Warn("CircleAI.Link", "rebind threw: " + ex.Message);
+            }
+
+            global::Android.Util.Log.Info("CircleAI.Link",
+                _isBound ? "rebound to the service"
+                         : "rebind refused; the next call that needs the service will try again");
         }
     }
+
+    /// <summary>Serialises <see cref="Rebind"/> so two paths cannot both bind.</summary>
+    private readonly object _rebindGate = new();
+
+    /// <summary>Set once disposed, so a pending rebind does not bind a dead client.</summary>
+    private volatile bool _disposed;
 
     /// <inheritdoc/>
     protected override void Dispose(bool disposing)
     {
-        if (disposing && _isBound)
+        if (disposing)
         {
-            _isBound = false;
-            try { _context.UnbindService(this); } catch { /* already gone */ }
+            lock (_rebindGate)
+            {
+                _disposed = true;
+                if (_isBound)
+                {
+                    _isBound = false;
+                    try { _context.UnbindService(this); } catch { /* already gone */ }
+                }
+            }
         }
         base.Dispose(disposing);
     }

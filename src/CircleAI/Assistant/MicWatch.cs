@@ -81,6 +81,46 @@ public sealed class MicWatch
     /// </remarks>
     public const float SilenceThreshold = 0.001f;
 
+    /// <summary>How often a wake listener reports how close the model came.</summary>
+    /// <remarks>
+    /// NOT ON THE BACKOFF ABOVE, AND THE DISTINCTION IS THE SAME ONE THIS FILE
+    /// ALREADY MAKES: the backoff is on the REASSURANCE. "Still alive" repeated
+    /// every five seconds is 720 lines an hour of nothing happening, so it decays.
+    /// A near miss is not reassurance - it is the event - and a phrase tried six
+    /// times in a minute must produce six lines, not one.
+    /// <para>
+    /// Two seconds, because that is about the length of one attempt at a wake
+    /// phrase plus the pause after it. Shorter would split a single utterance
+    /// across two windows and report the quieter half; longer would collapse a
+    /// person saying it three times into one line, and "they tried three times"
+    /// is exactly the thing worth seeing.
+    /// </para>
+    /// <para>
+    /// A TimeSpan rather than a sample count, unlike everything else here,
+    /// because it is not measuring the microphone - it is pacing a log line, and
+    /// a caller holding a Stopwatch should not have to convert.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan NearMissGap = TimeSpan.FromSeconds(2);
+
+    /// <summary>Above this peak amplitude, somebody is talking rather than breathing.</summary>
+    /// <remarks>
+    /// MEASURED ON THE P30 ON 2026-10-11, in the capture that started all this: a
+    /// quiet room in that room on that day read a peak of 0.063 to 0.080, and a
+    /// person saying the wake phrase read 0.453. Not the 0.012-0.023 in
+    /// <see cref="SilenceThreshold"/>'s remarks - that was a quieter room on a
+    /// different day, which is why this is its own number rather than a multiple
+    /// of that one.
+    /// <para>
+    /// 0.15 sits roughly half way between the two in log terms and well clear of
+    /// both. It does not need to be a voice-activity detector; it only has to
+    /// separate "nobody spoke" from "somebody spoke and the model matched
+    /// nothing", because those two look identical in a log and call for
+    /// completely different actions.
+    /// </para>
+    /// </remarks>
+    public const float SpeechPeak = 0.15f;
+
     private int _step;
     private long _sinceProbe;
     private long _sinceLine;

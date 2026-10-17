@@ -93,13 +93,15 @@ public class MainActivity : MauiAppCompatActivity
     /// The OS is short of memory and would rather this process gave some back.
     /// </summary>
     /// <remarks>
-    /// A BROWNOUT BEATS BEING KILLED. Answering this evicts the admitted
-    /// specialist and keeps the warm generalist serving, so the assistant gets
-    /// worse at one thing instead of vanishing mid-sentence - which is what the
-    /// low-memory killer does instead, on the 1.4 GB handsets this is for.
+    /// THE MODELS ARE NOT IN THIS PROCESS, SO THIS DOES NOT EVICT THEM. It used to
+    /// log "evicting the specialist, keeping the generalist" and raise an event
+    /// whose only listener, DeviceBrain, had moved to the service with the models -
+    /// so it reported a brownout that never happened, every minute or two on the
+    /// P30. The service answers its own memory pressure (AndroidMemoryPressure,
+    /// registered in CircleNeuronService), where the megabytes are.
     ///
-    /// The other head has answered onTrimMemory since it was written. This one
-    /// ignored it entirely.
+    /// What this process CAN give back is its own disposable cache, below, and any
+    /// in-app listener is still told - and the log says how many there were.
     /// </remarks>
     public override void OnTrimMemory([Android.Runtime.GeneratedEnum] TrimMemory level)
     {
@@ -108,9 +110,10 @@ public class MainActivity : MauiAppCompatActivity
         if (level is TrimMemory.RunningLow or TrimMemory.RunningCritical
                   or TrimMemory.Complete or TrimMemory.Background)
         {
+            var told = CircleAI.Assistant.AppLifecycle.RaiseMemoryIsShort();
             Android.Util.Log.Info("CircleAI.Mem",
-                $"OS memory pressure ({level}) - evicting the specialist, keeping the generalist");
-            CircleAI.Assistant.AppLifecycle.RaiseMemoryIsShort();
+                $"OS memory pressure ({level}) - {told} in-app listener(s) told; " +
+                "the models live in the service, which answers its own; shedding this app's cache");
 
             // AND SHED THE DISPOSABLE CACHE. The eviction above frees RAM; this
             // frees the regenerable scratch on disk - the same brownout, one tier
@@ -149,9 +152,11 @@ public class MainActivity : MauiAppCompatActivity
                     var freed = severe
                         ? CircleAI.Assistant.Device.AppCache.Empty()
                         : CircleAI.Assistant.Device.AppCache.Trim(cap, keep);
-                    if (freed > 0)
-                        Android.Util.Log.Info("CircleAI.Cache",
-                            $"pressure cache tidy ({level}): freed {CircleAI.Assistant.MemoryBudget.Human(freed)}");
+                    // The zero is said too: a tidy that reports nothing reads the
+                    // same as a tidy that never ran.
+                    Android.Util.Log.Info("CircleAI.Cache", freed > 0
+                        ? $"pressure cache tidy ({level}): freed {CircleAI.Assistant.MemoryBudget.Human(freed)}"
+                        : $"pressure cache tidy ({level}): nothing to free");
                 }
                 catch (System.Exception ex)
                 {

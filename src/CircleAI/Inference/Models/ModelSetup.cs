@@ -70,8 +70,13 @@ public static class ModelSetup
         ArgumentNullException.ThrowIfNull(loader);
         try
         {
+            // NOT A RETIRED ONE. This list is what gets resumed on every start, through
+            // a fetch with no metered-network gate, biggest first - so a half-fetched
+            // Qwen3-30B (17.7 GB) would be finished at somebody's expense, ahead of the
+            // Qwen3.5 brain, for a model that can never be the brain.
             return Ids(loader)
                 .Where(loader.ModelPartial)
+                .Where(id => !loader.IsRetired(id))
                 .Select(id => { var (have, need) = loader.Progress(id); return (Name: id, Have: have, Need: need); })
                 .OrderByDescending(u => u.Need)
                 .ToList();

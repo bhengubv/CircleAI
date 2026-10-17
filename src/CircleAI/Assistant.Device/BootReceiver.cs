@@ -46,6 +46,11 @@ namespace CircleAI.Assistant.Device;
     // silently fails to come back on exactly the phones that need it most.
     "android.intent.action.QUICKBOOT_POWERON",
     "com.htc.intent.action.QUICKBOOT_POWERON",
+    // AN UPDATE KILLS THE SERVICE AND NOTHING BRINGS IT BACK. A package replace ends
+    // every process of the app, and a sticky service is not restarted after one - so
+    // an upgrade left the phone deaf, and the questions it had accepted waiting,
+    // until somebody happened to open the app.
+    Intent.ActionMyPackageReplaced,
 })]
 public sealed class BootReceiver : BroadcastReceiver
 {
@@ -58,6 +63,16 @@ public sealed class BootReceiver : BroadcastReceiver
 
         try
         {
+            // AFTER AN UPDATE, THE SAME SERVICE AS BEFORE, LISTENING INCLUDED. Unlike a
+            // reboot nothing about the owner's choice changed, and the process start this
+            // causes is what resumes listening and the questions that were waiting.
+            if (intent?.Action == Intent.ActionMyPackageReplaced)
+            {
+                if (ResidentPrefs.WasRunning(context)) CircleNeuronService.Start(context);
+                Android.Util.Log.Info(Tag, "updated: the service is back, and so are the questions it had accepted");
+                return;
+            }
+
             // Only if the owner had it running before the reboot. Starting a
             // foreground service on a phone whose owner never asked for one is
             // how an app earns a place in somebody's battery settings.

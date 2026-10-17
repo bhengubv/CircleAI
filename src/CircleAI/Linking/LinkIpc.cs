@@ -22,6 +22,17 @@ public static class LinkIpc
     /// </summary>
     public const string Descriptor = "com.bhengubv.circleai.link.v1";
 
+    /// <summary>
+    /// The protocol revision this build speaks, reported by <see cref="LinkVerb.Hello"/>.
+    /// </summary>
+    /// <remarks>
+    /// NOT THE DESCRIPTOR, which only changes on a BREAKING change. Revision 2 added
+    /// questions as records (AskSubmit/AskStatus/AskCancel/AskList), Status and
+    /// Health; a client that reads 1, or gets "unknown verb" for Hello, uses the
+    /// blocking <see cref="TransactAsk"/> as before.
+    /// </remarks>
+    public const int Protocol = 2;
+
     /// <summary>Transaction code: ask the shared brain one turn.</summary>
     public const int TransactAsk = 1;
 

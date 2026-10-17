@@ -65,18 +65,17 @@ public sealed class FallbackChainTests
     }
 
     [Fact]
-    public void ChainFor_EmbeddedRegistry_HasQwen3Chain()
+    public void ChainFor_EmbeddedRegistry_KeepsTheQwen3ChainButNeverWalksIt()
     {
-        // Sanity-check the catalog ships the qwen3 chain we just stamped.
+        // The catalog still ships the qwen3 chain (14B -> 8B -> 4B -> 1.7B -> 0.6B)
+        // as data, so lifting the floor would be a registry edit, not a code change.
+        // But the family is retired - "nothing less than Qwen3.5 is the LLM"
+        // (2026-10-16) - and the selector does not walk below the floor.
         using var registry = new ModelRegistryService();
-        var selector       = new DeviceAwareModelSelector(registry);
-        var chain          = selector.ChainFor("Qwen3-14B-MNN");
-        Assert.Contains("Qwen3-8B-MNN",   chain);
-        Assert.Contains("Qwen3-4B-MNN",   chain);
-        Assert.Contains("Qwen3-1.7B-MNN", chain);
-        Assert.Contains("Qwen3-0.6B-MNN", chain);
-        // Final entry must be terminal — no further fallback.
-        Assert.Equal("Qwen3-0.6B-MNN", chain[^1]);
+        Assert.Equal("Qwen3-8B-MNN", registry.GetLatestModel("Qwen3-14B-MNN")!.FallbackModelId);
+
+        var selector = new DeviceAwareModelSelector(registry);
+        Assert.Empty(selector.ChainFor("Qwen3-14B-MNN"));
     }
 }
 

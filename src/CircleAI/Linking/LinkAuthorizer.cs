@@ -81,7 +81,17 @@ public sealed class LinkAuthorizer
     private async Task<LinkGrant> MintAsync(LinkRequest req, DateTimeOffset now, CancellationToken ct)
     {
         var expires = _grantLifetime <= TimeSpan.Zero ? (DateTimeOffset?)null : now + _grantLifetime;
-        var grant = new LinkGrant(req.CallerPackage, req.CallerSignature, req.Requested, now, expires);
+
+        // A NEW APPROVAL ADDS TO THE OLD ONE. The store keeps one grant per package and
+        // saving replaced it, so approving Voice for an app that already had Chat took
+        // Chat away. Same package AND same signing key only: a different signature is
+        // a different app wearing the name, and widens nothing.
+        var scope = req.Requested;
+        var existing = await _store.FindAsync(req.CallerPackage, ct).ConfigureAwait(false);
+        if (existing is not null && string.Equals(existing.CallerSignature, req.CallerSignature, StringComparison.Ordinal))
+            scope |= existing.Scope;
+
+        var grant = new LinkGrant(req.CallerPackage, req.CallerSignature, scope, now, expires);
         await _store.SaveAsync(grant, ct).ConfigureAwait(false);
         return grant;
     }

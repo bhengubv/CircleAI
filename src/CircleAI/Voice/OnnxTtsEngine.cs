@@ -441,6 +441,17 @@ public sealed class OnnxTtsEngine : ITtsEngine, ITtsFrontEndDiagnostics, IDispos
         {
             if (_session is not null) return _session;
 
+            // A CLOSED VOICE REOPENING ITSELF SAYS SO. This is tolerated rather
+            // than refused - refusing would turn a slow sentence into no
+            // sentence - but it is never silent again. Its silence is exactly
+            // how a cache that reloaded the model on every turn was believed,
+            // for days, to have stopped doing so: something disposed an engine
+            // the cache still handed out, and this method quietly paid the full
+            // model load to bring it back.
+            if (_disposed)
+                VoiceTrace.Write("tts: a CLOSED voice was reopened - something disposed an engine "
+                               + "that TtsEngines still owns, and this sentence pays the model load again");
+
             if (!File.Exists(_modelPath))
             {
                 throw new InvalidOperationException(

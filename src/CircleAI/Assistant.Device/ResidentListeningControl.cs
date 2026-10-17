@@ -121,6 +121,33 @@ public sealed class ResidentListeningControl(Context context) : IResidentAssista
                 Android.Util.Log.Warn(Tag, "foreground service did not start: " + ex.Message);
             }
 
+            // THE FILE IS BROUGHT UP TO DATE BEFORE IT IS READ, which is what
+            // DeviceWakePhrases.EnsureCurrent was written for and what nothing
+            // had ever called it for.
+            //
+            // Its own documentation says "Called at every start of resident
+            // listening. Idempotent and cheap." It had ZERO callers in the
+            // repository. So the keyword file was only ever rewritten when
+            // somebody added or chose a phrase in the app, and a phone kept
+            // whatever spelling the build of that moment produced - for ever.
+            //
+            // That is not hypothetical. On 2026-10-11 the spelling of the
+            // owner's own phrase was corrected in WakePhraseBook (the product is
+            // "B!", said "Bee", and the keyword file had been asking for the
+            // initialism letter B, which the acoustic model never emits). The
+            // corrected build was installed on the P30 and changed nothing at
+            // all, because the file on disk had been written by the older one
+            // and nothing re-wrote it. The fix was in the APK and could not
+            // reach the phone.
+            //
+            // Swallowed, because a file that cannot be refreshed is a reason to
+            // listen with yesterday's phrase, not a reason not to listen.
+            try { (CircleNeuronLinkService.WakePhrases as DeviceWakePhrases)?.EnsureCurrent("en"); }
+            catch (Exception ex)
+            {
+                Android.Util.Log.Warn(Tag, "could not refresh the wake phrases: " + ex.Message);
+            }
+
             var keywords = DeviceWakePhrases.KeywordFile("en");
             var ears = new ScreenUpWakeWord(bundle, File.Exists(keywords) ? keywords : null);
             ears.Woke += (_, phrase) =>

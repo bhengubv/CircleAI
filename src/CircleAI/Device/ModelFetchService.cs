@@ -156,6 +156,7 @@ public sealed class ModelFetchService : Service
         if (!protectedRun)
             global::Android.Util.Log.Warn(LogTag,
                 "running without foreground protection; Android may freeze this mid-download");
+        Report(CircleAI.Assistant.Lifecycle.BrainPhase.Loading, CircleAI.Assistant.Lifecycle.PauseReason.None, "Setting up.");
 
         _cancel = new CancellationTokenSource();
         var ct = _cancel.Token;
@@ -207,6 +208,31 @@ public sealed class ModelFetchService : Service
                     // A plan that cannot be computed must not lose the resume above.
                     global::Android.Util.Log.Warn(LogTag, "first-run plan failed: " + ex.Message);
                 }
+
+                // AND THEN A BETTER BRAIN, IF THERE IS ONE - ON WI-FI, ON CHARGE. The
+                // first-run plan counts the brain done once any Qwen3.5 is here, so a
+                // phone that could hold a better one never fetched it. This is the
+                // improvement path: one candidate at a time, never on mobile data or
+                // battery, and the brain that works keeps answering until the new one
+                // has passed its validation in the supervisor.
+                try
+                {
+                    if (UpgradeCandidate(registry, loader) is { } candidate)
+                    {
+                        if (Unmetered() && Charging())
+                        {
+                            global::Android.Util.Log.Info(LogTag, $"upgrade: fetching {candidate.Name} on Wi-Fi while charging");
+                            await ModelSetup.FetchNotStartedAsync(
+                                loader, new[] { (candidate.Name, candidate.TotalBytes) }, Say, ct).ConfigureAwait(false);
+                        }
+                        else global::Android.Util.Log.Info(LogTag, $"upgrade: {candidate.Name} waits for Wi-Fi and a charger");
+                    }
+                }
+                catch (System.OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    global::Android.Util.Log.Warn(LogTag, "upgrade check failed: " + ex.Message);
+                }
             }
             catch (Exception ex)
             {
@@ -215,8 +241,15 @@ public sealed class ModelFetchService : Service
             finally
             {
                 lock (Gate) _busy = false;
+                if (!ct.IsCancellationRequested)
+                    Report(CircleAI.Assistant.Lifecycle.BrainPhase.Ready, CircleAI.Assistant.Lifecycle.PauseReason.None, "Nothing left to fetch.");
                 try { StopForeground(StopForegroundFlags.Remove); } catch { }
                 try { StopSelf(); } catch { }
+
+                // A MODEL THAT ARRIVED IS NEWS FOR A BRAIN THAT HAD NONE: questions
+                // waiting for setup are woken by the brain's own next attempt.
+                if (CircleNeuronService.Brain is { } brain)
+                    _ = brain.EnsureReadyAsync(CancellationToken.None).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             }
         }, ct);
 
@@ -256,6 +289,78 @@ public sealed class ModelFetchService : Service
         _cancel = null;
         lock (Gate) _busy = false;
         base.OnDestroy();
+    }
+
+    /// <summary>
+    /// A chat model better than the best one on this phone that the phone could hold:
+    /// not retired, not refused, ranked higher, within the resident ceiling and the free
+    /// storage. Null when there is none.
+    /// </summary>
+    internal static Core.Models.ModelEntry? UpgradeCandidate(Core.Models.ModelRegistryService registry, BundleModelLoader loader)
+    {
+        var probe = CircleAI.Core.DeviceProbe.Snapshot();
+        var catalogue = CircleNeuronService.Catalogue;
+        var chat = registry.AllModels
+            .Where(e => e.Modality == CircleAI.Core.ModelModality.Chat && !e.Retired && !CrashVerdict.IsRefused(catalogue, e.Name))
+            .ToList();
+        var bestHere = chat.Where(e => loader.ModelPresent(e.Name)).Select(e => e.QualityRank).DefaultIfEmpty(-1).Max();
+        if (bestHere < 0) return null;   // no brain yet: that is the first-run plan's job
+
+        return chat
+            .Where(e => e.QualityRank > bestHere && !loader.ModelPresent(e.Name)
+                        && ModelFit.CouldEverHold(e, probe) && ModelFit.FitsStorage(e, probe.StorageFreeGb))
+            .OrderByDescending(e => e.QualityRank)
+            .FirstOrDefault();
+    }
+
+    private bool Unmetered()
+    {
+        try
+        {
+            return GetSystemService(ConnectivityService) is global::Android.Net.ConnectivityManager cm
+                   && cm.ActiveNetwork is not null && !cm.IsActiveNetworkMetered;
+        }
+        catch { return false; }
+    }
+
+    private bool Charging()
+    {
+        try
+        {
+            var battery = RegisterReceiver(null, new IntentFilter(Intent.ActionBatteryChanged));
+            return (battery?.GetIntExtra(BatteryManager.ExtraPlugged, 0) ?? 0) != 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Android's daily time budget for this kind of work ran out (Android 15+).</summary>
+    /// <remarks>
+    /// PAUSED, NOT FAILED, AND THE BYTES STAY. dataSync is the foreground type Android
+    /// 15 budgets per day; when it runs out the system calls this and expects the
+    /// service gone within seconds, or it is the app that pays. The download stops,
+    /// the partial file and its marker are kept (the downloader no longer deletes them
+    /// on cancellation), and the next permitted start resumes from them.
+    /// </remarks>
+    public override void OnTimeout(int startId, global::Android.Content.PM.ForegroundService fgsType)
+    {
+        global::Android.Util.Log.Warn(LogTag, "Android's time limit for downloads ran out; pausing, the bytes are kept");
+        Report(CircleAI.Assistant.Lifecycle.BrainPhase.Paused, CircleAI.Assistant.Lifecycle.PauseReason.AndroidTimeLimit,
+               "Paused by the phone's time limit; it carries on later.");
+        try { _cancel?.Cancel(); } catch { }
+        try { StopForeground(StopForegroundFlags.Remove); } catch { }
+        StopSelf();
+    }
+
+    private static void Report(CircleAI.Assistant.Lifecycle.BrainPhase phase, CircleAI.Assistant.Lifecycle.PauseReason pause, string detail)
+    {
+        try
+        {
+            CircleNeuronService.Readiness?.Report(new CircleAI.Assistant.Lifecycle.ComponentState(
+                CircleAI.Assistant.Lifecycle.ReadinessComponents.Fetch, phase, CircleAI.Assistant.Lifecycle.LoadStep.None,
+                pause == CircleAI.Assistant.Lifecycle.PauseReason.AndroidTimeLimit ? CircleAI.Assistant.Lifecycle.FailureKind.AndroidTimeout : null,
+                pause, detail, null, DateTimeOffset.UtcNow));
+        }
+        catch { /* readiness is a report, never a reason to stop downloading */ }
     }
 
     /// <summary>Report a line to the log AND to the shade, which is the honest surface.</summary>

@@ -55,16 +55,77 @@ public class WakePhraseTests
     }
 
     [Fact]
-    public void AShortPhraseIsAllowedButWarnedAbout()
+    public void TheOwnersPhraseIsThreeTokensAndThatIsNotWhyItFails()
     {
-        // "Hey B" is three tokens and was heard 1 time in 10 through a room, while
-        // four-token "Circle" — the same two syllables — was heard 12 of 12. The
-        // book must not forbid it (it is the owner's phrase) and must not stay
-        // quiet either.
+        // THIS TEST HAS NOW BEEN WRONG IN BOTH DIRECTIONS, WHICH IS WORTH
+        // KEEPING WRITTEN DOWN.
+        //
+        // It began by asserting 3 tokens and a Caution verdict, with a comment
+        // holding a real measurement: "Hey B" heard 1 time in 10 through a
+        // room, four-token "Circle" heard 12 of 12. That was read as "the
+        // owner's phrase is too short", and on 2026-10-11 the book was changed
+        // to re-spell lone letters - "_HE Y _BE E", four tokens, verdict Good.
+        //
+        // Then the owner's own voice was put through the decoder, in the
+        // device's exact configuration, and settled it:
+        //
+        //     _HE Y _B       fired 8
+        //     _HE Y _BE E    fired 0
+        //
+        // The three-token phrase WORKS. The re-spelling was removed. Shortness
+        // is a real risk and this phrase is short - but it is not why the wake
+        // word fails on the P30, and the token count was a red herring that
+        // cost a day. See HeyBOnRealVoiceTests, which keeps that comparison
+        // runnable against a real recording.
         var book = new WakePhraseBook(Vocab());
         var p = book.Evaluate("hey b");
 
-        Assert.Equal(3, p.Tokens.Count);
+        Assert.Equal(["▁HE", "Y", "▁B"], p.Tokens);
+        Assert.Equal(WakePhraseVerdict.Caution, p.Verdict);
+        Assert.Contains("across a room", p.Advice);
+    }
+
+    [Fact]
+    public void AFileWrittenByAnOlderBuildIsRetokenizedFromItsLabel()
+    {
+        // WITHOUT THIS A FIX SHIPS AND CHANGES NOTHING FOR ANYONE WHO ALREADY
+        // HAS THE APP. Load used to keep the tokens stored in the file
+        // verbatim, so a correction to how phrases are compiled could never
+        // reach a phone that already had a wake-en.txt - which is exactly what
+        // happened on 2026-10-11: a corrected build was signed, installed and
+        // running on the P30 and the spotter went on loading the old spelling.
+        //
+        // The stored tokens here are deliberate nonsense. A line carrying an
+        // @label knows what the person typed, so it can be - and must be -
+        // compiled again from that.
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".txt");
+        try
+        {
+            File.WriteAllText(path, "▁ZE BRA ▁ST RI PE @Hey_B\n");
+
+            var book = WakePhraseBook.Load(path, Vocab());
+            var p = Assert.Single(book.Phrases);
+
+            Assert.Equal("Hey B", p.Text);
+            Assert.Equal(["▁HE", "Y", "▁B"], p.Tokens);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void AGenuinelyShortPhraseIsStillAllowedAndStillWarnedAbout()
+    {
+        // The warning itself is still right and still needed - it just was not
+        // the owner's problem. A phrase that is short AFTER being spelled out
+        // gets it.
+        var book = new WakePhraseBook(Vocab());
+        var p = book.Evaluate("zebra");
+
+        Assert.True(p.Tokens.Count < WakePhraseBook.MinReliableTokens,
+            $"expected a short phrase, got {string.Join(" ", p.Tokens)}");
         Assert.Equal(WakePhraseVerdict.Caution, p.Verdict);
         Assert.Contains("across a room", p.Advice);
     }

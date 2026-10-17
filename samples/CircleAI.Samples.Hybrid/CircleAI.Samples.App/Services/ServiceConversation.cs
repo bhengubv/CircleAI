@@ -168,32 +168,48 @@ public sealed class ServiceConversation(LinkedBrain brain, IRemembers memory) : 
                                  CancellationToken ct = default)
         => Task.FromResult("Looking at a picture is not available in this app yet.");
 
-    /// <summary>Record until the link's limit, then ask the service for the words.</summary>
+    /// <summary>Record until they stop talking, then ask the service for the words.</summary>
     /// <remarks>
-    /// THE MICROPHONE IS THIS APP'S, the recogniser is not. Capture stops at
-    /// <see cref="LinkAudio.MaxAudioBytes"/> rather than running on and failing the
-    /// transact: the limit is known before a single sample is taken, so it is a stop
-    /// condition and not an error.
+    /// THE MICROPHONE IS THIS APP'S, the recogniser is not.
+    /// <para>
+    /// IT USED TO RECORD UNTIL THE LINK'S LIMIT, EVERY TIME. The loop had one stop
+    /// condition - <see cref="LinkAudio.MaxAudioBytes"/>, 800 KB, which is 25,6
+    /// seconds - and no idea whether anybody was still speaking. Measured on the
+    /// P30 on 2026-10-16: a single sentence came back as "stt: 25,6 s audio |
+    /// decode=5800 ms", to the decimal. So every spoken question waited about
+    /// twenty seconds after the person had stopped, and then Whisper spent six
+    /// seconds on a clip that was mostly silence instead of one second on the
+    /// sentence. Roughly twenty-five seconds of every voice turn, gone before the
+    /// brain had been asked anything.
+    /// </para>
+    /// <para>
+    /// The endpointer that should have been here already existed: VoiceTurn, in
+    /// the SDK, which ends the turn after 1,4 s of silence following speech and is
+    /// what the device's own conversation uses. It was simply never wired to this
+    /// app. Its own log line - floor, peak, gate, what ended it, seconds kept -
+    /// says on the phone exactly how it judged each turn.
+    /// </para>
+    /// <para>
+    /// The link limit stays as a ceiling. VoiceTurn stops at twenty seconds, which
+    /// is inside it; the slice below only matters if that ever changes.
+    /// </para>
     /// </remarks>
     private async Task<string?> ListenOnceAsync(IProgress<TurnState> updates, CancellationToken ct,
                                                 string? language = null)
     {
         updates.Report(new TurnState(TurnPhase.Listening));
 
-        var buffer = new List<byte>(LinkAudio.MaxAudioBytes);
+        ReadOnlyMemory<byte> audio;
         await using (var mic = new AndroidAudioCapture())
         {
-            await foreach (var chunk in mic.CaptureAsync(ct).ConfigureAwait(false))
-            {
-                buffer.AddRange(chunk.ToArray());
-                if (buffer.Count >= LinkAudio.MaxAudioBytes) break;
-            }
+            audio = await new VoiceTurn().ListenAsync(mic, ct).ConfigureAwait(false);
         }
 
-        if (buffer.Count == 0) return null;
+        if (audio.Length == 0) return null;
+        if (audio.Length > LinkAudio.MaxAudioBytes) audio = audio[..LinkAudio.MaxAudioBytes];
 
         updates.Report(new TurnState(TurnPhase.Thinking, Detail: "hearing…"));
-        var heard = await brain.TranscribeAsync(buffer.ToArray(), language, ct).ConfigureAwait(false);
+        var heard = await brain.TranscribeAsync(audio.ToArray(), language, ct).ConfigureAwait(false);
 
         // An empty transcript is a RESULT — a quiet room — so it comes back as null
         // rather than an error a screen would show.
