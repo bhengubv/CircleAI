@@ -42,6 +42,7 @@ public static class ReadinessSentences
         FailureKind.PermissionMissing   => "It needs a permission first.",
         FailureKind.NotInstalled        => NoModel,
         FailureKind.TimedOut            => "Its brain stopped responding; it is starting again.",
+        FailureKind.FaultInjected       => "Its brain was stopped for a test; it is starting again.",
         _                               => "It stopped, and will try again.",
     };
 }

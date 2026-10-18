@@ -221,6 +221,38 @@ public sealed class DurableQuestionsTests : IDisposable
     }
 
     [Fact]
+    public async Task A_fault_injected_mid_answer_is_put_back_in_line_and_answered()
+    {
+        // THE SOAK'S FAULT, 2026-10-17 HOUR 8: classified as the watchdog's TimedOut, it was
+        // never retried and the question it interrupted was failed. A test kill is retried.
+        using var store = Store();
+        var brain = new FakeBrain
+        {
+            FailOnAttempt = (_, n) => n == 1 ? new BrainWorkerException(Died(FailureKind.FaultInjected)) : null,
+        };
+        await using var front = new RequestCoordinator(store, brain, Quick);
+        front.Start();
+
+        var done = await Final(front, "app:1", front.Submit(Ask("q")).Record!.Id);
+        Assert.Equal(AskState.Succeeded, done.State);
+        Assert.Equal(2, done.Attempts);
+    }
+
+    [Fact]
+    public void A_test_kill_is_retried_and_never_held_against_the_model_a_watchdog_kill_is_a_timeout()
+    {
+        var at = DateTimeOffset.UtcNow;
+        var test = FailureClassifier.Classify(new ExitFacts(29, WorkPhase.Decode, "Qwen3.5-0.8B-MNN", at, KilledForTest: true));
+        Assert.Equal(FailureKind.FaultInjected, test.Kind);
+        Assert.True(test.Retryable);
+        Assert.False(test.CountsAgainstModel);
+
+        var watchdog = FailureClassifier.Classify(new ExitFacts(29, WorkPhase.Decode, "Qwen3.5-0.8B-MNN", at, KilledByUs: true));
+        Assert.Equal(FailureKind.TimedOut, watchdog.Kind);
+        Assert.False(watchdog.Retryable);
+    }
+
+    [Fact]
     public async Task A_question_that_keeps_crashing_the_engine_fails_with_its_kind()
     {
         using var store = Store();

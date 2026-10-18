@@ -36,6 +36,7 @@ namespace CircleAI.Assistant.Lifecycle;
 /// <param name="ForegroundRefused">Android refused to let a service go foreground.</param>
 /// <param name="TimeLimitReached">A platform time budget fired (Service.onTimeout, an ANR).</param>
 /// <param name="ManagedException">The managed exception's type name, when one was thrown.</param>
+/// <param name="KilledForTest">We ended it on purpose to test recovery (not a watchdog).</param>
 public sealed record ExitFacts(
     int ApiLevel,
     WorkPhase Phase,
@@ -55,7 +56,8 @@ public sealed record ExitFacts(
     bool? FilesVerified = null,
     bool? ForegroundRefused = null,
     bool? TimeLimitReached = null,
-    string? ManagedException = null);
+    string? ManagedException = null,
+    bool? KilledForTest = null);
 
 /// <summary>Turns <see cref="ExitFacts"/> into a <see cref="Failure"/>.</summary>
 public static class FailureClassifier
@@ -76,6 +78,9 @@ public static class FailureClassifier
         Failure F(FailureKind kind, Certainty certainty, string evidence, string detail) =>
             new(kind, certainty, facts.Phase, facts.ModelId, evidence, detail, facts.At);
 
+        if (facts.KilledForTest == true)
+            return F(FailureKind.FaultInjected, Certainty.Certain, "killed-for-test",
+                     "ended on purpose to test recovery");
         if (facts.KilledByUs == true)
             return F(FailureKind.TimedOut, Certainty.Certain, "killed-by-watchdog",
                      "the work stopped making progress and was ended");

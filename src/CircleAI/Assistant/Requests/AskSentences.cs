@@ -61,6 +61,7 @@ public static class AskSentences
         FailureKind.AndroidTimeout      => PausedByAndroid,
         FailureKind.OutOfMemory         => WaitingForMemory,
         FailureKind.NativeWorkerCrashed => WorkerCrashed,
+        FailureKind.FaultInjected       => WorkerCrashed,
         FailureKind.ModelFilesDamaged   => RepairingFiles,
         FailureKind.PermissionMissing   => NeedsPermission,
         FailureKind.NotInstalled        => NotSetUpYet,

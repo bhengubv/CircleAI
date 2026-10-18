@@ -61,6 +61,17 @@ public enum FailureKind
 
     /// <summary>A managed exception in our own code, with no platform cause behind it.</summary>
     ManagedError = 11,
+
+    /// <summary>
+    /// We ended the worker on purpose, to prove a question survives it - the soak's fault.
+    /// </summary>
+    /// <remarks>
+    /// NOT <see cref="TimedOut"/>, WHICH IT WAS. The test kill borrowed the watchdog's "we
+    /// ended it" flag, so on 2026-10-17 at hour 8 of the soak the question it interrupted
+    /// was failed as a hung answer - never retried - instead of being put back in line,
+    /// which is the one thing the fault exists to prove.
+    /// </remarks>
+    FaultInjected = 12,
 }
 
 /// <summary>Which part of the work was running when it stopped.</summary>
@@ -165,6 +176,7 @@ public static class FailurePolicy
         FailureKind.NativeWorkerCrashed => true,   // bounded by the attempt count, and by the strike rule
         FailureKind.Unknown             => true,
         FailureKind.ModelFilesDamaged   => true,   // after the repair
+        FailureKind.FaultInjected       => true,   // what the fault is there to test
         _                               => false,
     };
 }

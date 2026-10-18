@@ -53,6 +53,7 @@ public sealed class InferenceSupervisor : IBrainWorker
     private WorkerHeartbeat? _heartbeat;
     private int _lastTrim;
     private bool _killedByUs;
+    private bool _killedForTest;
     private Timer? _beat;
     private bool _recovered;
     private string? _pendingCandidate;
@@ -203,11 +204,13 @@ public sealed class InferenceSupervisor : IBrainWorker
     /// <summary>End the inference process on purpose (fault injection), recorded as ours.</summary>
     /// <remarks>
     /// A death we caused must not be read as the phone's or the model's: the next
-    /// classification says KilledByUs, so no strike and no memory verdict follows from it.
+    /// classification says FaultInjected, so no strike and no memory verdict follows from
+    /// it - and NOT the watchdog's TimedOut, which is never retried and so failed the very
+    /// question this exists to prove survives.
     /// </remarks>
     public void KillForTest()
     {
-        lock (_gate) _killedByUs = true;
+        lock (_gate) _killedForTest = true;
         _connection.Kill();
     }
 
@@ -371,12 +374,21 @@ public sealed class InferenceSupervisor : IBrainWorker
     {
         // ANDROID WRITES ITS EXIT RECORD A MOMENT AFTER THE BINDER DIES.
         await Task.Delay(TimeSpan.FromMilliseconds(800)).ConfigureAwait(false);
-        bool byUs;
+        bool byUs, forTest;
         WorkerHeartbeat? beat;
         int trim;
-        lock (_gate) { byUs = _killedByUs; _killedByUs = false; beat = _heartbeat; trim = _lastTrim; }
+        lock (_gate)
+        {
+            byUs = _killedByUs; _killedByUs = false;
+            forTest = _killedForTest; _killedForTest = false;
+            beat = _heartbeat; trim = _lastTrim;
+        }
 
-        var facts = ExitEvidence.ForWorker(_context, death, beat, trim) with { KilledByUs = byUs ? true : null };
+        var facts = ExitEvidence.ForWorker(_context, death, beat, trim) with
+        {
+            KilledByUs = byUs ? true : null,
+            KilledForTest = forTest ? true : null,
+        };
         var failure = FailureClassifier.Classify(facts);
         if (failure.Kind == FailureKind.OutOfMemory && death.ModelId is { } m)
             RecordKilledAt(m, DeviceProbe.Snapshot().UsableRamGb);
