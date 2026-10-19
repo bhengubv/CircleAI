@@ -95,9 +95,16 @@ public sealed class DurableQuestionsTests : IDisposable
         TextWriteInterval = TimeSpan.Zero, LoadWaitBudget = TimeSpan.FromSeconds(10),
     };
 
+    // THIRTY SECONDS, NOT TEN. Every ask here is answered in milliseconds by a fake brain,
+    // but the store is SQLite with synchronous=FULL, and on 2026-10-17 the Windows box's
+    // disk sat at 0% idle for hours: three of these waits ran out ("did not finish:
+    // Running", "...: Queued") and the same tests passed 46 of 46 the moment it was quiet.
+    // A wait that cannot tell a slow disk from a hang is not testing the queue.
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
+
     private static async Task<AskRecord> Final(RequestCoordinator front, string caller, string id)
     {
-        var done = await front.WaitAsync(caller, id, TimeSpan.FromSeconds(10), CancellationToken.None);
+        var done = await front.WaitAsync(caller, id, Patience, CancellationToken.None);
         Assert.NotNull(done);
         Assert.True(done!.IsFinal, "the ask did not finish: " + done.State);
         return done;
@@ -196,7 +203,7 @@ public sealed class DurableQuestionsTests : IDisposable
         front.Start();
 
         var ask = front.Submit(Ask("q")).Record!;
-        var waiting = await front.WaitForChangeAsync("app:1", ask.Id, ask.Seq, TimeSpan.FromSeconds(5), CancellationToken.None);
+        var waiting = await front.WaitForChangeAsync("app:1", ask.Id, ask.Seq, Patience, CancellationToken.None);
         Assert.Equal(AskState.WaitingForModel, waiting!.State);
 
         brain.Loading.SetResult();
