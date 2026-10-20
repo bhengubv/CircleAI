@@ -56,6 +56,30 @@ public sealed class TheBrainFloorTests : IDisposable
     private IEnumerable<ModelEntry> Llms() =>
         _registry.AllModels.Where(m => m.Modality == ModelModality.Chat);
 
+    [Fact]
+    public void Every_qwen35_brain_answers_greedily()
+    {
+        // P30, 2026-10-20: one maize prompt, byte for byte the same, was answered "late
+        // October or November" five times in one session and "late autumn" or "September"
+        // five times in the next - temperature 0.2 and top-k 10 deciding a near-tie.
+        // Greedy, the same prompt asked six times after five different questions came back
+        // six times the same, and right: "from October to December during the first good rains".
+        var brains = Llms().Where(m => m.Generation?.Sampler is not null).ToList();
+        Assert.NotEmpty(brains);
+        foreach (var m in brains)
+            Assert.True(m.Generation!.SamplerConfigJson() == "{\"sampler_type\":\"greedy\"}",
+                $"{m.Name} samples with {m.Generation.SamplerConfigJson()}");
+    }
+
+    [Fact]
+    public void A_greedy_sampler_sends_only_its_type()
+    {
+        Assert.Equal("{\"sampler_type\":\"greedy\"}",
+            new GenerationProfile(Sampler: new SamplerProfile(SamplerType: "greedy")).SamplerConfigJson());
+        Assert.Contains("\"mixed_samplers\"",
+            new GenerationProfile(Sampler: new SamplerProfile()).SamplerConfigJson());
+    }
+
     private ModelEntry Model(string name) =>
         _registry.AllModels.Single(m => m.Name == name);
 
@@ -369,6 +393,77 @@ public sealed class TheBrainFloorTests : IDisposable
 
         Assert.DoesNotContain("Qwen3-30B-A3B-MNN", owed);
         Assert.Contains("Qwen3.5-0.8B-MNN", owed);
+    }
+
+    // ── a brain this build cannot open: the Windows service, 2026-10-19 ──────────
+    //
+    // The Windows build ships MNN and no llama.cpp. On a 19.8 GB box the registry's top
+    // fit was Ternary-Bonsai-2-27B, a GGUF, 3.6 GB of it half down: setup picked it,
+    // the selector (which reads the engine) wanted Qwen3.5-4B, the resume would have
+    // finished the Bonsai, and nothing ever fetched the 4B - no brain, ever.
+
+    private static DeviceProbe ThisWindowsBox() => Probe(availableBytes: 8_100_000_000, totalBytes: 21_260_000_000L);
+    private static readonly ModelEngine[] MnnOnly = [ModelEngine.Mnn];
+    private static readonly ModelEngine[] MnnAndLlama = [ModelEngine.Mnn, ModelEngine.LlamaCpp];
+
+    [Fact]
+    public void Setup_never_picks_a_brain_this_build_cannot_open()
+    {
+        using var loader = new BundleModelLoader(Store(), _registry);
+
+        var mnn = FirstRun.Plan(_registry, loader, ThisWindowsBox(), speech: false, engines: MnnOnly)
+            .Single(s => s.Modality == ModelModality.Chat).Model;
+        Assert.Equal(ModelEngine.Mnn, mnn.Engine);
+        Assert.StartsWith("Qwen3.5", mnn.Name, StringComparison.Ordinal);
+
+        // With llama.cpp in the build a GGUF may win on rank - and is then runnable.
+        var both = FirstRun.Plan(_registry, loader, ThisWindowsBox(), speech: false, engines: MnnAndLlama)
+            .Single(s => s.Modality == ModelModality.Chat).Model;
+        Assert.True(both.QualityRank >= mnn.QualityRank);
+    }
+
+    [Fact]
+    public void A_half_fetched_model_this_build_cannot_open_is_never_resumed()
+    {
+        var dir = Store();
+        foreach (var name in new[] { "Ternary-Bonsai-2-27B", "Qwen3.5-0.8B-MNN" })
+        {
+            var first = Model(name).BundleFiles!.OrderBy(f => f.SizeBytes).First();
+            Directory.CreateDirectory(Path.Combine(dir, name));
+            SparseStore.Write(Path.Combine(dir, name, first.Name), first.SizeBytes / 2);
+        }
+        using var loader = new BundleModelLoader(dir, _registry);
+
+        var mnnOnly = ModelSetup.Unfinished(loader, MnnOnly).Select(u => u.Name).ToList();
+        Assert.DoesNotContain("Ternary-Bonsai-2-27B", mnnOnly);
+        Assert.Contains("Qwen3.5-0.8B-MNN", mnnOnly);
+        Assert.Contains("Ternary-Bonsai-2-27B", ModelSetup.Unfinished(loader, MnnAndLlama).Select(u => u.Name));
+    }
+
+    [Fact]
+    public void The_persona_rides_in_the_turn_because_mnn_never_read_it_from_config()
+    {
+        // P30, 2026-10-20: set as MNN's system_prompt it was "accepted" and never read -
+        // "What is your name?" came back "I am Qwen3.5". The bridge templates the user turn
+        // alone, so the persona has to be in it.
+        var generator = Source("src", "CircleAI", "Inference", "QwenTextGenerator.cs");
+
+        Assert.DoesNotContain("{\\\"system_prompt\\\":", generator);
+        Assert.Contains("_mnnPersona = null;", generator);
+    }
+
+    [Fact]
+    public void The_desktop_service_chooses_from_the_assessed_catalogue_and_keeps_house()
+    {
+        var host = Source("src", "CircleAIService", "Host", "Program.cs");
+
+        Assert.Contains("CatalogModelSelector.Preferring(catalogue, registry)", host);
+        Assert.DoesNotContain("Preferring(catalogue: null", host);
+        Assert.Contains("CatalogueHousekeeping.Reclaim(", host);
+        Assert.Contains("CatalogueHousekeeping.SweepAbandoned(", host);
+        Assert.Contains("catalogue.RecordLoad(", host);
+        Assert.Contains("ModelSetup.ResumeUnfinishedAsync(", host);
+        Assert.Contains("ModelSetup.FetchNotStartedAsync(", host);
     }
 
     [Fact]

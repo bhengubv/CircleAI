@@ -199,6 +199,13 @@ public sealed class QwenTextGenerator : IChatGenerator
         static string Flatten(string? text) => (text ?? string.Empty).Replace("\r", " ").Replace('\n', ' ').Trim();
     }
 
+    /// <summary>
+    /// Where the exact text handed to the bridge goes each turn, or null - the default - for
+    /// nowhere. A test switch, not a log: a host sets it only when asked to show what the
+    /// model really receives, because a person's questions are not diagnostics.
+    /// </summary>
+    public static Action<string>? PromptDump { get; set; }
+
     /// <summary>A JSON string literal (quotes, backslashes, control characters escaped).</summary>
     internal static string JsonEscape(string text) => System.Text.Json.JsonSerializer.Serialize(text);
 
@@ -486,6 +493,13 @@ public sealed class QwenTextGenerator : IChatGenerator
     /// then the ONE owner of the chat format; see <see cref="MnnContent"/>.
     /// </param>
     /// <param name="samplerJson">MNN sampler config from the model's GenerationProfile, applied before load.</param>
+    /// <summary>
+    /// A TEST SWITCH: the MNN sampler config to load with instead of the model's own -
+    /// {"sampler_type":"greedy"} makes an answer a function of its input alone, which is
+    /// how a phone shows whether anything but the input reaches the model. Null in use.
+    /// </summary>
+    public static string? SamplerJsonForTest { get; set; }
+
     public QwenTextGenerator(
         string                   modelPath,
         uint                     contextSize,
@@ -642,17 +656,20 @@ public sealed class QwenTextGenerator : IChatGenerator
         // prompt the recorded failures were answered from: "IT! >", the stray
         // "</think>", the memory heading read back as if it were the question.
         //
-        // The persona is now MNN's system prompt, set here before load - the only
-        // moment MNN reads config - and every turn hands over the user's content
-        // alone. Thinking-off keeps working because it was always MNN's template
-        // that read it.
-        if (!string.IsNullOrWhiteSpace(systemPrompt))
-        {
-            var ok = MnnInteropRt.mnn_llm_set_config(
-                handle.DangerousGetHandle(), "{\"system_prompt\":" + JsonEscape(systemPrompt!) + "}") == 0;
-            _mnnPersona = systemPrompt;
-            Console.WriteLine($"CIRCLEAI-TEMPLATE owner=mnn persona={Sha8(systemPrompt!)} accepted={ok} thinking=off");
-        }
+        // BUT THE PERSONA RIDES IN EVERY TURN: MNN DOES NOT HOLD IT. It used to be set
+        // here as MNN's system_prompt, and the bridge said "accepted". Measured on the
+        // P30 on 2026-10-20: "What is your name?" was answered "I am Qwen3.5. What is
+        // your name?" and "Are you a person?" with "No, I am Qwen3.5." The bridge renders
+        // each turn with apply_chat_template(user_content) - the single-string overload,
+        // which builds the template from the user turn alone - so the value was stored and
+        // never read, and every answer until then was made without the persona: its name,
+        // "one or two short sentences", "ask what they meant", "say so instead of guessing".
+        // MnnContent now puts the persona's words ahead of the question in the one user
+        // turn. A true system turn needs a bridge export that takes roles - a native rebuild.
+        _mnnPersona = null;
+        Console.WriteLine($"CIRCLEAI-TEMPLATE owner=mnn persona=" +
+                          (string.IsNullOrWhiteSpace(systemPrompt) ? "none" : Sha8(systemPrompt!) + " in-turn") + " thinking=off");
+        if (SamplerJsonForTest is { Length: > 0 } forTest) samplerJson = forTest;
         if (!string.IsNullOrWhiteSpace(samplerJson))
         {
             var ok = MnnInteropRt.mnn_llm_set_config(handle.DangerousGetHandle(), samplerJson!) == 0;
@@ -743,10 +760,10 @@ public sealed class QwenTextGenerator : IChatGenerator
             AllowSynchronousContinuations = false,
         });
 
-        // THE USER'S CONTENT, AND ONLY THAT. The bridge wraps whatever it is given
-        // in the model's own chat template (with the persona set at load as the
-        // system turn), so rendering ChatML here wrapped the template in itself -
-        // see the constructor. History rides inside the content as plain lines.
+        // ONE USER TURN: THE PERSONA'S WORDS, THEN THE QUESTION. The bridge wraps whatever
+        // it is given in the model's own chat template, so rendering ChatML here wrapped
+        // the template in itself - and MNN holds no system turn of ours (see the
+        // constructor). History rides inside the content as plain lines.
         var fullPrompt = MnnContent(messages, _mnnPersona);
 
         // NO PREFIX CACHE AND NO CONTINUATION FOR CONTENT-ONLY TURNS. Each turn is a
@@ -809,6 +826,14 @@ public sealed class QwenTextGenerator : IChatGenerator
                     var content = CountTokens(prompt);
                     timing.PromptTokens = persona < 0 || content < 0 ? -1 : persona + content + TemplateOverheadTokens;
                     timing.KvPath = continuing ? "continued" : "reset";
+                }
+
+                // WHAT THE MODEL IS HANDED, VERBATIM, when a host has asked to see it: the
+                // bridge wraps exactly this in the model's chat template and nothing else.
+                if (PromptDump is { } dump)
+                {
+                    try { dump($"--- {DateTimeOffset.UtcNow:O} content-tokens={CountTokens(prompt)} max-new={resolvedBudget.MaxTokens}\n{prompt}\n"); }
+                    catch { /* a diagnostic never costs the answer */ }
                 }
 
                 Interlocked.Exchange(ref nativeStart, System.Diagnostics.Stopwatch.GetTimestamp());

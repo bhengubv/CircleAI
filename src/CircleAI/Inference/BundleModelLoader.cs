@@ -564,6 +564,30 @@ public sealed class BundleModelLoader : IModelLoader
         }
     }
 
+    /// <summary>Whether this build can load the model: a brain needs an engine it ships.</summary>
+    /// <param name="modelName">The registry name.</param>
+    /// <param name="engines">The engines this build ships; null asks the build.</param>
+    /// <remarks>
+    /// A DOWNLOAD NOTHING HERE CAN OPEN IS NOT WORTH FINISHING. The Windows service on
+    /// 2026-10-19 held 3.6 GB of Ternary-Bonsai-2-27B - a GGUF - in a build that ships
+    /// no llama.cpp for Windows, and the resume would have spent 2.3 GB more on it.
+    /// Chat models only: the speech stack's engines are not the brain's.
+    /// </remarks>
+    public bool CanRunHere(string modelName, IReadOnlyCollection<ModelEngine>? engines = null)
+    {
+        try
+        {
+            ThrowIfDisposed();
+            var entry = _registry.GetLatestModel(modelName);
+            if (entry is null || entry.Modality != ModelModality.Chat) return true;
+            return (engines ?? DeviceModelAssessor.ShippedEngines()).Contains(entry.Engine);
+        }
+        catch
+        {
+            return true;   // cannot tell: a resume is never refused on a guess
+        }
+    }
+
     public bool ModelPresent(string modelName)
     {
         try

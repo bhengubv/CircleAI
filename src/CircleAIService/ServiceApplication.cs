@@ -108,6 +108,46 @@ public sealed class ServiceApplication : Application
         base.OnCreate();
         global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
 
+        // A TEST SWITCH, NOT A LOG: with soak/prompt-dump.on in this app's own test folder,
+        // the exact text handed to the model each turn is written beside it, so what it
+        // receives is read rather than assumed - on 2026-10-20 the persona had never
+        // reached it. Off unless a developer has put that file there AND armed the switches
+        // from adb (see TestSwitchesArmedFile): the folder is not this app's alone.
+        try
+        {
+            var testDir = System.IO.Path.Combine(GetExternalFilesDir(null)!.AbsolutePath, "soak");
+            if (!System.IO.File.Exists(TestSwitchesArmedFile(this))) testDir = string.Empty;
+            if (testDir.Length > 0 && System.IO.File.Exists(System.IO.Path.Combine(testDir, "prompt-dump.on")))
+            {
+                var dumpFile = System.IO.Path.Combine(testDir, "prompt-dump.txt");
+                CircleAI.Inference.QwenTextGenerator.PromptDump = text => System.IO.File.AppendAllText(dumpFile, text);
+                global::Android.Util.Log.Info("CircleAI.Worker", "prompt dump on");
+            }
+
+            // THE SAME KIND OF SWITCH for how the notes are worded: soak/notes-template.txt,
+            // one line, "\n" for a line break, "{notes}" and "{question}" where they go. A
+            // wording is measured by writing the file and restarting this process - not by a
+            // build of the whole service for each one.
+            var templateFile = System.IO.Path.Combine(testDir, "notes-template.txt");
+            if (testDir.Length > 0 && System.IO.File.Exists(templateFile))
+            {
+                CircleAI.Hosting.AIService.NotesTemplateForTest =
+                    System.IO.File.ReadAllText(templateFile).Trim().Replace("\\n", "\n", StringComparison.Ordinal);
+                global::Android.Util.Log.Info("CircleAI.Worker", "notes template from the test folder");
+            }
+
+            // AND FOR THE SAMPLER: soak/sampler.json, read when the model loads. Greedy makes
+            // an answer depend on its input alone - so two answers to one input that differ
+            // prove something else reached the model.
+            var samplerFile = System.IO.Path.Combine(testDir, "sampler.json");
+            if (testDir.Length > 0 && System.IO.File.Exists(samplerFile))
+            {
+                CircleAI.Inference.QwenTextGenerator.SamplerJsonForTest = System.IO.File.ReadAllText(samplerFile).Trim();
+                global::Android.Util.Log.Info("CircleAI.Worker", "sampler from the test folder");
+            }
+        }
+        catch { /* no test folder, no switches */ }
+
         var nativeDir = ApplicationInfo?.NativeLibraryDir;
         CircleAI.Service.Droid.Inference.InferenceWorkerService.OptionsFactory = request => new CircleAI.Hosting.AIOptions
         {
@@ -133,6 +173,46 @@ public sealed class ServiceApplication : Application
 
     /// <summary>Who the recorded-question run asks as.</summary>
     private const string QualityCaller = "internal:quality";
+
+    /// <summary>The flag that lets the files in soak/ act as test switches: in this app's internal storage.</summary>
+    /// <remarks>
+    /// THE SWITCHES' FOLDER IS NOT THIS APP'S ALONE. /sdcard/Android/data/.../soak is group
+    /// sdcard_rw on the P30 (Android 10, listed 2026-10-20), so an app holding storage
+    /// permission can write there - and could have turned the prompt dump on and read every
+    /// question, or planted a wording for the notes into every turn. A file there now counts
+    /// only while this flag exists, and only a DUMP-protected adb broadcast (SoakReceiver,
+    /// "arm" and "disarm") sets or clears it; no other app can reach internal storage.
+    /// </remarks>
+    private static string TestSwitchesArmedFile(global::Android.Content.Context context) =>
+        System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "CircleAI", "state", "test-switches.armed");
+
+    /// <summary>The recorded questions a quality run asks, in order, when soak/quality-ids.txt names them; all of them otherwise.</summary>
+    /// <remarks>
+    /// A TEST SWITCH. "maize,colours,maize" asks maize after maize's own answer and after
+    /// another question's, which is how a phone shows whether one turn reaches the next. A
+    /// repeat gets its own id ("maize#2") - the queue would otherwise hand back the first
+    /// answer to the same request id instead of asking again.
+    /// </remarks>
+    private static IReadOnlyList<CircleAI.Assistant.Quality.RecordedQuestion>? QuestionsForTest(string soakDir)
+    {
+        try
+        {
+            var file = System.IO.Path.Combine(soakDir, "quality-ids.txt");
+            if (!System.IO.File.Exists(file)) return null;
+
+            var known = CircleAI.Assistant.Quality.RecordedQuestions.Load().ToDictionary(q => q.Id, StringComparer.Ordinal);
+            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+            var picked = new List<CircleAI.Assistant.Quality.RecordedQuestion>();
+            foreach (var id in System.IO.File.ReadAllText(file).Split([',', '\n', '\r', ' '], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!known.TryGetValue(id, out var q)) continue;
+                var n = seen[id] = seen.GetValueOrDefault(id) + 1;
+                picked.Add(n == 1 ? q : q with { Id = $"{id}#{n}" });
+            }
+            return picked.Count > 0 ? picked : null;
+        }
+        catch { return null; }
+    }
 
     /// <summary>
     /// Every question - from an app, the wake word or the OS assistant - goes through
@@ -227,8 +307,9 @@ public sealed class ServiceApplication : Application
                 catch { /* a leftover only adds old answers to a test memory */ }
                 qualityMemory = new CircleAI.Memory.MemoryService(qualityDir);
 
+                var armed = System.IO.File.Exists(TestSwitchesArmedFile(this));
                 var report = await new CircleAI.Assistant.Quality.QualityRunner(coordinator, QualityCaller)
-                    .RunAsync(null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
+                    .RunAsync(armed ? QuestionsForTest(soakDir) : null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
                 foreach (var item in report.Items)
                     global::Android.Util.Log.Info("CircleAI.Quality",
                         $"QUALITY {item.Id} {(item.Passed ? "PASS" : "FAIL")} {item.Reason} "
@@ -244,6 +325,21 @@ public sealed class ServiceApplication : Application
             });
             if (soak.Running) soak.Start(null, readiness.BootId, resume: true);
             CircleAI.Service.Droid.SoakReceiver.KillWorker = supervisor.KillForTest;
+            CircleAI.Service.Droid.SoakReceiver.ArmTestSwitches = on =>
+            {
+                var flag = TestSwitchesArmedFile(this);
+                try
+                {
+                    if (on)
+                    {
+                        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(flag)!);
+                        System.IO.File.WriteAllText(flag, DateTimeOffset.UtcNow.ToString("O"));
+                    }
+                    else if (System.IO.File.Exists(flag)) System.IO.File.Delete(flag);
+                    global::Android.Util.Log.Info("CircleAI.Soak", on ? "test switches armed" : "test switches disarmed");
+                }
+                catch (Exception ex) { global::Android.Util.Log.Warn("CircleAI.Soak", "test switches: " + ex.GetType().Name); }
+            };
             CircleAI.Service.Droid.SoakReceiver.Ask = text =>
             {
                 var admission = coordinator.Submit(new CircleAI.Assistant.Requests.AskSubmission(

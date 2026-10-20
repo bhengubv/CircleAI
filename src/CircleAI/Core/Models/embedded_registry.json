@@ -2710,7 +2710,7 @@
     },
     {
       "Name": "Qwen3.5-0.8B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "mixed", "Temperature": 0.7, "TopP": 0.8, "TopK": 20, "MinP": 0.0, "Penalty": 1.05 }, "MaxTokensSpoken": 160, "MaxTokensTyped": 512 },
+      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "greedy" }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-0.8B-MNN",
@@ -2778,7 +2778,7 @@
     },
     {
       "Name": "Qwen3.5-2B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "mixed", "Temperature": 0.7, "TopP": 0.8, "TopK": 20, "MinP": 0.0, "Penalty": 1.05 }, "MaxTokensSpoken": 160, "MaxTokensTyped": 512 },
+      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "greedy" }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-2B-MNN",
@@ -2845,7 +2845,7 @@
     },
     {
       "Name": "Qwen3.5-4B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "mixed", "Temperature": 0.7, "TopP": 0.8, "TopK": 20, "MinP": 0.0, "Penalty": 1.05 }, "MaxTokensSpoken": 160, "MaxTokensTyped": 512 },
+      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "greedy" }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-4B-MNN",
@@ -2912,7 +2912,7 @@
     },
     {
       "Name": "Qwen3.6-35B-A3B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "mixed", "Temperature": 0.7, "TopP": 0.8, "TopK": 20, "MinP": 0.0, "Penalty": 1.05 }, "MaxTokensSpoken": 160, "MaxTokensTyped": 512 },
+      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "greedy" }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
       "Version": "3.6",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.6-35B-A3B-MNN",

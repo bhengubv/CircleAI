@@ -504,7 +504,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             }
 
             var finished = _clock.GetUtcNow();
-            var answer = Guarded(ask, PlainReply.Clean(text.ToString()));
+            var answer = Guarded(ask, PlainReply.Clean(text.ToString()), cutShort: workerTiming?.Finish == "length");
             if (string.IsNullOrWhiteSpace(answer))
             {
                 Finish(ask.Id, AskState.Failed, FailureKind.ManagedError, AskSentences.CouldNotAnswer, keepText: false);
@@ -525,7 +525,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
 
             // THE DEADLINE. What was said so far is still an answer; nothing at all is not.
             var finished = _clock.GetUtcNow();
-            var partial = Guarded(ask, PlainReply.Clean(text.ToString()));
+            var partial = Guarded(ask, PlainReply.Clean(text.ToString()), cutShort: true);
             if (!string.IsNullOrWhiteSpace(partial))
                 Complete(ask, partial, Merge(workerTiming, ask, started, loadWaitMs, ttftMs, finished) with { Finish = "deadline" }, finished);
             else
@@ -546,9 +546,9 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     /// THE FINAL TEXT IS THE GUARDED ONE, and a client that streamed "No." still ends on it:
     /// CircleAiLinkClient reads a finished answer whole, once.
     /// </remarks>
-    private string Guarded(AskRecord ask, string answer)
+    private string Guarded(AskRecord ask, string answer, bool cutShort = false)
     {
-        var checkedAnswer = AnswerGuard.Check(ask.Asked, answer);
+        var checkedAnswer = AnswerGuard.Check(ask.Asked, answer, cutShort);
         if (!string.Equals(checkedAnswer, answer, StringComparison.Ordinal))
             _log($"ask {ask.Id}: the answer guard rewrote a {answer.Length}-char answer");
         return checkedAnswer;

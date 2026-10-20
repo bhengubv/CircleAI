@@ -69,7 +69,11 @@ public sealed record ServiceLimits(
         AssistantStaleAfter:      TimeSpan.FromMinutes(2),
         LoadWaitBudget:           TimeSpan.FromSeconds(90),
         GenerationDeadline:       TimeSpan.FromMinutes(2),
-        MaxTokensSpoken:          160,
+        // 80, NOT 160: measured on the P30 on 2026-10-20 over five runs of the recorded
+        // questions, the misses were answers running to 7, 9 and 11 sentences - a spoken
+        // answer of 160 tokens is 13 s of decode at 12 tok/s. Kept equal to the registry's
+        // MaxTokensSpoken; AnswerGuard ends a cut answer on its last whole sentence.
+        MaxTokensSpoken:          80,
         MaxTokensTyped:           512,
         MaxMessageChars:          8000,
         HistoryChars:             1600,

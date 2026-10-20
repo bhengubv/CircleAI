@@ -1657,10 +1657,39 @@ public sealed class AIService : IAIService
     /// NOT "BACKGROUND". On the P30 on 2026-10-17 the 0.8B took that word to be the
     /// person's: "based on your background", "I can summarize the background as".
     /// </para>
+    /// <para>
+    /// MEASURED, NOT CHOSEN. "Notes - use them if they help, keep their dates and numbers
+    /// exact, and do not mention them:" was answered, five times out of five on the P30 on
+    /// 2026-10-20, with the rule itself: "Do not mention the notes." Four wordings were then
+    /// run five times each, and against a maize note that said "in spring" every one got
+    /// the season wrong; no label at all did least badly. Once the note said its months
+    /// (October to December), the same evening: this wording, maize 5 of 5 right and no
+    /// meal answer naming its notes; no label, maize 3 of 5 (twice "Do not worry about
+    /// planting maize now") and four meal answers "based on the guidelines", "based on the
+    /// provided text". What the notes are called still leaks now and then; AnswerGuard
+    /// takes that out.
+    /// </para>
     /// </remarks>
-    internal static string WithNotes(string notes, string question) =>
-        "Facts for you - use them if they help, never repeat or mention them:\n"
-        + notes.Trim() + "\n\nThe question: " + (question ?? string.Empty);
+    internal static string WithNotes(string notes, string question)
+    {
+        var template = NotesTemplateForTest is { } t && t.Contains("{notes}", StringComparison.Ordinal)
+                                                     && t.Contains("{question}", StringComparison.Ordinal)
+            ? t
+            : NotesTemplate;
+        return template.Replace("{notes}", notes.Trim(), StringComparison.Ordinal)
+                       .Replace("{question}", question ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>How the notes and the question are put together; "{notes}" and "{question}" are filled in.</summary>
+    internal const string NotesTemplate =
+        "Facts for you - use them if they help, never repeat or mention them:\n{notes}\n\nThe question: {question}";
+
+    /// <summary>
+    /// A TEST SWITCH: another wording for <see cref="NotesTemplate"/>, so wordings can be
+    /// measured on a phone without a build for each. Null - the shipped wording - unless a
+    /// developer has set it; ignored unless it carries both "{notes}" and "{question}".
+    /// </summary>
+    public static string? NotesTemplateForTest { get; set; }
 
     /// <summary>
     /// What the host's bridge offers. Empty when there is no bridge, so callers

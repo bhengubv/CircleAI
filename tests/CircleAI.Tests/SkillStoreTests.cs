@@ -280,7 +280,12 @@ public sealed class SkillContextBuilderTests
         var result = await builder.BuildContextAsync("calendar");
 
         Assert.Contains("calendar-summariser", result);
-        Assert.Contains("Summarises events", result);
+        Assert.Contains("Call the calendar tool", result);
+
+        // THE DESCRIPTION IS FOR FINDING A SKILL, THE BODY FOR ANSWERING WITH IT. A P30's
+        // 0.8B read one skill's description as something it could do ("I can provide basic
+        // animal care") and another's as a fact ("...while ensuring safety", 2026-10-20).
+        Assert.DoesNotContain("Summarises events", result);
     }
 
     [Fact]

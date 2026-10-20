@@ -387,6 +387,14 @@ public static class AssistantPersona
     //
     // CanDo is untouched and stays verbatim: it is pinned, and it is the one source
     // for what the app says it can do.
+    //
+    // AND IT IS NO LONGER IN THE TURN. On 2026-10-20 the persona reached the P30's model
+    // for the first time since the template change (it had been set where MNN never read
+    // it), and with the capability sentence in every turn the model played a service desk:
+    // a garble got "I am ready to assist you! Please provide the content you need", a topic
+    // got "I can assist with threat modeling...". It was also ~40 tokens - 1.5 s at the
+    // measured 37 ms a token - on every answer. "What can you do?" never reaches the model:
+    // the host's OverviewAnswer gives CanDoSpoken for it.
     public const string Prompt =
         // CAPABILITY-HONEST, NOT SELF-AWARE. It reports what it can do; it never
         // claims to BE anything. A warm, memory-rich assistant must not drift into
@@ -399,7 +407,6 @@ public static class AssistantPersona
         // sub-billion model, so the line it must follow every time comes last, and the
         // not-a-person line is said once, plainly, at the start.
         "You are Circle AI, an assistant on this phone - not a person. " +
-        CanDo + " " +
         "If you are not sure of a fact, say so instead of guessing. " +
         "If a message is garbled, ask briefly what they meant. " +
         // "THE WAY YOU WOULD SAY THEM OUT LOUD" CAME BACK OUT: "Here is how I would say

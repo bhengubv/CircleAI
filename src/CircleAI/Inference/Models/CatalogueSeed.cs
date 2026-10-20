@@ -7,8 +7,8 @@
 // feed — not the APK — is the source of truth. This is what retires
 // CatalogueMerge's append-only merge: the seed is a starting point, not a floor.
 //
-// It stamps each row's Engine (the registry JSON carries none) so the assessor's
-// engine gate is honest from the first launch.
+// It stamps each row's Engine so the assessor's engine gate is honest from the first
+// launch: the registry's own where it names one (its GGUF rows do), derived otherwise.
 
 using System;
 using CircleAI.Core;
@@ -43,7 +43,7 @@ public static class CatalogueSeed
             foreach (var entry in registry.AllModels)
             {
                 if (string.IsNullOrWhiteSpace(entry.Name)) continue;
-                catalog.Upsert(entry with { Engine = DeriveEngine(entry) });
+                catalog.Upsert(entry with { Engine = EngineFor(entry) });
                 n++;
             }
             return n;
@@ -95,7 +95,7 @@ public static class CatalogueSeed
             {
                 if (string.IsNullOrWhiteSpace(entry.Name)) continue;
 
-                var withEngine = entry with { Engine = DeriveEngine(entry) };
+                var withEngine = entry with { Engine = EngineFor(entry) };
                 if (catalog.ReSync(withEngine)) refreshed++;
                 else
                 {
@@ -110,6 +110,19 @@ public static class CatalogueSeed
             if (ownsRegistry) registry.Dispose();
         }
     }
+
+    /// <summary>The engine a row is catalogued with: the registry's own, when it names one.</summary>
+    /// <remarks>
+    /// THE REGISTRY NAMES ITS GGUF ROWS, AND THIS USED TO OVERWRITE THEM. On the Windows
+    /// service on 2026-10-19 Ternary-Bonsai-2-27B ("Engine": "LlamaCpp", quantisation
+    /// PTQ1_0, architecture qwen35) was derived as MNN - "gguf" is in neither string - so
+    /// the assessor let it through the engine gate on a build with no llama.cpp, the
+    /// selector made it the brain, and it could never have loaded. MNN is also the field's
+    /// default, so a row saying MNN and a row saying nothing look alike; derivation still
+    /// decides those.
+    /// </remarks>
+    public static ModelEngine EngineFor(ModelEntry e) =>
+        e.Engine != ModelEngine.Mnn ? e.Engine : DeriveEngine(e);
 
     /// <summary>
     /// Best-effort engine for a registry entry that predates the

@@ -65,7 +65,10 @@ public static class ModelSetup
     }
 
     /// <summary>Every model with bytes down and bytes still owed, biggest first.</summary>
-    public static IReadOnlyList<(string Name, long Have, long Need)> Unfinished(BundleModelLoader loader)
+    /// <param name="loader">The model store.</param>
+    /// <param name="engines">The engines this build ships; null asks the build.</param>
+    public static IReadOnlyList<(string Name, long Have, long Need)> Unfinished(
+        BundleModelLoader loader, IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         try
@@ -74,9 +77,13 @@ public static class ModelSetup
             // a fetch with no metered-network gate, biggest first - so a half-fetched
             // Qwen3-30B (17.7 GB) would be finished at somebody's expense, ahead of the
             // Qwen3.5 brain, for a model that can never be the brain.
+            //
+            // AND NOT ONE THIS BUILD CANNOT OPEN, for the same reason: the Windows
+            // service held half of a GGUF and ships no llama.cpp to run it.
             return Ids(loader)
                 .Where(loader.ModelPartial)
                 .Where(id => !loader.IsRetired(id))
+                .Where(id => loader.CanRunHere(id, engines))
                 .Select(id => { var (have, need) = loader.Progress(id); return (Name: id, Have: have, Need: need); })
                 .OrderByDescending(u => u.Need)
                 .ToList();

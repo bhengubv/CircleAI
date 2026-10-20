@@ -68,6 +68,31 @@ public class CatalogueSeedTests
         Assert.Equal(ModelEngine.Mnn, best!.Engine);
     }
 
+    [Fact]
+    public void A_row_the_registry_names_an_engine_for_keeps_it()
+    {
+        // Ternary-Bonsai-2-27B says "Engine": "LlamaCpp"; derivation from PTQ1_0 and qwen35
+        // said MNN, and on 2026-10-19 the Windows service chose a GGUF it could not load.
+        using var cat = NewCatalog();
+        CatalogueSeed.SeedFromEmbedded(cat);
+
+        Assert.Equal(ModelEngine.LlamaCpp, cat.Get("Ternary-Bonsai-2-27B")!.Engine);
+        Assert.Equal(ModelEngine.Mnn, cat.Get("Qwen3.5-4B-MNN")!.Engine);
+    }
+
+    [Fact]
+    public void An_mnn_only_build_on_a_big_machine_chooses_a_qwen35_brain_it_can_load()
+    {
+        using var cat = NewCatalog();
+        CatalogueSeed.SeedFromEmbedded(cat);
+        DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 20));
+
+        var best = new CatalogModelSelector(cat).BestFit(Probe(ramGb: 20), ChatCapability.Default);
+
+        Assert.Equal(ModelEngine.Mnn, cat.Get(best.ModelId)!.Engine);
+        Assert.StartsWith("Qwen3.5", best.ModelId, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("MNN-Q4", null, ModelModality.Chat, ModelEngine.Mnn)]
     [InlineData("GGUF-Q4", "qwen3", ModelModality.Chat, ModelEngine.LlamaCpp)]

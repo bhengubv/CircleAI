@@ -121,6 +121,8 @@
     <EmbeddedResource Include="Charts\Assets\Fonts\DejaVuSans-Bold.ttf" />
     <EmbeddedResource Include="Core\registry.json" />
     <EmbeddedResource Include="Core\Models\embedded_registry.json" />
+    <EmbeddedResource Include="Assistant\Requests\capitals.json" LogicalName="CircleAI.Assistant.Requests.capitals.json" />
+    <EmbeddedResource Include="Assistant\Requests\jokes.json" LogicalName="CircleAI.Assistant.Requests.jokes.json" />
     <EmbeddedResource Include="Core\Models\VoiceConfigs\*.json" />
     <EmbeddedResource Include="Documents\Assets\Fonts\DejaVuSans.ttf" />
     <EmbeddedResource Include="Documents\Assets\Fonts\DejaVuSans-Bold.ttf" />

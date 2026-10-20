@@ -192,13 +192,27 @@ public static class FirstRun
     /// fills the brain slot even when this moment is too busy for it to fit. Null
     /// knows of none.
     /// </param>
+    /// <param name="engines">
+    /// The engines this build can load a brain with. Null asks the build
+    /// (<see cref="CircleAI.Inference.DeviceModelAssessor.ShippedEngines"/>).
+    /// </param>
     public static IReadOnlyList<SetupStep> Plan(
         ModelRegistryService registry, BundleModelLoader loader, DeviceProbe probe,
         bool speech, Func<string, bool>? declined = null, string? language = null,
-        Func<string, bool>? proven = null)
+        Func<string, bool>? proven = null,
+        IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(loader);
+
+        // A BRAIN THIS BUILD CANNOT OPEN IS NOT A BRAIN. On the Windows service on
+        // 2026-10-19 this slot picked Ternary-Bonsai-2-27B - rank 16, a GGUF - in a
+        // build that ships no llama.cpp for Windows, while the runtime selector, which
+        // reads the assessed catalogue and so knows the engine, wanted Qwen3.5-4B. The
+        // two disagreed, the Bonsai was half down so nothing new was "not started",
+        // and the 4B was never fetched: no brain, ever. Chat only - the speech stack's
+        // engines are not this list's.
+        var brainEngines = engines ?? CircleAI.Inference.DeviceModelAssessor.ShippedEngines();
 
         // TWO VOICES, BOTH BY NAME, AND NEITHER LEFT TO THE SELECTOR.
         //
@@ -299,6 +313,7 @@ public static class FirstRun
                 // that phone ran a lesser model for a week.
                 var eligible = registry.AllModels
                     .Where(m => m.Modality == modality && !m.Retired)
+                    .Where(m => m.Modality != ModelModality.Chat || brainEngines.Contains(m.Engine))
                     .Where(m => speaks is null || SpeaksIt(m, speaks))
                     .Where(m => declined is null || !declined(m.Name))
                     .ToList();

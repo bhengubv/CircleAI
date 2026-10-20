@@ -154,6 +154,9 @@ public sealed class CapabilityManifestSkillStore : ISkillStore
         return list;
     }
 
+    /// <summary>How every body here begins; the paragraph it opens goes to the model whole (see SkillContextBuilder.RelevantPart).</summary>
+    internal const string StatusLead = "Status:";
+
     /// <summary>
     /// The text the model actually reads. Status leads, and anything not
     /// shipping says plainly that it must not be claimed.
@@ -162,7 +165,7 @@ public sealed class CapabilityManifestSkillStore : ISkillStore
     {
         var sb = new StringBuilder();
 
-        sb.Append("Status: ").Append(status).AppendLine();
+        sb.Append(StatusLead).Append(' ').Append(status).AppendLine();
 
         switch (status)
         {

@@ -32,6 +32,9 @@ public static class AskShortcuts
         new QuestionOpenerShortcut(wakePhrase),
         new DeviceClockShortcut(clock),
         new ArithmeticShortcut(),
+        new CalendarFactsShortcut(clock),
+        new CapitalsShortcut(),
+        new JokeShortcut(wakePhrase),
         new NoLiveDataShortcut(),
     };
 }

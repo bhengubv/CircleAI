@@ -162,12 +162,16 @@ public static class ConsumerSkillPack
     /// Write the embedded database to a per-content temp path and return it.
     /// </summary>
     /// <remarks>
-    /// NAMED BY THE RESOURCE'S BYTE LENGTH, so a new build (new content, almost
-    /// always a new length) lands in a new file and the previous one is simply left
-    /// behind - the regenerable-cache stance the rest of the app takes. The write is
-    /// unique-temp-then-move, so two processes racing on a cold cache (net9 and
-    /// net10 test hosts, say) cannot tear each other's copy: the loser's move fails
-    /// onto the winner's already-valid file and it opens that instead.
+    /// NAMED BY A HASH OF THE CONTENT, so a new build lands in a new file and the
+    /// previous one is simply left behind - the regenerable-cache stance the rest of
+    /// the app takes. It was named by the BYTE LENGTH, on the belief that new content
+    /// almost always has a new length; a SQLite file is whole 4 KB pages, so an edit
+    /// that keeps the page count keeps the length, and every device that had unpacked
+    /// the old file would have gone on opening it (found reading this on 2026-10-20,
+    /// while correcting the maize planting months). The write is unique-temp-then-move, so two processes
+    /// racing on a cold cache (net9 and net10 test hosts, say) cannot tear each other's
+    /// copy: the loser's move fails onto the winner's already-valid file and it opens
+    /// that instead.
     /// </remarks>
     private static string ExtractDb()
     {
@@ -179,7 +183,8 @@ public static class ConsumerSkillPack
         stream.CopyTo(mem);
         var bytes = mem.ToArray();
 
-        var dir = Path.Combine(Path.GetTempPath(), "circleai-consumer", bytes.Length.ToString());
+        var content = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes), 0, 8).ToLowerInvariant();
+        var dir = Path.Combine(Path.GetTempPath(), "circleai-consumer", content);
         Directory.CreateDirectory(dir);
         var target = Path.Combine(dir, "consumer.db");
 

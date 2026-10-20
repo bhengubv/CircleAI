@@ -63,13 +63,52 @@ public static class Program
             // CIRCLEAI_MODEL PINS ONE. On a phone the selector's answer is the only
             // sane one; on a desktop somebody may have four models and a preference,
             // and the alternative is editing a config file to try the other one.
+            var data = DataDirectory();
+            Directory.CreateDirectory(data);
+
+            // THE MODELS LOOK AFTER THEMSELVES HERE AS THEY DO ON THE PHONE: an assessed
+            // catalogue, the choice made from it, the leftovers swept, what is owed
+            // fetched, and what a better model has superseded reclaimed.
+            //
+            // THIS HOST USED TO CHOOSE FROM THE BARE REGISTRY, and on this Windows box
+            // on 2026-10-19 that chose Ternary-Bonsai-2-27B - a GGUF, in a build that
+            // ships no llama.cpp for Windows - with 3.6 GB of it half down. It could
+            // never have loaded. The assessed catalogue knows which engines this build
+            // has, which is the whole difference.
+            //
+            // CIRCLEAI_UPKEEP=report says what it WOULD do and does none of it: no
+            // fetch, no sweep, no reclaim. For a machine on a metered link, and for
+            // seeing the plan before it spends anything.
+            var reportOnly = string.Equals(Environment.GetEnvironmentVariable("CIRCLEAI_UPKEEP"), "report", StringComparison.OrdinalIgnoreCase);
+            using var catalogue = new SqliteModelCatalog("Data Source=" + Path.Combine(data, "catalogue.db"));
+            var assessed = CatalogueBootstrap.Run(catalogue, DeviceModelAssessor.ForThisBuild(catalogue),
+                DeviceProbe.Snapshot(), modelsDirectory: store);
+            Console.WriteLine($"catalogue: {assessed.Assessed} assessed, {assessed.Compatible} run on this machine");
+
+            // RECLAIMED ONLY IN FAVOUR OF A MODEL THAT HAS LOADED HERE (CatalogueHousekeeping's
+            // rule 5), so on a first run this is always empty, and it is said either way.
+            if (reportOnly)
+            {
+                var plan = CatalogueHousekeeping.Plan(catalogue);
+                Console.WriteLine(plan.Count == 0 ? "housekeeping: nothing to reclaim" : "housekeeping would reclaim:");
+                foreach (var item in plan) Console.WriteLine($"  {item.Id}: {item.Reason}");
+            }
+            else
+            {
+                CatalogueHousekeeping.Reclaim(catalogue, store, say: line => Console.WriteLine("housekeeping: " + line));
+                var freed = CatalogueHousekeeping.SweepAbandoned(store, TimeSpan.FromHours(1));
+                Console.WriteLine(freed > 0
+                    ? $"housekeeping: swept {freed} bytes of abandoned downloads"
+                    : "housekeeping: no abandoned downloads to sweep");
+            }
+
+            // SAID, NOT DELETED: bytes this build can never open, left for a person to clear.
+            foreach (var id in loader.InstalledIds().Where(loader.ModelPartial).Where(id => !loader.CanRunHere(id)))
+                Console.WriteLine($"dead weight: {id} is half downloaded and this build cannot run it; it is left for you to remove");
+
             var wanted = Environment.GetEnvironmentVariable("CIRCLEAI_MODEL");
             if (string.IsNullOrWhiteSpace(wanted))
-                // Through Preferring like every other site. This host builds no
-                // assessed catalogue, so it resolves to the registry selector -
-                // the same behaviour as before, now stated rather than assumed,
-                // and one line to change if a catalogue is ever added here.
-                wanted = CatalogModelSelector.Preferring(catalogue: null, registry)
+                wanted = CatalogModelSelector.Preferring(catalogue, registry)
                     .BestFit(DeviceProbe.Snapshot(), ChatCapability.Default)?.ModelId;
 
             // A MISSING MODEL NO LONGER ENDS THE SERVICE. It serves its status - "no
@@ -94,19 +133,27 @@ public static class Program
                 options,
                 modelLoader:      loader,
                 generatorFactory: null,
-                modelSelector:    CatalogModelSelector.Preferring(catalogue: null, registry),
+                modelSelector:    CatalogModelSelector.Preferring(catalogue, registry),
                 modelRegistry:    registry);
 
             // THE SAME REQUEST PATH AS THE PHONE: durable questions, one worker, readiness.
-            var data = DataDirectory();
-            Directory.CreateDirectory(data);
             var readiness = new CircleAI.Assistant.Lifecycle.ReadinessTracker(Path.Combine(data, "readiness.json"));
             await using var brain = new InProcessBrainWorker(async ct =>
             {
-                if (!present) throw new ModelNotInstalledException(wanted ?? "(none)", damaged: false);
+                // ASKED AT LOAD TIME, NOT AT START: the fetch below may land it since.
+                if (string.IsNullOrWhiteSpace(wanted) || !loader.ModelPresent(wanted!))
+                    throw new ModelNotInstalledException(wanted ?? "(none)", damaged: false);
                 await service.StartAsync(ct).ConfigureAwait(false);
                 return new InProcessBrain(service, wanted!);
             }, log: line => Console.WriteLine(line));
+
+            // A MODEL THAT LOADED HERE IS PROVEN HERE - the only kind housekeeping lets
+            // replace another (rule 5), so without this line nothing is ever reclaimed.
+            brain.StatusChanged += (_, s) =>
+            {
+                if (s.Phase == CircleAI.Assistant.Lifecycle.BrainPhase.Ready && s.ModelId is { Length: > 0 } loaded)
+                    try { catalogue.RecordLoad(loaded); } catch { /* a verdict lost costs a reclaim, not the brain */ }
+            };
             brain.StatusChanged += (_, s) => readiness.Report(new CircleAI.Assistant.Lifecycle.ComponentState(
                 CircleAI.Assistant.Lifecycle.ReadinessComponents.Brain, s.Phase, s.Step, s.LastFailure?.Kind,
                 CircleAI.Assistant.Lifecycle.PauseReason.None,
@@ -160,6 +207,39 @@ public static class Program
             // question should not be the thing that pays for the load.
             if (present && Environment.GetEnvironmentVariable("CIRCLEAI_LAZY") != "1")
                 _ = brain.EnsureReadyAsync(stopping.Token).ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+
+            // AND THEN FINISH WHAT IS OWED, the phone's order: what is half down first,
+            // then what the first-run plan wants and has no byte of - the brain included,
+            // chosen by the same rules the selector uses. Off the start path, so the
+            // service answers what it can while gigabytes arrive; a brain that lands is
+            // loaded straight away. Desktop builds have no speech stack, so no voices.
+            _ = Task.Run(async () =>
+            {
+                static void Say(string line) => Console.WriteLine(line);
+                try
+                {
+                    var plan = CircleAI.Assistant.FirstRun.Plan(registry, loader, DeviceProbe.Snapshot(), speech: false)
+                        .Select(s => (Name: s.Model.Name, Bytes: s.Model.TotalBytes))
+                        .ToList();
+                    if (reportOnly)
+                    {
+                        Say("setup: " + ModelSetup.Describe(loader));
+                        foreach (var (name, have, need) in ModelSetup.Unfinished(loader))
+                            Say($"would carry on with {name}: {have} of {need} bytes");
+                        foreach (var (name, need) in ModelSetup.NotStarted(loader, plan))
+                            Say($"would fetch {name} ({need} bytes)");
+                        Say("upkeep: report only - nothing fetched, swept or reclaimed");
+                        return;
+                    }
+
+                    await ModelSetup.ResumeUnfinishedAsync(loader, Say, stopping.Token).ConfigureAwait(false);
+                    await ModelSetup.FetchNotStartedAsync(loader, plan, Say, stopping.Token).ConfigureAwait(false);
+                    if (!present && !string.IsNullOrWhiteSpace(wanted) && loader.ModelPresent(wanted!))
+                        await brain.EnsureReadyAsync(stopping.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { /* asked to stop */ }
+                catch (Exception ex) { Say("setup failed: " + ex.Message); }
+            });
 
             // THE PORT AND THE TOKEN ARE THE WHOLE INTERFACE, so they are printed
             // rather than left for somebody to find in a log. The endpoint generates

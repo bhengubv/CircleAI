@@ -5,6 +5,11 @@
 //   adb shell am broadcast -a com.bhengubv.circleai.action.SOAK -n com.bhengubv.circleai.service/ai.circle.SoakReceiver --es do start --es run p30-1
 //   adb shell am broadcast -a com.bhengubv.circleai.action.SOAK -n com.bhengubv.circleai.service/ai.circle.SoakReceiver --es do stop
 //   adb shell am broadcast -a com.bhengubv.circleai.action.SOAK -n com.bhengubv.circleai.service/ai.circle.SoakReceiver --es do quality
+//   adb shell am broadcast -a com.bhengubv.circleai.action.SOAK -n com.bhengubv.circleai.service/ai.circle.SoakReceiver --es do arm
+//
+// "arm" lets the files in the app's soak/ folder act as test switches (prompt dump, notes
+// wording, sampler, question list) until "disarm"; without it they are ignored, because
+// that folder is writable by other apps on Android 10.
 //
 // PROTECTED BY DUMP, which the adb shell holds and no ordinary app can: the receiver is
 // exported so a developer can reach it, and nothing installed from a store can.
@@ -57,8 +62,17 @@ public sealed class SoakReceiver : BroadcastReceiver
                 // flight come back and be answered.
                 KillWorker?.Invoke();
                 break;
+            case "arm":
+                ArmTestSwitches?.Invoke(true);
+                break;
+            case "disarm":
+                ArmTestSwitches?.Invoke(false);
+                break;
         }
     }
+
+    /// <summary>Arms (true) or disarms the soak/ test switches. Set by the service's startup.</summary>
+    public static Action<bool>? ArmTestSwitches { get; set; }
 
     /// <summary>Ends the inference process (developer fault injection). Set by the service's startup.</summary>
     public static Action? KillWorker { get; set; }

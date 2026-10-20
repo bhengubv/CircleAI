@@ -24,11 +24,15 @@ namespace CircleAI.Tests;
 public sealed class AssistantPersonaTests
 {
     [Fact]
-    public void The_persona_carries_what_it_can_do()
+    public void The_persona_does_not_carry_what_it_can_do_the_overview_answer_does()
     {
-        // ONE SENTENCE, NOT A RETRIEVAL. "What can you do?" is every word a
-        // stopword, so nothing can be searched for it; this is the answer.
-        Assert.Contains(AssistantPersona.CanDo, AssistantPersona.Prompt, StringComparison.Ordinal);
+        // MEASURED ON THE P30 ON 2026-10-20, the first time the persona really reached the
+        // model: with the capability sentence in every turn it played a service desk - "I am
+        // ready to assist you! Please provide the content you need" to a garble - and paid
+        // ~40 tokens, 1.5 s, on every answer. "What can you do?" is every word a stopword and
+        // never reaches the model: OverviewAnswer answers it with CanDoSpoken.
+        Assert.DoesNotContain(AssistantPersona.CanDo, AssistantPersona.Prompt, StringComparison.Ordinal);
+        Assert.Contains("work with no signal", AssistantPersona.CanDoSpoken, StringComparison.Ordinal);
     }
 
     [Fact]

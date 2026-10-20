@@ -44,10 +44,16 @@ public sealed record GenerationProfile(
     /// <remarks>
     /// MNN's own key names (transformers/README.md): sampler_type, mixed_samplers,
     /// temperature, topK, topP, minP, penalty.
+    /// <para>
+    /// GREEDY IS ITS TYPE AND NOTHING ELSE - the config measured on the P30 on 2026-10-20,
+    /// and it has no knobs to send. "mixed" with topK 1 was measured the same evening and
+    /// was NOT greedy on this MNN build: one prompt, six different answers.
+    /// </para>
     /// </remarks>
     public string? SamplerConfigJson()
     {
         if (Sampler is not { } s) return null;
+        if (s.SamplerType == "greedy") return "{\"sampler_type\":\"greedy\"}";
         var mixed = new List<string>();
         if (s.Penalty > 1.0) mixed.Add("penalty");
         mixed.AddRange(new[] { "topK", "topP", "minP", "temperature" });
