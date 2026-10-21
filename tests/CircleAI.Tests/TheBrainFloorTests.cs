@@ -239,6 +239,39 @@ public sealed class TheBrainFloorTests : IDisposable
             $"a 12 GB phone with 6 GB free was given {brain.Name}");
     }
 
+    // ── what may be handed to a device at all ───────────────────────────────
+
+    [Fact]
+    public void Nothing_a_device_can_be_handed_carries_a_licence_the_product_refuses()
+    {
+        // Cutting 3.9.0 on 2026-10-21: a desktop's first-run plan would have fetched
+        // Qwen2.5-VL-3B (2.7 GB) - "qwen-research" upstream, non-commercial, though the MNN
+        // copy's card says Apache-2.0. The catalogue feed's own licence gate decides here too.
+        var options = new ModelScopeCatalogOptions();
+        var refused = _registry.AllModels
+            .Where(m => !m.Retired && m.License is not null && !ModelScopeCatalogClient.LicenceAllowed(m.License, options))
+            .Select(m => $"{m.Name} ({m.License})")
+            .ToList();
+        Assert.True(refused.Count == 0, "selectable under a refused licence: " + string.Join(", ", refused));
+
+        var vl3b = Model("Qwen2.5-VL-3B-Instruct-MNN");
+        Assert.True(vl3b.Retired);
+        Assert.False(ModelScopeCatalogClient.LicenceAllowed(vl3b.License, options));
+    }
+
+    [Fact]
+    public void A_desktop_is_given_eyes_it_may_use()
+    {
+        using var loader = new BundleModelLoader(Store(), _registry);
+
+        var plan = FirstRun.Plan(_registry, loader,
+            Probe(availableBytes: 24_000_000_000, totalBytes: 32_000_000_000), speech: false);
+
+        var eyes = Assert.Single(plan, s => s.Modality == ModelModality.Vision).Model;
+        Assert.Equal("SmolVLM-256M-Instruct-MNN", eyes.Name);
+        Assert.Equal("Apache-2.0", eyes.License);
+    }
+
     // ── the catalogue column ────────────────────────────────────────────────
 
     [Fact]

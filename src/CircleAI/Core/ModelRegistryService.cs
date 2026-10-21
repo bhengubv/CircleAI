@@ -492,6 +492,14 @@ namespace CircleAI.Core.Models
         /// DATA, NOT A NAME IN CODE. The service must never hard-code which model it
         /// runs; the registry says which models are retired, and a feed can change it.
         /// </para>
+        /// <para>
+        /// AND ANY MODEL WHOSE LICENCE IS NOT FREE, whatever it does. Every route that
+        /// picks a model honours this for every modality, so it is also how a model is kept
+        /// off devices for its licence: Qwen2.5-VL-3B ("qwen-research", non-commercial
+        /// upstream - the MNN copy's card says Apache-2.0, a conversion cannot change that)
+        /// was retired on 2026-10-21, cutting 3.9.0, and its licence recorded beside it.
+        /// CatalogueMerge keeps a curated entry over a live one of the same name.
+        /// </para>
         /// </remarks>
         public bool Retired { get; init; }
 
