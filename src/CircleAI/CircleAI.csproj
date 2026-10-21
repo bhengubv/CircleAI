@@ -26,22 +26,35 @@
     string the six call sites already hardcode. Only capabilities.json needs
     naming by hand, because it lives at the repo root rather than in a folder.
 
-    WHAT IS DELIBERATELY STILL ITS OWN PROJECT, and why:
-      CircleAIService            an app — Android service head, OutputType Exe
-      CircleAI.Inference.Server  an app — Exe on the Web SDK
-      CircleAI.Maui              drags the MAUI workload and five platform TFMs
-      CircleAI.Device            }
-      CircleAI.Client            } android-only; CircleAI.Core has never
-      CircleAI.Assistant.Device  } compiled for android, and under that target
-                                   `Activity` is ambiguous between
-                                   Android.App.Activity and
-                                   System.Diagnostics.Activity in two of its files
-    The two apps each declare `Program` in the global namespace, so merging
-    either would be a hard collision rather than a merge.
+    EVERYTHING IS IN THIS ONE PACKAGE. What is still a project of its own is an
+    app, and none of them is published as a package:
+      CircleAIService            the service's Android and Windows heads
+      CircleAI.Inference.Server  one line: InferenceServerHost.RunAsync (InferenceServer/)
+      tools/memory               one line: MemoryCli.RunAsync (Memory/Cli/) - packed only
+                                 for the local "memory" install in AGENT.md
+    The apps each declare `Program` in the global namespace, so merging any of
+    them would be a hard collision rather than a merge. The server's deployment
+    files ride in this package too, under server/.
+
+    Device/, Client/ and Assistant.Device/ are folders here, android-only (the
+    Android section at the end subtracts them from the other legs). Maui/ came in
+    last, at 3.9.1, from a package of its own that shipped for android, iOS, Mac
+    Catalyst and Windows as well as net9.0 - so this library now builds for all of
+    them, and every branch in Maui/ ships: the platform ones on their platforms,
+    the headless ones on net9.0/net10.0, where the tests read them.
   -->
 
   <PropertyGroup>
+    <!-- EVERY PLATFORM THE CODE HAS A BRANCH FOR, WHERE THE HOST CAN BUILD IT.
+         iOS and Mac Catalyst need the Apple workloads, which do not exist on Linux;
+         the Windows framework needs a Windows host. Restore evaluates every framework
+         of this project for all thirty that reference it, so listing them
+         unconditionally would break every build on the other boxes. The PACKAGE is
+         never thinner for it: CIRCLEAI020, at the end of this file, refuses a pack
+         that is missing a platform. -->
     <TargetFrameworks>net9.0;net10.0;net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
     <AssemblyName>CircleAI</AssemblyName>
     <RootNamespace>CircleAI</RootNamespace>
     <Nullable>enable</Nullable>
@@ -53,10 +66,24 @@
     <!-- CircleAI.Federation marks its own types experimental and suppressed the
          diagnostic in its csproj. That csproj is gone, so the suppression moves here. -->
     <NoWarn>$(NoWarn);CIRCLEAI_FED_001</NoWarn>
+    <!-- NU5110/NU5111: server/windows/install-windows-service.ps1 rides in the package
+         as a deployment file, and NuGet is right that it will not run on install -
+         nothing in this package should run on install. -->
+    <NoWarn>$(NoWarn);NU5110;NU5111</NoWarn>
 
     <PackageId>CircleAI</PackageId>
     <Description>Circle AI — the on-device assistant runtime: inference, memory, skills, voice, vision and the device substrate, in one assembly.</Description>
     <PackageTags>circleai;on-device;llm;inference;assistant</PackageTags>
+  </PropertyGroup>
+
+  <!-- The platform of the leg being built, read from the framework: the SDK derives
+       TargetPlatformIdentifier after this body is read (see the android note below). -->
+  <PropertyGroup>
+    <_CircleAIPlatform>$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))</_CircleAIPlatform>
+    <!-- ASP.NET Core only where an app can get its runtime pack: plain net9.0 and
+         net10.0, and Windows. Android, iOS and Mac Catalyst have none (see the note on
+         it below). -->
+    <_CircleAIHasAspNetCore Condition="'$(_CircleAIPlatform)' == '' Or '$(_CircleAIPlatform)' == 'windows'">true</_CircleAIHasAspNetCore>
   </PropertyGroup>
 
   <!-- Three of the old projects carried an AssemblyInfo.cs saying the same
@@ -96,6 +123,23 @@
     </None>
   </ItemGroup>
 
+  <!-- WHAT AN APP THAT REFERENCES THE PACKAGE GETS, beyond runtimes/.
+       buildTransitive/CircleAI.targets brings Whisper.net.Runtime's own targets in, so
+       its natives arrive as if the app referenced it directly - the dependency is
+       packed with exclude="Build", which left every package consumer with the managed
+       wrapper and no libwhisper (Voice/CircleAI.Package.targets says why).
+       The placeholders FENCE the iOS simulator and Mac Catalyst: their RIDs fall back
+       to ios-arm64 (iossimulator-arm64 > iossimulator > ios-arm64, and the same for
+       maccatalyst-arm64), so without them an app built for either would be handed the
+       iPhone-device MNN and turbovec binaries and fail to link. An empty placeholder
+       is the nearest match instead: the app links, and those engines say they are not
+       there. Real simulator and Catalyst builds of MNN need a Mac. -->
+  <ItemGroup>
+    <None Include="Voice\CircleAI.Package.targets" Pack="true" PackagePath="buildTransitive/CircleAI.targets" Visible="false" />
+    <None Include="Inference\fence\_._" Pack="true"
+          PackagePath="runtimes/iossimulator-arm64/native/;runtimes/maccatalyst-arm64/native/" Visible="false" />
+  </ItemGroup>
+
   <!-- Inference/CircleAI.Inference.targets registers the MNN native libraries and
        copies them beside the output. It used to be imported by
        CircleAI.Inference.csproj; that csproj is gone, so without this line nothing
@@ -124,15 +168,15 @@
     <AndroidNativeLibrary Remove="Inference\runtimes\**\*.so;Embeddings.Local\runtimes\**\*.so;Voice\runtimes\**\*.so" />
   </ItemGroup>
 
-  <!-- NO FrameworkReference. Hosting.Mcp (minimal API) and Hosting.Multiplayer
-       (SignalR) used to live here and needed Microsoft.AspNetCore.App. That is
-       server code and it cannot ship inside a phone app: a FrameworkReference is
-       transitive, so the Android heads failed restore with NETSDK1082, and hiding
-       it with PrivateAssets only moved the failure to AOT - the precompiler loads
-       every method in the assembly and MultiplayerHub names
-       Microsoft.AspNetCore.SignalR.Core, which has no android build. Both folders
-       are now in src/CircleAI.Inference.Server, their only plausible host; nothing
-       in production referenced them. -->
+  <!-- ASP.NET CORE ONLY ON THE LEGS AN APP CAN RUN IT ON. Hosting.Mcp (minimal API),
+       Hosting.Multiplayer (SignalR) and InferenceServer/ are server code, and there
+       is no ASP.NET Core runtime pack for android, iOS or Mac Catalyst. A
+       FrameworkReference is transitive, so on those legs it fails every app that
+       references this library - CircleAI 3.8.0 did exactly that to android, with
+       NETSDK1082 - and hiding it with PrivateAssets only moved the failure to AOT:
+       the precompiler loads every method in the assembly and MultiplayerHub names
+       Microsoft.AspNetCore.SignalR.Core. So the reference AND the code come off those
+       legs together, on _CircleAIHasAspNetCore (set at the top). -->
 
   <!-- Paths now match the names the callers use, so these need no LogicalName.
        capabilities.json is the exception: it sits at the repo root. -->
@@ -153,11 +197,11 @@
                       LogicalName="CircleAI.Skills.capabilities.json" />
   </ItemGroup>
 
-  <!-- The union of what the 169 libraries referenced. Four packages from the
-       old tree-wide union are absent because only the excluded apps used them:
-       Microsoft.AspNetCore.Authentication.JwtBearer, Microsoft.Extensions.Hosting.Systemd
-       and .Hosting.WindowsServices belonged to CircleAI.Inference.Server, and
-       Microsoft.Maui.Essentials to CircleAI.Maui.
+  <!-- The union of what the 169 libraries referenced, and what the server and the
+       Maui adapters brought with them: JwtBearer, Hosting.WindowsServices and
+       Hosting.Systemd for InferenceServer/ sit with ASP.NET Core below, on the legs
+       that have it; Microsoft.Maui.Essentials and System.Management sit with the
+       platforms that read the device through them, near the end of this file.
 
        THE MICROSOFT.EXTENSIONS FAMILY IS ONE VERSION ON BOTH LEGS. Pinning 9.0.0
        for net9.0 fails NU1605 four times: AetherNet.Messaging 3.0.0 needs
@@ -169,10 +213,6 @@
     <PackageReference Include="AetherNet.Messaging" Version="3.0.0" />
     <PackageReference Include="AetherNet.Security" Version="3.0.0" />
     <PackageReference Include="AetherNet.Transport" Version="3.0.0" />
-    <!-- InferenceServer/ secures its endpoints with JWT bearer. PrivateAssets=all:
-         it is ASP.NET Core, has no android runtime pack, and a flowing reference is
-         what broke every android consumer of 3.8.0. -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" PrivateAssets="all" />
     <PackageReference Include="Fluxor" Version="6.9.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.65.0" />
     <PackageReference Include="MQTTnet" Version="4.3.6.1152" />
@@ -190,31 +230,54 @@
     <PackageReference Include="Scriban" Version="7.2.4" />
     <PackageReference Include="Whisper.net" Version="1.8.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
-    <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+    <!-- NO sqlite-net-pcl. Nothing in the product used it - no SQLiteConnection
+         anywhere in src, tests, samples or tools - and it pulled SQLitePCLRaw 3.0 and
+         SourceGear.sqlite3 in beside Microsoft.Data.Sqlite's 2.1: one process running
+         2.1 start-up code against a 3.0 core, and two libe_sqlite3.so in every APK.
+         Without it the graph is the one SQLitePCLRaw line Microsoft.Data.Sqlite asks for. -->
   </ItemGroup>
 
-  <!-- Hosting.Mcp (minimal API) and Hosting.Multiplayer (SignalR) need the
-       ASP.NET Core shared framework. A FrameworkReference is TRANSITIVE and there
-       is no android runtime pack for it - that is what made CircleAI 3.8.0 fail
-       NETSDK1082 for every android consumer. The CONDITION on this ItemGroup is
-       what keeps it off android; the two folders come out of the android leg
-       below. See the note inside for why PrivateAssets is not the answer. -->
-  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'">
-    <!-- NO PrivateAssets. The ItemGroup above is already conditioned off android,
-         which is what keeps NETSDK1082 away; PrivateAssets did something different
+  <!-- The ASP.NET Core shared framework, where an app can get its runtime pack (the
+       note above). The CONDITION on this ItemGroup is what keeps it off android, iOS
+       and Mac Catalyst; the server folders come off the same legs below. See the
+       note inside for why PrivateAssets is not the answer. -->
+  <ItemGroup Condition="'$(_CircleAIHasAspNetCore)' == 'true'">
+    <!-- NO PrivateAssets. This ItemGroup is already conditioned off the legs with
+         no runtime pack, which is what keeps NETSDK1082 away; PrivateAssets did something different
          and worse. The library resolves Microsoft.Extensions.Hosting.Abstractions
          FROM this shared framework, so the SDK drops the package copy from the
          output - and hiding the framework from consumers then left them with
          neither. 125 UI tests failed at run time with
          "Could not load Microsoft.Extensions.Hosting.Abstractions, Version=10.0.0.0". -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- The server's own packages, flowing to whatever hosts it: InferenceServer/
+         secures its endpoints with JWT bearer, and InferenceServerHost runs under the
+         Windows service controller and systemd. All MIT. These used to sit in the
+         server's csproj with JwtBearer here as PrivateAssets=all - private because a
+         flowing ASP.NET reference is what broke every android consumer of 3.8.0. On
+         these legs only, there is nothing to break, and the host needs them to flow. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.*" />
+  </ItemGroup>
+
+  <!-- The server's deployment files ride in the package too, under server/: nothing
+       of the product lives outside it. They are files, not build input. -->
+  <ItemGroup>
+    <None Include="..\CircleAI.Inference.Server\appsettings.json;..\CircleAI.Inference.Server\Dockerfile;..\CircleAI.Inference.Server\README.md"
+          Pack="true" PackagePath="server/" Visible="false" />
+    <None Include="..\CircleAI.Inference.Server\systemd\circleai-inference-server.service"
+          Pack="true" PackagePath="server/systemd/" Visible="false" />
+    <None Include="..\CircleAI.Inference.Server\windows\install-windows-service.ps1"
+          Pack="true" PackagePath="server/windows/" Visible="false" />
   </ItemGroup>
 
   <!-- ── Android ──────────────────────────────────────────────────────────────
-       Assistant.Device, Client, Device and Maui are android-only, so their
+       Assistant.Device, Client and Device are android-only, so their
        sources are removed from the non-android legs rather than excluded from
        the glob: that way one glob still describes the whole product and the
-       android leg is the one that subtracts nothing.
+       android leg is the one that subtracts nothing. Maui/ is NOT android-only:
+       every file in it has a headless branch, and the tests compile against it.
 
        The Remove items sit at the END of the file on purpose. MSBuild processes
        items in document order, so a Remove placed above the Compile Include it
@@ -225,11 +288,11 @@
     <Compile Remove="Device\**\*.cs" />
   </ItemGroup>
 
-  <!-- ASP.NET Core has no android build, and the AOT compiler loads every method
-       in the assembly - so these two must not be COMPILED for android, not merely
-       have their framework reference hidden. Hiding it is what turned 3.8.0 from a
-       restore error into an AOT error. -->
-  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+  <!-- ASP.NET Core has no android, iOS or Mac Catalyst build, and the AOT compiler
+       loads every method in the assembly - so the server code must not be COMPILED
+       for those legs, not merely have its framework reference hidden. Hiding it is
+       what turned 3.8.0 from a restore error into an AOT error. -->
+  <ItemGroup Condition="'$(_CircleAIHasAspNetCore)' != 'true'">
     <Compile Remove="Hosting.Mcp\**\*.cs" />
     <Compile Remove="Hosting.Multiplayer\**\*.cs" />
     <Compile Remove="InferenceServer\**\*.cs" />
@@ -252,23 +315,61 @@
        device through Microsoft.Maui.Devices / .Networking / .ApplicationModel -
        DeviceInfo, Connectivity, Permissions. Essentials supplies those. UseMaui
        would also pull in Microsoft.Maui.Controls, whose attributes then land in
-       this assembly and break AOT for the headless CircleAIService. -->
-  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+       this assembly and break AOT for the headless CircleAIService. Maui/ needs
+       nothing more: MauiDeviceContext reads Battery and Connectivity through it on
+       android, iOS and Mac Catalyst, and on android the AndroidX.Core its
+       notifications are built with comes in underneath it. Essentials is MIT; on
+       the Apple legs it brings only Microsoft.Maui.Graphics, also MIT.
+       NOT ON WINDOWS: there Essentials brings the Windows App SDK and Win2D, and
+       makes every Windows app that references CircleAI need the Windows App
+       Runtime. MauiDeviceContext reads Windows' own APIs there instead. -->
+  <ItemGroup Condition="'$(_CircleAIPlatform)' == 'android' Or '$(_CircleAIPlatform)' == 'ios' Or '$(_CircleAIPlatform)' == 'maccatalyst'">
     <PackageReference Include="Microsoft.Maui.Essentials" Version="10.0.20" />
   </ItemGroup>
+
+  <!-- Windows: Hosting/ThermalThrottleService.cs reads the thermal zones through WMI
+       on this leg. MIT. -->
+  <ItemGroup Condition="'$(_CircleAIPlatform)' == 'windows'">
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- The minimum OS CircleAI.Maui declared. The SDK's iOS default, 12.2, is below
+       what Maui/ calls - BackgroundTasks is iOS 13. -->
+  <PropertyGroup Condition="'$(_CircleAIPlatform)' == 'ios' Or '$(_CircleAIPlatform)' == 'maccatalyst'">
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!-- Windows 10 1809, the floor MAUI and the Windows App SDK use, so an app on it
+       is not warned off every call; the APIs Maui/ calls are all older. -->
+  <PropertyGroup Condition="'$(_CircleAIPlatform)' == 'windows'">
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
 
     <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
-    <!-- NO UseMaui. CircleAI.Maui is its own project again precisely because this
-         flag put Microsoft.Maui.Controls attributes into the assembly, and the
-         headless CircleAIService - OutputType=Exe, no MAUI - then failed AOT with
-         "Can't find custom attr constructor ... Could not load Microsoft.Maui.Controls".
+    <!-- NO UseMaui. This flag put Microsoft.Maui.Controls attributes into the
+         assembly, and the headless CircleAIService - OutputType=Exe, no MAUI - then
+         failed AOT with "Can't find custom attr constructor ... Could not load
+         Microsoft.Maui.Controls". That is why CircleAI.Maui was once split out;
+         Maui/ is back because it needs Essentials alone (above), never this flag.
          A background service must not be forced to become a MAUI app. -->
     <!-- AndroidAudio.cs and its siblings are guarded by this; without it they
          compile to empty files and the types read as a missing NAMESPACE. -->
     <DefineConstants>$(DefineConstants);IT_VOICE_ANDROID</DefineConstants>
   </PropertyGroup>
 
+  <!-- CIRCLEAI020. ONE PACKAGE, EVERY PLATFORM. The frameworks at the top depend on
+       the host - there are no Apple workloads on Linux - so a pack on the wrong box
+       would publish a CircleAI that had quietly lost platforms. It is refused. -->
+  <Target Name="_CircleAIPackCarriesEveryPlatform" BeforeTargets="GenerateNuspec">
+    <ItemGroup>
+      <_CircleAIBuiltFramework Include="$(TargetFrameworks)" />
+      <_CircleAIPackFramework Include="net9.0;net10.0;net10.0-android;net10.0-ios;net10.0-maccatalyst;net10.0-windows10.0.19041.0" />
+      <_CircleAIMissingFramework Include="@(_CircleAIPackFramework)" Exclude="@(_CircleAIBuiltFramework)" />
+    </ItemGroup>
+    <Error Code="CIRCLEAI020" Condition="'@(_CircleAIMissingFramework)' != ''"
+           Text="The CircleAI package carries every platform, and this host cannot build @(_CircleAIMissingFramework). Pack it on Windows with the ios and maccatalyst workloads installed." />
+  </Target>
 
 </Project>

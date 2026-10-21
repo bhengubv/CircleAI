@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Packed as buildTransitive/CircleAI.targets: imported into every app that references
+    the CircleAI PACKAGE, and never into a project in this repo (a ProjectReference does
+    not read a package's build folder - the in-repo heads get their natives from
+    Directory.Build.targets).
+
+    WHISPER'S NATIVES. Whisper.net.Runtime delivers libwhisper and its ggml siblings
+    through its own build targets, which copy them to runtimes/<rid>/ where Whisper.net
+    looks - not through runtimes/<rid>/native. A package's dependencies are written with
+    exclude="Build", so an app that took Whisper.net.Runtime through CircleAI never ran
+    those targets and got the managed wrapper with no engine: speech recognition failed
+    on first use. Importing them here makes the app behave as if it referenced
+    Whisper.net.Runtime itself - right natives per platform, iOS simulator and Mac
+    Catalyst included. An app that does reference it directly imports the same file
+    twice, and MSBuild skips the second (MSB4011).
+
+    The version is CircleAI.csproj's Whisper.net.Runtime version; a test holds them equal.
+  -->
+  <PropertyGroup>
+    <_CircleAIWhisperRuntimeTargets>$(NuGetPackageRoot)whisper.net.runtime/1.8.1/build/Whisper.net.Runtime.targets</_CircleAIWhisperRuntimeTargets>
+  </PropertyGroup>
+
+  <Import Project="$(_CircleAIWhisperRuntimeTargets)"
+          Condition="'$(NuGetPackageRoot)' != '' And Exists('$(_CircleAIWhisperRuntimeTargets)')" />
+
+</Project>

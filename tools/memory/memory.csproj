@@ -16,6 +16,10 @@
        .NET-native way to put it there, and it is the same two lines on Linux,
        Windows and the Mac. See AGENT.md for them.
   -->
+  <!-- PACKED HERE, NEVER PUBLISHED. Circle AI publishes ONE package, CircleAI, and the
+       command's code is in it (CircleAI.Memory.Cli). This tool package exists only for
+       the local install in AGENT.md - dotnet pack into .artifacts, dotnet tool install
+       from there - and no script pushes it to a feed. -->
   <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>memory</ToolCommandName>

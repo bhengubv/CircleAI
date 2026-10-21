@@ -118,6 +118,20 @@ public sealed class AlwaysOnService : IHostedService, IAsyncDisposable
         {
             var context = Android.App.Application.Context;
             if (context is null) return;
+            // A foreground service the app holds no permission for is not a quiet
+            // failure. StartForeground throws inside the service, whose catch only
+            // writes to Debug, and Android then kills the whole app because the
+            // service never reached the foreground. So check first, say which one is
+            // missing, and listen without the anchor - it still hears while the app
+            // is in front.
+            var missing = MissingForegroundPermission(context);
+            if (missing is not null)
+            {
+                _logger.LogWarning(
+                    "[AlwaysOnService] {Permission} is not granted, so the listener runs without its foreground service and stops when Android puts the app away.",
+                    missing);
+                return;
+            }
             _foregroundIntent = new Intent(context, typeof(CircleAlwaysOnAndroidService));
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
                 context.StartForegroundService(_foregroundIntent);
@@ -144,6 +158,32 @@ public sealed class AlwaysOnService : IHostedService, IAsyncDisposable
         {
             _logger.LogWarning(ex, "[AlwaysOnService] Could not stop Android foreground service.");
         }
+    }
+
+    /// <summary>The first permission a microphone foreground service needs that this app lacks, or null.</summary>
+    /// <remarks>
+    /// Android 9 (API 28) gates <c>startForeground</c> on FOREGROUND_SERVICE; Android 14
+    /// (API 34) adds the per-type FOREGROUND_SERVICE_MICROPHONE, and RECORD_AUDIO itself.
+    /// </remarks>
+    private static string? MissingForegroundPermission(Context context)
+    {
+        string[] needed = (int)Build.VERSION.SdkInt switch
+        {
+            >= 34 =>
+            [
+                "android.permission.FOREGROUND_SERVICE",
+                "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+                "android.permission.RECORD_AUDIO",
+            ],
+            >= 28 => ["android.permission.FOREGROUND_SERVICE"],
+            _ => [],
+        };
+        foreach (var permission in needed)
+        {
+            if (context.CheckSelfPermission(permission) != global::Android.Content.PM.Permission.Granted)
+                return permission;
+        }
+        return null;
     }
 #endif
 
@@ -205,6 +245,15 @@ public sealed class AlwaysOnService : IHostedService, IAsyncDisposable
 /// is backgrounded. The actual wake-word detection runs in the in-process
 /// <see cref="AlwaysOnService"/>; this class is just the OS lifecycle anchor.
 /// </summary>
+/// <remarks>
+/// IT REGISTERS ITSELF, as it did in CircleAI.Maui: the build of every Android app
+/// that references CircleAI writes this service into the app's manifest, so an app
+/// that runs <see cref="AlwaysOnService"/> gets it without a manifest line of its
+/// own. It is not exported, and nothing starts it but <see cref="AlwaysOnService"/>.
+/// An app that will never listen drops it by name -
+/// <c>&lt;service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" /&gt;</c> -
+/// as the thin sample app does with the service's other components.
+/// </remarks>
 [Service(
     Name           = "ai.circle.AlwaysOnAndroidService",
     Exported       = false,

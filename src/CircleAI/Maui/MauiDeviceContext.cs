@@ -21,7 +21,10 @@
 using System;
 using System.Globalization;
 using CircleAI.Core;
-#if ANDROID || IOS || MACCATALYST || WINDOWS
+// Essentials on android and Apple. On Windows it would bring the Windows App SDK and
+// Win2D, so the WINDOWS branches below read Windows' own APIs - PowerManager and
+// NetworkInformation - which is what Essentials calls there anyway.
+#if ANDROID || IOS || MACCATALYST
 using Microsoft.Maui.Devices;
 using Microsoft.Maui.Networking;
 // Disambiguate from CircleAI.Core.Connectivity — same pattern as
@@ -98,12 +101,25 @@ namespace CircleAI.Maui
         {
             get
             {
-#if ANDROID || IOS || MACCATALYST || WINDOWS
+#if ANDROID || IOS || MACCATALYST
                 try
                 {
                     var level = Battery.Default.ChargeLevel;
                     // ChargeLevel returns -1 when the value is unknown.
                     return level < 0 ? null : (float)level;
+                }
+                catch
+                {
+                    return null;
+                }
+#elif WINDOWS
+                try
+                {
+                    // A desktop with no battery has no level - unknown, not full.
+                    if (global::Windows.System.Power.PowerManager.BatteryStatus
+                        == global::Windows.System.Power.BatteryStatus.NotPresent)
+                        return null;
+                    return global::Windows.System.Power.PowerManager.RemainingChargePercent / 100f;
                 }
                 catch
                 {
@@ -120,7 +136,7 @@ namespace CircleAI.Maui
         {
             get
             {
-#if ANDROID || IOS || MACCATALYST || WINDOWS
+#if ANDROID || IOS || MACCATALYST
                 try
                 {
                     return Battery.Default.State switch
@@ -130,6 +146,24 @@ namespace CircleAI.Maui
                         BatteryState.NotCharging
                             or BatteryState.Discharging => false,
                         _                               => null,
+                    };
+                }
+                catch
+                {
+                    return null;
+                }
+#elif WINDOWS
+                try
+                {
+                    return global::Windows.System.Power.PowerManager.BatteryStatus switch
+                    {
+                        global::Windows.System.Power.BatteryStatus.Charging    => true,
+                        // Idle on mains is Essentials' "Full": plugged in, nothing to charge.
+                        global::Windows.System.Power.BatteryStatus.Idle        =>
+                            global::Windows.System.Power.PowerManager.PowerSupplyStatus
+                            != global::Windows.System.Power.PowerSupplyStatus.NotPresent,
+                        global::Windows.System.Power.BatteryStatus.Discharging => false,
+                        _                                                      => null,
                     };
                 }
                 catch
@@ -152,7 +186,38 @@ namespace CircleAI.Maui
         {
             get
             {
-#if ANDROID || IOS || MACCATALYST || WINDOWS
+#if WINDOWS
+                try
+                {
+                    var profile = global::Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile();
+                    if (profile is null) return "none";
+
+                    switch (profile.GetNetworkConnectivityLevel())
+                    {
+                        case global::Windows.Networking.Connectivity.NetworkConnectivityLevel.None:
+                            return "none";
+                        case global::Windows.Networking.Connectivity.NetworkConnectivityLevel.LocalAccess:
+                            return "local";
+                        case global::Windows.Networking.Connectivity.NetworkConnectivityLevel.ConstrainedInternetAccess:
+                            return "constrained";
+                    }
+
+                    if (profile.IsWlanConnectionProfile) return "wifi";
+                    if (profile.IsWwanConnectionProfile) return "cellular";
+
+                    // IANA interface types: 6 is Ethernet, 71 is 802.11 wireless.
+                    return profile.NetworkAdapter?.IanaInterfaceType switch
+                    {
+                        6u  => "ethernet",
+                        71u => "wifi",
+                        _   => "internet", // Connected but profile is unrecognised.
+                    };
+                }
+                catch
+                {
+                    return null;
+                }
+#elif ANDROID || IOS || MACCATALYST
                 try
                 {
                     var access = MauiConnectivity.Current.NetworkAccess;

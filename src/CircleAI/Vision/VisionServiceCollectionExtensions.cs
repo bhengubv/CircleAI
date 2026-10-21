@@ -282,10 +282,11 @@ public sealed class VisionModelPaths
 /// <param name="Wired">Abilities now resolvable.</param>
 /// <param name="Skipped">Abilities not registered, each with the reason.</param>
 /// <param name="CanDecodeImages">
-/// Whether this build can decode encoded image bytes at all. False on a bare
-/// net9.0/net10.0 host, where there is no platform codec - every registration
-/// above can still succeed there and then fail on the first photo, so a head
-/// should read this before offering any of it.
+/// Whether this build can decode photos (JPEG) on this platform - true on android,
+/// Windows and Apple, and on Linux when the distribution's libjpeg-turbo is
+/// installed. Where it is false every registration above can still succeed and
+/// then fail on the first photo, so a head should read this before offering any of
+/// it. WebP has its own answer, <see cref="ImageDecoder.IsWebPSupported"/>.
 /// </param>
 public sealed record VisionWiringReport(
     IReadOnlyList<string> Wired,

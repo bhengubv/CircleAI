@@ -133,10 +133,15 @@
 		    none of which it runs: the brain lives in com.bhengubv.circleai.service.
 		    An exported LINK service here is one more door into an app that has no
 		    brain behind it. Removed by name.
+
+		    The always-on microphone listener came in with Maui/ at 3.9.1 and is the
+		    same case: the service does the listening, and this app declares no
+		    foreground-service permission to run it with.
 		-->
 		<service android:name="ai.circle.CircleNeuronLinkService" tools:node="remove" />
 		<service android:name="ai.circle.CircleNeuronService" tools:node="remove" />
 		<service android:name="ai.circle.ModelFetchService" tools:node="remove" />
+		<service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" />
 		<activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
 		<receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
 		<receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />

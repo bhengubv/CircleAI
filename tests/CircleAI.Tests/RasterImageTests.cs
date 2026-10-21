@@ -261,13 +261,17 @@ public class RasterImageTests
     [Fact]
     public void A_JPEG_off_device_says_what_is_missing_rather_than_returning_grey()
     {
-        // The whole point of the exception. IsSupported is false on net9.0/net10.0
-        // because there is no platform codec, and a decoder that returned a blank
-        // raster instead would let a model score noise and report a confident
-        // nonsense answer.
-        if (ImageDecoder.IsSupported) return;   // on an android head this is the wrong assertion
-
+        // The whole point of the exception. Where there is no platform codec (a
+        // Linux box without libjpeg-turbo, an OS this build has no path for), a
+        // decoder that returned a blank raster instead would let a model score
+        // noise and report a confident nonsense answer. Where there IS a codec, a
+        // header with no image behind it is bad data - ImageDecoderPlatformTests.
         var jpegMagic = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0, 16, (byte)'J', (byte)'F', (byte)'I', (byte)'F' };
+        if (ImageDecoder.IsSupported)
+        {
+            Assert.Throws<InvalidDataException>(() => ImageDecoder.Decode(jpegMagic));
+            return;
+        }
 
         var ex = Assert.Throws<PlatformNotSupportedException>(() => ImageDecoder.Decode(jpegMagic));
         Assert.Contains("platform codec", ex.Message);

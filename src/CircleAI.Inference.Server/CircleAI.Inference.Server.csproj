@@ -15,11 +15,13 @@
     <UserSecretsId>circleai-inference-server-9d0e4c45</UserSecretsId>
     <RootNamespace>CircleAI.Inference.Server</RootNamespace>
     <AssemblyName>CircleAI.Inference.Server</AssemblyName>
-    <!-- Web SDK disables packing by default; override so the InferenceServerBuilder
-         and the default ICompanionSessionResolver / IBridgeFactory wiring can be
-         consumed as a NuGet library by downstream hosts that build their own
-         Program.cs on top. -->
-    <IsPackable>true</IsPackable>
+    <!-- NOT A PACKAGE. It was one so that downstream hosts could build their own
+         Program.cs on InferenceServerBuilder - but the builder, the endpoints and
+         the default ICompanionSessionResolver / IBridgeFactory wiring all moved
+         into the library (src/CircleAI/InferenceServer), so the CircleAI package
+         carries them and this one would carry only the Program.cs below. Circle AI
+         ships as ONE package; this project is the app that hosts it. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,12 +40,8 @@
     <!-- Skills + capability catalogue, for the /v1/capabilities and /v1/skills endpoints. -->
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- ASP.NET Core JWT bearer + Windows service hosting (no-op on Linux/macOS). -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.*" />
-  </ItemGroup>
+  <!-- JWT bearer, Windows-service and systemd hosting come from CircleAI now: the
+       server's code moved there (InferenceServerHost), and its packages with it. -->
 
   <!-- appsettings.json + appsettings.Development.json are auto-included by
        the Web SDK as Content items; no explicit <Content> needed. -->

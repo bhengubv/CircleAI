@@ -33,6 +33,13 @@ $outDir  = Join-Path $repo 'nupkgs'
 $NUGET_ORG = 'https://api.nuget.org/v3/index.json'
 $GITHUB    = 'https://nuget.pkg.github.com/bhengubv/index.json'
 
+# Visual Studio's MSBuild, found the way Visual Studio says to find it, for everything
+# that evaluates or builds. Only the push below uses the dotnet CLI: MSBuild has no push.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$msbuild = & $vswhere -latest -prerelease -products * -requires Microsoft.Component.MSBuild `
+               -find 'MSBuild\**\Bin\amd64\MSBuild.exe' | Select-Object -First 1
+if (-not $msbuild) { throw "Visual Studio's MSBuild was not found (vswhere)" }
+
 # ── Version, by evaluation rather than by reading ───────────────────────────────
 # The 3.7.0 cut moved <Version> and left <AssemblyVersion> and <FileVersion> on
 # 3.6.0.0, so packages went out at the new number carrying assemblies stamped the
@@ -41,7 +48,7 @@ foreach ($pair in @(@{ P = 'Version';         W = $version },
                     @{ P = 'AssemblyVersion'; W = "$version.0" },
                     @{ P = 'FileVersion';     W = "$version.0" },
                     @{ P = 'PackageVersion';  W = $version })) {
-    $got = (& dotnet msbuild $proj "-getProperty:$($pair.P)" -nologo 2>&1 | Out-String).Trim()
+    $got = (& $msbuild $proj "-getProperty:$($pair.P)" -nologo 2>&1 | Out-String).Trim()
     if ($got -ne $pair.W) { throw "$($pair.P) is '$got', expected '$($pair.W)'" }
 }
 Write-Host "VERSION OK: Version/PackageVersion $version, Assembly/File $version.0"
@@ -50,7 +57,10 @@ Write-Host "VERSION OK: Version/PackageVersion $version, Assembly/File $version.
 if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
 New-Item -ItemType Directory -Path $outDir | Out-Null
 
-& dotnet pack $proj -c Release -o $outDir --nologo --verbosity quiet
+# Restore, then pack, which builds every platform - on the workstation, so one node, no
+# node reuse, no compiler server, low priority. NOT quiet: that hid the NU5xxx warnings.
+& $msbuild $proj -restore -t:Pack -p:Configuration=Release "-p:PackageOutputPath=$outDir\" `
+    -m:1 -nodeReuse:false -lowPriority -p:UseSharedCompilation=false -v:m -nologo
 if ($LASTEXITCODE -ne 0) { throw "pack failed with exit $LASTEXITCODE" }
 
 $pkgs = @(Get-ChildItem $outDir -Filter '*.nupkg' | Where-Object { $_.Name -notlike '*.symbols.*' })
@@ -62,6 +72,39 @@ if ($pkg.Name -ne "CircleAI.$version.nupkg") {
     throw "packed $($pkg.Name), expected CircleAI.$version.nupkg"
 }
 Write-Host ("PACKED: {0}  {1:N1} MB" -f $pkg.Name, ($pkg.Length / 1MB))
+
+# ── What is inside, before anything is pushed ───────────────────────────────────
+# Every check above passes for a package that is wrong inside, because none of them
+# opens it. A pack that lost a platform, or one that hands ASP.NET Core to iOS - which
+# fails every iPhone app that references it, as 3.8.0 did to every android app - would
+# publish green. One package means this is the only place a platform can go missing.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead($pkg.FullName)
+try {
+    $entries = @($zip.Entries | ForEach-Object FullName)
+    $reader  = New-Object IO.StreamReader(($zip.Entries | Where-Object { $_.FullName -like '*.nuspec' } | Select-Object -First 1).Open())
+    [xml] $nuspec = $reader.ReadToEnd()
+    $reader.Dispose()
+} finally { $zip.Dispose() }
+$libs = @($entries | Where-Object { $_ -like 'lib/*/CircleAI.dll' } | ForEach-Object { ($_ -split '/')[1] })
+$want = @('net9.0', 'net10.0', 'net10.0-android', 'net10.0-ios', 'net10.0-maccatalyst', 'net10.0-windows')
+$missing = @($want | Where-Object { $w = $_; -not ($libs | Where-Object { $_ -eq $w -or $_ -like "$w[0-9]*" }) })
+$meta = $nuspec.package.metadata
+$asp = @(@($meta.frameworkReferences.group) | Where-Object { $_ -and (@($_.frameworkReference | ForEach-Object name) -contains 'Microsoft.AspNetCore.App') } | ForEach-Object targetFramework)
+$aspOnDevices = @($asp | Where-Object { $_ -match 'android|ios|maccatalyst' })
+$noEssentials = @(@($meta.dependencies.group) | Where-Object { $_ -and $_.targetFramework -match 'android|ios|maccatalyst' -and -not (@($_.dependency | ForEach-Object id) -contains 'Microsoft.Maui.Essentials') } | ForEach-Object targetFramework)
+$wrong = @()
+# What package consumers get beyond lib/: Whisper's natives through the buildTransitive
+# targets, and the fence that keeps iPhone-device natives out of simulator and Mac builds.
+foreach ($must in @('buildTransitive/CircleAI.targets', 'runtimes/iossimulator-arm64/native/_._', 'runtimes/maccatalyst-arm64/native/_._')) {
+    if ($entries -notcontains $must) { $wrong += "no $must" }
+}
+if ($missing)      { $wrong += "no lib/ for $($missing -join ', ')" }
+if ($aspOnDevices) { $wrong += "ASP.NET Core framework reference on $($aspOnDevices -join ', ')" }
+if ($noEssentials) { $wrong += "no Microsoft.Maui.Essentials dependency on $($noEssentials -join ', ')" }
+if ($wrong) { throw "the package is wrong inside: $($wrong -join '; ')" }
+Write-Host "CONTENTS OK: lib/ $($libs -join ', '); ASP.NET Core only on $($asp -join ', ')"
+
 if ($DryRun) { Write-Host "DRY RUN: nothing pushed. The package is in $outDir."; return }
 
 # ── Credentials ─────────────────────────────────────────────────────────────────

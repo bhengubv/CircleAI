@@ -1,41 +1,16 @@
 // Program.cs
 //
-// Top-level entry point for the CircleAI.Inference.Server.
-//   - Reads appsettings.json (+ overrides via env vars / cmd line)
-//   - Wires DI through InferenceServerBuilder
-//   - Maps /v1/* endpoints
-//   - Honours Windows-service + systemd hosting when invoked by the
-//     respective service controller
+// The app that runs CircleAI.Inference.Server. The server itself - configuration,
+// DI, the /v1/* endpoints, Windows-service and systemd hosting - is
+// InferenceServerHost, inside the CircleAI package, because Circle AI ships as ONE
+// package. This line is all a host needs.
 
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Hosting.WindowsServices;
-using Microsoft.Extensions.Hosting.Systemd;
-using CircleAI.Inference.Server.Hosting;
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Honour both Windows-service and systemd lifecycles — no-op when the host
-// process isn't launched by the corresponding service controller.
-builder.Host.UseWindowsService(o => o.ServiceName = "CircleAI.Inference.Server");
-builder.Host.UseSystemd();
-
-builder.Services.AddCircleAIInferenceServer(builder.Configuration);
-builder.Services.AddProblemDetails();
-
-var app = builder.Build();
-
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapCircleAIEndpoints();
-
-await app.RunAsync();
+await CircleAI.Inference.Server.Hosting.InferenceServerHost.RunAsync(args);
 
 /// <summary>
-/// Top-level <c>Program</c> entry point — needs to be public so the test
+/// Top-level <c>Program</c> entry point - needs to be public so the test
 /// project's <c>Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory&lt;TEntryPoint&gt;</c>
-/// can bind to it. The body lives in the file's top-level statements above;
+/// can bind to it. The body lives in the file's top-level statement above;
 /// this partial just opens the visibility surface.
 /// </summary>
 public partial class Program;
