@@ -6,7 +6,7 @@
     <Copyright>Copyright © 2024-2025 The Other Bhengu (PTY) Ltd</Copyright>
 
     <!-- ========== VERSIONING ========== -->
-    <Version>3.8.1</Version>
+    <Version>3.9.0</Version>
 
     <!-- THE ANDROID SDK GLOBS EVERY .so UNDER THE PROJECT.
          Sdk/AutoImport.props:57 is
@@ -20,8 +20,8 @@
          build stops being handed the foreign ones. -->
     <DefaultItemExcludes Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">$(DefaultItemExcludes);**\runtimes\linux-*\**;**\runtimes\win-*\**;**\runtimes\osx-*\**;**\runtimes\ios-*\**;**\runtimes\maccatalyst-*\**</DefaultItemExcludes>
 
-    <AssemblyVersion>3.8.1.0</AssemblyVersion>
-    <FileVersion>3.8.1.0</FileVersion>
+    <AssemblyVersion>3.9.0.0</AssemblyVersion>
+    <FileVersion>3.9.0.0</FileVersion>
 
     <!-- ========== LANGUAGE ========== -->
     <Nullable>enable</Nullable>
