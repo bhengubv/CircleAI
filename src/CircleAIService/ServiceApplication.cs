@@ -186,6 +186,53 @@ public sealed class ServiceApplication : Application
     private static string TestSwitchesArmedFile(global::Android.Content.Context context) =>
         System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "CircleAI", "state", "test-switches.armed");
 
+    /// <summary>The questions in soak/quality-typed.txt, one a line; null when there is no such file.</summary>
+    private static IReadOnlyList<string>? TypedQuestionsForTest(string soakDir)
+    {
+        try
+        {
+            var file = System.IO.Path.Combine(soakDir, "quality-typed.txt");
+            if (!System.IO.File.Exists(file)) return null;
+            var lines = System.IO.File.ReadAllLines(file).Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+            return lines.Count > 0 ? lines : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Asks <paramref name="questions"/> TYPED, up to the typed answer length, and reports what came back.</summary>
+    /// <remarks>
+    /// A TEST SWITCH (soak/quality-typed.txt, armed only). Every recorded question is asked
+    /// spoken, capped at 80 tokens, so nothing had measured how a typed answer runs on - and
+    /// greedy decoding, the sampler since 2026-10-20, has no repetition guard. Answered is
+    /// all this reports; whether an answer repeats itself is read from what it says.
+    /// </remarks>
+    private static async Task<CircleAI.Assistant.Quality.QualityReport> AskTypedAsync(
+        CircleAI.Assistant.Requests.IAskFront front, IReadOnlyList<string> questions)
+    {
+        var run = Guid.NewGuid().ToString("N")[..8];
+        var items = new List<CircleAI.Assistant.Quality.QualityItem>();
+        string? model = null;
+        for (var i = 0; i < questions.Count; i++)
+        {
+            var id = $"typed-{i + 1}";
+            var admission = front.Submit(new CircleAI.Assistant.Requests.AskSubmission(
+                QualityCaller, $"quality-{run}-{id}", string.Empty, CircleAI.Assistant.Requests.AskLane.Foreground,
+                questions[i], questions[i], Spoken: false));
+            if (!admission.Accepted || admission.Record is null)
+            {
+                items.Add(new(id, false, "refused: " + admission.Refusal, string.Empty, null));
+                continue;
+            }
+
+            var done = await front.WaitAsync(QualityCaller, admission.Record.Id, TimeSpan.FromMinutes(4), CancellationToken.None).ConfigureAwait(false);
+            var answered = done?.State == CircleAI.Assistant.Requests.AskState.Succeeded;
+            items.Add(new(id, answered, answered ? "answered" : "not answered: " + (done?.State.ToString() ?? "missing"),
+                          answered ? done!.Text : done?.Sentence ?? string.Empty, done?.Timing));
+            model ??= done?.Timing?.ModelId ?? done?.ModelId;
+        }
+        return new(items, items.Count(x => x.Passed), items.Count, model);
+    }
+
     /// <summary>The recorded questions a quality run asks, in order, when soak/quality-ids.txt names them; all of them otherwise.</summary>
     /// <remarks>
     /// A TEST SWITCH. "maize,colours,maize" asks maize after maize's own answer and after
@@ -308,8 +355,11 @@ public sealed class ServiceApplication : Application
                 qualityMemory = new CircleAI.Memory.MemoryService(qualityDir);
 
                 var armed = System.IO.File.Exists(TestSwitchesArmedFile(this));
-                var report = await new CircleAI.Assistant.Quality.QualityRunner(coordinator, QualityCaller)
-                    .RunAsync(armed ? QuestionsForTest(soakDir) : null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
+                var typed = armed ? TypedQuestionsForTest(soakDir) : null;
+                var report = typed is { Count: > 0 }
+                    ? await AskTypedAsync(coordinator, typed).ConfigureAwait(false)
+                    : await new CircleAI.Assistant.Quality.QualityRunner(coordinator, QualityCaller)
+                        .RunAsync(armed ? QuestionsForTest(soakDir) : null, TimeSpan.FromMinutes(3), CancellationToken.None).ConfigureAwait(false);
                 foreach (var item in report.Items)
                     global::Android.Util.Log.Info("CircleAI.Quality",
                         $"QUALITY {item.Id} {(item.Passed ? "PASS" : "FAIL")} {item.Reason} "

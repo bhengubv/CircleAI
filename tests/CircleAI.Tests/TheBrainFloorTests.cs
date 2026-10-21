@@ -57,25 +57,28 @@ public sealed class TheBrainFloorTests : IDisposable
         _registry.AllModels.Where(m => m.Modality == ModelModality.Chat);
 
     [Fact]
-    public void Every_qwen35_brain_answers_greedily()
+    public void Every_qwen35_brain_answers_deterministically_and_without_loops()
     {
         // P30, 2026-10-20: one maize prompt, byte for byte the same, was answered "late
         // October or November" five times in one session and "late autumn" or "September"
-        // five times in the next - temperature 0.2 and top-k 10 deciding a near-tie.
-        // Greedy, the same prompt asked six times after five different questions came back
-        // six times the same, and right: "from October to December during the first good rains".
+        // five times in the next - temperature 0.2 and top-k 10 deciding a near-tie. Greedy
+        // made it the same every time, and looped on two of eight typed answers; the
+        // repetition penalty and then greedy did neither: maize four times out of four the
+        // same and right, 28 of 28 spoken, no typed answer repeating itself.
         var brains = Llms().Where(m => m.Generation?.Sampler is not null).ToList();
         Assert.NotEmpty(brains);
         foreach (var m in brains)
-            Assert.True(m.Generation!.SamplerConfigJson() == "{\"sampler_type\":\"greedy\"}",
+            Assert.True(m.Generation!.SamplerConfigJson() == "{\"sampler_type\":\"penalty\",\"penalty\":1.1,\"penalty_sampler\":\"greedy\"}",
                 $"{m.Name} samples with {m.Generation.SamplerConfigJson()}");
     }
 
     [Fact]
-    public void A_greedy_sampler_sends_only_its_type()
+    public void A_sampler_sends_exactly_what_was_measured()
     {
         Assert.Equal("{\"sampler_type\":\"greedy\"}",
             new GenerationProfile(Sampler: new SamplerProfile(SamplerType: "greedy")).SamplerConfigJson());
+        Assert.Equal("{\"sampler_type\":\"penalty\",\"penalty\":1.1,\"penalty_sampler\":\"greedy\"}",
+            new GenerationProfile(Sampler: new SamplerProfile(SamplerType: "penalty", Penalty: 1.1)).SamplerConfigJson());
         Assert.Contains("\"mixed_samplers\"",
             new GenerationProfile(Sampler: new SamplerProfile()).SamplerConfigJson());
     }

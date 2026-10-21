@@ -45,15 +45,20 @@ public sealed record GenerationProfile(
     /// MNN's own key names (transformers/README.md): sampler_type, mixed_samplers,
     /// temperature, topK, topP, minP, penalty.
     /// <para>
-    /// GREEDY IS ITS TYPE AND NOTHING ELSE - the config measured on the P30 on 2026-10-20,
-    /// and it has no knobs to send. "mixed" with topK 1 was measured the same evening and
-    /// was NOT greedy on this MNN build: one prompt, six different answers.
+    /// GREEDY IS ITS TYPE AND NOTHING ELSE, and "penalty" is the repetition penalty and
+    /// then greedy - the two configs measured on the P30 on 2026-10-20, sent exactly as
+    /// measured. Greedy answered one prompt the same six times out of six, and looped on
+    /// two of eight typed answers ("Use coupons on your phone" twice; a history repeated
+    /// whole). Penalty-then-greedy was as deterministic and looped on none. "mixed" with
+    /// topK 1 was NOT greedy on this MNN build: one prompt, six different answers.
     /// </para>
     /// </remarks>
     public string? SamplerConfigJson()
     {
         if (Sampler is not { } s) return null;
         if (s.SamplerType == "greedy") return "{\"sampler_type\":\"greedy\"}";
+        if (s.SamplerType == "penalty")
+            return "{\"sampler_type\":\"penalty\",\"penalty\":" + D(s.Penalty) + ",\"penalty_sampler\":\"greedy\"}";
         var mixed = new List<string>();
         if (s.Penalty > 1.0) mixed.Add("penalty");
         mixed.AddRange(new[] { "topK", "topP", "minP", "temperature" });

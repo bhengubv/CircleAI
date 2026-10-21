@@ -104,6 +104,26 @@
        which is the exact failure Directory.Build.targets was written about. -->
   <Import Project="Inference\CircleAI.Inference.targets" />
 
+  <!-- THE ANDROID BUILD OF THIS LIBRARY CARRIES NO NATIVES OF ITS OWN. The .NET for
+       Android SDK globs every *.so under a project into AndroidNativeLibrary
+       (AutoImport.props, <AndroidNativeLibrary Include="**\*.so" />), so once the
+       natives moved into this folder at 3.8.1 the whole engine - MNN, llama, whisper,
+       espeak, turbovec - went into CircleAI.aar, and from it into every app that
+       references this library: the thin sample app was 63 MB on 2026-10-20, carrying
+       an inference stack it never loads. Whisper came the same way through the
+       repo-root default. Android HEADS still get every native directly from
+       Directory.Build.targets (CircleAIBundleMnn/CircleAIBundleWhisper default true
+       there), and NuGet consumers from runtimes/ - the shipped default stays "fetch at
+       runtime" (CircleAI.Inference.targets). -->
+  <!-- On the framework, not TargetPlatformIdentifier: the SDK derives that after this
+       body is read, so a condition on it here is always false (measured, -getProperty). -->
+  <PropertyGroup Condition="$(TargetFramework.EndsWith('-android'))">
+    <CircleAIBundleWhisper Condition="'$(CircleAIBundleWhisper)' == ''">false</CircleAIBundleWhisper>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleMnn)' != 'true'">
+    <AndroidNativeLibrary Remove="Inference\runtimes\**\*.so;Embeddings.Local\runtimes\**\*.so;Voice\runtimes\**\*.so" />
+  </ItemGroup>
+
   <!-- NO FrameworkReference. Hosting.Mcp (minimal API) and Hosting.Multiplayer
        (SignalR) used to live here and needed Microsoft.AspNetCore.App. That is
        server code and it cannot ship inside a phone app: a FrameworkReference is
