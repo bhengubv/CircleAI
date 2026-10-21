@@ -59,10 +59,6 @@ public static class Program
             // AND "PRESENT" IS NOT "THE DIRECTORY EXISTS". This store held a
             // Ternary-Bonsai-2-27B folder of 0.0 GB - an abandoned fetch - which is
             // exactly the shape that gets chosen and then never loads.
-            //
-            // CIRCLEAI_MODEL PINS ONE. On a phone the selector's answer is the only
-            // sane one; on a desktop somebody may have four models and a preference,
-            // and the alternative is editing a config file to try the other one.
             var data = DataDirectory();
             Directory.CreateDirectory(data);
 
@@ -106,10 +102,12 @@ public static class Program
             foreach (var id in loader.InstalledIds().Where(loader.ModelPartial).Where(id => !loader.CanRunHere(id)))
                 Console.WriteLine($"dead weight: {id} is half downloaded and this build cannot run it; it is left for you to remove");
 
-            var wanted = Environment.GetEnvironmentVariable("CIRCLEAI_MODEL");
-            if (string.IsNullOrWhiteSpace(wanted))
-                wanted = CatalogModelSelector.Preferring(catalogue, registry)
-                    .BestFit(DeviceProbe.Snapshot(), ChatCapability.Default)?.ModelId;
+            // THE DEVICE DECIDES, AND NOTHING ELSE DOES. The service runs on this machine,
+            // measures it, and only then picks its model from the assessed catalogue - the
+            // owner's rule (2026-10-21): anything other than that is wrong. CIRCLEAI_MODEL
+            // used to pin one here and skip the choice; it is gone.
+            var wanted = CatalogModelSelector.Preferring(catalogue, registry)
+                .BestFit(DeviceProbe.Snapshot(), ChatCapability.Default)?.ModelId;
 
             // A MISSING MODEL NO LONGER ENDS THE SERVICE. It serves its status - "no
             // brain here yet" - and keeps every question it is asked waiting for one,
@@ -127,6 +125,8 @@ public static class Program
                 NeverFetch            = true,
                 SystemPrompt          = CircleAI.Assistant.AssistantPersona.Prompt,
                 OverviewAnswer        = CircleAI.Assistant.AssistantPersona.CanDoSpoken,
+                // The same notes as the phone's - see BrainSkills.
+                SkillStore            = CircleAI.Service.BrainSkills.Embedded(),
             };
 
             var service = new AIService(

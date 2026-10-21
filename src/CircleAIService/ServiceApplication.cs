@@ -160,14 +160,8 @@ public sealed class ServiceApplication : Application
             SystemPrompt          = AssistantPersona.Prompt,
             OverviewAnswer        = AssistantPersona.CanDoSpoken,
 
-            // THE EMBEDDED STORES ONLY. The 20 MB library is unpacked by the main
-            // process, and opening it here could race that unpack; the manifest - the
-            // assistant's honesty about itself - is embedded and is what matters most.
-            SkillStore = new CompositeSkillStore(
-            [
-                CapabilityManifestSkillStore.Default,
-                ConsumerSkillPack.Shared,
-            ]),
+            // The same notes as the desktop's - see BrainSkills.
+            SkillStore = CircleAI.Service.BrainSkills.Embedded(),
         };
     }
 
