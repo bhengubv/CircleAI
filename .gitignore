@@ -398,3 +398,18 @@ TestOut3/
 
 # Native bridge build output — cross-compiled per machine, never committed.
 native/llama-bridge/build-android/
+
+# SQLite write-ahead sidecars. The DATABASES here are deliberately tracked —
+# src/CircleAI/Skills/consumer.db is a shipped asset — but a -wal and a -shm
+# appear beside one the moment any process opens it, and they are that
+# process's uncommitted transaction state. Committing them hands the next
+# checkout a half-written transaction against a database it does not match.
+#
+# They sat untracked in src/CircleAI/Skills for weeks, which made `git add -A`
+# a loaded gun on this tree. Never `*.db` here: that would ignore the asset.
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
