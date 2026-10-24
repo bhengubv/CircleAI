@@ -44,7 +44,7 @@
          phones, so "did my build actually land" was unanswerable from adb. This
          number is in the manifest, `dumpsys package` reads it back, and it moves
          only when somebody changes it here. -->
-    <ApplicationVersion>61</ApplicationVersion>
+    <ApplicationVersion>62</ApplicationVersion>
 
     <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
          32-bit one (armeabi-v7a + x86); without it, the 64-bit one (arm64-v8a + x86_64). -->

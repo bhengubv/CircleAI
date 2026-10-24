@@ -65,7 +65,7 @@
 
     <!-- Android's versionCode. It MUST increase on every build somebody could install
          over, or the install is refused with no useful message. -->
-    <ApplicationVersion>61</ApplicationVersion>
+    <ApplicationVersion>62</ApplicationVersion>
     <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
 
     <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
