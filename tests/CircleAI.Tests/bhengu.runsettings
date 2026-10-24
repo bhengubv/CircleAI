@@ -1,8 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
   <RunConfiguration>
-    <!-- Prevents vstest from timing out on first connection.            -->
-    <!-- Matches the VSTEST_CONNECTION_TIMEOUT=180 env var workaround.  -->
-    <TestSessionTimeout>900000</TestSessionTimeout>
+    <!--
+      A WALL-CLOCK CAP ON THE WHOLE SESSION - not a connection timeout.
+
+      The comment that stood here said this "prevents vstest from timing out on
+      first connection" and pointed at VSTEST_CONNECTION_TIMEOUT. That is a
+      different setting, and believing this one was about connecting is why
+      nobody looked at it while it was cutting real runs short.
+      TestSessionTimeout kills the run when the clock runs out, and fifteen
+      minutes could not finish EITHER leg of this project:
+
+          net9.0,  quiet box         14 m 46 s
+          net10.0, quiet box         20 m 11 s
+          net9.0,  box under load    28 m 05 s
+
+      So the command CLAUDE.md documents aborted at minute fifteen and printed
+      "Failed!" with about 54 tests never run - which reads exactly like a real
+      break, and cost most of 2026-10-24 before the cap was found rather than
+      the suite blamed.
+
+      Forty-five minutes is 1.6x the worst run measured here. The cap is there
+      to stop a HUNG run holding the box overnight; it is not a judgement on how
+      fast this suite ought to be. Raise it again rather than trimming tests to
+      fit it - and if it ever trips, read it as "something is stuck", because
+      nothing healthy here takes that long.
+    -->
+    <TestSessionTimeout>2700000</TestSessionTimeout>
   </RunConfiguration>
 </RunSettings>

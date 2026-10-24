@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
   <RunConfiguration>
-    <!-- Live-network bundle test downloads ~433 MB; allow up to 30 minutes. -->
-    <TestSessionTimeout>1800000</TestSessionTimeout>
+    <!--
+      The live-network bundle test downloads ~433 MB ON TOP OF the full suite,
+      so this file has to stay ABOVE bhengu.runsettings. At thirty minutes it no
+      longer was: the default went to forty-five, and a caller passing
+      "--settings bhengu.live.runsettings" to buy MORE time would have bought
+      fifteen minutes LESS. An hour keeps the two in the order their names imply.
+    -->
+    <TestSessionTimeout>3600000</TestSessionTimeout>
   </RunConfiguration>
 </RunSettings>

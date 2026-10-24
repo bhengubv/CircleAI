@@ -115,10 +115,17 @@ verified 2026-09-18 via the command above), but nothing *guards* it: it can rot
 again the moment a screen change breaks the build unnoticed. It was found by
 accident — no solution would have missed it if any solution contained it.
 
-`tests/CircleAI.Tests` is the big one (~3,270 over both legs) and it is the one
-people mean by "the tests". The other fourteen hold 527 more, and this
-file's "TWO" is why a session ran two projects, reported "3271 passed", and
-believed it.
+`tests/CircleAI.Tests` is the big one — **5,107 per leg, 10,214 over both** — and
+it is the one people mean by "the tests".
+
+This line said "~3,270 over both legs" until 2026-10-24, which is the same
+figure as the "3271 passed" two sentences down: **the count of one incomplete
+session had become this file's description of the project.** It was out by three
+times, and it is the reason the twenty-minute budget below ever looked plausible.
+
+The other fourteen were holding 527 more when somebody last counted, and that
+was not today — read it as a floor, not a figure. And this file's "TWO" is why a
+session ran two projects, reported "3271 passed", and believed it.
 
 **IGNORE `CircleAI.slnx`.** Two solution files disagree about what this product
 is. `CircleAI.sln` has 195 projects and 15 test projects and was updated today;
@@ -126,10 +133,41 @@ is. `CircleAI.sln` has 195 projects and 15 test projects and was updated today;
 been touched since 24 July. Tooling increasingly prefers the newer `.slnx`
 format, so the stale one is the one a fresh checkout is most likely to open.
 
-The main suite is around 3,200 tests and takes **six to nine minutes per leg**,
-not the two to three this file used to claim — measured, cold build included, on
-the Windows box. Budget twenty minutes for both legs plus the UI suite, and do
-not read a quiet terminal at minute five as a hang.
+The main suite is **5,107 tests per leg** and takes **fifteen to twenty-nine
+minutes per leg** — not the "six to nine" this file claimed, and not the "two to
+three" it claimed before that. Measured here on 2026-10-24, cold build included:
+
+| leg | quiet box | box under load |
+|---|---|---|
+| net9.0 | 14 m 46 s | 28 m 05 s |
+| net10.0 | 20 m 11 s | 28 m 58 s |
+
+So budget **forty minutes for both legs on a quiet box, an hour on a busy one**,
+plus the UI suite. Do not read a quiet terminal at minute five — or minute
+fifteen — as a hang.
+
+**That stale twenty-minute figure was not merely bad advice.**
+`tests/CircleAI.Tests/bhengu.runsettings` capped `TestSessionTimeout` at fifteen
+minutes to match it, and the project hardcodes that file via
+`RunSettingsFilePath` — so the documented command above **aborted at minute
+fifteen and printed `Failed!`** with about 54 tests never run. That is
+indistinguishable from a real break, and it cost most of a day.
+
+**And an abort does not reliably announce itself.** Dropping that cap to ten
+seconds deliberately, to prove the file governs, printed this:
+
+```
+Aborting test run: test run timeout of 10000 milliseconds exceeded.
+Passed!  - Failed:     0, Passed:    15, Skipped:     0, Total:    15, Duration: 9 s
+Test Run Aborted.
+```
+
+Fifteen tests of 5,107, and the summary line says **`Passed!`**. Only the
+`Test Run Aborted` line and the exit code tell the truth. Read the count, not
+the word.
+
+The cap is forty-five minutes now and the comment in that file carries these
+measurements, so the two numbers can no longer drift apart.
 
 Serialise heavy builds rather than running two at once.
 
