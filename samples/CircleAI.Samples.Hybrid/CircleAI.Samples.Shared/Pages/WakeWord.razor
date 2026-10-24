@@ -31,7 +31,12 @@
 
     @if (_status.State == WakeState.NeedsPermission)
     {
-        <button class="allow" @onclick="Start">Allow the microphone</button>
+        @* PRESSED, AND THE CODE CAN NOW TELL. Arriving on this screen asks for the
+           microphone too - quietly, because nobody pressed anything - and with one
+           path for both, a phone that had refused permanently opened Circle AI
+           Service's page in Settings on EVERY VISIT, unprompted. This button is the
+           press that earns that. *@
+        <button class="allow" @onclick="Press">@MicrophoneAsk.Action</button>
     }
     else if (_status.State == WakeState.NotInstalled)
     {
@@ -54,9 +59,17 @@
         is the thing somebody was worried about anyway. Nobody minds the phone
         hearing them; they mind it keeping a copy.
     *@
+    @*
+        AND "NOTHING IS KEPT" WAS STILL TOO BROAD, which is the correction the review
+        of 2026-10-23 forced. The LISTENING keeps nothing - that is exactly what the
+        code does. What you ASK it, once it has woken, is written to this phone's own
+        store with its answer and purged after a week. Five screens made the broad
+        claim; MicrophoneAsk owns both halves of the true one now, so the next
+        correction happens in one place.
+    *@
     <div class="claims">
-        <div class="claim">Listening happens on this phone</div>
-        <div class="claim">Nothing is kept and nothing is sent</div>
+        <div class="claim">@MicrophoneAsk.SoundNotKept</div>
+        <div class="claim">@MicrophoneAsk.AsksKept</div>
     </div>
 
 </div>
@@ -84,6 +97,19 @@
     double _flash;
 
     protected override async Task OnInitializedAsync() => await Start();
+
+    /// <summary>The button: a press, so a refusal may send them to Settings.</summary>
+    /// <remarks>
+    /// THE ONE NON-QUIET ASK ON THIS SCREEN. ListenAsync asks on arrival as well -
+    /// opening this screen is asking for the phone to listen - and the two were the
+    /// same call, so the rule the whole mechanism rests on, that only a press earns a
+    /// trip to Settings, was broken by the screen that asks most often.
+    /// </remarks>
+    async Task Press()
+    {
+        await Wake.RequestMicrophoneAsync(quietly: false);
+        await Start();
+    }
 
     async Task Start()
     {

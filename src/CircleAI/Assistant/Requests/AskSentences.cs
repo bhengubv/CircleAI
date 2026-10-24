@@ -54,6 +54,28 @@ public static class AskSentences
     /// <summary>Anything else.</summary>
     public const string CouldNotAnswer = "I couldn't answer that just now. Could you ask me again?";
 
+    // ── the brain could not start: FINAL sentences, which promise nothing later ──
+
+    /// <summary>No brain on the phone it can run, and nothing will change that by itself.</summary>
+    public const string NoBrainItCanRun =
+        "I can't answer that. There is no brain on this phone I can run. Say “try the big one again” and I'll give it another go.";
+
+    /// <summary>Setup is still bringing the brain, and the question's wait is used up.</summary>
+    public const string StillSettingUp =
+        "My brain is still being set up on this phone, so I can't answer that yet. Ask me again in a few minutes.";
+
+    /// <summary>The phone is too short of memory to start the brain.</summary>
+    public const string TooShortOfMemory =
+        "Your phone is too short of memory for my brain right now, so I couldn't answer that. Close a few apps and ask me again.";
+
+    /// <summary>Android kept stopping the brain while it started.</summary>
+    public const string StoppedWhileStarting =
+        "Your phone stopped me while I was getting my brain ready, so I couldn't answer that. Ask me again in a moment.";
+
+    /// <summary>Damaged files are still being repaired.</summary>
+    public const string StillRepairing =
+        "Part of my brain is still being repaired, so I couldn't answer that. Ask me again in a few minutes.";
+
     /// <summary>The sentence for a failure kind.</summary>
     public static string For(FailureKind kind) => kind switch
     {
@@ -69,5 +91,28 @@ public static class AskSentences
         FailureKind.TimedOut            => TimedOut,
         FailureKind.Rejected            => Busy,
         _                               => CouldNotAnswer,
+    };
+
+    /// <summary>
+    /// The sentence a question ENDS with when the brain could not start for it.
+    /// </summary>
+    /// <param name="kind">Why the brain could not start.</param>
+    /// <param name="nothingComing">Nothing will change by itself - every model here is refused.</param>
+    /// <remarks>
+    /// NOT THE WAITING SENTENCES ABOVE, which promise an answer later ("and I'll answer
+    /// then"). A waiting question's sentence never reaches the app - it shows only an
+    /// answer, or the sentence of a question that has ended - so on the P30 on 2026-10-23
+    /// the person watched typing dots for three minutes and was told nothing. These end
+    /// the question, so they say why and what to do, and promise nothing.
+    /// </remarks>
+    public static string BrainCouldNotStart(FailureKind kind, bool nothingComing = false) => kind switch
+    {
+        FailureKind.NotInstalled      => nothingComing ? NoBrainItCanRun : StillSettingUp,
+        FailureKind.OutOfMemory       => TooShortOfMemory,
+        FailureKind.AndroidStopped    => StoppedWhileStarting,
+        FailureKind.AndroidTimeout    => StoppedWhileStarting,
+        FailureKind.Unknown           => StoppedWhileStarting,   // a load that stopped with nothing to say why
+        FailureKind.ModelFilesDamaged => StillRepairing,
+        _                             => For(kind),
     };
 }

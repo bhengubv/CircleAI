@@ -13,6 +13,14 @@
 //
 // These pin the behaviour that stops that happening again: it keeps what was
 // said, it stays bounded, and it never breaks the thing it is observing.
+//
+// AND IT IS OFF UNLESS SOMEBODY ASKED, since the review of 2026-10-23. This is a
+// TRANSCRIPT OF A ROOM, and it was being written on any phone that had the streaming
+// recogniser on it, from the next start of listening, with nothing said and nothing
+// asked - in the external files directory, which on Android 10 other apps can read,
+// beside a card promising that the listening is not kept. The marker file that turns
+// the audio dump on turns this on too: one deliberate act for the audio and for what
+// it decoded to, because they answer the same question and must never be half on.
 
 using System;
 using System.IO;
@@ -24,11 +32,51 @@ namespace CircleAI.Tests;
 
 public sealed class UtteranceLogTests
 {
+    /// <summary>A directory somebody has asked for speech diagnostics in.</summary>
     private static string Fresh()
+    {
+        var dir = Unmarked();
+        File.WriteAllText(Path.Combine(dir, CaptureDump.MarkerName), "");
+        return dir;
+    }
+
+    /// <summary>A directory with no marker in it: the state every phone ships in.</summary>
+    private static string Unmarked()
     {
         var dir = Path.Combine(Path.GetTempPath(), "utterlog-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return dir;
+    }
+
+    [Fact]
+    public void NOTHING_IS_WRITTEN_DOWN_UNLESS_SOMEBODY_ASKED_FOR_IT()
+    {
+        // The marker is a file a person or an adb command creates on purpose, and its
+        // absence is the state every phone ships in.
+        var dir = Unmarked();
+        try
+        {
+            var log = new UtteranceLog(dir);
+            Assert.Null(log.Path);
+
+            log.Add("WHAT THE ROOM SAID", TimeSpan.FromSeconds(2), When);
+            Assert.False(File.Exists(Path.Combine(dir, UtteranceLog.FileName)),
+                "a transcript of somebody's home was written with nothing asked");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void WITH_THE_MARKER_IT_RECORDS_AND_SAYS_WHERE()
+    {
+        var dir = Fresh();
+        try
+        {
+            var log = new UtteranceLog(dir);
+            Assert.NotNull(log.Path);
+            Assert.Equal(Path.Combine(dir, UtteranceLog.FileName), log.Path);
+        }
+        finally { Directory.Delete(dir, true); }
     }
 
     private static readonly DateTimeOffset When =

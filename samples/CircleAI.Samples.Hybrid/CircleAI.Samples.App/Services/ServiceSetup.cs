@@ -110,35 +110,97 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
     /// like, and the setup screen already shows what is still missing.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// AND THE MICROPHONE, WHICH NOTHING ON A FRESH INSTALL EVER ASKED FOR. The wake
+    /// word is on by default and could not hear anything until somebody found a switch
+    /// that asks; the download wait is the moment the person is here with nothing else
+    /// to do. Gone again once Circle AI has it.
+    /// <para>
+    /// AND GONE FOR SOMEBODY WHO TURNED LISTENING OFF. The step is a button that opens
+    /// a microphone dialog, and it was offered on the strength of the permission
+    /// alone - so a person who had switched "answer to its name" off was asked for the
+    /// microphone it uses, on every download, for a feature they had declined. The
+    /// service is the one that knows: NeedsPermission means it wants the microphone
+    /// and has not got it, and Off means they said no.
+    /// </para>
+    /// <para>
+    /// The rule itself is MicrophoneAsk.TourFor, in the product, where a test can read
+    /// it without a phone.
+    /// </para>
+    /// </remarks>
     public async Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
     {
-        if (!brain.ServiceInstalled)
-            return new[]
-            {
-                new TourStep("Install CircleAI",
-                    "It holds the models and does the thinking, so this app stays small.",
-                    "Get CircleAI", null),
-            };
+        var installed = brain.ServiceInstalled;
+        var approved  = installed && (await brain.StateAsync(ct).ConfigureAwait(false)).Ready;
+        var granted   = installed && ServiceMicrophone.Granted(Android.App.Application.Context);
 
-        var state = await brain.StateAsync(ct).ConfigureAwait(false);
-        if (!state.Ready)
-            return new[]
-            {
-                new TourStep("Approve CircleAI",
-                    "It is installed; this app needs your say-so to use it. One tap, once.",
-                    "Approve", "settings"),
-            };
-
-        return Array.Empty<TourStep>();
+        return MicrophoneAsk.TourFor(installed, approved, granted,
+            ownerWantsListening: approved && await WantsListeningAsync(ct).ConfigureAwait(false));
     }
+
+    /// <summary>Whether the service says the owner has listening on.</summary>
+    /// <remarks>
+    /// ASKED, NOT GUESSED, AND IT IS THE SERVICE'S FACT. The preference lives in the
+    /// service's own storage; this app cannot read it and must not keep a copy. Off is
+    /// the one state that means "do not ask them for a microphone", and every other
+    /// answer - including a service that will not say - leaves the step offered, which
+    /// is the direction a wake word that is on by default should fail in.
+    /// </remarks>
+    private async Task<bool> WantsListeningAsync(CancellationToken ct)
+    {
+        try
+        {
+            // THE STATUS VERB, WHICH READS AND CHANGES NOTHING. Asked through the same
+            // type the settings switch uses, so there is one reader of this answer in
+            // the app rather than a second copy of the wire format here.
+            var status = await _listening.RefreshAsync(ct).ConfigureAwait(false);
+            return status.State != ResidentState.Off;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <summary>The service's listening state, read only. See <see cref="WantsListeningAsync"/>.</summary>
+    /// <remarks>
+    /// No activity is handed to it: this one never asks for anything, and a null
+    /// activity is what makes that true by construction rather than by care.
+    /// </remarks>
+    private readonly LinkedResidentAssistant _listening = new(brain);
 
     /// <inheritdoc />
     /// <remarks>
-    /// FALSE: this app does not hold the microphone for listening, so asking for it
-    /// would take a permission nothing uses. Recording for a single spoken question
-    /// is asked for at the point it happens.
+    /// THE SERVICE'S MICROPHONE, NOT THIS APP'S. This returned false on the grounds
+    /// that this app does not listen - true, and the wrong conclusion: the service
+    /// does, it has no screen to ask on, and our own app is approved without one, so
+    /// nobody asked at all. Recording for a single spoken question is still this
+    /// app's own permission, asked for at the point it happens.
     /// </remarks>
-    public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(false);
+    public Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default)
+        => ServiceMicrophone.RequestAsync(Microsoft.Maui.ApplicationModel.Platform.CurrentActivity, ct);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The same screen of Circle AI's, asked quietly: nobody pressed anything.
+    /// <para>
+    /// ONCE EVER, AND IT USED TO BE ONCE PER LAUNCH WHILE ANYTHING WAS DOWNLOADING.
+    /// The loading screen offers this whenever the census is short, and a first run is
+    /// hours on a slow link - so a person who tapped Deny met the system dialog again
+    /// on every launch until Android itself refused to show it. Repeated prompts for
+    /// the same permission are how people are worn into saying yes, and the rule this
+    /// code states for itself is "once, at first run". <see cref="OfferedOnce"/> is
+    /// what makes it true.
+    /// </para>
+    /// </remarks>
+    public Task<bool?> OfferMicrophoneAsync(CancellationToken ct = default)
+    {
+        if (ServiceMicrophone.Granted(Android.App.Application.Context)) return Task.FromResult<bool?>(true);
+        if (!OfferedOnce.Take()) return Task.FromResult<bool?>(null);
+
+        return ServiceMicrophone.RequestAsync(
+            Microsoft.Maui.ApplicationModel.Platform.CurrentActivity, ct, quietly: true);
+    }
 
     /// <inheritdoc />
     /// <remarks>
@@ -359,4 +421,53 @@ public sealed class ServiceSetup(LinkedBrain brain) : ISetup
 
     /// <summary>Request code for the consent sheet. Nothing reads the result; see above.</summary>
     private const int ConsentRequest = 0x11c;
+}
+
+/// <summary>The one unasked-for microphone question this app ever raises.</summary>
+/// <remarks>
+/// "ONCE, AT FIRST RUN" WAS WHAT THE CODE SAID AND NOT WHAT IT DID. The loading
+/// screen raises the question whenever the census is short, which on a first run of
+/// several gigabytes is every launch for hours - and on a phone whose download keeps
+/// failing, every launch for ever. Three of the review's five readers found it
+/// independently.
+/// <para>
+/// IT HAS TO OUTLIVE THE PROCESS, so it is a preference rather than a static: the
+/// person who says no and reopens the app is in a new process, and a flag in memory
+/// would be exactly as absent as no flag at all.
+/// </para>
+/// <para>
+/// WRITTEN BEFORE THE ANSWER. A question that was raised and whose answer was lost -
+/// the app was killed, the result landed nowhere - has still been raised, and raising
+/// it again is the behaviour being fixed. Nothing is lost by it: the card's own
+/// button still asks, as often as somebody presses it.
+/// </para>
+/// </remarks>
+internal static class OfferedOnce
+{
+    private const string File = "circleai.microphone.offer";
+    private const string Key  = "offered";
+
+    /// <summary>True exactly once in this installation's life, for the first caller.</summary>
+    public static bool Take()
+    {
+        try
+        {
+            var prefs = (Android.App.Application.Context.ApplicationContext
+                         ?? Android.App.Application.Context)
+                .GetSharedPreferences(File, Android.Content.FileCreationMode.Private);
+
+            if (prefs is null) return true;
+            if (prefs.GetBoolean(Key, false)) return false;
+
+            prefs.Edit()?.PutBoolean(Key, true)?.Apply();
+            return true;
+        }
+        catch
+        {
+            // A PREFERENCE THAT CANNOT BE WRITTEN FALLS BACK TO ASKING. The wake word
+            // is on by default and a phone that never asks is a phone that never
+            // hears; a repeated ask is the lesser of the two failures.
+            return true;
+        }
+    }
 }

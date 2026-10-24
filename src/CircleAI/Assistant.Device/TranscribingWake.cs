@@ -82,10 +82,10 @@ public static class TranscribingWake
                      })
             {
                 if (root.Length == 0 || !Directory.Exists(root)) continue;
-                if (HasEncoder(root)) return root;
+                if (HasEncoder(root)) return IsUsable(root) ? root : null;
 
                 foreach (var child in Directory.EnumerateDirectories(root))
-                    if (HasEncoder(child)) return child;
+                    if (HasEncoder(child)) return IsUsable(child) ? child : null;
             }
 
             return null;
@@ -100,6 +100,39 @@ public static class TranscribingWake
     private static bool HasEncoder(string dir)
     {
         try { return Directory.EnumerateFiles(dir, "*encoder*.onnx").Any(); }
+        catch { return false; }
+    }
+
+    /// <summary>Whether everything StreamingTranscriber opens is there.</summary>
+    /// <remarks>
+    /// AN ENCODER IS NOT A RECOGNISER, and the way this bundle arrives makes that the
+    /// usual case rather than a corner. There is no catalogue entry for it - it is
+    /// copied in with a file manager or pushed to the external files directory for a
+    /// measurement - so it appears FILE BY FILE, and a listener started while the copy
+    /// was halfway took the transcribing path, threw inside the transducer's
+    /// constructor, logged "wake loop failed", and reported Listening.
+    /// <para>
+    /// The keyword bundle's answer to the same question comes from the catalogue
+    /// (BundleModelLoader.ModelPresent, every file by size). This one has no catalogue
+    /// to ask, so it asks the only other authority there is: the files the recogniser
+    /// opens.
+    /// </para>
+    /// </remarks>
+    private static bool IsUsable(string dir)
+    {
+        try
+        {
+            bool Has(string pattern) => Directory.EnumerateFiles(dir, pattern).Any();
+
+            var usable = Has("*encoder*.onnx") && Has("*decoder*.onnx") && Has("*joiner*.onnx")
+                      && File.Exists(Path.Combine(dir, "tokens.txt"));
+
+            if (!usable)
+                Log.Warn("CircleAI.ScreenWake",
+                    "the streaming recogniser at " + dir + " is incomplete - keeping the keyword spotter");
+
+            return usable;
+        }
         catch { return false; }
     }
 }

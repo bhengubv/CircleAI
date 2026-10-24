@@ -87,9 +87,41 @@ public static class MnnNativeDiagnostics
             sb.AppendLine("   • Verify with:  unzip -l your.apk | grep mnn");
             sb.AppendLine("   • Also set AIOptions.NativeLibDir to ApplicationInfo.NativeLibraryDir.");
         }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                 && RuntimeInformation.ProcessArchitecture == Architecture.X86)
+        {
+            // Do NOT send a 32-bit process after the x64 redistributable. That advice
+            // was here until 2026-10-24 and it cannot work: the architecture is the
+            // cause, not a missing CRT. Alibaba publishes no 32-bit Windows MNN bundle
+            // in any release (checked 3.3.0 through 3.6.1 - every Windows asset is
+            // windows_x64), so there is nothing to install, download or copy.
+            sb.AppendLine("   This is a 32-bit (x86) Windows process, and there is no 32-bit");
+            sb.AppendLine("   MNN build to load — not in this tree, and not upstream.");
+            sb.AppendLine();
+            sb.AppendLine("   • Alibaba ships no windows_x86 bundle in any MNN release, so the");
+            sb.AppendLine("     runtime fetcher has no bundle registered for (Windows, X86) and");
+            sb.AppendLine("     will not acquire one. This is not a missing redistributable and");
+            sb.AppendLine("     not a packaging omission.");
+            sb.AppendLine("   • Run the x64 service instead. That is the supported Windows host");
+            sb.AppendLine("     and it carries runtimes/win-x64/native/{mnnbridge.dll, MNN.dll}.");
+            sb.AppendLine("   • To make x86 work at all, MNN must be built from source for Win32");
+            sb.AppendLine("     and mnnbridge rebuilt against it — see native/mnn-bridge/BUILD.md.");
+            sb.AppendLine();
+            sb.AppendLine("   Everything in the service that is not inference works on x86.");
+
+            if (File.Exists(Path.Combine(
+                    AppContext.BaseDirectory, "runtimes", "win-x64", "native", "MNN.dll")))
+            {
+                sb.AppendLine();
+                sb.AppendLine("   NOTE: there IS an MNN.dll under runtimes/win-x64/native/ beside");
+                sb.AppendLine("   this process. It is 64-bit and cannot be loaded here. Its presence");
+                sb.AppendLine("   means nothing about x86 support.");
+            }
+        }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            sb.AppendLine("   • Install the Visual C++ 2015-2022 Redistributable (x64) — MNN.dll");
+            sb.AppendLine("   • Install the Visual C++ 2015-2022 Redistributable for this");
+            sb.AppendLine($"     process's architecture ({RuntimeInformation.ProcessArchitecture}) — MNN.dll");
             sb.AppendLine("     needs the MD-CRT and fails to load without it.");
             sb.AppendLine($"   • Ensure {BridgeFileName} and MNN.dll sit together in");
             sb.AppendLine($"     {Path.Combine(AppContext.BaseDirectory, "runtimes", RuntimeInformation.RuntimeIdentifier ?? "<rid>", "native")}");

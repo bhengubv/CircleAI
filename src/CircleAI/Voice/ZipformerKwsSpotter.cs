@@ -302,9 +302,9 @@ public sealed class ZipformerKwsSpotter : IDisposable
                     : "float was not asked for but is the safer of the two."));
         }
 
-        _encoder = new InferenceSession(encoderPick.Path, opts);
-        _decoder = new InferenceSession(decoderPick.Path, opts);
-        _joiner  = new InferenceSession(joinerPick.Path,  opts);
+        _encoder = OnnxSessionFactory.Create(encoderPick.Path, opts);
+        _decoder = OnnxSessionFactory.Create(decoderPick.Path, opts);
+        _joiner  = OnnxSessionFactory.Create(joinerPick.Path,  opts);
 
         // From the model, not from memory.
         var meta = _encoder.ModelMetadata.CustomMetadataMap;
@@ -750,13 +750,36 @@ public sealed class ZipformerKwsSpotter : IDisposable
             }
         }
 
+        // WHAT WAS HEARD INSTEAD IS WHAT SOMEBODY SAID, so it is off unless asked for.
+        //
+        // These are BPE pieces of whatever was being spoken near the phone, and this
+        // line is printed on every frame the graph is waiting on - into logcat, which
+        // ends up in bug reports and adb captures, from a feature whose own card
+        // promises the listening is not kept. The scores for the tokens the PHRASE
+        // wants stay (that is the diagnostic: the phrase is scoring 0.0003 and will
+        // never complete); the three words it heard in their place need the same
+        // deliberate act as recording the audio. See VoiceTrace.KeepsSpeech.
         var got = new System.Text.StringBuilder();
-        foreach (var id in top)
+        if (VoiceTrace.KeepsSpeech)
         {
-            if (id < 0) continue;
-            if (got.Length > 0) got.Append(" | ");
-            got.Append(System.FormattableString.Invariant(
-                $"{Piece(id)} p={Math.Exp(scores[id]):F4}"));
+            foreach (var id in top)
+            {
+                if (id < 0) continue;
+                if (got.Length > 0) got.Append(" | ");
+                got.Append(System.FormattableString.Invariant(
+                    $"{Piece(id)} p={Math.Exp(scores[id]):F4}"));
+            }
+        }
+        else
+        {
+            // THE SHAPE OF THE ANSWER WITHOUT THE WORDS. How far the best real token
+            // got is the number this line is read for; which token it was is the part
+            // that is somebody's business.
+            var best = -1.0;
+            foreach (var id in top) if (id >= 0 && Math.Exp(scores[id]) > best) best = Math.Exp(scores[id]);
+            got.Append(best < 0
+                ? "(nothing)"
+                : System.FormattableString.Invariant($"something else p={best:F4}"));
         }
 
         // Blank's own share, kept as one number rather than one line: it says

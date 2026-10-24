@@ -50,7 +50,14 @@ public sealed class DeviceWakeWord : IWakeWord
     private static string StorageDir => ModelStore.Path;
 
     /// <inheritdoc />
-    public async Task<bool> RequestMicrophoneAsync()
+    /// <remarks>
+    /// THE QUIET FLAG CHANGES NOTHING HERE, and that is honest rather than lazy: this
+    /// head asks for its OWN app's permission through the platform's own prompt, which
+    /// never redirects anybody to a Settings page. The flag exists for the client head,
+    /// whose ask goes through another package's screen and can land on "the phone will
+    /// not ask again".
+    /// </remarks>
+    public async Task<bool> RequestMicrophoneAsync(bool quietly = false)
     {
         return await _microphone.GrantedAsync().ConfigureAwait(false);
     }

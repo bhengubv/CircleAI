@@ -21,7 +21,6 @@ using CircleAI.Linking;
 using CircleAI.Assistant;
 using CircleAI.Skills;
 using CircleAI.Assistant.Device;
-using CircleAI.Core;
 using CircleAI.Core.Models;
 using CircleAI.Inference;
 using CircleAI.Memory;
@@ -639,6 +638,19 @@ public sealed class ServiceApplication : Application
         // goes to logcat directly - the one place it is actually readable.
         CircleAI.Voice.VoiceTrace.Sink = line => global::Android.Util.Log.Info("CircleAI.Voice", line);
 
+        // AND WHETHER A TRACE LINE MAY CARRY WHAT WAS SAID. Off unless the marker file
+        // is there - the same deliberate act that turns the audio dump on, asked once
+        // here rather than per frame. Without it the keyword spotter's stall trace put
+        // fragments of ambient speech into logcat on every frame it waited on, and the
+        // transcribing loop put whole utterances there, on a feature whose own card
+        // promises the listening is not kept.
+        CircleAI.Voice.VoiceTrace.KeepsSpeech = CircleAI.Voice.CaptureDump.Asked(
+            GetExternalFilesDir(null)?.AbsolutePath);
+        if (CircleAI.Voice.VoiceTrace.KeepsSpeech)
+            global::Android.Util.Log.Warn("CircleAI.Voice",
+                "speech diagnostics are ON (the capture-dump marker is present): what is said near "
+                + "this phone will appear in logcat and in heard.txt. Delete the marker to stop it.");
+
         // SPEECH FOR THE LINK, which has been refused on every call until now.
         // CircleNeuronLinkService.Speech defaults to null and null answers "speech
         // not available", so the audio transaction - the codec, the 800 KB budget,
@@ -810,13 +822,11 @@ public sealed class ServiceApplication : Application
         // WakeTurn, in the product.
         WakeTurn.Speech = CircleNeuronLinkService.Speech;
 
-        // AND WARM IT NOW, NOT AT THE FIRST WAKE. Measured on the one wake that
-        // fired in four days on the P30: seven seconds between the owner saying
-        // the name and hearing "Hi.", four of them the voice model opening for
-        // the first time. Not awaited - the service has a microphone to open,
-        // and a voice that cannot warm only leaves the greeting synthesised
-        // live, exactly as it was.
-        _ = Task.Run(() => WakeTurn.WarmAsync());
+        // AND WARM IT AT START-UP, NOT AT THE FIRST WAKE - once housekeeping is done,
+        // further down, because warming a voice that is not on the phone yet pulls
+        // it. Measured on the one wake that fired in four days on the P30: seven
+        // seconds between the owner saying the name and hearing "Hi.", four of them
+        // the voice model opening for the first time.
 
         var resident = new ResidentListeningControl(this);
         resident.Woke += (_, phrase) =>
@@ -874,6 +884,11 @@ public sealed class ServiceApplication : Application
         // breadcrumb a strike - judges how the last run ended.
         ComposeRequestPath();
 
+        // WHERE THE MODELS ARE, BEFORE THE BOOTSTRAP NEEDS IT. It was set inside the
+        // download task below, and the bootstrap's dead-weight check reads it; now
+        // that downloads wait for the bootstrap, that check would always find it unset.
+        CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;
+
         try
         {
             var circleDir = System.IO.Path.Combine(FilesDir!.AbsolutePath, "CircleAI");
@@ -887,6 +902,142 @@ public sealed class ServiceApplication : Application
 
             CircleAI.Device.CircleNeuronService.Catalogue = catalogue;
             CircleAI.Device.CircleNeuronService.StateDirectory = stateDir;
+
+            // AND WHERE A MEASURED MODEL COST GOES, WHICH IS THE WHOLE POINT OF
+            // MEASURING IT.
+            //
+            // ModelEntry.MmapResidentGb has carried its own instructions since it was
+            // written - "run the model on the target device, watch resident memory
+            // during generation, and record what you saw. Do not compute it." - and
+            // not one entry has one. That empty field is what makes ModelFit charge
+            // the WHOLE FILE for every model, which is what limits a phone with 29 GB
+            // of storage to the models that fit in its 3.9 GB of memory.
+            //
+            // Three lines close that loop: the generator watches itself and writes
+            // here (MemoryWatch, on Dispose), the fit rule reads it back instead of
+            // guessing, and the loader is told what the selector decided so the two
+            // can no longer disagree about whether a model is paged.
+            CircleAI.Inference.ModelCosts.Directory = stateDir;
+            CircleAI.Inference.ModelCosts.Say = line =>
+                global::Android.Util.Log.Info("CircleAI.Memory", line);
+
+            // AND WHAT THE SOFTWARE SWITCHES OFF ON SOMEBODY'S BEHALF IS SAID OUT LOUD.
+            //
+            // Wolverine's client-side half - "disable broken functionality without a
+            // deployment", its own Tier 1 - is the only kind of healing a phone can
+            // actually do: an API heals by retrying, because the request is still in its
+            // hand, while a phone's failure has already cost somebody their answer.
+            //
+            // WIRED BEFORE THE MEMORY IS OPENED, deliberately. SelfModel.LoadAsync is
+            // what puts back the switches an earlier run turned off, and a restore that
+            // happened before this line was set would be the one trip nobody ever heard
+            // about. Healing also has to work on a device whose memory will not open at
+            // all, which is why this is outside the try below.
+            CircleAI.SelfKnowledge.SelfHeal.Say = line =>
+                global::Android.Util.Log.Info("CircleAI.Heal", line);
+
+            // AND THE LONG-TERM MEMORY FINALLY HOLDS WHAT THE SERVICE LEARNS ABOUT
+            // ITSELF, WHICH IS HALF THE JOB IT WAS BUILT FOR AND HAS NEVER DONE.
+            //
+            // MemoryService - atoms, subjects, recall, supersede, wear - is wired into
+            // this process and holds what a PERSON asked it to remember. Nothing the
+            // device discovered about its own running has ever been written down: what
+            // a model cost, how fast it answered, whether it survived the load. Every
+            // launch therefore began from the shipped assumptions, which is the whole
+            // of why the selector answers "the best model when we released it".
+            //
+            // SAME STORE, OWN SUBJECTS (SelfSubjects' "self:" prefix), because a second
+            // store is a second thing to back up, migrate and get out of step - and
+            // because a person's recall must never surface "Qwen3.5-2B peaked at
+            // 1.4 GB".
+            //
+            // READ BACK BEFORE ANYTHING ASKS WHICH MODEL. LoadAsync is what makes it
+            // long-term rather than a cache that dies with the process.
+            try
+            {
+                var self = new CircleAI.SelfKnowledge.SelfModel(
+                    new MemoryService(System.IO.Path.Combine(circleDir, "self")),
+                    line => global::Android.Util.Log.Info("CircleAI.Self", line));
+
+                CircleAI.SelfKnowledge.SelfModel.Current = self;
+
+                // AND THEN IT SAYS WHETHER IT IS GREEN OR RED, WITHOUT WAITING TO BREAK.
+                //
+                // Every other line Wolverine writes is written BY a failure, so a device
+                // that has never tripped produces no Wolverine output at all - which is
+                // indistinguishable from Wolverine not being wired. That is exactly how
+                // this half went unnoticed: it shipped, it ran on a P30, and the only
+                // proof anyone could offer was that nothing had appeared in the log.
+                //
+                // AFTER THE RESTORE, NOT BEFORE. LoadAsync is what puts back the switches
+                // an earlier run turned off, and a status taken on the line above would
+                // report green on a device holding a week-long trip. LoadAsync is
+                // fire-and-forget by design, so the reading hangs off its continuation
+                // rather than the call.
+                //
+                // A FAULTED LOAD STILL GETS A STATUS. The continuation is unconditional:
+                // the status describes the live switches, and a device whose memory would
+                // not open is precisely one somebody needs a reading from.
+                _ = self.LoadAsync().ContinueWith(
+                    load =>
+                    {
+                        if (load.IsFaulted)
+                            global::Android.Util.Log.Warn("CircleAI.Heal",
+                                "status follows a memory that did not load: "
+                              + (load.Exception?.GetBaseException().Message ?? "unknown"));
+
+                        global::Android.Util.Log.Info("CircleAI.Heal",
+                            CircleAI.SelfKnowledge.SelfHeal.Status().OneLine);
+                    },
+                    System.Threading.Tasks.TaskScheduler.Default);
+
+                // WHAT THIS DEVICE IS, in its own memory rather than re-derived every
+                // launch - including which inference engines actually loaded here.
+                // Whether llama.cpp is present is decided by which native library is in
+                // the APK for THIS ABI, and WHICH llama.cpp it is - stock, or the
+                // PrismML fork that reads Bonsai's ternary packs - is a string read out
+                // of the loaded library at runtime. Two devices on the same build can
+                // answer differently, and neither the catalogue nor the manifest knows.
+                var probe = CircleAI.Core.DeviceProbe.Snapshot();
+                var maker = global::Android.OS.Build.Manufacturer;
+                var model = global::Android.OS.Build.Model;
+                var api   = (int)global::Android.OS.Build.VERSION.SdkInt;
+                var abis  = string.Join(", ", global::Android.OS.Build.SupportedAbis ?? new string[0]);
+
+                // ONE INTERPOLATED STRING, not three concatenated: Invariant takes a
+                // FormattableString and concatenation collapses it to a plain string.
+                // The same trap ScreenUpWakeWord's heartbeat line records.
+                self.LearnAboutDevice(CircleAI.SelfKnowledge.SelfSubjects.Device,
+                    System.FormattableString.Invariant(
+                        $"{maker} {model}, API {api}, {abis}, {probe.RamTotalBytes / 1e9:F1} GB of memory, {probe.StorageFreeGb:F1} GB free"));
+
+                self.LearnAboutDevice(CircleAI.SelfKnowledge.SelfSubjects.Engines,
+                    "MNN; llama.cpp "
+                    + (CircleAI.Inference.LlamaQuantSupport.Loaded is { } backend
+                        ? $"{backend.Id} ({CircleAI.Inference.LlamaGenerator.NativeVersion})"
+                        : "not on this device's ABI"));
+            }
+            catch (Exception ex)
+            {
+                // A device that cannot remember itself falls back to the shipped
+                // assumptions, which is where it has been all along. Never fatal.
+                global::Android.Util.Log.Warn("CircleAI.Self",
+                    "this device cannot keep a memory of itself: " + ex.Message);
+            }
+
+            // A MEASUREMENT BEATS AN ASSUMPTION, AND ONLY WHERE THERE IS ONE. With no
+            // reading for a model this hook returns null and ModelFit behaves exactly
+            // as it always has - which matters, because the P30 is only running a
+            // brain at all thanks to the old rule under-counting.
+            CircleAI.Inference.ModelFit.Measured = CircleAI.Inference.ModelCosts.For;
+
+            // AND THE LOADER IS TOLD WHAT THE SELECTOR DECIDED. It was reading file
+            // sizes off disk while ModelFit read a catalogue entry, so the two could
+            // disagree in both directions - the OOM when the selector promised paging
+            // and the loader loaded eagerly, and the P30 today, where the loader maps
+            // a model the fit rule believes is eager. Either party asking for paging
+            // now gets it, and the disagreement is logged rather than silent.
+            CircleAI.Inference.QwenTextGenerator.PromisedMapping = MappingPromisedFor;
 
             // CLASSIFIED, NOT COUNTED. On API 29 every death that left a breadcrumb used
             // to be a strike - a reboot, an update, the low-memory killer - and two of
@@ -937,17 +1088,45 @@ public sealed class ServiceApplication : Application
             global::Android.Util.Log.Warn("CircleAI.Setup", "catalogue unavailable: " + ex.Message);
         }
 
+        // AND START LISTENING THE MOMENT THE WAKE BUNDLE ARRIVES, WHICHEVER PATH
+        // BRINGS IT.
+        //
+        // On the P30's fresh install on 2026-10-23 the microphone was allowed thirteen
+        // seconds in, with the 6.76 MB wake bundle still arriving - so the resume below
+        // refused ("the wake word is not downloaded"), the bundle landed thirteen
+        // seconds later, and NOTHING started the listener. An owner who had said yes to
+        // everything had a phone that could not hear its name until it was restarted.
+        //
+        // THE HOOK GOES WHERE EVERY DOWNLOAD PASSES, which is the loader, not a caller.
+        // The first fix for this was a callback handed to the two loops in ModelSetup
+        // that ModelFetchService drives, and there are three other pull paths - setup
+        // started from the app, the abilities row's Turn on, and anything calling the
+        // loader directly - so a bundle landed by one of those still started nothing.
+        // This is the process that owns the models AND the listener, so this is where
+        // the subscription belongs.
+        //
+        // ResumeAsync, not StartAsync: a model arriving is not somebody asking for the
+        // microphone, so the owner's recorded choice still decides.
+        CircleAI.Inference.BundleModelLoader.ModelLanded += name =>
+        {
+            if (!ResidentListeningControl.ListensWith(name)) return;
+
+            global::Android.Util.Log.Info("CircleAI.Wake", $"{name} is here; starting the wake word");
+            _ = resident.ResumeAsync().ContinueWith(
+                t => global::Android.Util.Log.Info("CircleAI.Wake", t.IsCompletedSuccessfully
+                    ? $"wake word: {t.Result.State} - {t.Result.Status}"
+                    : "wake word did not start: " + t.Exception?.GetBaseException().Message),
+                System.Threading.Tasks.TaskScheduler.Default);
+        };
+
         try
         {
-            if (ResidentPrefs.WasRunning(this))
-            {
-                global::Android.Util.Log.Info("CircleAI.Wake", "resuming: the owner had it on");
-                _ = resident.ResumeAsync();
-            }
-            else
-            {
-                global::Android.Util.Log.Info("CircleAI.Wake", "not resuming: the owner turned it off");
-            }
+            // THE OWNER'S CHOICE IS READ INSIDE ResumeAsync NOW, and it is read there
+            // rather than here because this was not the only caller that had to know:
+            // the landed hook above, the microphone screen and the link's resume verb
+            // all have the same question to ask, and three readers of one preference is
+            // how this repo's oldest class of bug starts. The log line moves with it.
+            _ = resident.ResumeAsync();
         }
         catch (Exception ex)
         {
@@ -979,7 +1158,7 @@ public sealed class ServiceApplication : Application
         // window is what makes it safe to run at start-up at all: a download in
         // flight is a .tmp being written to right now, and killing it would end a
         // fetch somebody is watching a progress bar for.
-        System.Threading.Tasks.Task.Run(async () =>
+        var sweep = System.Threading.Tasks.Task.Run(() =>
         {
             try
             {
@@ -995,6 +1174,24 @@ public sealed class ServiceApplication : Application
             {
                 global::Android.Util.Log.Warn("CircleAI.Housekeeping", "sweep failed: " + ex.Message);
             }
+        });
+
+        // HOUSEKEEPING BEFORE PULLING MODELS - the owner's rule (2026-10-23), and it was not
+        // the order. The sweep and the catalogue's bootstrap (refresh, assess, tidy) ran as
+        // two separate tasks, and the downloads waited for the sweep alone: on the P30's
+        // fresh install six downloads began at 13:54:25.337 and the bootstrap's housekeeping
+        // and assessment finished at 13:54:25.552. Every pull path - the one below, the fetch
+        // service's own restart, setup started from the app, the voice warm-up, and the voice
+        // and ears fetched on demand (ServiceSpeech, for at most 30 s) - waits for both now.
+        // CatalogueReady stays the brain's wait, with no sweep in it.
+        CircleAI.Device.CircleNeuronService.HousekeepingDone = System.Threading.Tasks.Task.WhenAll(
+            sweep, CircleAI.Device.CircleNeuronService.CatalogueReady ?? System.Threading.Tasks.Task.CompletedTask);
+
+        System.Threading.Tasks.Task.Run(async () =>
+        {
+            await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+                CircleAI.Device.CircleNeuronService.HousekeepingDone,
+                line => global::Android.Util.Log.Info("CircleAI.Setup", line)).ConfigureAwait(false);
 
             // AND THEN FINISH WHAT THE OWNER ALREADY STARTED - HERE, NOT ON THE BRAIN.
             //
@@ -1028,8 +1225,6 @@ public sealed class ServiceApplication : Application
             // brain; see "THE CATALOGUE, BEFORE ANYTHING CAN START THE BRAIN".)
             try
             {
-                CircleAI.Device.ModelFetchService.StorageDirectory = ModelStore.Path;
-
                 using var loader = new CircleAI.Inference.BundleModelLoader(
                     ModelStore.Path, new CircleAI.Core.Models.ModelRegistryService());
 
@@ -1044,7 +1239,32 @@ public sealed class ServiceApplication : Application
                 global::Android.Util.Log.Warn("CircleAI.Setup", "resume failed: " + ex.Message);
             }
 
-            await System.Threading.Tasks.Task.CompletedTask.ConfigureAwait(false);
+            // AND ASKED AGAIN EVERY HOUR, WHILE THE PHONE IS IDLE - the owner's rule,
+            // 2026-10-24. "Is this the best model given the resources we have?" was
+            // answered once, at first launch, on the resources of that minute, and
+            // then believed for ever: the P30 ran Qwen3-0.6B for a week while
+            // Qwen3.5-0.8B was missing, and the only thing that would have fetched
+            // the better one was somebody reinstalling the app.
+            //
+            // Every term in the question moves - free RAM, free storage, and the
+            // catalogue itself, whose rows arrive from this device's own discovery,
+            // from a peer over the mesh, or from a side-load. So it is asked again,
+            // on a clock, at the moment it costs nobody anything to answer.
+            //
+            // AFTER the start-up fetch above, deliberately: the review's own clock
+            // starts now, so the first one is an hour away rather than seconds after
+            // the answer it would repeat.
+            CircleAI.Device.IdleModelReview.Start(this);
+        });
+
+        // THE VOICE WARM-UP, AFTER HOUSEKEEPING TOO - see "AND WARM IT AT START-UP" above.
+        // Not awaited: the service has a microphone to open, and a voice that cannot warm
+        // only leaves the greeting synthesised live, exactly as it was.
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+                CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }).ConfigureAwait(false);
+            await WakeTurn.WarmAsync().ConfigureAwait(false);
         });
 
         // AND THE SKILL LIBRARY, off the UI thread: the first call unpacks 20 MB out
@@ -1069,5 +1289,47 @@ public sealed class ServiceApplication : Application
         // sheet. Approval happens in LinkConsentActivity, launched FOR RESULT by the
         // foreground client, which is also how the OS tells the consent screen which
         // package is really asking.
+    }
+
+    /// <summary>
+    /// What the SELECTOR decided about mapping the model in this directory, for the
+    /// loader to honour: true for paged, false for eager, null when it has no opinion.
+    /// </summary>
+    /// <remarks>
+    /// THE TWO HALVES DECIDED SEPARATELY AND COULD DISAGREE. QwenTextGenerator reads
+    /// FILE SIZES off disk; ModelFit reads a CATALOGUE ENTRY carrying MinRamGb and a
+    /// measured resident figure the loader cannot see. Both directions have already
+    /// happened: a model marked compatible on the assumption it would be paged and
+    /// then loaded eagerly is the OOM the generator's own remarks describe, and the
+    /// P30 maps a 0.55 GB model that the fit rule believes is loading eagerly, which
+    /// is the only reason that phone has a brain.
+    /// <para>
+    /// NULL ON ANYTHING UNKNOWN, deliberately. A directory that is not a catalogued
+    /// model, a registry that will not open, a device that cannot be probed - none of
+    /// those is an opinion, and inventing one would put this function in the business
+    /// of deciding rather than reporting.
+    /// </para>
+    /// </remarks>
+    private static bool? MappingPromisedFor(string modelPath)
+    {
+        try
+        {
+            var name = System.IO.Path.GetFileName(
+                System.IO.Path.GetDirectoryName(modelPath) ?? modelPath);
+            if (string.IsNullOrWhiteSpace(name)) return null;
+
+            using var registry = new CircleAI.Core.Models.ModelRegistryService();
+            var entry = registry.GetLatestModel(name);
+            if (entry is null) return null;
+
+            return CircleAI.Inference.ModelFit.WillMmap(
+                entry, CircleAI.Core.DeviceProbe.Snapshot().UsableRamGb);
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Info("CircleAI.Memory",
+                "could not say what the selector decided about mapping: " + ex.Message);
+            return null;
+        }
     }
 }

@@ -136,3 +136,45 @@
 }
 
 .loading-of { flex: none; }
+
+/*
+    WHAT THERE IS TIME FOR, on the screen that is actually up. The same card as
+    Home's and Setup's, copied rather than shared because scoped CSS is per
+    component; the width is this screen's column.
+*/
+.tour {
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+    background: var(--card);
+    box-shadow: var(--shadow);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-top: 20px;
+    text-align: left;
+}
+
+.tour-title { font-size: 17px; font-weight: 700; color: var(--brand-blue); }
+
+.tour-body {
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    padding-top: 6px;
+}
+
+.tour-action {
+    font: inherit;
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 12px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--brand-blue);
+    background: transparent;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.tour-action:disabled { opacity: 0.5; cursor: default; }

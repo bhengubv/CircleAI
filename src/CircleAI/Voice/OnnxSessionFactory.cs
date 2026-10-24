@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.ML.OnnxRuntime;
 
 namespace CircleAI.Voice;
@@ -71,11 +73,86 @@ public static class OnnxSessionFactory
         }
     }
 
+    /// <summary>
+    /// Build a session. EVERY ONNX session in CircleAI is built here, so a fault in
+    /// ONNX Runtime that depends on the processor is dealt with once, for every
+    /// engine, rather than in whichever engine crashed last.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A 32-BIT ARM PROCESS CANNOT RUN ONE OF ONNX RUNTIME'S OPTIMISATION PASSES.
+    /// On the P30's fresh install of the 32-bit pair on 2026-10-23 the service died
+    /// twice in a row while the greeting warm-up opened its Piper voice through
+    /// <see cref="Open"/>: SIGBUS BUS_ADRALN inside libonnxruntime.so, at an odd
+    /// address, with no managed frame to catch it. The 64-bit pair opens the same
+    /// voice on the same phone.
+    /// </para>
+    /// <para>
+    /// The pass is CommonSubexpressionElimination (ONNX Runtime 1.18 to 1.24; we ship
+    /// 1.21.0). To hash a one-element tensor attribute it reads the number straight
+    /// out of the protobuf string, and a short string's bytes start one past the
+    /// string object, so that address is always odd. On 32-bit ARM the read compiles
+    /// to VLDR (<c>vldr s2, [r4]</c> at pc 0x6da7de, r4 = the string + 1), which
+    /// faults on a misaligned address however the kernel is set up, and no kernel
+    /// fixes it up. On 64-bit ARM it compiles to an LDR that tolerates it, which is
+    /// the only reason 64-bit works. Upstream: microsoft/onnxruntime #26323 and
+    /// #27311, fixed in 1.25.0 by #27312.
+    /// </para>
+    /// <para>
+    /// So a 32-bit ARM process builds every graph with that one pass off. It merges
+    /// duplicate nodes and does nothing else, every other optimisation still runs,
+    /// and 64-bit and x86 processes keep it.
+    /// </para>
+    /// </remarks>
+    public static InferenceSession Create(string modelPath, SessionOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentNullException.ThrowIfNull(options);
+
+        FitToProcessor(options, RuntimeInformation.ProcessArchitecture);
+        return new InferenceSession(modelPath, options);
+    }
+
+    /// <summary>ONNX Runtime's session-config key for passes a session must not run.</summary>
+    internal const string DisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
+
+    /// <summary>
+    /// The ONNX Runtime passes a process on <paramref name="processor"/> must not
+    /// run, as <see cref="DisableSpecifiedOptimizers"/> takes them (';' between
+    /// names); null when it can run them all.
+    /// </summary>
+    internal static string? PassesToSkip(Architecture processor) =>
+        processor is Architecture.Arm or Architecture.Armv6 ? "CommonSubexpressionElimination" : null;
+
+    /// <summary>
+    /// Switch off, once, what <paramref name="processor"/> cannot run. True when
+    /// this call changed <paramref name="options"/>.
+    /// </summary>
+    /// <remarks>
+    /// ONCE PER OPTIONS OBJECT. The transducers share one object across their three
+    /// graphs, and ONNX Runtime logs a warning each time a config key is set again,
+    /// which would be two warnings after every wake turn.
+    /// </remarks>
+    internal static bool FitToProcessor(SessionOptions options, Architecture processor)
+    {
+        if (PassesToSkip(processor) is not { } skip) return false;
+
+        lock (Fitted)
+        {
+            if (Fitted.TryGetValue(options, out _)) return false;
+            options.AddSessionConfigEntry(DisableSpecifiedOptimizers, skip);
+            Fitted.Add(options, skip);
+            return true;
+        }
+    }
+
+    private static readonly ConditionalWeakTable<SessionOptions, string> Fitted = new();
+
     private static InferenceSession OpenCore(string modelPath)
     {
         // .ort is already optimised; re-optimising it discards the reason to use it.
         if (modelPath.EndsWith(".ort", StringComparison.OrdinalIgnoreCase))
-            return new InferenceSession(modelPath, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
+            return Create(modelPath, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
 
         // The fingerprint is IN THE NAME, so identity is decided by the filename
         // rather than by a timestamp comparison that side-loading always loses.
@@ -87,7 +164,7 @@ public static class OnnxSessionFactory
         // keyed on the path alone would serve the previous language's graph — and
         // it survives app restarts, so the wrong voice would persist silently.
         if (IsUsableOptimisedCopy(modelPath, optimised))
-            return new InferenceSession(optimised, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
+            return Create(optimised, Options(GraphOptimizationLevel.ORT_DISABLE_ALL));
 
         var opts = Options(GraphOptimizationLevel.ORT_ENABLE_ALL);
 
@@ -96,7 +173,7 @@ public static class OnnxSessionFactory
         try { opts.OptimizedModelFilePath = optimised; }
         catch { }
 
-        return new InferenceSession(modelPath, opts);
+        return Create(modelPath, opts);
     }
 
     /// <summary>

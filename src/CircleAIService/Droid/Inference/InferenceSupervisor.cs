@@ -34,6 +34,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         { TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5) };
     private static readonly TimeSpan NoProgress = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan LoadLimit = TimeSpan.FromMinutes(3);
+    private const string HeldOffEvidence = "held-off";
 
     private readonly Context _context;
     private readonly WorkerConnection _connection;
@@ -57,6 +58,7 @@ public sealed class InferenceSupervisor : IBrainWorker
     private Timer? _beat;
     private bool _recovered;
     private string? _pendingCandidate;
+    private bool _nothingRunnable;
     private DateTimeOffset _lastUse = DateTimeOffset.UtcNow;
 
     /// <summary>A supervisor over a worker connection.</summary>
@@ -262,15 +264,32 @@ public sealed class InferenceSupervisor : IBrainWorker
             var choice = forced ?? Choose();
             if (choice is null)
             {
+                // NOTHING WILL ARRIVE BY ITSELF when every model here is refused, and the
+                // queue is told so - RetryAfter null, "not without being asked" - so a
+                // question hears why at once instead of waiting for a setup that has
+                // nothing left to bring. AND IT IS NOT REMEMBERED: the next question chooses
+                // again, so a pardon ("try the big one again") said a moment ago counts.
+                bool nothingRunnable;
+                lock (_gate) nothingRunnable = _nothingRunnable;
                 var none = new Failure(FailureKind.NotInstalled, Certainty.Certain, WorkPhase.Load, null,
-                    "no-model", "no usable model is on this phone", DateTimeOffset.UtcNow);
-                Set(new BrainWorkerStatus(BrainPhase.NoModel, LoadStep.None, null, none, TimeSpan.FromSeconds(30), null, DateTimeOffset.UtcNow));
+                    nothingRunnable ? "refused" : "no-model",
+                    nothingRunnable ? "every model on this phone is refused" : "no usable model is on this phone",
+                    DateTimeOffset.UtcNow);
+                Set(new BrainWorkerStatus(BrainPhase.NoModel, LoadStep.None, null, none,
+                    nothingRunnable ? null : TimeSpan.FromSeconds(30), null, DateTimeOffset.UtcNow));
                 Report(BrainPhase.NoModel, LoadStep.None, null, null, ReadinessSentences.NoModel);
-                lock (_gate) _retryAt = DateTimeOffset.UtcNow.AddSeconds(30);
+                lock (_gate) _retryAt = nothingRunnable ? DateTimeOffset.MinValue : DateTimeOffset.UtcNow.AddSeconds(30);
                 throw new BrainWorkerException(none);
             }
 
             model = choice;
+
+            // HELD OFF, NOT REFUSED. A load of this model stopped a moment ago with nothing
+            // to explain it, or for memory, and loading straight back into the same
+            // pressure is how the P30 lost its service twice in four minutes on
+            // 2026-10-23. Before the breadcrumb, so a held-off load leaves none.
+            if (HeldOff(model) is { } held) throw HoldOffNow(model, held.Count, held.Remaining);
+
             var skipHash = Verified(model);
             Set(new BrainWorkerStatus(BrainPhase.Loading, skipHash ? LoadStep.LoadingWeights : LoadStep.Verifying, model, null, null, _connection.Pid, DateTimeOffset.UtcNow));
             Report(BrainPhase.Loading, skipHash ? LoadStep.LoadingWeights : LoadStep.Verifying, model, null, ReadinessSentences.Loading);
@@ -281,6 +300,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             CircleAI.Assistant.DeviceDiagnostics.BeginRisky(_stateDir, CrashVerdict.Breadcrumb(model));
             var freeAtStart = DeviceProbe.Snapshot().UsableRamGb;
             var clock = System.Diagnostics.Stopwatch.StartNew();
+            var workerDied = false;
             try
             {
                 using var limit = new CancellationTokenSource(LoadLimit);
@@ -292,14 +312,25 @@ public sealed class InferenceSupervisor : IBrainWorker
             {
                 lock (_gate) _killedByUs = true;
                 _connection.Kill();
+                workerDied = true;
                 throw new WorkerDiedException(new WorkerDeath(_connection.Pid, WorkPhase.Load, model, null, DateTimeOffset.UtcNow));
+            }
+            catch (WorkerDiedException)
+            {
+                workerDied = true;
+                throw;
             }
             finally
             {
-                CircleAI.Assistant.DeviceDiagnostics.EndRisky(_stateDir);
+                // A DEATH KEEPS ITS BREADCRUMB UNTIL ITS VERDICT IS WRITTEN (below, in the
+                // catch). Classifying takes most of a second, and a phone killing the worker
+                // for memory may take this process next - with the crumb gone and nothing
+                // recorded, the next start would load straight back into the same pressure.
+                if (!workerDied) CircleAI.Assistant.DeviceDiagnostics.EndRisky(_stateDir);
             }
 
             CrashVerdict.Loaded(_catalogue(), model);
+            ClearSetback(model);
             MarkVerified(model);
             lock (_gate) { _failures = 0; _retryAt = DateTimeOffset.MinValue; _lastUse = DateTimeOffset.UtcNow; }
             Set(new BrainWorkerStatus(BrainPhase.Ready, LoadStep.None, model, null, null, _connection.Pid, DateTimeOffset.UtcNow));
@@ -311,9 +342,11 @@ public sealed class InferenceSupervisor : IBrainWorker
         {
             var failure = await ClassifyDeathAsync(died.Death).ConfigureAwait(false);
             Fail(failure, model);
+            CircleAI.Assistant.DeviceDiagnostics.EndRisky(_stateDir);
             throw new BrainWorkerException(failure, died);
         }
-        catch (BrainWorkerException ex) when (ex.Failure.Kind != FailureKind.NotInstalled || model is not null)
+        catch (BrainWorkerException ex) when ((ex.Failure.Kind != FailureKind.NotInstalled || model is not null)
+                                              && !ex.Failure.Evidence.StartsWith(HeldOffEvidence, StringComparison.Ordinal))
         {
             Fail(ex.Failure with { ModelId = ex.Failure.ModelId ?? model }, model);
             throw;
@@ -327,18 +360,23 @@ public sealed class InferenceSupervisor : IBrainWorker
     private void Fail(Failure failure, string? model)
     {
         // THE VERDICT FOLLOWS THE KIND. Only a native crash while the model was
-        // working, or an unexplained death inside a load, is a strike; everything else
-        // is the moment or the phone, and refusing the model for it would refuse the
-        // only brain this phone can run.
+        // working is a strike; everything else is the moment or the phone, and
+        // refusing the model for it would refuse the only brain this phone can run. A
+        // load that stopped unexplained, or for memory, holds the next one off instead.
         if (model is not null)
+        {
             CrashVerdict.Record(_catalogue(), CrashVerdict.Breadcrumb(model), line => _log(line),
                                 killedByTheSystem: !failure.CountsAgainstModel);
+            if (FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);
+        }
 
         _readiness.Failed(failure);
+        var holdOff = model is not null && HeldOff(model) is { } held ? held.Remaining : TimeSpan.Zero;
         TimeSpan retry;
         lock (_gate)
         {
             retry = Backoff[Math.Min(_failures, Backoff.Length - 1)];
+            if (holdOff > retry) retry = holdOff;
             _failures++;
             _retryAt = DateTimeOffset.UtcNow + retry;
         }
@@ -406,6 +444,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         var options = _options();
         var catalogue = _catalogue();
         var probe = DeviceProbe.Snapshot();
+        lock (_gate) _nothingRunnable = false;
         using var registry = new ModelRegistryService();
         using var loader = new BundleModelLoader(_store, registry);
         var selector = CatalogModelSelector.Preferring(catalogue, registry);
@@ -431,6 +470,7 @@ public sealed class InferenceSupervisor : IBrainWorker
             if (string.IsNullOrWhiteSpace(instead))
             {
                 _announce(CircleAI.Assistant.AssistantPersona.NothingItCanRun, false);
+                lock (_gate) _nothingRunnable = true;
                 return null;
             }
             _announce(CircleAI.Assistant.AssistantPersona.OnTheSmallerBrain, false);
@@ -485,6 +525,10 @@ public sealed class InferenceSupervisor : IBrainWorker
         string? active;
         lock (_gate) { candidate = _pendingCandidate; active = _status.ModelId; }
         if (candidate is null || SchedulerIdle?.Invoke() != true || !Charging() || Rejected(candidate)) return false;
+
+        // HELD OFF IS NOT FAILED. Validating now would release the working brain, throw the
+        // hold-off at once, and reject for a week a model that was only told to wait.
+        if (HeldOff(candidate) is not null) return false;
 
         _log($"validating {candidate} while the phone is idle and charging");
         await ReleaseAsync(ct).ConfigureAwait(false);
@@ -627,6 +671,106 @@ public sealed class InferenceSupervisor : IBrainWorker
         catch { }
     }
 
+    // LOADS THAT STOPPED UNEXPLAINED, OR FOR MEMORY: "count|ticks" - how many in a row, and
+    // when the last one did. On disk, because the death that matters takes this process
+    // with it: the back-off above lives in memory, and on the P30 it never outlived the
+    // kill it was meant to slow down. A clean load clears it (FailurePolicy.HoldOff).
+    private void RecordSetback(string model)
+    {
+        try
+        {
+            var count = (Setback(model)?.Count ?? 0) + 1;
+            var path = StatePath("setback", model);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|"
+                + DateTimeOffset.UtcNow.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        catch { }
+    }
+
+    private (int Count, DateTimeOffset At)? Setback(string model)
+    {
+        try
+        {
+            var path = StatePath("setback", model);
+            if (!File.Exists(path)) return null;
+            var parts = File.ReadAllText(path).Split('|');
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            return parts.Length == 2
+                   && int.TryParse(parts[0], System.Globalization.NumberStyles.Integer, inv, out var count)
+                   && long.TryParse(parts[1], System.Globalization.NumberStyles.Integer, inv, out var ticks)
+                ? (count, new DateTimeOffset(ticks, TimeSpan.Zero))
+                : null;
+        }
+        catch { return null; }
+    }
+
+    private void ClearSetback(string model)
+    {
+        try { File.Delete(StatePath("setback", model)); }
+        catch { }
+    }
+
+    /// <summary>How long the next load of <paramref name="model"/> must still wait, if at all.</summary>
+    private (int Count, TimeSpan Remaining)? HeldOff(string model)
+    {
+        if (Setback(model) is not { } s) return null;
+        var now = DateTimeOffset.UtcNow;
+        var wait = FailurePolicy.HoldOff(s.Count);
+
+        // A CLOCK SET BACK must not hold the model off until it catches up - a day, if the
+        // date was a day ahead. The stamp moves to now, so it waits one hold-off at most.
+        if (s.At > now)
+        {
+            try
+            {
+                File.WriteAllText(StatePath("setback", model), s.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "|" + now.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch { }
+            return (s.Count, wait);
+        }
+
+        var remaining = s.At + wait - now;
+        return remaining > TimeSpan.Zero ? (s.Count, remaining) : null;
+    }
+
+    /// <summary>Report the brain paused for memory until the hold-off ends, and the failure to throw.</summary>
+    /// <remarks>
+    /// NOT THROUGH Fail(), which would record a verdict and replace the wait with the
+    /// in-memory back-off. Every caller until then is answered by EnsureReadyAsync's
+    /// fast path, and a waiting question is told why once its share of the wait is used.
+    /// </remarks>
+    private BrainWorkerException HoldOffNow(string model, int count, TimeSpan remaining)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var held = new Failure(FailureKind.OutOfMemory, Certainty.Inferred, WorkPhase.Load, model,
+            HeldOffEvidence + " n=" + count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            $"{model} stopped while loading {count} time(s) in a row; waiting before the next try", now);
+        lock (_gate) _retryAt = now + remaining;
+        Set(new BrainWorkerStatus(BrainPhase.Paused, LoadStep.None, model, held, remaining, null, now));
+        _readiness.Report(new ComponentState(ReadinessComponents.Brain, BrainPhase.Paused, LoadStep.None,
+            FailureKind.OutOfMemory, PauseReason.WaitingForMemory, ReadinessSentences.For(FailureKind.OutOfMemory),
+            model, now, null, remaining));
+        _log($"holding off {model}: it stopped while loading {count} time(s) in a row; next try in {remaining.TotalSeconds:0} s");
+        return new BrainWorkerException(held);
+    }
+
+    // ONCE, WHEN THE RULE FOR UNEXPLAINED DEATHS CHANGED (2026-10-23): the refusals it made
+    // come back on one strike. See CrashVerdict.ReconsiderAmbiguousRefusals for why only once.
+    private void ReconsiderAmbiguousRefusalsOnce()
+    {
+        try
+        {
+            var marker = Path.Combine(_stateDir, "reconsidered-unexplained-deaths.txt");
+            if (File.Exists(marker) || _catalogue() is not { } catalogue) return;
+            if (CrashVerdict.ReconsiderAmbiguousRefusals(catalogue, line => _log(line)) < 0) return;   // not done: next start
+            Directory.CreateDirectory(_stateDir);
+            File.WriteAllText(marker, DateTimeOffset.UtcNow.ToString("O"));
+        }
+        catch { /* tried again at the next start */ }
+    }
+
     // ── the previous process ─────────────────────────────────────────────────
 
     /// <summary>
@@ -640,6 +784,12 @@ public sealed class InferenceSupervisor : IBrainWorker
         {
             var crumb = CircleAI.Assistant.DeviceDiagnostics.PreviousCrash(_stateDir);
             var (bootChanged, updated) = ExitEvidence.CompareRunStamp(_context, _stateDir);
+
+            // THE OLD RULES' REFUSALS FIRST, then the last run's death under today's rule -
+            // so a refusal being healed is not struck once more before it is looked at.
+            CircleAI.Inference.CrashVerdict.Reconsider(_catalogue(), line => _log(line));
+            ReconsiderAmbiguousRefusalsOnce();
+
             if (crumb is not null)
             {
                 var model = CrashVerdict.ModelFrom(crumb);
@@ -650,11 +800,16 @@ public sealed class InferenceSupervisor : IBrainWorker
                 };
                 var failure = FailureClassifier.Classify(facts);
                 CrashVerdict.Record(_catalogue(), crumb, line => _log(line), killedByTheSystem: !failure.CountsAgainstModel);
+
+                // THE MAIN PROCESS DIED INSIDE A LOAD - on the P30, iAware taking both
+                // processes for memory. Not the model's crash: that kills the worker alone,
+                // and is judged live. So the next load of it waits (FailurePolicy.HoldOff).
+                if (model is not null && FailurePolicy.HoldsOff(failure.Kind, failure.Phase)) RecordSetback(model);
+
                 _readiness.Failed(failure);
                 _log($"the last run ended inside a load of {model}: {failure.Kind} ({failure.Evidence})");
                 CircleAI.Assistant.DeviceDiagnostics.EndRisky(_stateDir);
             }
-            CircleAI.Inference.CrashVerdict.Reconsider(_catalogue(), line => _log(line));
             ExitEvidence.WriteRunStamp(_context, _stateDir);
         }
         catch (Exception ex)

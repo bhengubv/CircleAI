@@ -14,7 +14,8 @@
 // place: Android stopping the service or a platform time limit is never the model's
 // fault; running out of memory means "not now", not "defective"; damaged files are
 // repaired, not refused; only a crash of the native worker while it was working on a
-// model - or a death nothing can explain, inside a load - is held against the model.
+// model is held against the model. A death nothing can explain, inside a load, used to
+// be held against it too; now it holds the next load off instead (FailurePolicy.HoldOff).
 
 using System;
 
@@ -149,22 +150,57 @@ public static class FailurePolicy
     /// Whether a failure of this kind, in this phase, is a strike against the model.
     /// </summary>
     /// <remarks>
-    /// ONLY TWO THINGS STRIKE. A native crash of the worker while it held the model
-    /// (loading, warming or generating) - that is the model or its runtime breaking -
-    /// and a death nobody can explain that happened inside a load or warm-up, which
-    /// keeps the two-strike protection CrashVerdict was written for on a phone that
-    /// cannot say why a process died. Everything else - Android stopping the
-    /// service, a time limit, memory, damaged files, a missing permission, our own
-    /// deadlines - is about the moment or the device, and refusing the model for it
-    /// would refuse the only brain a phone can run.
+    /// ONLY A CRASH STRIKES: the native worker dying while it held the model (loading,
+    /// warming or generating) - that is the model or its runtime breaking. Everything
+    /// else - Android stopping the service, a time limit, memory, damaged files, a
+    /// missing permission, our own deadlines - is about the moment or the device, and
+    /// refusing the model for it would refuse the only brain a phone can run.
+    /// <para>
+    /// A DEATH NOTHING CAN EXPLAIN NO LONGER STRIKES. It did, inside a load or warm-up,
+    /// to keep the two-strike protection on a phone that cannot say why a process died
+    /// - and that phone is exactly where it went wrong. Measured on the P30 on
+    /// 2026-10-23, a fresh install: EMUI's iAware killed the service and the inference
+    /// process together for memory ("iAwareF[LowMem]") twice while Qwen3.5-0.8B loaded.
+    /// API 29 keeps no exit record, both deaths read Unknown, and the second refused the
+    /// only brain on the phone for good; the question asked waited, unanswered, until it
+    /// expired. A native crash still leaves evidence - an exit record from API 30, a
+    /// signal in the crash buffer on API 29 - so it still strikes. A death with none
+    /// holds the next load off instead: see <see cref="HoldOff"/>.
+    /// </para>
     /// </remarks>
     public static bool CountsAgainstModel(FailureKind kind, WorkPhase phase) => kind switch
     {
         FailureKind.NativeWorkerCrashed =>
             phase is WorkPhase.Load or WorkPhase.Warm or WorkPhase.Prefill or WorkPhase.Decode,
-        FailureKind.Unknown =>
-            phase is WorkPhase.Load or WorkPhase.Warm,
         _ => false,
+    };
+
+    /// <summary>Whether a load that ended this way makes the next load of that model wait (<see cref="HoldOff"/>).</summary>
+    /// <remarks>
+    /// Memory, and deaths nothing can explain - which on the P30 are memory too. Not an
+    /// update or a reboot: those were one moment, and the next load is fine.
+    /// </remarks>
+    public static bool HoldsOff(FailureKind kind, WorkPhase phase) =>
+        (phase is WorkPhase.Load or WorkPhase.Warm) && (kind is FailureKind.Unknown or FailureKind.OutOfMemory);
+
+    /// <summary>How long the next load of a model waits after loads that stopped this way.</summary>
+    /// <param name="stoppedLoadsInARow">Loads of the model that stopped in a row; 0 is none.</param>
+    /// <remarks>
+    /// THE BRAKE THAT REPLACED THE REFUSAL. Without one, a phone killing the service for
+    /// memory on every load is loaded into again at the next question - the P30 died
+    /// twice in four minutes that way - and every kill takes other apps down with it. So
+    /// each further try waits longer: 30 s, 2 min, 10 min, 30 min, then hourly. The count
+    /// is kept on disk, because the death that matters takes the process with it; a clean
+    /// load clears it.
+    /// </remarks>
+    public static TimeSpan HoldOff(int stoppedLoadsInARow) => stoppedLoadsInARow switch
+    {
+        <= 0 => TimeSpan.Zero,
+        1    => TimeSpan.FromSeconds(30),
+        2    => TimeSpan.FromMinutes(2),
+        3    => TimeSpan.FromMinutes(10),
+        4    => TimeSpan.FromMinutes(30),
+        _    => TimeSpan.FromHours(1),
     };
 
     /// <summary>Whether work that failed this way may be tried again without anyone deciding to.</summary>

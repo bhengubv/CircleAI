@@ -95,6 +95,18 @@ public interface IWakeWord
     Task ListenAsync(IProgress<WakeStatus> updates, CancellationToken ct);
 
     /// <summary>Ask for the microphone, if this head can.</summary>
+    /// <param name="quietly">
+    /// True when nobody pressed anything - this screen asked on arrival, because
+    /// opening it is asking for the phone to listen. A phone that will not show the
+    /// dialog again is then left alone rather than taken to its Settings page.
+    /// </param>
     /// <returns>True when it is now granted.</returns>
-    Task<bool> RequestMicrophoneAsync();
+    /// <remarks>
+    /// THE QUIET FLAG EXISTS BECAUSE THIS SCREEN ASKS TWICE OVER, through one method.
+    /// Arriving on it calls this, and so does its "Allow the microphone" button - and
+    /// with no way to tell them apart, a person who had refused permanently was sent
+    /// to Circle AI Service's page in Settings on EVERY VISIT to the screen, having
+    /// pressed nothing. Only a press earns that jump.
+    /// </remarks>
+    Task<bool> RequestMicrophoneAsync(bool quietly = false);
 }

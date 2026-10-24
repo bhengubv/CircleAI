@@ -40,7 +40,7 @@ public sealed class OnnxPlateRecognizer : IPlateRecognizer, IDisposable
         if (!File.Exists(opts.ModelPath))
             throw new FileNotFoundException("ONNX model not found", opts.ModelPath);
         var sessOpts = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
-        _session   = new InferenceSession(opts.ModelPath, sessOpts);
+        _session   = CircleAI.Voice.OnnxSessionFactory.Create(opts.ModelPath, sessOpts);
         _inputName = _session.InputMetadata.Keys.First();
     }
 

@@ -51,6 +51,30 @@ public enum ResidentState
     /// </para>
     /// </remarks>
     ScreenOnly,
+
+    /// <summary>
+    /// Wanted, allowed, and waiting for one visible moment to open the microphone in.
+    /// </summary>
+    /// <remarks>
+    /// THE STATE THAT WAS BEING REPORTED AS "LISTENING". From Android 11 a foreground
+    /// service started FROM THE BACKGROUND is given no microphone - refused on 11,
+    /// silenced on 12 and 13, and from 14 the microphone-typed start is rejected
+    /// outright. The wake word's bundle lands minutes after the person has left the
+    /// app, so that is exactly the start this product makes, and the status said
+    /// Listening while the room was silent.
+    /// <para>
+    /// It is not Failed - nothing failed, and it will start by itself the next time a
+    /// screen of ours is up. It is not Off either: the owner has it on. A client that
+    /// IS in front can clear it immediately by starting the listener from a visible
+    /// screen, which is what <c>ServiceMicrophone</c> does.
+    /// </para>
+    /// <para>
+    /// Appended, like ScreenOnly, so no existing value changes number - and the state
+    /// crosses the link as its NAME, so a client that does not know this one parses
+    /// it as Failed and shows the hint, which is still the truth.
+    /// </para>
+    /// </remarks>
+    NeedsForeground,
 }
 
 /// <summary>What the resident listener is doing, in words a person can read.</summary>

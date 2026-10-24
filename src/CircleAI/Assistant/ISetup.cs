@@ -321,8 +321,34 @@ public interface ISetup
     /// wake screen, which asked on arrival - so pressing it moved somebody to a
     /// different page mid-setup and the prompt appeared over that instead. A
     /// control whose label is a verb has to do the verb.
+    /// <para>
+    /// THREE ANSWERS, NOT TWO, AND THE THIRD WAS BEING PRINTED AS "NO". True is
+    /// allowed and false is refused; NULL is "nothing was answered" - the dialog is
+    /// still up and the wait gave out, or this head cannot ask at all. Both of those
+    /// used to come back false, so a person who put the phone down for two minutes
+    /// and then allowed it was told, under their own Allow, that it was not allowed.
+    /// </para>
     /// </remarks>
-    Task<bool> AllowMicrophoneAsync(CancellationToken ct = default);
+    Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Ask for the microphone on the person's behalf, once, at first run: true when
+    /// it may now listen. Nothing to offer by default.
+    /// </summary>
+    /// <remarks>
+    /// THE WAKE WORD IS ON BY DEFAULT, AND ON WAS A WORD. Nothing on a fresh install
+    /// asked for the microphone it listens with, so "on" heard nothing until somebody
+    /// found a button. The first-run screen asks through this, having said why, so
+    /// the phone's own Allow is the only question. Unlike
+    /// <see cref="AllowMicrophoneAsync"/> nobody pressed anything, so a phone that
+    /// will not ask again is left alone rather than sent to Settings.
+    /// <para>
+    /// NULL IS "NOTHING WAS ASKED", and the default returns it rather than false: a
+    /// head with no way to ask must not have its silence rendered as the person
+    /// saying no. See <see cref="AllowMicrophoneAsync"/> for the three answers.
+    /// </para>
+    /// </remarks>
+    Task<bool?> OfferMicrophoneAsync(CancellationToken ct = default) => Task.FromResult<bool?>(null);
 
     /// <summary>Ask to be exempt from battery killing, here.</summary>
     /// <remarks>

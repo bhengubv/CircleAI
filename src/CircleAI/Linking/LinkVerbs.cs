@@ -108,6 +108,27 @@ public enum LinkVerb
     /// <summary>Stop listening. Same row shape.</summary>
     ResidentStop,
 
+    /// <summary>
+    /// Start listening ONLY IF the owner had it on. Same row shape as
+    /// <see cref="ResidentStatus"/>; returns Off without touching the microphone when
+    /// they had it off.
+    /// </summary>
+    /// <remarks>
+    /// THERE WAS NO RESUME VERB, SO EVERY LAUNCH OF THE APP SWITCHED LISTENING BACK
+    /// ON. IResidentAssistant.ResumeAsync is documented to restore a choice and not
+    /// make one - and the linked client had only <see cref="ResidentStart"/> to send,
+    /// which reads no preference and writes "the owner wants this" on its way out. So
+    /// MainLayout's first render, which calls ResumeAsync on every cold start, turned
+    /// an explicit off back on; the Waking checkbox went on showing off, because it
+    /// reads the stored setting, and the microphone was open behind it.
+    /// <para>
+    /// A verb of its own rather than a flag on ResidentStart, so a client that does
+    /// not know it gets an unknown-verb failure it can fall back from, instead of a
+    /// start it did not mean.
+    /// </para>
+    /// </remarks>
+    ResidentResume,
+
     /// <summary>What this device can actually do: [title, blurb, state, bytes].</summary>
     Abilities,
 
@@ -282,6 +303,7 @@ public static class LinkVerbs
         LinkVerb.ResidentStatus => LinkScope.Voice,
         LinkVerb.ResidentStart  => LinkScope.Voice,
         LinkVerb.ResidentStop   => LinkScope.Voice,
+        LinkVerb.ResidentResume => LinkScope.Voice,
         LinkVerb.Abilities      => LinkScope.Chat,
         LinkVerb.Footprint      => LinkScope.Chat,
         _                     => LinkScope.Chat,

@@ -106,7 +106,7 @@ public sealed class OnnxSpeechEmotionDetector : ISpeechEmotionDetector
             InterOpNumThreads      = 1,
             IntraOpNumThreads      = 1,
         };
-        _session    = new InferenceSession(config.ModelPath, opts);
+        _session    = OnnxSessionFactory.Create(config.ModelPath, opts);
         _inputName  = _session.InputMetadata.Keys.First();
         _outputName = _session.OutputMetadata.Keys.First();
     }

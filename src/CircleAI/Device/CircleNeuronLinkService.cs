@@ -725,15 +725,21 @@ public sealed class CircleNeuronLinkService : Service
             case LinkVerb.ResidentStatus:
             case LinkVerb.ResidentStart:
             case LinkVerb.ResidentStop:
+            case LinkVerb.ResidentResume:
             {
                 var resident = Resident;
                 if (resident is null) return LinkRowsReply.Failure("listening not available");
 
+                // RESUME IS NOT START, and it is a separate verb because it has to be
+                // able to say no. The client calls it at every launch; mapping it onto
+                // ResidentStart is what turned an owner's explicit "off" back on each
+                // time the app was opened.
                 var status = req.Verb switch
                 {
-                    LinkVerb.ResidentStart => await resident.StartAsync().ConfigureAwait(false),
-                    LinkVerb.ResidentStop  => await resident.StopAsync().ConfigureAwait(false),
-                    _                      => await resident.RefreshAsync().ConfigureAwait(false),
+                    LinkVerb.ResidentStart  => await resident.StartAsync().ConfigureAwait(false),
+                    LinkVerb.ResidentStop   => await resident.StopAsync().ConfigureAwait(false),
+                    LinkVerb.ResidentResume => await resident.ResumeAsync().ConfigureAwait(false),
+                    _                       => await resident.RefreshAsync().ConfigureAwait(false),
                 };
 
                 return LinkRowsReply.Success(new[]

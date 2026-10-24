@@ -79,6 +79,28 @@ public sealed class CaptureDump : IDisposable
     /// worse than no diagnostic - this is the thing that is supposed to help
     /// when everything else has failed.
     /// </remarks>
+    /// <summary>Whether the marker that turns speech diagnostics on is present.</summary>
+    /// <remarks>
+    /// THE MARKER NOW GATES MORE THAN THE WAV, so the question is asked once, here.
+    /// Two other diagnostics write down what was SAID rather than what was heard -
+    /// UtteranceLog's heard.txt, and the verbatim lines the transcribing wake loop
+    /// prints to logcat - and both were on for anybody who happened to have the
+    /// streaming recogniser on their phone. They answer the same question as the wav
+    /// and they belong behind the same deliberate act.
+    /// <para>
+    /// Never throws, and a directory that cannot be read is a no.
+    /// </para>
+    /// </remarks>
+    public static bool Asked(string? directory)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(directory)
+                   && File.Exists(System.IO.Path.Combine(directory, MarkerName));
+        }
+        catch { return false; }
+    }
+
     public static CaptureDump? IfAsked(string directory, string name, Action<string>? say = null)
     {
         try

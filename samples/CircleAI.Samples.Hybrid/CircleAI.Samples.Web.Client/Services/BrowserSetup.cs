@@ -53,8 +53,8 @@ public sealed class BrowserSetup : ISetup
     /// battery policy to be exempt from. Both say no rather than pretending,
     /// which is why they return a result instead of being no-ops.
     /// </remarks>
-    public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
-        => Task.FromResult(false);
+    public Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default)
+        => Task.FromResult<bool?>(false);
 
     /// <inheritdoc />
     public Task<bool> AllowBackgroundAsync(CancellationToken ct = default)

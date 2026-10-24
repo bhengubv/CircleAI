@@ -38,13 +38,18 @@
          deploy the latest version?" had no answer but a file hash. The code goes
          up on every cut; the display version is what somebody says out loud.
          Settings > Phone prints both, so anybody can read it off the screen. -->
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
     <!-- BUMPED EVERY CUT, BECAUSE IT IS THE ONLY HONEST DEPLOY SIGNAL.
          lastUpdateTime stayed frozen across confirmed installs on two different
          phones, so "did my build actually land" was unanswerable from adb. This
          number is in the manifest, `dumpsys package` reads it back, and it moves
          only when somebody changes it here. -->
-    <ApplicationVersion>60</ApplicationVersion>
+    <ApplicationVersion>61</ApplicationVersion>
+
+    <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
+         32-bit one (armeabi-v7a + x86); without it, the 64-bit one (arm64-v8a + x86_64). -->
+    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' == '32'">android-arm;android-x86</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' != '32'">android-arm64;android-x64</RuntimeIdentifiers>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->

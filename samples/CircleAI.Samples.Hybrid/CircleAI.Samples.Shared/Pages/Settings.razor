@@ -138,7 +138,10 @@ else if (_tab == 1)
         <label class="row">
             <span class="row-text">
                 <span class="row-title">Listen for the wake phrase</span>
-                <span class="row-sub">The microphone stays open on this phone. Nothing is kept.</span>
+                @* "NOTHING IS KEPT" WAS FALSE AS WRITTEN - see MicrophoneAsk, which
+                   owns both halves: the listening keeps nothing, and what you ask it
+                   is kept on this phone for a week. *@
+                <span class="row-sub">The microphone stays open. @MicrophoneAsk.SoundNotKept</span>
             </span>
             <input type="checkbox" checked="@_s.WakeEnabled"
                    @onchange="ToggleWakeEnabled" />
@@ -857,6 +860,13 @@ else
 
     // First render asks the service; after that this screen holds the value and
     // re-reads it from the service after each toggle.
+    /// <summary>Whether the switch is on, from the last thing the SERVICE said.</summary>
+    /// <remarks>
+    /// THE FALLBACK IS THE CLIENT'S CACHED BOOL AND IT IS ONLY A FIRST FRAME. Reload
+    /// asks the service on arrival and writes the real answer here; until that round
+    /// trip returns there is nothing else to draw, and false - not listening - is the
+    /// safe direction for a microphone claim.
+    /// </remarks>
     bool ResidentOn => _residentOn ??= Resident.IsListening;
 
     string ResidentSub => _residentHint
@@ -893,15 +903,32 @@ else
     {
         try
         {
-            _residentOn = Resident.IsListening;
-
-            // Only when it is OFF. Listening needs no excuse, and overwriting the
-            // hint while it runs would replace "It answers to its name" with a
-            // status line nobody asked for.
-            if (_residentOn == true) { _residentHint = null; return; }
-
+            // ASK THE SERVICE, DO NOT READ THE LAST ANSWER IT HAPPENED TO GIVE.
+            //
+            // IResidentAssistant.IsListening is a bool cached on the CLIENT, written
+            // only by a call that asked - so it is as old as the last call, and after
+            // the microphone is granted the listener is started by the SERVICE's own
+            // screen, with nothing on this side asking anything. Measured on the P30
+            // on 2026-10-24: the grant was taken, the service logged "listening,
+            // keywords=.../wake-en.txt", and this screen drew "Answer to its name"
+            // UNTICKED, under "Listen for the wake phrase with the screen off" - an
+            // invitation to switch on a microphone that was already open.
+            //
+            // The old order made it unavoidable: it assigned the cached bool first
+            // and only asked the service if that bool was false, so the one call that
+            // would have corrected it could never reach the checkbox.
             var status = await Resident.RefreshAsync();
-            _residentHint = string.IsNullOrWhiteSpace(status.Hint) ? null : status.Hint;
+
+            // ScreenOnly IS on, with a caveat the hint carries - see ResidentState.
+            _residentOn = status.State is ResidentState.Listening or ResidentState.ScreenOnly;
+
+            // The hint only when it is NOT simply listening: overwriting it while it
+            // runs would replace "It answers to its name" with a status line nobody
+            // asked for. ScreenOnly keeps its hint, because there the hint is the
+            // caveat rather than an error.
+            _residentHint = status.State == ResidentState.Listening || string.IsNullOrWhiteSpace(status.Hint)
+                ? null
+                : status.Hint;
         }
         catch
         {
@@ -1176,6 +1203,14 @@ else
             _storage = await Facts.StorageAsync();
         }
         catch (Exception ex) { _trouble = $"Reading what is installed: {Trouble.Say(ex)}"; }
+
+        // AND WHAT THE MICROPHONE IS ACTUALLY DOING, ON ARRIVAL. This was asked only
+        // AFTER a toggle, so the switch drew itself from whatever the client happened
+        // to have cached - which on the P30 on 2026-10-24 was "off" over an open
+        // microphone, because the grant and the start had both happened in the
+        // service's own screen since the last time this app asked anything.
+        await RefreshResidentReason();
+        _residentNonce++;
     }
 
     /// <summary>Null until asked, false when this app is not approved to use Circle AI.</summary>

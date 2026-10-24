@@ -153,7 +153,7 @@ public sealed class HomeNoticesTheServiceFinishingTests : TestContext
             TimeSpan remaining, System.Threading.CancellationToken ct = default)
             => _inner.TourAsync(remaining, ct);
 
-        public Task<bool> AllowMicrophoneAsync(System.Threading.CancellationToken ct = default)
+        public Task<bool?> AllowMicrophoneAsync(System.Threading.CancellationToken ct = default)
             => _inner.AllowMicrophoneAsync(ct);
 
         public Task<bool> AllowBackgroundAsync(System.Threading.CancellationToken ct = default)

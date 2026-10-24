@@ -28,7 +28,12 @@ using CircleAI.Linking;
 namespace CircleAI.Client;
 
 /// <inheritdoc />
-public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
+/// <param name="brain">The linked brain, whose connection this rides.</param>
+/// <param name="currentActivity">
+/// The activity in front, for the microphone dialog. Without it the screen still
+/// follows the service; it just cannot ask.
+/// </param>
+public sealed class LinkedWakeWord(LinkedBrain brain, Func<Android.App.Activity?>? currentActivity = null) : IWakeWord
 {
     /// <summary>How often the screen asks the service where it stands.</summary>
     /// <remarks>
@@ -41,11 +46,20 @@ public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
 
     /// <inheritdoc />
     /// <remarks>
-    /// FALSE, and not a refusal to try: this app does not hold the microphone, so
-    /// asking a person for it here would take a permission nothing then uses. The
-    /// service asks for its own, when a client is approved for Voice.
+    /// THE SERVICE'S MICROPHONE, ASKED FOR THROUGH THE SERVICE. This returned false
+    /// without asking anybody, on the grounds that the service asks for its own when
+    /// a client is approved for Voice - and our own app is approved without a screen,
+    /// so nothing ever asked, and the button on this screen did nothing at all.
     /// </remarks>
-    public Task<bool> RequestMicrophoneAsync() => Task.FromResult(false);
+    /// <remarks>
+    /// AND NULL - "nothing was answered" - IS NOT A REFUSAL. ServiceMicrophone
+    /// returns it when there was no activity to ask from or the wait gave out with
+    /// the dialog still up; this screen only needs to know whether to start
+    /// listening, so it reads null as "not yet" and asks again on the next visit.
+    /// </remarks>
+    public async Task<bool> RequestMicrophoneAsync(bool quietly = false)
+        => await ServiceMicrophone.RequestAsync(
+            currentActivity?.Invoke(), quietly: quietly).ConfigureAwait(false) == true;
 
     /// <inheritdoc />
     public async Task ListenAsync(IProgress<WakeStatus> updates, CancellationToken ct)
@@ -64,6 +78,8 @@ public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
         // this is the one call that both switches it on and reports where it stands.
         var start = true;
         var seen = -1;
+        var asked = false;
+        var startedHere = false;
 
         try
         {
@@ -111,6 +127,46 @@ public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
                     ? new WakeStatus(WakeState.Heard, "Heard you", hint, heard)
                     : new WakeStatus(Map(state), status, hint, heard));
 
+                // NO MICROPHONE: ASK, ONCE PER VISIT, AND QUIETLY. Opening this screen
+                // is asking for it to listen, the same reading the start above makes,
+                // and the in-process head asked on arrival too. Once, so a "no" is not
+                // met with the dialog again every second; "Allow the microphone" starts
+                // a fresh visit, which asks again. Allowed, the next pass starts it.
+                //
+                // QUIETLY, BECAUSE NOBODY PRESSED ANYTHING. This asked exactly as the
+                // button does - so on a phone where the microphone had been refused
+                // permanently, Android showed no dialog, the service's screen concluded
+                // "the phone will not ask again", and Circle AI Service's page in
+                // Settings opened over the app EVERY TIME somebody opened this screen.
+                // The rule the whole mechanism is built on - only a press earns
+                // Settings - was being broken by the screen that asks most often.
+                if (MicrophoneAsk.ShouldAsk(state, fromService: true, granted:
+                        ServiceMicrophone.Granted(Android.App.Application.Context), askedThisVisit: asked))
+                {
+                    asked = true;
+                    if (await RequestMicrophoneAsync(quietly: true).ConfigureAwait(false))
+                    {
+                        start = true;
+                        continue;
+                    }
+                }
+
+                // ALLOWED, WANTED, DOWNLOADED - AND REFUSED THE MICROPHONE BECAUSE THE
+                // SERVICE HAD TO START IT FROM THE BACKGROUND. This screen is visible,
+                // which is the one thing the platform wants, so it is also the cheapest
+                // place to fix it: the service's own screen makes the start and finishes.
+                //
+                // ONCE PER VISIT, like the ask. Left ungated this polls at 1 Hz, and
+                // every pass would have the service open the microphone, find it
+                // silenced and close it again - a second-by-second cycle on the one
+                // resource this feature is about.
+                if (state == ResidentState.NeedsForeground && !startedHere)
+                {
+                    startedHere = true;
+                    ServiceMicrophone.StartListening(currentActivity?.Invoke());
+                    start = true;
+                }
+
                 await Task.Delay(Cadence, ct).ConfigureAwait(false);
             }
         }
@@ -133,11 +189,19 @@ public sealed class LinkedWakeWord(LinkedBrain brain) : IWakeWord
     /// carries is in the hint the service wrote, not in a state this screen invents.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// AND NeedsForeground IS "STARTING", NOT "NOT INSTALLED". It means wanted,
+    /// allowed and downloaded, with only a visible screen missing - and this screen
+    /// IS one, so the block above has already asked the service to start on its way
+    /// through. Falling through to NotInstalled would have offered "Turn it on",
+    /// which navigates away from the screen that was about to fix it.
+    /// </remarks>
     private static WakeState Map(ResidentState state) => state switch
     {
         ResidentState.Listening       => WakeState.Listening,
         ResidentState.ScreenOnly      => WakeState.Listening,
         ResidentState.NeedsPermission => WakeState.NeedsPermission,
+        ResidentState.NeedsForeground => WakeState.Preparing,
         ResidentState.Failed          => WakeState.Failed,
         _                             => WakeState.NotInstalled,
     };

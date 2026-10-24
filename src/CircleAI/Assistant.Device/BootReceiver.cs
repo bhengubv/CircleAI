@@ -87,6 +87,7 @@ public sealed class BootReceiver : BroadcastReceiver
             // the only code that knows the owner had it on before the restart -
             // the service's own statics died with the process.
             CircleNeuronService.WaitingToBeAsked = true;
+            CircleNeuronService.WaitingBecause   = "since the phone restarted";
 
             CircleNeuronService.Start(context);
 

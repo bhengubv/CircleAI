@@ -61,7 +61,8 @@ internal static class InFlightDownloads
         string key,
         IProgress<DownloadProgress>? progress,
         Func<IProgress<DownloadProgress>, Task<string>> download,
-        Action<string>? joined = null)
+        Action<string>? joined = null,
+        Action<string>? completed = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(download);
@@ -89,6 +90,13 @@ internal static class InFlightDownloads
         {
             var result = await download(new FanOut(flight!)).ConfigureAwait(false);
             flight!.Done.TrySetResult(result);
+
+            // ONCE PER LANDING, AND ONLY FOR THE CALLER THAT DID THE WORK. Every
+            // joined caller returns from the branch above, and a caller arriving
+            // after the bytes are down starts a flight that finds the model already
+            // there - so this is the one place in the process that means "that model
+            // was not here and now it is".
+            Say(completed, key);
             return result;
         }
         catch (Exception ex)
@@ -111,6 +119,19 @@ internal static class InFlightDownloads
     internal static int Count
     {
         get { lock (Gate) return Flights.Count; }
+    }
+
+    /// <summary>Tell a listener, without letting it fail the download that told it.</summary>
+    /// <remarks>
+    /// THE BYTES ARE DOWN BY THE TIME ANYBODY HEARS. Whatever was waiting for this
+    /// model may throw, and the download has already succeeded - rethrowing here
+    /// would turn a landed model into a failed one, and on the fetch service's loop
+    /// it would cost every model queued behind it.
+    /// </remarks>
+    private static void Say(Action<string>? listener, string key)
+    {
+        if (listener is null) return;
+        try { listener(key); } catch { /* see the remark */ }
     }
 
     /// <summary>Hands every report to every caller sharing the download.</summary>

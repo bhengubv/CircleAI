@@ -27,6 +27,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using CircleAI.Core;
+using CircleAI.SelfKnowledge;
 
 namespace CircleAI.Inference;
 
@@ -143,6 +144,28 @@ public sealed class QwenTextGenerator : IChatGenerator
     }
 
     private bool _disposed;
+
+    /// <summary>What this model is costing in memory, watched from before it loaded.</summary>
+    /// <remarks>
+    /// See the constructor: the floor is taken before the handle exists, the peak is
+    /// sampled as answers are generated, and the result is written down on Dispose.
+    /// Null only on the paths that never got that far.
+    /// </remarks>
+    private readonly MemoryWatch? _watch;
+
+    /// <summary>Roughly how many tokens a conversation is carrying.</summary>
+    /// <remarks>
+    /// FOR THE MEASUREMENT, NOT FOR THE MODEL. Four characters a token, which is the
+    /// usual approximation and is wrong in both directions depending on the language -
+    /// and it does not matter here, because the only question being asked of it is
+    /// whether one reading was taken at a longer context than another.
+    /// </remarks>
+    private static int RoughTokens(IReadOnlyList<ChatMessage> messages)
+    {
+        var chars = 0;
+        for (var i = 0; i < messages.Count; i++) chars += messages[i].Content?.Length ?? 0;
+        return chars / 4;
+    }
 
     /// <summary>The persona MNN was given as its system prompt at load, or null.</summary>
     private readonly string? _mnnPersona;
@@ -409,6 +432,24 @@ public sealed class QwenTextGenerator : IChatGenerator
     public static bool ForceMmap { get; set; }
 
     /// <summary>
+    /// What the SELECTOR decided about mapping this model, given the model's
+    /// directory: true for paged, false for eager, null for no opinion.
+    /// </summary>
+    /// <remarks>
+    /// THE LOADER AND THE SELECTOR DECIDED SEPARATELY, FROM DIFFERENT INFORMATION, AND
+    /// COULD DISAGREE. This loader has files; ModelFit has a catalogue entry carrying
+    /// MinRamGb and a measured resident figure. A model the selector marked compatible
+    /// ON THE ASSUMPTION it would be paged, loaded eagerly here, is the OOM this
+    /// file's own remarks describe - and the opposite, the P30 mapping a model the fit
+    /// rule believed was loading eagerly, is the only reason that phone has a brain.
+    /// <para>
+    /// Set by a host that has the catalogue. Left null, the loader behaves exactly as
+    /// it did: its own file-size reading decides.
+    /// </para>
+    /// </remarks>
+    public static Func<string, bool?>? PromisedMapping { get; set; }
+
+    /// <summary>
     /// Weights bigger than any phone's RAM can hold need mmap; everything else
     /// loads eagerly. 8 GB sits above the RAM of the phones this ships to, so only a
     /// genuinely huge model (a 30B-class MoE) trips it.
@@ -537,6 +578,21 @@ public sealed class QwenTextGenerator : IChatGenerator
         // the backend, which happens inside create on some paths.
         NativeCacheDirectory.Use(modelPath);
 
+        // AND START WATCHING, BEFORE A SINGLE BYTE OF THE MODEL IS RESIDENT.
+        //
+        // ModelEntry.MmapResidentGb carries its own instructions - "run the model on
+        // the target device, watch resident memory during generation, and record what
+        // you saw. Do not compute it." - and not one entry in the catalogue has one,
+        // because nothing was ever watching. That empty field is what makes
+        // ModelFit.WillMmap false for every model, which is what makes the fit rule
+        // charge the whole file, which is what limits a phone with 29 GB of storage to
+        // the models that fit in its 3.9 GB of memory.
+        //
+        // THE FLOOR HAS TO BE TAKEN HERE. One line later the handle exists and the
+        // weights are arriving; a floor measured then includes them, and the model
+        // measures as free - the most dangerous number this rule could be handed.
+        _watch = new MemoryWatch(
+            System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(modelPath) ?? modelPath) ?? "");
 
         MnnModelHandle handle;
         try
@@ -589,7 +645,51 @@ public sealed class QwenTextGenerator : IChatGenerator
             // eagerly — a 30B-class MoE — where it is the sole option; a model that
             // fits loads eagerly, the stable path. "Everything on" holds: mmap is on
             // and available, engaged where a model needs it, not where it does not.
-            var useMmap = MmapIsAllowed && (ForceMmap || WeightsExceedEagerFit(modelPath));
+            //
+            // AND THE LOADER AND THE SELECTOR MAY NOT DISAGREE ABOUT IT, which until
+            // now they could, because they were deciding separately from different
+            // information. This line reads FILE SIZES on disk; ModelFit marks a model
+            // compatible from a CATALOGUE ENTRY, which carries MinRamGb and a measured
+            // resident figure the loader cannot see. The two have already produced the
+            // failure in both directions:
+            //
+            //   selector says paged, loader loads eagerly  ->  the OOM this file's own
+            //     remark describes, Qwen2.5-3B on a phone with ~1.19 GB usable;
+            //   selector says eager, loader maps anyway    ->  the P30 today, where a
+            //     0.55 GB model against 0.44 GB usable is mapped silently, which is the
+            //     only reason that phone has a brain while the fit rule assumes it does
+            //     not need one.
+            //
+            // The second is working in our favour by accident, and an accident that
+            // nobody has written down is a thing that gets "fixed" later by somebody
+            // tidying up.
+            //
+            // EITHER PARTY ASKING FOR MAPPING GETS IT. Mapping a model that would have
+            // fitted eagerly costs speed; loading eagerly one that needed mapping costs
+            // the process. The asymmetry is the whole rule, and the disagreement is
+            // said out loud rather than resolved silently.
+            var heuristic = WeightsExceedEagerFit(modelPath);
+            var promised  = PromisedMapping?.Invoke(modelPath);
+
+            if (promised is { } p && p != heuristic)
+                Console.WriteLine(
+                    $"CIRCLEAI-MMAP disagreement model={Path.GetFileName(Path.GetDirectoryName(modelPath) ?? modelPath)} " +
+                    $"selector={(p ? "paged" : "eager")} loader={(heuristic ? "paged" : "eager")} resolved=paged");
+
+            // AND MAPPING COMES OFF IF IT TRIPPED HERE — BUT ONLY WHERE IT WAS A CHOICE.
+            // SelfHeal switches off what broke, and the honest limit of that is right
+            // here: when the weights are too big to load eagerly, or the selector only
+            // admitted this model BECAUSE it would be paged, withdrawing mapping heals
+            // nothing — it trades a SIGSEGV for the OOM this file's own remarks describe.
+            // There it is the MODEL that cannot run on this device, not the mapping, and
+            // the refusal recorded against it in SelfModel is what takes it out of the
+            // selector's hands. A switch that turns a crash into a different crash is
+            // worse than no switch, because it also hides which one you are looking at.
+            var mappingIsRequired = heuristic || promised == true;
+            var experimentHeldOff = SelfHeal.IsOff(SelfHeal.Switch.MemoryMapping);
+
+            var useMmap = MmapIsAllowed
+                       && (mappingIsRequired || (ForceMmap && !experimentHeldOff));
             if (useMmap)
             {
                 // WEIGHT mmap only — this is what lets a 2.4 GB model fit in ~0.9 GB
@@ -616,7 +716,11 @@ public sealed class QwenTextGenerator : IChatGenerator
             // NativeCacheDirectory has put the process somewhere writable, so the
             // mkdir that failed - and left the destroyed mutex behind - has
             // somewhere to land. Off unless somebody turns it on deliberately.
-            if (AllowKvCacheMmap)
+            // THIS is the one healing can genuinely switch off, because it is the one
+            // that is a pure choice: off by default, on only because somebody turned it
+            // on, and the documented cause of the SIGSEGV above. Nothing is lost by
+            // withdrawing it except the speed it was turned on for.
+            if (AllowKvCacheMmap && !SelfHeal.IsOff(SelfHeal.Switch.PrefixCache))
             {
                 var took = new MnnRuntimeConfig(handle.DangerousGetHandle()).TryEnableKvCacheMmap();
                 Console.WriteLine($"CIRCLEAI-KVMMAP asked=true accepted={took}");
@@ -627,12 +731,34 @@ public sealed class QwenTextGenerator : IChatGenerator
         // WHERE IT RUNS, when somebody has asked for something other than the CPU.
         // Before load, because MNN resolves the backend while loading - the config
         // line the bridge prints afterwards is the proof it took.
-        if (!string.IsNullOrWhiteSpace(Backend))
+        // AND IF IT WILL NOT TAKE, WE STOP ASKING FOR A WHILE. Until now a backend that
+        // was refused printed one line and was asked for again on every load for the
+        // life of the install. That is the shape of every fault a phone has that an API
+        // does not: nothing throws, nothing is reported, the person just gets a slower
+        // assistant for ever - and on a Kirin the OpenCL path this repository measured
+        // is 22x SLOWER than the CPU it falls back to, so the asking is the whole cost.
+        //
+        // This is the smallest honest piece of healing in the product, and it is the
+        // one Wolverine's own SWITCH_TO_FALLBACK action describes: what tripped goes
+        // off, it is written down where the next launch will read it, and the idle
+        // review tries it again later in case a driver update fixed it.
+        if (!string.IsNullOrWhiteSpace(Backend) && !SelfHeal.IsOff(SelfHeal.Switch.GpuBackend))
         {
             var took = false;
+            string? refused = null;
             try { took = new MnnRuntimeConfig(handle.DangerousGetHandle()).TrySetBackend(Backend!); }
-            catch { /* older bridge - the model still loads on the CPU */ }
+            catch (Exception ex) { refused = ex.Message; /* older bridge — CPU still loads */ }
+
             Console.WriteLine($"CIRCLEAI-BACKEND asked={Backend} accepted={took}");
+
+            if (took)
+                // THE BREAKER CLOSING. It was tried again and it worked, so the history
+                // goes with it - otherwise the next single refusal, a year later, would
+                // start at a week because of one bad afternoon in October.
+                SelfHeal.Worked(SelfHeal.Switch.GpuBackend);
+            else
+                SelfHeal.Trip(SelfHeal.Switch.GpuBackend,
+                    $"{Backend} would not take here{(refused is null ? "" : ": " + refused)}");
         }
 
 
@@ -733,6 +859,24 @@ public sealed class QwenTextGenerator : IChatGenerator
     {
         ArgumentNullException.ThrowIfNull(messages);
         ThrowIfDisposed();
+
+        // WHAT IT COSTS IS MEASURED WHILE IT WORKS, not when it finishes loading.
+        //
+        // Weights are resident the moment they load; the conversation's cache grows
+        // through generation, and the PEAK is what has to fit. A reading taken at the
+        // wrong moment is how a model gets called affordable and then OOMs mid-answer
+        // - which is the failure the 15% headroom was invented to paper over, and
+        // papering over it is why nobody ever measured the real number.
+        //
+        // The context is carried into the reading so that two answers of different
+        // lengths give a cache SLOPE rather than two constants (ModelCosts.For).
+        //
+        // ESTIMATED FROM CHARACTERS, NOT TOKENISED, AND THAT IS ENOUGH. CountTokens is
+        // a native call and the exact figure is not what this is for: the slope needs
+        // to tell a short conversation from a long one, and four characters a token is
+        // close enough across the languages this ships in. Tokenising every turn to
+        // refine a diagnostic would be paying the model's price for the measurement.
+        _watch?.Sample(RoughTokens(messages));
 
         options ??= new GenerationOptions();
 
@@ -945,6 +1089,35 @@ public sealed class QwenTextGenerator : IChatGenerator
     {
         if (_disposed) return;
         _disposed = true;
+
+        // WRITE DOWN WHAT IT COST, BEFORE THE WEIGHTS GO.
+        //
+        // This is the measurement MmapResidentGb has been documented as needing since
+        // the field was written, and which nothing has ever taken. Recorded on the way
+        // out, when the peak is known and the model has done whatever it was going to
+        // do. A model that loaded and was never asked anything records its load cost,
+        // which is still the floor under any answer it would have given.
+        //
+        // Never fatal: Record swallows its own failures, and a null cost - the floor
+        // unreadable, or the peak never above it - is not written at all, because a
+        // recorded cost of nothing would tell the fit rule this model is free.
+        // THE LONG-TERM MEMORY WHERE THERE IS ONE, THE LOCAL FILE WHERE THERE IS NOT -
+        // and never both, because one fact with two owners is this repository's most
+        // repeated and most expensive defect. SelfModel is the better home: it
+        // supersedes the previous reading rather than appending, it survives a
+        // reinstall with the rest of the memory, and it is what the selector reads so
+        // that "best" means best MEASURED HERE rather than best ranked at release.
+        // ModelCosts is what a desktop, a test, or a head with no memory service gets.
+        try
+        {
+            _watch?.Sample();
+            if (_watch?.Cost() is { } cost)
+            {
+                if (CircleAI.SelfKnowledge.SelfModel.Current is { } self) self.LearnCost(cost);
+                else ModelCosts.Record(cost);
+            }
+        }
+        catch { /* a measurement may never be the reason a model fails to close */ }
 
         // NOT UNDER A RUNNING ANSWER. Freeing the native handle while MNN is still
         // decoding on another thread is a use-after-free in native code; wait for the

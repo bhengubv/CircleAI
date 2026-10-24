@@ -71,11 +71,31 @@ public sealed class UtteranceLog
     public string? Path => _path;
 
     /// <summary>Opens the log in a directory, or returns a log that does nothing.</summary>
+    /// <remarks>
+    /// OFF UNLESS SOMEBODY ASKS, AND ASKING IS DELIBERATE - the same rule, and the
+    /// same marker file, as CaptureDump beside it.
+    /// <para>
+    /// This is a TRANSCRIPT OF A ROOM, and it was written on any phone that had the
+    /// streaming recogniser on it, from the next start of listening, with nothing said
+    /// anywhere and nothing asked. The product's own card promises that the listening
+    /// is not kept; a file of what the room said, in the external files directory -
+    /// which on Android 10 other apps can read - is the plainest possible breach of
+    /// that promise, and it existed to settle a question about candidate wake phrases.
+    /// A measurement tool is worth keeping and is worth being switched on for.
+    /// </para>
+    /// <para>
+    /// The marker is CaptureDump.MarkerName because the two answer the same question
+    /// and should never be half on: the audio and what it decoded to belong together,
+    /// and one deliberate act is better than two switches that can disagree.
+    /// </para>
+    /// </remarks>
     public UtteranceLog(string? directory)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
+            if (!File.Exists(System.IO.Path.Combine(directory, CaptureDump.MarkerName))) return;
+
             _path = System.IO.Path.Combine(directory, FileName);
         }
         catch

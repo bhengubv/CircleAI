@@ -215,7 +215,13 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
                 // on exactly the right word.
                 if (!PhraseInSpeech.SaidAnywhere(text, phrase)) continue;
 
-                Log.Info(Tag, $"HEARD \"{phrase}\" in \"{Tail(text)}\"");
+                // THE PHRASE, AND THE SENTENCE IT WAS IN ONLY IF SOMEBODY ASKED. The
+                // phrase is ours - it is in the keyword file - and naming it is the
+                // whole point of the line. The transcript around it is whatever was
+                // being said in the room, and it was going to logcat on every wake.
+                Log.Info(Tag, CircleAI.Voice.VoiceTrace.KeepsSpeech
+                    ? $"HEARD \"{phrase}\" in \"{Tail(text)}\""
+                    : $"HEARD \"{phrase}\"");
                 // FORGOTTEN THE MOMENT IT FIRES. Otherwise the phrase stays in
                 // the transcript and every later frame matches it again.
                 asr.Reset();
@@ -246,9 +252,12 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
             "transcribing-wake.wav",
             line => Log.Warn(Tag, line));
 
-        // WHAT THIS ROOM ACTUALLY SAYS, kept on the phone. Scoring a candidate
-        // wake phrase needs a corpus of the speech it has to ignore, and
-        // logcat cannot hold one - see UtteranceLog.
+        // WHAT THIS ROOM ACTUALLY SAYS, kept on the phone - WHEN SOMEBODY HAS
+        // ASKED FOR IT. Scoring a candidate wake phrase needs a corpus of the
+        // speech it has to ignore, and logcat cannot hold one - see UtteranceLog,
+        // which is now behind the same marker file as the audio dump, for the
+        // same reason: it is a transcript of somebody's home and it was being
+        // written with nothing said and nothing asked.
         var said = new CircleAI.Voice.UtteranceLog(
             global::Android.App.Application.Context
                 .GetExternalFilesDir(null)?.AbsolutePath);
@@ -388,8 +397,16 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
                 if (heard.Length > 0)
                 {
                     utterances++;
-                    Log.Info(Tag, Invariant(
-                        $"heard #{utterances} ({gate.LastStretch.TotalSeconds:F1} s): \"{heard}\""));
+
+                    // EVERY UTTERANCE, WORD FOR WORD, INTO LOGCAT - which is what this
+                    // was, on any phone that had the streaming recogniser on it, with
+                    // nothing said and nothing asked. The count and the length are what
+                    // the line is read for ("is it decoding anything at all"); the words
+                    // need the deliberate act (CaptureDump's marker) that the audio dump
+                    // beside them has always needed.
+                    Log.Info(Tag, CircleAI.Voice.VoiceTrace.KeepsSpeech
+                        ? Invariant($"heard #{utterances} ({gate.LastStretch.TotalSeconds:F1} s): \"{heard}\"")
+                        : Invariant($"heard #{utterances} ({gate.LastStretch.TotalSeconds:F1} s): {heard.Length} chars"));
 
                     // AND KEPT WHERE LOGCAT CANNOT ROLL IT AWAY. The line above
                     // survives about four minutes on this phone. The service

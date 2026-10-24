@@ -7,6 +7,7 @@ using CircleAI.Assistant;
 using CircleAI.Assistant.Device;
 using CircleAI.Assistant.Voice;   // FileTranscriptStore
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.LifecycleEvents;
 
 namespace CircleAI.Samples.App;
 
@@ -134,7 +135,19 @@ public static class MauiProgram
         builder.Services.AddSingleton<IWakePhrases>(sp =>
             new CircleAI.Client.LinkedWakePhrases((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
         builder.Services.AddSingleton<IShareTarget, AndroidShareTarget>();
-        builder.Services.AddSingleton<IWakeWord>(sp => new CircleAI.Client.LinkedWakeWord((CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+
+        // CIRCLE AI'S MICROPHONE IS ASKED FOR ON CIRCLE AI'S SCREEN. The wake word
+        // listens in the service, so the service's package is the one that needs
+        // RECORD_AUDIO, and only its own activity can raise that dialog. The wake
+        // screen, the settings switch and the setup tour start it for result from
+        // whatever is in front; the answer comes back through here.
+        builder.ConfigureLifecycleEvents(events => events.AddAndroid(android =>
+            android.OnActivityResult((_, requestCode, resultCode, _) =>
+                CircleAI.Client.ServiceMicrophone.Answered(requestCode, resultCode))));
+
+        builder.Services.AddSingleton<IWakeWord>(sp => new CircleAI.Client.LinkedWakeWord(
+            (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>(),
+            () => Microsoft.Maui.ApplicationModel.Platform.CurrentActivity));
         builder.Services.AddSingleton<ISettings, DeviceSettings>();
         // MAY THIS APP LISTEN. The assistant asks; this head knows how to get
         // the answer, because it is the thing with a screen. See IMicrophoneAccess.
@@ -150,7 +163,8 @@ public static class MauiProgram
         // foreground service and the notification that discloses the microphone.
         builder.Services.AddSingleton<IResidentAssistant>(sp =>
             new CircleAI.Client.LinkedResidentAssistant(
-                (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>()));
+                (CircleAI.Client.LinkedBrain)sp.GetRequiredService<IBrain>(),
+                () => Microsoft.Maui.ApplicationModel.Platform.CurrentActivity));
 
         // ONE MICROPHONE, SO ONE ANSWER TO WHAT IT IS DOING. Home's circle and the
         // middle of the tab bar are the same control offered twice, and each used to keep

@@ -143,6 +143,9 @@
 		<service android:name="ai.circle.ModelFetchService" tools:node="remove" />
 		<service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" />
 		<activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
+		<!-- The microphone screen is the service's too: it asks for the SERVICE's
+		     microphone, and this app starts the one in com.bhengubv.circleai.service. -->
+		<activity android:name="ai.circle.MicrophoneActivity" tools:node="remove" />
 		<receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
 		<receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />
 	</application>

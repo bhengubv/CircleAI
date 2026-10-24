@@ -68,7 +68,7 @@ internal sealed class FakeSetup : ISetup
     public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<TourStep>>([]);
 
-    public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult<bool?>(true);
 
     /// <summary>How many times the exemption screen was asked for.</summary>
     public int BackgroundAsks { get; private set; }

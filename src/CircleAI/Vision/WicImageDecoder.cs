@@ -42,7 +42,29 @@ internal static unsafe partial class WicImageDecoder
     private const int S_OK = 0;
     private const int S_FALSE = 1;
     private const int RPC_E_CHANGED_MODE = unchecked((int)0x80010106);
+    // ── when the CODEC is the problem, not the picture ───────────────────────
+    //
+    // WIC HAS THREE WAYS OF SAYING "YOU CANNOT HAVE THAT CODEC HERE" and only one of
+    // them was handled. The distinction between them is real and worth keeping - not
+    // installed, installed but would not start, registered wrongly - but every one of
+    // the three is a fact about the MACHINE, and not one of them is a fact about the
+    // bytes. Treating them as corrupt data sends whoever reads the message to look at
+    // the picture, which is the one place the problem is not.
+    //
+    // THIS COST A FULL TEST RUN TO FIND. On 2026-10-24 a WebP decode failed with
+    // 0x88982F8B under heavy load. That is COMPONENTINITIALIZEFAILURE - the WebP
+    // extension IS installed and registered, it just could not be started while the
+    // box was thrashing - and because only COMPONENTNOTFOUND (0x88982F50) was
+    // recognised, it fell through to Check and came back as InvalidDataException:
+    // "Windows could not decode 56 byte(s) as an image". The bytes were a valid
+    // 56-byte lossless WebP that the same machine decodes perfectly when it is quiet.
     private const int WINCODEC_ERR_COMPONENTNOTFOUND = unchecked((int)0x88982F50);
+
+    /// <summary>The codec is registered, but Windows could not start it.</summary>
+    private const int WINCODEC_ERR_COMPONENTINITIALIZEFAILURE = unchecked((int)0x88982F8B);
+
+    /// <summary>The codec is registered wrongly, so Windows will not use it.</summary>
+    private const int WINCODEC_ERR_INVALIDREGISTRATION = unchecked((int)0x88982F8A);
     private const uint COINIT_MULTITHREADED = 0x0;
     private const uint CLSCTX_INPROC_SERVER = 0x1;
     private const int WICDecodeMetadataCacheOnDemand = 0;
@@ -102,10 +124,10 @@ internal static unsafe partial class WicImageDecoder
                     throw new PlatformNotSupportedException(EncodedImage.NoCodec(kind,
                         $"this Windows has no Imaging Component (CoCreateInstance 0x{hr:X8})"));
 
-                Check(CallOut(factory, SlotFactoryCreateStream, &stream), "IWICImagingFactory::CreateStream", encoded.Length);
+                Check(CallOut(factory, SlotFactoryCreateStream, &stream), "IWICImagingFactory::CreateStream", encoded.Length, kind);
                 Check(((delegate* unmanaged[Stdcall]<void*, byte*, uint, int>)Slot(stream, SlotStreamInitializeFromMemory))(
                           stream, bytes, (uint)encoded.Length),
-                      "IWICStream::InitializeFromMemory", encoded.Length);
+                      "IWICStream::InitializeFromMemory", encoded.Length, kind);
 
                 // No vendor preference; metadata read only if asked for, which it never is.
                 hr = ((delegate* unmanaged[Stdcall]<void*, void*, Guid*, int, void**, int>)Slot(factory, SlotFactoryCreateDecoderFromStream))(
@@ -119,22 +141,22 @@ internal static unsafe partial class WicImageDecoder
                         $"{encoded.Length} byte(s) are not an image any codec on this Windows recognises"
                         + (kind == EncodedImageKind.Unknown ? "." : $", although they start like a {EncodedImage.Name(kind)}."));
                 }
-                Check(hr, "IWICImagingFactory::CreateDecoderFromStream", encoded.Length);
+                Check(hr, "IWICImagingFactory::CreateDecoderFromStream", encoded.Length, kind);
 
                 Check(((delegate* unmanaged[Stdcall]<void*, uint, void**, int>)Slot(decoder, SlotDecoderGetFrame))(decoder, 0, &frame),
-                      "IWICBitmapDecoder::GetFrame", encoded.Length);
+                      "IWICBitmapDecoder::GetFrame", encoded.Length, kind);
 
                 // Whatever the frame is - grey, palette, CMYK, BGRA - into 24-bit BGR. Alpha is
                 // dropped, as on android: every consumer here is a three-channel model.
-                Check(CallOut(factory, SlotFactoryCreateFormatConverter, &converter), "IWICImagingFactory::CreateFormatConverter", encoded.Length);
+                Check(CallOut(factory, SlotFactoryCreateFormatConverter, &converter), "IWICImagingFactory::CreateFormatConverter", encoded.Length, kind);
                 var bgr = PixelFormat24bppBgr;
                 Check(((delegate* unmanaged[Stdcall]<void*, void*, Guid*, int, void*, double, int, int>)Slot(converter, SlotConverterInitialize))(
                           converter, frame, &bgr, WICBitmapDitherTypeNone, null, 0.0, WICBitmapPaletteTypeCustom),
-                      "IWICFormatConverter::Initialize", encoded.Length);
+                      "IWICFormatConverter::Initialize", encoded.Length, kind);
 
                 uint width = 0, height = 0;
                 Check(((delegate* unmanaged[Stdcall]<void*, uint*, uint*, int>)Slot(converter, SlotSourceGetSize))(converter, &width, &height),
-                      "IWICBitmapSource::GetSize", encoded.Length);
+                      "IWICBitmapSource::GetSize", encoded.Length, kind);
                 var size = (long)width * height * RasterImage.Channels;
                 if (width == 0 || height == 0 || size > int.MaxValue)
                     throw new InvalidDataException(
@@ -145,7 +167,7 @@ internal static unsafe partial class WicImageDecoder
                 {
                     Check(((delegate* unmanaged[Stdcall]<void*, void*, uint, uint, byte*, int>)Slot(converter, SlotSourceCopyPixels))(
                               converter, null, width * (uint)RasterImage.Channels, (uint)size, dst),
-                          "IWICBitmapSource::CopyPixels", encoded.Length);
+                          "IWICBitmapSource::CopyPixels", encoded.Length, kind);
                 }
 
                 // BGR to RGB in place: swap the outer two of every three.
@@ -193,11 +215,57 @@ internal static unsafe partial class WicImageDecoder
     private static string ExtensionFor(EncodedImageKind kind) =>
         kind == EncodedImageKind.WebP ? "WebP Image Extensions" : "HEIF Image Extensions";
 
-    private static void Check(int hr, string step, int length)
+    /// <summary>
+    /// Turns a failed HRESULT into the right exception: a missing or unusable codec is
+    /// the platform's problem, anything else is the picture's.
+    /// </summary>
+    /// <remarks>
+    /// TWO DIFFERENT ANSWERS AND CALLERS NEED TO TELL THEM APART. ImageDecoder.Decode
+    /// documents both - PlatformNotSupportedException for "this platform has no codec
+    /// for the format", InvalidDataException for "the bytes are not a decodable image" -
+    /// and a caller that catches the first to fall back to asking for a PNG got the
+    /// second instead, unhandled, on any machine whose codec would not start.
+    /// <para>
+    /// IT IS CHECKED HERE RATHER THAN AT ONE STEP because a codec is created lazily:
+    /// CreateDecoderFromStream can succeed and GetFrame or the format converter can
+    /// still come back with the same three codes. Every step funnels through here, so
+    /// this is the one place that has to know the difference.
+    /// </para>
+    /// </remarks>
+    private static void Check(int hr, string step, int length, EncodedImageKind kind)
     {
-        if (hr < 0)
-            throw new InvalidDataException(
-                $"Windows could not decode {length} byte(s) as an image: {step} returned 0x{hr:X8}.");
+        if (hr < 0) throw Explain(hr, step, length, kind);
+    }
+
+    /// <summary>
+    /// The exception a failed HRESULT deserves, without throwing it.
+    /// </summary>
+    /// <remarks>
+    /// SPLIT OUT SO THE RULE CAN BE TESTED ON ANY MACHINE. The reason this defect
+    /// survived is that the only test of it went through a real decode, so it asserted
+    /// whichever branch the box happened to allow: with the WebP extension working it
+    /// took the happy path and passed, and the mapping below was never exercised at
+    /// all. A test that has to arrange for a codec to fail in order to check what
+    /// happens when a codec fails is a test of the machine, not of this code.
+    /// </remarks>
+    internal static Exception Explain(int hr, string step, int length, EncodedImageKind kind)
+    {
+        // ALL THREE, AND COMPONENTNOTFOUND IS NOT AMBIGUOUS BY THE TIME IT GETS HERE.
+        // That code means "no component matched", which at the CreateDecoderFromStream
+        // step is genuinely about the bytes - no codec on this Windows recognised them -
+        // and that one step handles it inline, above, before calling this, with the
+        // kind-aware message it needs. Every OTHER step has already been handed a
+        // decoder: a missing component at GetFrame or at the format converter is a hole
+        // in this Windows' imaging stack, and says nothing at all about the picture.
+        if (hr is WINCODEC_ERR_COMPONENTNOTFOUND
+               or WINCODEC_ERR_COMPONENTINITIALIZEFAILURE
+               or WINCODEC_ERR_INVALIDREGISTRATION)
+            return new PlatformNotSupportedException(EncodedImage.NoCodec(kind,
+                $"this Windows could not give us a usable {EncodedImage.Name(kind)} codec "
+              + $"({step} returned 0x{hr:X8}) - a reboot, or repairing the codec's package, may fix it"));
+
+        return new InvalidDataException(
+            $"Windows could not decode {length} byte(s) as an image: {step} returned 0x{hr:X8}.");
     }
 
     /// <summary>The address in slot <paramref name="slot"/> of a COM object's vtable.</summary>

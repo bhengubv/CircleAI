@@ -37,6 +37,25 @@ public static class VoiceTrace
     /// <summary>True when anything is listening, so callers can skip formatting.</summary>
     public static bool Enabled => Sink is not null;
 
+    /// <summary>
+    /// Whether a trace line may carry words that were actually spoken near the phone.
+    /// </summary>
+    /// <remarks>
+    /// OFF BY DEFAULT, AND IT WAS ON FOR EVERYBODY. The keyword spotter's stall trace
+    /// prints the three real tokens the model weighed on the frame it is waiting on -
+    /// which is the single most useful line in diagnosing a wake word that will not
+    /// fire, and is also fragments of whatever was being said in the room. The lines
+    /// go to logcat, and logcat goes into bug reports and adb captures; the product
+    /// promises that the listening is not kept.
+    /// <para>
+    /// So the diagnostic keeps the half that names the PHRASE - what the graph wants
+    /// next, and how the model scored it - and drops the half that names what was
+    /// heard instead, unless a host has deliberately turned it on. The host sets this
+    /// from the same marker file CaptureDump uses (CaptureDump.Asked).
+    /// </para>
+    /// </remarks>
+    public static bool KeepsSpeech { get; set; }
+
     /// <summary>Writes one line, if anything is listening.</summary>
     /// <remarks>
     /// Swallows sink failures. A diagnostic that can break the thing it is

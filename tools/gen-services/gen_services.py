@@ -50,7 +50,13 @@ INFRASTRUCTURE = (
     "ModelAlignment",
     "Networking", "Observability", "Observer", "Operator", "Orchestration",
     "Personality", "Pipelines", "Plugins", "Realtime", "Runtime", "SDD",
-    "SelfBench", "Security", "Simulation", "Skills", "Spatial", "Speech", "Sync",
+    # SelfKnowledge is what the device has observed about ITSELF - what each model
+    # cost here, how fast it answered, whether it survived the load - kept in the
+    # long-term memory so the next launch does not start from the shipped
+    # assumptions. Plumbing by the same test as Assistant: nobody picks it off a
+    # list, it is what the picking is done WITH. It is also not a second answer to
+    # "what can this software do" - capabilities.json is that, and stays that.
+    "SelfBench", "SelfKnowledge", "Security", "Simulation", "Skills", "Spatial", "Speech", "Sync",
     "Telephony", "Testing", "Tools", "Voice", "Wearable", "Web",
     "WindowsAutomation", "Workflows", "Vision.Cloud", "Companion", "Knowledge",
     "Memory", "Collaboration", "MediaHub", "Commerce.Integration",

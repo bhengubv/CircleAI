@@ -86,10 +86,10 @@ public sealed class OnnxImageGenerator : IImageGenerator
         // here rather than per image — the 98%-of-runtime lesson from the TTS work.
         var opts = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
 
-        _unet = new InferenceSession(model.UnetPath, opts);
-        _vae  = new InferenceSession(model.VaeDecoderPath, opts);
+        _unet = CircleAI.Voice.OnnxSessionFactory.Create(model.UnetPath, opts);
+        _vae  = CircleAI.Voice.OnnxSessionFactory.Create(model.VaeDecoderPath, opts);
         _textEncoder = model.TextEncoderPath is { Length: > 0 } t && File.Exists(t)
-            ? new InferenceSession(t, opts)
+            ? CircleAI.Voice.OnnxSessionFactory.Create(t, opts)
             : null;
 
         SupportedSizes = DeriveSupportedSizes();

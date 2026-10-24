@@ -74,6 +74,46 @@ public static class LinkIpc
     public const string ScopeExtra = "com.bhengubv.circleai.extra.SCOPE";
 
     /// <summary>
+    /// The intent action a client launches (FOR RESULT) to give Circle AI the
+    /// microphone. Same shape as <see cref="ConsentAction"/> and for the same
+    /// reasons: only an Activity can raise a runtime permission dialog, the service
+    /// has no other screen, and starting it for result is how the OS says which app
+    /// is asking. <c>Result.Ok</c> means the microphone is now allowed.
+    /// </summary>
+    public const string MicrophoneAction = "com.bhengubv.circleai.action.MICROPHONE";
+
+    /// <summary>
+    /// Intent extra (bool) on a <see cref="MicrophoneAction"/> launch: asked without
+    /// anybody pressing anything, so the screen must not take the person to Settings
+    /// when the phone will not ask again. Only a press earns that.
+    /// </summary>
+    public const string QuietExtra = "com.bhengubv.circleai.extra.QUIET";
+
+    /// <summary>
+    /// Intent extra (bool) on a <see cref="MicrophoneAction"/> launch: this launch is
+    /// here to START LISTENING from a visible screen, not only to ask for the
+    /// permission. The screen does its work and finishes without showing anything.
+    /// </summary>
+    /// <remarks>
+    /// THE PERMISSION WAS NEVER THE WHOLE JOB. From Android 11 a foreground service
+    /// started from the BACKGROUND is given no microphone - refused on 11, silenced on
+    /// 12 and 13, and from 14 the microphone-typed start is rejected outright - and
+    /// every start the service makes by itself is a background start: the resume when
+    /// its process comes up, the ResidentStart verb, and the fetch's "your wake bundle
+    /// just landed". So a phone could have the permission, the bundle and the owner's
+    /// yes, and still hear silence while reporting that it was listening.
+    /// <para>
+    /// What the platform wants is a start made while an activity of the SERVICE's own
+    /// package is up, which latches the while-in-use allowance for the life of the
+    /// service record. This app has exactly one such activity, and it is the
+    /// microphone screen - so a client that is in front and hears NeedsForeground
+    /// launches it with this extra, and it starts the listener on its way through.
+    /// Nothing is asked and nothing is shown: the permission is already held.
+    /// </para>
+    /// </remarks>
+    public const string StartExtra = "com.bhengubv.circleai.extra.START_LISTENING";
+
+    /// <summary>
     /// The package that hosts the CircleAI service a client binds to. A client
     /// resolves the service by this package plus <see cref="BindAction"/>.
     /// </summary>

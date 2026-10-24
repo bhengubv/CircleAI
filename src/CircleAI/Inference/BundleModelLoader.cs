@@ -131,11 +131,45 @@ public sealed class BundleModelLoader : IModelLoader
         return await DownloadCoreAsync(modelName, rich, CancellationToken.None).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Raised in this process when a model that was not here has finished arriving,
+    /// whichever path fetched it. The argument is the registry name.
+    /// </summary>
+    /// <remarks>
+    /// "START THE WAKE WORD WHEN ITS BUNDLE LANDS" WAS WIRED INTO ONE CALLER OF FOUR.
+    /// The first fix for a phone that could not hear its name after a fresh install
+    /// passed a callback to the two loops in ModelSetup, which the background fetch
+    /// service drives - and the repo has three other pull paths: setup started from
+    /// the app (DeviceSetup -> FirstRun.RunAsync), the abilities row's Turn on, and
+    /// anything that calls this loader directly. A bundle landed by any of them
+    /// started nothing, and the phone stayed deaf with every byte it needed on disk:
+    /// the exact defect the callback was added to end, surviving in the paths it did
+    /// not reach.
+    /// <para>
+    /// Every download in this process goes through <see cref="DownloadModelAsync(string, IProgress{CircleAI.Core.DownloadProgress}, CancellationToken)"/>
+    /// and through InFlightDownloads, so this is the one place that can say it once
+    /// and say it for all of them. Static because the thing that wants to know - the
+    /// resident listener - cannot hold a reference to a loader built inside a loop it
+    /// has never heard of.
+    /// </para>
+    /// <para>
+    /// Raised only when the model was ABSENT before the call: re-verifying a bundle
+    /// that is already on disk is not an arrival, and a listener that restarts the
+    /// microphone on every census would be its own bug. Subscribers are called one by
+    /// one and an exception from one is swallowed - the bytes are down either way.
+    /// </para>
+    /// </remarks>
+    public static event Action<string>? ModelLanded;
+
     private Task<string> DownloadCoreAsync(
         string modelName, IProgress<CircleAI.Core.DownloadProgress>? progress, CancellationToken ct)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+
+        // ASKED BEFORE THE BYTES MOVE, so "it landed" cannot be confused with "it was
+        // already here": this method is also how a present bundle is re-verified.
+        var wasHere = ModelPresent(modelName);
 
         // ONE DOWNLOAD PER MODEL IN THIS PROCESS - see InFlightDownloads. Two paths
         // in the service, each with its own loader, fetched the same 548 MB at once on
@@ -145,7 +179,28 @@ public sealed class BundleModelLoader : IModelLoader
             key, progress,
             relay => DownloadOnceAsync(modelName, relay, ct),
             joined: _ => Console.WriteLine(
-                $"CIRCLEAI-DOWNLOAD {modelName}: joined the download already in flight"));
+                $"CIRCLEAI-DOWNLOAD {modelName}: joined the download already in flight"),
+            completed: _ => { if (!wasHere) Arrived(modelName); });
+    }
+
+    /// <summary>Tell every listener that <paramref name="modelName"/> is here now.</summary>
+    private static void Arrived(string modelName)
+    {
+        var landed = ModelLanded;
+        if (landed is null) return;
+
+        foreach (var one in landed.GetInvocationList().Cast<Action<string>>())
+        {
+            try { one(modelName); }
+            catch (Exception ex)
+            {
+                // NAMED, NOT SWALLOWED SILENTLY. A listener that throws here means
+                // something that was waiting for this model did not start, and the
+                // download log is the only place that knows the model is on disk.
+                Console.WriteLine(
+                    $"CIRCLEAI-DOWNLOAD {modelName}: is here, and what was waiting for it failed: {ex.Message}");
+            }
+        }
     }
 
     private async Task<string> DownloadOnceAsync(
@@ -606,9 +661,46 @@ public sealed class BundleModelLoader : IModelLoader
                     return false;
 
                 var anchor = entry.BundleFiles!
-                    .FirstOrDefault(f => string.Equals(f.Name, AnchorFileName, StringComparison.OrdinalIgnoreCase))
-                    ?? entry.BundleFiles!.OrderByDescending(f => f.SizeBytes).FirstOrDefault();
-                if (anchor is null) return false;
+                    .FirstOrDefault(f => string.Equals(f.Name, AnchorFileName, StringComparison.OrdinalIgnoreCase));
+
+                // EVERY FILE, FOR A BUNDLE WHOSE PARTS ARE ALL LOAD-BEARING - AND THAT
+                // IS WHY A WAKE WORD COULD BE "DOWNLOADED" AND REFUSE TO START FOR EVER.
+                //
+                // With no llm.mnn.weight to anchor on, this used to take the LARGEST
+                // catalogued file as the stand-in for the whole bundle. For
+                // KWS-Zipformer-HeyB that is kws-hey-b/encoder.int8.onnx, 4,807,159 of
+                // the bundle's 6.76 MB - and it is also the FIRST file fetched. Files
+                // arrive one at a time and are renamed into place as they finish, so
+                // from the moment the encoder landed the bundle read as PRESENT with
+                // 1.96 MB still owed: the decoder, the joiner, tokens.txt, bpe.model
+                // and keywords.txt.
+                //
+                // Anything that then interrupted it - a kill, a cancel, a network that
+                // outlasted both URLs' retries, Android 15's dataSync time limit - left
+                // a state nothing could get out of. ModelPartial returns false whenever
+                // this returns true, so the resume skipped it; NotStarted excludes
+                // anything "present", so the fetch skipped it; the first-run plan saw
+                // its wake-word slot filled, so setup skipped it. Meanwhile the spotter
+                // opens all five files and the listener refused with "the wake word is
+                // not downloaded - set CircleAI up and it will fetch what it needs",
+                // advice no path on the phone would ever act on.
+                //
+                // ONE File.Exists AND ONE LENGTH PER ENTRY. For the six-file speech and
+                // keyword bundles that is microseconds, and it is the same rule the
+                // anchor already used, applied to every file instead of one.
+                //
+                // THE MNN ANCHOR KEEPS THE OLD RULE on purpose: a chat bundle's weight
+                // file IS the bundle - 470 MB to 21 GB of it - its siblings are
+                // kilobytes of config, and config.json is already checked above. The
+                // trap this fixes needs a bundle whose small files matter, which is
+                // exactly the set that has no weight file.
+                if (anchor is null)
+                    return entry.BundleFiles!.Count > 0
+                        && entry.BundleFiles!.All(f =>
+                        {
+                            var part = new FileInfo(Path.Combine(modelDir, f.Name));
+                            return part.Exists && part.Length >= f.SizeBytes;
+                        });
 
                 var info = new FileInfo(Path.Combine(modelDir, anchor.Name));
                 return info.Exists && info.Length >= anchor.SizeBytes;

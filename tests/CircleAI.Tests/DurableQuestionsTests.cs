@@ -95,12 +95,40 @@ public sealed class DurableQuestionsTests : IDisposable
         TextWriteInterval = TimeSpan.Zero, LoadWaitBudget = TimeSpan.FromSeconds(10),
     };
 
-    // THIRTY SECONDS, NOT TEN. Every ask here is answered in milliseconds by a fake brain,
-    // but the store is SQLite with synchronous=FULL, and on 2026-10-17 the Windows box's
-    // disk sat at 0% idle for hours: three of these waits ran out ("did not finish:
-    // Running", "...: Queued") and the same tests passed 46 of 46 the moment it was quiet.
-    // A wait that cannot tell a slow disk from a hang is not testing the queue.
-    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
+    // TWO MINUTES, NOT THIRTY SECONDS, AND THIRTY SECONDS WAS ITSELF A RAISE FROM TEN.
+    // Every ask here is answered in milliseconds by a fake brain, but the store is SQLite
+    // with synchronous=FULL and these waits are a WALL-CLOCK budget, so what they really
+    // measure on a loaded box is whether the thread pool and the disk got round to us.
+    //
+    // 2026-10-17: the Windows box's disk sat at 0% idle for hours, three of these waits
+    // ran out ("did not finish: Running", "...: Queued"), and the same tests passed 46 of
+    // 46 the moment it was quiet. Ten seconds became thirty.
+    //
+    // 2026-10-24: thirty was not enough either, on a suite that has since grown to 5,092
+    // per leg. Both full legs failed exactly one of these and PASSED 76 of 76 when the
+    // class was run on its own:
+    //     net9    5091/5092 in 22m17s   A_question_asked_while_the_model_loads...  3m08s
+    //     net10   5091/5092 in 28m58s   A_retry_with_the_same_request_id...       12m40s
+    // A DIFFERENT method each leg, which is the signature of starvation rather than a
+    // defect - a broken queue fails the same test twice - and one method burning twelve
+    // minutes forty against a thirty-second budget is a process that was never scheduled,
+    // not a queue that answered wrongly.
+    //
+    // RAISING THIS IS FREE WHEN THE BOX IS HEALTHY. A wait that is satisfied returns the
+    // moment the record goes final; the budget is only ever spent on a run that is
+    // already in trouble. That asymmetry is the whole argument for being generous here,
+    // and it is why two minutes is not "four times slower tests" - alone, this class
+    // still finishes in 3m21s.
+    //
+    // AND IT IS STILL A BUDGET, NOT A HANG. Two minutes is far enough under the 45-minute
+    // TestSessionTimeout in bhengu.runsettings that a genuine deadlock in RequestCoordinator
+    // surfaces as a failing test with a name on it, rather than as an aborted run - which is
+    // the one outcome that tells you nothing. A wait that cannot tell a slow disk from a hang
+    // is not testing the queue; a wait so long the run aborts is not testing anything.
+    //
+    // THE REAL FIX IS NOT THIS NUMBER. never-hog-the-dev-workstation says full runs
+    // belong on the Mac or .201; this only stops the dev box lying about why it failed.
+    private static readonly TimeSpan Patience = TimeSpan.FromMinutes(2);
 
     private static async Task<AskRecord> Final(RequestCoordinator front, string caller, string id)
     {
@@ -356,12 +384,18 @@ public sealed class DurableQuestionsTests : IDisposable
         Assert.Equal(ServiceLimits.Default.MaxTokensTyped, brain.Jobs[1].MaxTokens);
     }
 
+    // THE PRODUCTION WAIT, NOT Quick's ten seconds: these are about how long a question
+    // waits for a brain that cannot start, and Quick would end every one of them at once.
+    private static ServiceLimits Patient => Quick with { LoadWaitBudget = ServiceLimits.Default.LoadWaitBudget };
+
     [Fact]
     public async Task No_model_on_the_phone_waits_for_setup_rather_than_failing()
     {
+        // SETUP WILL BRING ONE: the supervisor says so with a 30 s RetryAfter, the value
+        // it reports while the brain is still downloading. Inside its wait, it waits.
         using var store = Store();
-        var brain = new NoModelBrain();
-        await using var front = new RequestCoordinator(store, brain, Quick);
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(30));
+        await using var front = new RequestCoordinator(store, brain, Patient);
         front.Start();
 
         var ask = front.Submit(Ask("q")).Record!;
@@ -372,12 +406,213 @@ public sealed class DurableQuestionsTests : IDisposable
         Assert.Equal(FailureKind.NotInstalled, now.Kind);
     }
 
-    private sealed class NoModelBrain : IBrainWorker
+    [Fact]
+    public async Task A_brain_nothing_will_bring_is_said_at_once_not_waited_for()
     {
-        public BrainWorkerStatus Status { get; } = BrainWorkerStatus.NotStarted(DateTimeOffset.UtcNow) with { Phase = BrainPhase.NoModel };
+        // THE P30 ON 2026-10-23: every model on the phone refused, RetryAfter null ("not
+        // without being asked") - and the question sat on typing dots for three minutes.
+        using var store = Store();
+        var brain = new NoModelBrain(retryAfter: null);
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", front.Submit(Ask("q")).Record!.Id);
+        Assert.Equal(AskState.Failed, done.State);
+        Assert.Equal(FailureKind.NotInstalled, done.Kind);
+        Assert.Equal(AskSentences.NoBrainItCanRun, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_question_waiting_for_setup_is_told_why_once_its_wait_is_used_up()
+    {
+        // Asked 100 s ago - past its 90 s wait, inside the 3-minute deadline - so it is
+        // told, with the setup sentence, not expired with "I couldn't get to that in time".
+        using var store = Store();
+        var asked = store.Insert(AskRecord.Accept("setup", Ask("q"), DateTimeOffset.UtcNow.AddSeconds(-100)));
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(30));
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", asked.Id);
+        Assert.Equal(AskState.Failed, done.State);
+        Assert.Equal(FailureKind.NotInstalled, done.Kind);
+        Assert.Equal(AskSentences.StillSettingUp, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_phone_short_of_memory_is_told_why_once_its_wait_is_used_up()
+    {
+        // A SHORT PAUSE, SO THE TIME ALREADY WAITED IS WHAT DECIDES: 100 s asked + 5 s more
+        // is past the 90 s share; the same pause on a fresh question is waited for (below).
+        using var store = Store();
+        var asked = store.Insert(AskRecord.Accept("memory", Ask("q"), DateTimeOffset.UtcNow.AddSeconds(-100)));
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(5), FailureKind.OutOfMemory);
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", asked.Id);
+        Assert.Equal(AskState.Failed, done.State);
+        Assert.Equal(FailureKind.OutOfMemory, done.Kind);
+        Assert.Equal(AskSentences.TooShortOfMemory, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_fresh_question_waits_out_a_short_memory_pause()
+    {
+        using var store = Store();
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(5), FailureKind.OutOfMemory);
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var paused = await Settled(front, front.Submit(Ask("q")).Record!);
+        Assert.Equal(AskState.Paused, paused.State);
+        Assert.Equal(FailureKind.OutOfMemory, paused.Kind);
+    }
+
+    [Fact]
+    public async Task What_is_left_of_a_pause_is_what_a_question_waits_for_not_its_whole_length()
+    {
+        // A two-minute hold-off that began 110 s ago has ten seconds left: a question asked
+        // now waits for those, and is not told "close a few apps" for a brain about to load.
+        using var store = Store();
+        var brain = new NoModelBrain(TimeSpan.FromMinutes(2), FailureKind.OutOfMemory,
+                                     since: DateTimeOffset.UtcNow.AddSeconds(-110));
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var paused = await Settled(front, front.Submit(Ask("q")).Record!);
+        Assert.Equal(AskState.Paused, paused.State);
+    }
+
+    [Fact]
+    public async Task A_load_that_stopped_with_nothing_to_say_why_is_told_once_its_wait_is_used_up()
+    {
+        // THE P30'S COMMONEST LOAD DEATH: the inference process dies alone, mid-load, and
+        // API 29 says nothing - Unknown. It used to wait out the 3-minute deadline in silence.
+        using var store = Store();
+        var asked = store.Insert(AskRecord.Accept("unknown", Ask("q"), DateTimeOffset.UtcNow.AddSeconds(-100)));
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(30), FailureKind.Unknown);
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", asked.Id);
+        Assert.Equal(AskState.Failed, done.State);
+        Assert.Equal(FailureKind.Unknown, done.Kind);
+        Assert.Equal(AskSentences.StoppedWhileStarting, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_question_cut_off_mid_answer_that_expires_is_not_told_the_brain_would_not_start()
+    {
+        // It had started: "while I was getting my brain ready" would not be true of it.
+        using var store = Store();
+        var asked = store.Insert(AskRecord.Accept("cut", Ask("q"), DateTimeOffset.UtcNow.AddMinutes(-4)));
+        store.Update(asked.Id, r => r with
+        {
+            State = AskState.Paused, Kind = FailureKind.AndroidStopped, StartedAt = DateTimeOffset.UtcNow.AddMinutes(-3),
+        });
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(30));
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", asked.Id);
+        Assert.Equal(AskState.Expired, done.State);
+        Assert.Equal(FailureKind.TimedOut, done.Kind);
+        Assert.Equal(AskSentences.Expired, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_load_that_failed_at_once_is_tried_again_by_the_next_question()
+    {
+        // THE DESKTOP SERVICE KEPT ITS FIRST FAILED LOAD: a start that threw before its first
+        // await stored a faulted task, and every later question got the same "not installed"
+        // until the process restarted - after the model it was waiting for had landed.
+        var calls = 0;
+        await using var worker = new CircleAI.Hosting.InProcessBrainWorker(_ =>
+        {
+            if (++calls == 1) throw new ModelNotInstalledException("Qwen3.5-0.8B-MNN", damaged: false);
+            return Task.FromResult(new CircleAI.Hosting.InProcessBrain(new FakeAIService(), "Qwen3.5-0.8B-MNN"));
+        });
+
+        var first = await Assert.ThrowsAsync<BrainWorkerException>(() => worker.EnsureReadyAsync(CancellationToken.None));
+        Assert.Equal(FailureKind.NotInstalled, first.Failure.Kind);
+
+        await worker.EnsureReadyAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Equal(2, calls);
+        Assert.Equal(BrainPhase.Ready, worker.Status.Phase);
+    }
+
+    /// <summary>The ask once the coordinator has dealt with it at least once - waiting, paused or final.</summary>
+    private static async Task<AskRecord> Settled(RequestCoordinator front, AskRecord ask)
+    {
+        AskRecord? now = ask;
+        for (var i = 0; i < 50 && now!.State is AskState.Queued or AskState.WaitingForModel; i++)
+            now = await front.WaitForChangeAsync("app:1", ask.Id, now.Seq, TimeSpan.FromSeconds(1), CancellationToken.None);
+        return now!;
+    }
+
+    [Fact]
+    public async Task A_hold_off_longer_than_the_wait_is_told_at_once()
+    {
+        // Asked just now, but the brain will not be tried for two minutes and the question
+        // waits ninety seconds: waiting would only end in the same sentence, later.
+        using var store = Store();
+        var brain = new NoModelBrain(TimeSpan.FromMinutes(2), FailureKind.OutOfMemory);
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", front.Submit(Ask("q")).Record!.Id);
+        Assert.Equal(AskState.Failed, done.State);
+        Assert.Equal(AskSentences.TooShortOfMemory, done.Sentence);
+    }
+
+    [Fact]
+    public async Task A_question_that_expires_waiting_on_the_brain_keeps_its_reason()
+    {
+        using var store = Store();
+        var asked = store.Insert(AskRecord.Accept("late", Ask("q"), DateTimeOffset.UtcNow.AddMinutes(-4)));
+        store.Update(asked.Id, r => r with { State = AskState.WaitingForSetup, Kind = FailureKind.NotInstalled });
+        var brain = new NoModelBrain(TimeSpan.FromSeconds(30));
+        await using var front = new RequestCoordinator(store, brain, Patient);
+        front.Start();
+
+        var done = await Final(front, "app:1", asked.Id);
+        Assert.Equal(AskState.Expired, done.State);
+        Assert.Equal(FailureKind.NotInstalled, done.Kind);
+        Assert.Equal(AskSentences.StillSettingUp, done.Sentence);
+    }
+
+    [Theory]
+    [InlineData(FailureKind.NotInstalled, false)]
+    [InlineData(FailureKind.NotInstalled, true)]
+    [InlineData(FailureKind.OutOfMemory, false)]
+    [InlineData(FailureKind.AndroidStopped, false)]
+    [InlineData(FailureKind.AndroidTimeout, false)]
+    [InlineData(FailureKind.ModelFilesDamaged, false)]
+    [InlineData(FailureKind.Unknown, false)]
+    public void A_question_the_brain_could_not_start_for_ends_on_words_that_promise_nothing(FailureKind kind, bool nothingComing)
+    {
+        // It ENDS the question, so "I'll answer then" would be a promise nobody keeps; and
+        // it is read out by the voice too, so no machinery and no numbers.
+        var said = AskSentences.BrainCouldNotStart(kind, nothingComing);
+        Assert.False(string.IsNullOrWhiteSpace(said));
+        Assert.DoesNotContain("I'll answer", said, StringComparison.OrdinalIgnoreCase);
+        foreach (var jargon in new[] { "MNN", "Qwen", "GB", "model", "process", "memory killer" })
+            Assert.DoesNotContain(jargon, said, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"\d", said);
+    }
+
+    private sealed class NoModelBrain(TimeSpan? retryAfter = null, FailureKind kind = FailureKind.NotInstalled,
+                                      DateTimeOffset? since = null) : IBrainWorker
+    {
+        public BrainWorkerStatus Status { get; } = BrainWorkerStatus.NotStarted(since ?? DateTimeOffset.UtcNow) with
+        {
+            Phase = kind == FailureKind.NotInstalled ? BrainPhase.NoModel : BrainPhase.Paused,
+            RetryAfter = retryAfter,
+        };
         public event EventHandler<BrainWorkerStatus>? StatusChanged { add { } remove { } }
         public Task EnsureReadyAsync(CancellationToken ct) => Task.FromException(new BrainWorkerException(
-            new Failure(FailureKind.NotInstalled, Certainty.Certain, WorkPhase.Load, null, "none", "none", DateTimeOffset.UtcNow)));
+            new Failure(kind, Certainty.Certain, WorkPhase.Load, null, "none", "none", DateTimeOffset.UtcNow)));
         public async IAsyncEnumerable<BrainChunk> GenerateAsync(BrainJob job, [EnumeratorCancellation] CancellationToken ct)
         {
             await Task.Yield();
@@ -428,6 +663,7 @@ public sealed class DurableQuestionsTests : IDisposable
     }
 
     [Theory]
+    [InlineData(FailureKind.Unknown)]
     [InlineData(FailureKind.AndroidStopped)]
     [InlineData(FailureKind.AndroidTimeout)]
     [InlineData(FailureKind.OutOfMemory)]
@@ -440,6 +676,61 @@ public sealed class DurableQuestionsTests : IDisposable
             Assert.False(FailurePolicy.CountsAgainstModel(kind, phase));
         Assert.True(FailurePolicy.CountsAgainstModel(FailureKind.NativeWorkerCrashed, WorkPhase.Load));
     }
+
+    [Fact]
+    public void The_p30_load_deaths_of_2026_10_23_are_not_held_against_the_model()
+    {
+        // iAware took the service and the inference process together, for memory, while
+        // Qwen3.5-0.8B loaded. API 29: no exit record, no reboot, no update. Twice.
+        var f = FailureClassifier.Classify(new ExitFacts(29, WorkPhase.Load, "Qwen3.5-0.8B-MNN", DateTimeOffset.UtcNow,
+                                                         BootChanged: false, PackageUpdated: false));
+        Assert.Equal(FailureKind.Unknown, f.Kind);
+        Assert.False(f.CountsAgainstModel);
+        Assert.True(FailurePolicy.HoldsOff(f.Kind, f.Phase), "the next load must wait instead");
+    }
+
+    [Fact]
+    public void A_crash_with_evidence_still_counts_against_the_model()
+    {
+        foreach (var facts in new[]
+                 {
+                     new ExitFacts(34, WorkPhase.Load, "m", DateTimeOffset.UtcNow, ExitReason: 5),
+                     new ExitFacts(34, WorkPhase.Load, "m", DateTimeOffset.UtcNow, ExitReason: 2, ExitStatus: 11),
+                     new ExitFacts(29, WorkPhase.Load, "m", DateTimeOffset.UtcNow, WorkerDiedAlone: true, CrashBufferShowsSignal: true),
+                 })
+        {
+            var f = FailureClassifier.Classify(facts);
+            Assert.Equal(FailureKind.NativeWorkerCrashed, f.Kind);
+            Assert.True(f.CountsAgainstModel);
+            Assert.False(FailurePolicy.HoldsOff(f.Kind, f.Phase), "a crash is a strike, not a wait");
+        }
+    }
+
+    [Fact]
+    public void A_load_that_keeps_stopping_waits_longer_each_time_and_never_for_ever()
+    {
+        Assert.Equal(TimeSpan.Zero, FailurePolicy.HoldOff(0));
+        var last = TimeSpan.Zero;
+        for (var n = 1; n <= 12; n++)
+        {
+            var wait = FailurePolicy.HoldOff(n);
+            Assert.True(wait > TimeSpan.Zero, $"stop {n} must wait");
+            Assert.True(wait >= last, $"stop {n} waits less than stop {n - 1}");
+            Assert.True(wait <= TimeSpan.FromHours(1), $"stop {n} waits more than an hour");
+            last = wait;
+        }
+    }
+
+    [Theory]
+    [InlineData(FailureKind.Unknown, WorkPhase.Load, true)]
+    [InlineData(FailureKind.Unknown, WorkPhase.Warm, true)]
+    [InlineData(FailureKind.OutOfMemory, WorkPhase.Load, true)]
+    [InlineData(FailureKind.Unknown, WorkPhase.Decode, false)]
+    [InlineData(FailureKind.OutOfMemory, WorkPhase.Idle, false)]
+    [InlineData(FailureKind.AndroidStopped, WorkPhase.Load, false)]
+    [InlineData(FailureKind.FaultInjected, WorkPhase.Load, false)]
+    public void Only_a_load_stopped_unexplained_or_for_memory_holds_the_next_one_off(FailureKind kind, WorkPhase phase, bool holds)
+        => Assert.Equal(holds, FailurePolicy.HoldsOff(kind, phase));
 
     // ── readiness ────────────────────────────────────────────────────────────
 

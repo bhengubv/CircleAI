@@ -123,6 +123,17 @@ public sealed partial class CircleNeuronService : Service
     /// </remarks>
     public static System.Threading.Tasks.Task? CatalogueReady { get; set; }
 
+    /// <summary>
+    /// Completes when start-up housekeeping has finished - the abandoned-download sweep
+    /// and the catalogue's refresh, assessment and tidy. Set by the host; every model pull
+    /// waits for it (ModelSetup.WaitForHousekeepingAsync). Null means nothing to wait for.
+    /// </summary>
+    /// <remarks>
+    /// NOT <see cref="CatalogueReady"/>, which the brain waits on and which stays free of
+    /// the sweep: the sweep walks gigabytes, and the brain's wait is bounded at 30 s.
+    /// </remarks>
+    public static System.Threading.Tasks.Task? HousekeepingDone { get; set; }
+
     /// <summary>The longest a brain start waits for <see cref="CatalogueReady"/>.</summary>
     /// <remarks>
     /// Bounded because a catalogue that never finishes must not cost the phone its
@@ -500,6 +511,10 @@ public sealed partial class CircleNeuronService : Service
     {
         _running = this;
 
+        // Whether this service is actually in the foreground when this method ends.
+        // Read below: a notification is only renewed for a service that got there.
+        var foreground = true;
+
         // Notification FIRST. Android gives a startForegroundService caller a few
         // seconds to call StartForeground or it kills the process with an ANR —
         // and building a Neuron takes far longer than that budget.
@@ -510,22 +525,62 @@ public sealed partial class CircleNeuronService : Service
 
             if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
             {
+                var claimed = ClaimedTypes();
                 try
                 {
-                    StartForeground(NotificationId, notification, ClaimedTypes());
+                    StartForeground(NotificationId, notification, claimed);
                 }
                 catch (Exception typed)
                 {
-                    // GOING FOREGROUND MATTERS MORE THAN THE TYPES. If the
-                    // platform refuses the types - a constant it does not know,
-                    // a permission it wants first - the untyped call still puts
-                    // this service in the foreground, and a narrower declaration
-                    // is far better than the ANR that follows not going
-                    // foreground at all.
+                    // GOING FOREGROUND MATTERS MORE THAN THE TYPES - AND THE
+                    // PARAMETERLESS CALL IS NOT "UNTYPED".
+                    //
+                    // That is what this did, and the comment it did it under was
+                    // wrong: Service.startForeground(int, Notification) passes
+                    // FOREGROUND_SERVICE_TYPE_MANIFEST, which Android expands to
+                    // every type the MANIFEST declares - here dataSync AND
+                    // microphone. So the one case this fallback exists for, a
+                    // microphone-typed start refused from the background on Android
+                    // 14 or later, was retried with the same microphone bit in it
+                    // (checked first, highest bit down) and threw again. The service
+                    // then never went foreground at all: no disclosure notification,
+                    // no FGS protection, and nothing started.
+                    //
+                    // dataSync EXPLICITLY. Holding the models resident is genuinely
+                    // dataSync work, it needs no permission, and it is a type this
+                    // service may claim from the background - so the brain keeps its
+                    // notification and its protection while the microphone waits for
+                    // a visible screen (ResidentListeningControl.CanBeHeard).
                     global::Android.Util.Log.Warn(LogTag,
-                        "StartForeground refused the claimed types (" + typed.Message
-                        + ") - going foreground untyped");
-                    StartForeground(NotificationId, notification);
+                        "StartForeground refused " + claimed + " (" + typed.Message + ")");
+
+                    var narrower = claimed != global::Android.Content.PM.ForegroundService.TypeDataSync;
+                    try
+                    {
+                        if (narrower)
+                        {
+                            global::Android.Util.Log.Warn(LogTag,
+                                "going foreground as dataSync instead - the models stay resident; "
+                                + "the microphone needs a start made while a screen of ours is up");
+                            StartForeground(NotificationId, notification,
+                                global::Android.Content.PM.ForegroundService.TypeDataSync);
+                        }
+                        else
+                        {
+                            // dataSync itself was refused. Android 15+ does that for a
+                            // dataSync start from BOOT_COMPLETED, and for a daily budget
+                            // already spent. The manifest set is the last thing to try.
+                            global::Android.Util.Log.Warn(LogTag,
+                                "dataSync itself was refused - trying the manifest's types");
+                            StartForeground(NotificationId, notification);
+                        }
+                    }
+                    catch (Exception narrowed)
+                    {
+                        global::Android.Util.Log.Warn(LogTag,
+                            "that was refused too (" + narrowed.Message + ") - trying the manifest's types");
+                        StartForeground(NotificationId, notification);
+                    }
                 }
             }
             else
@@ -542,15 +597,39 @@ public sealed partial class CircleNeuronService : Service
             // visible evidence appeared.
             global::Android.Util.Log.Error(LogTag, "could not go foreground: " + ex);
             Status = $"could not go foreground: {ex.Message}";
-            State  = ServiceState.Failed;
-            return StartCommandResult.Sticky;
+
+            // AND THE BRAIN IS NOT THE THING THAT FAILED.
+            //
+            // This set State = Failed, which is the word for "this service tried to
+            // load a model and gave up" - it is what CircleNeuronConnection and
+            // ColdTurn read as "stop waiting, it will never answer". A foreground
+            // type the platform refused says nothing whatever about the model, and
+            // conflating the two turned one refused microphone claim into a device
+            // that answered no questions at all until it was restarted.
+            //
+            // So the service carries on without foreground protection, which is
+            // worse than with it and far better than not loading a brain: Android
+            // may freeze or kill this process, and the sticky restart below is what
+            // brings it back. The readiness report is the brain's own voice and is
+            // left to say what the brain is doing.
+            global::Android.Util.Log.Warn(LogTag,
+                "carrying on without foreground protection - the models still load, "
+                + "and Android may freeze or reclaim this process at any time");
+
+            // NOT A RETURN. Everything below this point is what the brain is built
+            // from - the memory probe, connectivity, the pressure callbacks - and
+            // returning here skipped all of it, so a refused foreground type left
+            // the model selector reading the GC heap limit and sizing the phone like
+            // a wearable. Only the notification renewal is skipped, and that is the
+            // one thing that would have been a lie.
+            foreground = false;
         }
 
         // ONLY ONCE THE SERVICE IS ACTUALLY IN THE FOREGROUND. Renewing a
         // notification for a service that failed to start would keep the shade
         // claiming a microphone that was refused - the same lie this mechanism
         // exists to end, told from the other direction.
-        KeepNotificationAlive();
+        if (foreground) KeepNotificationAlive();
 
         // The probe before the brain. Everything the Neuron decides about which
         // models fit is read off DeviceProbe, so measuring the phone has to happen

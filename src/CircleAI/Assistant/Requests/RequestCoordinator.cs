@@ -387,7 +387,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         foreach (var e in overdue)
         {
             _log($"ask {e.Id} expired after {(now - e.CreatedAt).TotalSeconds:0} s waiting");
-            Finish(e.Id, AskState.Expired, FailureKind.TimedOut, AskSentences.Expired, keepText: false);
+            Expire(_store.Get(e.Id), e.Id);
         }
     }
 
@@ -403,7 +403,7 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
         var turnCame = _clock.GetUtcNow();
         if (Overdue(entry, turnCame))
         {
-            Finish(ask.Id, AskState.Expired, FailureKind.TimedOut, AskSentences.Expired, keepText: false);
+            Expire(ask, ask.Id);
             return;
         }
 
@@ -557,7 +557,40 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
     private void OnLoadFailed(Entry entry, Failure failure)
     {
         entry.LoadFailures++;
-        var retryAfter = _worker.Status.RetryAfter ?? TimeSpan.FromSeconds(15);
+        var now = _clock.GetUtcNow();
+        var status = _worker.Status;
+
+        // WHAT IS LEFT OF THE WAIT, NOT ITS FULL LENGTH. The worker writes its status once,
+        // when the failure happens, and answers every question after that from it - so a
+        // two-minute hold-off read 100 s in is twenty seconds away, not two minutes.
+        var left = status.RetryAfter is { } wait ? status.Since + wait - now : TimeSpan.FromSeconds(15);
+        var retryAfter = left > TimeSpan.FromSeconds(1) ? left : TimeSpan.FromSeconds(1);
+
+        // TOLD, NOT WAITED ON FOR EVER. A question the brain could not start for used to
+        // wait here with no end but the queue's deadline, and a waiting question's
+        // sentence never reaches the app: on the P30 on 2026-10-23 the typing dots ran for
+        // three minutes while every model on the phone was refused, and the person was
+        // told nothing. Now it ends, with the reason, when nothing will change by itself,
+        // or when the next try would land past its share of the wait. A brain still
+        // loading or still downloading inside that share is still waited for.
+        if (EndsWhenTheBrainCannotStart(failure.Kind))
+        {
+            var nothingComing = failure.Kind == FailureKind.NotInstalled && status.RetryAfter is null;
+            var next = failure.Kind switch
+            {
+                FailureKind.NotInstalled      => TimeSpan.FromSeconds(30),   // the waits below, as they are
+                FailureKind.ModelFilesDamaged => TimeSpan.FromSeconds(60),
+                _                             => retryAfter,
+            };
+            if (nothingComing || now - entry.CreatedAt + next > PatienceFor(entry.Lane))
+            {
+                Finish(entry.Id, AskState.Failed, failure.Kind,
+                       AskSentences.BrainCouldNotStart(failure.Kind, nothingComing), keepText: false);
+                _log($"ask {entry.Id} told: the brain could not start ({failure.Kind}{(nothingComing ? ", nothing to wait for" : "")})");
+                return;
+            }
+        }
+
         _log($"ask {entry.Id} waits: the brain could not start ({failure.Kind})");
 
         switch (failure.Kind)
@@ -582,6 +615,42 @@ public sealed class RequestCoordinator : IAskFront, IAsyncDisposable
             Wait(entry, AskState.Paused, failure.Kind, AskSentences.For(failure.Kind), null, retryAfter);
         else
             Finish(entry.Id, AskState.Failed, failure.Kind, AskSentences.For(failure.Kind), keepText: false);
+    }
+
+    /// <summary>The kinds a question waits on for a while, then is told the brain could not start.</summary>
+    /// <remarks>
+    /// UNKNOWN IS ONE OF THEM: the inference process dying alone mid-load with nothing to
+    /// say why - the P30's commonest load death - is classified Unknown, and it reaches
+    /// here only from a load. NOT A MISSING PERMISSION: that waits on a person, who may be
+    /// on the consent screen that very moment, and it keeps its own wait.
+    /// </remarks>
+    private static bool EndsWhenTheBrainCannotStart(FailureKind kind) =>
+        kind is FailureKind.NotInstalled or FailureKind.OutOfMemory or FailureKind.AndroidStopped
+             or FailureKind.AndroidTimeout or FailureKind.ModelFilesDamaged or FailureKind.Unknown;
+
+    /// <summary>How long a question waits for a brain that cannot start, before it is told why.</summary>
+    /// <remarks>
+    /// THE LOAD WAIT, COUNTED FROM WHEN IT WAS ASKED - the saved time, so a service killed
+    /// and restarted in the middle does not start the count again. A background question
+    /// keeps its lane's own, longer deadline.
+    /// </remarks>
+    private TimeSpan PatienceFor(AskLane lane) =>
+        lane == AskLane.Background ? _limits.BackgroundQueueDeadline : _limits.LoadWaitBudget;
+
+    /// <summary>End a question that waited too long - with the reason it waited, when there was one.</summary>
+    /// <remarks>
+    /// "I couldn't get to that in time" threw away the one thing a person could act on,
+    /// for a question that waited all along on a brain that could not start. ONLY A
+    /// QUESTION NEVER STARTED: one cut off mid-answer carries a kind too, and "while I was
+    /// getting my brain ready" would not be true of it.
+    /// </remarks>
+    private void Expire(AskRecord? record, string id)
+    {
+        var waitedOn = record is { StartedAt: null } ? record.Kind : null;
+        if (waitedOn is { } kind && EndsWhenTheBrainCannotStart(kind))
+            Finish(id, AskState.Expired, kind, AskSentences.BrainCouldNotStart(kind), keepText: false);
+        else
+            Finish(id, AskState.Expired, FailureKind.TimedOut, AskSentences.Expired, keepText: false);
     }
 
     private void OnGenerationFailed(Entry entry, AskRecord ask, Failure failure)

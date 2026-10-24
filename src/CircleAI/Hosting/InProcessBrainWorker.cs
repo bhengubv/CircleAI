@@ -68,9 +68,16 @@ public sealed class InProcessBrainWorker : IBrainWorker
             {
                 if (_status.Phase == BrainPhase.Failed && _clock.GetUtcNow() < _retryAt && _status.LastFailure is { } last)
                     throw new BrainWorkerException(last);
-                _loading = LoadAsync();
+
+                // A LOAD THAT FAILED BEFORE ITS FIRST AWAIT has already run its catch, which
+                // cleared _loading - so storing it here kept a failed load for good, and no
+                // load was tried again until the process restarted: the desktop service
+                // answered "not installed" after the model it was waiting for had landed.
+                var started = LoadAsync();
+                _loading = started.IsCompleted ? null : started;
+                loading = started;
             }
-            loading = _loading;
+            else loading = _loading;
         }
 
         // EVERY CALLER WAITS ON THE SAME LOAD, and a caller that stops waiting does not

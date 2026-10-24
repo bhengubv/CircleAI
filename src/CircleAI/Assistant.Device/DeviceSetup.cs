@@ -289,6 +289,11 @@ public sealed class DeviceSetup : ISetup
 
             _run = Task.Run(async () =>
             {
+                // HOUSEKEEPING BEFORE PULLING MODELS: this is a pull path too, started from
+                // the app, and it used to plan before the catalogue had been assessed.
+                await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+                    CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }, ct).ConfigureAwait(false);
+
                 using var registry = new ModelRegistryService();
                 using var loader = new BundleModelLoader(StorageDir, registry);
                 // declined, for the same reason as above: this is the call that
@@ -358,7 +363,7 @@ public sealed class DeviceSetup : ISetup
     };
 
     /// <inheritdoc />
-    public async Task<bool> AllowMicrophoneAsync(CancellationToken ct = default)
+    public async Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default)
     {
         return await _microphone.GrantedAsync().ConfigureAwait(false);
     }
@@ -526,9 +531,14 @@ public sealed class DeviceSetup : ISetup
 
             // "#microphone", not "wake". A label that says "allow" has to allow,
             // not travel somewhere that happens to ask on arrival.
+            //
+            // AND THE WORDS COME FROM ONE PLACE NOW. This said "Nothing is kept",
+            // which is the claim the review of 2026-10-23 found to be false in five
+            // places at once: the listening is not kept, and what you ASK is - for
+            // seven days, with its answer. MicrophoneAsk owns both halves.
             Offer("Let it hear you",
-                  "The microphone is only used when you talk to it. Nothing is kept.",
-                  "Allow the microphone", "#microphone", 20);
+                  MicrophoneAsk.SoundNotKept + " " + MicrophoneAsk.AsksKept,
+                  MicrophoneAsk.Action, MicrophoneAsk.Route, 20);
 
             // NAMELESS ON PURPOSE, because this screen does not own the phrase and
             // naming it here has already drifted once. It said "Hey B" while the
@@ -555,7 +565,7 @@ public sealed class DeviceSetup : ISetup
             Offer("Keep it awake",
                   "This phone stops apps in the background. Allowing it to run means "
                 + "it can still hear you later.",
-                  "Allow it to run", "#background", 40);
+                  "Allow it to run", TourActions.BackgroundRoute, 40);
 
             Offer("Build your CV while you wait",
                   "Answer a few questions and it writes one for you.",

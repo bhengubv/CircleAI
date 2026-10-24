@@ -34,11 +34,28 @@ endif()
 # ── Per-platform MNN library + include resolution ────────────────────────
 
 if(WIN32)
-    # Windows bundle: lib/x64/Release/Dynamic/MD/{MNN.dll,MNN.lib}
-    set(MNN_LIB_DIR     "${MNN_ROOT}/lib/x64/Release/Dynamic/MD")
+    # Windows bundle: lib/<arch>/Release/Dynamic/MD/{MNN.dll,MNN.lib}
+    #
+    # The arch segment used to be hardcoded "x64", which made a Win32 build
+    # silently link the 64-bit import library. Follow the generator platform
+    # instead so -A Win32 looks for a 32-bit MNN and fails with a path when
+    # there is none, rather than producing a shim that cannot load.
+    #
+    # Alibaba's own Windows bundles are x64 ONLY (checked 3.3.0 - 3.6.1, every
+    # Windows asset is windows_x64), so MNN_WIN_ARCH is a hook for an MNN built
+    # from source for Win32 - point MNN_ROOT at that build's install tree.
+    if(DEFINED MNN_WIN_ARCH)
+        # caller knows better - honour it verbatim
+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(MNN_WIN_ARCH "Win32")
+    else()
+        set(MNN_WIN_ARCH "x64")
+    endif()
+    set(MNN_LIB_DIR     "${MNN_ROOT}/lib/${MNN_WIN_ARCH}/Release/Dynamic/MD")
     set(MNN_LIB_FILE    "${MNN_LIB_DIR}/MNN.lib")
     set(MNN_DLL_FILE    "${MNN_LIB_DIR}/MNN.dll")
     set(MNN_INCLUDE_DIR "${MNN_ROOT}/include")
+    message(STATUS "mnnbridge: MNN_WIN_ARCH   = ${MNN_WIN_ARCH} (void* = ${CMAKE_SIZEOF_VOID_P} bytes)")
 elseif(APPLE)
     # macOS bundle: Dynamic/MNN.framework/Versions/A/{MNN, Headers}
     # iOS   bundle: Static/MNN.framework/{MNN, Headers}  (flat — no Versions/A)

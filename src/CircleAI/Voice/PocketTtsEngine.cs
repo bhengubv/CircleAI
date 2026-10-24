@@ -135,7 +135,7 @@ public sealed class PocketTtsEngine : ITtsEngine, IDisposable
         foreach (var name in candidates)
         {
             var path = Path.Combine(dir, name);
-            if (File.Exists(path)) return new InferenceSession(path, SessionOptions());
+            if (File.Exists(path)) return OnnxSessionFactory.Create(path, SessionOptions());
         }
         throw new FileNotFoundException(
             $"Pocket-TTS bundle at '{dir}' has none of: {string.Join(", ", candidates)}.");

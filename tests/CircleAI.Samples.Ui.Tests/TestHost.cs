@@ -115,7 +115,7 @@ internal sealed class FakeWakePhrases : IWakePhrases
 internal sealed class FakeWakeWord : IWakeWord
 {
     public Task ListenAsync(IProgress<WakeStatus> updates, CancellationToken ct) => Task.CompletedTask;
-    public Task<bool> RequestMicrophoneAsync() => Task.FromResult(true);
+    public Task<bool> RequestMicrophoneAsync(bool quietly = false) => Task.FromResult(true);
 }
 
 /// <summary>A container holding every service the shared UI can ask for.</summary>

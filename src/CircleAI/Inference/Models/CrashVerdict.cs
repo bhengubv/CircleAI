@@ -114,10 +114,12 @@ public static class CrashVerdict
     /// the person stopped it, the app was updated mid-load, a process it depended
     /// on died. Such a death is not counted against the model at all.
     /// <para>
-    /// A LOW-MEMORY KILL IS DELIBERATELY NOT ONE OF THESE. A model too big for the
-    /// phone dies by exactly that kill, on every load; exempting it would let that
-    /// model loop for ever and never be refused. Ambiguous deaths are what the
-    /// two-strike rule is for.
+    /// THE SUPERVISOR PASSES <c>!failure.CountsAgainstModel</c>, so since 2026-10-23 a
+    /// death nothing can explain is not counted either - only a crash with evidence is
+    /// (see FailurePolicy.CountsAgainstModel). A model too big for the phone, which dies
+    /// by the low-memory killer on every load, no longer loops for ever because of
+    /// that: each further load waits longer (FailurePolicy.HoldOff), and the fit check
+    /// keeps the ones that could never fit off the phone before any of this runs.
     /// </para>
     /// </param>
     public static string? Record(IModelCatalog? catalog, string? crumb, Action<string>? say = null,
@@ -213,6 +215,50 @@ public static class CrashVerdict
         {
             say?.Invoke("could not reconsider earlier refusals: " + ex.Message);
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// Give every model refused for stopping this phone ONE strike instead - run once,
+    /// when the rule that refused it changed.
+    /// </summary>
+    /// <returns>How many came back; -1 when it could not finish, so the caller tries again.</returns>
+    /// <remarks>
+    /// THE REFUSALS THE UNKNOWN RULE MADE ARE STILL WRITTEN. Until 2026-10-23 a death
+    /// nothing could explain, inside a load, was a strike and two refused the model - on
+    /// the P30 that was the low-memory killer twice, refusing the only brain. The rule
+    /// changed; the refusals it made did not, and nothing re-reads a refusal. They carry
+    /// <see cref="Reason"/> AND their strikes, so <see cref="Reconsider"/>, which only
+    /// matches refusals with none, leaves them alone.
+    /// <para>
+    /// NOT SAFE ON EVERY START, UNLIKE <see cref="Reconsider"/>. It cannot tell a refusal
+    /// the old rule made from one two native crashes earned, so run every start it would
+    /// give a model that really crashes the phone a fresh try each time. The caller runs
+    /// it once. Each model comes back on ONE strike, so a real crash refuses it again.
+    /// NEVER THROWS, for the same reason as <see cref="Record"/>.
+    /// </para>
+    /// </remarks>
+    public static int ReconsiderAmbiguousRefusals(IModelCatalog? catalog, Action<string>? say = null)
+    {
+        try
+        {
+            if (catalog is null) return 0;
+            var n = 0;
+            foreach (var a in catalog.AllAssessed())
+            {
+                if (!string.Equals(a.RefusedReason, Reason, StringComparison.Ordinal)) continue;
+                catalog.Pardon(a.Entry.Name);
+                catalog.Strike(a.Entry.Name);
+                n++;
+            }
+            if (n > 0)
+                say?.Invoke($"{n} model(s) refused for stopping this phone are back on one strike of {StrikesToRefuse}");
+            return n;
+        }
+        catch (Exception ex)
+        {
+            say?.Invoke("could not reconsider earlier refusals: " + ex.Message);
+            return -1;
         }
     }
 

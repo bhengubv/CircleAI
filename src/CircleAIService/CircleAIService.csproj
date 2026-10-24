@@ -65,8 +65,20 @@
 
     <!-- Android's versionCode. It MUST increase on every build somebody could install
          over, or the install is refused with no useful message. -->
-    <ApplicationVersion>60</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+    <ApplicationVersion>61</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
+
+    <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
+         32-bit one (armeabi-v7a + x86); without it, the 64-bit one (arm64-v8a + x86_64).
+         Android only: the Windows EXE takes its RuntimeIdentifier from the publish. -->
+    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' == '32'">android-arm;android-x86</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">android-arm64;android-x64</RuntimeIdentifiers>
+
+    <!-- The apps version themselves; 3.9.x in Directory.Build.props is the package's.
+         This is what the Windows EXE reports as its file and product version. -->
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
 
     <!-- Plain APK so `adb install` works without a bundletool step. Also: a Release
          -t:Install of an app bundle UNINSTALLS first and takes the downloaded models

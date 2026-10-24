@@ -125,9 +125,9 @@ public sealed class StreamingTranscriber : IDisposable
                 + $"{Path.GetFileName(enc.Path)} - running {(enc.IsQuantized ? "QUANTIZED" : "float")}.");
         }
 
-        _encoder = new InferenceSession(enc.Path, opts);
-        _decoder = new InferenceSession(dec.Path, opts);
-        _joiner  = new InferenceSession(joi.Path, opts);
+        _encoder = OnnxSessionFactory.Create(enc.Path, opts);
+        _decoder = OnnxSessionFactory.Create(dec.Path, opts);
+        _joiner  = OnnxSessionFactory.Create(joi.Path, opts);
 
         var meta = _encoder.ModelMetadata.CustomMetadataMap;
         _chunkFrames   = MetaInt(meta, "T", 45);

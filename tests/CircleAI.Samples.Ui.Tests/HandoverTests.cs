@@ -94,7 +94,7 @@ internal sealed class StagedSetup : ISetup
             [new TourStep("Try a language", "It speaks 74.", "Hear one", "languages")]);
     }
 
-    public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
+    public Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult<bool?>(true);
     public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(true);
     public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(true);
 

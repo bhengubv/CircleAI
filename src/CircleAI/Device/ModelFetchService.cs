@@ -60,6 +60,16 @@ public sealed class ModelFetchService : Service
     private static readonly object Gate = new();
     private static bool _busy;
 
+    /// <summary>True while bytes are moving.</summary>
+    /// <remarks>
+    /// Read by the hourly review, which has no reason to walk the model store to work
+    /// out that a fetch already in flight is fetching.
+    /// </remarks>
+    public static bool Fetching
+    {
+        get { lock (Gate) return _busy; }
+    }
+
     private CancellationTokenSource? _cancel;
 
     /// <summary>
@@ -172,12 +182,25 @@ public sealed class ModelFetchService : Service
                     return;
                 }
 
+                // HOUSEKEEPING BEFORE PULLING MODELS, on every run of this - including the
+                // restart Android makes of this sticky service in a new process, which
+                // nothing else gates.
+                await ModelSetup.WaitForHousekeepingAsync(CircleNeuronService.HousekeepingDone, Say, ct).ConfigureAwait(false);
+
                 var registry = new Core.Models.ModelRegistryService();
                 using var loader = new BundleModelLoader(root, registry);
 
                 // FINISH WHAT IS HALF DOWN FIRST. Bytes already on disk are the
                 // nearest thing to a completed promise, and leaving them to start
                 // something new is how a device ends up with six half-models.
+                // THE "A MODEL LANDED" HOOK IS NOT PASSED HERE ANY MORE, and that is
+                // the fix rather than a loss. It used to be handed to these two loops,
+                // which are this service's - and the repo has three other pull paths:
+                // setup started from the app, the abilities row's Turn on, and anything
+                // that calls the loader directly. A wake bundle landed by one of those
+                // started nothing. BundleModelLoader.ModelLanded is raised by every
+                // download in the process, and ServiceApplication subscribes to it
+                // once; see the remark on that event.
                 await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct).ConfigureAwait(false);
 
                 // THEN START WHAT WAS NEVER STARTED - the change the owner asked

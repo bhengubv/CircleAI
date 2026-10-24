@@ -272,20 +272,11 @@
     {
         if (_asking) return;
         _asking = true;
-        try
-        {
-            _granted = what switch
-            {
-                "#microphone" => await Wizard.AllowMicrophoneAsync()
-                    ? "It can hear you now."
-                    : "Not allowed. It can still be typed to.",
-                "#background" => await Wizard.AllowBackgroundAsync()
-                    ? null
-                    : "This phone has no screen for that. Find Circle AI in your "
-                    + "battery settings and allow it to run in the background.",
-                _ => null,
-            };
-        }
+
+        // THE MAPPING IS THE PRODUCT'S NOW. It lived here alone, and Home - which
+        // shows the same tour while a download runs - drew "#microphone" as a link
+        // that did nothing. TourActions is the one place both read.
+        try { _granted = await TourActions.RunAsync(Wizard, what); }
         finally { _asking = false; }
     }
 

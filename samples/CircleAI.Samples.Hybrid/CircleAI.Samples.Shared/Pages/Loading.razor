@@ -84,6 +84,39 @@
            phase - which this page used to render as a frozen countdown. *@
         <p class="loading-step">@p.Describe()</p>
     }
+
+    @*
+        THE ONE THING WORTH DOING WHILE IT DOWNLOADS, ON THE SCREEN THAT IS UP.
+
+        This screen covers the first part of the first-run download and hands over
+        the moment the phone can talk, so Home's tour - which is the same tour -
+        only appears after that. On the P30's fresh install on 2026-10-23 nothing
+        asked for Circle AI's microphone at all, and the wake word, on by default,
+        could not hear a thing.
+
+        WHY NOTHING ASKED, CORRECTED. The first note here blamed "the brain landing
+        last", and the code says otherwise: the plan is ordered voice, ears, brain
+        precisely so the handover is early. What actually held this screen up for
+        the whole download was that readiness was only re-read when the step INDEX
+        changed - see the progress callback - so the moment the ears landed was the
+        moment least likely to be noticed.
+
+        ONLY STEPS THAT ACT HERE. A link would leave mid-download and skip the
+        warm-up on the way out; those steps belong to Home's tour.
+    *@
+    @foreach (var step in _steps)
+    {
+        <div class="tour">
+            <div class="tour-title">@step.Title</div>
+            <div class="tour-body">@step.Body</div>
+            <button class="tour-action" disabled="@_acting"
+                    @onclick="() => Act(step.Route!)">@step.Action</button>
+        </div>
+    }
+    @if (_acted is { Length: > 0 })
+    {
+        <p class="loading-step">@_acted</p>
+    }
 </div>
 
 @code {
@@ -98,6 +131,12 @@
 
     /// <summary>When the census first painted, so every exit holds equally long.</summary>
     DateTimeOffset _shownAt;
+
+    /// <summary>When readiness was last asked whether the phone can talk yet.</summary>
+    DateTimeOffset _askedTalkable;
+
+    /// <summary>How often that question is worth asking. See the progress callback.</summary>
+    static readonly TimeSpan TalkableEvery = TimeSpan.FromSeconds(2);
 
     // HOW LONG THE CENSUS IS ON SCREEN, from first paint. Long enough to read a
     // short list and take it in - Aether's honesty screen is meant to be sat on,
@@ -144,6 +183,24 @@
         // Nothing missing: a receipt. Hold it long enough to read, then warm.
         if (_census is null || _census is { Total: > 0 } c && c.Present >= c.Total)
         {
+            // AND A PHONE THAT ALREADY HOLDS EVERYTHING IS STILL A PHONE WHOSE
+            // SERVICE MAY NEVER HAVE BEEN ASKED FOR THE MICROPHONE.
+            //
+            // The ask lived only on the download branch below, so the phones it never
+            // reached were exactly the ones that need it most: any phone updated in
+            // place - which is what `adb install -r` does, and what the deploy notes
+            // prescribe because it keeps the model store - arrives here with a
+            // complete census, leaves after two and a half seconds, and stays deaf.
+            // So does any phone where the first run's quiet ask was declined or
+            // dismissed, and any phone set up under an earlier pair.
+            //
+            // AWAITED, unlike the download branch's. This exit leaves in about 2.6 s
+            // and would otherwise take the card and the question with it. It costs
+            // nothing on every later launch: the question is asked once in an
+            // installation's life (OfferedOnce), and an empty tour from a linked
+            // service returns at once.
+            await OfferTourAsync();
+
             await HoldAtLeast(shownAt, ReadableMs);
             await LeaveAsync();
             return;
@@ -152,6 +209,152 @@
         // Something missing: fetch it behind the screen, census showing what is
         // here and what is coming.
         await FetchAsync(shownAt);
+    }
+
+    /// <summary>The tour steps that act on this screen. Empty until a part lands.</summary>
+    IReadOnlyList<TourStep> _steps = [];
+
+    /// <summary>Whether a step is doing its thing, so it cannot be pressed twice.</summary>
+    bool _acting;
+
+    /// <summary>What the last step did, in the person's words.</summary>
+    string? _acted;
+
+    /// <summary>
+    /// The tour for the wait, asked when the download starts - and the microphone
+    /// asked for once, on the person's behalf.
+    /// </summary>
+    /// <remarks>
+    /// AT THE START, NOT WHEN A PART LANDS. It was asked when a progress report moved
+    /// to a new item with time left on it, as Home does, and on the P30's fresh
+    /// install on 2026-10-23 that moment never came: the step that asks for the
+    /// microphone never reached this screen, and the wake word stayed deaf.
+    /// <para>
+    /// ASKED AGAIN UNTIL IT ANSWERS, because the first ask can come before the link
+    /// to the service is up, and the answer then is "approve the link", a place to go,
+    /// which this screen does not offer.
+    /// </para>
+    /// <para>
+    /// THEN THE MICROPHONE, WITHOUT A PRESS. The wake word is on by default, and an
+    /// "on" that waits for somebody to find a button is not on. So the screen says
+    /// why and the phone asks - its own Allow is the only question. A no leaves the
+    /// button for a second try; nothing is asked again on its own.
+    /// </para>
+    /// </remarks>
+    async Task OfferTourAsync()
+    {
+        for (var i = 0; i < 20 && !_left && _steps.Count == 0; i++)
+        {
+            var left = _progress?.Remaining is { } r && r > TimeSpan.Zero ? r : TimeSpan.FromMinutes(2);
+            await TourAsync(left);
+            if (_steps.Count > 0 || _left) break;
+
+            // AN EMPTY TOUR FROM A LINKED SERVICE IS THE ANSWER, NOT A MISS.
+            //
+            // The loop's only exit was "a step appeared", so a phone with nothing to
+            // offer - the microphone already allowed, which is most phones after the
+            // first run - probed for a full minute and said nothing about it. On the
+            // receipt branch above, which awaits this, that minute would have been
+            // spent holding somebody on a loading screen.
+            //
+            // The retry exists for ONE case: the first answer can arrive before the
+            // link to the service is up, and it is then "approve the link", a place to
+            // go, which this screen does not offer. Once the link IS up, an empty list
+            // is final.
+            if (await LinkedAsync())
+            {
+                if (_steps.Count == 0)
+                    Console.WriteLine("CIRCLEAI-LOADING tour: nothing to offer, and the service is linked");
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(3));
+        }
+
+        if (_left || !_steps.Any(s => s.Route == MicrophoneAsk.Route)) return;
+
+        _acting = true;
+        _acted = MicrophoneAsk.Announce;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            // THREE ANSWERS. Null is "nothing was answered" - this head cannot ask,
+            // the question has already been asked once in this installation's life, or
+            // the two-minute wait gave out with the dialog still on screen. It used to
+            // come back false and print "Not allowed. It can still be typed to." under
+            // a question the person had not answered yet.
+            var allowed = await Wizard.OfferMicrophoneAsync();
+            if (_left) return;
+
+            _acted = allowed switch
+            {
+                true  => MicrophoneAsk.Allowed,
+                false => MicrophoneAsk.NotAllowed,
+                null  => null,
+            };
+
+            // AND THE CARD GOES WHEN THERE IS NOTHING LEFT TO ASK FOR. It stayed under
+            // "It can hear you now.", still offering its button, for the rest of setup.
+            if (allowed == true) _steps = _steps.Where(s => s.Route != MicrophoneAsk.Route).ToList();
+        }
+        catch
+        {
+            // The button is still there; a failed ask is not a reason to stop a download.
+            if (!_left) _acted = null;
+        }
+        finally
+        {
+            _acting = false;
+            if (!_left) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Whether the service is installed and this app may use it.</summary>
+    /// <remarks>
+    /// Never throws: a question that cannot be answered means "keep trying", which is
+    /// the behaviour the retry loop had before it could ask at all.
+    /// </remarks>
+    async Task<bool> LinkedAsync()
+    {
+        try { return await Wizard.LinkApprovedAsync(); }
+        catch { return false; }
+    }
+
+    /// <summary>Ask for the tour, keeping only what can be done without leaving.</summary>
+    async Task TourAsync(TimeSpan left)
+    {
+        try
+        {
+            var all = await Wizard.TourAsync(left);
+            if (_left) return;
+            _steps = all.Where(s => s.Action is { Length: > 0 } && TourActions.ActsHere(s.Route)).ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // A tour that cannot be built is not a reason to stop a download.
+        }
+    }
+
+    /// <summary>Do what a "#" step names, here. The mapping is the product's, shared with Home and Setup.</summary>
+    async Task Act(string route)
+    {
+        if (_acting) return;
+        _acting = true;
+        try
+        {
+            var said = await TourActions.RunAsync(Wizard, route);
+
+            // The handover may have happened while the dialog was up.
+            if (_left) return;
+            _acted = said;
+
+            // AND THE STEP GOES ONCE IT IS DONE. A pressed yes left "Allow the
+            // microphone" on screen, enabled, under the sentence saying it had worked.
+            if (route == MicrophoneAsk.Route && said == MicrophoneAsk.Allowed)
+                _steps = _steps.Where(s => s.Route != MicrophoneAsk.Route).ToList();
+        }
+        finally { _acting = false; }
     }
 
     /// <summary>Re-read the census and repaint, so a just-completed row turns green.</summary>
@@ -197,13 +400,34 @@
                 lastIndex = report.Index;
                 // An item finished; re-census off the UI thread, then repaint.
                 _ = RefreshCensusAsync();
+            }
 
-                // ...and it may have been the one that made the phone usable.
+            // AND "CAN IT TALK YET" IS ASKED ON EVERY REPORT, NOT ONLY WHEN THE INDEX
+            // MOVES.
+            //
+            // It was asked only on an index change, and the comment above this screen
+            // blamed the long first run on "the brain landing last". That is not what
+            // the code does: the plan puts the voice and the ears FIRST precisely so
+            // this screen can hand over early, and the readiness that decides it was
+            // consulted only at a step boundary. A step boundary is also the one
+            // moment the ANSWER is least likely to have changed - the bytes of the
+            // step that just finished are what change it, and they land before the
+            // index moves.
+            //
+            // Throttled rather than free, because a report arrives several times a
+            // second and this reads the service across a link.
+            if (DateTimeOffset.UtcNow - _askedTalkable > TalkableEvery)
+            {
+                _askedTalkable = DateTimeOffset.UtcNow;
                 _ = HandOverIfTalkableAsync();
             }
 
             InvokeAsync(StateHasChanged);
         });
+
+        // Something to do with the wait, from the start of it. Not awaited: the run
+        // is the thing this screen waits for.
+        _ = OfferTourAsync();
 
         try { await Wizard.RunAsync(progress); }
         catch { /* a failed fetch leaves the census truthful: it is still missing */ }

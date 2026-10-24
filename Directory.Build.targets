@@ -307,4 +307,114 @@
              Text="[CircleAI] Release APK will be signed with alias '$(AndroidSigningKeyAlias)'. Verify the artefact with: apksigner verify --print-certs &lt;apk&gt;" />
   </Target>
 
+  <!--
+    A RID-SPECIFIC DESKTOP PUBLISH SHIPS EVERY OTHER PLATFORM'S NATIVES.
+    ──────────────────────────────────────────────────────────────────────────
+    CircleAI.csproj copies the native payload with one glob over
+    Inference/runtimes/**, Embeddings.Local/runtimes/** and Voice/runtimes/**.
+    That glob is deliberate and load-bearing - deleting it once left the build
+    green and twelve tests dying on "DllNotFoundException: mnnbridge" - but it
+    has no RID filter, because a NuGet PACKAGE wants every RID in it.
+
+    A publish is not a package. Measured 2026-10-24, `publish -r win-x86` and
+    `publish -r win-x64` of CircleAIService came out at 231 MB and 233 MB, and
+    the two directories carried an IDENTICAL runtimes/ tree: 14 RIDs including
+    android-arm64's libllama.so at 46 MB, both macOS dylibs, the iOS static
+    bridge, and the Linux .so set. None of it can load in a Windows process.
+
+    The win-x86 publish was the one that mattered. It shipped
+    runtimes/win-x64/native/MNN.dll - 8.3 MB of 64-bit code under a name the
+    resolver is looking for - so the artefact LOOKED complete. There is no
+    win-x86 MNN in the tree and none upstream to put there (see CIRCLEAI013),
+    and a person debugging that service would have found a file called MNN.dll
+    sitting exactly where it belongs and drawn the wrong conclusion.
+
+    NuGet's own RID assets need no help here: the SDK flattens the matching
+    RID to the publish root and drops the rest, which is why libsodium.dll and
+    onnxruntime.dll in the x86 publish are the x86 builds. Only the plain
+    content copies above survive, so only they need filtering.
+
+    PUBLISH ONLY. This touches ResolvedFileToPublish and nothing else - bin/
+    still gets every RID, so the test legs keep the host native they P/Invoke
+    and `dotnet pack` keeps all 14 in the package.
+
+    One sharp edge: the match is textual on the RID folder name, so a publish
+    using a NON-PORTABLE RID (win10-x64 rather than win-x64) would see
+    runtimes/win-x64/ as foreign and drop it. The prefix guard below keeps this
+    target off anything that is not a plain win-/linux-/osx- RID, and the
+    Message names every file removed so an over-eager drop is visible in the
+    log rather than discovered in the field.
+  -->
+  <Target Name="CircleAIDropForeignNativesFromDesktopPublish"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(RuntimeIdentifier)' != ''
+                     And '$(TargetPlatformIdentifier)' != 'android'
+                     And '$(TargetPlatformIdentifier)' != 'ios'
+                     And '$(TargetPlatformIdentifier)' != 'maccatalyst'
+                     And ( '$(RuntimeIdentifier)' == 'win-x64'   Or '$(RuntimeIdentifier)' == 'win-x86'
+                        Or '$(RuntimeIdentifier)' == 'win-arm64'
+                        Or '$(RuntimeIdentifier)' == 'linux-x64' Or '$(RuntimeIdentifier)' == 'linux-arm64'
+                        Or '$(RuntimeIdentifier)' == 'osx-x64'   Or '$(RuntimeIdentifier)' == 'osx-arm64' )">
+    <ItemGroup>
+      <_CircleAIForeignNative
+          Include="@(ResolvedFileToPublish)"
+          Condition="$([System.String]::Copy('%(RelativePath)').Replace('\','/').Contains('runtimes/'))
+                     And !$([System.String]::Copy('%(RelativePath)').Replace('\','/').Contains('runtimes/$(RuntimeIdentifier)/'))" />
+      <ResolvedFileToPublish Remove="@(_CircleAIForeignNative)" />
+    </ItemGroup>
+
+    <Message Importance="high"
+             Condition="'@(_CircleAIForeignNative)' != ''"
+             Text="[CircleAI] Publish is $(RuntimeIdentifier): dropped @(_CircleAIForeignNative->Count()) native(s) belonging to other RIDs." />
+    <Message Importance="normal"
+             Condition="'@(_CircleAIForeignNative)' != ''"
+             Text="[CircleAI]   dropped: %(_CircleAIForeignNative.RelativePath)" />
+  </Target>
+
+  <!--
+    A DESKTOP PUBLISH WITH NO MNN BRIDGE FOR ITS OWN RID CANNOT DO INFERENCE.
+    ──────────────────────────────────────────────────────────────────────────
+    The repo carries the native payload per RID under
+    src/CircleAI/Inference/runtimes/{RID}/native/. On 2026-10-24 that was
+    win-x64, linux-x64, linux-arm64, osx-x64, osx-arm64, android-arm,
+    android-arm64 and ios-arm64 - and nothing else. A `publish -r win-x86`
+    therefore produces a service that starts, serves, downloads models, and
+    then cannot load an engine.
+
+    Nothing said so. The six-artefact set built that day included a 231 MB
+    32-bit Windows service whose first model load was always going to fail,
+    and the build exited 0 with no warning of any kind. That is the same shape
+    of defect as an unsigned Release APK, which is what CIRCLEAI010-012 above
+    exist to catch, so it gets a code in the same band.
+
+    WHY THIS IS A WARNING AND NOT AN ERROR. A win-x86 MNN cannot simply be
+    added: Alibaba publishes no 32-bit Windows bundle in ANY release (checked
+    3.3.0 through 3.6.1 - every Windows asset is windows_x64), MNN's source is
+    not vendored here, and native/mnn-bridge builds the shim against a
+    prebuilt bundle. So the fix is an MNN source build for Win32, not a file
+    copy, and failing the build would only block a deliberate 32-bit publish
+    that someone may still want for the non-inference half of the service.
+
+    The day a win-x86 MNN lands in the tree this warning stops by itself,
+    because it checks the tree rather than a hardcoded list of RIDs.
+  -->
+  <Target Name="_CircleAIWarnNoInferenceForRid"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(RuntimeIdentifier)' != ''
+                     And '$(OutputType)' == 'Exe'
+                     And '$(TargetPlatformIdentifier)' != 'android'
+                     And '$(TargetPlatformIdentifier)' != 'ios'
+                     And '$(TargetPlatformIdentifier)' != 'maccatalyst'">
+    <PropertyGroup>
+      <_CircleAIBridgeName Condition="$(RuntimeIdentifier.StartsWith('win'))">mnnbridge.dll</_CircleAIBridgeName>
+      <_CircleAIBridgeName Condition="$(RuntimeIdentifier.StartsWith('osx'))">libmnnbridge.dylib</_CircleAIBridgeName>
+      <_CircleAIBridgeName Condition="'$(_CircleAIBridgeName)' == ''">libmnnbridge.so</_CircleAIBridgeName>
+      <_CircleAIBridgePath>$(MSBuildThisFileDirectory)src/CircleAI/Inference/runtimes/$(RuntimeIdentifier)/native/$(_CircleAIBridgeName)</_CircleAIBridgePath>
+    </PropertyGroup>
+
+    <Warning Code="CIRCLEAI013"
+             Condition="!Exists('$(_CircleAIBridgePath)')"
+             Text="[CircleAI] No $(_CircleAIBridgeName) for $(RuntimeIdentifier) at $(_CircleAIBridgePath). This publish will start, serve and download models, then fail on the first model load - on-device inference is UNAVAILABLE in it. For win-x86 specifically there is no upstream fix: Alibaba ships no 32-bit Windows MNN bundle in any release, so an MNN source build for Win32 is required. Everything in the service that is not inference still works." />
+  </Target>
+
 </Project>

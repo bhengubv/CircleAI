@@ -238,6 +238,7 @@ public sealed partial class CircleNeuronService
             // Asked and answered. Leaving this set would keep the shade telling
             // somebody to switch on the thing they just switched on.
             WaitingToBeAsked = false;
+            WaitingBecause   = null;
         }
         else LetTheCpuSleep();
 
@@ -292,6 +293,16 @@ public sealed partial class CircleNeuronService
     /// all day.
     /// </para>
     /// <para>
+    /// AND "NOTHING IS KEPT OR SENT" WAS STILL TOO BROAD, which the review of
+    /// 2026-10-23 is how we know. The listening keeps nothing - that part is exactly
+    /// what the code does. What you ASK it, once it has woken, is written to asks.db
+    /// with its answer and purged after seven days, so the shade was making a promise
+    /// about a feature two files away from the one it describes. The sentence is now
+    /// about the listening and nothing else, and MicrophoneAsk owns it - with the
+    /// other half of the truth, AsksKept, beside it for the screens that need to say
+    /// both.
+    /// </para>
+    /// <para>
     /// ONE OWNER FOR ONE SENTENCE, AND IT IS SEPARATE FROM THE STATUS LINE FOR THAT
     /// REASON. Notify composes this in over whatever a caller passed, so a status
     /// write cannot bury the disclosure; without a single source the two would be
@@ -301,14 +312,14 @@ public sealed partial class CircleNeuronService
     /// </remarks>
     internal static string? MicrophoneDisclosure() =>
         _listener is { IsListening: true } l
-            ? $"Listening for “{l.Describe}” — nothing is kept or sent"
+            ? CircleAI.Assistant.MicrophoneAsk.Shade(l.Describe)
             : null;
 
     /// <summary>What the ongoing notification should say when nobody has asked for one.</summary>
     internal static string ListeningNotificationText() =>
         MicrophoneDisclosure()
             ?? (WaitingToBeAsked
-                ? "Not listening since the phone restarted — tap to switch it back on"
+                ? CircleAI.Assistant.MicrophoneAsk.NotListening(WaitingBecause)
                 : "Ready");
 
     /// <summary>
@@ -333,6 +344,21 @@ public sealed partial class CircleNeuronService
     /// on before the restart. Cleared the moment listening actually starts, so
     /// the notification can never keep asking for something already done.
     /// </para>
+    /// <para>
+    /// AND BY THE LISTENER ITSELF, for the other cause. From Android 11 a start made
+    /// from the background is given no microphone, so a wake word can be wanted,
+    /// allowed, downloaded and still waiting - for a visible screen rather than for a
+    /// power cycle. Same shade line, same single tap, different <see cref="WaitingBecause"/>.
+    /// </para>
     /// </remarks>
     public static bool WaitingToBeAsked { get; set; }
+
+    /// <summary>Why it is waiting, as a fragment after "Not listening".</summary>
+    /// <remarks>
+    /// "SINCE THE PHONE RESTARTED" WAS HARDCODED INTO THE SHADE, and then a second
+    /// cause arrived that it describes wrongly. A person whose wake word is waiting
+    /// for a visible screen, told their phone had restarted, has been given a reason
+    /// that is not true and an action - rebooting - that does not help.
+    /// </remarks>
+    public static string? WaitingBecause { get; set; }
 }

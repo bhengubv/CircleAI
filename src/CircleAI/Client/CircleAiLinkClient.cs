@@ -152,6 +152,30 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
         return intent;
     }
 
+    /// <summary>
+    /// The intent to launch Circle AI's microphone screen. Start it with
+    /// <c>StartActivityForResult</c> from a foreground Activity, exactly like
+    /// <see cref="ConsentIntent"/>; <c>Result.Ok</c> means the microphone is allowed.
+    /// <c>ServiceMicrophone</c> does all of that for you.
+    /// </summary>
+    /// <param name="quietly">
+    /// Asked without anybody pressing anything: a phone that will not ask again is
+    /// left alone rather than taken to Settings.
+    /// </param>
+    /// <param name="startListening">
+    /// This launch is to START the wake word from a visible screen, which from
+    /// Android 11 is the only kind of start that is given a microphone. See
+    /// <see cref="LinkIpc.StartExtra"/>.
+    /// </param>
+    public static Intent MicrophoneIntent(bool quietly = false, bool startListening = false)
+    {
+        var intent = new Intent(LinkIpc.MicrophoneAction);
+        intent.SetPackage(LinkIpc.HostPackage);
+        intent.PutExtra(LinkIpc.QuietExtra, quietly);
+        intent.PutExtra(LinkIpc.StartExtra, startListening);
+        return intent;
+    }
+
     /// <summary>Bind the CircleAI link service. Null when it is not installed or
     /// the bind is refused.</summary>
     public static async Task<CircleAiLinkClient?> ConnectAsync(
@@ -507,6 +531,10 @@ public sealed class CircleAiLinkClient : Java.Lang.Object, IServiceConnection, I
     /// <summary>Stop listening.</summary>
     public Task<LinkRowsReply> ResidentStopAsync(CancellationToken ct = default)
         => VerbAsync(new LinkVerbRequest(LinkVerb.ResidentStop), ct);
+
+    /// <summary>Start listening only if the owner had it on. See <see cref="LinkVerb.ResidentResume"/>.</summary>
+    public Task<LinkRowsReply> ResidentResumeAsync(CancellationToken ct = default)
+        => VerbAsync(new LinkVerbRequest(LinkVerb.ResidentResume), ct);
 
     /// <summary>What this device can actually do: [title, blurb, state, bytes].</summary>
     public Task<LinkRowsReply> AbilitiesAsync(CancellationToken ct = default)

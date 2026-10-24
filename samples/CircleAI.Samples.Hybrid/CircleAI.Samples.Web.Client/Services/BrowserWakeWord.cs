@@ -14,7 +14,7 @@ namespace CircleAI.Samples.Web.Client.Services;
 public sealed class BrowserWakeWord : IWakeWord
 {
     /// <inheritdoc />
-    public Task<bool> RequestMicrophoneAsync() => Task.FromResult(false);
+    public Task<bool> RequestMicrophoneAsync(bool quietly = false) => Task.FromResult(false);
 
     /// <inheritdoc />
     public Task ListenAsync(IProgress<WakeStatus> updates, CancellationToken ct)

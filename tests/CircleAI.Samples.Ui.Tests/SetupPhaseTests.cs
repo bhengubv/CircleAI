@@ -64,7 +64,7 @@ public class SetupPhaseTests : TestContext
         public Task<IReadOnlyList<TourStep>> TourAsync(TimeSpan remaining, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<TourStep>>([]);
 
-        public Task<bool> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult(true);
+        public Task<bool?> AllowMicrophoneAsync(CancellationToken ct = default) => Task.FromResult<bool?>(true);
         public Task<bool> AllowBackgroundAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> BackgroundAllowedAsync(CancellationToken ct = default) => Task.FromResult(true);
 

@@ -121,7 +121,58 @@ public static class ModelChoice
         // half-fetched bundle is rejected here exactly as before. What is given
         // up is detecting a file of the right length with wrong bytes, and that
         // is a job for install and repair, not for every question somebody asks.
-        var installed = candidates.FirstOrDefault(m => loader.ModelPresent(m.Name));
+        // AND THE BEST OF THEM, NOT THE FIRST ONE IN THE FILE.
+        //
+        // This was FirstOrDefault over registry order, and registry order is not an
+        // opinion about anything. It is the same shape as the defect that had the P30
+        // running Qwen3-0.6B for a week - "the first entry in the registry" - which
+        // was fixed by RETIRING the old models rather than by fixing the rule, so it
+        // sat here waiting for a second live model to land beside the first. Today a
+        // phone holding Qwen3.5-0.8B and Qwen3.5-4B names the 0.8B because 0.8B is at
+        // index 78 and the 4B at index 80, and for no other reason. The hourly review
+        // makes that arrangement common rather than rare, because it fetches better
+        // models onto phones that can hold them.
+        //
+        // ONE RULE: is this the best model given the resources we have? So: the
+        // highest-ranked installed model THIS DEVICE CAN HOLD, ties to the smaller.
+        //
+        // COULD-EVER-HOLD, NOT FITS-NOW, and the distinction is the one this file
+        // already draws forty lines down: UsableRamGb comes off MemAvailable, which is
+        // whatever is spare this second, so judging installed models by it would name
+        // a different brain at nine in the morning and at midnight. CouldEverHold is
+        // the durable question and it is the one that keeps the 4B off the P30 -
+        // 3.8 GB declared against a 2.37 GB ceiling - which matters, because
+        // ModelOffer.Worth does NOT fit-check a chat model (it returns true at its
+        // Chat branch on purpose, so a tight moment cannot veto the only brain there
+        // is). Without this check, ranking would have named the 4B on the phone whose
+        // service it got killed.
+        //
+        // NOTHING HOLDABLE INSTALLED FALLS THROUGH, where it used to return the
+        // unholdable one. That is the Circle OS case this method's own remark
+        // describes - a complete 22.8 GB MoE named on the abilities screen while the
+        // service refused to load it - and it was still live for chat.
+        // AND WHAT THIS DEVICE HAS LEARNED OUTRANKS WHAT WE SHIPPED.
+        //
+        // QualityRank is an editorial opinion written when the registry entry was
+        // written: identical on every phone on earth, and unchanged by anything that
+        // has happened since. Ordering by it alone answers "which was the best model
+        // WHEN WE RELEASED IT", which is not the question.
+        //
+        // SelfModel is what the phone found out by running them - what each cost, how
+        // fast it answered, whether it survived the load. A model this handset has
+        // been killed by is not a candidate here however it is ranked, and a model
+        // that has actually run here beats one that has only ever been predicted to.
+        // Among equals the shipped rank still breaks the tie, because a prior is the
+        // right thing to start from and the wrong thing to finish on.
+        var self = CircleAI.SelfKnowledge.SelfModel.Current;
+
+        var installed = candidates
+            .Where(m => loader.ModelPresent(m.Name) && ModelFit.CouldEverHold(m, probe))
+            .Where(m => self?.About(m.Name).Refused != true)
+            .OrderByDescending(m => self?.About(m.Name).Proven == true)
+            .ThenByDescending(m => m.QualityRank)
+            .ThenBy(m => m.MinRamGb)
+            .FirstOrDefault();
         if (installed is not null) return installed;
 
         // WHAT TO OFFER, AND NOT FROM FREE RAM IF THERE IS ANYTHING BETTER.

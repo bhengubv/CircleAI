@@ -200,6 +200,125 @@ public sealed class CrashVerdictTests : IDisposable
     }
 
     [Fact]
+    public void Two_unexplained_load_deaths_on_api_29_never_refuse_the_brain()
+    {
+        // THE P30'S FRESH INSTALL ON 2026-10-23, as the supervisor judges it: iAware took
+        // both processes for memory mid-load, twice, and API 29 kept no record of why.
+        _cat.Upsert(Model("qwen35", 8));
+        var facts = new CircleAI.Assistant.Lifecycle.ExitFacts(29, CircleAI.Assistant.Lifecycle.WorkPhase.Load,
+            "qwen35", DateTimeOffset.UtcNow, BootChanged: false, PackageUpdated: false);
+
+        for (var i = 0; i < 2; i++)
+        {
+            var failure = CircleAI.Assistant.Lifecycle.FailureClassifier.Classify(facts);
+            CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add,
+                                killedByTheSystem: !failure.CountsAgainstModel);
+        }
+
+        Assert.False(_cat.Assessment("qwen35")!.Refused, "the only brain was refused for the phone's memory");
+        Assert.False(CrashVerdict.IsRefused(_cat, "qwen35"));
+    }
+
+    [Fact]
+    public void Two_crashes_with_evidence_still_refuse_the_model()
+    {
+        _cat.Upsert(Model("big", 16));
+        var facts = new CircleAI.Assistant.Lifecycle.ExitFacts(29, CircleAI.Assistant.Lifecycle.WorkPhase.Load,
+            "big", DateTimeOffset.UtcNow, WorkerDiedAlone: true, CrashBufferShowsSignal: true);
+
+        for (var i = 0; i < 2; i++)
+        {
+            var failure = CircleAI.Assistant.Lifecycle.FailureClassifier.Classify(facts);
+            CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("big"), _said.Add,
+                                killedByTheSystem: !failure.CountsAgainstModel);
+        }
+
+        Assert.True(_cat.Assessment("big")!.Refused);
+    }
+
+    [Fact]
+    public void A_refusal_the_unexplained_death_rule_made_comes_back_on_one_strike()
+    {
+        // WHAT A PHONE UPDATING FROM 3.9.1 MAY HOLD: refused with its two strikes, which
+        // Reconsider - matching only refusals with none - never looks at.
+        _cat.Upsert(Model("qwen35", 8));
+        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add);
+        CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add);
+        Assert.Equal(0, CrashVerdict.Reconsider(_cat, _said.Add));
+
+        Assert.Equal(1, CrashVerdict.ReconsiderAmbiguousRefusals(_cat, _said.Add));
+        Assert.False(_cat.Assessment("qwen35")!.Refused);
+
+        // ONE strike, not a pardon: a crash that counts refuses it again.
+        Assert.Equal("qwen35", CrashVerdict.Record(_cat, CrashVerdict.Breadcrumb("qwen35"), _said.Add));
+    }
+
+    [Fact]
+    public void Reconsidering_unexplained_refusals_never_touches_another_reason()
+    {
+        _cat.Upsert(Model("big", 16));
+        _cat.Refuse("big", "a person said no");
+
+        Assert.Equal(0, CrashVerdict.ReconsiderAmbiguousRefusals(_cat, _said.Add));
+        Assert.Equal("a person said no", _cat.Assessment("big")!.RefusedReason);
+        Assert.Equal(0, CrashVerdict.ReconsiderAmbiguousRefusals(null, _said.Add));
+    }
+
+    [Fact]
+    public void Reconsidering_that_could_not_finish_says_so_and_does_not_count_as_done()
+    {
+        // -1, NOT 0: "nothing to heal" and "could not get to it" must not look the same,
+        // or the run-once marker is written and the only brain stays refused for good.
+        var gone = new SqliteModelCatalog("Data Source=:memory:");
+        gone.Dispose();
+
+        Assert.Equal(-1, CrashVerdict.ReconsiderAmbiguousRefusals(gone, _said.Add));
+        Assert.Contains(_said, s => s.Contains("could not reconsider", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_supervisor_holds_a_stopped_load_off_and_heals_old_refusals_once()
+    {
+        // Android-only, so guarded at the source like the rest of the supervisor's wiring.
+        var supervisor = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            Root(), "src", "CircleAIService", "Droid", "Inference", "InferenceSupervisor.cs"));
+
+        var load    = supervisor.IndexOf("private async Task LoadAsync(string? forced)", StringComparison.Ordinal);
+        var gate    = supervisor.IndexOf("if (HeldOff(model) is { } held) throw HoldOffNow(", load, StringComparison.Ordinal);
+        var crumb   = supervisor.IndexOf("BeginRisky(_stateDir", load, StringComparison.Ordinal);
+        var loaded  = supervisor.IndexOf("CrashVerdict.Loaded(_catalogue(), model);", load, StringComparison.Ordinal);
+        var cleared = supervisor.IndexOf("ClearSetback(model);", load, StringComparison.Ordinal);
+        Assert.True(load >= 0 && gate > load, "no load waits out a hold-off");
+        Assert.True(crumb > gate, "the hold-off must come before the breadcrumb");
+        Assert.True(cleared > loaded, "a clean load must clear the hold-off");
+
+        var recover    = supervisor.IndexOf("public void RecoverFromPreviousRun()", StringComparison.Ordinal);
+        var reconsider = supervisor.IndexOf("CrashVerdict.Reconsider(", recover, StringComparison.Ordinal);
+        var once       = supervisor.IndexOf("ReconsiderAmbiguousRefusalsOnce();", recover, StringComparison.Ordinal);
+        var record     = supervisor.IndexOf("CrashVerdict.Record(", recover, StringComparison.Ordinal);
+        var setback    = supervisor.IndexOf("RecordSetback(model)", recover, StringComparison.Ordinal);
+        Assert.True(recover >= 0 && reconsider > recover && once > reconsider && record > once,
+                    "old refusals must be healed before the last death is recorded");
+        Assert.True(setback > record, "a death the main process did not survive must hold the next load off");
+        Assert.Contains("reconsidered-unexplained-deaths.txt", supervisor);
+        Assert.Contains("ReconsiderAmbiguousRefusals(catalogue, line => _log(line)) < 0) return;", supervisor);
+
+        // A worker's death keeps its breadcrumb until its verdict is written.
+        var died    = supervisor.IndexOf("catch (WorkerDiedException died)", load, StringComparison.Ordinal);
+        var fail    = supervisor.IndexOf("Fail(failure, model);", died, StringComparison.Ordinal);
+        var endRisk = supervisor.IndexOf("DeviceDiagnostics.EndRisky(_stateDir);", fail, StringComparison.Ordinal);
+        var nextCatch = supervisor.IndexOf("catch (BrainWorkerException ex)", died, StringComparison.Ordinal);
+        Assert.True(died > load && fail > died && endRisk > fail && endRisk < nextCatch,
+                    "the breadcrumb must outlive the classification of the death");
+
+        // A model only told to wait is not validated - and rejected for a week - meanwhile.
+        var validate = supervisor.IndexOf("public async Task<bool> ValidateCandidateIfDueAsync(", StringComparison.Ordinal);
+        var skip     = supervisor.IndexOf("if (HeldOff(candidate) is not null) return false;", validate, StringComparison.Ordinal);
+        var release  = supervisor.IndexOf("await ReleaseAsync(ct)", validate, StringComparison.Ordinal);
+        Assert.True(validate >= 0 && skip > validate && skip < release, "a held-off candidate must not be validated");
+    }
+
+    [Fact]
     public void The_service_that_loads_the_models_actually_runs_the_rule()
     {
         // THIS REPO'S SIGNATURE DEFECT is a rule that is written, tested and never

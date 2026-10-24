@@ -120,6 +120,13 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
 
         var tag = language ?? _spoken?.Current ?? "en";
 
+        // HOUSEKEEPING BEFORE PULLING MODELS: a voice that is not on the phone yet is
+        // downloaded by the render below. Nothing to wait for once start-up is done, and
+        // never more than the brain's own 30 s: somebody is waiting to hear this.
+        await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+            CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }, ct,
+            atMost: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+
         // RENDER, DO NOT PLAY. DeviceVoiceHost.SayAsync would put this out of THIS
         // app's loudspeaker, which is the wrong one: the person is looking at the
         // client, and the client is the process that knows whether its screen is on
@@ -180,6 +187,12 @@ public sealed class ServiceSpeech : ILinkSpeech, IAsyncDisposable
         try
         {
             if (_listener is not null) return _listener;
+
+            // HOUSEKEEPING BEFORE PULLING MODELS: building the listener downloads the ears
+            // when they are not here yet. At most 30 s, as above: somebody is speaking.
+            await CircleAI.Inference.ModelSetup.WaitForHousekeepingAsync(
+                CircleAI.Device.CircleNeuronService.HousekeepingDone, _ => { }, ct,
+                atMost: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
 
             var (listener, status) = await CircleAIListener
                 .TryCreateAsync(ModelStore.Path, log: line => Android.Util.Log.Info(Tag, line), ct: ct)

@@ -97,7 +97,7 @@ public sealed class LinkConsentActivity : Activity
                     : $"consent: not granted - {why ?? "the person declined"}");
             SetResult(grant is not null ? Result.Ok : Result.Canceled);
 
-            // AND THE MICROPHONE, BECAUSE THIS IS THE ONLY PLACE THAT CAN ASK FOR IT.
+            // AND THE MICROPHONE, WHILE THIS SCREEN IS IN FRONT ANYWAY.
             //
             // CircleAI declares RECORD_AUDIO and had never been granted it: a runtime
             // permission needs an Activity to raise the dialog, and a service with no
@@ -105,11 +105,16 @@ public sealed class LinkConsentActivity : Activity
             // device, ever - the service held the permission in its manifest and
             // nothing in the product could turn it into a grant.
             //
-            // This activity is the one exception: it exists because a background
-            // service cannot raise a biometric sheet either, and it is already in
-            // front of the person. Asking here also puts the question where it makes
-            // sense - they have just approved an app to use the voice, and the next
-            // thing that needs saying is that the phone will listen.
+            // This was the first exception: it exists because a background service
+            // cannot raise a biometric sheet either, and it is already in front of
+            // the person. Asking here also puts the question where it makes sense -
+            // they have just approved an app to use the voice, and the next thing
+            // that needs saying is that the phone will listen.
+            //
+            // IT IS NOT THE ONLY ONE ANY MORE, and it never reached our own app: a
+            // first-party signature is approved without this screen, so the app that
+            // ships with Circle AI was never asked. MicrophoneActivity asks for any
+            // client the link trusts with Voice, ours included.
             //
             // ONLY WHEN VOICE WAS ACTUALLY APPROVED. A client that asked for chat and
             // memory has no business triggering a microphone prompt; that would be a

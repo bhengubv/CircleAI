@@ -116,7 +116,8 @@ public static class ModelSetup
     /// down by a network that went away.
     /// </remarks>
     public static async Task ResumeUnfinishedAsync(
-        BundleModelLoader loader, Action<string> say, CancellationToken ct = default)
+        BundleModelLoader loader, Action<string> say, CancellationToken ct = default,
+        Action<string>? landed = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(say);
@@ -136,6 +137,7 @@ public static class ModelSetup
                 {
                     await loader.DownloadModelAsync(name, progress: null, ct).ConfigureAwait(false);
                     say("finished " + name);
+                    Landed(landed, name, say);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -149,6 +151,64 @@ public static class ModelSetup
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { say("resume sweep failed: " + ex.Message); }
+    }
+
+    /// <summary>Wait until start-up housekeeping has finished, before any model is pulled.</summary>
+    /// <param name="housekeeping">The sweep and the catalogue's refresh, assessment and tidy; null is nothing to wait for.</param>
+    /// <param name="say">Where to report; every line is safe to show a user.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="atMost">
+    /// The longest to wait before going ahead anyway; null waits for as long as it takes.
+    /// For a person waiting on speech, not for start-up downloads: a housekeeping run that
+    /// hangs must not leave the assistant unable to speak or listen.
+    /// </param>
+    /// <remarks>
+    /// HOUSEKEEPING BEFORE PULLING MODELS - the owner's rule, and it was not the order. On
+    /// the P30's fresh install on 2026-10-23, six downloads started at 13:54:25.337 and the
+    /// catalogue's housekeeping and assessment ("90 assessed, 5 run on this device") only
+    /// finished at 13:54:25.552: two tasks, and only the abandoned-download sweep was ahead
+    /// of the downloads. Every pull path waits here now.
+    /// <para>
+    /// NO TIME LIMIT, AND A FAILED HOUSEKEEPING NEVER STOPS THE PULL - it is reported and
+    /// the pull goes ahead, which costs one tidy rather than every download. A long wait is
+    /// reported every 30 s, so a stuck one shows. IT LIVES HERE, not in the Android head,
+    /// so the rule is tested on every leg.
+    /// </para>
+    /// </remarks>
+    public static async Task WaitForHousekeepingAsync(Task? housekeeping, Action<string> say, CancellationToken ct = default,
+                                                      TimeSpan? atMost = null)
+    {
+        ArgumentNullException.ThrowIfNull(say);
+        if (housekeeping is null) return;
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!housekeeping.IsCompleted)
+        {
+            var step = TimeSpan.FromSeconds(30);
+            if (atMost is { } limit)
+            {
+                var left = limit - clock.Elapsed;
+                if (left <= TimeSpan.Zero)
+                {
+                    say($"housekeeping still running after {clock.Elapsed.TotalSeconds:0} s; going ahead");
+                    return;
+                }
+                if (left < step) step = left;
+            }
+
+            var tick = Task.Delay(step, ct);
+            if (await Task.WhenAny(housekeeping, tick).ConfigureAwait(false) == tick)
+            {
+                ct.ThrowIfCancellationRequested();
+                say($"downloads wait for housekeeping ({clock.Elapsed.TotalSeconds:0} s so far)");
+            }
+        }
+
+        ct.ThrowIfCancellationRequested();
+        if (housekeeping.IsFaulted)
+            say("housekeeping failed (" + housekeeping.Exception?.GetBaseException().Message + "); downloads go ahead");
+        else
+            say($"housekeeping finished ({clock.ElapsedMilliseconds} ms waited); downloads may start");
     }
 
     private static IEnumerable<string> Ids(BundleModelLoader loader) => loader.InstalledIds();
@@ -220,7 +280,8 @@ public static class ModelSetup
         BundleModelLoader loader,
         IEnumerable<(string Name, long Bytes)> planned,
         Action<string> say,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Action<string>? landed = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(say);
@@ -250,6 +311,7 @@ public static class ModelSetup
                     await loader.DownloadModelAsync(name, progress: null, ct)
                                 .ConfigureAwait(false);
                     say($"{name} complete");
+                    Landed(landed, name, say);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -262,5 +324,22 @@ public static class ModelSetup
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { say("first-run fetch failed: " + ex.Message); }
+    }
+
+    /// <summary>Tell whoever waits on a model that it is here, without letting them stop the rest.</summary>
+    /// <remarks>
+    /// "SMALLEST FIRST, SO THE PHONE CAN HEAR ITS NAME A FEW MINUTES IN" WAS ONLY HALF
+    /// TRUE. The wake word's bundle did land first - and nothing started listening when
+    /// it did, so on the P30's fresh install on 2026-10-23 the phone stayed deaf with
+    /// every byte it needed on disk. The fetch knows the moment a model is complete;
+    /// <c>landed</c> is how the thing that was waiting for it hears so. A listener that
+    /// throws is reported and the downloads carry on, as for any other failure here.
+    /// </remarks>
+    private static void Landed(Action<string>? landed, string name, Action<string> say)
+    {
+        if (landed is null) return;
+
+        try { landed(name); }
+        catch (Exception ex) { say($"{name} is here, and what was waiting for it failed: {ex.Message}"); }
     }
 }

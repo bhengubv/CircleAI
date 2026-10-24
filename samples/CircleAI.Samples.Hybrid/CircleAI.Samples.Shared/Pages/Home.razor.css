@@ -253,3 +253,6 @@
     text-decoration: none;
     cursor: pointer;
 }
+
+/* A "#" step is a button now, as on the setup screen, and greys while it asks. */
+.tour-action:disabled { opacity: 0.5; cursor: default; }

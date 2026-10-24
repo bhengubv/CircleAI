@@ -120,6 +120,13 @@ public class MainApplication : MauiApplication
         // goes to logcat directly - the one place it is actually readable.
         CircleAI.Voice.VoiceTrace.Sink = line => Android.Util.Log.Info("ITHYB", line);
 
+        // A TOUR BUTTON THAT DOES NOTHING USED TO DO IT IN SILENCE. TourActions maps
+        // a "#" route to an action and returns null both for "it worked and there is
+        // nothing to say" and for "nothing handles this route" - so renaming a route
+        // in one place left a live, pressable button that was a no-op, and no log
+        // line anywhere knew.
+        CircleAI.Assistant.TourActions.Unknown = line => Android.Util.Log.Warn("ITHYB", line);
+
         // And what the voice router heard, and where it sent it. Its own tag so
         // a session's routing decisions are one grep, and it logs the MISSES too:
         // the matcher is tuned against typed guesses until real Whisper output

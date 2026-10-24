@@ -382,8 +382,85 @@ public static class FirstRun
             if (pick is not null) steps.Add(new SetupStep(title, modality, pick));
         }
 
+        // ── AND THEN EVERYTHING ELSE THIS DEVICE HAS THE RESOURCES FOR ──────────
+        //
+        // ALL MODELS, BY DEFAULT - the owner's rule, 2026-10-24. The list above is
+        // one model per ability, which made the phone useful soonest and then
+        // STOPPED: seven entries out of a catalogue of ninety. Everything else sat
+        // behind a "Turn on" button on the abilities screen, which is a chore wearing
+        // the word "ability", and the home screen meanwhile claimed seventy-odd
+        // languages spoken out loud on a phone holding three voices.
+        //
+        // THE ORDER IS THE WHOLE DESIGN AND IT DOES NOT CHANGE. The ability slots
+        // stay first, in their existing order, so the voice, the ears, the wake word
+        // and the brain still land in the first minutes and the loading screen still
+        // hands over early. What follows is the rest, SMALLEST FIRST, so each
+        // additional language or ability arrives as soon as it can rather than
+        // waiting behind the largest download on the phone.
+        //
+        // RESOURCES ARE THE ONLY FILTER, and they are the same filter the ability
+        // slots already use (Fits: this device could hold it, and there is room for it
+        // now). A model this phone cannot run is not a model for this phone; nothing
+        // else is withheld.
+        //
+        // EXCEPT THE BRAIN, AND THAT IS THE ONE RULE RATHER THAN AN EXCEPTION TO IT.
+        //
+        // "Is this the best model given the resources we have?" is the whole of how a
+        // model is chosen here. For every other modality the answer is additive: a
+        // second voice is a language this phone could not speak, a second wake word is
+        // a phrase it could not hear, better eyes see more. Each one is a capability
+        // the device gains, so all of them are the answer.
+        //
+        // A second BRAIN is not a capability. One is loaded at a time and the best one
+        // wins; the rest are alternatives that will never be chosen while it is there,
+        // and they are gigabytes each. On the P30 the looser "could ever hold" rule
+        // picks Qwen3.5-2B - 1.9 GB against a 2.37 GB ceiling - and loading it is what
+        // set off the system-wide low-memory kills on 2026-10-10. Fetching it anyway,
+        // to sit on disk unloadable beside the 0.8B that works, is not "all models";
+        // it is a worse answer to the only question being asked.
+        //
+        // So the brain slot above fetches the best brain for this device, and a better
+        // one arrives when the hourly review says it is now the better answer.
+        //
+        // AND NOTHING IS FETCHED TWICE. Anything already planned above, or already on
+        // disk, is skipped - ModelSetup's loops skip present models too, so this is
+        // belt and braces rather than the only guard.
+        var planned = new HashSet<string>(steps.Select(s => s.Model.Name), StringComparer.OrdinalIgnoreCase);
+
+        var rest = registry.AllModels
+            .Where(m => !m.Retired)
+            .Where(m => m.Modality != ModelModality.Chat)
+            .Where(m => !planned.Contains(m.Name))
+            .Where(m => declined is null || !declined(m.Name))
+            .Where(m => !loader.ModelPresent(m.Name))
+            .Where(m => Fits(m, probe))
+            .OrderBy(m => m.TotalBytes)
+            .ToList();
+
+        foreach (var m in rest) steps.Add(new SetupStep(TitleFor(m), m.Modality, m));
+
         return steps;
     }
+
+    /// <summary>What to call a model on a setup screen, when it is not an ability slot.</summary>
+    /// <remarks>
+    /// WHAT IT GIVES THE PERSON, NOT ITS FILENAME - the rule the ability titles
+    /// already follow ("the ears", not "Whisper-tiny"). These rows are the long tail:
+    /// the other voices, the other brains, the models nobody named. A row reading
+    /// "Vits-11ZA-int8" tells somebody watching a progress bar nothing they can act
+    /// on; "another voice" tells them what their phone is getting.
+    /// </remarks>
+    private static string TitleFor(ModelEntry m) => m.Modality switch
+    {
+        ModelModality.Tts      => m.Language is { Length: > 0 } tag && Root(tag) is { } root
+                                      ? VoiceTitle(root)
+                                      : "another voice",
+        ModelModality.Asr      => "better ears",
+        ModelModality.WakeWord => "another wake word",
+        ModelModality.Vision   => "better eyes",
+        ModelModality.Chat     => "another brain",
+        _                      => m.Name,
+    };
 
     /// <summary>
     /// Everything this build wants on a device, in the order that makes it

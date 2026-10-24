@@ -108,9 +108,27 @@
             <div class="tour">
                 <div class="tour-title">@step.Title</div>
                 <div class="tour-body">@step.Body</div>
+                @*
+                    A "#" ROUTE ACTS HERE, as it already did on Setup. This screen drew
+                    every route as a link, so "Allow the microphone" was
+                    href="#microphone": nothing moved and nothing asked, on the screen
+                    a fresh install opens on.
+                *@
                 @if (step.Action is { Length: > 0 } act && step.Route is { Length: > 0 } route)
                 {
-                    <a class="tour-action" href="@route">@act</a>
+                    @if (TourActions.ActsHere(route))
+                    {
+                        <button class="tour-action" disabled="@_acting"
+                                @onclick="() => Act(route)">@act</button>
+                    }
+                    else
+                    {
+                        <a class="tour-action" href="@route">@act</a>
+                    }
+                }
+                @if (_acted is { Length: > 0 })
+                {
+                    <div class="tour-body">@_acted</div>
                 }
             </div>
         }
@@ -180,6 +198,31 @@
     TourStep? _tour;
     IReadOnlyList<TourStep> _tourSteps = [];
     int _tourAt = -1;
+
+    /// <summary>Whether a tour step is doing its thing, so it cannot be pressed twice.</summary>
+    bool _acting;
+
+    /// <summary>What the last tour step did, in the person's words.</summary>
+    string? _acted;
+
+    /// <summary>Do what a "#" step names, here. The mapping is the product's, shared with Setup.</summary>
+    async Task Act(string route)
+    {
+        if (_acting) return;
+        _acting = true;
+        try
+        {
+            _acted = await TourActions.RunAsync(Setup, route);
+
+            // AND THE STEP GOES ONCE IT IS DONE, so it cannot come round again at the
+            // next part boundary and ask for something already given. The card itself
+            // stays until then, carrying its own result line - which is what somebody
+            // who just pressed it is reading.
+            if (route == MicrophoneAsk.Route && _acted == MicrophoneAsk.Allowed)
+                _tourSteps = _tourSteps.Where(s => s.Route != MicrophoneAsk.Route).ToList();
+        }
+        finally { _acting = false; }
+    }
 
     /// <summary>Set on dispose, so a run that outlives this page never paints it.</summary>
     bool _gone;
@@ -495,7 +538,16 @@
             // ASKED ONCE, WITH THE TIME THERE ACTUALLY IS. The steps are chosen
             // for how long is left, so asking again every boundary would shorten
             // the list under somebody mid-read.
+            //
+            // AND ASKED AGAIN WHEN THE MICROPHONE STEP IS STILL IN THE LIST, because
+            // that one answers itself. Loading can hand over to this screen with the
+            // system dialog still up; the person taps Allow, and this screen went on
+            // offering "Let it hear its name / Allow the microphone" for the rest of
+            // the download, because the list was read once and never again. Re-reading
+            // is cheap and it is the only step whose own condition can change under it.
             if (_tourSteps.Count == 0 && left > TimeSpan.Zero)
+                _tourSteps = await Setup.TourAsync(left);
+            else if (_tourSteps.Any(s => s.Route == MicrophoneAsk.Route) && left > TimeSpan.Zero)
                 _tourSteps = await Setup.TourAsync(left);
 
             if (_gone) return;
@@ -503,7 +555,17 @@
             if (_tourSteps.Count > 0)
             {
                 _tourAt = (_tourAt + 1) % _tourSteps.Count;
+
+                // WHAT THE LAST STEP SAID BELONGS TO THE LAST STEP. The result line is
+                // drawn inside the card, so moving the tour on left "Not allowed. It
+                // can still be typed to." sitting under an invitation to build a CV.
+                if (!ReferenceEquals(_tour, _tourSteps[_tourAt])) _acted = null;
                 _tour = _tourSteps[_tourAt];
+            }
+            else
+            {
+                _tour = null;
+                _acted = null;
             }
 
             await InvokeAsync(() =>

@@ -140,8 +140,75 @@ public static class ModelFit
         => WillMmap(e, usableRamGb, mmapAllowed) ? MmappedGb(e)!.Value : EagerGb(e);
 
     /// <summary>Whether the device has the memory for it.</summary>
+    /// <remarks>
+    /// A MEASURED BILL BEATS THE ARITHMETIC, AND THAT IS THE WHOLE OF THE FIX.
+    ///
+    /// The arithmetic below is <c>max(MinRamGb, file size) &lt;= free x 0.85</c>, and
+    /// its shape is wrong in a way that matters most on the smallest phones: it gives
+    /// everything which is NOT weights an allowance of 17.6% OF THE WEIGHTS, when the
+    /// runtime's own overhead and the conversation's cache are absolute costs that
+    /// have nothing to do with how big the weights are. A 0.55 GB model is allowed
+    /// 0.10 GB for a runtime that costs over a gigabyte.
+    ///
+    /// It is also wrong about the weights themselves. It charges the WHOLE FILE,
+    /// because WillMmap is false for every model, because not one catalogue entry
+    /// carries a measured MmapResidentGb. That is not a property of phones - a mapped
+    /// file lives on storage and only the pages in use are resident - it is the
+    /// absence of a number. A device with 29 GB free and 3.9 GB of memory is limited
+    /// to 3.9 GB of model by an empty field.
+    ///
+    /// So when this device has actually WATCHED a model run, that reading is used:
+    /// resident weights + runtime floor + cache x context, against free memory
+    /// (MemoryBill). Not against free x 0.85 - the 0.85 stood in for the two terms
+    /// the bill now names, and charging for them twice would refuse models that fit.
+    ///
+    /// WITH NO MEASUREMENT, NOTHING CHANGES. Byte for byte the old rule, deliberately.
+    /// The P30 is only running a brain at all because the old rule under-counts - its
+    /// 0.55 GB of weights against 0.44 GB free passes only via the 0.85 - so making
+    /// the bill honest before there are numbers to put in it would take that phone's
+    /// brain away. Measure first, then tighten. See MemoryWatch and ModelCosts.
+    /// </remarks>
     public static bool FitsRam(ModelEntry e, double usableRamGb, bool? mmapAllowed = null)
-        => EffectiveMinRamGb(e, usableRamGb, mmapAllowed) <= usableRamGb + Eps;
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        // THE DEVICE'S OWN MEMORY FIRST, then whatever the host wired. SelfModel is
+        // where a measurement lives once there is a long-term memory to put it in;
+        // Measured is the hook for a host that has none - a desktop, a test.
+        var cost = CircleAI.SelfKnowledge.SelfModel.Current?.About(e.Name).AsCost()
+                   ?? Measured?.Invoke(e.Name);
+
+        if (cost is not null)
+        {
+            // usableRamGb is free x RamFitHeadroom; the bill is against free itself.
+            var freeGb = usableRamGb / DeviceProbe.RamFitHeadroom;
+            return MemoryBill.Fits(cost, freeGb, MeasuredContextTokens);
+        }
+
+        return EffectiveMinRamGb(e, usableRamGb, mmapAllowed) <= usableRamGb + Eps;
+    }
+
+    /// <summary>
+    /// What this device has measured a model to cost, or null when it has not.
+    /// </summary>
+    /// <remarks>
+    /// A HOOK RATHER THAN A DIRECT CALL, so this type stays a pure function of its
+    /// arguments for the hundreds of tests that depend on it, and so a host without a
+    /// writable directory simply never sets it. ModelCosts.For is what a phone wires
+    /// in; everything else sees exactly the behaviour it saw before.
+    /// </remarks>
+    public static Func<string, ModelCost?>? Measured { get; set; }
+
+    /// <summary>The context a fit question is asked at, when a measured cache is known.</summary>
+    /// <remarks>
+    /// THE CONTEXT THE PRODUCT ACTUALLY RUNS AT, not the longest it could. A spoken
+    /// answer is capped at 80 tokens and the history at 1 200-6 000 characters
+    /// (ServiceLimits), so a few thousand tokens is the honest working figure. Asking
+    /// "does it fit at 100K" would refuse every model for a context this product never
+    /// reaches - and MemoryBill.LongestContext is there for a screen that wants to say
+    /// how far a model can actually go.
+    /// </remarks>
+    public static int MeasuredContextTokens { get; set; } = 4096;
 
     /// <summary>Whether the device has the disk for it. <c>0</c> free = unknown, so skip.</summary>
     public static bool FitsStorage(ModelEntry e, double storageFreeGb)
