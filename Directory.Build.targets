@@ -92,6 +92,14 @@
     <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-x64/native/*.so;$(_CircleAITurboVecRoot)android-x64/native/*.so;$(_CircleAIVoiceRoot)android-x64/native/*.so">
       <Abi>x86_64</Abi>
     </AndroidNativeLibrary>
+
+    <!-- android-x86 was the only declared RID with no line here at all, so a
+         -p:CircleAIAbi=32 APK could not have picked up a 32-bit x86 MNN even if
+         one existed. Whisper registers x86 twenty lines below and MNN did not;
+         that asymmetry is what let lib/x86/ ship ears and no brain. -->
+    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-x86/native/*.so;$(_CircleAITurboVecRoot)android-x86/native/*.so;$(_CircleAIVoiceRoot)android-x86/native/*.so">
+      <Abi>x86</Abi>
+    </AndroidNativeLibrary>
   </ItemGroup>
 
   <!--
@@ -197,8 +205,25 @@
       repo-local default for our own android heads. The bug was never the values,
       it was a library being asked about an APK.
     -->
+    <!--
+      AndroidApplication, NOT OutputType. This condition said OutputType == 'Exe'
+      until 2026-10-25 and therefore could never be met: measured with
+      -getProperty on both projects at net10.0-android, OutputType is 'Library'
+      for the APK head AND for the library, so it cannot tell them apart and is
+      never 'Exe' at all. The paragraph above is right about WHY the guard needs
+      a discriminator and wrong about which one works.
+
+        CircleAIService.csproj  OutputType=Library  AndroidApplication=true
+        CircleAI.csproj         OutputType=Library  AndroidApplication=false
+
+      The reassurance this prints was unreachable, which is the same defect as
+      the CIRCLEAI001 it sits under: a condition that cannot be met reads like
+      coverage. It stayed invisible because the other half of the AND
+      (CircleAIBundleMnn != 'true') is also false on the head, so nothing was
+      missing from any log.
+    -->
     <Message Importance="high"
-             Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(OutputType)' == 'Exe' And '$(CircleAIBundleMnn)' != 'true'"
+             Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(AndroidApplication)' == 'true' And '$(CircleAIBundleMnn)' != 'true'"
              Text="[CircleAI] CircleAIBundleMnn=false — no MNN in this APK. On-device inference requires a runtime fetch." />
 
     <!-- Whisper gets its OWN check. Counting all native libraries together
@@ -208,6 +233,72 @@
     <Warning Code="CIRCLEAI002"
              Condition="'$(CircleAIBundleWhisper)' == 'true' And !Exists('$(_WhisperRuntimeRoot)android-arm64-v8a/libwhisper.so')"
              Text="[CircleAI] No libwhisper.so under $(_WhisperRuntimeRoot). Speech recognition will fail on device with 'failed: libwhisper' while the abilities screen still reports Listening as ON." />
+  </Target>
+
+  <!--
+    EVERY ABI THIS APK DECLARES, NOT THE ONE WE HAPPEN TO TEST ON.
+
+    CIRCLEAI001/003/004 above each name a file, which is the right shape — but
+    all three name it under android-arm64, and an APK declares TWO RIDs:
+
+      CircleAIService.csproj:74   CircleAIAbi=32  ->  android-arm;android-x86
+      CircleAIService.csproj:75   otherwise       ->  android-arm64;android-x64
+
+    So on a 32-bit build those three guards interrogate android-arm64 — a folder
+    this build does not ship — and pass for a reason that has nothing to do with
+    the APK being produced. armeabi-v7a's MNN set is complete today by the luck
+    of that folder existing, not because anything checked it.
+
+    And on BOTH builds the x86 half shipped with no LLM engine and nothing said
+    so. Measured on the v3.9.2 artefacts, 2026-10-25:
+
+      service-32  lib/armeabi-v7a/  libMNN.so + libmnnbridge.so + 8 more   OK
+      service-32  lib/x86/          libwhisper + libonnxruntime, NO MNN
+      service-64  lib/arm64-v8a/    libMNN.so + libmnnbridge.so + 8 more   OK
+      service-64  lib/x86_64/       NO MNN
+
+    An x86 Android emulator therefore starts, binds, downloads a model and dies
+    at the first load — the identical shape as the win-x86 publish that
+    CIRCLEAI013 now covers, and invisible here for the same reason: the wildcard
+    for an absent RID folder is silently empty. The comment at the top of this
+    file calls that out as costing nothing, and for the BUILD it costs nothing.
+    It is the APK that pays.
+
+    No physical device in the roster is x86, so this is emulator-only. It is a
+    warning and not an error for exactly that reason: the non-inference half of
+    the service works there, and a thinner APK is a product decision, not a
+    build failure. Dropping x86/x86_64 from RuntimeIdentifiers would roughly
+    halve both APKs (the x86 half of service-32 is 59.9 MB of 143 .so files) —
+    that call belongs to whoever owns emulator support.
+
+    This extinguishes itself the day somebody builds MNN for Android x86: the
+    registration above picks the files up and this warning stops firing.
+  -->
+  <Target Name="_CircleAIWarnAndroidAbiWithoutMnn"
+          BeforeTargets="Build"
+          Condition="'$(TargetPlatformIdentifier)' == 'android'
+                     And '$(AndroidApplication)' == 'true'
+                     And '$(CircleAIBundleMnn)' == 'true'
+                     And '$(RuntimeIdentifiers)' != ''">
+    <ItemGroup>
+      <!-- RuntimeIdentifiers is semicolon-separated, so Include splits it. -->
+      <_CircleAIAbiRid Include="$(RuntimeIdentifiers)" />
+      <_CircleAIAbiRid>
+        <Abi Condition="'%(Identity)' == 'android-arm64'">arm64-v8a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-arm'">armeabi-v7a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x64'">x86_64</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x86'">x86</Abi>
+        <MnnFile>$(_CircleAIMnnRoot)%(Identity)/native/libMNN.so</MnnFile>
+      </_CircleAIAbiRid>
+      <_CircleAIAbiNoMnn Include="@(_CircleAIAbiRid)" Condition="!Exists('%(_CircleAIAbiRid.MnnFile)')" />
+    </ItemGroup>
+
+    <Message Importance="high"
+             Text="[CircleAI] APK ABIs: @(_CircleAIAbiRid->'%(Abi)', ', ') — MNN present for @(_CircleAIAbiRid->Count()) RID(s) minus @(_CircleAIAbiNoMnn->Count()) without." />
+
+    <Warning Code="CIRCLEAI014"
+             Condition="'@(_CircleAIAbiNoMnn)' != ''"
+             Text="[CircleAI] This APK declares ABI(s) @(_CircleAIAbiNoMnn->'%(Abi)', ', ') with no libMNN.so staged for them (looked for @(_CircleAIAbiNoMnn->'%(MnnFile)', ' and ')). On a device or emulator of that ABI the service starts, binds and downloads models, then fails at the first model load — on-device inference is UNAVAILABLE there. Everything in the service that is not inference still works. No MNN prebuilt exists for Android x86/x86_64 in this tree; building one, or removing that RID from RuntimeIdentifiers, are the two ways to clear this." />
   </Target>
 
   <!--
