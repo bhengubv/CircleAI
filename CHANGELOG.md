@@ -4,6 +4,157 @@ All notable changes to the CircleAI runtime are documented here. The format
 is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.2] — 2026-10-25 — **A publish says what it cannot do, and Wolverine says green or red**
+
+Entries for 3.9.0 and 3.9.1 are missing from this file. They were released on
+2026-10-21 and are on the GitHub releases page; nobody wrote them up here, and
+they are not being reconstructed from their titles.
+
+### Fixed — a RID-specific desktop publish shipped every other platform's natives
+
+The `win-x86` and `win-x64` publishes came out at 231.5 MB and 233.4 MB with an
+*identical* `runtimes/` tree: 14 RIDs, android-arm64's 46 MB `libllama.so`, both
+macOS dylibs, the iOS static bridge, the whole Linux set. None of it can load in
+a Windows process.
+
+The x86 one is why it mattered. It shipped `runtimes/win-x64/native/MNN.dll` —
+8.3 MB of 64-bit code under exactly the name the resolver probes for — so anyone
+debugging that service would have found `MNN.dll` sitting precisely where it
+belongs and drawn the wrong conclusion.
+
+```
+win-x86   231.5 MB, 173 files  ->  45.6 MB, 93 files
+win-x64   233.4 MB, 173 files  ->  57.3 MB, 96 files
+```
+
+80 files dropped from the x86 publish, all under `runtimes/`, none outside it,
+nothing added, managed set unchanged. The trim is **publish-only**: `bin/` still
+gets every RID so the test legs keep the host native they P/Invoke, and `pack`
+still puts all 14 in the package.
+
+### Added — `CIRCLEAI013`, a publish with no engine for its own RID says so
+
+The build exited 0 with no warning of any kind on a 231 MB service whose first
+model load was always going to fail. `CIRCLEAI013` checks the tree for the
+publish RID's own bridge rather than a hardcoded RID list, so it extinguishes
+itself the day a `win-x86` MNN exists. A warning and not an error: a 32-bit
+publish is still wanted for the half of the service that is not inference.
+
+### Added — `CIRCLEAI014`, an APK is checked on every ABI it declares
+
+`CIRCLEAI001`/`003`/`004` each name a file, which is the right shape — but all
+three name it under `android-arm64`, and an APK declares two RIDs. On a
+`-p:CircleAIAbi=32` build those three interrogated a folder that build does not
+ship and passed for a reason with nothing to do with the APK being produced.
+
+Measured on the 3.9.2 artefacts:
+
+```
+lib/armeabi-v7a/   libMNN.so + libmnnbridge.so + 8 more   complete
+lib/x86/           libwhisper + libonnxruntime, NO MNN
+lib/arm64-v8a/     libMNN.so + libmnnbridge.so + 8 more   complete
+lib/x86_64/        NO MNN
+```
+
+`CIRCLEAI014` walks `$(RuntimeIdentifiers)` and names every declared ABI with no
+`libMNN.so`, so each build is checked against its own ABIs and the arm half is
+positively confirmed rather than assumed. `android-x86` also had no
+`AndroidNativeLibrary` line at all — Whisper registered x86 and MNN did not —
+so a 32-bit APK could never have picked up a 32-bit MNN even if one were built.
+That line now exists.
+
+### Fixed — the guard that was meant to stop a library lying about an APK could never fire
+
+It read `OutputType == 'Exe'`. Measured with `-getProperty` at
+`net10.0-android`, `OutputType` is `Library` for the APK head **and** for the
+library, so it cannot tell them apart and is never `Exe` at all.
+
+```
+CircleAIService.csproj   OutputType=Library   AndroidApplication=true
+CircleAI.csproj          OutputType=Library   AndroidApplication=false
+```
+
+`AndroidApplication` is the discriminator. A condition that cannot be met reads
+like coverage.
+
+### Fixed — a 32-bit process was told to install the 64-bit redistributable
+
+`MnnNativeDiagnostics` recommended the x64 Visual C++ redistributable regardless
+of process bitness. That can never work: the architecture is the cause, not a
+missing CRT. It now says there is no 32-bit MNN to load, and if a `win-x64`
+`MNN.dll` is sitting beside the process it says explicitly that its presence
+means nothing.
+
+### Fixed — `native/mnn-bridge/build-windows.ps1` could not fail
+
+It wrote to `src/CircleAI.Inference/`, dead since that folder became
+`src/CircleAI/Inference/` at 3.8.1, and its `Resolve-Path ?? New-Item` fallback
+meant a missing destination was created rather than reported: it made an orphan
+directory, copied two DLLs into it, printed `Build complete`, and left the tree
+with no native at all. Same shape as the Android glob that matched nothing after
+the same move. It now resolves the parent and throws if the layout moved again,
+and reads the PE machine type of what it staged instead of trusting `-A`.
+
+The bridge's `CMakeLists.txt` also hardcoded `lib/x64/Release/Dynamic/MD`, so a
+`-A Win32` build would have silently linked the 64-bit import library. Driven by
+`CMAKE_SIZEOF_VOID_P` now, with `MNN_WIN_ARCH` as the override.
+
+### Added — `SelfHeal.Status()`, so Wolverine reports without anything having to fail
+
+Every other line `SelfHeal` wrote was written *by* a failure, so a device that
+had never tripped produced no Wolverine output at all — indistinguishable from
+Wolverine not being wired. Proving it worked meant breaking something on purpose.
+
+- **Every switch, every time.** Reporting only the off-list gives an empty status
+  on a healthy device, which reads exactly like a status that could not be taken.
+  A switch that never tripped is listed, explicitly green, and the count in the
+  line is what tells a reader the reading ran at all.
+- **Amber is the honest middle.** A switch that tripped, waited out its window
+  and is back on has not been proven — nothing has run through it. Green loses
+  the history; red cries wolf.
+- **The startup reading hangs off `LoadAsync`'s continuation, not the call.**
+  `LoadAsync` is fire-and-forget and is what restores switches an earlier run
+  turned off, so a reading taken on the call line would report green on a device
+  holding a week-long trip.
+
+Read off a P30 with no staged failure:
+
+```
+I CircleAI.Heal: WOLVERINE GREEN - all 5 switches on, none has ever tripped here
+```
+
+### Known limitations
+
+- **`win-x86` cannot infer.** Alibaba publishes no 32-bit Windows MNN bundle in
+  any release — 3.3.0 through 3.6.1, every Windows asset is `windows_x64` — and
+  MNN's source is not vendored here. `build-windows.ps1` has the hook for the day
+  it is built (`-Platform Win32 -MnnRoot`). There is no memory wall:
+  `Qwen3.5-0.8B-MNN` is 522 MB on disk with a 770 MB hint.
+- **The APKs' x86 ABIs cannot infer either**, for the same reason, and no MNN
+  prebuilt for Android x86 exists in this tree. Emulator-only: no physical device
+  in the roster is x86.
+- **`SelfHeal.Report` still has no door.** The status reaches logcat, not a
+  developer. WolverineAPI's `/api/errors` is `ServiceActorOnly`, so a phone holds
+  no credential it may use.
+- **The full test suite has not been run against this tree.** Fifteen of 31
+  per-TFM runs completed green (514 passed, 0 failed) before the run was stopped.
+
+### Verified on hardware
+
+A P30 (`MAR-LX1M`), abilist `arm64-v8a,armeabi-v7a,armeabi`, from the released
+files. One handset proves both pairs:
+
+```
+armeabi-v7a   brain ready 30647 ms   gen total 11775 ms
+arm64-v8a     brain ready 16777 ms   gen total  2860 ms
+```
+
+armeabi-v7a is 1.8× slower to load and 4.1× slower to generate on the same
+hardware with the same model. `firstInstallTime` never moved across four
+installs, so the model store survived all of them.
+
+---
+
 ## [3.8.1] — 2026-10-06 — **3.8.0 does not restore on Android**
 
 **Anyone referencing `CircleAI 3.8.0` from an Android project gets `NETSDK1082`.**
