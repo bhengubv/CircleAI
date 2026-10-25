@@ -6,10 +6,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [3.9.2] — 2026-10-25 — **A publish says what it cannot do, and Wolverine says green or red**
 
-Entries for 3.9.0 and 3.9.1 are missing from this file. They were released on
-2026-10-21 and are on the GitHub releases page; nobody wrote them up here, and
-they are not being reconstructed from their titles.
-
 ### Fixed — a RID-specific desktop publish shipped every other platform's natives
 
 The `win-x86` and `win-x64` publishes came out at 231.5 MB and 233.4 MB with an
@@ -152,6 +148,167 @@ arm64-v8a     brain ready 16777 ms   gen total  2860 ms
 armeabi-v7a is 1.8× slower to load and 4.1× slower to generate on the same
 hardware with the same model. `firstInstallTime` never moved across four
 installs, so the model store survived all of them.
+
+---
+
+## [3.9.1] — 2026-10-21 — **One package: everything it is, on every platform it runs on**
+
+### Changed — three packages folded into one
+
+- **`CircleAI.Maui` is inside `CircleAI`**: the always-on listener, audio and
+  camera capture, push notifications, location, the health board and the device
+  context, on Android, iOS, Mac Catalyst and Windows, with headless versions on
+  desktop net9.0 and net10.0.
+- **The inference server and the `memory` command are inside it too** —
+  `InferenceServerHost.RunAsync(args)` and `MemoryCli.RunAsync(args)`. The
+  server's deployment files (Dockerfile, systemd unit, Windows service script,
+  appsettings) ride in the package under `server/`.
+- `CircleAI.Maui`, `CircleAI.Inference.Server` and `CircleAI.Tools.Memory` are no
+  longer published. Reference `CircleAI`.
+
+### Fixed — iPhone and Mac apps could not build against CircleAI
+
+Apple apps resolved the desktop build, which carries ASP.NET Core, and there is
+no ASP.NET Core for iOS or Mac Catalyst — so they failed exactly the way 3.8.0
+failed every Android app. They now get their own builds, without the server code.
+
+### Fixed — photos on Windows, Mac and Linux
+
+JPEG and WebP decode through each platform's own codec now: the Windows Imaging
+Component, Apple's ImageIO, and the distribution's libjpeg-turbo and libwebp.
+The Windows service had a vision model and could not read a single photo. WebP on
+Windows uses Microsoft's free WebP Image Extensions, which most installs carry;
+`ImageDecoder.IsWebPSupported` says whether this machine has it.
+
+### Fixed — speech recognition for apps that use the package
+
+An app referencing the CircleAI package got Whisper's managed wrapper but not its
+engine, so speech recognition failed on first use. It gets `libwhisper` now.
+iOS-simulator and Mac Catalyst builds no longer receive iPhone-only engine
+binaries that cannot link.
+
+### Fixed — one SQLite
+
+An unused dependency, `sqlite-net-pcl`, pulled a second SQLite stack into every
+app, including a second copy of the native library in every APK. It is gone.
+
+### Changed — the Windows service
+
+- Chooses its model by the machine alone.
+- Gives the brain the same notes as the phone. "How do I plant maize?" now
+  answers "between October and December when the rains become steady".
+- On a cold start from a hard disk, the 4B model takes about three and a half
+  minutes to load before the service starts listening.
+
+### Fixed — the always-on microphone service
+
+It registers itself in apps again, as it did in `CircleAI.Maui`, and checks the
+foreground-service permissions before starting, so a missing permission is logged
+instead of Android killing the app.
+
+### Tested
+
+- Every test project on net9.0 and net10.0: the main suite **4,895 per
+  framework**, the UI suite 380. `CircleAI.DeviceTests` compiles for Android.
+- The package carries six frameworks. A Windows app referencing it gets Whisper's
+  and MNN's natives; an iOS-simulator app gets no iPhone-device binaries.
+- On a Huawei P30: the 28 recorded questions, 28/28, on these APKs.
+- The Windows EXE on a PC with Qwen3.5-4B: maize, meals, arithmetic and a garbled
+  question, all answered correctly from its notes.
+- **Not run:** the iOS, Mac Catalyst and Linux code paths. Compiled and packaged,
+  but there is no such device here.
+
+### Released
+
+versionCode 60. `CircleAIService-3.9.1-vc60.apk`, `CircleAI-3.9.1-vc60.apk`,
+`CircleAIService-Windows-3.9.1-win-x64.exe`, and `CircleAI` 3.9.1 on nuget.org
+and GitHub Packages.
+
+---
+
+## [3.9.0] — 2026-10-21 — **The same question gets the same right answer**
+
+On a Huawei P30 running Qwen3.5-0.8B, all 28 recorded questions come back right —
+and word for word the same, run after run.
+
+### Fixed — one prompt, two answers
+
+The maize question, byte for byte the same prompt, was answered "late October or
+November" in one session and "late autumn" or "September" in the next:
+temperature 0.2 and top-k 10 deciding a near-tie. The Qwen3.5 and Qwen3.6 entries
+now use MNN's `penalty` sampler — a 1.1 repetition penalty, then greedy.
+
+Pure greedy was measured first: as deterministic, but it looped on 2 of 8 long
+typed answers. Penalty-then-greedy looped on none and kept the spoken set at
+28/28.
+
+### Fixed — what the model is handed
+
+- The maize note said "in spring, about October to December" and came back as
+  winter, September or autumn. It now says the months, in the maize section too.
+- A skill's description no longer rides along as a fact ("…feeding babies safely"
+  came back as "while ensuring safety").
+- A second skill goes in only if it is about the question's subject, and the
+  subject is the word the matched skills are about.
+- A capability keeps its `Status: planned — Do NOT claim` line.
+- The answer guard strips more ways of naming the notes ("as established by the
+  facts", "the information you provided") and checks for a bare "Yes." or "No."
+  after stripping.
+- Calendar facts, capitals and jokes are answered from data; "Remember that…" is
+  written down and asked back.
+
+### Fixed — the sample app is thin again
+
+The .NET for Android SDK globs every `.so` under a project into the library's
+`.aar`. Once the natives moved into `src/CircleAI` at 3.8.1, MNN, llama, whisper,
+espeak and turbovec rode into every app that references the library. The sample
+app is 70 MB now (89 MB in 3.8.1) and carries no inference engine; the service
+keeps all 160 of its natives.
+
+### Fixed — a model the product may not ship
+
+On first run a desktop would have fetched Qwen2.5-VL-3B (2.7 GB) for vision. Its
+weights are under the Qwen Research licence upstream — non-commercial — though
+the MNN copy's card says Apache-2.0. It is retired; vision is SmolVLM-256M
+(Apache-2.0), as on phones. Licences are recorded for the brains and the other
+models a plan can pick, and a test holds them to the product's own licence gate.
+
+### Fixed — a skills update that could never reach a phone
+
+The shipped skills database was unpacked into a folder named after its byte
+length. A SQLite file is whole pages, so an edit that kept the size would never
+have replaced a phone's old copy. The folder is named by a hash of the content
+now.
+
+### Security — developer test switches need an armed broadcast
+
+The switches in the service's shared-storage folder (prompt dump, notes wording,
+sampler, question lists) count only while armed by an adb broadcast holding
+`android.permission.DUMP`. On Android 10 other apps can write to that folder.
+
+### Added — one service every app shares
+
+Durable questions, a supervised brain, checked answers; a question the brain dies
+under is asked again. Also in this release: the models download themselves from
+first run; the assessed catalogue decides which brain fits; the GGUF engine
+(`libllamabridge` and its dependency chain) is bundled; the vision stack gets a
+way in, and ImageSharp is gone from it; voice wiring comes off the service's main
+thread; the Windows service consumes the package like everything else does.
+
+### Tested
+
+- Every test project on net9.0 and net10.0 — the main suite **4,877 per
+  framework**, the UI suite 380 — and `CircleAI.DeviceTests` compiles for Android.
+- On a Huawei P30, the 28 recorded questions 28/28 on these APKs.
+- The Windows EXE was started on a PC with no model on it: it served, answered
+  what needs no model, planned SmolVLM-256M and Qwen3.5-4B, and unpacked its
+  engine where the loader looks. **It has not loaded a model on Windows.**
+
+### Released
+
+versionCode 59. `CircleAIService-3.9.0-vc59.apk`, `CircleAI-3.9.0-vc59.apk`,
+`CircleAIService-Windows-3.9.0-win-x64.exe`, and `CircleAI` 3.9.0 on nuget.org
+and GitHub Packages.
 
 ---
 
