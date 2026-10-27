@@ -28,9 +28,19 @@ namespace CircleAI.Inference;
 public sealed class CatalogModelSelector : IModelSelector
 {
     private readonly IModelCatalog _catalog;
+    private readonly IReadOnlyCollection<ModelEngine>? _engines;
 
-    public CatalogModelSelector(IModelCatalog catalog)
-        => _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+    /// <param name="catalog">This device's assessed catalogue.</param>
+    /// <param name="engines">
+    /// The engines this build ships; null asks the build at the moment of the question.
+    /// Only the least-bad fallback below needs it - the compatible rows were already
+    /// gated by the assessor, which owns both the engine and the quantisation checks.
+    /// </param>
+    public CatalogModelSelector(IModelCatalog catalog, IReadOnlyCollection<ModelEngine>? engines = null)
+    {
+        _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+        _engines = engines;
+    }
 
     /// <inheritdoc/>
     /// <summary>
@@ -72,9 +82,10 @@ public sealed class CatalogModelSelector : IModelSelector
     /// bypasses were none of those things.
     /// </remarks>
     public static IModelSelector Preferring(
-        IModelCatalog? catalogue, ModelRegistryService? registry = null)
+        IModelCatalog? catalogue, ModelRegistryService? registry = null,
+        IReadOnlyCollection<ModelEngine>? engines = null)
         => HasBeenAssessed(catalogue)
-            ? new CatalogModelSelector(catalogue!)
+            ? new CatalogModelSelector(catalogue!, engines)
             : registry is null
                 ? new DeviceAwareModelSelector()
                 : new DeviceAwareModelSelector(registry);
@@ -117,17 +128,39 @@ public sealed class CatalogModelSelector : IModelSelector
         // NEVER A RETIRED ONE, EVEN AS THE LEAST-BAD OPTION. "Nothing less than
         // Qwen3.5 is the LLM": a phone that cannot hold any eligible model is told
         // so; it is not handed a lesser one.
-        var anyCapabilityMatch = ModalitiesFor(required)
+        //
+        // AND NEVER ONE THIS BUILD CANNOT OPEN, which this path used to allow. It
+        // reads _catalog.All() rather than Compatible(), so it bypasses the only
+        // place the engine was ever checked - the assessor's two gates at
+        // DeviceModelAssessor.Assess, "an engine we ship" and "a pack the LOADED
+        // backend reads". Ordering the bypassed set by MinRamGb then handed back
+        // the SMALLEST eligible row, and the smallest rows are the aggressively
+        // quantised GGUFs. That is the 2026-10-19 Windows incident exactly -
+        // Ternary-Bonsai-2-27B chosen into a build shipping no llama.cpp - which
+        // FirstRun.Plan was taught to avoid and this selector was not.
+        //
+        // EngineChoice.CanRun IS that rule, already written and until now called by
+        // nothing in the repo: the engine AND the quantisation, because "we ship
+        // llama.cpp" does not mean "this llama.cpp reads PTQ1_0".
+        var eligible = ModalitiesFor(required)
             .SelectMany(m => _catalog.All().Where(e => e.Modality == m && !e.Retired))
             .Where(e => Satisfies(e, required))
             .OrderBy(e => e.MinRamGb)
             .ThenBy(e => e.TotalBytes)
             .ToList();
 
+        var anyCapabilityMatch = eligible.Where(e => EngineChoice.CanRun(e, _engines)).ToList();
+
         if (anyCapabilityMatch.Count == 0)
+            // WHY IT IS EMPTY IS THE USEFUL PART. "Nothing satisfies the capability"
+            // sends somebody to the catalogue; "this ABI has no llama.cpp" sends them
+            // to the build. Explain names which of the two it was.
             throw new InvalidOperationException(
-                $"No model in the catalogue satisfies required capabilities '{required}'. " +
-                "Refresh the catalogue (pull the signed feed) or relax the requirement.");
+                eligible.Count == 0
+                    ? $"No model in the catalogue satisfies required capabilities '{required}'. " +
+                      "Refresh the catalogue (pull the signed feed) or relax the requirement."
+                    : $"No model in the catalogue can be opened on this device for '{required}': " +
+                      EngineChoice.Explain(eligible[0], _engines) + ".");
 
         return ToSelection(anyCapabilityMatch[0], tier, SelectionQuality.NothingFits);
     }

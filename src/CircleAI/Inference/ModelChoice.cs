@@ -82,15 +82,30 @@ public static class ModelChoice
     /// This device's own verdicts. Null keeps the old behaviour, which is what every
     /// caller without one gets.
     /// </param>
+    /// <param name="engines">
+    /// The brain engines this build ships; null asks the build. CHAT ONLY, because
+    /// DeviceModelAssessor.ShippedEngines reports the brain's engines and nothing else -
+    /// it never names Onnx - so applying this to a voice or the ears would refuse every
+    /// one of them. The same carve-out BundleModelLoader.CanRunHere documents.
+    /// </param>
     public static ModelEntry? For(
         ModelModality modality,
         ModelRegistryService registry,
         BundleModelLoader loader,
         DeviceProbe probe,
-        CircleAI.Core.Models.IModelCatalog? catalog = null)
+        CircleAI.Core.Models.IModelCatalog? catalog = null,
+        IReadOnlyCollection<ModelEngine>? engines = null)
     {
         var candidates = registry.AllModels
             .Where(m => m.Modality == modality)
+            // AND NOT ONE THIS BUILD CANNOT OPEN. Every screen that names a model comes
+            // through here, and with a null catalogue - which is what the four-argument
+            // callers pass - nothing above asked the engine question at all: the
+            // catalogue's verdicts are where the assessor's engine and quantisation
+            // gates live, and there is no catalogue on that path. So a GGUF could be
+            // named on a screen by a build with no llama.cpp, which is the display half
+            // of the 2026-10-19 Windows incident.
+            .Where(m => modality != ModelModality.Chat || EngineChoice.CanRun(m, engines))
             // NEVER A RETIRED ONE - "nothing less than Qwen3.5 is the LLM". The
             // installed-first rule below named Qwen3-0.6B, the first entry in the
             // registry, as the P30's brain on every screen and in the setup census,

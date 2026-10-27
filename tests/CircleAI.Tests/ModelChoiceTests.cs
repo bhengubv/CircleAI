@@ -102,10 +102,28 @@ public sealed class ModelChoiceTests : IDisposable
         Assert.True(ModelFit.CouldEverHold(entry!, probe),
             $"{pick} needs more than this handset's whole memory and was handed to it");
 
-        // AND WHERE NO ELIGIBLE MODEL CAN BE HELD, NOTHING - never a lesser model
-        // standing in. The retired Qwen3-0.6B is on disk here and fits; it is still
-        // not the answer.
-        Assert.Null(loader.BestInstalledChatModel(Device(1.4)));
+        // AND NEVER A LESSER MODEL STANDING IN. The retired Qwen3-0.6B is on disk here
+        // and fits a 1.4 GiB handset; it is still not the answer.
+        //
+        // THIS ASSERTED NULL, on a premise that was true when it was written and is not
+        // now: that under the floor a 1.4 GiB device could hold no eligible model at all.
+        // It can - a ternary Qwen3.5-2B is 0.43 GB on disk and declares 0.6 GB - so the
+        // floor and the cheapest handsets are no longer in conflict, which is the entire
+        // reason those entries exist. Asserting null here would now be asserting that
+        // the small phone gets nothing. What must hold either way is that whatever comes
+        // back is above the floor, holdable, and openable here.
+        var tiny = loader.BestInstalledChatModel(Device(1.4));
+
+        Assert.NotEqual("Qwen3-0.6B-MNN", tiny);
+        if (tiny is not null)
+        {
+            var held = registry.GetLatestModel(tiny)!;
+            Assert.False(held.Retired, tiny + " is retired and was handed to a 1.4 GiB handset");
+            Assert.True(ModelFit.CouldEverHold(held, Device(1.4)),
+                $"{tiny} needs more than this handset's whole memory and was handed to it");
+            Assert.True(EngineChoice.CanRun(held),
+                $"{tiny} was handed back and " + EngineChoice.Explain(held));
+        }
     }
 
     [Fact]
@@ -197,8 +215,15 @@ public sealed class ModelChoiceTests : IDisposable
         // What this test is FOR is unchanged and still pinned: the fallback must
         // not return nothing, and must not pass over a better model it would
         // accept. "Would accept" is the selector's own rule.
-        static bool Acceptable(ModelEntry m, DeviceProbe p)
-            => ModelFit.CouldEverHold(m, p) && ModelFit.Fits(m, p);
+        // AND IT HAS TO BE ON DISK, which this did not ask either.
+        // BestInstalledChatModel only ever walks the store, so a catalogued model that
+        // is NOT installed cannot have been "passed over" by it. The omission never
+        // showed because every MNN chat bundle carries config.json among its files, so
+        // writing a bundle's files made it read as present - until single-file GGUF
+        // entries arrived, which carry no config.json, and were then reported as better
+        // options the fallback had ignored while the fallback had never seen them.
+        bool Acceptable(ModelEntry m, DeviceProbe p)
+            => loader.ModelPresent(m.Name) && ModelFit.CouldEverHold(m, p) && ModelFit.Fits(m, p);
 
         var chosen = registry.GetLatestModel(pick!)!;
         var better = registry.AllModels

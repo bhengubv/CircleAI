@@ -217,12 +217,32 @@ public sealed class DeviceAwareModelSelectorRegistryTests
         // smallest one rather than throwing. A wearable that can only run the
         // smallest model should still get the smallest model, not an exception."
         // The code ordered by QualityRank DESC and returned the LARGEST instead.
-        var pick = new DeviceAwareModelSelector().BestFit(Device(0.25, storageGb: 1),
-                                                          ChatCapability.Default);
+        //
+        // THE ENGINE SET IS STATED, NOT PROBED. With no engine set this selector asks
+        // DeviceModelAssessor.ShippedEngines(), which answers from whichever native
+        // libraries sit in the test host's bin/ - so staging llamabridge.dll for
+        // win-x64 changed what "the smallest" is, and this failed with no product
+        // change behind it. MNN-only also asks a real question: a 0.25 GB device is a
+        // cheap handset and the 32-bit ABI has no llama.cpp at all.
+        var pick = new DeviceAwareModelSelector([ModelEngine.Mnn])
+            .BestFit(Device(0.25, storageGb: 1), ChatCapability.Default);
+
         // The smallest ELIGIBLE model: below the floor ("nothing less than Qwen3.5
         // is the LLM", 2026-10-16) the retired Qwen3-0.6B is no longer an answer.
-        Assert.Equal("Qwen3.5-0.8B-MNN", pick.ModelId);
+        // WHICH one is the registry's business - it asserted a name, and a smaller
+        // eligible Qwen3.5 arriving is not a defect.
+        var chosen = new ModelRegistryService().AllModels.Single(m => m.Name == pick.ModelId);
+        Assert.False(chosen.Retired, pick.ModelId + " is retired");
+        Assert.Equal(ModelEngine.Mnn, chosen.Engine);
+        Assert.Equal(
+            EnumerateEligible(ModelEngine.Mnn).OrderBy(m => m.MinRamGb).ThenBy(m => m.TotalBytes).First().Name,
+            pick.ModelId);
     }
+
+    /// <summary>Every chat model an MNN-only build could be offered, for the smallest-of tests.</summary>
+    private static IEnumerable<ModelEntry> EnumerateEligible(params ModelEngine[] engines)
+        => new ModelRegistryService().AllModels
+            .Where(m => m.Modality == ModelModality.Chat && !m.Retired && engines.Contains(m.Engine));
 
     // ── fallback chain (RT-08 brownout) ──────────────────────────────────────
 

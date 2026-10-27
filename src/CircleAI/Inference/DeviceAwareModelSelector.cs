@@ -19,25 +19,36 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
 {
     private readonly ModelRegistryService _registry;
     private readonly bool _ownsRegistry;
+    private readonly IReadOnlyCollection<ModelEngine>? _engines;
 
     /// <summary>
     /// Construct using a caller-supplied registry (e.g. the inference
     /// server's singleton). The selector does not dispose it.
     /// </summary>
-    public DeviceAwareModelSelector(ModelRegistryService registry)
+    /// <param name="registry">The catalogue to rank.</param>
+    /// <param name="engines">
+    /// The engines this build ships; null asks the build at the moment of the question.
+    /// </param>
+    public DeviceAwareModelSelector(ModelRegistryService registry,
+                                    IReadOnlyCollection<ModelEngine>? engines = null)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _ownsRegistry = false;
+        _engines = engines;
     }
 
     /// <summary>
     /// Construct using a freshly built registry (loaded from the embedded
     /// JSON). The selector owns and disposes it.
     /// </summary>
-    public DeviceAwareModelSelector()
+    /// <param name="engines">
+    /// The engines this build ships; null asks the build at the moment of the question.
+    /// </param>
+    public DeviceAwareModelSelector(IReadOnlyCollection<ModelEngine>? engines = null)
     {
         _registry = new ModelRegistryService();
         _ownsRegistry = true;
+        _engines = engines;
     }
 
     /// <inheritdoc/>
@@ -155,8 +166,19 @@ public sealed class DeviceAwareModelSelector : IModelSelector, IDisposable
     // LLM" - is a registry fact (ModelEntry.Retired), applied here so BestFit,
     // AllCandidates and ChainFor all honour it, and a fallback chain stops at the
     // floor instead of walking down to a lesser model.
+    //
+    // AND NEVER ONE THIS BUILD CANNOT OPEN, for the same reason and in the same place.
+    // This selector is what CatalogModelSelector.Preferring hands back until the
+    // catalogue has been assessed - which on a fresh install is every selection made
+    // before the bootstrap finishes - so it is a live production path and not a
+    // fallback curiosity. Its nothing-fits branch then orders by MinRamGb and takes the
+    // smallest, and the smallest rows are the aggressively quantised GGUFs: on a build
+    // whose ABI has no llama.cpp that handed back a model nothing could open. The
+    // sibling hole in CatalogModelSelector's own fallback is fixed the same way, and
+    // EngineChoice.CanRun is the one owner of the rule - the engine AND the pack.
     private IEnumerable<ModelEntry> EnumerateEntries()
-        => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat && !e.Retired);
+        => _registry.AllModels.Where(e => e.Modality == ModelModality.Chat && !e.Retired
+                                       && EngineChoice.CanRun(e, _engines));
 
     /// <summary>
     /// Candidates for a specific capability.

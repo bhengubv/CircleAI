@@ -61,18 +61,27 @@ public sealed class SelectionQualityTests
     [Fact]
     public void DeviceTooSmallForAnything_ReportsNothingFits()
     {
-        // 0.25 GB — under even the smallest MinRamGb (0.6). Previously this
-        // returned Qwen3-0.6B looking exactly like a healthy selection.
-        var pick = new DeviceAwareModelSelector().BestFit(Device(0.25, storageGb: 1),
-                                                          ChatCapability.Default);
+        // 0.25 GB — under even the smallest MinRamGb. Previously this returned
+        // Qwen3-0.6B looking exactly like a healthy selection.
+        //
+        // MNN-ONLY, STATED: without an engine set the selector asks the build, which
+        // answers from the test host's bin/, so this moved when llamabridge.dll was
+        // staged for win-x64 and nothing about the product had changed.
+        var pick = new DeviceAwareModelSelector([ModelEngine.Mnn])
+            .BestFit(Device(0.25, storageGb: 1), ChatCapability.Default);
 
         Assert.Equal(SelectionQuality.NothingFits, pick.Quality);
 
-        // Still returns the smallest rather than throwing — the fallback
-        // contract is unchanged, only now it is HONEST about itself. The smallest
-        // ELIGIBLE one: "nothing less than Qwen3.5 is the LLM" (2026-10-16), so the
-        // retired Qwen3-0.6B this used to name is no longer an answer.
-        Assert.Equal("Qwen3.5-0.8B-MNN", pick.ModelId);
+        // Still returns something rather than throwing — the fallback contract is
+        // unchanged, only now it is HONEST about itself. And what it returns is above
+        // the floor ("nothing less than Qwen3.5 is the LLM", 2026-10-16), so the
+        // retired Qwen3-0.6B this used to name is no longer an answer. The NAME was
+        // asserted here and a smaller eligible Qwen3.5 entering the registry is not a
+        // defect, so the rule is what is pinned.
+        var chosen = new ModelRegistryService().AllModels.Single(m => m.Name == pick.ModelId);
+        Assert.False(chosen.Retired, pick.ModelId + " is retired");
+        Assert.Equal(ModelEngine.Mnn, chosen.Engine);
+        Assert.StartsWith("Qwen3.", pick.ModelId, StringComparison.Ordinal);
     }
 
     [Fact]

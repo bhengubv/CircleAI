@@ -3191,7 +3191,7 @@
       "Modality": "Chat",
       "Engine": "LlamaCpp",
       "TotalBytes": 5946648928,
-      "QualityRank": 16,
+      "QualityRank": 15,
       "MinRamGb": 7.5,
       "MinStorageGb": 6.0,
       "Capabilities": [
@@ -3202,6 +3202,165 @@
           "Name": "Ternary-Bonsai-2-27B-PTQ1_0.gguf",
           "Sha256": "53107f530aa52eb00912263ab1ee29bd199261c87cd7b4ad4ca1318c1fe33ee3",
           "SizeBytes": 5946648928
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Ternary-Bonsai-2-9B",
+      "Version": "1.0",
+      "Quantization": "PTQ1_0",
+      "Repo": "prism-ml/Ternary-Bonsai-2-9B-gguf",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 1997486976,
+      "QualityRank": 13,
+      "MinRamGb": 2.5,
+      "MinStorageGb": 2.0,
+      "Capabilities": [
+        "Default"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Ternary-Bonsai-2-9B-PTQ1_0.gguf",
+          "Sha256": "3561df7ac7d26a71ffa991ac2db740b10841c3a350aa2676ccd3ff5d428b4e8b",
+          "SizeBytes": 1997486976
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Ternary-Bonsai-2-4B",
+      "Version": "1.0",
+      "Quantization": "PTQ1_0",
+      "Repo": "prism-ml/Ternary-Bonsai-2-4B-gguf",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 949549920,
+      "QualityRank": 11,
+      "MinRamGb": 1.2,
+      "MinStorageGb": 1.0,
+      "Capabilities": [
+        "Default"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Ternary-Bonsai-2-4B-PTQ1_0.gguf",
+          "Sha256": "56711263ec9a9ffeaa74a3a0e58dece8127cf9268404746c721113ca76994d60",
+          "SizeBytes": 949549920
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Ternary-Bonsai-2-2B",
+      "Version": "1.0",
+      "Quantization": "PTQ1_0",
+      "Repo": "prism-ml/Ternary-Bonsai-2-2B-gguf",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 429183456,
+      "QualityRank": 9,
+      "MinRamGb": 0.6,
+      "MinStorageGb": 0.5,
+      "Capabilities": [
+        "Default"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Ternary-Bonsai-2-2B-PTQ1_0.gguf",
+          "Sha256": "36061ad406df8a4903a6db005be350c50fabfaf717f9ef0acf4b76adcd9929fa",
+          "SizeBytes": 429183456
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-2B-GGUF",
+      "Version": "3.5",
+      "Quantization": "Q4_K_M",
+      "Repo": "unsloth/Qwen3.5-2B-GGUF",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 1280835840,
+      "QualityRank": 9,
+      "MinRamGb": 1.9,
+      "MinStorageGb": 1.4,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Qwen3.5-2B-Q4_K_M.gguf",
+          "Sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+          "SizeBytes": 1280835840
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-4B-GGUF",
+      "Version": "3.5",
+      "Quantization": "Q4_K_M",
+      "Repo": "unsloth/Qwen3.5-4B-GGUF",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 2740937888,
+      "QualityRank": 11,
+      "MinRamGb": 3.8,
+      "MinStorageGb": 3.0,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Qwen3.5-4B-Q4_K_M.gguf",
+          "Sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+          "SizeBytes": 2740937888
+        }
+      ],
+      "Source": "HuggingFace"
+    },
+    {
+      "Name": "Qwen3.5-9B-GGUF",
+      "Version": "3.5",
+      "Quantization": "Q4_K_M",
+      "Repo": "unsloth/Qwen3.5-9B-GGUF",
+      "License": "Apache-2.0",
+      "Architecture": "qwen35",
+      "Modality": "Chat",
+      "Engine": "LlamaCpp",
+      "TotalBytes": 5680522464,
+      "QualityRank": 13,
+      "MinRamGb": 7.5,
+      "MinStorageGb": 6.0,
+      "Capabilities": [
+        "Default",
+        "Tools",
+        "Reasoning",
+        "LongContext"
+      ],
+      "BundleFiles": [
+        {
+          "Name": "Qwen3.5-9B-Q4_K_M.gguf",
+          "Sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+          "SizeBytes": 5680522464
         }
       ],
       "Source": "HuggingFace"

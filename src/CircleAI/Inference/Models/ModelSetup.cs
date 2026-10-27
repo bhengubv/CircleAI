@@ -246,8 +246,29 @@ public static class ModelSetup
     /// name and answer - rather than a person waiting out a 2.8 GB brain before
     /// anything at all works.
     /// </remarks>
+    /// SMALLEST FIRST IS A TIEBREAK, NOT A PRIORITY, AND IT PUT THE BRAIN LAST.
+    /// Measured on a clean Windows 11 install, 2026-10-27: 75 downloads queued
+    /// smallest first, so the 2.85 GB brain came second-to-last - behind 45 MMS
+    /// voices at 114 MB each and 13 Piper voices at 63 MB - while the service was
+    /// printing "questions will wait for one". Roughly 8 GB arrived before the one
+    /// model that makes it answer. The small-first reasoning above is still right
+    /// for everything else; it is wrong for the single item the product needs to
+    /// function, so <paramref name="brainFirst"/> lifts that one to the head and
+    /// the rest keep the old order.
+    ///
+    /// AND A MODEL THIS BUILD CANNOT OPEN IS NO LONGER FETCHED. Unfinished has
+    /// filtered on CanRunHere since the Windows service was caught resuming half a
+    /// GGUF it ships no llama.cpp for - but this method never did, so the same
+    /// model was refused a resume and granted a fresh download. On that Windows
+    /// install it cost 7.59 GB: Qwen-Image-2.1-UC is Engine=LlamaCpp, the build had
+    /// no llama engine, and the bytes were fetched in full and then rejected with
+    /// "no loadable model file was found for that modality". The two methods now
+    /// agree, and the check happens before anything moves rather than after.
+    /// <param name="brainFirst">Model to fetch ahead of everything else, usually the chosen brain.</param>
+    /// <param name="engines">Engines this build ships; null asks the device.</param>
     public static IReadOnlyList<(string Name, long Need)> NotStarted(
-        BundleModelLoader loader, IEnumerable<(string Name, long Bytes)> planned)
+        BundleModelLoader loader, IEnumerable<(string Name, long Bytes)> planned,
+        string? brainFirst = null, IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(planned);
@@ -257,8 +278,10 @@ public static class ModelSetup
             return planned
                 .Where(p => !string.IsNullOrWhiteSpace(p.Name))
                 .Where(p => !loader.ModelPresent(p.Name) && !loader.ModelPartial(p.Name))
+                .Where(p => loader.CanRunHere(p.Name, engines))
                 .Select(p => (p.Name, Need: p.Bytes))
-                .OrderBy(p => p.Need)
+                .OrderByDescending(p => string.Equals(p.Name, brainFirst, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(p => p.Need)
                 .ToList();
         }
         catch { return []; }
@@ -281,17 +304,25 @@ public static class ModelSetup
         IEnumerable<(string Name, long Bytes)> planned,
         Action<string> say,
         CancellationToken ct = default,
-        Action<string>? landed = null)
+        Action<string>? landed = null,
+        string? brainFirst = null,
+        IReadOnlyCollection<CircleAI.Core.ModelEngine>? engines = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(say);
 
         try
         {
-            var todo = NotStarted(loader, planned);
+            var todo = NotStarted(loader, planned, brainFirst, engines);
             if (todo.Count == 0) { say("setup: nothing left to start"); return; }
 
-            say($"setup: starting {todo.Count} download(s), smallest first");
+            // SAY THE ORDER THAT IS ACTUALLY USED. This line read "smallest first"
+            // while the brain sat second-to-last in it, which is how the ordering
+            // went unnoticed: the log described an intention, not the queue.
+            var head = todo.Count > 0 && string.Equals(todo[0].Name, brainFirst, StringComparison.OrdinalIgnoreCase)
+                ? $"{brainFirst} first, then smallest first"
+                : "smallest first";
+            say($"setup: starting {todo.Count} download(s), {head}");
 
             foreach (var (name, need) in todo)
             {

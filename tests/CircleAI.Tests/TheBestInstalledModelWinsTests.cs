@@ -102,10 +102,22 @@ public sealed class TheBestInstalledModelWinsTests : IDisposable
         RamTotalBytes = 12_000_000_000,
     };
 
-    private ModelEntry? Chosen(string store, DeviceProbe probe)
+    /// <summary>An MNN-only build, stated rather than probed.</summary>
+    /// <remarks>
+    /// ModelChoice.For asks DeviceModelAssessor.ShippedEngines() when no engine set is
+    /// given, and that answers from whichever native libraries sit in the test host's
+    /// bin/ - so staging llamabridge.dll for win-x64 changed what this file selected
+    /// with no product change behind it. MNN-only is also the honest device here: these
+    /// are P30 cases, and the P30's 32-bit ABI has no llama.cpp at all.
+    /// </remarks>
+    private static readonly ModelEngine[] MnnOnly = [ModelEngine.Mnn];
+
+    private ModelEntry? Chosen(string store, DeviceProbe probe,
+                               IReadOnlyCollection<ModelEngine>? engines = null)
     {
         using var loader = new BundleModelLoader(store, _registry);
-        return ModelChoice.For(ModelModality.Chat, _registry, loader, probe);
+        return ModelChoice.For(ModelModality.Chat, _registry, loader, probe,
+                               catalog: null, engines: engines ?? MnnOnly);
     }
 
     [Fact]
@@ -163,10 +175,21 @@ public sealed class TheBestInstalledModelWinsTests : IDisposable
         // Falling through must not mean falling silent: null told setup there was
         // nothing to fetch, which is how a phone ends up with no brain and nothing
         // fetching one. The smallest this device could ever hold is the answer.
+        //
+        // THE RULE, NOT THE NAME. This read Assert.Equal("Qwen3.5-0.8B-MNN", ...) - the
+        // selector's answer on the day it was written - so it failed the moment a
+        // smaller runnable Qwen3.5 entered the registry, for no defect. Which model is
+        // smallest is the registry's business and choosing it is the selector's; that
+        // SOMETHING holdable is named is this test's.
         var chosen = Chosen(Store("Qwen3.6-35B-A3B-MNN"), P30());
 
         Assert.NotNull(chosen);
-        Assert.Equal("Qwen3.5-0.8B-MNN", chosen!.Name);
+        Assert.NotEqual("Qwen3.6-35B-A3B-MNN", chosen!.Name);
+        Assert.False(chosen.Retired, $"{chosen.Name} is retired");
+        Assert.True(ModelFit.CouldEverHold(chosen, P30()),
+            $"the P30 was told its brain is {chosen.Name}, which it could never hold");
+        Assert.True(EngineChoice.CanRun(chosen, MnnOnly),
+            $"the P30 was told its brain is {chosen.Name}, which " + EngineChoice.Explain(chosen, MnnOnly));
     }
 
     [Fact]

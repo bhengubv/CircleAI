@@ -300,6 +300,17 @@ public sealed class BundleModelLoader : IModelLoader
             try { return ResolveLoadPath(entry, modelDir, modelName); }
             catch (InvalidOperationException) { /* not fully downloaded yet */ }
         }
+
+        // AND THE NOT-YET-HERE PATH IS THE ENGINE'S TOO. config.json is the conventional
+        // MNN anchor and a caller File.Exists-tests this to decide whether to download -
+        // so handing back a config.json for a GGUF names a file that will never appear
+        // however completely the model arrives, and the test can only ever say "still
+        // missing". The catalogued file name is the honest expectation.
+        if (entry.Engine == ModelEngine.LlamaCpp &&
+            entry.BundleFiles?.FirstOrDefault(f =>
+                !f.Name.Contains("mmproj", StringComparison.OrdinalIgnoreCase)) is { } weight)
+            return Path.Combine(modelDir, weight.Name);
+
         return Path.Combine(modelDir, ConfigFileName);
     }
     /// <summary>The best chat model this device actually HAS, or null.</summary>
@@ -328,7 +339,16 @@ public sealed class BundleModelLoader : IModelLoader
     /// <param name="refused">
     /// Models this device has already refused from evidence. Null refuses nothing.
     /// </param>
-    public string? BestInstalledChatModel(DeviceProbe? probe = null, Func<string, bool>? refused = null)
+    /// <param name="engines">
+    /// The brain engines this build ships; null asks the build. A model sitting on disk
+    /// that nothing here can open is not an answer - and that only became REACHABLE when
+    /// ModelPresent stopped demanding config.json of a GGUF: before then a GGUF could
+    /// never read as present, so this method could never hand one back, and the missing
+    /// gate was harmless. Fixing the one without the other would have turned a model
+    /// that was invisible into a model that loads and fails.
+    /// </param>
+    public string? BestInstalledChatModel(DeviceProbe? probe = null, Func<string, bool>? refused = null,
+                                          IReadOnlyCollection<ModelEngine>? engines = null)
     {
         try
         {
@@ -358,6 +378,14 @@ public sealed class BundleModelLoader : IModelLoader
                 // stands in for was missing. "Nothing less than Qwen3.5 is the LLM":
                 // a missing Qwen3.5 is fetched, never substituted.
                 if (entry.Retired) continue;
+
+                // AND SOMETHING THIS BUILD CAN ACTUALLY OPEN. EngineChoice.CanRun asks
+                // both halves - an engine we ship, and a pack the LOADED backend reads -
+                // the same pair DeviceModelAssessor applies when it marks a catalogue row
+                // compatible. Without it this fallback would answer with a GGUF on a
+                // build whose ABI has no llama.cpp, which is the 2026-10-19 Windows
+                // incident arriving by a third route.
+                if (!EngineChoice.CanRun(entry, engines)) continue;
 
                 // PRESENT, NOT MERELY NAMED. A half-finished download has a
                 // directory too, and handing one to an inference engine is how a
@@ -656,7 +684,26 @@ public sealed class BundleModelLoader : IModelLoader
                 var modelDir = Path.Combine(_storageRoot, modelName);
                 if (!Directory.Exists(modelDir)) return false;
 
-                if (entry.Modality == ModelModality.Chat &&
+                // CONFIG.JSON IS AN MNN BUNDLE'S INVARIANT, NOT A CHAT MODEL'S, and this
+                // line read it as the latter.
+                //
+                // An MNN chat bundle is nine or ten files around llm.mnn.weight and
+                // config.json is one of them - every one in this registry carries it. A
+                // GGUF chat bundle is ONE file and upstream ships no config.json at all:
+                // prism-ml/Ternary-Bonsai-2-2B-gguf lists five files and every one is a
+                // .gguf. So for a GGUF chat entry this returned false FOR EVER, however
+                // completely it had downloaded - selectable, plannable, fetchable, and
+                // never once recognised as installed. The brain's own present-check would
+                // then throw ModelNotInstalledException on a model sitting whole on disk,
+                // and the first-run fetch would queue it again on every start. That is
+                // precisely the defect this repo's README names as its commonest:
+                // catalogued with full hashes, and no way in.
+                //
+                // ASKED OF THE ENGINE, because the engine is what decides the bundle's
+                // shape. A GGUF then falls through to the every-file check below - there
+                // is no llm.mnn.weight for it to anchor on - which requires the .gguf to
+                // exist at its catalogued length, and that is the right question for it.
+                if (entry.Modality == ModelModality.Chat && entry.Engine != ModelEngine.LlamaCpp &&
                     !File.Exists(Path.Combine(modelDir, ConfigFileName)))
                     return false;
 
@@ -728,8 +775,11 @@ public sealed class BundleModelLoader : IModelLoader
                 var modelDir = Path.Combine(_storageRoot, modelName);
                 if (!Directory.Exists(modelDir)) return false;
 
-                // Chat (MNN) additionally requires config.json to load at all.
-                if (entry.Modality == ModelModality.Chat &&
+                // Chat (MNN) additionally requires config.json to load at all - and only
+                // MNN does. See ModelPresent for why asking it of a GGUF made every one
+                // of them permanently absent; the two checks have to agree, or verify
+                // would fail a model present says is here.
+                if (entry.Modality == ModelModality.Chat && entry.Engine != ModelEngine.LlamaCpp &&
                     !File.Exists(Path.Combine(modelDir, ConfigFileName)))
                     return false;
 
@@ -788,7 +838,21 @@ public sealed class BundleModelLoader : IModelLoader
             return null;
         }
 
-        var path = entry.Modality switch
+        // THE ENGINE DECIDES THE FILE, NOT THE MODALITY - AND THIS IS THE THIRD PLACE
+        // THE SAME MNN ASSUMPTION LIVED.
+        //
+        // ModelPresent demanded config.json of any chat bundle, ModelExists did too, and
+        // here the Chat arm resolved to it as well. A GGUF has no config.json, so all
+        // eight llama.cpp entries in this registry - seven chat brains and
+        // Qwen-Image-2.1-UC - fell into the default arm and threw "no loadable model
+        // file was found for that modality" with the model whole on disk. That is the
+        // exact sentence the 3.9.0 Windows service answered with after fetching 7.59 GB
+        // of Qwen-Image-2.1-UC, and it was read as a download problem.
+        //
+        // A GGUF IS A GGUF WHATEVER THE MODALITY, so this asks the engine first and the
+        // modality second. No speech entry declares llama.cpp - every Tts, Asr, Vad and
+        // WakeWord row in this registry is MNN or Onnx - so nothing else moves.
+        var path = entry.Engine == ModelEngine.LlamaCpp ? FindGguf() : entry.Modality switch
         {
             ModelModality.Tts      => Find("*.onnx"),
             ModelModality.Asr      => Find("*.bin", "*.onnx"),
@@ -796,6 +860,22 @@ public sealed class BundleModelLoader : IModelLoader
             ModelModality.WakeWord => ResolveWakeWord(modelDir) ?? Find("*.onnx", "*.tflite"),
             _                      => Find(ConfigFileName),   // Chat: MNN config.json
         };
+
+        string? FindGguf()
+        {
+            // THE LANGUAGE MODEL, NOT THE VISION PROJECTOR. A Bonsai repo publishes both
+            // - Ternary-Bonsai-2-2B-PTQ1_0.gguf beside Ternary-Bonsai-2-2B-mmproj-Q8_0
+            // .gguf - and "the shortest .gguf name" would be a coin toss between a brain
+            // and a third of a vision tower. "mmproj" is upstream's own naming for the
+            // projector, so it is the thing to exclude rather than guess around.
+            var ggufs = Directory.EnumerateFiles(modelDir, "*.gguf", SearchOption.AllDirectories)
+                .OrderBy(f => f.Length)
+                .ToList();
+
+            return ggufs.FirstOrDefault(f =>
+                       !Path.GetFileName(f).Contains("mmproj", StringComparison.OrdinalIgnoreCase))
+                ?? ggufs.FirstOrDefault();
+        }
 
         if (path is null)
             throw new InvalidOperationException(

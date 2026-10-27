@@ -105,6 +105,41 @@ public sealed class TheBrainFloorTests : IDisposable
 
     private static readonly Regex Qwen35OrNewer = new(@"^Qwen(3\.[5-9]|[4-9])", RegexOptions.CultureInvariant);
 
+    /// <summary>
+    /// The floor as the DATA states it, which is the only place it is stated.
+    /// </summary>
+    /// <remarks>
+    /// THESE TESTS USED TO ASSERT A MODEL NAME, and a name is not the rule. Six of them
+    /// read Assert.Equal("Qwen3.5-0.8B-MNN", ...), so the moment a runnable Qwen3.5 of
+    /// another lineage entered the registry - Ternary-Bonsai-2-2B, a ternary
+    /// quantisation of Qwen3.5-2B, architecture unchanged - they failed for naming the
+    /// selector's old answer rather than its rule. Which model wins is the selector's
+    /// job; that it is above the floor, not retired and openable here is ours.
+    /// <para>
+    /// Qwen3.5 BY NAME OR BY ARCHITECTURE, exactly as
+    /// <see cref="Every_LLM_the_registry_will_run_is_Qwen3_5_or_newer"/> reads it: a
+    /// re-quantised Qwen3.5 is still Qwen3.5, and the registry says so in a field
+    /// rather than in a name.
+    /// </para>
+    /// </remarks>
+    private void AssertAboveFloor(string? modelId, string where)
+    {
+        Assert.False(string.IsNullOrWhiteSpace(modelId), where + " named nothing at all");
+
+        var m = Model(modelId!);
+        Assert.False(m.Retired, $"{where} named {m.Name}, which is retired");
+        Assert.True(Qwen35OrNewer.IsMatch(m.Name) || m.Architecture is "qwen35" or "qwen3.5",
+            $"{where} named {m.Name} (architecture {m.Architecture ?? "unstated"}), below the floor");
+    }
+
+    /// <summary>And that this build could actually open what was named.</summary>
+    private void AssertOpenableWith(string? modelId, ModelEngine[] engines, string where)
+    {
+        AssertAboveFloor(modelId, where);
+        Assert.True(EngineChoice.CanRun(Model(modelId!), engines),
+            $"{where} named {modelId}, which " + EngineChoice.Explain(Model(modelId!), engines));
+    }
+
     [Fact]
     public void Every_LLM_the_registry_will_run_is_Qwen3_5_or_newer()
     {
@@ -169,17 +204,26 @@ public sealed class TheBrainFloorTests : IDisposable
     }
 
     [Fact]
-    public void When_nothing_fits_the_catalogue_selector_answers_the_smallest_Qwen3_5_not_a_lesser_model()
+    public void When_nothing_fits_the_least_bad_option_is_still_above_the_floor_and_openable()
     {
         // The P30 at 0.44 GB free: the assessment marks every LLM incompatible, and
         // the "least-bad option" used to be whatever was smallest - a retired 0.5B.
+        //
+        // AND THE SMALLEST ROWS ARE THE AGGRESSIVELY QUANTISED GGUFs, which is why this
+        // path needed the engine gate too. It reads _catalog.All() rather than
+        // Compatible(), so it bypasses the assessor - the only place the engine and the
+        // quantisation were ever checked - and then orders by MinRamGb and hands back
+        // the smallest. On an MNN-only build that returned a model with no engine to
+        // open it: the 2026-10-19 Windows incident, on the selector instead of the plan.
         using var cat = new SqliteModelCatalog("Data Source=:memory:");
         CatalogueSeed.SeedFromEmbedded(cat, _registry);
         foreach (var e in cat.All()) cat.SetAssessment(e.Name, compatible: false, rank: 0);
 
-        var pick = CatalogModelSelector.Preferring(cat, _registry).BestFit(P30(), ChatCapability.Default);
+        var pick = CatalogModelSelector.Preferring(cat, _registry, MnnOnly)
+                                       .BestFit(P30(), ChatCapability.Default);
 
-        Assert.Equal("Qwen3.5-0.8B-MNN", pick.ModelId);
+        Assert.Equal(SelectionQuality.NothingFits, pick.Quality);
+        AssertOpenableWith(pick.ModelId, MnnOnly, "the catalogue selector's least-bad option");
     }
 
     // ── the installed-model fallback ────────────────────────────────────────
@@ -203,26 +247,38 @@ public sealed class TheBrainFloorTests : IDisposable
     // ── what the screens name and what setup fetches ────────────────────────
 
     [Fact]
-    public void The_screens_name_Qwen3_5_on_the_P30_even_with_the_0_6B_on_disk()
+    public void The_screens_never_name_the_0_6B_on_disk_just_because_it_is_on_disk()
     {
+        // Installed-first named Qwen3-0.6B - the registry's first entry - as the P30's
+        // brain on every screen, so the census counted the brain as done and nothing
+        // ever fetched a Qwen3.5. The rule is that what is named is above the floor,
+        // not that it is one particular model.
         using var loader = new BundleModelLoader(Store("Qwen3-0.6B-MNN"), _registry);
 
-        var chosen = ModelChoice.For(ModelModality.Chat, _registry, loader, P30());
+        var chosen = ModelChoice.For(ModelModality.Chat, _registry, loader, P30(), engines: MnnOnly);
 
-        Assert.Equal("Qwen3.5-0.8B-MNN", chosen?.Name);
+        Assert.NotEqual("Qwen3-0.6B-MNN", chosen?.Name);
+        AssertOpenableWith(chosen?.Name, MnnOnly, "the screens");
     }
 
     [Fact]
-    public void Setup_fetches_the_0_8B_for_the_P30_and_never_the_2B()
+    public void Setup_plans_a_brain_above_the_floor_and_not_the_retired_one_on_disk()
     {
         // The 0.6B on disk used to fill this slot, so nothing was fetched at all; and
         // ranking by quality among what the P30 could EVER hold picks the 2B.
         using var loader = new BundleModelLoader(Store("Qwen3-0.6B-MNN"), _registry);
 
-        var plan = FirstRun.Plan(_registry, loader, P30(), speech: false);
+        var plan = FirstRun.Plan(_registry, loader, P30(), speech: false, engines: MnnOnly);
 
         var brain = Assert.Single(plan, s => s.Modality == ModelModality.Chat);
-        Assert.Equal("Qwen3.5-0.8B-MNN", brain.Model.Name);
+        Assert.NotEqual("Qwen3-0.6B-MNN", brain.Model.Name);
+        AssertOpenableWith(brain.Model.Name, MnnOnly, "the first-run plan");
+
+        // AND NOT ONE THE PHONE COULD NEVER HOLD. This is the half that kept the 4B
+        // off the P30 - 3.8 GB declared against a 2.37 GB ceiling - and it is the
+        // durable question, asked on total RAM rather than on whatever is spare.
+        Assert.True(ModelFit.CouldEverHold(brain.Model, P30()),
+            $"the plan chose {brain.Model.Name}, which the P30 could never hold");
     }
 
     [Fact]
@@ -369,25 +425,40 @@ public sealed class TheBrainFloorTests : IDisposable
         Assert.False(ModelOffer.Worth(cat, "Qwen3.5-2B-MNN"));          // refused
 
         using var loader = new BundleModelLoader(Store("Qwen3-0.6B-MNN"), _registry);
-        Assert.Equal("Qwen3.5-0.8B-MNN",
-            ModelChoice.For(ModelModality.Chat, _registry, loader, P30(), cat)?.Name);
+        AssertOpenableWith(
+            ModelChoice.For(ModelModality.Chat, _registry, loader, P30(), cat, engines: MnnOnly)?.Name,
+            MnnOnly, "the screens under a boot-time incompatible verdict");
 
         var plan = FirstRun.Plan(_registry, loader, P30(), speech: false,
-                                 declined: ModelOffer.NotWorthOffering(cat));
-        Assert.Equal("Qwen3.5-0.8B-MNN", Assert.Single(plan, s => s.Modality == ModelModality.Chat).Model.Name);
+                                 declined: ModelOffer.NotWorthOffering(cat), engines: MnnOnly);
+        var brain = Assert.Single(plan, s => s.Modality == ModelModality.Chat);
+        AssertOpenableWith(brain.Model.Name, MnnOnly, "the plan under a boot-time incompatible verdict");
+
+        // The veto is what this pins: a brain was PLANNED and NAMED despite every row
+        // reading incompatible. Which one is the selector's business.
+        Assert.NotEqual("Qwen3.5-2B-MNN", brain.Model.Name);                   // refused on evidence
     }
 
     [Fact]
-    public void A_2B_the_P30_cannot_run_now_does_not_stand_in_for_the_brain()
+    public void A_model_the_P30_cannot_hold_does_not_stand_in_for_the_brain()
     {
         // "Could ever hold" counted a Qwen3.5-2B as the P30's brain - and loading it
         // with ~1 GB free is what set off the low-memory kills on 2026-10-10. With it
         // on disk the 0.8B was never fetched.
+        //
+        // THE RULE IS THE CEILING, NOT THE NAME. A dense 2B is 1.9 GB of declared RAM
+        // against the P30's ceiling and must never be the answer; what IS the answer
+        // depends on what the registry holds that the phone can carry, and that is the
+        // selector's call rather than this test's.
         using var loader = new BundleModelLoader(Store("Qwen3.5-2B-MNN"), _registry);
 
-        var plan = FirstRun.Plan(_registry, loader, P30(), speech: false);
+        var plan = FirstRun.Plan(_registry, loader, P30(), speech: false, engines: MnnOnly);
 
-        Assert.Equal("Qwen3.5-0.8B-MNN", Assert.Single(plan, s => s.Modality == ModelModality.Chat).Model.Name);
+        var brain = Assert.Single(plan, s => s.Modality == ModelModality.Chat).Model;
+        Assert.NotEqual("Qwen3.5-2B-MNN", brain.Name);
+        AssertOpenableWith(brain.Name, MnnOnly, "the first-run plan");
+        Assert.True(ModelFit.CouldEverHold(brain, P30()),
+            $"the plan chose {brain.Name} ({brain.MinRamGb} GB) for a phone that cannot hold it");
     }
 
     [Fact]
@@ -402,12 +473,24 @@ public sealed class TheBrainFloorTests : IDisposable
     }
 
     [Fact]
-    public void With_the_0_8B_on_disk_setup_fetches_no_brain()
+    public void With_the_chosen_brain_on_disk_setup_fetches_no_brain()
     {
-        using var loader = new BundleModelLoader(Store("Qwen3.5-0.8B-MNN"), _registry);
+        // ASK WHAT IT WOULD CHOOSE, THEN INSTALL THAT. This read
+        // Store("Qwen3.5-0.8B-MNN") - the selector's answer on the day it was written,
+        // set down as though it were the rule - so the moment a different model became
+        // the P30's best openable brain, the test installed the wrong one and then
+        // correctly observed that a brain was still owed. The property is "a brain
+        // already here is not fetched again", and it holds whichever brain that is.
+        using var empty = new BundleModelLoader(Store(), _registry);
+        var wanted = Assert.Single(
+            FirstRun.Plan(_registry, empty, P30(), speech: false, engines: MnnOnly),
+            s => s.Modality == ModelModality.Chat).Model.Name;
 
-        Assert.DoesNotContain(FirstRun.Plan(_registry, loader, P30(), speech: false),
-                              s => s.Modality == ModelModality.Chat);
+        using var loader = new BundleModelLoader(Store(wanted), _registry);
+
+        Assert.DoesNotContain(
+            FirstRun.Plan(_registry, loader, P30(), speech: false, engines: MnnOnly),
+            s => s.Modality == ModelModality.Chat);
     }
 
     [Fact]
@@ -439,6 +522,22 @@ public sealed class TheBrainFloorTests : IDisposable
     // finished the Bonsai, and nothing ever fetched the 4B - no brain, ever.
 
     private static DeviceProbe ThisWindowsBox() => Probe(availableBytes: 8_100_000_000, totalBytes: 21_260_000_000L);
+
+    /// <summary>An MNN-only build - which is what the P30's 32-bit ABI actually is.</summary>
+    /// <remarks>
+    /// STATED, NEVER PROBED, AND EVERY TEST ABOVE NOW USES IT TOO. The selectors ask
+    /// DeviceModelAssessor.ShippedEngines() at runtime, and that answers from whichever
+    /// native libraries happen to sit in the test host's bin/ - so staging
+    /// llamabridge.dll for win-x64 on 2026-10-27 changed what six tests in this file
+    /// selected, and they failed with no product change behind them. A test whose
+    /// verdict moves with the output directory pins nothing. This pair was written for
+    /// the incident below; the rest of the file should have been using it already.
+    /// <para>
+    /// MNN-only is also the honest device: EngineChoice's own header records that
+    /// libllama.so ships for android-arm64 and not for armeabi-v7a, so "the P30
+    /// (32-bit) has no GGUF engine at all".
+    /// </para>
+    /// </remarks>
     private static readonly ModelEngine[] MnnOnly = [ModelEngine.Mnn];
     private static readonly ModelEngine[] MnnAndLlama = [ModelEngine.Mnn, ModelEngine.LlamaCpp];
 

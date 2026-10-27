@@ -273,15 +273,13 @@ public sealed class AIService : IAIService
             // THE PERSONA AND THE SAMPLER GO IN BEFORE LOAD, which is the only moment
             // MNN reads them - see QwenTextGenerator's constructor for why the persona
             // must be MNN's system prompt and never a ChatML block of ours.
+            // AND THE GENERALIST GOES THROUGH THE SAME ENGINE CHOICE. This site built
+            // QwenTextGenerator outright, so even once the engine was wired into
+            // BuildGenerator below, the one generator the service loads on START - the
+            // brain itself - would still have gone to MNN.
             var generator = _generatorFactory is not null
                 ? _generatorFactory(modelPath)
-                : new QwenTextGenerator(
-                    modelPath,
-                    contextSize: (uint)Math.Max(1, contextSize),
-                    threads: _options.ThreadCount,
-                    templateEngine: null,
-                    systemPrompt: _options.SystemPrompt,
-                    samplerJson: ProfileFor(_resolvedModelId)?.SamplerConfigJson());
+                : BuildByEngine(_resolvedModelId, modelPath, contextSize, ChatCapability.Default);
 
             if (generator is null)
                 throw new InvalidOperationException("Generator factory returned null.");
@@ -1273,6 +1271,54 @@ public sealed class AIService : IAIService
         {
             Console.WriteLine($"CIRCLEAI-SLOT built=host-factory model={modelId} cap={capability}");
             return _generatorFactory(modelPath);
+        }
+
+        return BuildByEngine(modelId, modelPath, contextSize, capability);
+    }
+
+    /// <summary>The generator that can actually OPEN this model, chosen by its engine.</summary>
+    /// <remarks>
+    /// <c>new LlamaGenerator</c> APPEARED NOWHERE IN THIS REPOSITORY. A grep for it over
+    /// every .cs file returned nothing, and this method is why: the llama.cpp bridge was
+    /// built, its natives staged for win-x86, win-x64 and android-arm64,
+    /// LlamaQuantSupport could tell a prism fork from stock, the assessor could mark a
+    /// GGUF row compatible and the selector could choose one - and then the .gguf was
+    /// handed to QwenTextGenerator, which is MNN. Every GGUF brain in the registry was
+    /// unreachable at the last step. That is the defect this repo's README calls its
+    /// commonest by a wide margin, and a grep for callers was again worth more than a
+    /// green test run.
+    /// <para>
+    /// <see cref="EngineChoice.Run"/> IS the question "open this one with what", and this
+    /// is the caller its own header names - "the loader asks 'open this one with what' -
+    /// Run". It had no caller either.
+    /// </para>
+    /// </remarks>
+    private IChatGenerator BuildByEngine(
+        string? modelId, string modelPath, int contextSize, ChatCapability capability)
+    {
+        var entry = modelId is { Length: > 0 } ? _modelRegistry?.GetLatestModel(modelId) : null;
+
+        if (entry?.Engine == ModelEngine.LlamaCpp)
+        {
+            // REFUSED HERE WITH THE REASON, rather than inside MNN with a parse error.
+            // "We ship llama.cpp" does not mean "this llama.cpp reads THIS pack": stock
+            // rejects Bonsai's PTQ1_0 as an unknown type, so a build carrying upstream
+            // would otherwise fail somewhere far from the cause. Explain names whether it
+            // was the ABI or the pack.
+            if (EngineChoice.Run(entry) is null)
+                throw new InvalidOperationException(EngineChoice.Explain(entry) + ".");
+
+            Console.WriteLine($"CIRCLEAI-SLOT built=Llama model={modelId} cap={capability}");
+
+            // NO systemPrompt ARGUMENT, and that is correct rather than missing. MNN
+            // reads a system prompt only at load, which is why QwenTextGenerator takes
+            // one; llama.cpp templates the turn, so the persona rides in the turn - the
+            // rule TheBrainFloorTests pins as "the persona rides in the turn because MNN
+            // never read it from config".
+            return new LlamaGenerator(
+                modelPath,
+                contextSize: Math.Max(1, contextSize),
+                threads: _options.ThreadCount ?? 0);
         }
 
         Console.WriteLine(
