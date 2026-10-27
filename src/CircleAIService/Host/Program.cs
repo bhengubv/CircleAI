@@ -1,4 +1,4 @@
-﻿// Program.cs
+// Program.cs
 //
 // CircleAI as a service on a desktop, which is the same promise as on the phone with
 // a different front door.
@@ -27,23 +27,103 @@ using CircleAI.Core.Models;
 using CircleAI.Hosting;
 using CircleAI.Hosting.Endpoints;
 using CircleAI.Inference;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
+// NOT OPTIONAL, AND THE TYPE BEING FULLY QUALIFIED DOES NOT COVER IT. LogInformation and
+// LogError are extension methods on LoggerExtensions in this namespace, so naming
+// ILogger<T> by its full name still leaves them out of scope - the same shape as
+// enclosing-namespace-hides-missing-usings, from the other direction.
+using Microsoft.Extensions.Logging;
 
 namespace CircleAI.Service.Host;
 
 /// <summary>The desktop head: owns the models, answers over loopback.</summary>
 public static class Program
 {
+    /// <summary>The name the Service Control Manager knows this process by.</summary>
+    /// <remarks>
+    /// IT WAS CALLED A SERVICE AND WAS NOT ONE. "I looked for Circle AI Service in the
+    /// listings with other Windows Services and I didn't see it" - and it was not there,
+    /// because nothing in this process ever answered the Service Control Manager. The
+    /// released EXE reads PE subsystem 3, WINDOWS_CUI: a console application that printed
+    /// "Ctrl-C to stop." and waited on Task.Delay(Infinite). No auto-start at boot, no
+    /// restart after a crash, no `sc start`, and it died with the console that launched
+    /// it. The repo's only install-windows-service.ps1 belonged to a different project.
+    /// </remarks>
+    public const string ServiceName = "CircleAIService";
+
     /// <summary>Starts the service and runs until it is asked to stop.</summary>
+    /// <remarks>
+    /// ONE BINARY, TWO LIFETIMES, ONE BODY. <see cref="RunAsync"/> is the whole service and
+    /// neither host knows anything the other does not; what differs is only who says stop.
+    /// A console run keeps Ctrl-C exactly as it was, and a controller-started run goes
+    /// through <see cref="ServiceHost"/> so Start, Stop and Shutdown arrive from the SCM.
+    /// <para>
+    /// WindowsServiceHelpers.IsWindowsService IS THE DISCRIMINATOR, not a flag the
+    /// installer has to remember to pass: it reads whether this process was started by
+    /// the controller. A flag that the install script and the binary have to agree about
+    /// is one fact with two owners, and this file has already paid for that twice today.
+    /// </para>
+    /// </remarks>
     public static async Task<int> Main(string[] args)
     {
+        if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+            return await RunAsServiceAsync().ConfigureAwait(false);
+
         using var stopping = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stopping.Cancel(); };
 
+        return await RunAsync(stopping.Token, Console.WriteLine).ConfigureAwait(false);
+    }
+
+    /// <summary>Under the Service Control Manager: the same body, stopped by the SCM.</summary>
+    /// <remarks>
+    /// THE CONSOLE IS GONE AND WITH IT EVERY LINE THIS SERVICE WRITES, which is why
+    /// RunAsync tees its log to a file in the data directory rather than relying on
+    /// Console.WriteLine reaching anybody. AddWindowsService also wires the Windows event
+    /// log, so a failure to start is visible in Event Viewer where somebody looking at a
+    /// stopped service will actually look.
+    /// </remarks>
+    private static async Task<int> RunAsServiceAsync()
+    {
+        // FULLY QUALIFIED BECAUSE THIS FILE'S OWN NAMESPACE SHADOWS IT. The namespace is
+        // CircleAI.Service.Host, so a bare `Host` binds to that namespace rather than to
+        // Microsoft.Extensions.Hosting.Host and the compiler reports the builder missing
+        // from "the namespace CircleAI.Service.Host" - which reads like a bad package
+        // reference and is a name collision.
+        var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
+        builder.Services.AddWindowsService(options => options.ServiceName = ServiceName);
+        builder.Services.AddHostedService<ServiceHost>();
+
+        await builder.Build().RunAsync().ConfigureAwait(false);
+        return 0;
+    }
+
+    /// <summary>The service proper. Returns 0 on a clean stop, 1 when it could not start.</summary>
+    /// <param name="ct">Cancelled when the host, the SCM or Ctrl-C asks it to stop.</param>
+    /// <param name="say">Where every line goes; a file in the data directory gets them too.</param>
+    public static async Task<int> RunAsync(CancellationToken ct, Action<string> say)
+    {
+        ArgumentNullException.ThrowIfNull(say);
+
+        // EVERY LINE GOES TO A FILE AS WELL, and under the controller that file is the
+        // only copy. A service has no console: Console.WriteLine succeeds and reaches
+        // nobody, so a run that fetched 75 models or refused to start would leave no
+        // trace at all. Console mode gets the file too - the lines a person wants to
+        // read back are the same either way, and the install log that started all of
+        // this had to be copied out of a terminal by hand.
+        var data = DataDirectory();
+        Directory.CreateDirectory(data);
+        var tee = Tee(say, Path.Combine(data, "service.log"));
+
         var store = ModelStore();
-        Console.WriteLine($"CircleAI service — models at {store}");
+        tee($"CircleAI service — models at {store}");
+        tee($"CircleAI service — data at {data}");
 
         try
         {
+            say = tee;
             using var registry = new ModelRegistryService();
             using var loader   = new BundleModelLoader(store, registry);
 
@@ -73,8 +153,6 @@ public static class Program
             // AND "PRESENT" IS NOT "THE DIRECTORY EXISTS". This store held a
             // Ternary-Bonsai-2-27B folder of 0.0 GB - an abandoned fetch - which is
             // exactly the shape that gets chosen and then never loads.
-            var data = DataDirectory();
-            Directory.CreateDirectory(data);
 
             // THE MODELS LOOK AFTER THEMSELVES HERE AS THEY DO ON THE PHONE: an assessed
             // catalogue, the choice made from it, the leftovers swept, what is owed
@@ -155,7 +233,7 @@ public static class Program
                 options.ModelId = pick;
                 await service.StartAsync(ct).ConfigureAwait(false);
                 return new InProcessBrain(service, pick!);
-            }, log: line => Console.WriteLine(line));
+            }, log: say);
 
             // A MODEL THAT LOADED HERE IS PROVEN HERE - the only kind housekeeping lets
             // replace another (rule 5), so without this line nothing is ever reclaimed.
@@ -195,7 +273,7 @@ public static class Program
             await using var coordinator = new CircleAI.Assistant.Requests.RequestCoordinator(
                 store2, brain, CircleAI.Assistant.Requests.ServiceLimits.For(DeviceProbe.Snapshot()),
                 readiness, conversations: null, shortcuts,
-                isFirstParty: _ => true, log: line => Console.WriteLine(line));
+                isFirstParty: _ => true, log: say);
             coordinator.Start();
 
             await using var endpoint = new HttpLoopbackEndpoint(options)
@@ -215,7 +293,7 @@ public static class Program
                 Quality = (caller, ct) => new CircleAI.Assistant.Quality.QualityRunner(coordinator, caller)
                     .RunAsync(null, TimeSpan.FromMinutes(3), ct),
             };
-            await endpoint.StartAsync(service, stopping.Token).ConfigureAwait(false);
+            await endpoint.StartAsync(service, ct).ConfigureAwait(false);
 
             // THE PORT AND THE TOKEN ARE THE WHOLE INTERFACE, so they are printed
             // rather than left for somebody to find in a log. The endpoint generates
@@ -226,9 +304,41 @@ public static class Program
             // service actually works: the door opens, and then the machine is measured.
             // Kicking the block off first would let its lines land above "listening" and
             // read as though the bind had waited for them again.
-            Console.WriteLine($"listening on http://127.0.0.1:{endpoint.BoundPort}");
-            Console.WriteLine($"X-Butler-Token: {endpoint.Token}");
-            Console.WriteLine("Ctrl-C to stop.");
+            say($"listening on http://127.0.0.1:{endpoint.BoundPort}");
+
+            // AND WRITTEN DOWN, BECAUSE A SERVICE HAS NOBODY TO PRINT TO. The port and
+            // the token ARE the whole interface, and printing them was fine for a
+            // console app a person had just launched: under the Service Control Manager
+            // that line goes nowhere and nothing on the machine can reach this process.
+            // So they go in a file beside the readiness the endpoint already writes, and
+            // a client reads it instead of being told.
+            //
+            // WHAT THIS COSTS, SAID PLAINLY. The token is the only thing standing between
+            // a local process and somebody's memory, and a file is readable by whoever
+            // the ACL allows. Under a per-user data directory that is the user who owns
+            // it, which is the same reach the printed line had. Installed as a service
+            // the data directory is machine-wide, so EndpointFile tightens it to SYSTEM,
+            // Administrators and Users-read: every app the logged-in person runs can
+            // find the service, which is the product's own promise - "one process on
+            // this machine owns the models and answers for every app that asks" - and on
+            // a machine with several accounts that is wider than the console was. Per-user
+            // tokens are the honest fix and are not this change.
+            WriteEndpointFile(Path.Combine(data, "endpoint.json"), endpoint.BoundPort, endpoint.Token, say);
+
+            if (OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService())
+            {
+                say($"running as the Windows service '{ServiceName}'; stop it with: sc stop {ServiceName}");
+                say($"the port and token are in {Path.Combine(data, "endpoint.json")}");
+            }
+            else
+            {
+                // STRAIGHT TO THE CONSOLE AND NOT THROUGH THE TEE, deliberately. The tee
+                // appends to service.log, and a token in a log file outlives the process
+                // that issued it - the one secret here is the one line that must not be
+                // written down beside everything else.
+                Console.WriteLine($"X-Butler-Token: {endpoint.Token}");
+                say("Ctrl-C to stop.");
+            }
 
             // AND NOW THE WORK ABOUT MODELS, ALL OF IT OFF THE START PATH: what machine
             // this is, what the catalogue makes of it, which model it chooses - and then
@@ -238,12 +348,12 @@ public static class Program
             // speech stack, so no voices.
             _ = Task.Run(async () =>
             {
-                static void Say(string line) => Console.WriteLine(line);
+                void Say(string line) => say(line);
                 string? wanted = null;
                 try
                 {
                     // WHAT MACHINE THIS IS, SAID OUT LOUD - see MachineLineAsync.
-                    Say(await MachineLineAsync(stopping.Token).ConfigureAwait(false));
+                    Say(await MachineLineAsync(ct).ConfigureAwait(false));
 
                     // ONE READING OF THE DEVICE, shared by the assessment, the choice
                     // and the plan. Three snapshots could disagree, and the last would
@@ -287,7 +397,7 @@ public static class Program
                     // THE SERVICE EXE OWNS THE MODEL, so it loads it now unless asked not
                     // to: a question should not be the thing that pays for the load.
                     if (present && Environment.GetEnvironmentVariable("CIRCLEAI_LAZY") != "1")
-                        _ = brain.EnsureReadyAsync(stopping.Token)
+                        _ = brain.EnsureReadyAsync(ct)
                                  .ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
 
                     var plan = CircleAI.Assistant.FirstRun.Plan(registry, loader, probe, speech: false)
@@ -308,17 +418,17 @@ public static class Program
                         return;
                     }
 
-                    await ModelSetup.ResumeUnfinishedAsync(loader, Say, stopping.Token).ConfigureAwait(false);
+                    await ModelSetup.ResumeUnfinishedAsync(loader, Say, ct).ConfigureAwait(false);
 
                     // THE BRAIN IS NOT ONE OF SEVENTY-FIVE. Naming it here lifts it to
                     // the head of the queue; everything else keeps smallest-first, which
                     // is still right for the wake word and a voice.
                     await ModelSetup.FetchNotStartedAsync(
-                        loader, plan, Say, stopping.Token, landed: null, brainFirst: wanted)
+                        loader, plan, Say, ct, landed: null, brainFirst: wanted)
                         .ConfigureAwait(false);
 
                     if (!present && !string.IsNullOrWhiteSpace(wanted) && loader.ModelPresent(wanted!))
-                        await brain.EnsureReadyAsync(stopping.Token).ConfigureAwait(false);
+                        await brain.EnsureReadyAsync(ct).ConfigureAwait(false);
 
                     // UPKEEP LAST, AND ONLY ONCE THERE IS A BRAIN. Housekeeping's rule 5
                     // only reclaims in favour of a model that has LOADED here, so running
@@ -343,20 +453,136 @@ public static class Program
                 }
             });
 
-            try { await Task.Delay(Timeout.Infinite, stopping.Token).ConfigureAwait(false); }
+            try { await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { /* asked to stop */ }
 
             await endpoint.StopAsync(CancellationToken.None).ConfigureAwait(false);
-            Console.WriteLine("stopped.");
+
+            // THE FILE GOES WHEN THE PORT DOES. A stale endpoint.json names a port
+            // nothing is listening on and a token that opens nothing, and a client that
+            // trusts it waits on a socket that will never answer - the same shape as the
+            // abandoned-download directory this service already learned not to leave.
+            try { File.Delete(Path.Combine(data, "endpoint.json")); } catch { /* best effort */ }
+
+            say("stopped.");
             return 0;
         }
         catch (Exception ex)
         {
             // A service that will not start has to say why on the way out: this runs
             // with no screen and its exit code is all a service manager reports.
+            say("CircleAI service could not start: " + ex.Message);
             Console.Error.WriteLine("CircleAI service could not start: " + ex.Message);
             return 1;
         }
+    }
+
+    /// <summary>Sends every line to <paramref name="inner"/> and appends it to a file.</summary>
+    /// <remarks>
+    /// NEVER THROWS AND NEVER BLOCKS THE SERVICE. A log that cannot be written is a lost
+    /// line, not a failed start: a full disk, a locked file or a directory somebody
+    /// removed under us must not be the reason the machine has no assistant. Opened per
+    /// line rather than held, because this writes a few hundred lines over a start and
+    /// then goes quiet for days, and a held handle is one more thing to own and release
+    /// correctly across two lifetimes.
+    /// <para>
+    /// CAPPED, because the download lines are per-model and a machine that keeps failing
+    /// a fetch would otherwise grow this without limit. At the cap the file is rolled
+    /// once to .1 and started again, so the last two windows survive and nothing older
+    /// does.
+    /// </para>
+    /// </remarks>
+    private static Action<string> Tee(Action<string> inner, string path)
+    {
+        const long CapBytes = 4L * 1024 * 1024;
+        var gate = new object();
+
+        return line =>
+        {
+            inner(line);
+            try
+            {
+                lock (gate)
+                {
+                    var info = new FileInfo(path);
+                    if (info.Exists && info.Length > CapBytes)
+                    {
+                        var rolled = path + ".1";
+                        try { File.Delete(rolled); } catch { /* best effort */ }
+                        try { File.Move(path, rolled); } catch { /* best effort */ }
+                    }
+
+                    File.AppendAllText(
+                        path,
+                        DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss.fff zzz", System.Globalization.CultureInfo.InvariantCulture)
+                            + "  " + line + Environment.NewLine);
+                }
+            }
+            catch { /* a lost line is not a failed start */ }
+        };
+    }
+
+    /// <summary>Writes the port and token where a client can find them, and locks it down.</summary>
+    /// <remarks>
+    /// WHAT THE PRINTED LINE USED TO BE. HttpLoopbackEndpoint generates a token when none
+    /// is configured, so nothing reaches this process without being told it - which was
+    /// fine when a person had just started it in a terminal and is useless under the
+    /// controller. The readiness file already lives in this directory; this is the same
+    /// idea for the address.
+    /// <para>
+    /// THE ACL IS THE WHOLE PROTECTION, so it is set explicitly rather than inherited. A
+    /// machine-wide ProgramData directory grants Users modify by default, which would let
+    /// any local account REPLACE this file and point every client at a process of their
+    /// own. SYSTEM and Administrators keep full control; Users get read, because every
+    /// app the signed-in person runs has to find the service. Inheritance is switched off
+    /// so a change to the parent cannot widen it later.
+    /// </para>
+    /// </remarks>
+    private static void WriteEndpointFile(string path, int port, string? token, Action<string> say)
+    {
+        try
+        {
+            var json = "{\n"
+                     + "  \"port\": " + port.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\n"
+                     + "  \"token\": " + System.Text.Json.JsonSerializer.Serialize(token ?? string.Empty) + ",\n"
+                     + "  \"pid\": " + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\n"
+                     + "  \"startedUtc\": " + System.Text.Json.JsonSerializer.Serialize(DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)) + "\n"
+                     + "}\n";
+
+            File.WriteAllText(path, json);
+            if (OperatingSystem.IsWindows()) RestrictToAdminsAndUsers(path);
+        }
+        catch (Exception ex)
+        {
+            // A client can still be told the port by hand, so this is reported and not
+            // fatal - but it is reported, because a service nothing can address is the
+            // failure this file exists to prevent and it must not be silent.
+            say("could not write the endpoint file: " + ex.Message);
+        }
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RestrictToAdminsAndUsers(string path)
+    {
+        var info = new FileInfo(path);
+        var acl  = info.GetAccessControl();
+
+        acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (System.Security.AccessControl.FileSystemAccessRule existing in
+                 acl.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)))
+            acl.RemoveAccessRule(existing);
+
+        void Allow(System.Security.Principal.WellKnownSidType who, System.Security.AccessControl.FileSystemRights rights)
+            => acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
+                new System.Security.Principal.SecurityIdentifier(who, null),
+                rights,
+                System.Security.AccessControl.AccessControlType.Allow));
+
+        Allow(System.Security.Principal.WellKnownSidType.LocalSystemSid, System.Security.AccessControl.FileSystemRights.FullControl);
+        Allow(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, System.Security.AccessControl.FileSystemRights.FullControl);
+        Allow(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, System.Security.AccessControl.FileSystemRights.Read);
+
+        info.SetAccessControl(acl);
     }
 
     /// <summary>One line naming the machine this service is running on.</summary>
@@ -440,7 +666,7 @@ public static class Program
     {
         var set = Environment.GetEnvironmentVariable("CIRCLEAI_DATA");
         if (!string.IsNullOrWhiteSpace(set)) return set!;
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CircleAI", "service");
+        return Path.Combine(MachineRootOr(Environment.SpecialFolder.LocalApplicationData), "CircleAI", "service");
     }
 
     /// <summary>Where this machine keeps the models.</summary>
@@ -455,7 +681,86 @@ public static class Program
         var set = Environment.GetEnvironmentVariable("CIRCLEAI_MODELS");
         if (!string.IsNullOrWhiteSpace(set)) return set!;
 
-        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(root, "CircleAI", "models");
+        return Path.Combine(MachineRootOr(Environment.SpecialFolder.LocalApplicationData), "CircleAI", "models");
+    }
+
+    /// <summary>ProgramData under the controller, the user's own folder otherwise.</summary>
+    /// <remarks>
+    /// PER-USER IS THE WRONG ANSWER FOR A SERVICE AND THE RIGHT ONE FOR A CONSOLE RUN.
+    /// LocalApplicationData under LocalSystem resolves to
+    /// C:\Windows\System32\config\systemprofile\AppData\Local - a real, writable, and
+    /// completely different store from the one a console run filled. Installed as a
+    /// service with the old rule, this process would have reported "no model here yet"
+    /// on a machine holding every model it needs and started re-downloading gigabytes,
+    /// which looks exactly like a broken install and is not one.
+    /// <para>
+    /// CommonApplicationData (ProgramData) is the machine-wide answer, and it is the one
+    /// the repo's other service installer already uses for its runtime and model roots.
+    /// The install script sets CIRCLEAI_MODELS and CIRCLEAI_DATA explicitly anyway, so
+    /// this is the default rather than the mechanism - but a default that silently points
+    /// at a different disk location than the one a person has been filling is the kind of
+    /// fact that costs a day, so it is decided here and said in the log.
+    /// </para>
+    /// </remarks>
+    private static string MachineRootOr(Environment.SpecialFolder perUser)
+        => OperatingSystem.IsWindows() && WindowsServiceHelpers.IsWindowsService()
+            ? Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
+            : Environment.GetFolderPath(perUser);
+}
+
+/// <summary>The service under the Service Control Manager: Start, Stop, Shutdown.</summary>
+/// <remarks>
+/// ALL IT DOES IS HOLD THE TOKEN. BackgroundService gives the SCM contract its shape -
+/// ExecuteAsync runs until the host's stopping token trips, and the host trips it on
+/// `sc stop`, on a machine shutdown and on Ctrl-C alike - so the service body itself
+/// never learns which of the three happened and does not need to.
+/// <para>
+/// AND IT STOPS THE HOST WHEN THE BODY GIVES UP. A service whose work has ended but whose
+/// process stays up reads as Running in the listings while answering nothing, which is
+/// worse than a stopped one: the thing a person checks says it is fine. RunAsync returning
+/// 1 - it could not start - therefore ends the host rather than idling, and the non-zero
+/// exit is what tells the SCM to apply its restart policy.
+/// </para>
+/// </remarks>
+internal sealed class ServiceHost : BackgroundService
+{
+    private readonly IHostApplicationLifetime _lifetime;
+    private readonly ILogger<ServiceHost> _logger;
+
+    public ServiceHost(IHostApplicationLifetime lifetime, ILogger<ServiceHost> logger)
+    {
+        _lifetime = lifetime;
+        _logger   = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // THE EVENT LOG GETS THE LIFECYCLE AND THE FILE GETS THE DETAIL. AddWindowsService
+        // wires the event log, and that is where somebody looking at a stopped service
+        // looks first - so start, stop and failure go there, while the seventy-five
+        // download lines go to service.log where they can be read without a viewer.
+        var exit = 1;
+        try
+        {
+            _logger.LogInformation("CircleAI service starting.");
+            exit = await Program.RunAsync(stoppingToken, line => _logger.LogInformation("{Line}", line))
+                                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            exit = 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CircleAI service stopped by an unhandled error.");
+        }
+        finally
+        {
+            if (exit == 0) _logger.LogInformation("CircleAI service stopped.");
+            else           _logger.LogError("CircleAI service exited with {Exit}.", exit);
+
+            Environment.ExitCode = exit;
+            _lifetime.StopApplication();
+        }
     }
 }

@@ -602,6 +602,81 @@ public sealed class TheBrainFloorTests : IDisposable
     }
 
     [Fact]
+    public void The_desktop_service_is_a_real_windows_service()
+    {
+        // "I looked for Circle AI Service in the listings with other Windows Services and
+        // I didn't see it." It was not there: the EXE read PE subsystem 3, WINDOWS_CUI - a
+        // console application called "Service" that printed "Ctrl-C to stop." and waited
+        // on Task.Delay(Infinite). Nothing answered the Service Control Manager, so there
+        // was no auto-start, no restart after a crash, no `sc start`, and it died with the
+        // console that launched it.
+        //
+        // ASSERTED ON THE SOURCE, like the engine wiring: what went wrong was that a
+        // branch did not exist, and the SCM cannot be driven from a unit test. A device
+        // run proves it starts; this proves there is something for the controller to talk
+        // to, and fails if someone collapses it back to a console-only Main.
+        var host = Source("src", "CircleAIService", "Host", "Program.cs");
+
+        Assert.Contains("AddWindowsService(", host);
+        Assert.Contains("WindowsServiceHelpers.IsWindowsService()", host);
+        Assert.Contains("BackgroundService", host);
+
+        // ONE BODY, BOTH LIFETIMES. A second copy of the start-up order is how the console
+        // run and the service run come apart, and this file's order has been the bug twice.
+        Assert.Contains("RunAsync(stopping.Token, Console.WriteLine)", host);
+        Assert.Contains("Program.RunAsync(stoppingToken,", host);
+
+        // THE ADDRESS HAS TO BE FINDABLE WITHOUT A CONSOLE. The token is generated per
+        // start, so a service that only printed it could not be reached by anything.
+        Assert.Contains("endpoint.json", host);
+        Assert.Contains("WriteEndpointFile(", host);
+
+        // AND THE STORE HAS TO BE MACHINE-WIDE UNDER THE CONTROLLER. LocalApplicationData
+        // as LocalSystem is the system profile, a different store from the one a console
+        // run filled - the service would report "no model here yet" on a full machine and
+        // start re-downloading gigabytes.
+        Assert.Contains("CommonApplicationData", host);
+    }
+
+    [Fact]
+    public void The_token_is_never_written_to_the_log_file()
+    {
+        // THE ONE SECRET HERE IS THE ONE LINE THAT MUST NOT BE WRITTEN DOWN. Every other
+        // line tees to service.log, which outlives the process; the token is the whole of
+        // what stands between a local process and somebody's memory, so it goes to the
+        // console in console mode and to an ACL'd file, and never through the tee.
+        var host = Source("src", "CircleAIService", "Host", "Program.cs");
+
+        var tokenLines = host.Split('\n')
+            .Where(l => l.Contains("endpoint.Token", StringComparison.Ordinal))
+            .Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.NotEmpty(tokenLines);   // a pattern that matches nothing proves nothing
+        Assert.All(tokenLines, l =>
+            Assert.False(l.Contains("say(", StringComparison.Ordinal),
+                "the token reaches the tee'd log on: " + l.Trim()));
+    }
+
+    [Fact]
+    public void The_service_installer_registers_with_the_controller()
+    {
+        // The repo's only install-windows-service.ps1 belonged to CircleAI.Inference
+        // .Server - a different project - so this head had no way to be installed at all.
+        var script = Source("src", "CircleAIService", "windows", "install-windows-service.ps1");
+
+        Assert.Contains("sc.exe create", script);
+        Assert.Contains("start= auto", script);          // at boot, not on a double-click
+        Assert.Contains("sc.exe failure", script);       // restart after a crash
+        Assert.Contains("CIRCLEAI_MODELS=", script);     // machine-wide store, written down
+        Assert.Contains("CIRCLEAI_DATA=", script);
+
+        // AN UNINSTALL THAT TAKES THE MODELS IS THE ANDROID BUNDLE MISTAKE AGAIN: 2 GB on
+        // a P30, gigabytes somebody paid for on a metered link.
+        Assert.DoesNotContain("Remove-Item $ModelsRoot", script);
+    }
+
+    [Fact]
     public void The_service_switches_housekeeping_on_and_keeps_the_running_model_out_of_it()
     {
         var app = Source("src", "CircleAIService", "ServiceApplication.cs");
