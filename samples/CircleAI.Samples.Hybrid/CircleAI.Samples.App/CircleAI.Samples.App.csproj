@@ -47,9 +47,12 @@
     <ApplicationVersion>62</ApplicationVersion>
 
     <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
-         32-bit one (armeabi-v7a + x86); without it, the 64-bit one (arm64-v8a + x86_64). -->
-    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' == '32'">android-arm;android-x86</RuntimeIdentifiers>
-    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' != '32'">android-arm64;android-x64</RuntimeIdentifiers>
+         32-bit one (armeabi-v7a); without it, the 64-bit one (arm64-v8a).
+         The Intel RIDs were dropped from both APKs on 2026-10-28 - the reasoning
+         is on the same property in CircleAIService.csproj, and it applies here
+         identically: this app binds the same service and loads the same engines. -->
+    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' == '32'">android-arm</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(CircleAIAbi)' != '32'">android-arm64</RuntimeIdentifiers>
 
     <!-- 24 is the floor the brand assets are checked against: strokeAlpha on a
          vector path is API 24+. -->

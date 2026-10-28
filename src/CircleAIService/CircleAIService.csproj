@@ -69,10 +69,23 @@
     <ApplicationDisplayVersion>1.1</ApplicationDisplayVersion>
 
     <!-- Every release ships a 64-bit and a 32-bit APK. -p:CircleAIAbi=32 builds the
-         32-bit one (armeabi-v7a + x86); without it, the 64-bit one (arm64-v8a + x86_64).
-         Android only: the Windows EXE takes its RuntimeIdentifier from the publish. -->
-    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' == '32'">android-arm;android-x86</RuntimeIdentifiers>
-    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">android-arm64;android-x64</RuntimeIdentifiers>
+         32-bit one (armeabi-v7a); without it, the 64-bit one (arm64-v8a).
+         Android only: the Windows EXE takes its RuntimeIdentifier from the publish.
+
+         ONE ABI EACH, AND INTEL IS GONE ON PURPOSE. Both APKs used to declare a
+         second, Intel RID - x86 on the 32-bit, x86_64 on the 64-bit - and neither
+         ever carried an LLM engine, because no libMNN.so and no libllamabridge.so
+         exists for either in this tree. On a device of that ABI the service
+         installed, started, bound, downloaded a model and then died at the first
+         load; the only thing that ever said so was a build warning. Intel left the
+         phone-SoC business in 2016, what remains of x86_64 Android is the emulator
+         and Chromebooks, and the roster has no x86 device - so the claim bought us
+         nothing and cost 59,9 MB of 143 .so files in the 32-bit APK alone.
+         Removing the RID is the first of the two fixes CIRCLEAI014 names. Putting
+         one back means building MNN and the llama.cpp bridge for it FIRST: the RID
+         is the claim, the .so is the product. -->
+    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' == '32'">android-arm</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(TargetFramework)' == 'net10.0-android' And '$(CircleAIAbi)' != '32'">android-arm64</RuntimeIdentifiers>
 
     <!-- The apps version themselves; 3.9.x in Directory.Build.props is the package's.
          This is what the Windows EXE reports as its file and product version. -->
@@ -118,16 +131,30 @@
       used there: espeak-ng is a grapheme-to-phoneme front end for SYNTHESIS, and
       skills.db is what a MODEL looks things up in. This is the process with both.
 
-      arm64 only for the .so - the x86_64 build would need the NDK recipe run again -
-      and the library and its data are version-locked at espeak-ng 1.52.0, so they move
+      The library and its data are version-locked at espeak-ng 1.52.0, so they move
       together or not at all.
 
       espeak-ng is GPL-3.0 and is used OUT OF PROCESS, never linked. That arrangement
       is what keeps it off this app's licence, and it is why the phonemiser is invoked
       rather than referenced.
+
+      ONLY THE DATA IS REGISTERED HERE NOW. This group used to carry the .so too,
+      hard-coded to Voice/runtimes/android-arm64 with Abi=arm64-v8a and no condition,
+      and that was wrong in both directions at once:
+
+        64-bit APK : a DUPLICATE. The repo-root Directory.Build.targets already globs
+                     the whole Voice/runtimes/android-arm64/native folder, which is
+                     this exact file. The census counted 23 items where 22 exist.
+        32-bit APK : a LEAK. An APK declaring armeabi-v7a alone still got a
+                     lib/arm64-v8a/ entry, so it advertised an ABI for which it
+                     carried one library out of eighteen. It installed as
+                     armeabi-v7a on the P30 and nothing broke, which is luck: the
+                     installer picks primaryCpuAbi from what the APK claims to hold.
+
+      That glob is gated on android-arm64 being in RuntimeIdentifiers, so arm64 still
+      gets espeak and armeabi-v7a does not. The absence is real, CIRCLEAI004 reports
+      it, and an arm64 .so in a 32-bit APK never fixed it - it hid which ABI was asked.
     -->
-    <AndroidNativeLibrary Include="..\CircleAI\Voice\runtimes\android-arm64\native\libespeak-ng.so"
-                          Abi="arm64-v8a" />
     <AndroidAsset Include="..\CircleAI\Voice\assets\espeak-ng-data.zip"
                   Link="espeak-ng-data.zip" />
     <AndroidAsset Include="..\CircleAI\Skills\assets\skills.db.zip"

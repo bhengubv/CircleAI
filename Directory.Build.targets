@@ -79,25 +79,47 @@
   <!--
     Wildcards that match nothing are silently empty, so an absent RID folder
     (e.g. android-x64) costs nothing and needs no Exists() guard.
+
+    ONE GROUP PER ABI, EACH GATED ON THAT RID BEING DECLARED. Until 2026-10-28
+    these four groups had no RID condition at all: every Android APK registered
+    all four ABIs' natives whatever RuntimeIdentifiers said. The 32-bit APK
+    therefore registered the whole arm64-v8a set and both Intel sets, and the
+    census below counted all of them and printed one number over the top, so
+    "Bundling 49 native lib(s)" said exactly as much about THIS APK as the
+    "Bundling 291" that this file's own comment calls out twenty lines down. The
+    Intel RIDs are gone from both APKs now, and an ungated group would have gone
+    on registering x86_64 natives into an arm64-only package.
+
+    The condition tests a ;-delimited token, not a substring: 'android-arm' IS a
+    substring of 'android-arm64', so Contains('android-arm') is TRUE for a 64-bit
+    APK and would re-add the armeabi-v7a set to it. Wrapping both sides in
+    semicolons is what makes the match exact.
   -->
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleMnn)' == 'true'">
-    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-arm64/native/*.so;$(_CircleAITurboVecRoot)android-arm64/native/*.so;$(_CircleAIVoiceRoot)android-arm64/native/*.so">
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-arm64;'))"
+                          Include="$(_CircleAIMnnRoot)android-arm64/native/*.so;$(_CircleAITurboVecRoot)android-arm64/native/*.so;$(_CircleAIVoiceRoot)android-arm64/native/*.so">
       <Abi>arm64-v8a</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-arm/native/*.so;$(_CircleAITurboVecRoot)android-arm/native/*.so;$(_CircleAIVoiceRoot)android-arm/native/*.so">
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-arm;'))"
+                          Include="$(_CircleAIMnnRoot)android-arm/native/*.so;$(_CircleAITurboVecRoot)android-arm/native/*.so;$(_CircleAIVoiceRoot)android-arm/native/*.so">
       <Abi>armeabi-v7a</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-x64/native/*.so;$(_CircleAITurboVecRoot)android-x64/native/*.so;$(_CircleAIVoiceRoot)android-x64/native/*.so">
+    <!-- The two Intel groups are kept, gated and inert: no APK declares those
+         RIDs since 2026-10-28, and neither root has ever held an Intel libMNN.so
+         or libllamabridge.so. They stay so that adding the RID back is a
+         one-property change AND so the gap is visible here rather than being
+         rediscovered. android-x86 in particular had no MNN line here at all,
+         while whisper registered x86 forty lines below - that asymmetry is what
+         let lib/x86/ ship ears and no brain. -->
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-x64;'))"
+                          Include="$(_CircleAIMnnRoot)android-x64/native/*.so;$(_CircleAITurboVecRoot)android-x64/native/*.so;$(_CircleAIVoiceRoot)android-x64/native/*.so">
       <Abi>x86_64</Abi>
     </AndroidNativeLibrary>
 
-    <!-- android-x86 was the only declared RID with no line here at all, so a
-         -p:CircleAIAbi=32 APK could not have picked up a 32-bit x86 MNN even if
-         one existed. Whisper registers x86 twenty lines below and MNN did not;
-         that asymmetry is what let lib/x86/ ship ears and no brain. -->
-    <AndroidNativeLibrary Include="$(_CircleAIMnnRoot)android-x86/native/*.so;$(_CircleAITurboVecRoot)android-x86/native/*.so;$(_CircleAIVoiceRoot)android-x86/native/*.so">
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-x86;'))"
+                          Include="$(_CircleAIMnnRoot)android-x86/native/*.so;$(_CircleAITurboVecRoot)android-x86/native/*.so;$(_CircleAIVoiceRoot)android-x86/native/*.so">
       <Abi>x86</Abi>
     </AndroidNativeLibrary>
   </ItemGroup>
@@ -116,15 +138,23 @@
   <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'android' And '$(CircleAIBundleWhisper)' == 'true'">
     <!-- libwhisper.so needs its ggml siblings; bundling only the first is a
          dlopen failure one link further down the chain. Glob, do not list. -->
-    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-arm64-v8a/*.so">
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-arm64;'))"
+                          Include="$(_WhisperRuntimeRoot)android-arm64-v8a/*.so">
       <Abi>arm64-v8a</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-x86_64/*.so">
+    <!-- Gated for the same reason as the MNN groups above: these two used to put
+         libwhisper.so into lib/x86_64/ and lib/x86/ of EVERY APK, including the
+         32-bit one, which is how an APK with no Intel engine still shipped Intel
+         ears. There is no armeabi-v7a line because the package has no such
+         folder - that gap is CIRCLEAI002 and it is still open. -->
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-x64;'))"
+                          Include="$(_WhisperRuntimeRoot)android-x86_64/*.so">
       <Abi>x86_64</Abi>
     </AndroidNativeLibrary>
 
-    <AndroidNativeLibrary Include="$(_WhisperRuntimeRoot)android-x86/*.so">
+    <AndroidNativeLibrary Condition="$([System.String]::Concat(';','$(RuntimeIdentifiers)',';').Contains(';android-x86;'))"
+                          Include="$(_WhisperRuntimeRoot)android-x86/*.so">
       <Abi>x86</Abi>
     </AndroidNativeLibrary>
   </ItemGroup>
@@ -138,7 +168,7 @@
           Condition="'$(TargetPlatformIdentifier)' == 'android'">
     <Message Importance="high"
              Condition="'$(CircleAIBundleMnn)' == 'true' And '@(AndroidNativeLibrary)' != ''"
-             Text="[CircleAI] Bundling @(AndroidNativeLibrary->Count()) native lib(s) into the APK." />
+             Text="[CircleAI] Bundling @(AndroidNativeLibrary->Count()) native lib(s) into the APK, for ABI(s) @(AndroidNativeLibrary->'%(Abi)'->Distinct(), ', ')." />
 
     <!--
       THESE THREE CHECKS NAME A FILE, BECAUSE THE ONE THEY REPLACE COUNTED A LIST.
@@ -319,13 +349,18 @@
     CIRCLEAI001/003/004 above each name a file, which is the right shape — but
     all three name it under android-arm64, and an APK declares TWO RIDs:
 
-      CircleAIService.csproj:74   CircleAIAbi=32  ->  android-arm;android-x86
-      CircleAIService.csproj:75   otherwise       ->  android-arm64;android-x64
+      CircleAIService.csproj:87   CircleAIAbi=32  ->  android-arm
+      CircleAIService.csproj:88   otherwise       ->  android-arm64
 
     So on a 32-bit build those three guards interrogate android-arm64 — a folder
     this build does not ship — and pass for a reason that has nothing to do with
     the APK being produced. armeabi-v7a's MNN set is complete today by the luck
     of that folder existing, not because anything checked it.
+
+    Each APK declares ONE RID since 2026-10-28; it declared two until then, and
+    the batching below stays RID-driven anyway. A guard that reads
+    $(RuntimeIdentifiers) keeps telling the truth when somebody adds a RID back;
+    a guard that hard-codes android-arm64 starts lying the moment they do.
 
     And on BOTH builds the x86 half shipped with no LLM engine and nothing said
     so. Measured on the v3.9.2 artefacts, 2026-10-25:
@@ -342,12 +377,16 @@
     file calls that out as costing nothing, and for the BUILD it costs nothing.
     It is the APK that pays.
 
-    No physical device in the roster is x86, so this is emulator-only. It is a
+    No physical device in the roster is x86, so this was emulator-only. It is a
     warning and not an error for exactly that reason: the non-inference half of
     the service works there, and a thinner APK is a product decision, not a
-    build failure. Dropping x86/x86_64 from RuntimeIdentifiers would roughly
-    halve both APKs (the x86 half of service-32 is 59.9 MB of 143 .so files) —
-    that call belongs to whoever owns emulator support.
+    build failure.
+
+    THAT DECISION WAS TAKEN ON 2026-10-28: both Intel RIDs are gone from both
+    APKs, which is the "removing that RID" half of the fix this warning names.
+    So the x86 rows above are history, not a live defect — the guard now has
+    nothing Intel to fire on, and the only ABI it still reports is armeabi-v7a,
+    whose own gaps (turbovecbridge, espeak-ng, whisper) are real and open.
 
     This extinguishes itself the day somebody builds MNN for Android x86: the
     registration above picks the files up and this warning stops firing.
