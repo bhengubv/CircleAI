@@ -70,16 +70,20 @@ defaults to.
 `TargetFrameworkTests` now asserts it against the project files, so the claim in
 this paragraph is checked rather than believed.
 
-**There are SIXTEEN test projects. This file said TWO, and that sentence cost a
-whole day of verification that sounded complete and was not.**
+**There are SEVENTEEN test projects. This file said TWO, and that sentence cost a
+whole day of verification that sounded complete and was not. It then said SIXTEEN
+until 2026-10-28 — right when written, stale eight days later:
+`tests/CircleAI.DeviceTests` landed on 2026-10-08 with "the last three android
+projects fold in" and nothing here counted it. A number in this file with nothing
+asserting it has now gone wrong twice.**
 
 `docs/BUILD.md` says `dotnet test CircleAI.sln` — "everything at once,
-recommended" — and the solution does name **15 of the 16**. **But I could not
+recommended" — and the solution does name **15 of the 17**. **But I could not
 make that command work on this box**, and this file is not going to tell you it
 did: it ran for **85 minutes and produced not one test result** before it was
 killed.
 
-Whether that was a stall or just a very slow build of 195 projects, I do not
+Whether that was a stall or just a very slow build of 186 projects, I do not
 know. An earlier version of this paragraph called it a stall on the evidence
 that the parent `dotnet` process had used only 48 seconds of CPU — **that
 inference was wrong.** A Release Android build in its AOT phase shows the same
@@ -90,8 +94,11 @@ tell the two apart, watch `obj/` for recent writes, not CPU.
 Either way it is unverified, and `never-hog-the-dev-workstation` says a build
 that size does not belong on this box in the first place.
 
-**What IS verified, project by project, on both legs: all sixteen pass.** Run
-them individually — it is also far faster to iterate on:
+**What was verified, project by project, on both legs: sixteen passed.** That
+count predates `CircleAI.DeviceTests`, which has never been run that way and
+cannot be: it targets `net10.0-android` only and is a MAUI head with a
+`MainActivity`, so `dotnet test` on this box has nothing to execute. Run the
+others individually — it is also far faster to iterate on:
 
 ```bash
 dotnet test tests/CircleAI.Tests/CircleAI.Tests.csproj -f net10.0
@@ -101,18 +108,27 @@ dotnet test tests/CircleAI.Tests/CircleAI.Tests.csproj -f net10.0
 for p in tests/*/*.csproj; do dotnet test "$p" --nologo -v q; done
 ```
 
-The loop is the one that covers everything, because it does not care what any
-solution file contains. The sixteenth project is in no solution at all:
+The loop does not care what any solution file contains, which is the point of it —
+but it does not cover everything either, and this file said it did.
+`CircleAI.DeviceTests` is an android head: the loop reaches it and `dotnet test`
+has nothing to run. **TWO projects are in no solution at all, not one** — that
+android head, and the bUnit suite below:
 
 ```bash
 dotnet test tests/CircleAI.Samples.Ui.Tests/CircleAI.Samples.Ui.Tests.csproj
 ```
 
-344 bUnit tests over the screens, and **no solution builds that project** — so
+**390** bUnit tests over the screens, and **no solution builds that project** — so
 when it once stopped COMPILING it simply stopped running, and stayed that way
-with every other suite green. It builds and passes green today (all 344,
-verified 2026-09-18 via the command above), but nothing *guards* it: it can rot
-again the moment a screen change breaks the build unnoticed. It was found by
+with every other suite green. It builds and passes green today (all 390 in 15 s,
+run 2026-10-28 via the command above), but nothing *guards* it: it can rot
+again the moment a screen change breaks the build unnoticed.
+
+**THREE DOCS HELD THREE COUNTS FOR THIS ONE SUITE** — 344 here, 308 in
+`docs/OPEN-GAPS.md` and `ROADMAP.md` — and all three were wrong. The suite nobody's
+solution builds was also the one nobody could count, which is the same defect
+twice: there is nothing to read the number off, so each file kept its own. Run it
+and read the line; do not trust a prose figure for it, including this one. It was found by
 accident — no solution would have missed it if any solution contained it.
 
 `tests/CircleAI.Tests` is the big one — **5,107 per leg, 10,214 over both** — and
@@ -128,10 +144,18 @@ was not today — read it as a floor, not a figure. And this file's "TWO" is why
 session ran two projects, reported "3271 passed", and believed it.
 
 **IGNORE `CircleAI.slnx`.** Two solution files disagree about what this product
-is. `CircleAI.sln` has 195 projects and 15 test projects and was updated today;
-`CircleAI.slnx` has **17 and 2**, was created in the May rebrand, and has not
-been touched since 24 July. Tooling increasingly prefers the newer `.slnx`
-format, so the stale one is the one a fresh checkout is most likely to open.
+is. Counted 2026-10-28: `CircleAI.sln` lists **186 projects, 15 of them tests**;
+`CircleAI.slnx` lists **15 and 2**. Tooling increasingly prefers the newer
+`.slnx`, so the file that knows about a twelfth of the product is the one a fresh
+checkout is most likely to open.
+
+**THE REASON GIVEN HERE WAS WRONG, AND SO WAS THE EVIDENCE FOR IT.** This said the
+`.slnx` "was created in the May rebrand and has not been touched since 24 July",
+and called it the stale one. Both files were last written on **2026-10-21, the
+same day**. It is not out of date; it is incomplete — which is worse, because a
+file somebody keeps editing while it describes a twelfth of the tree reads as
+maintained. Do not reach for a modification date to decide which of two files to
+trust: count what is in them.
 
 The main suite is **5,107 tests per leg** and takes **fifteen to twenty-nine
 minutes per leg** — not the "six to nine" this file claimed, and not the "two to
@@ -175,12 +199,28 @@ Serialise heavy builds rather than running two at once.
 
 | | |
 |---|---|
-| `src/CircleAI.*` | ~150 libraries; `CircleAI.Core` holds the interfaces the rest build on |
-| `src/CircleAI.Memory` | episodes, atoms, recall, the append-only log |
-| `src/CircleAI.Memory.Sql` | the same store on PostgreSQL, SQL Server, MySQL, Oracle |
+| `src/CircleAI/` | ONE library, **176 modules as subfolders**; `Core` holds the interfaces the rest build on |
+| `src/CircleAI/Memory` | episodes, atoms, recall, the append-only log |
+| `src/CircleAI/Memory.Sql` | the same store on PostgreSQL, SQL Server, MySQL, Oracle |
 | `tools/` | small runnable programs — `memory`, `voice-audit`, `tts-speak`, `stt-hear` |
 | `samples/CircleAI.Samples.Hybrid` | the IT! sample: MAUI Blazor hybrid and web off one shared Razor library |
 | `tests/CircleAI.Tests` | one project, both frameworks |
+
+**`src/CircleAI.*` WAS THE PRE-3.8.0 SHAPE AND THIS TABLE KEPT IT FOR TWO
+RELEASES**, which is why a reader looking for `src/CircleAI.Voice` finds nothing
+and may conclude the feature is gone. There are **three** projects under `src/` —
+`CircleAI`, `CircleAIService` and `CircleAI.Inference.Server` — plus
+`src/CircleAI.Maui`, an empty directory with **no tracked files** that is in
+neither solution and still counts as a module. The libraries the old row meant are
+subfolders of `src/CircleAI`.
+
+The count is **176**, and unlike "~150" it is now checked rather than stated:
+`tools/gen-services/gen_services.py` counts the tree, and `ServiceCoverageTests`
+counts it independently in C# and fails if the generated census disagrees. "~150"
+was asserted by nothing — and the generator that was supposed to own the number
+had been reading the old `src/CircleAI.*` layout since 3.8.0, so it saw **2
+modules of 176** and its "anything unclassified is an ERROR" guard could not fire
+for anything. Fixed 2026-10-28.
 
 `tools/` projects are not in the solution. Run them with
 `dotnet run --project tools/<name> -- <args>`.

@@ -2,8 +2,9 @@
 //
 // The app must know what the repository can do.
 //
-// WHY THIS EARNS ITS PLACE. The repository carries 165 projects and the sample
-// surfaced ONE of them. Somebody with the whole source tree open could not have
+// WHY THIS EARNS ITS PLACE. The repository carried 165 projects when this was
+// written - it is 176 modules now, and Modules() below counts them rather than
+// repeating a figure - and the sample surfaced ONE of them. Somebody with the whole source tree open could not have
 // said the thing does agriculture; a person holding the phone had no chance. The
 // screen literally named "What it can do" answered with Talking, Listening and
 // Seeing - modalities, not capabilities - so it was a download manager wearing
@@ -193,8 +194,11 @@ public class ServiceCoverageTests
         var generated = File.ReadAllText(CapabilitiesPath());
         var capabilities = Regex.Matches(generated, @"^\s+// src/CircleAI\.", RegexOptions.Multiline).Count;
 
+        // COUNTED IN THE MESSAGE, NOT TYPED INTO IT. This read "the repository has 165
+        // modules" while Modules() - four lines up the same file - counted 176. A stale
+        // figure in a failure message is read as fact by whoever the failure wakes up.
         Assert.True(capabilities >= 40,
-            $"only {capabilities} capabilities are offered; the repository has 165 modules "
-            + "and the app is meant to say so");
+            $"only {capabilities} capabilities are offered; the repository has "
+            + $"{Modules().Count} modules and the app is meant to say so");
     }
 }
