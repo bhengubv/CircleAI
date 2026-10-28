@@ -128,6 +128,64 @@ public class ServiceCoverageTests
     }
 
     [Fact]
+    public void The_generator_writes_to_the_file_the_app_actually_USES()
+    {
+        // IT DID NOT, FOR TWO RELEASES. OUT pointed at src/CircleAI.Assistant -
+        // a project directory that stopped existing in 3.8.0 when the libraries became
+        // subfolders of src/CircleAI. So running the generator created a new file in a
+        // new directory and left the real Capabilities.cs untouched, while --check
+        // compared its render against a file that was not there and reported "stale"
+        // for ever. Nothing noticed, because nothing ran it.
+        //
+        // The tests below read the generator as TEXT rather than running it, so the
+        // suite does not depend on a Python install - which is also why this fault was
+        // invisible to the suite. This pins the one line that mattered.
+        var generator = File.ReadAllText(GeneratorPath());
+
+        Assert.Contains("\"CircleAI\" / \"Assistant\" / \"Capabilities.cs\"", generator, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"CircleAI.Assistant\" / \"Capabilities.cs\"", generator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_generators_module_discovery_reads_the_MERGED_layout()
+    {
+        // THE OTHER HALF OF THE SAME ROT. modules() globbed src/CircleAI.* for
+        // directories, which found TWO of a hundred and seventy-six after the
+        // consolidation - so classify() had nothing real to classify and
+        // "anything unclassified is an ERROR" could not fire for any module in the
+        // tree. The promise was intact in the docstring and vacuous in the code.
+        var generator = File.ReadAllText(GeneratorPath());
+
+        // It must enumerate the subfolders of src/CircleAI, where the modules live.
+        Assert.Contains("(SRC / \"CircleAI\").iterdir()", generator, StringComparison.Ordinal);
+
+        // And it must still pick up the handful that are their own project, with the
+        // dot REQUIRED - a Win32-style filter of "CircleAI.*" also matches a name
+        // with no dot, which is how src/CircleAI reports itself as a module.
+        Assert.Contains("startswith(\"CircleAI.\")", generator, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_generated_census_MATCHES_the_modules_on_disk()
+    {
+        // THE GUARD THAT NEEDS NO PYTHON AND CANNOT GO VACUOUS. The generated header
+        // states how many modules the repository carries; this counts them
+        // independently and insists the two agree.
+        //
+        // It read "165 projects" for two releases while the tree held 176, because the
+        // number was typed rather than counted - the same defect as the hand-written
+        // tile list it replaced, one level up. Deriving it in the generator makes
+        // adding a module leave this file stale; this test is what notices.
+        var generated = File.ReadAllText(CapabilitiesPath());
+
+        var stated = Regex.Match(generated, @"carries (\d+) modules");
+        Assert.True(stated.Success,
+            "the generated header no longer states a module count, so nothing cross-checks it");
+
+        Assert.Equal(Modules().Count, int.Parse(stated.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
     public void The_app_offers_substantially_more_than_it_used_to()
     {
         // It surfaced ONE domain. This is not a target to game - it is a floor
