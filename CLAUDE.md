@@ -94,11 +94,18 @@ tell the two apart, watch `obj/` for recent writes, not CPU.
 Either way it is unverified, and `never-hog-the-dev-workstation` says a build
 that size does not belong on this box in the first place.
 
-**What was verified, project by project, on both legs: sixteen passed.** That
-count predates `CircleAI.DeviceTests`, which has never been run that way and
-cannot be: it targets `net10.0-android` only and is a MAUI head with a
-`MainActivity`, so `dotnet test` on this box has nothing to execute. Run the
-others individually — it is also far faster to iterate on:
+**Verified project by project on 2026-10-28: FIFTEEN of the seventeen pass, 924
+tests on the net10.0 leg** — the fourteen smaller suites at **534** and the bUnit
+suite at **390**, every one green, nothing aborted.
+
+The two not covered: `CircleAI.Tests` was not re-run (5,107 per leg, fifteen to
+twenty-nine minutes, and a run that size does not belong on this box unasked), and
+`CircleAI.DeviceTests` cannot be run this way at all — `net10.0-android`, a MAUI
+head with a `MainActivity`, so `dotnet test` has nothing to execute.
+
+**ONE LEG, NOT TWO.** This line said "all sixteen pass on both legs" with no date
+on it. net9.0 was not run for the fourteen today, so that half is not re-claimed
+here. Run the others individually — it is also far faster to iterate on:
 
 ```bash
 dotnet test tests/CircleAI.Tests/CircleAI.Tests.csproj -f net10.0
@@ -139,9 +146,18 @@ figure as the "3271 passed" two sentences down: **the count of one incomplete
 session had become this file's description of the project.** It was out by three
 times, and it is the reason the twenty-minute budget below ever looked plausible.
 
-The other fourteen were holding 527 more when somebody last counted, and that
-was not today — read it as a floor, not a figure. And this file's "TWO" is why a
-session ran two projects, reported "3271 passed", and believed it.
+The other fourteen hold **534**, counted on 2026-10-28 by running all fourteen,
+one at a time, all green. The "527 as a floor" this line used to carry was honest
+and seven short.
+
+The largest of them is `CircleAI.Companion.Tests` at 178. The smallest is
+**`CircleAI.Memory.Tests` at SIX** — and for the subsystem `docs/CLAIMS.md`
+documents with eighty-odd `tested` claims, that is worth knowing: those claims are
+asserted in the big suite, so a project named for the memory holding six tests
+reads as coverage and is not.
+
+And this file's "TWO" is why a session ran two projects, reported "3271 passed",
+and believed it.
 
 **IGNORE `CircleAI.slnx`.** Two solution files disagree about what this product
 is. Counted 2026-10-28: `CircleAI.sln` lists **186 projects, 15 of them tests**;
