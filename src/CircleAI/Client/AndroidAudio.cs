@@ -96,6 +96,13 @@ public sealed class AndroidAudioCapture : IAudioCapture
 
         AttachFarFieldEffects(_record.AudioSessionId, policy);
         _record.StartRecording();
+
+        // AND NOW THE SESSION IS LIVE, WHICH IS WHEN AN EFFECT THAT REFUSED THE
+        // FIRST TIME WILL TAKE. Attaching before StartRecording is correct - the
+        // session id has to exist - but enabling before it is not reliable, and
+        // the old code could not tell because it discarded setEnabled's status.
+        ConfirmFarFieldEffects();
+
         var buffer = new byte[3200]; // 100 ms at 16 kHz mono 16-bit
         var empty = 0;               // consecutive reads that returned nothing
 
@@ -179,9 +186,25 @@ public sealed class AndroidAudioCapture : IAudioCapture
             {
                 var fx = make();
                 if (fx is null) { off.Add($"{what} (create returned nothing)"); return; }
-                fx.SetEnabled(true);
+
+                // KEPT BEFORE THE ENABLE CAN FAIL. A created effect has to be
+                // released on dispose or it holds the session; reporting it as off
+                // while leaking it trades one silent fault for another.
                 _effects.Add(fx);
-                on.Add(what);
+                fx.SetEnabled(true);
+
+                // "ATTACHED" IS NOT "ENABLED", AND THIS LINE REPORTED THE FIRST AS
+                // THE SECOND. The old body discarded SetEnabled's status and added
+                // the effect to `on` on the strength of Create not throwing.
+                // AudioEffect.setEnabled returns a status and fails routinely with
+                // ERROR_INVALID_OPERATION when another client owns the effect or
+                // the session is not live yet - so the log printed
+                // "on=[AGC, echo canceller]" over a capture that had neither.
+                //
+                // fx.Enabled is read back because it is the only answer that is
+                // not a guess.
+                if (fx.Enabled) on.Add(what);
+                else off.Add($"{what} (attached but REFUSED to enable)");
             }
             catch (Exception ex)
             {
@@ -224,10 +247,123 @@ public sealed class AndroidAudioCapture : IAudioCapture
         // call from the doorway and one you have to hold. Speech falls off with
         // the square of distance; without gain compensation a voice at four
         // metres arrives at a sixteenth of its power at one.
+        // WHAT AGC IS ACTUALLY WORTH ON THIS PHONE: NOTHING THAT CAN BE MEASURED,
+        // AND THE FIRST ANSWER TO THIS QUESTION WAS AN ARTEFACT.
+        //
+        // A first pass on 2026-10-28 ran the four CapturePolicy combinations in
+        // ORDER - DEFAULT, NO-AEC, NO-FX, RAW-MIC - and read 0,00650 / 0,00647 /
+        // 0,00067 / 0,00040 mean. That looks like a clean ten-fold step at the
+        // effects boundary, and it was written up as one. It was not: the four ran
+        // minutes apart in a room nobody was controlling, so "the effects came off"
+        // and "the room went quiet" produce the same number.
+        //
+        // RE-RUN INTERLEAVED, DEFAULT against NO-FX, six runs, same stretch of
+        // minutes:
+        //
+        //     DEFAULT  0,00093   0,00110   0,00103      (AGC confirmed enabled)
+        //     NO-FX    0,00127   0,00140   0,00087
+        //
+        // 0,00102 against 0,00118 - a ratio of 0,86, with the spreads overlapping
+        // completely. AGC moves the noise floor of this phone not at all, and two
+        // of those runs caught ambient peaks of 0,2590 and 0,1890, which is the
+        // drift that produced the first answer.
+        //
+        // The echo canceller is likewise worth 0,00003, so the paragraph above
+        // calling it the standing suspect for the 30 dB has no support either.
+        //
+        // WHAT THIS DOES NOT SAY. None of it is a speech measurement, and the 30 dB
+        // this capture loses was measured on speech. A floor that is indifferent to
+        // AGC says nothing about whether AGC helps a voice four metres away, which
+        // is what it is attached for. The warning below stays for that reason; it
+        // just no longer quotes a number this phone would not reproduce.
         if (!on.Contains("AGC"))
             Android.Util.Log.Warn("CircleAI.Kws",
-                "no automatic gain control on this phone — expect the wake word "
-                + "to need close range, and read low peak= values as distance, not silence");
+                "NO AUTOMATIC GAIN CONTROL ON THIS CAPTURE. Expect the wake word to "
+                + "need close range, and read low peak= values as distance, not "
+                + "silence. (On a P30 its effect on the NOISE FLOOR measured as "
+                + "nothing; its effect on distant speech is untested.) "
+                + (off.Exists(o => o.StartsWith("AGC", StringComparison.Ordinal))
+                    ? "It was attached and did NOT take; see the missing= reason above."
+                    : "This phone does not offer one."));
+    }
+
+    /// <summary>
+    /// Re-asserts every attached effect once the session is actually recording,
+    /// and reports what is true afterwards.
+    /// </summary>
+    /// <remarks>
+    /// BECAUSE THE FIRST ENABLE HAPPENS TOO EARLY TO BE RELIED ON. Effects are
+    /// attached to the session id before <c>StartRecording</c>, and on a good many
+    /// devices a record-session effect will not enable until the session is live -
+    /// <c>setEnabled</c> answers ERROR_INVALID_OPERATION and the old code could not
+    /// have noticed, because it discarded that status.
+    /// <para>
+    /// THE RACE THIS GUARDS HAS NOT BEEN SEEN ON THIS PHONE. It was added on a
+    /// hypothesis - that a run logging "on=[AGC, echo canceller]" while delivering
+    /// the no-effects level had lost the enable - and then three runs with the
+    /// read-back in place reported AGC enabled every time, with nothing rescued
+    /// after StartRecording. The level difference that prompted it turned out to be
+    /// ambient noise, not AGC: interleaved, DEFAULT 0,00102 against NO-FX 0,00118,
+    /// a ratio of 0,86 with overlapping spreads.
+    /// </para>
+    /// <para>
+    /// It is kept anyway, because enabling an already-enabled effect is a no-op, so
+    /// it is free when the first attempt worked, and because the ORDER is genuinely
+    /// wrong without it: attaching needs the session id, enabling wants the session
+    /// live, and devices differ. It earns its place as a correct re-assert and an
+    /// honest second report, not as the fix for a fault anybody has reproduced.
+    /// Nothing is thrown: a capture must never fail to open because an optional
+    /// effect would not start.
+    /// </para>
+    /// </remarks>
+    private void ConfirmFarFieldEffects()
+    {
+        if (_effects.Count == 0) return;
+
+        // The same names the attach line uses, so the two lines can be read
+        // together rather than matched up by type.
+        static string NameOf(Android.Media.Audiofx.AudioEffect fx) => fx switch
+        {
+            Android.Media.Audiofx.AutomaticGainControl => "AGC",
+            Android.Media.Audiofx.NoiseSuppressor      => "noise suppressor",
+            Android.Media.Audiofx.AcousticEchoCanceler => "echo canceller",
+            _                                          => fx.GetType().Name,
+        };
+
+        var on = new List<string>();
+        var off = new List<string>();
+        var rescued = new List<string>();
+
+        foreach (var fx in _effects)
+        {
+            var name = NameOf(fx);
+            try
+            {
+                if (!fx.Enabled)
+                {
+                    fx.SetEnabled(true);
+                    if (fx.Enabled) rescued.Add(name);
+                }
+                (fx.Enabled ? on : off).Add(name);
+            }
+            catch (Exception ex)
+            {
+                off.Add($"{name} ({ex.Message})");
+            }
+        }
+
+        Android.Util.Log.Info("CircleAI.Kws",
+            $"capture effects once recording: on=[{string.Join(", ", on)}]"
+            + (off.Count == 0 ? "" : $" OFF=[{string.Join(", ", off)}]")
+            + (rescued.Count == 0 ? "" : $" (took only after StartRecording: {string.Join(", ", rescued)})"));
+
+        // THE ONE THAT MATTERS, SAID AGAIN AT THE ONLY MOMENT IT IS CERTAIN.
+        // No multiplier quoted: on a P30 the measured effect of AGC on the noise
+        // floor was nothing, and its effect on distant speech has not been measured.
+        if (!on.Contains("AGC"))
+            Android.Util.Log.Warn("CircleAI.Kws",
+                "AGC IS NOT RUNNING ON THIS CAPTURE - expect the wake word to need "
+                + "close range, and read low peak= values as distance, not silence.");
     }
 
     public ValueTask DisposeAsync()

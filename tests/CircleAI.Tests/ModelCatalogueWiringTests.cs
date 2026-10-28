@@ -42,7 +42,7 @@ public class ModelCatalogueWiringTests
         Assert.NotNull(sp.GetService<IModelCatalog>());
         Assert.NotNull(sp.GetService<IModelAssessor>());
         Assert.NotNull(sp.GetService<CatalogueFeedWriter>());
-        Assert.NotNull(sp.GetService<CatalogModelSelector>());
+        Assert.NotNull(sp.GetService<DeviceAwareModelSelector>());
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class ModelCatalogueWiringTests
         var services = new ServiceCollection();
         services.AddModelCatalogue(":memory:", useAsPrimarySelector: true);
         using var sp = services.BuildServiceProvider();
-        Assert.IsType<CatalogModelSelector>(sp.GetService<IModelSelector>());
+        Assert.IsType<DeviceAwareModelSelector>(sp.GetService<IModelSelector>());
     }
 }
 

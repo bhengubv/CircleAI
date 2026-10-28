@@ -232,10 +232,37 @@ public sealed class InferenceSupervisor : IBrainWorker
         // line with it loaded - and one landed in the milliseconds between two queued
         // questions, so the brain was released and reloaded 15 s later for the next one.
         // A brain in use stays; one idle for two minutes goes when the phone asks.
+        // AND NOT ON LEVEL 15 AT ALL ANY MORE, ON THE STRENGTH OF THE NOTE ABOVE.
+        //
+        // If RUNNING_CRITICAL "arrives while the model is resident - a 3.87 GB phone is
+        // always near the line with it loaded" as a matter of course, then 15 is not a
+        // shortage signal on this hardware. It is the NORMAL STATE with a brain loaded,
+        // and releasing on it meant every question asked more than two minutes after the
+        // last one paid a cold load - which, for an assistant, is nearly every question.
+        //
+        // MEASURED ON THE P30 ON 2026-10-28, end to end:
+        //   brain ready: Qwen3.5-0.8B-MNN in 14926 ms      (at service start, unprompted)
+        //   Loading.razor:593 warms it again on the way out of the load screen
+        //   ...and the next trim released both, so a spoken question waited ~14 s for a
+        //   reload before prefill could begin. The warm-up was never the missing piece;
+        //   this release was throwing it away.
+        //
+        // 80 IS TRIM_MEMORY_COMPLETE - "at the end of the LRU list, killed next" - and
+        // that one IS a shortage worth a release.
+        //
+        // WHAT THIS COSTS, SAID PLAINLY: the model now stays resident through level 15,
+        // so Android's low-memory killer is likelier to take the WHOLE service instead of
+        // just the model. That is a real trade and it is the owner's to make; it was made
+        // deliberately in favour of a phone that answers when spoken to. If the service
+        // starts dying under memory pressure instead, this condition is the thing to put
+        // back - and OnWorkerDied's classification will say so rather than blaming the model.
         var quiet = DateTimeOffset.UtcNow - lastUse > TimeSpan.FromMinutes(2);
-        if ((level == 15 || level >= 80) && !quiet && Status.Phase == BrainPhase.Ready)
+        if (level == 15 && Status.Phase == BrainPhase.Ready)
+            _log($"trim level 15 (routine on this phone with a model resident): kept the brain, "
+               + $"it answered {(DateTimeOffset.UtcNow - lastUse).TotalSeconds:0} s ago");
+        if (level >= 80 && !quiet && Status.Phase == BrainPhase.Ready)
             _log($"trim level {level}: kept the brain, it answered {(DateTimeOffset.UtcNow - lastUse).TotalSeconds:0} s ago");
-        if ((level == 15 || level >= 80) && quiet && SchedulerIdle?.Invoke() == true && Status.Phase == BrainPhase.Ready)
+        if (level >= 80 && quiet && SchedulerIdle?.Invoke() == true && Status.Phase == BrainPhase.Ready)
         {
             // WHICH SIGNAL, AND HOW ANDROID SEES THIS PROCESS - so a release can be told
             // apart from a phone that simply ranks a foreground service as background.
@@ -447,7 +474,7 @@ public sealed class InferenceSupervisor : IBrainWorker
         lock (_gate) _nothingRunnable = false;
         using var registry = new ModelRegistryService();
         using var loader = new BundleModelLoader(_store, registry);
-        var selector = CatalogModelSelector.Preferring(catalogue, registry);
+        var selector = DeviceAwareModelSelector.Preferring(catalogue, registry);
 
         string? wanted = options.ModelId;
         if (!string.IsNullOrWhiteSpace(wanted) && registry.GetLatestModel(wanted!) is { Retired: true }) wanted = null;

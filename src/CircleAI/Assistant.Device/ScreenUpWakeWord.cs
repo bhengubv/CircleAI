@@ -543,14 +543,36 @@ public sealed class ScreenUpWakeWord : IAsyncDisposable, IResidentListener
             // AND WHETHER IT CAN POSSIBLY HEAR THEM.
             //
             // The spotter writes its own line through VoiceTrace, but that is a
-            // different logcat tag and this is the line everybody greps. A wake
-            // word running on the quantized encoder is listening in the sense
-            // that the microphone is open and in no other sense at all: measured
-            // on a P30 on 2026-10-11, the phrase reached two of its three tokens
-            // 1,796 times and completed zero.
+            // different logcat tag and this is the line everybody greps.
+            //
+            // AND IT USED TO BLAME THE ENCODER FOR SOMETHING THE ENCODER DID NOT DO.
+            //
+            // It read: "running the INT8 encoder - keyword tokens score ~10x lower on
+            // it and the phrase may never complete", over a comment that attributed
+            // the 2026-10-11 P30 session - the phrase reaching two of its three tokens
+            // 1,796 times and completing zero - to the quantized encoder.
+            //
+            // The stalls were real. The attribution was not.
+            // EncoderPrecisionOnRealAudioTests ran the controlled A/B through this
+            // exact decoder on upstream's own audio:
+            //
+            //   0.wav  FLOAT fired 1 (4/4 p=0,7412)   INT8 fired 1 (4/4 p=0,5656)
+            //   1.wav  FLOAT fired 2 (5/5 p=0,6263)   INT8 fired 2 (5/5 p=0,5352)
+            //
+            // int8 found every keyword float did, with margin over the 0,20 gate. What
+            // the 1,796 stalls actually were is in CapturePolicy's header: this capture
+            // hands the spotter median per-second RMS 0,0014 where the phone's own
+            // recorder app gets 0,0446 in the same room, and our loudest second is
+            // below what an empty room measures. The phrase stalled because the audio
+            // was not there, not because the encoder was quantized.
+            //
+            // The warning stays, because a precision the caller did not ask for is
+            // worth knowing. It no longer predicts a failure it was not the cause of.
             if (kws.EncoderIsQuantized)
-                Log.Warn(Tag, "running the INT8 encoder - keyword tokens score ~10x lower on it "
-                            + "and the phrase may never complete. This bundle ships no float encoder.");
+                Log.Warn(Tag, "running the INT8 encoder - measured at p=0,54-0,57 on upstream's "
+                            + "own audio against float's 0,63-0,74, so it clears the 0,20 gate "
+                            + "with less headroom for a quiet or distant voice. This bundle ships "
+                            + "no float encoder. NOT on its own a reason the phrase cannot fire.");
 
             // A PHRASE THAT CAN NEVER FIRE SAYS SO, ONCE, LOUDLY.
             //

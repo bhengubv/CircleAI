@@ -89,6 +89,29 @@ foreach (var (name, node) in keyed)
     // BundleFiles verbatim — these are the pinned hashes.
     if (src["BundleFiles"] is JsonArray bf) dst["BundleFiles"] = bf.DeepClone();
 
+    // AND EVERY OTHER FIELD THE KEYED FILE CARRIES, because it is the register.
+    //
+    // The named copies above were an inventory of what the keyed file owned ON THE
+    // DAY THIS WAS WRITTEN, and the preservation pass below made the runtime file
+    // the owner of everything else - QualityRank, MinRamGb, MinStorageGb,
+    // Capabilities, Language, License. So the two files each owned half of every
+    // entry, which is the "one fact with two owners" this tool's own header says it
+    // exists to remove. Sixty-three entries then went in through the half the
+    // register did not own and the register never heard about them.
+    //
+    // The keyed file now carries all 96 entries and all of their fields, so it is
+    // asked for all of them. Preservation stays below as a net for a field the
+    // register genuinely does not have, not as a second owner.
+    // QuantizationType is excluded because it is the keyed spelling of a field the
+    // runtime calls Quantization and the line above already mapped it. Copying it
+    // verbatim as well would put both spellings in the runtime file and start the
+    // next two-owner split rather than ending one.
+    foreach (var field in src)
+        if (field.Key is not "QuantizationType"
+            && dst[field.Key] is null
+            && field.Value is { } fromRegister)
+            dst[field.Key] = fromRegister.DeepClone();
+
     // KEEP EVERY FIELD THE RUNTIME FILE ALREADY HAD that the keyed file does
     // not produce — not just the seven on a list.
     //

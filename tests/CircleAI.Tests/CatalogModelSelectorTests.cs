@@ -18,10 +18,10 @@ namespace CircleAI.Tests;
 
 public class CatalogModelSelectorTests
 {
-    static (SqliteModelCatalog Cat, CatalogModelSelector Sel) Wire()
+    static (SqliteModelCatalog Cat, DeviceAwareModelSelector Sel) Wire()
     {
         var cat = new SqliteModelCatalog("Data Source=:memory:");
-        return (cat, new CatalogModelSelector(cat));
+        return (cat, new DeviceAwareModelSelector(engines: null, catalogue: cat));
     }
 
     static DeviceProbe Probe(double ramGb = 8)
@@ -186,8 +186,25 @@ public class CatalogModelSelectorTests
             cat.Upsert(Entry("no", qualityRank: 6));
             cat.SetAssessment("no", compatible: false, rank: 0);
 
-            var ids = sel.AllCandidates(Probe()).Select(c => c.ModelId).ToArray();
-            Assert.Equal(new[] { "ok" }, ids);
+            // THE TWO SELECTORS DISAGREED ABOUT THIS ENDPOINT AND ONLY ONE HAD A REASON.
+            //
+            // The catalogue-backed one listed ONLY compatible rows, so an incompatible
+            // model was invisible. The registry-backed one listed every eligible row and
+            // marked it Good or NothingFits, and its comment says why: "A 'what could run
+            // here' listing that marks unrunnable entries as Good would be actively
+            // misleading - that is the whole point of this endpoint." Hiding them is the
+            // other half of the same mistake: a diagnostics listing that silently omits
+            // the rows somebody is asking about answers a different question.
+            //
+            // So the one selector lists both and flags them, and what this pins is the
+            // DISTINCTION rather than the omission.
+            var all = sel.AllCandidates(Probe());
+
+            Assert.Equal(new[] { "ok", "no" }, all.Select(c => c.ModelId).ToArray());
+            Assert.Equal(SelectionQuality.Good,
+                all.Single(c => c.ModelId == "ok").Quality);
+            Assert.Equal(SelectionQuality.NothingFits,
+                all.Single(c => c.ModelId == "no").Quality);
         }
     }
 }

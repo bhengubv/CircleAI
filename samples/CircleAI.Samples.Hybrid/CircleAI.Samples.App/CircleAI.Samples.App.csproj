@@ -82,6 +82,53 @@
     <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
+  <!-- A STALE LINKED ASSEMBLY KILLED THE APP ON LAUNCH, AND IT WAS NOT THE TRIMMER.
+       Measured on the P30 (arm64-v8a, Android 10) from the 3.9.2 vc62 cut,
+       2026-10-28 10:06:25:
+
+         FATAL EXCEPTION: main
+         Process: com.bhengubv.circleai.hybrid
+         [System.MissingMethodException]: Method not found:
+           int .Style.get_Maui_Material3_Theme_NoActionBar()
+           at CircleAI.Samples.App.MainActivity.OnCreate
+
+       THIS ITEM WAS ADDED ON THE WRONG DIAGNOSIS AND IS KEPT ONLY BECAUSE IT WAS IN
+       THE CONFIGURATION THAT WAS PROVEN. The trimmer was the first suspect - nothing
+       in this app's IL names that style, so a dead-code pass looks like the culprit -
+       and rooting the assembly did not fix it. The same crash came back from the
+       rebuilt APK even though `-getItem:TrimmerRootAssembly` confirmed MSBuild had
+       evaluated the item and the designer's AOT image had grown from 4 560 to
+       60 296 bytes. A fix that lands and changes nothing is not the fix.
+
+       THE REAL CAUSE WAS A TIMESTAMP, read off the two assemblies:
+
+         obj/Release/net10.0-android/_Microsoft.Android.Resource.Designer.dll
+           719 872 B  03:23:31   HAS Maui_Material3_Theme_NoActionBar
+         obj/Release/.../android-arm64/linked/_Microsoft.Android.Resource.Designer.dll
+           719 360 B  03:20:39   LACKS it
+
+       The linked output was OLDER THAN ITS OWN INPUT. The designer gained the four
+       Material3 members at 03:23, three minutes after that link ran, and every build
+       afterwards compared the two and called itself up to date - so the APK shipped a
+       pre-Material3 designer while `aapt2 dump resources` showed
+       style/Maui.Material3.Theme.NoActionBar present at 0x7f100141. The resource was
+       in the APK; only the managed member was missing.
+
+       `-t:Clean` does NOT clear it: Clean removes what it recorded in FileWrites,
+       which is exactly why that folder survived every rebuild. Redirecting
+       BaseIntermediateOutputPath does not dodge it either - it is a global property,
+       so CircleAI.Samples.Shared resolves its assets into the same folder and fails
+       NETSDK1005 for want of a net10.0 target. Deleting
+       obj/Release/net10.0-android is what works, and after that every copy the build
+       produced - pre-link, linked, and shrunk, for both ABIs - carried all 20 Maui*
+       members on Style. The app then launched and stayed up (2026-10-28 12:23).
+
+       So: if this app dies on launch for a missing resource id again, DELETE THE
+       INTERMEDIATE BEFORE TOUCHING THE TRIMMER. -->
+  <ItemGroup Condition="$(TargetFramework.Contains('-android')) and '$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="_Microsoft.Android.Resource.Designer" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- App icon: ONE svg for the plate, one for the mark. MAUI generates every
          density, which is why this head has no mipmap folders. Both are generated

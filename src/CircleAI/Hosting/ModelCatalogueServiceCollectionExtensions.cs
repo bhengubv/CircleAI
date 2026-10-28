@@ -90,9 +90,10 @@ public static class ModelCatalogueServiceCollectionExtensions
             httpClient: null,
             logger: sp.GetService<ILogger<HuggingFaceCatalogClient>>()));
 
-        services.TryAddSingleton(sp => new CatalogModelSelector(sp.GetRequiredService<IModelCatalog>()));
+        services.TryAddSingleton(sp => new DeviceAwareModelSelector(
+            engines: null, catalogue: sp.GetRequiredService<IModelCatalog>()));
         if (useAsPrimarySelector)
-            services.AddSingleton<IModelSelector>(sp => sp.GetRequiredService<CatalogModelSelector>());
+            services.AddSingleton<IModelSelector>(sp => sp.GetRequiredService<DeviceAwareModelSelector>());
 
         return services;
     }

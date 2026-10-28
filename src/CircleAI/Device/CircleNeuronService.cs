@@ -766,7 +766,7 @@ public sealed partial class CircleNeuronService : Service
                 // background task and BestFit throws on an unassessed catalogue.
                 // (This method waited for that bootstrap before taking the lock -
                 // see WaitForCatalogueAsync.)
-                var selector = CircleAI.Inference.CatalogModelSelector.Preferring(Catalogue, registry);
+                var selector = CircleAI.Inference.DeviceAwareModelSelector.Preferring(Catalogue, registry);
 
                 // THE BRAIN LOADS WHAT IS THERE. IT DOES NOT FETCH.
                 //
@@ -810,45 +810,34 @@ public sealed partial class CircleNeuronService : Service
                     wanted = best?.ModelId;
                 }
 
-                // IF THE ONE IT CHOSE IS NOT HERE, USE THE BEST ONE THAT IS.
+                // THE STAND-IN IS GONE. BEST IS X, SO X IS USED - AND A MISSING X IS
+                // FETCHED, NEVER SUBSTITUTED. (The owner, 2026-10-27.)
                 //
-                // The selector ranks the CATALOGUE and has no idea what was ever
-                // downloaded, so it can name a model this phone does not have while
-                // a better one sits on disk. Measured on a Circle OS device on
-                // 2026-10-03: it wanted Qwen3.5-0.8B-MNN, which was never downloaded,
-                // while a complete 1.17 GB Qwen3.5-2B and a 35B MoE were present -
-                // and the person was told their phone had no model at all.
+                // What stood here took the selector's answer, found it was not on disk,
+                // and used the best model that WAS - announcing it with
+                // AssistantPersona.OnTheSmallerBrain. It was added for a real measurement
+                // on a Circle OS device on 2026-10-03: the selector wanted
+                // Qwen3.5-0.8B-MNN, which was never downloaded, a complete 1.17 GB
+                // Qwen3.5-2B sat on disk, and the person was told their phone had no
+                // model at all.
                 //
-                // A download is still a deliberate act made on the setup screen with
-                // the size written next to it. This does not start one; it only
-                // refuses to ignore what somebody already chose to fetch.
-                if (!string.IsNullOrWhiteSpace(wanted) && !loader.ModelPresent(wanted!))
-                {
-                    // THE PROBE GOES IN, because standing in for the selector is not
-                    // licence to overrule it. Without it this picked the heaviest
-                    // model on disk regardless of fit: on 2026-10-04 that was a
-                    // 22.8 GB MoE on a 7.6 GB phone, and loading it aborted the
-                    // process and set lowmemorykiller on a dozen system apps.
-                    var here = loader.BestInstalledChatModel(
-                        DeviceProbe.Snapshot(),
-                        refused: id => CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, id));
-                    if (!string.IsNullOrWhiteSpace(here))
-                    {
-                        global::Android.Util.Log.Info(LogTag,
-                            "the selector wanted " + wanted + ", which is not on this phone; "
-                            + "using " + here + ", which is");
-
-                        // AND SAID OUT LOUD, NOT ONLY TO LOGCAT. This is exactly
-                        // the decision a person is entitled to hear: the thing
-                        // they are talking to is not the one the device would
-                        // have chosen. The sentence is AssistantPersona's; the
-                        // sequence number is what lets a client speak it once.
-                        CircleNeuronLinkService.Decided(
-                            CircleAI.Assistant.AssistantPersona.OnTheSmallerBrain);
-
-                        wanted = here;
-                    }
-                }
+                // THAT IS THE SAME RULE THAT RAN THE P30 ON Qwen3-0.6B FOR A WEEK. The
+                // census counted the brain as present because something was present, so
+                // nothing ever fetched the model the device had actually chosen - and the
+                // floor the registry spells out, "a missing Qwen3.5 is fetched, never
+                // substituted", was defeated by a layer below the selector.
+                //
+                // THE 2026-10-03 COMPLAINT IS REAL AND IT IS ANSWERED ELSEWHERE NOW: the
+                // brain is fetched FIRST rather than behind seventy-four voices
+                // (ModelSetup.NotStarted's brainFirst), so the window where the chosen
+                // model is absent is as short as the connection allows instead of being
+                // most of a first run. A person waiting on the right brain is a wait; a
+                // person given a lesser one and told so is a product that quietly does
+                // not meet its own floor.
+                //
+                // loader.BestInstalledChatModel still exists and still answers "what is
+                // on this phone" - for the census, for reporting, for housekeeping. It no
+                // longer answers "which model", because that question has one owner.
 
                 if (string.IsNullOrWhiteSpace(wanted) || !loader.ModelPresent(wanted!))
                 {
@@ -873,6 +862,56 @@ public sealed partial class CircleNeuronService : Service
                     return;
                 }
 
+                // THE CHOSEN MODEL IS HERE. CAN IT BE LOADED IN THE MEMORY THAT IS FREE?
+                //
+                // Selection is the DURABLE question and deliberately ignores what is
+                // spare this second, so that the brain does not change identity because
+                // something else is running. That leaves this: the model is present, and
+                // right now there may not be room for it. Loading it anyway is the
+                // 2026-10-10 kill - a 2B on the P30 with 982 MB free took iAware's
+                // low-memory killer through com.huawei.lbs and totemweather, and our own
+                // service with them.
+                //
+                // SO THE FAILOVER IS ASKED OF THE SAME SELECTOR, not of a second one, and
+                // it only ever changes what answers THIS MINUTE. `wanted` stays what this
+                // device uses: the fetch target, what the screens name, what the census
+                // counts. Nothing downgrades the choice itself.
+                // ASKED THROUGH THE INTERFACE, not of a concrete type: LoadableNow is on
+                // IModelSelector with a null default, so this reads the same whichever
+                // implementation is wired and a fake that has no answer makes it wait.
+                var chosenEntry = registry.GetLatestModel(wanted!);
+                if (chosenEntry is not null
+                    && !CircleAI.Inference.ModelFit.Fits(chosenEntry, DeviceProbe.Snapshot()))
+                {
+                    var now = selector.LoadableNow(DeviceProbe.Snapshot(), options.RequiredCapabilities);
+
+                    if (now is not null && loader.ModelPresent(now.ModelId)
+                        && !string.Equals(now.ModelId, wanted, StringComparison.OrdinalIgnoreCase))
+                    {
+                        global::Android.Util.Log.Info(LogTag,
+                            wanted + " is this device's model but will not load in the memory free now; "
+                            + "answering on " + now.ModelId + " until there is room");
+
+                        // THE SENTENCE WAS ALWAYS RIGHT AND WAS WIRED TO THE WRONG CAUSE.
+                        // OnTheSmallerBrain used to mean "we never downloaded the one you
+                        // chose", which was the stand-in rule and a quiet admission that
+                        // the product had missed its own floor. Here it is true: the right
+                        // brain is on the device and a busy phone cannot hold it yet.
+                        CircleNeuronLinkService.Decided(
+                            CircleAI.Assistant.AssistantPersona.OnTheSmallerBrain);
+
+                        wanted = now.ModelId;
+                    }
+                    else if (now is null)
+                    {
+                        // Nothing loadable at all this minute, and that is a WAIT rather
+                        // than a downgrade: the model stays chosen and the next attempt
+                        // may well have room.
+                        global::Android.Util.Log.Info(LogTag,
+                            wanted + " will not load in the memory free now and nothing else will either; waiting");
+                    }
+                }
+
                 // AND NOT THE ONE THAT KILLED THE PHONE, whichever route chose it.
                 // The filter above only guards the installed-fallback; the selector's
                 // own pick and an explicitly configured ModelId both arrive here
@@ -884,14 +923,28 @@ public sealed partial class CircleNeuronService : Service
                 // this again - and the only trace was a log line.
                 if (CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, wanted))
                 {
-                    var instead = loader.BestInstalledChatModel(
-                        DeviceProbe.Snapshot(),
-                        refused: id => CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, id));
+                    // RE-ASKED, NOT SUBSTITUTED. This took whatever was installed, which
+                    // honoured the refusal and overruled the selector in one move. The
+                    // selector now excludes a refused model from its candidate set
+                    // outright - assessed catalogue or not - so asking it again returns
+                    // the best model this phone can run that has NOT killed it, which is
+                    // the answer this branch was reaching for by hand.
+                    //
+                    // IT STAYS AS A GUARD because an explicitly configured ModelId and a
+                    // pinned `wanted` both arrive here without having passed through the
+                    // selector at all, and on the device that found this the selector was
+                    // not the route that chose the fatal model. One check, after every
+                    // route, is the only version of this that cannot be walked around.
+                    var instead = selector
+                        .BestFit(DeviceProbe.Snapshot(), options.RequiredCapabilities)?.ModelId;
+
+                    if (CircleAI.Inference.CrashVerdict.IsRefused(Catalogue, instead))
+                        instead = null;   // nothing eligible: say so rather than retry it
 
                     global::Android.Util.Log.Warn(LogTag,
                         wanted + " is refused on this phone ("
                         + CircleAI.Inference.CrashVerdict.Reason + "); "
-                        + (instead is null ? "nothing else is here" : "using " + instead));
+                        + (instead is null ? "the selector has nothing else" : "using " + instead));
 
                     if (string.IsNullOrWhiteSpace(instead))
                     {

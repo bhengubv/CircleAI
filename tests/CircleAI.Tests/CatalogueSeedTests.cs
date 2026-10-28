@@ -87,7 +87,7 @@ public class CatalogueSeedTests
         CatalogueSeed.SeedFromEmbedded(cat);
         DeviceModelAssessor.MnnOnly(cat).Assess(Probe(ramGb: 20));
 
-        var best = new CatalogModelSelector(cat).BestFit(Probe(ramGb: 20), ChatCapability.Default);
+        var best = new DeviceAwareModelSelector(engines: null, catalogue: cat).BestFit(Probe(ramGb: 20), ChatCapability.Default);
 
         Assert.Equal(ModelEngine.Mnn, cat.Get(best.ModelId)!.Engine);
         Assert.StartsWith("Qwen3.5", best.ModelId, StringComparison.Ordinal);

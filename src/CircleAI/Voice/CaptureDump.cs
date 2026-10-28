@@ -26,6 +26,27 @@
 //
 // BOUNDED, so a diagnostic cannot fill a phone: it stops at a stated number of
 // seconds and says so.
+//
+// TWO FAULTS FOUND IN THIS FILE ON 2026-10-28, BOTH WHILE IT WAS RECORDING A ROOM.
+//
+// THE MARKER WAS READ ONCE AND NEVER AGAIN. IfAsked checked it at construction and
+// Keep never looked, so deleting the marker did NOT stop the recording - only a
+// restart of the wake loop did. Measured: the marker was deleted at 17:38 and the
+// file was still growing at 6,1 s of audio per 6 s of clock at 17:52, fourteen
+// minutes later, while the script that deleted it reported "recording stopped".
+// A switch that cannot be switched off is not a switch, and on a thing that records
+// a microphone that is the whole of the consent story - the paragraph above promises
+// "Delete the marker to stop recording" and the code did not keep that promise. It is
+// now re-read once a second and a delete ends the window.
+//
+// AND THE LIVE WINDOW WAS NOT A WAV. The constructor wrote 44 ZERO bytes and the real
+// header went in only at Close, so the file currently being recorded into had no
+// RIFF, no WAVE and no length: every tool refused it, and the only readable capture
+// was whatever had last rolled. That is exactly backwards, because the interesting
+// audio is always the most recent - the window holding the phrase somebody just spoke
+// is the one that cannot be opened. The header is now valid from the first byte and
+// patched every second, so the live file is always openable and always states the
+// length it actually holds.
 
 using System;
 using System.IO;
@@ -54,10 +75,29 @@ public sealed class CaptureDump : IDisposable
 
     private const int Rate = 16_000;
 
+    /// <summary>How often the marker is re-read and the header patched: one second.</summary>
+    /// <remarks>
+    /// A FILE PROBE PER SECOND, NOT PER BLOCK. Keep is called every 100 ms, and asking
+    /// the filesystem ten times a second to answer a question that changes once in a
+    /// session is waste on a phone that is already short of everything. One second is
+    /// well inside what a person deleting the marker would call "it stopped", and it
+    /// bounds how much audio can be written after they asked for it to stop.
+    /// </remarks>
+    private const int TickSamples = Rate;
+
     // NOT readonly: Rotate replaces it when a window fills. See Rotate.
     private FileStream? _file;
     private int _samples;
     private bool _closed;
+
+    /// <summary>Where the marker lives, kept so it can be re-read. See the header.</summary>
+    private readonly string? _directory;
+
+    /// <summary>Where to report stopping, so a stop is as loud as the start was.</summary>
+    private readonly Action<string>? _say;
+
+    /// <summary>Samples since the last marker re-read and header patch.</summary>
+    private int _sinceTick;
 
     /// <summary>Where it is writing, or null when it is not.</summary>
     public string? Path { get; }
@@ -110,7 +150,7 @@ public sealed class CaptureDump : IDisposable
             var marker = System.IO.Path.Combine(directory, MarkerName);
             if (!File.Exists(marker)) return null;
 
-            var dump = new CaptureDump(System.IO.Path.Combine(directory, name));
+            var dump = new CaptureDump(System.IO.Path.Combine(directory, name), directory, say);
             // SAYS WHAT IT NOW DOES. This line still read "stops after 60s"
             // after the dump was changed to roll, which would have had the next
             // person reading the log believe a recording had ended an hour
@@ -127,15 +167,26 @@ public sealed class CaptureDump : IDisposable
         }
     }
 
-    private CaptureDump(string path)
+    private CaptureDump(string path, string? directory, Action<string>? say)
     {
         Path = path;
+        _directory = directory;
+        _say = say;
         _file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read);
 
-        // A 44-byte RIFF header with the lengths left at zero, rewritten on
-        // close. Streaming straight to disk rather than buffering a minute of
-        // audio in a process the OS is already trying to kill for memory.
-        _file.Write(new byte[44], 0, 44);
+        // A REAL HEADER FROM THE FIRST BYTE, stating a length of zero, and patched
+        // once a second as the window fills. This wrote `new byte[44]` - forty-four
+        // ZEROES - so the file being recorded into carried no RIFF, no WAVE and no
+        // length, and every tool refused to open it until Close rewrote it. The
+        // window holding what somebody just said is the one worth reading, and it was
+        // the one that could not be. Streaming straight to disk rather than buffering
+        // a minute of audio in a process the OS is already trying to kill for memory.
+        _file.Write(Header(0), 0, 44);
+
+        // FLUSHED, OR IT IS NOT ON DISK. A FileStream buffers 4 KB, so a 44-byte
+        // header sits in memory and the file somebody copies off is zero bytes long -
+        // which is the same unreadable-capture fault by another route.
+        _file.Flush();
     }
 
     /// <summary>Keeps one block, exactly as the spotter was given it.</summary>
@@ -159,6 +210,26 @@ public sealed class CaptureDump : IDisposable
                 _samples++;
             }
 
+            _sinceTick += pcm.Length;
+            if (_sinceTick >= TickSamples)
+            {
+                _sinceTick = 0;
+
+                // THE MARKER, RE-READ - the thing this type promised and did not do.
+                // A stop is announced as loudly as the start was, because a recording
+                // that ends silently is how somebody comes to believe one stopped
+                // when it had not.
+                if (!Asked(_directory))
+                {
+                    Close();
+                    _say?.Invoke($"capture dump OFF (marker deleted) - stopped at "
+                               + $"{Seconds:F1} s; {Path} is complete and readable.");
+                    return;
+                }
+
+                PatchHeader();
+            }
+
             if (_samples >= MostSeconds * Rate) Rotate();
         }
         catch
@@ -167,6 +238,24 @@ public sealed class CaptureDump : IDisposable
             // the wake loop.
             _closed = true;
         }
+    }
+
+    /// <summary>Writes the length so far into the header, without ending the window.</summary>
+    /// <remarks>
+    /// SEEK BACK, WRITE, SEEK FORWARD - and the restore is not optional. Leaving the
+    /// position at 44 would put the next block on top of the audio already written and
+    /// corrupt the file silently from that point on, which is a worse fault than the
+    /// missing header this exists to fix.
+    /// </remarks>
+    private void PatchHeader()
+    {
+        if (_file is null) return;
+
+        var end = _file.Position;
+        _file.Seek(0, SeekOrigin.Begin);
+        _file.Write(Header(_samples * 2));
+        _file.Seek(end, SeekOrigin.Begin);
+        _file.Flush();
     }
 
     /// <summary>Starts a new window, keeping the one just finished beside it.</summary>
@@ -201,8 +290,10 @@ public sealed class CaptureDump : IDisposable
             File.Move(Path, previous, overwrite: true);
 
             _file = new FileStream(Path, FileMode.Create, FileAccess.Write, FileShare.Read);
-            _file.Write(new byte[44], 0, 44);
+            _file.Write(Header(0), 0, 44);   // valid from the first byte; see the constructor
+            _file.Flush();
             _samples = 0;
+            _sinceTick = 0;
             _closed = false;
         }
         catch

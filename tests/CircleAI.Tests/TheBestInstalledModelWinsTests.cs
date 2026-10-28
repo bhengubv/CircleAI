@@ -25,6 +25,20 @@
 // other guard names the 4B on the P30, whose load got the service killed by
 // iAwareF[LowMem] on 2026-10-09. The rule is the best model GIVEN THE RESOURCES, and
 // the resources half is CouldEverHold.
+//
+// "INSTALLED" IN THIS FILE'S NAME IS HISTORY, NOT THE RULE. The owner struck out
+// "INSTALLED FIRST, ALWAYS. Something already on the phone is the answer whatever the
+// catalogue thinks of it", and ModelChoice.cs now says why in as many words: "Best LLM
+// is X, X is used; a missing X is FETCHED, never substituted." What is on disk no
+// longer decides anything - it is the best model THIS DEVICE CAN HOLD, downloaded if
+// it is not here yet.
+//
+// Two tests in here asserted the old rule by asserting a NAME that only happened to
+// be in the store, and they failed the moment the ceiling admitted something better:
+// the P30's answer is Qwen3.5-2B, which ModelFit's measured table calls out
+// explicitly - "admits the 2B (1.9, which ran)". They pin the rule now. The three
+// that still name a model do so where that model is genuinely the best the device can
+// hold, which is the thing being tested.
 
 using System;
 using System.Collections.Generic;
@@ -144,15 +158,31 @@ public sealed class TheBestInstalledModelWinsTests : IDisposable
     }
 
     [Fact]
-    public void The_P30_keeps_the_0_8B_even_with_the_4B_sitting_beside_it()
+    public void The_P30_never_gets_the_4B_whatever_is_sitting_on_its_disk()
     {
-        // 2.85 GB of weights, 3.8 GB declared, against a 2.37 GB ceiling. Downloading
-        // it took six minutes on 2026-10-09 and loading it got the whole service
-        // killed. Ranking installed models with no resources check would name it here.
+        // THE 4B IS THE ONE THAT KILLED IT: 2.85 GB of weights, 3.8 GB declared,
+        // against a 2.37 GB ceiling. It downloaded for six minutes on 2026-10-09 and
+        // the load got the whole service killed by iAwareF[LowMem]. Ranking installed
+        // models with no resources check would name it here.
+        //
+        // THIS ASSERTED "Qwen3.5-0.8B-MNN" AND THAT WAS THE STRUCK-OUT RULE.
+        // "Best LLM is X, X is used; a missing X is FETCHED, never substituted" - so
+        // the answer is the best model the P30 CAN hold, not the best one that happens
+        // to be on its disk. ModelFit's own measured table says what that is:
+        // "P30 3.867 GB -> ceiling 2.37 GB   refuses the 4B (3.8, killed it), admits
+        // the 2B (1.9, which ran)". The 2B is the answer and it is correct; naming the
+        // 0.8B because it was already there is what had this phone on Qwen3-0.6B for a
+        // week.
+        //
+        // So the rule is pinned, not the name: the 4B is never named on this handset,
+        // and whatever is named is something it could actually hold.
         var chosen = Chosen(Store("Qwen3.5-0.8B-MNN", "Qwen3.5-4B-MNN"), P30());
 
         Assert.NotNull(chosen);
-        Assert.Equal("Qwen3.5-0.8B-MNN", chosen!.Name);
+        Assert.NotEqual("Qwen3.5-4B-MNN", chosen!.Name);
+        Assert.True(ModelFit.CouldEverHold(chosen, P30()),
+            $"the P30 was told its brain is {chosen.Name}, needing "
+            + $"{ModelFit.EagerGb(chosen):0.##} GB against a 2.37 GB ceiling");
     }
 
     [Fact]
@@ -197,10 +227,18 @@ public sealed class TheBestInstalledModelWinsTests : IDisposable
     {
         // "Nothing less than Qwen3.5 is the LLM", and the floor is data: the P30 ran
         // Qwen3-0.6B for a week because the installed-first rule named it.
+        //
+        // THE RULE, NOT THE NAME, for the reason the test below this one gives. This
+        // pinned "Qwen3.5-0.8B-MNN" - the other model in the store - which is the
+        // installed-first rule again by the back door: it only passed while the best
+        // holdable model happened to be one of the two on disk. The answer on this
+        // handset is Qwen3.5-2B, which is not in the store and is fetched. What this
+        // test is for is that the RETIRED row is never it.
         var chosen = Chosen(Store("Qwen3-0.6B-MNN", "Qwen3.5-0.8B-MNN"), P30());
 
         Assert.NotNull(chosen);
-        Assert.Equal("Qwen3.5-0.8B-MNN", chosen!.Name);
+        Assert.NotEqual("Qwen3-0.6B-MNN", chosen!.Name);
+        Assert.False(chosen.Retired, $"{chosen.Name} is retired and was named as the brain");
     }
 
     [Fact]

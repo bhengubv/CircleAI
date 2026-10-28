@@ -172,7 +172,7 @@ public static class ServiceCollectionExtensions
         // actually got loaded.
         // ---------------------------------------------------------------
         services.TryAddSingleton<IModelSelector>(sp =>
-            CircleAI.Inference.CatalogModelSelector.Preferring(
+            CircleAI.Inference.DeviceAwareModelSelector.Preferring(
                 sp.GetService<CircleAI.Core.Models.IModelCatalog>(),
                 sp.GetRequiredService<ModelRegistryService>()));
 

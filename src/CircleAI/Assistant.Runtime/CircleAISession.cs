@@ -257,7 +257,7 @@ public sealed class CircleAISession : IAsyncDisposable
             // process that owns the models - so this resolves to the registry
             // selector. Stated here rather than assumed, so the day a session
             // does get one it is a parameter and not a hunt through five files.
-            var selector = CatalogModelSelector.Preferring(catalogue: null, _registry);
+            var selector = DeviceAwareModelSelector.Preferring(catalogue: null, _registry);
 
             var options = new AIOptions
             {

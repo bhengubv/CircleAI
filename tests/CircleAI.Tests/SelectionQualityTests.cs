@@ -23,19 +23,43 @@ namespace CircleAI.Tests;
 
 public sealed class SelectionQualityTests
 {
-    private static DeviceProbe Device(double ramGb, double storageGb = 32) =>
+    /// <summary>A device, stating BOTH what is free now and how big it is.</summary>
+    /// <remarks>
+    /// TOTAL RAM IS NOT OPTIONAL ANY MORE, AND OMITTING IT MADE THESE TESTS LIE.
+    ///
+    /// This helper set RamAvailableBytes only, which was complete while every gate
+    /// read free RAM. BestFit now ranks on ModelFit.CouldEverHold - the durable
+    /// question - and CouldEverHold falls back to the AVAILABLE figure when a probe
+    /// reports no total, "because zero means the device could not be measured". So a
+    /// probe that stays silent about total has its free RAM read as the whole device,
+    /// and 40% of 1.1 GB is 0.44 GB, which is under every model in the register. Four
+    /// tests called a phone capable and then described one three times smaller than
+    /// they meant.
+    ///
+    /// NO REAL PHONE LOOKS LIKE THAT. The P30 probe in TheBestInstalledModelWinsTests
+    /// is 440 MB free of 3 776 516 kB total - free is ELEVEN PERCENT of the device.
+    /// A handset with 1.1 GB spare is a 4 GB handset, so that is what these say now.
+    /// Every call states its own total; nothing is inferred.
+    /// </remarks>
+    private static DeviceProbe Device(double ramGb, double storageGb = 32, double totalGb = 0) =>
         new(
             RamAvailableBytes: (long)(ramGb * 1024 * 1024 * 1024),
             StorageFreeBytes:  (long)(storageGb * 1024 * 1024 * 1024),
             Gpu:               GpuKind.None,
             CpuCores:          8,
             Thermal:           ThermalClass.Passive,
-            Connectivity:      Connectivity.Online);
+            Connectivity:      Connectivity.Online)
+        {
+            RamTotalBytes = (long)((totalGb > 0 ? totalGb : ramGb) * 1024 * 1024 * 1024),
+        };
+
+    /// <summary>A mid-range handset: 4 GB fitted, 1.1 GB spare right now.</summary>
+    private static DeviceProbe CapableHandset() => Device(1.1, totalGb: 4.0);
 
     [Fact]
     public void CapablePhone_ReportsGood()
     {
-        var pick = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default);
+        var pick = new DeviceAwareModelSelector().BestFit(CapableHandset(), ChatCapability.Default);
 
         Assert.Equal(SelectionQuality.Good, pick.Quality);
 
@@ -50,12 +74,21 @@ public sealed class SelectionQualityTests
         // in memory than on disk, so a byte threshold now fails on models the phone
         // can genuinely hold. The claim being made is about memory; it now measures
         // memory.
+        //
+        // AND IT ASKS THE DURABLE QUESTION, because that is the one BestFit answered.
+        // This compared the pick against UsableRamGb - free RAM x 0.85, 0.93 GB on
+        // this handset - which is "can it load this second". BestFit ranks on
+        // CouldEverHold, so on a 4 GB phone with 1.1 GB spare it correctly names a
+        // model larger than the moment allows and LoadableNow is what answers the
+        // other question. Asserting the momentary rule against a durable pick is the
+        // volatility the durable rule was introduced to remove.
+        var probe  = CapableHandset();
         var chosen = new ModelRegistryService().AllModels
             .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
-        var needGb = ModelFit.EffectiveMinRamGb(chosen, Device(1.1).UsableRamGb);
-        Assert.True(needGb <= Device(1.1).UsableRamGb + ModelFit.Eps,
-            $"Quality.Good on a 1.1 GB phone, but picked {pick.ModelId} " +
-            $"needing {needGb:0.##} GB resident.");
+        Assert.True(ModelFit.CouldEverHold(chosen, probe),
+            $"Quality.Good on a {probe.RamTotalBytes / 1024.0 / 1024 / 1024:0.#} GB phone, but picked "
+            + $"{pick.ModelId}, which needs {ModelFit.EagerGb(chosen):0.##} GB resident against a "
+            + $"{ModelFit.ResidentCeilingGb(probe.RamTotalBytes / 1024.0 / 1024 / 1024):0.##} GB ceiling.");
     }
 
     [Fact]
@@ -67,8 +100,10 @@ public sealed class SelectionQualityTests
         // MNN-ONLY, STATED: without an engine set the selector asks the build, which
         // answers from the test host's bin/, so this moved when llamabridge.dll was
         // staged for win-x64 and nothing about the product had changed.
+        // 0.25 GB FITTED, not merely 0.25 GB spare — stated, because CouldEverHold
+        // reads total and a silent probe would have it read the free figure instead.
         var pick = new DeviceAwareModelSelector([ModelEngine.Mnn])
-            .BestFit(Device(0.25, storageGb: 1), ChatCapability.Default);
+            .BestFit(Device(0.25, storageGb: 1, totalGb: 0.25), ChatCapability.Default);
 
         Assert.Equal(SelectionQuality.NothingFits, pick.Quality);
 
@@ -87,11 +122,19 @@ public sealed class SelectionQualityTests
     [Fact]
     public void BelowRequestedFloor_ReportsBelowFloor()
     {
-        // The 1.1 GB phone can only hold Qwen3-0.6B (QualityRank 6). A caller
-        // that needs rank 10+ to be useful should be told so, not handed the
-        // 0.6B as though it were fine.
-        var pick = new DeviceAwareModelSelector()
-            .BestFit(Device(1.1), ChatCapability.Default, minQualityRank: 10);
+        // An MNN handset tops out below rank 10: its 2.5 GB ceiling admits
+        // Qwen3.5-2B (rank 9) and refuses the 4B (3.8 GB declared). A caller that
+        // needs rank 10+ to be useful should be told so, not handed the 2B as
+        // though it were what they asked for.
+        //
+        // MNN-ONLY, STATED, for the reason DeviceTooSmallForAnything gives above:
+        // with no engine set the selector asks the BUILD, which answers from the
+        // test host's bin/. With llamabridge.dll staged there, Ternary-Bonsai-2-4B
+        // (rank 11, 1.2 GB declared) becomes a candidate, clears the floor of 10
+        // and the verdict flips to Good — on a 32-bit P30 that engine does not
+        // exist at all. The product did not change; the host's bin/ did.
+        var pick = new DeviceAwareModelSelector([ModelEngine.Mnn])
+            .BestFit(CapableHandset(), ChatCapability.Default, minQualityRank: 10);
 
         Assert.Equal(SelectionQuality.BelowFloor, pick.Quality);
 
@@ -111,7 +154,7 @@ public sealed class SelectionQualityTests
     {
         // A 16 GB device reaches Qwen3-14B (rank 14), clearing a floor of 10.
         var pick = new DeviceAwareModelSelector()
-            .BestFit(Device(16, storageGb: 64), ChatCapability.Default, minQualityRank: 10);
+            .BestFit(Device(16, storageGb: 64, totalGb: 16), ChatCapability.Default, minQualityRank: 10);
 
         Assert.Equal(SelectionQuality.Good, pick.Quality);
     }
@@ -121,8 +164,8 @@ public sealed class SelectionQualityTests
     {
         // The floor is opt-in on purpose: real thresholds must come from
         // SelfBench measurements, not a number invented in source.
-        var withDefault  = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default);
-        var withExplicit = new DeviceAwareModelSelector().BestFit(Device(1.1), ChatCapability.Default, 0);
+        var withDefault  = new DeviceAwareModelSelector().BestFit(CapableHandset(), ChatCapability.Default);
+        var withExplicit = new DeviceAwareModelSelector().BestFit(CapableHandset(), ChatCapability.Default, 0);
 
         Assert.Equal(SelectionQuality.Good, withDefault.Quality);
         Assert.Equal(withDefault.ModelId, withExplicit.ModelId);
@@ -137,7 +180,7 @@ public sealed class SelectionQualityTests
         // (The 14B and 0.6B this was written against are retired below the floor
         // - "nothing less than Qwen3.5 is the LLM" - so it asks the same question of
         // the Qwen3.5 family, and checks no retired model is listed at all.)
-        var candidates = new DeviceAwareModelSelector().AllCandidates(Device(1.1));
+        var candidates = new DeviceAwareModelSelector().AllCandidates(CapableHandset());
 
         Assert.NotEmpty(candidates);
         Assert.DoesNotContain(candidates, c => c.ModelId.StartsWith("Qwen3-", StringComparison.Ordinal)

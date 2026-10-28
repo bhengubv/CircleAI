@@ -47,7 +47,8 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3-1.7B-MNN",
@@ -95,7 +96,8 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3-4B-MNN",
@@ -143,7 +145,8 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3-8B-MNN",
@@ -201,7 +204,8 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3-14B-MNN",
@@ -259,7 +263,8 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen2.5-0.5B-Instruct-MNN",
@@ -315,7 +320,8 @@
           "SizeBytes": 3193477
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen2.5-1.5B-Instruct-MNN",
@@ -367,7 +373,8 @@
           "SizeBytes": 3193477
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen2.5-3B-Instruct-MNN",
@@ -424,7 +431,8 @@
           "SizeBytes": 3193477
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen2.5-7B-Instruct-MNN",
@@ -481,7 +489,8 @@
           "SizeBytes": 3193477
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Piper-en_US-lessac-medium",
@@ -2710,11 +2719,20 @@
           "SizeBytes": 3193569
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3.5-0.8B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "penalty", "Penalty": 1.1 }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
+      "Generation": {
+        "EnableThinking": false,
+        "Sampler": {
+          "SamplerType": "penalty",
+          "Penalty": 1.1
+        },
+        "MaxTokensSpoken": 80,
+        "MaxTokensTyped": 512
+      },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-0.8B-MNN",
@@ -2778,11 +2796,20 @@
           "SizeBytes": 63043212
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3.5-2B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "penalty", "Penalty": 1.1 }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
+      "Generation": {
+        "EnableThinking": false,
+        "Sampler": {
+          "SamplerType": "penalty",
+          "Penalty": 1.1
+        },
+        "MaxTokensSpoken": 80,
+        "MaxTokensTyped": 512
+      },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-2B-MNN",
@@ -2846,11 +2873,20 @@
           "SizeBytes": 195587264
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3.5-4B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "penalty", "Penalty": 1.1 }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
+      "Generation": {
+        "EnableThinking": false,
+        "Sampler": {
+          "SamplerType": "penalty",
+          "Penalty": 1.1
+        },
+        "MaxTokensSpoken": 80,
+        "MaxTokensTyped": 512
+      },
       "Version": "3.5",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.5-4B-MNN",
@@ -2914,11 +2950,20 @@
           "SizeBytes": 196768960
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "Qwen3.6-35B-A3B-MNN",
-      "Generation": { "EnableThinking": false, "Sampler": { "SamplerType": "penalty", "Penalty": 1.1 }, "MaxTokensSpoken": 80, "MaxTokensTyped": 512 },
+      "Generation": {
+        "EnableThinking": false,
+        "Sampler": {
+          "SamplerType": "penalty",
+          "Penalty": 1.1
+        },
+        "MaxTokensSpoken": 80,
+        "MaxTokensTyped": 512
+      },
       "Version": "3.6",
       "Quantization": "MNN-Q4",
       "Repo": "taobao-mnn/Qwen3.6-35B-A3B-MNN",
@@ -2987,7 +3032,8 @@
           "SizeBytes": 253514636
         }
       ],
-      "Source": "HuggingFace"
+      "Source": "HuggingFace",
+      "Modality": "Chat"
     },
     {
       "Name": "JSUT-VITS",

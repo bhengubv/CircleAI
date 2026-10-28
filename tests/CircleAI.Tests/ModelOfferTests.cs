@@ -168,9 +168,19 @@ public sealed class ModelOfferTests : IDisposable
         // UNCONDITIONALLY - so on a device holding a complete 22.8 GB MoE it would
         // have named it as the chosen Chat model while the service refused to load
         // it. "One rule, one answer" is written in its own comments.
+        //
+        // THE TWO MODELS MUST BE ONES THIS PHONE CAN HOLD, and picking the top two by
+        // rank did not do that. The highest-ranked chat rows are the 35B MoE (22.8 GB)
+        // and the 27B, and an 8 GB handset can hold neither - its ceiling is 6.5 GB -
+        // so the honest answer became null and this asserted NotNull. That assertion
+        // was the struck-out installed-first fallback: "something is on the disk, so
+        // name it". What the test is actually for is that a REFUSED model is not the
+        // one named, which needs a second candidate the device can genuinely run.
         var registry = new ModelRegistryService();
         var chat = registry.AllModels
-            .Where(m => m.Modality == ModelModality.Chat && m.BundleFiles is { Count: > 0 })
+            .Where(m => m.Modality == ModelModality.Chat
+                     && m.BundleFiles is { Count: > 0 }
+                     && ModelFit.CouldEverHold(m, Phone()))
             .OrderByDescending(m => m.QualityRank)
             .Take(2)
             .ToList();

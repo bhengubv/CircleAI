@@ -144,6 +144,76 @@ public sealed class ServiceApplication : Application
                 CircleAI.Inference.QwenTextGenerator.SamplerJsonForTest = System.IO.File.ReadAllText(samplerFile).Trim();
                 global::Android.Util.Log.Info("CircleAI.Worker", "sampler from the test folder");
             }
+
+            // AND THE EXPERIMENT THIS PRODUCT'S OWN MMAP NOTES ASK FOR AND NOBODY EVER RAN:
+            // soak/force-mmap.on puts a model that FITS IN RAM through the mmap +
+            // single-thread path, which otherwise only a 30B-class MoE can reach, because
+            // QwenTextGenerator.MmapWeightThresholdBytes is 8 GB.
+            //
+            // WHAT IT IS FOR. Measured on the P30 on 2026-10-28, the brain is read eagerly
+            // into anonymous memory and a release therefore costs the whole load again:
+            //
+            //     brain ready: Qwen3.5-0.8B-MNN in 14926 ms
+            //
+            // Mapped weights are file-backed, so the kernel's page cache can survive a
+            // release and make the reload cheap. The price is the other half of that path:
+            // QwenTextGenerator pairs mmap with TrySetThreads(1), against a prefill
+            // measured at 28,8 ms/token on four threads. Cheap reloads, dearer tokens -
+            // a trade with a number on each side and no way to pick between them by
+            // argument.
+            //
+            // A SWITCH RATHER THAN A BUILD, because both arms have to run on the same
+            // phone minutes apart. Measuring one configuration today and the other
+            // tomorrow lets the room and the thermal state answer instead, which is
+            // exactly how an AGC measurement went wrong earlier on 2026-10-28: a
+            // sequential sweep read a tenfold difference that an interleaved re-run put
+            // at 0,86 with the spreads overlapping.
+            //
+            // ForceMmap was ALREADY reachable - a public static, set the way
+            // AllowKvCacheMmap is. What it never had was anybody setting it, which is
+            // this repo's named most common defect wearing a different hat.
+            //
+            // AND IT HAS NOW BEEN RUN. P30, 2026-10-28, three interleaved rounds,
+            // Qwen3.5-0.8B-MNN, the service's own 72-token startup warm-up as the
+            // prompt. thread_num read back from mnnbridge's config line each run, so
+            // the arm is proven engaged rather than assumed - 4 with the marker off, 1
+            // with it on, six runs for six:
+            //
+            //                      mmap OFF (eager, 4 thr)   mmap ON (mapped, 1 thr)
+            //   brain ready            15 285 ms                 19 892 ms
+            //                     (13 762-16 615)           (19 353-20 861)
+            //   prefill, 72 tok         3 223 ms                  8 305 ms
+            //                      (2 513-4 042)             (8 075-8 608)
+            //   prefill per token         44,8 ms                  115,3 ms
+            //   decode                    149 ms                    335 ms
+            //                        (112-188)                 (286-395)
+            //
+            // EVERY SPREAD IS NON-OVERLAPPING, so these are differences and not drift.
+            //
+            // THE PREMISE WAS WRONG, AND IT WAS MINE. The reason to try this was that
+            // mapped weights are file-backed, so the kernel's page cache should survive
+            // a release and make the reload cheap. Mapping made the load 4,6 s SLOWER -
+            // and because the arms alternated minutes apart, the weights were recently
+            // read in both cases, so a cold cache cannot explain it away. There is no
+            // upside here to weigh the single thread against: mmap is worse on the load
+            // AND 2,6x worse per prefill token AND 2,3x worse on decode.
+            //
+            // SO THE 8 GB THRESHOLD IS RIGHT, and the ~15 s load is not something mmap
+            // can buy down on this phone. That leaves NOT EVICTING as the only lever
+            // that matters - see InferenceSupervisor.OnTrimMemory, which no longer
+            // releases the brain on a routine RUNNING_CRITICAL.
+            //
+            // The switch stays, off, because it is the instrument that produced the
+            // table above and a phone with real memory bandwidth may well answer
+            // differently. It is not a recommendation.
+            if (testDir.Length > 0 && System.IO.File.Exists(System.IO.Path.Combine(testDir, "force-mmap.on")))
+            {
+                CircleAI.Inference.QwenTextGenerator.ForceMmap = true;
+                global::Android.Util.Log.Info("CircleAI.Worker",
+                    "FORCE MMAP ON (soak/force-mmap.on): weights memory-mapped and MNN capped "
+                    + "to ONE thread for every model, not just the giants. Expect cheaper "
+                    + "reloads and dearer tokens. Delete the file to go back to eager loading.");
+            }
         }
         catch { /* no test folder, no switches */ }
 

@@ -108,6 +108,44 @@ public sealed class DeviceAwareModelSelectorRegistryTests
     }
 
     [Fact]
+    public void A_vision_request_cannot_be_answered_with_a_model_this_build_cannot_open()
+    {
+        // THE TEST ABOVE PROVES VISION GETS AN ANSWER, NOT THAT IT GETS A RUNNABLE ONE,
+        // and that is precisely where the next bug lived. BestFit called an
+        // EnumerateEntries OVERLOAD - a second candidate set added to fix the throw the
+        // test above records - and for a Vision request that overload read
+        // _registry.AllModels with nothing but !Retired: no engine gate, and not even the
+        // chat-only guarantee the method's own comment promised. So a build whose ABI has
+        // no llama.cpp could be handed a GGUF VLM, and "Vision gets a model" stayed green
+        // through all of it. That file's comment already says this test was once "green
+        // for the wrong reason"; it was green for a second wrong reason after that.
+        //
+        // ONNX IS THE STAND-IN FOR "NEITHER ENGINE". It is the speech stack's engine and
+        // no chat or vision row in this registry declares it, so this engine set can open
+        // none of them - which must mean no answer, not an answer that cannot load.
+        var selector = new DeviceAwareModelSelector([ModelEngine.Onnx]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => selector.BestFit(Device(8), ChatCapability.Vision));
+    }
+
+    [Fact]
+    public void A_vision_request_gets_a_model_the_stated_engine_set_can_open()
+    {
+        // The other direction, so the gate is not simply refusing everything: every
+        // vision entry in this registry is MNN, so an MNN build must still be answered.
+        var pick = new DeviceAwareModelSelector([ModelEngine.Mnn])
+            .BestFit(Device(8), ChatCapability.Vision);
+
+        var entry = new ModelRegistryService().AllModels
+            .Single(m => string.Equals(m.Name, pick.ModelId, StringComparison.Ordinal));
+
+        Assert.Contains("Vision", entry.Capabilities, StringComparer.OrdinalIgnoreCase);
+        Assert.True(EngineChoice.CanRun(entry, [ModelEngine.Mnn]),
+            $"vision was answered with {entry.Name}, which " + EngineChoice.Explain(entry, [ModelEngine.Mnn]));
+    }
+
+    [Fact]
     public void Vision_StillFailsLoudlyWhenNothingDeclaresIt()
     {
         // The half of the old test that is still worth having: an empty result

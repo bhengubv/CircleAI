@@ -1,19 +1,27 @@
 // RegistryDriftTests.cs
 //
-// TWO registry files ship, and they must agree on the facts that break users.
+// ONE REGISTER, AND A PROJECTION OF IT. Two files ship and they must agree.
 //
-//   src/CircleAI/Core/registry.json                 — keyed by model name.
-//                                                     The OUTPUT FORMAT of
+//   src/CircleAI/Core/registry.json                 — THE REGISTER. Keyed by
+//                                                     model name, every entry,
+//                                                     every field. The output
+//                                                     format of
 //                                                     tools/recalibrate-registry-sha.
-//   src/CircleAI/Core/Models/embedded_registry.json — array form, plus runtime
-//                                                     fields (QualityRank,
-//                                                     FallbackModelId,
-//                                                     Capabilities, MinRamGb).
-//                                                     The ONLY one
-//                                                     ModelRegistryService reads.
+//   src/CircleAI/Core/Models/embedded_registry.json — GENERATED from it by
+//                                                     tools/sync-registry, in
+//                                                     the array form
+//                                                     ModelRegistryService
+//                                                     reads. Not hand-edited.
 //
-// Both are <EmbeddedResource> in CircleAI.Core.csproj, whose comment already
-// concedes registry.json is "legacy, kept for callers that load it by name".
+// Both are <EmbeddedResource> in CircleAI.Core.csproj.
+//
+// IT WAS NOT ONE REGISTER UNTIL 2026-10-28, and the comment here said so in as
+// many words: runtime-only fields were "added to embedded_registry.json only"
+// and the bucket voices "only ever land" there. That is two part-owners of every
+// entry, which is the failure CLAUDE.md names - and the register owned 33 of 96
+// entries while the artefact solely owned the rest. The register now carries all
+// 96 and sync-registry asks it for every field; ModelsInTheRuntimeFileAreAllInTheRegister
+// keeps it that way.
 //
 // The hazard is concrete, not cosmetic: the TOOL writes registry.json and a
 // human transcribes into embedded_registry.json. If a re-run refreshes hashes
@@ -21,18 +29,16 @@
 // fails SHA-256 verification — after spending the user's data. On the measured
 // Huawei run that was 429 MB before anything could have gone wrong.
 //
-// (Today is a live example of the transcription gap: Capabilities / MinRamGb /
-// MinStorageGb were added to embedded_registry.json only.)
+// So: do not compare the files wholesale — they legitimately differ in SHAPE
+// (keyed vs array). Compare the facts that must never diverge, and assert that
+// neither file holds an entry the other has never heard of.
 //
-// So: do not compare the files wholesale — they legitimately differ in shape
-// and in runtime-only fields. Compare the facts that must never diverge.
-//
-// And note there are now TWO ways a model gets catalogued: the ModelScope tool
-// that writes registry.json, and the HuggingFace voice bucket
-// (thegeekco/circleai-voices) that only ever lands in embedded_registry.json.
-// "Present in both files" is therefore no longer a usable stand-in for "someone
-// checked this hash" — see EveryRuntimeModelDeclaresAVerifiableSourceAndRealHashes,
-// which asserts that property directly instead of inferring it from provenance.
+// A model still reaches the catalogue two ways — the ModelScope tool that writes
+// registry.json, and the HuggingFace voice bucket (thegeekco/circleai-voices) —
+// but both now land in the register, so "present in both files" is true of every
+// entry again. It is still not a stand-in for "someone checked this hash": see
+// EveryRuntimeModelDeclaresAVerifiableSourceAndRealHashes, which asserts that
+// property directly instead of inferring it from provenance.
 
 using System;
 using System.Collections.Generic;
@@ -155,6 +161,38 @@ public sealed class RegistryDriftTests
         Assert.True(onlyLegacy.Count == 0,
             "In registry.json but never transcribed into embedded_registry.json, " +
             "so the runtime cannot see it: " + string.Join(", ", onlyLegacy));
+    }
+
+    [Fact]
+    public void ModelsInTheRuntimeFileAreAllInTheRegister()
+    {
+        // THE DIRECTION NOBODY GUARDED, AND SIXTY-THREE ENTRIES CAME IN THROUGH IT.
+        //
+        // ModelsInTheLegacyFileAreAllVisibleToTheRuntime above checks register ->
+        // runtime. Nothing checked runtime -> register, so a model written straight
+        // into the generated file was invisible to every guard in this class: it
+        // shared no name with the register, so EveryModelInBothFiles skipped it, and
+        // the one-way test it could have failed only looks the other way.
+        //
+        // Measured 2026-10-28: the register held 33 entries and the runtime file 96.
+        // All 33 were in both. The other 63 - the 57 bucket voices and six GGUF chat
+        // models - existed only in the artefact, which means the register was not the
+        // register. sync-registry's own header says the same thing about itself ("it
+        // just did not reach far enough") and its rebuild guard had grown around the
+        // orphans rather than the orphans being fixed.
+        //
+        // One register, every entry in it. A new model is added to registry.json and
+        // regenerated; it is never written into the generated file by hand.
+        var onlyRuntime = EmbeddedBundles().Keys
+            .Except(LegacyBundles().Keys, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Assert.True(onlyRuntime.Count == 0,
+            "In embedded_registry.json but not in registry.json, so the register is not "
+            + "the source of truth for it and no tool can regenerate or re-verify it. "
+            + "Add it to src/CircleAI/Core/registry.json and run "
+            + "`dotnet run --project tools/sync-registry`: "
+            + string.Join(", ", onlyRuntime));
     }
 
     [Fact]

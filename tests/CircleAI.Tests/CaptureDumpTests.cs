@@ -29,6 +29,29 @@ public sealed class CaptureDumpTests
         return d;
     }
 
+    /// <summary>Reads a file that is still open for writing.</summary>
+    /// <remarks>
+    /// FileShare.ReadWrite, AND IT IS NOT A DETAIL. File.ReadAllBytes opens with
+    /// FileShare.Read, which denies the writer's EXISTING write handle under Windows
+    /// sharing rules and throws "being used by another process" - so the obvious way
+    /// to read a live capture cannot read one. That is a Windows rule rather than
+    /// anything about the dump: `adb pull` off the phone has no such restriction,
+    /// which is why this only bites in a test.
+    /// </remarks>
+    private static byte[] ReadLive(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var bytes = new byte[fs.Length];
+        var at = 0;
+        while (at < bytes.Length)
+        {
+            var n = fs.Read(bytes, at, bytes.Length - at);
+            if (n <= 0) break;
+            at += n;
+        }
+        return at == bytes.Length ? bytes : bytes[..at];
+    }
+
     [Fact]
     public void It_does_nothing_at_all_without_the_marker()
     {
@@ -190,5 +213,107 @@ public sealed class CaptureDumpTests
         Assert.Equal(44, h.Length);
         Assert.Equal(36, BitConverter.ToInt32(h, 4));
         Assert.Equal(0, BitConverter.ToInt32(h, 40));
+    }
+
+    [Fact]
+    public void DELETING_THE_MARKER_STOPS_IT_WHILE_IT_IS_STILL_RECORDING()
+    {
+        // THE PROMISE THIS TYPE MADE AND DID NOT KEEP. IfAsked's own line says
+        // "Delete the marker to stop recording", and for as long as that line existed
+        // the marker was read ONCE, at construction, and never looked at again. Only
+        // restarting the wake loop actually stopped it.
+        //
+        // MEASURED ON THE P30 ON 2026-10-28: the marker was deleted at 17:38 and the
+        // file was still growing at 6,1 s of audio per 6 s of clock at 17:52 -
+        // fourteen minutes of somebody's room, recorded after a script had told them
+        // in those words that the recording had stopped. On a type whose whole first
+        // paragraph is about consent, that is the defect that matters most.
+        var dir = Fresh();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, CaptureDump.MarkerName), string.Empty);
+
+            string? told = null;
+            using var dump = CaptureDump.IfAsked(dir, "x.wav", line => told = line)!;
+
+            var second = new float[16_000];
+            dump.Keep(second);
+            Assert.True(dump.Recording);
+
+            File.Delete(Path.Combine(dir, CaptureDump.MarkerName));
+
+            // ONE SECOND IS THE MOST IT MAY TAKE TO NOTICE - that is the tick, and it
+            // bounds how much audio can be captured after somebody asked it to stop.
+            dump.Keep(second);
+            Assert.False(dump.Recording, "deleting the marker must stop the recording");
+
+            // AND IT SAYS SO. A recording that ends silently is how a person comes to
+            // believe one stopped when it had not.
+            Assert.NotNull(told);
+            Assert.Contains("capture dump OFF", told!, StringComparison.Ordinal);
+
+            // NOT ONE BYTE MORE. Everything written past here is audio nobody agreed to.
+            var settled = new FileInfo(Path.Combine(dir, "x.wav")).Length;
+            dump.Keep(second);
+            dump.Keep(second);
+            Assert.Equal(settled, new FileInfo(Path.Combine(dir, "x.wav")).Length);
+
+            // The capture it did make is still a complete, readable wav.
+            var bytes = File.ReadAllBytes(Path.Combine(dir, "x.wav"));
+            Assert.Equal("RIFF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+            Assert.Equal(bytes.Length - 44, BitConverter.ToInt32(bytes, 40));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void THE_LIVE_WINDOW_IS_A_READABLE_WAV_BEFORE_ANYTHING_IS_CLOSED()
+    {
+        // THE WINDOW HOLDING WHAT SOMEBODY JUST SAID WAS THE ONE THAT WOULD NOT OPEN.
+        //
+        // The constructor wrote 44 ZEROES and the real header went in only at Close,
+        // so a capture pulled off the phone while the loop was still running carried
+        // no RIFF, no WAVE and no length. Measured on 2026-10-28: the live file's
+        // first four bytes read blank, every tool refused it, and only the older
+        // rolled window could be measured at all - which is backwards, because the
+        // recent audio is the interesting audio.
+        var dir = Fresh();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, CaptureDump.MarkerName), string.Empty);
+            using var dump = CaptureDump.IfAsked(dir, "x.wav")!;
+            var path = Path.Combine(dir, "x.wav");
+
+            // BEFORE A SINGLE SAMPLE it is already a wav, stating zero honestly.
+            var empty = ReadLive(path);
+            Assert.Equal(44, empty.Length);
+            Assert.Equal("RIFF", System.Text.Encoding.ASCII.GetString(empty, 0, 4));
+            Assert.Equal("WAVE", System.Text.Encoding.ASCII.GetString(empty, 8, 4));
+            Assert.Equal(0, BitConverter.ToInt32(empty, 40));
+
+            var second = new float[16_000];
+            for (var s = 0; s < 3; s++) dump.Keep(second);
+
+            // STILL OPEN - this test is about the live file, not a closed one. If this
+            // fails the assertions below are measuring the wrong thing.
+            Assert.True(dump.Recording);
+
+            var live = ReadLive(path);
+            Assert.Equal("RIFF", System.Text.Encoding.ASCII.GetString(live, 0, 4));
+
+            var data = BitConverter.ToInt32(live, 40);
+            Assert.Equal(3 * 16_000 * 2, data);
+            Assert.Equal(36 + data, BitConverter.ToInt32(live, 4));
+            Assert.Equal(44 + data, live.Length);
+
+            // AND THE PATCH DID NOT EAT THE AUDIO. Seeking to 0 to rewrite the header
+            // and failing to seek back would overwrite the first 44 bytes of samples
+            // with every tick - a silent corruption worse than the missing header.
+            for (var s = 0; s < 3; s++) dump.Keep(second);
+            var longer = ReadLive(path);
+            Assert.Equal(6 * 16_000 * 2, BitConverter.ToInt32(longer, 40));
+            Assert.Equal(44 + 6 * 16_000 * 2, longer.Length);
+        }
+        finally { Directory.Delete(dir, true); }
     }
 }

@@ -179,52 +179,77 @@ public static class ModelChoice
         // that has actually run here beats one that has only ever been predicted to.
         // Among equals the shipped rank still breaks the tie, because a prior is the
         // right thing to start from and the wrong thing to finish on.
-        var self = CircleAI.SelfKnowledge.SelfModel.Current;
-
-        var installed = candidates
-            .Where(m => loader.ModelPresent(m.Name) && ModelFit.CouldEverHold(m, probe))
-            .Where(m => self?.About(m.Name).Refused != true)
-            .OrderByDescending(m => self?.About(m.Name).Proven == true)
-            .ThenByDescending(m => m.QualityRank)
-            .ThenBy(m => m.MinRamGb)
-            .FirstOrDefault();
-        if (installed is not null) return installed;
-
-        // WHAT TO OFFER, AND NOT FROM FREE RAM IF THERE IS ANYTHING BETTER.
+        // CHAT GOES TO THE ONE SELECTOR, and this method used to BE a fourth one.
         //
-        // Fits reads DeviceProbe.UsableRamGb, which comes off MemAvailable - whatever
-        // is spare this second. That is the right input for "can I load it now" and
-        // the wrong one for "is this worth offering": with 1.8 GB free of 7.6 GB it
-        // calls a 1.4 GB model too big, so an abilities row would read "Needs more
-        // memory than this phone has" on a phone that runs it fine, and read
-        // differently again a minute later.
+        // What stood here re-implemented the selector's whole algorithm four times over,
+        // in one method, each pass with its own ordering: installed-and-holdable ranked
+        // by proven-then-quality; then catalogue-assessed ranked by quality; then
+        // fits-right-now ranked by quality; then the smallest this device could ever
+        // hold. Passes two, three and four ARE the selector - its assessed source, its
+        // fit gate and its NothingFits fallback - written again, so a screen and the
+        // runtime could and did answer differently.
         //
-        // The catalogue's assessment is made once per launch and is stable, so it is
-        // preferred whenever it exists. Fits remains the answer for a caller with no
-        // catalogue, which is every one that has not been given it yet.
+        // AND THE FIRST PASS WAS THE STAND-IN RULE, which is the one the owner struck
+        // out: "INSTALLED FIRST, ALWAYS. Something already on the phone is the answer
+        // whatever the catalogue thinks of it." That is what named Qwen3-0.6B as the
+        // P30's brain for a week - the census then counted the brain as done and nothing
+        // ever fetched a Qwen3.5. Best LLM is X, X is used; a missing X is FETCHED, never
+        // substituted. So the rule is gone rather than moved.
+        if (modality is ModelModality.Chat)
+        {
+            try
+            {
+                var pick = DeviceAwareModelSelector
+                    .Preferring(catalog, registry, engines)
+                    .BestFit(probe, ChatCapability.Default);
+
+                var chosen = candidates.FirstOrDefault(
+                    m => string.Equals(m.Name, pick.ModelId, StringComparison.OrdinalIgnoreCase));
+
+                // NULL ONLY WHEN THE DEVICE COULD NEVER HOLD IT, which is a narrower
+                // thing than the NothingFits flag and reading the flag instead was wrong.
+                //
+                // BestFit flags NothingFits in two situations that look alike and are
+                // not: the device is FOR this model but has no room this second, or the
+                // device can hold nothing here at all. Mapping the flag to null collapsed
+                // them and the screens went blank on a busy P30 - six tests said so,
+                // including "the brain is still answered" and "the P30 keeps the 0.8B".
+                //
+                // The question a screen is asking is "can this phone ever run this", so
+                // that is the question asked. A tight moment still names the model; a
+                // device under the floor names nothing, which is what
+                // "null rather than a model the phone cannot load" always meant.
+                return chosen is not null && ModelFit.CouldEverHold(chosen, probe)
+                    ? chosen
+                    : null;
+            }
+            catch (InvalidOperationException)
+            {
+                // The selector throws when nothing is eligible at all, and for a screen
+                // "nothing" is an answer rather than an error - the same contract
+                // DeviceCapability.PlanFor relies on.
+                return null;
+            }
+        }
+
+        // EVERY OTHER MODALITY KEEPS ITS OWN PATH FOR NOW, and that is a stated limit
+        // rather than an oversight: the one selector is chat-and-vision by contract, and
+        // speech has one selector of its own in SpeechModelSelector. A voice, the ears
+        // and the wake word are chosen by modality, not by ChatCapability, so routing
+        // them through BestFit would mean inventing a second meaning for it.
         var assessed = catalog is null
             ? null
-            : candidates.Where(m => catalog.Assessment(m.Name) is { Compatible: true, AssessedAt: not null })
+            : candidates.Where(m => catalog.Assessment(m.Name) is { Usable: true, AssessedAt: not null })
                         .OrderByDescending(m => m.QualityRank)
                         .ThenBy(m => m.MinRamGb)
                         .FirstOrDefault();
         if (assessed is not null) return assessed;
 
-        var fitsNow = candidates
+        return candidates
             .Where(m => Fits(m, probe))
             .OrderByDescending(m => m.QualityRank)
             .ThenBy(m => m.MinRamGb)
             .FirstOrDefault();
-        if (fitsNow is not null || modality != ModelModality.Chat) return fitsNow;
-
-        // THE BRAIN: THE SMALLEST THIS PHONE COULD EVER HOLD, WHEN NOTHING FITS NOW.
-        // The same rule as the selector's NothingFits answer and the service's
-        // installed-model fallback, so a screen, setup and the runtime cannot name
-        // three different brains. On the P30, with 0.4-1.0 GB free, nothing fits
-        // this second and this answers Qwen3.5-0.8B - not null, which told setup there
-        // was nothing to fetch, and never the 2B, which is what CouldEverHold alone
-        // would rank first.
-        return SmallestEverHeld(candidates, probe);
     }
 
     /// <summary>The smallest of <paramref name="candidates"/> this device could ever hold.</summary>

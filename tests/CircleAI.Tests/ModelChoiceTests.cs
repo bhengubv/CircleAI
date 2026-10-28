@@ -41,15 +41,26 @@ public sealed class ModelChoiceTests : IDisposable
         try { Directory.Delete(_empty, recursive: true); } catch { /* a temp dir */ }
     }
 
-    /// <summary>A synthetic device. RAM is what the fit gate actually keys on.</summary>
-    private static DeviceProbe Device(double ramGb, double storageGb = 32) =>
+    /// <summary>A synthetic device: what is free now, and how big the handset is.</summary>
+    /// <remarks>
+    /// totalGb MATTERS SINCE BestFit WENT DURABLE. ModelFit.CouldEverHold reads total
+    /// RAM and falls back to the AVAILABLE figure when a probe reports no total, so a
+    /// probe that stays silent has its free RAM read as the whole device - and 40% of
+    /// that is under every model in the register. Left at 0 the old behaviour is kept,
+    /// which is what the momentary-gate tests in here want; a test about the durable
+    /// gate says what the handset actually is.
+    /// </remarks>
+    private static DeviceProbe Device(double ramGb, double storageGb = 32, double totalGb = 0) =>
         new(
             RamAvailableBytes: (long)(ramGb * 1024 * 1024 * 1024),
             StorageFreeBytes:  (long)(storageGb * 1024 * 1024 * 1024),
             Gpu:               GpuKind.None,
             CpuCores:          8,
             Thermal:           ThermalClass.Passive,
-            Connectivity:      Connectivity.Online);
+            Connectivity:      Connectivity.Online)
+        {
+            RamTotalBytes = (long)((totalGb > 0 ? totalGb : ramGb) * 1024 * 1024 * 1024),
+        };
 
     // ── Fits ─────────────────────────────────────────────────────────────────
 
@@ -285,22 +296,46 @@ public sealed class ModelChoiceTests : IDisposable
     {
         // The gate must be live in BOTH directions. A rule that always returns
         // the smallest model passes the test above and is still wrong.
+        //
+        // IT ASKED TWO DIFFERENT GATES AND CALLED THE DIFFERENCE A DEFECT.
+        // ModelChoice.Fits is the MOMENTARY rule - free RAM x 0.85 - while the pick
+        // comes from BestFit, which ranks on CouldEverHold against TOTAL RAM. So
+        // "better" listed Ternary-Bonsai-2-4B, a model that fits the moment and not
+        // the device, and reported the selector for passing over something it had
+        // correctly refused. The comparison now uses the gate that made the choice.
+        //
+        // AND THE DEVICE STATES ITS SIZE, because a probe that reports only free RAM
+        // has CouldEverHold read that figure as the whole handset - 40% of 1.4 GB is
+        // 0.56 GB, under every model, so nothing would be holdable and the assertion
+        // would pass vacuously. 1.4 GB spare of 4 GB fitted is a real phone.
+        //
+        // MNN-ONLY, STATED, so the answer does not move when llamabridge.dll is
+        // staged in the test host's bin/ - the reason SelectionQualityTests gives.
         var registry = new ModelRegistryService();
         using var loader = new BundleModelLoader(_empty, registry);
-        var probe = Device(1.4);
+        var probe = Device(1.4, totalGb: 4.0);
+        ModelEngine[] mnnOnly = [ModelEngine.Mnn];
 
-        var pick = ModelChoice.For(ModelModality.Chat, registry, loader, probe);
+        var pick = ModelChoice.For(ModelModality.Chat, registry, loader, probe, catalog: null, engines: mnnOnly);
         Assert.NotNull(pick);
 
         var better = registry.AllModels
             .Where(m => m.Modality == ModelModality.Chat
-                     && ModelChoice.Fits(m, probe)
+                     && !m.Retired
+                     && EngineChoice.CanRun(m, mnnOnly)
+                     && ModelFit.CouldEverHold(m, probe)
                      && m.QualityRank > pick!.QualityRank)
             .Select(m => m.Name)
             .ToList();
 
         Assert.True(better.Count == 0,
             "a better model also runs here and was passed over: " + string.Join(", ", better));
+
+        // And the assertion is LIVE rather than vacuous: this handset really can hold
+        // something, so an implementation that always answered with the smallest row
+        // would be caught here.
+        Assert.True(ModelFit.CouldEverHold(pick!, probe),
+            $"{pick!.Name} was named on a 4 GB handset it could never hold");
     }
 
     [Fact]

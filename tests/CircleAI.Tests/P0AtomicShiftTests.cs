@@ -230,15 +230,45 @@ public sealed class DeviceAwareModelSelectorTests
     [Fact]
     public void BestFit_FallsBackToSmallestWhenNoneFit()
     {
-        // Both entries' MinRamGb exceeds any device — selector falls back
-        // to the smallest one (per docstring contract), not throws.
-        var heavy = new ModelEntry("heavy","1.0","Q4") { QualityRank = 50, MinRamGb = 10_000, MinStorageGb = 0 };
-        var huge  = new ModelEntry("huge", "1.0","Q4") { QualityRank = 80, MinRamGb = 99_000, MinStorageGb = 0 };
+        // THE ORDERING RULE ON THE NO-FIT BRANCH, WHICH MEANS THE BRANCH HAS TO BE
+        // REACHED.
+        //
+        // TWO WRONG REWRITES OF THIS TEST, BOTH MINE, BOTH THE SAME ERROR: building a
+        // device where the models ARE candidates and then asserting the fallback's
+        // answer. The first took percentages of TOTAL ram while the gate read FREE ram,
+        // and on a dev box those are nearly equal, so both models fitted and rank 80
+        // won. The second gave an 8 GB handset models of 1 GB and 2 GB: both under its
+        // 6.5 GB ceiling, so BestFit ranked them durably, answered "huge" and called it
+        // Good - correctly, because the device CAN hold either.
+        //
+        // The branch under test runs when NOTHING is holdable. So the models have to be
+        // bigger than the handset, which is what the original 10_000 / 99_000 GB entries
+        // were crudely doing. 7 GB and 9 GB against an 8 GB phone is the same thing said
+        // in numbers a reader can check: ceiling max(8 - 1.5, 8 x 0.40) = 6.5 GB, and
+        // both are over it.
+        var probe = new DeviceProbe(
+            RamAvailableBytes: 300_000_000,
+            StorageFreeBytes:  60_000_000_000,
+            Gpu:               GpuKind.None,
+            CpuCores:          8,
+            Thermal:           ThermalClass.Passive,
+            Connectivity:      Connectivity.Online)
+        { RamTotalBytes = 8_000_000_000 };
+
+        var heavy = new ModelEntry("heavy","1.0","Q4") { QualityRank = 50, MinRamGb = 7.0, MinStorageGb = 0 };
+        var huge  = new ModelEntry("huge", "1.0","Q4") { QualityRank = 80, MinRamGb = 9.0, MinStorageGb = 0 };
+
+        // Stated as preconditions, so a change to either rule fails here with its reason
+        // rather than showing up as a surprising winner.
+        Assert.False(ModelFit.Fits(heavy, probe), "precondition: nothing fits this second");
+        Assert.False(ModelFit.Fits(huge,  probe), "precondition: nothing fits this second");
+        Assert.False(ModelFit.CouldEverHold(heavy, probe), "precondition: the device could never hold either");
+        Assert.False(ModelFit.CouldEverHold(huge,  probe), "precondition: the device could never hold either");
 
         using var registry = new InMemoryRegistry(new[] { heavy, huge });
         var selector       = new DeviceAwareModelSelector(registry);
 
-        var selection = selector.BestFit(DesktopProbe(), ChatCapability.Default);
+        var selection = selector.BestFit(probe, ChatCapability.Default);
 
         // Was Assert.Equal("huge") — i.e. the LARGEST, contradicting both this
         // test's own name and BestFit's docstring ("a wearable that can only run
@@ -246,8 +276,24 @@ public sealed class DeviceAwareModelSelectorTests
         // assertion codified the bug: the no-fit branch ordered by QualityRank
         // DESC, so an unfittable device was handed the biggest model in the
         // catalogue. Fixed 2026-07-20; now ordered by MinRamGb ASC.
-        Assert.Equal("heavy", selection.ModelId); // 10_000 < 99_000 → smallest wins
+        Assert.Equal(SelectionQuality.NothingFits, selection.Quality);
+        Assert.Equal("heavy", selection.ModelId); // smaller MinRamGb wins, rank 50 < 80
     }
+
+    // THE TEST THAT ASSERTED A THROW IS GONE, AND SO IS THE THROW.
+    //
+    // I added both an hour ago: a ceiling on the least-bad branch, and a test
+    // pinning that a device which could hold nothing got an exception. The
+    // contract is the opposite and was already written in the code I was
+    // changing - BestFit always answers and FLAGS it SelectionQuality
+    // .NothingFits, because setup needs a fetch target and the census needs
+    // something to count even where none of it will load. DeviceCapability
+    // .PlanFor renders that flag as an unavailable line; ModelChoice.For turns
+    // it into null for a screen. Eleven tests said so at once.
+    //
+    // The ceiling was not wrong, only its consequence: it decides the FLAG now,
+    // not whether there is an answer at all.
+
 
     [Fact]
     public void BestFit_ThrowsWhenRegistryEmpty()

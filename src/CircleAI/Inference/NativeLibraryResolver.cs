@@ -126,17 +126,70 @@ public static class NativeLibraryResolver
             yield return portable;
     }
 
-    /// <summary>Best-effort preload of the MNN core sitting next to mnnbridge.</summary>
+    /// <summary>Best-effort preload of the engine cores sitting next to a bridge.</summary>
+    /// <remarks>
+    /// THIS EXISTED FOR MNN AND llama.cpp WAS NEVER ADDED TO IT, which is the whole
+    /// reason a Windows service carrying a complete llama.cpp reported "engines MNN".
+    /// Measured on this box on 2026-10-27 against the shipped single-file EXE: the
+    /// extract directory held llamabridge.dll, llama.dll and ggml{,-base,-cpu}.dll at
+    /// runtimes/win-x64/native/, every one of them the right architecture, and
+    /// LlamaGenerator.IsAvailable was still false - so the catalogue marked every GGUF
+    /// incompatible and the service called a half-downloaded Bonsai "dead weight ...
+    /// this build cannot run it". The natives were there. Nothing could open them.
+    /// <para>
+    /// WHY A PRELOAD IS NEEDED AT ALL, which the original comment had right: Windows
+    /// resolves a DLL's own imports against the PROCESS search path, not against the
+    /// folder the DLL was loaded from, so a bridge loaded by absolute path out of
+    /// runtimes/ cannot find its siblings. MNN.dll has no such imports and loads alone;
+    /// llamabridge.dll imports llama.dll, which imports the three ggml libraries. One
+    /// self-contained engine hid the gap.
+    /// </para>
+    /// <para>
+    /// ORDER IS LOAD-BEARING: ggml-base and ggml-cpu before ggml, ggml before llama,
+    /// llama before the bridge that imports it. Each is best-effort and a miss is
+    /// silent, because this runs for every bridge on every platform and a core that is
+    /// not shipped here is not an error - the TryLoad of the bridge itself is what
+    /// decides.
+    /// </para>
+    /// </remarks>
     private static void PreloadCoreBeside(string nativeDir)
     {
-        var core = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "MNN.dll"
-                 : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "libMNN.dylib"
-                 : "libMNN.so";
-        var path = Path.Combine(nativeDir, core);
-        if (File.Exists(path))
+        foreach (var core in CoreFileNames())
         {
+            var path = Path.Combine(nativeDir, core);
+            if (!File.Exists(path)) continue;
             try { NativeLibrary.TryLoad(path, out _); } catch { /* best-effort */ }
         }
+    }
+
+    /// <summary>Every engine core a bridge in this folder might import, dependants last.</summary>
+    private static IEnumerable<string> CoreFileNames()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            yield return "ggml-base.dll";
+            yield return "ggml-cpu.dll";
+            yield return "ggml.dll";
+            yield return "llama.dll";
+            yield return "MNN.dll";
+            yield break;
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            yield return "libggml-base.dylib";
+            yield return "libggml-cpu.dylib";
+            yield return "libggml.dylib";
+            yield return "libllama.dylib";
+            yield return "libMNN.dylib";
+            yield break;
+        }
+
+        yield return "libggml-base.so";
+        yield return "libggml-cpu.so";
+        yield return "libggml.so";
+        yield return "libllama.so";
+        yield return "libMNN.so";
     }
 
     private static string? GetNativeFileName(string libraryName)

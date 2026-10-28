@@ -136,6 +136,18 @@ internal sealed partial class WindowsCapabilityProbe : ICapabilityProbe
 
         if (string.IsNullOrWhiteSpace(s)) return null;
 
+        // A VIRTUAL DISPLAY IS NOT A GPU, and this returned the FIRST adapter that was
+        // not called "Basic". Measured on this box on 2026-10-27 the service reported its
+        // GPU as "MS Idd Device" - a Microsoft Indirect Display Driver adapter, which is
+        // what a virtual monitor, a remote-desktop session or a capture tool installs -
+        // while an Iris Xe sat in the same list. A backend decision made from that reads
+        // the wrong hardware, and a person reading the line is told the wrong thing about
+        // their own machine.
+        //
+        // KNOWN VENDORS FIRST, then anything left. The real adapter is identifiable by
+        // vendor; the pretenders are identifiable by name, and a name list alone would
+        // need a new entry for every virtual driver anyone installs.
+        var candidates = new List<GpuInfo>();
         foreach (var raw in s.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var line = raw.Trim();
@@ -153,13 +165,36 @@ internal sealed partial class WindowsCapabilityProbe : ICapabilityProbe
             if (vram <= 0 && name.Contains("Basic", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            return new GpuInfo(
+            if (IsVirtualDisplay(name)) continue;
+
+            candidates.Add(new GpuInfo(
                 ClassifyVendor(name),
                 name,
                 vram,
-                string.IsNullOrWhiteSpace(driver) ? null : driver);
+                string.IsNullOrWhiteSpace(driver) ? null : driver));
         }
-        return null;
+
+        // A named vendor beats Other, and more VRAM beats less - so a discrete card is
+        // preferred over the integrated one it sits beside.
+        return candidates
+            .OrderByDescending(g => g.Vendor != GpuVendor.Other && g.Vendor != GpuVendor.None)
+            .ThenByDescending(g => g.VramBytes)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Adapters that exist to carry pixels somewhere else, not to compute.</summary>
+    private static bool IsVirtualDisplay(string name)
+    {
+        var n = name.ToLowerInvariant();
+        return n.Contains("idd")                  // Microsoft Indirect Display Driver
+            || n.Contains("indirect display")
+            || n.Contains("virtual")
+            || n.Contains("remote display")
+            || n.Contains("meta ")                // Oculus/Meta virtual monitors
+            || n.Contains("parsec")
+            || n.Contains("spacedesk")
+            || n.Contains("usb display")
+            || n.Contains("displaylink");
     }
 
     private static GpuVendor ClassifyVendor(string name)
@@ -177,11 +212,21 @@ internal sealed partial class WindowsCapabilityProbe : ICapabilityProbe
 
     // ── NPU via PowerShell Get-PnpDevice ───────────────────────────────────────
 
+    // "NPU" AS A BARE SUBSTRING MATCHES THE WORD "INPUT". Measured on this box on
+    // 2026-10-27, the service reported its NPU as "Microsoft Input Configuration
+    // Device", because -match 'NPU' is case-insensitive and I-npu-t contains it. A
+    // machine with no NPU therefore claimed one, and claimed an input device as it.
+    //
+    // \b ON EITHER SIDE for NPU, and the vendor words left alone: "Neural", "Hexagon"
+    // and "Ascend" are not substrings of common device names, and anchoring them would
+    // miss "Neural Processor" variants. Only the three-letter acronym needed the fence.
+    private const string NpuNamePattern = @"\bNPU\b|Neural|Hexagon|Ascend";
+
     private static async Task<NpuInfo?> ReadNpuAsync(CancellationToken ct)
     {
         var s = await HostExec.CaptureStdoutAsync(
             "powershell.exe",
-            "-NoProfile -Command \"Get-PnpDevice -PresentOnly | Where-Object { $_.FriendlyName -match 'NPU|Neural|Hexagon|Ascend' } | ForEach-Object { $_.FriendlyName }\"",
+            "-NoProfile -Command \"Get-PnpDevice -PresentOnly | Where-Object { $_.FriendlyName -match '" + NpuNamePattern + "' } | ForEach-Object { $_.FriendlyName }\"",
             timeoutMs: 3000, ct).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(s)) return null;

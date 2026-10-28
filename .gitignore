@@ -413,3 +413,17 @@ native/llama-bridge/build-android/
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
+
+# Cut release artefacts. 459,6 MB for 3.9.2 alone, and CircleAIService-3.9.2-vc62.apk
+# is 102,9 MB on its own — over GitHub's HARD 100 MB blob limit, so a `git add -A` on
+# 2026-10-28 would have built a commit that could never be pushed and would have had to
+# be rewritten out of history to recover. A release carries its assets on the release
+# page (release-pages-keep-past-versions); the tree carries the script that cuts them,
+# scripts/cut-release-artefacts.ps1, which IS tracked.
+artefacts/
+
+# Backups a tool or a script leaves beside a file. registry.json.bak turned up byte
+# identical to registry.json, i.e. a second copy of a tracked asset with nothing
+# keeping the two in step — which is the same "one fact, two owners" fault this repo
+# keeps paying for, in file form.
+*.bak

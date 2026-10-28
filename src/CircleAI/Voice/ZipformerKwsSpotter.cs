@@ -254,10 +254,31 @@ public sealed class ZipformerKwsSpotter : IDisposable
         // WHICH GRAPH GETS PICKED IS A DECISION, NOT AN ACCIDENT. These bundles
         // ship both float and int8 copies of all three models, and the int8 name
         // sorts FIRST, so "take the first file matching *encoder*" quietly ran the
-        // quantized stack. It loads, it runs, it is fast — and its output
-        // distribution is flat enough that keyword tokens sat around p=0.01 where
-        // the float graphs put them above 0.3. Nothing errors; the wake word
-        // simply never fires. Float is the default and int8 is opt-in.
+        // quantized stack. Float is the default and int8 is opt-in, because a
+        // threshold calibrated on one precision does not describe the other.
+        //
+        // THE REASON THIS PARAGRAPH USED TO GIVE WAS WRONG, AND IT IS WHERE A FALSE
+        // DIAGNOSTIC WAS BORN. It said int8's "output distribution is flat enough
+        // that keyword tokens sat around p=0.01 where the float graphs put them
+        // above 0.3. Nothing errors; the wake word simply never fires." That was
+        // written from a device observation, propagated into two log lines that
+        // printed it on every start, and then measured -
+        // EncoderPrecisionOnRealAudioTests, upstream's own audio, this decoder:
+        //
+        //   0.wav  FLOAT fired 1 (4/4 p=0,7412)   INT8 fired 1 (4/4 p=0,5656)
+        //   1.wav  FLOAT fired 2 (5/5 p=0,6263)   INT8 fired 2 (5/5 p=0,5352)
+        //
+        // int8 detected every keyword float did and cleared the 0,20 gate every
+        // time. The real gap is 0,54-0,57 against 0,63-0,74: less headroom, not a
+        // cliff. The P30 session this paragraph was blamed for - "Hey B" matching
+        // its first two tokens 1,796 times and never its third - is explained by
+        // CapturePolicy's measurement instead: the capture handed the spotter
+        // median per-second RMS 0,0014 against the phone's own recorder app at
+        // 0,0446, a loudest second below an empty room's floor.
+        //
+        // Preferring float is still right. Predicting that int8 cannot fire was
+        // not, and it sent a later session after a 12 MB encoder instead of after
+        // the microphone.
         //
         // AND THEN THE GUARD ABOVE DEFEATED ITSELF, FOR FOUR MONTHS.
         //
@@ -294,11 +315,27 @@ public sealed class ZipformerKwsSpotter : IDisposable
             // precision, and the consequence - because "loaded a different file"
             // means nothing to whoever reads this at two in the morning, and
             // "the wake word cannot fire" means everything.
+            // WHAT IT SAYS NOW IS WHAT WAS MEASURED, AND IT USED TO SAY SOMETHING ELSE.
+            //
+            // This line claimed "int8 flattens the output distribution: keyword tokens
+            // land near p=0,01 where float puts them above 0,3, so the phrase may NEVER
+            // complete" - inherited from the constructor remark below, never checked,
+            // and printed on every single start. EncoderPrecisionOnRealAudioTests then
+            // ran the A/B on upstream's own audio through this exact decoder:
+            //
+            //   0.wav  FLOAT fired 1 (4/4 p=0,7412)   INT8 fired 1 (4/4 p=0,5656)
+            //   1.wav  FLOAT fired 2 (5/5 p=0,6263)   INT8 fired 2 (5/5 p=0,5352)
+            //
+            // int8 found EVERY keyword float did and cleared the 0,20 gate every time.
+            // The gap is real and worth naming; "may never complete" was false, and it
+            // cost a session chasing a 12 MB float encoder for a fault that was in the
+            // capture path. A diagnostic that overstates is worse than none: it is
+            // believed, and it aims the next person at the wrong half of the system.
             VoiceTrace.Write(
                 $"kws: WANTED the {(preferQuantized ? "int8" : "float")} {pick.Kind} and this bundle has only "
                 + $"{Path.GetFileName(pick.Path)} - running {(pick.IsQuantized ? "QUANTIZED" : "float")}. "
                 + (pick.IsQuantized
-                    ? "int8 flattens the output distribution: keyword tokens land near p=0,01 where float puts them above 0,3, so the phrase may NEVER complete."
+                    ? "Measured on upstream's own audio: int8 detects every keyword float does, at p=0,54-0,57 against float's 0,63-0,74, so it clears the 0,20 gate with margin. Less headroom for a quiet or distant voice; NOT a reason the phrase cannot fire."
                     : "float was not asked for but is the safer of the two."));
         }
 
@@ -793,8 +830,57 @@ public sealed class ZipformerKwsSpotter : IDisposable
 
         if (line == _lastStall) return;
         _lastStall = line;
+
+        // RATE-LIMITED, AND THE SUPPRESSION IS PRINTED RATHER THAN SILENT.
+        //
+        // WHY: this wrote 270 LINES A MINUTE into logcat, which rolls the P30's buffer
+        // in about SIXTY SECONDS. Measured on 2026-10-28, and it cost two wrong
+        // readings in one session: a sixty-second window that did not contain the wake
+        // event was read as "the device is not listening for Hey B", twice, when the
+        // service's own startup line says it loads BOTH phrases. A diagnostic that
+        // destroys the evidence around it is worse than no diagnostic, because it looks
+        // like evidence.
+        //
+        // The de-dup above cannot help: frames arrive about 2 ms apart and every line
+        // differs in the fourth decimal of a probability, so identical-line matching
+        // almost never fires.
+        //
+        // WHAT IS KEPT. Every CHANGE OF LEVEL is written immediately - an advance or a
+        // reset is the event this line is read for, and those are rare. Between them,
+        // one line a second, which is a sample of a stall rather than a transcript of
+        // one. And the count of frames collapsed into each line is printed with it, so
+        // nothing is hidden: a reader can tell 1 frame from 400.
+        //
+        // NOT A LEVEL CHANGE AND NOT A GUARD. "a-silent-zero-is-not-a-quiet-room" is
+        // this repo's own scar from turning a diagnostic DOWN until it hid a dead path;
+        // this neither lowers the level nor drops information, it collapses repeats and
+        // says how many it collapsed.
+        var now = Environment.TickCount64;
+        var levelChanged = state.Level != _lastTracedLevel;
+        if (!levelChanged && now - _lastTracedAt < TraceEveryMs)
+        {
+            _suppressedFrames++;
+            return;
+        }
+
+        if (_suppressedFrames > 0)
+        {
+            line += System.FormattableString.Invariant($"  [+{_suppressedFrames} frames collapsed]");
+            _suppressedFrames = 0;
+        }
+
+        _lastTracedLevel = state.Level;
+        _lastTracedAt = now;
         VoiceTrace.Write(line);
     }
+
+    /// <summary>Shortest gap between two stall traces that are not a level change.</summary>
+    /// <remarks>
+    /// One second. The frames behind this arrive about 2 ms apart, so an ungated trace
+    /// is roughly five hundred lines a second of the same fact; one a second is a
+    /// sample of a stall, and the collapsed-frame count beside it says how big a sample.
+    /// </remarks>
+    private const long TraceEveryMs = 1000;
 
     /// <summary>A token id as the text the model was trained on.</summary>
     /// <remarks>
@@ -811,6 +897,15 @@ public sealed class ZipformerKwsSpotter : IDisposable
     }
 
     private string? _lastStall;
+
+    /// <summary>The graph level the last written trace was at; -1 before any.</summary>
+    private int _lastTracedLevel = -1;
+
+    /// <summary>TickCount64 when the last trace was written.</summary>
+    private long _lastTracedAt;
+
+    /// <summary>Frames collapsed since the last written trace, printed with the next one.</summary>
+    private int _suppressedFrames;
 
     /// <summary>How many real tokens the stall trace names.</summary>
     /// <remarks>

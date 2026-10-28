@@ -219,7 +219,7 @@ public sealed class TheBrainFloorTests : IDisposable
         CatalogueSeed.SeedFromEmbedded(cat, _registry);
         foreach (var e in cat.All()) cat.SetAssessment(e.Name, compatible: false, rank: 0);
 
-        var pick = CatalogModelSelector.Preferring(cat, _registry, MnnOnly)
+        var pick = DeviceAwareModelSelector.Preferring(cat, _registry, MnnOnly)
                                        .BestFit(P30(), ChatCapability.Default);
 
         Assert.Equal(SelectionQuality.NothingFits, pick.Quality);
@@ -377,7 +377,7 @@ public sealed class TheBrainFloorTests : IDisposable
         var build  = neuron.IndexOf("private async System.Threading.Tasks.Task BuildNodeAsync()", StringComparison.Ordinal);
         var wait   = neuron.IndexOf("await WaitForCatalogueAsync()", build, StringComparison.Ordinal);
         var gate   = neuron.IndexOf("lock (Gate)", build, StringComparison.Ordinal);
-        var choose = neuron.IndexOf("CatalogModelSelector.Preferring(Catalogue, registry)", build, StringComparison.Ordinal);
+        var choose = neuron.IndexOf("DeviceAwareModelSelector.Preferring(Catalogue, registry)", build, StringComparison.Ordinal);
 
         Assert.True(build >= 0 && wait > build, "the brain never waits for the catalogue");
         Assert.True(gate > wait, "the wait must come before lock (Gate)");
@@ -592,7 +592,7 @@ public sealed class TheBrainFloorTests : IDisposable
     {
         var host = Source("src", "CircleAIService", "Host", "Program.cs");
 
-        Assert.Contains("CatalogModelSelector.Preferring(catalogue, registry)", host);
+        Assert.Contains("DeviceAwareModelSelector.Preferring(catalogue, registry)", host);
         Assert.DoesNotContain("Preferring(catalogue: null", host);
         Assert.Contains("CatalogueHousekeeping.Reclaim(", host);
         Assert.Contains("CatalogueHousekeeping.SweepAbandoned(", host);

@@ -210,7 +210,7 @@ public static class Program
                 options,
                 modelLoader:      loader,
                 generatorFactory: null,
-                modelSelector:    CatalogModelSelector.Preferring(catalogue, registry),
+                modelSelector:    DeviceAwareModelSelector.Preferring(catalogue, registry),
                 modelRegistry:    registry);
 
             // THE SAME REQUEST PATH AS THE PHONE: durable questions, one worker, readiness.
@@ -373,7 +373,7 @@ public static class Program
                     // catalogue - the owner's rule (2026-10-21): anything other than that is
                     // wrong. CIRCLEAI_MODEL used to pin one here and skip the choice; it is
                     // gone.
-                    wanted = CatalogModelSelector.Preferring(catalogue, registry)
+                    wanted = DeviceAwareModelSelector.Preferring(catalogue, registry)
                         .BestFit(probe, ChatCapability.Default)?.ModelId;
 
                     // A MISSING MODEL NO LONGER ENDS THE SERVICE. It serves its status - "no
@@ -549,7 +549,21 @@ public static class Program
                      + "  \"startedUtc\": " + System.Text.Json.JsonSerializer.Serialize(DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)) + "\n"
                      + "}\n";
 
-            File.WriteAllText(path, json);
+            try
+            {
+                File.WriteAllText(path, json);
+            }
+            catch (UnauthorizedAccessException) when (OperatingSystem.IsWindows() && File.Exists(path))
+            {
+                // A FILE AN OLDER BUILD LEFT UNWRITABLE IS RECOVERED, NOT REPORTED FOR
+                // EVER. The owner keeps WRITE_DAC whatever the DACL says, so the rules
+                // can be cleared and the write retried once. Without this, every machine
+                // that ran the version which omitted its own identity would serve a
+                // permanently stale port.
+                ReleaseStaleEndpointAcl(path);
+                File.WriteAllText(path, json);
+            }
+
             if (OperatingSystem.IsWindows()) RestrictToAdminsAndUsers(path);
         }
         catch (Exception ex)
@@ -561,6 +575,34 @@ public static class Program
         }
     }
 
+    /// <summary>Locks the endpoint file down without locking out the process that writes it.</summary>
+    /// <remarks>
+    /// THE FIRST VERSION OF THIS LOCKED OUT ITS OWN WRITER, and it took one restart to
+    /// show. It granted SYSTEM and Administrators full control and Users read, and
+    /// nothing else - so a service running as an ordinary user wrote the file once and
+    /// then could neither overwrite nor DELETE it on the next start. Measured on this box
+    /// on 2026-10-27:
+    ///
+    ///   listening on http://127.0.0.1:61229
+    ///   could not write the endpoint file: Access to the path '...endpoint.json' is denied.
+    ///
+    /// AND A STALE FILE IS WORSE THAN NO FILE. The second run bound 61229 while the file
+    /// still said 61226, so a client read a port nothing was listening on and got a
+    /// connection refused - exactly the failure the delete-on-stop above exists to
+    /// prevent, reintroduced by the ACL meant to protect it.
+    /// <para>
+    /// SO THE CURRENT IDENTITY IS ON THE LIST. Under the controller that identity IS
+    /// SYSTEM and the entry is redundant; run from a console it is the person who
+    /// started it, which is who the printed line used to go to. Users keep read, because
+    /// every app the signed-in person runs has to find the service.
+    /// </para>
+    /// <para>
+    /// AND THE OWNER CAN ALWAYS REPAIR IT. A file's owner holds WRITE_DAC implicitly even
+    /// when the DACL denies everything, so a file left unwritable by the older build is
+    /// recoverable rather than permanent - which matters, because that file is on this
+    /// machine and on any other that ran the version above.
+    /// </para>
+    /// </remarks>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void RestrictToAdminsAndUsers(string path)
     {
@@ -572,16 +614,40 @@ public static class Program
                  acl.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)))
             acl.RemoveAccessRule(existing);
 
-        void Allow(System.Security.Principal.WellKnownSidType who, System.Security.AccessControl.FileSystemRights rights)
+        void Allow(System.Security.Principal.IdentityReference who, System.Security.AccessControl.FileSystemRights rights)
             => acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(
-                new System.Security.Principal.SecurityIdentifier(who, null),
-                rights,
-                System.Security.AccessControl.AccessControlType.Allow));
+                who, rights, System.Security.AccessControl.AccessControlType.Allow));
 
-        Allow(System.Security.Principal.WellKnownSidType.LocalSystemSid, System.Security.AccessControl.FileSystemRights.FullControl);
-        Allow(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, System.Security.AccessControl.FileSystemRights.FullControl);
-        Allow(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, System.Security.AccessControl.FileSystemRights.Read);
+        void AllowWellKnown(System.Security.Principal.WellKnownSidType who, System.Security.AccessControl.FileSystemRights rights)
+            => Allow(new System.Security.Principal.SecurityIdentifier(who, null), rights);
 
+        AllowWellKnown(System.Security.Principal.WellKnownSidType.LocalSystemSid, System.Security.AccessControl.FileSystemRights.FullControl);
+        AllowWellKnown(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, System.Security.AccessControl.FileSystemRights.FullControl);
+        AllowWellKnown(System.Security.Principal.WellKnownSidType.BuiltinUsersSid, System.Security.AccessControl.FileSystemRights.Read);
+
+        // WHOEVER IS RUNNING, so the next start can replace what this one wrote.
+        using (var me = System.Security.Principal.WindowsIdentity.GetCurrent())
+            if (me.User is { } mySid)
+                Allow(mySid, System.Security.AccessControl.FileSystemRights.FullControl);
+
+        info.SetAccessControl(acl);
+    }
+
+    /// <summary>Clears a DACL an older build left unwritable, as the file's owner may.</summary>
+    /// <remarks>
+    /// Only reached when the write failed. Resetting the rules to inherited is enough:
+    /// the caller then writes the file and re-applies the restriction above, this time
+    /// including itself.
+    /// </remarks>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void ReleaseStaleEndpointAcl(string path)
+    {
+        var info = new FileInfo(path);
+        var acl  = info.GetAccessControl();
+        acl.SetAccessRuleProtection(isProtected: false, preserveInheritance: true);
+        foreach (System.Security.AccessControl.FileSystemAccessRule existing in
+                 acl.GetAccessRules(true, false, typeof(System.Security.Principal.SecurityIdentifier)))
+            acl.RemoveAccessRule(existing);
         info.SetAccessControl(acl);
     }
 

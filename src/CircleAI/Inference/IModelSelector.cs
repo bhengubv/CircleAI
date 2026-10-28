@@ -108,7 +108,39 @@ public interface IModelSelector
     /// </summary>
     /// <param name="probe">Hardware snapshot from <see cref="DeviceProbe.Snapshot"/>.</param>
     /// <param name="required">Capability flags the consumer declared (see <see cref="ChatCapability"/>).</param>
+    /// <remarks>
+    /// THE DURABLE QUESTION: what model does this device USE. Judged on TOTAL memory
+    /// against a resident ceiling, never on what happens to be free this second, so the
+    /// answer does not change because something else is running. It is the fetch target,
+    /// what a screen names and what the census counts. See
+    /// <see cref="LoadableNow"/> for the narrower question the loader asks.
+    /// </remarks>
     ModelSelection BestFit(DeviceProbe probe, ChatCapability required);
+
+    /// <summary>
+    /// The best candidate that will LOAD in the memory free right now, or <c>null</c>.
+    /// </summary>
+    /// <param name="probe">This device, read at this moment.</param>
+    /// <param name="required">Capability flags the consumer declared.</param>
+    /// <remarks>
+    /// THE MOMENTARY QUESTION, AND ONLY THE LOADER ASKS IT. <see cref="BestFit"/> says
+    /// what this device uses and ignores momentary pressure on purpose; this says what
+    /// can be loaded while that pressure lasts. It never changes the choice - a caller
+    /// uses it to answer NOW and the device's model stays what BestFit said.
+    /// <para>
+    /// BOTH GATES EXIST BECAUSE BOTH FAILED ONCE. Selecting on free memory named a
+    /// different brain morning and midnight, and once reported "no model on this device"
+    /// with a complete one on disk. Loading without checking free memory took the P30
+    /// down on 2026-10-10: a 2B with 982 MB free, and iAware's killer went through
+    /// com.huawei.lbs and totemweather on the way.
+    /// </para>
+    /// <para>
+    /// DEFAULTS TO null so an implementation that has no answer for it - a test fake, a
+    /// port that only ranks a catalogue - is not obliged to invent one. A caller that
+    /// gets null waits rather than downgrading.
+    /// </para>
+    /// </remarks>
+    ModelSelection? LoadableNow(DeviceProbe probe, ChatCapability required) => null;
 
     /// <summary>
     /// <see cref="BestFit(DeviceProbe, ChatCapability)"/> with a functional floor.

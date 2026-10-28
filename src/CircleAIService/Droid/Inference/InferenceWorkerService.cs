@@ -191,7 +191,7 @@ public sealed class InferenceWorkerService : global::Android.App.Service
             options,
             modelLoader:      loader,
             generatorFactory: null,
-            modelSelector:    CatalogModelSelector.Preferring(null, registry),
+            modelSelector:    DeviceAwareModelSelector.Preferring(null, registry),
             modelRegistry:    registry);
         await service.StartAsync(ct).ConfigureAwait(false);
         return new InProcessBrain(service, request.ModelId);

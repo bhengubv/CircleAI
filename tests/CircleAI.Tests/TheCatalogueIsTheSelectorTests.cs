@@ -77,13 +77,13 @@ public sealed class TheCatalogueIsTheSelectorTests
 
     [Fact]
     public void Nothing_is_assessed_when_there_is_no_catalogue_at_all()
-        => Assert.False(CatalogModelSelector.HasBeenAssessed(null));
+        => Assert.False(DeviceAwareModelSelector.HasBeenAssessed(null));
 
     [Fact]
     public void An_empty_catalogue_counts_as_unassessed()
     {
         using var cat = Empty();
-        Assert.False(CatalogModelSelector.HasBeenAssessed(cat));
+        Assert.False(DeviceAwareModelSelector.HasBeenAssessed(cat));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class TheCatalogueIsTheSelectorTests
         using var cat = Seeded(Chat("qwen-2b", 1.4, rank: 30), Chat("qwen-8b", 5.5, rank: 60));
 
         Assert.Equal(2, cat.Count());
-        Assert.False(CatalogModelSelector.HasBeenAssessed(cat),
+        Assert.False(DeviceAwareModelSelector.HasBeenAssessed(cat),
             "a seeded-but-unjudged catalogue must not be trusted to select");
     }
 
@@ -106,7 +106,7 @@ public sealed class TheCatalogueIsTheSelectorTests
     public void One_assessed_row_is_enough_to_say_this_device_has_decided()
     {
         using var cat = Assessed((Chat("qwen-2b", 1.4, 30), true, 10.0));
-        Assert.True(CatalogModelSelector.HasBeenAssessed(cat));
+        Assert.True(DeviceAwareModelSelector.HasBeenAssessed(cat));
     }
 
     [Fact]
@@ -118,39 +118,72 @@ public sealed class TheCatalogueIsTheSelectorTests
         // does not know about crashes.
         using var cat = Assessed((Chat("qwen-8b", 5.5, 60), false, 0.0));
 
-        Assert.True(CatalogModelSelector.HasBeenAssessed(cat));
+        Assert.True(DeviceAwareModelSelector.HasBeenAssessed(cat));
         Assert.Empty(cat.Compatible(ModelModality.Chat));
     }
 
     // ── which selector a site actually gets ───────────────────────────────────
 
+    // THESE ASSERTED A TYPE AND THERE IS ONLY ONE TYPE NOW.
+    //
+    // They read Assert.IsType<CatalogModelSelector> when the catalogue was assessed and
+    // Assert.IsType<DeviceAwareModelSelector> when it was not, which pinned the SHAPE of
+    // the old arrangement: two implementations and a factory choosing between them. That
+    // factory's own comment called it "still a second rule". With one selector and the
+    // catalogue as a source inside it, a type assertion is true by construction and
+    // proves nothing - so what is pinned now is the behaviour those types stood for.
+
     [Fact]
     public void An_assessed_catalogue_is_what_selects()
     {
-        using var cat = Assessed((Chat("qwen-2b", 1.4, 30), true, 10.0));
+        // THE CATALOGUE'S VERDICT BEATS THE SHIPPED RANK, which is the whole reason the
+        // assessment exists. Here the better model on paper is marked incompatible and
+        // the lesser one compatible, so a selector reading the registry's ranking would
+        // answer "big" and one reading this device's verdicts answers "small".
+        using var cat = Assessed(
+            (Chat("big-on-paper",   2.0, 30), false, 0.0),
+            (Chat("small-but-runs", 1.0, 10), true, 10.0));
 
-        Assert.IsType<CatalogModelSelector>(CatalogModelSelector.Preferring(cat));
+        var pick = DeviceAwareModelSelector.Preferring(cat)
+            .BestFit(Probe(ramGb: 8), ChatCapability.Default);
+
+        Assert.Equal("small-but-runs", pick.ModelId);
     }
 
     [Fact]
-    public void Without_one_it_falls_back_rather_than_throwing()
+    public void Without_one_it_answers_from_the_registry_rather_than_throwing()
     {
-        // The startup race: CatalogueBootstrap is on a background task, and
-        // CatalogModelSelector.BestFit throws when nothing in the catalogue
-        // satisfies the capability. A blind swap would have turned that race
-        // into a crash on the one path a person is waiting on.
+        // The startup race: CatalogueBootstrap is on a background task, and BestFit
+        // THROWS when nothing in the catalogue satisfies the capability. An unassessed
+        // catalogue must therefore not be selected from at all - every row in it reads
+        // compatible = 0 - and the registry answers until the assessment lands.
         using var cat = Empty();
 
-        Assert.IsType<DeviceAwareModelSelector>(CatalogModelSelector.Preferring(cat));
-        Assert.IsType<DeviceAwareModelSelector>(CatalogModelSelector.Preferring(null));
+        foreach (var selector in new[] { DeviceAwareModelSelector.Preferring(cat),
+                                         DeviceAwareModelSelector.Preferring(null) })
+        {
+            var pick = selector.BestFit(Probe(ramGb: 8), ChatCapability.Default);
+            Assert.False(string.IsNullOrWhiteSpace(pick?.ModelId),
+                "an unassessed catalogue must fall through to the registry, not answer nothing");
+        }
     }
+
+    /// <summary>A device with room, so fit is not what the assertion turns on.</summary>
+    private static DeviceProbe Probe(double ramGb) => new(
+        RamAvailableBytes: (long)(ramGb * 1_000_000_000d),
+        StorageFreeBytes: (long)(200 * 1_000_000_000d),
+        Gpu: GpuKind.None, CpuCores: 8,
+        Thermal: ThermalClass.Passive, Connectivity: Connectivity.Online)
+    {
+        RamTotalBytes = (long)(ramGb * 2 * 1_000_000_000d),
+    };
 
     [Fact]
     public void The_fallback_can_actually_answer()
     {
         // A fallback that resolves and then throws is not a fallback. This is the
         // case that happens on every cold start before the first assessment.
-        var selector = CatalogModelSelector.Preferring(null, new ModelRegistryService());
+        var selector = DeviceAwareModelSelector.Preferring(null, new ModelRegistryService());
 
         var pick = selector.BestFit(
             new DeviceProbe(
@@ -169,9 +202,15 @@ public sealed class TheCatalogueIsTheSelectorTests
         // A corrupt or locked database must cost the device its catalogue, not
         // its brain. HasBeenAssessed is asked on the path to answering a
         // question, so it swallows and falls back.
-        Assert.False(CatalogModelSelector.HasBeenAssessed(new ThrowingCatalogue()));
-        Assert.IsType<DeviceAwareModelSelector>(
-            CatalogModelSelector.Preferring(new ThrowingCatalogue()));
+        Assert.False(DeviceAwareModelSelector.HasBeenAssessed(new ThrowingCatalogue()));
+
+        // AND IT STILL ANSWERS. A type assertion proved only that a factory returned
+        // something; what matters is that a corrupt or locked database costs the device
+        // its catalogue and not its brain, so the registry has to carry the answer.
+        var pick = DeviceAwareModelSelector.Preferring(new ThrowingCatalogue(), new ModelRegistryService())
+            .BestFit(Probe(ramGb: 8), ChatCapability.Default);
+
+        Assert.False(string.IsNullOrWhiteSpace(pick?.ModelId));
     }
 
     // ── the verdict reaches the decision, which is the whole point ────────────
@@ -190,7 +229,7 @@ public sealed class TheCatalogueIsTheSelectorTests
 
         cat.Refuse("big-one", "aborted on this phone");
 
-        var pick = CatalogModelSelector.Preferring(cat)
+        var pick = DeviceAwareModelSelector.Preferring(cat)
             .BestFit(new DeviceProbe(
                 RamAvailableBytes: (long)(8.0 * 1_000_000_000d),
                 StorageFreeBytes: (long)(60 * 1_000_000_000d),
