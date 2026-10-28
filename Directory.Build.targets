@@ -155,15 +155,60 @@
       it is the reason the whisper gap was caught. Each family now gets the same,
       and each one names the symptom a person would actually see.
     -->
+    <!--
+      EVERY FAMILY, PER DECLARED ABI. THESE THREE NAMED android-arm64 AND NOTHING
+      ELSE, SO A 32-BIT APK PASSED THEM ALL BY INTERROGATING A FOLDER IT DOES NOT
+      SHIP. The remark below _CircleAIWarnAndroidAbiWithoutMnn said exactly that and
+      nothing acted on it, so the v3.9.2 32-bit service shipped on 2026-10-28 with
+      FOUR native families absent and every guard green. Measured on that artefact:
+
+        lib/armeabi-v7a/   libMNN.so + 9 more          present
+        lib/armeabi-v7a/   libllama, libllamabridge    ABSENT - no GGUF engine
+        lib/armeabi-v7a/   libwhisper + ggml siblings  ABSENT - cannot transcribe
+        lib/armeabi-v7a/   libespeak-ng                ABSENT - cannot phonemize
+        lib/armeabi-v7a/   libturbovecbridge           ABSENT - no local embeddings
+
+      The device said two of those out loud on first run - "gguf: NO BACKEND -
+      libllamabridge.so did not load" and "phonemizer: in-process espeak failed" -
+      while this target printed nothing at all. CIRCLEAI014 twenty lines down had
+      the right shape the whole time: batch over RuntimeIdentifiers and name the ABI.
+      These now do the same.
+
+      A WARNING AND NOT AN ERROR, for the same reason CIRCLEAI014 is: no 32-bit
+      binary exists for llama, whisper, espeak or turbovec anywhere in this tree,
+      and whisper.net.runtime 1.8.1 ships no armeabi-v7a at all. Erroring would
+      make the 32-bit cut unbuildable rather than honest. Whether to build those
+      four for armeabi-v7a or stop shipping a 32-bit service is a product call;
+      shipping it silently was not.
+    -->
+    <ItemGroup Condition="'$(CircleAIBundleMnn)' == 'true' And '$(RuntimeIdentifiers)' != ''">
+      <_CircleAIFamilyRid Include="$(RuntimeIdentifiers)" />
+      <_CircleAIFamilyRid>
+        <Abi Condition="'%(Identity)' == 'android-arm64'">arm64-v8a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-arm'">armeabi-v7a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x64'">x86_64</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x86'">x86</Abi>
+        <MnnFile>$(_CircleAIMnnRoot)%(Identity)/native/libMNN.so</MnnFile>
+        <TurboVecFile>$(_CircleAITurboVecRoot)%(Identity)/native/libturbovecbridge.so</TurboVecFile>
+        <EspeakFile>$(_CircleAIVoiceRoot)%(Identity)/native/libespeak-ng.so</EspeakFile>
+        <GgmlBaseFile>$(_CircleAIMnnRoot)%(Identity)/native/libggml-base.so</GgmlBaseFile>
+      </_CircleAIFamilyRid>
+
+      <_CircleAINoMnn      Include="@(_CircleAIFamilyRid)" Condition="!Exists('%(_CircleAIFamilyRid.MnnFile)')" />
+      <_CircleAINoTurboVec Include="@(_CircleAIFamilyRid)" Condition="!Exists('%(_CircleAIFamilyRid.TurboVecFile)')" />
+      <_CircleAINoEspeak   Include="@(_CircleAIFamilyRid)" Condition="!Exists('%(_CircleAIFamilyRid.EspeakFile)')" />
+      <_CircleAINoLlama    Include="@(_CircleAIFamilyRid)" Condition="!Exists('%(_CircleAIFamilyRid.GgmlBaseFile)')" />
+    </ItemGroup>
+
     <Warning Code="CIRCLEAI001"
-             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAIMnnRoot)android-arm64/native/libMNN.so')"
-             Text="[CircleAI] No libMNN.so under $(_CircleAIMnnRoot)android-arm64/native/. On-device inference will fail at runtime with DllNotFoundException: mnnbridge, while the abilities screen still offers model downloads." />
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(_CircleAINoMnn)' != ''"
+             Text="[CircleAI] No libMNN.so for ABI(s) @(_CircleAINoMnn->'%(Abi)', ', ') (looked under $(_CircleAIMnnRoot)&lt;rid&gt;/native/). On-device inference fails at runtime with DllNotFoundException: mnnbridge on those ABIs, while the abilities screen still offers model downloads." />
     <Warning Code="CIRCLEAI003"
-             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAITurboVecRoot)android-arm64/native/libturbovecbridge.so')"
-             Text="[CircleAI] No libturbovecbridge.so under $(_CircleAITurboVecRoot)android-arm64/native/. Local embeddings and semantic recall will fail on device; retrieval silently returns nothing rather than erroring." />
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(_CircleAINoTurboVec)' != ''"
+             Text="[CircleAI] No libturbovecbridge.so for ABI(s) @(_CircleAINoTurboVec->'%(Abi)', ', '). Local embeddings and semantic recall fail on those ABIs; retrieval silently returns nothing rather than erroring." />
     <Warning Code="CIRCLEAI004"
-             Condition="'$(CircleAIBundleMnn)' == 'true' And !Exists('$(_CircleAIVoiceRoot)android-arm64/native/libespeak-ng.so')"
-             Text="[CircleAI] No libespeak-ng.so under $(_CircleAIVoiceRoot)android-arm64/native/. Phonemization fails on device, so speech comes out with no phonemes rather than failing loudly." />
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(_CircleAINoEspeak)' != ''"
+             Text="[CircleAI] No libespeak-ng.so for ABI(s) @(_CircleAINoEspeak->'%(Abi)', ', '). The device logs 'phonemizer: in-process espeak failed - libespeak-ng not found' and falls back to a separate app, so the assistant cannot speak its answer on those ABIs." />
 
     <!--
       THE GGUF ENGINE, AND ITS WHOLE DEPENDENCY CHAIN. libllamabridge.so is a thin
@@ -179,7 +224,16 @@
       never shipped. Same shape as the MNN bug, found the same way: by reading what
       a device actually said.
     -->
+    <!--
+      NOW PER ABI, AND NO LONGER CONDITIONAL ON THE SHIM BEING PRESENT. The old
+      condition only fired when libllamabridge WAS staged and libggml-base was not -
+      so an ABI with NEITHER (armeabi-v7a, which has no llama build at all) slipped
+      through in silence. That is the case that actually shipped.
+    -->
     <Warning Code="CIRCLEAI005"
+             Condition="'$(CircleAIBundleMnn)' == 'true' And '@(_CircleAINoLlama)' != ''"
+             Text="[CircleAI] No libggml-base.so for ABI(s) @(_CircleAINoLlama->'%(Abi)', ', '), so the GGUF engine is absent there. The device logs 'gguf: NO BACKEND - libllamabridge.so did not load. A .gguf model cannot be opened on this device.' and every PTQ1_0 catalogue entry becomes unusable with no stated reason. Build libllama.so, libggml.so, libggml-cpu.so, libggml-base.so and libllamabridge.so for that ABI into native/llama-bridge/build-android/bin/ and stage them under $(_CircleAIMnnRoot)&lt;rid&gt;/native/." />
+    <Warning Code="CIRCLEAI005B"
              Condition="'$(CircleAIBundleMnn)' == 'true' And Exists('$(_CircleAIMnnRoot)android-arm64/native/libllamabridge.so') And !Exists('$(_CircleAIMnnRoot)android-arm64/native/libggml-base.so')"
              Text="[CircleAI] libllamabridge.so is staged but libggml-base.so is not. The GGUF engine will fail at dlopen with a missing dependency rather than reporting no backend - LlamaInterop.TryGetVersion returns null and the catalogue's PTQ1_0 chat model becomes unusable with no stated reason. Copy libllama.so, libggml.so, libggml-cpu.so and libggml-base.so from native/llama-bridge/build-android/bin/." />
 
@@ -230,9 +284,33 @@
          would let a full set of MNN mask a completely absent whisper, which is
          exactly how this shipped: 163 libraries in the APK and not one of them
          the one the ears needed. -->
+    <!--
+      WHISPER PER ABI TOO, AND THE PACKAGE'S FOLDER NAMES ARE NOT THE RIDs:
+      whisper.net.runtime/1.8.1/build/ ships android-arm64-v8a, android-x86 and
+      android-x86_64 - and NO armeabi-v7a. So a 32-bit APK cannot carry libwhisper
+      at all from this package, and the old arm64-only check reported nothing.
+      That is why the 32-bit service installs, spots the wake word through the
+      zipformer, and then cannot transcribe the question.
+    -->
+    <ItemGroup Condition="'$(CircleAIBundleWhisper)' == 'true' And '$(RuntimeIdentifiers)' != ''">
+      <_CircleAIWhisperRid Include="$(RuntimeIdentifiers)" />
+      <_CircleAIWhisperRid>
+        <Abi Condition="'%(Identity)' == 'android-arm64'">arm64-v8a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-arm'">armeabi-v7a</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x64'">x86_64</Abi>
+        <Abi Condition="'%(Identity)' == 'android-x86'">x86</Abi>
+        <Folder Condition="'%(Identity)' == 'android-arm64'">android-arm64-v8a</Folder>
+        <Folder Condition="'%(Identity)' == 'android-arm'">android-armeabi-v7a</Folder>
+        <Folder Condition="'%(Identity)' == 'android-x64'">android-x86_64</Folder>
+        <Folder Condition="'%(Identity)' == 'android-x86'">android-x86</Folder>
+      </_CircleAIWhisperRid>
+      <_CircleAINoWhisper Include="@(_CircleAIWhisperRid)"
+                          Condition="!Exists('$(_WhisperRuntimeRoot)%(_CircleAIWhisperRid.Folder)/libwhisper.so')" />
+    </ItemGroup>
+
     <Warning Code="CIRCLEAI002"
-             Condition="'$(CircleAIBundleWhisper)' == 'true' And !Exists('$(_WhisperRuntimeRoot)android-arm64-v8a/libwhisper.so')"
-             Text="[CircleAI] No libwhisper.so under $(_WhisperRuntimeRoot). Speech recognition will fail on device with 'failed: libwhisper' while the abilities screen still reports Listening as ON." />
+             Condition="'$(CircleAIBundleWhisper)' == 'true' And '@(_CircleAINoWhisper)' != ''"
+             Text="[CircleAI] No libwhisper.so for ABI(s) @(_CircleAINoWhisper->'%(Abi)', ', ') under $(_WhisperRuntimeRoot). Speech recognition fails on device with 'failed: libwhisper' while the abilities screen still reports Listening as ON. whisper.net.runtime 1.8.1 ships arm64-v8a, x86 and x86_64 only - there is no armeabi-v7a in the package, so a 32-bit APK needs whisper built from source." />
   </Target>
 
   <!--
