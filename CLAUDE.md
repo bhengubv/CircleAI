@@ -151,10 +151,25 @@ one at a time, all green. The "527 as a floor" this line used to carry was hones
 and seven short.
 
 The largest of them is `CircleAI.Companion.Tests` at 178. The smallest is
-**`CircleAI.Memory.Tests` at SIX** — and for the subsystem `docs/CLAIMS.md`
-documents with eighty-odd `tested` claims, that is worth knowing: those claims are
-asserted in the big suite, so a project named for the memory holding six tests
-reads as coverage and is not.
+`CircleAI.Memory.Tests` at **six**, and that is correct rather than alarming:
+it is a cross-language parity suite for ONE function, `AffectVad.From`, driven by
+`fixtures/affect_vad_derivation.json` — the same fixture that drives the Rust, Go,
+Python, TypeScript, Kotlin, Swift, C and ArkTS ports. It was never the memory's
+coverage.
+
+**A TEST COUNT PER PROJECT SAYS NOTHING ABOUT A SUBSYSTEM HERE, and this file
+briefly said otherwise.** It read "a project named for the memory holding six
+tests reads as coverage and is not", which was written from the six against
+`docs/CLAIMS.md`'s claim count without reading either. Counted 2026-10-28, the
+memory's subject matter carries **360 `[Fact]`/`[Theory]` across 33 files** —
+`AdoAtomStoreTests`, `AtomExtractionTests`, `MemoryGapTests`, `MemorySyncTests`,
+`ForgettingTests`, `RecallTests` and the rest, almost all in the big suite. And
+the register is enforced: `GenuineProductTests` parses `docs/CLAIMS.md` and a row
+marked `tested` must name a test that exists, so its **76 `tested` rows** cannot
+drift from the suite.
+
+The projects under `tests/` are split by what they can reference, not by feature,
+so "which project holds it" is the wrong question to ask of a count.
 
 And this file's "TWO" is why a session ran two projects, reported "3271 passed",
 and believed it.
