@@ -85,6 +85,18 @@ public sealed class SoakReceiver : BroadcastReceiver
                     }
                 });
                 break;
+            case "engine":
+                // THE C# ENGINE ANSWERING ON THIS PHONE (S2): the 2B loaded in this process's own
+                // runtime, asked one question with the persona as its system turn, greedily, and
+                // released - so its answer can be compared word for word with the desktop's.
+                // `path` names the file; without it the app's model store and then the sideload
+                // folder (the external files directory, where adb can put it) are looked in.
+                //   ... --es do engine [--es text "Hello! Who are you?"] [--ei max 48] [--es path <file>]
+                var question = intent?.GetStringExtra("text");
+                var model = intent?.GetStringExtra("path");
+                var max = intent?.GetIntExtra("max", 48) ?? 48;
+                System.Threading.Tasks.Task.Run(() => AnswerOnTheManagedEngineAsync(model, question, max));
+                break;
             case "arm":
                 ArmTestSwitches?.Invoke(true);
                 break;
@@ -102,4 +114,51 @@ public sealed class SoakReceiver : BroadcastReceiver
 
     /// <summary>Submits one question as the adb caller. Set by the service's startup.</summary>
     public static Action<string>? Ask { get; set; }
+
+    // Where the 2B is looked for when the broadcast names no file: the store, then the sideload folder.
+    private static string[] TwoBCandidates()
+    {
+        const string id = "Ternary-Bonsai-2-2B", file = "Ternary-Bonsai-2-2B-PTQ1_0.gguf";
+        var store = System.IO.Path.Combine(CircleAI.Assistant.Device.ModelStore.Path, id, file);
+        return Application.Context.GetExternalFilesDir(null)?.AbsolutePath is { } sideload
+            ? [store, System.IO.Path.Combine(sideload, "models", id, file)]
+            : [store];
+    }
+
+    private static async System.Threading.Tasks.Task AnswerOnTheManagedEngineAsync(string? path, string? question, int maxTokens)
+    {
+        const string area = "Engine";
+        try
+        {
+            var tried = path is null ? TwoBCandidates() : [path];
+            path = tried.FirstOrDefault(System.IO.File.Exists);
+            if (path is null)
+            {
+                CircleAI.Core.Logging.CircleLog.Warn(area, "engine check: no model at " + string.Join(" or ", tried));
+                return;
+            }
+
+            using var generator = CircleAI.Inference.Managed.ManagedChatGenerator.Load(path, new() { ContextLength = 2048 });
+            var timing = new CircleAI.Inference.TurnTimingRecorder();
+            var response = await generator.GenerateResponseAsync(
+                [new("system", CircleAI.Assistant.AssistantPersona.Prompt), new("user", question ?? "Hello! Who are you?")],
+                new CircleAI.Inference.GenerationOptions
+                {
+                    Temperature = 0,
+                    MaxTokens = maxTokens,
+                    Budget = CircleAI.Inference.PowerBudget.None,
+                    Timing = timing,
+                }).ConfigureAwait(false);
+            CircleAI.Core.Logging.CircleLog.Info(area,
+                $"engine check: {response.TokensIn} prompt tokens in {timing.PrefillMs} ms, {response.TokensOut} tokens in {timing.DecodeMs} ms, {response.FinishReason}: {response.Text}");
+        }
+        catch (Exception ex)
+        {
+            CircleAI.Core.Logging.CircleLog.Error(area, "engine check failed", ex);
+        }
+        finally
+        {
+            CircleAI.Core.Logging.CircleLog.Info(area, "engine check done");
+        }
+    }
 }

@@ -106,6 +106,26 @@ public sealed class ManagedChatGeneratorTests(ManagedGeneratorFixture fixture, I
     }
 
     [Fact]
+    public async Task The_persona_reaches_the_model_as_its_system_turn()
+    {
+        // Under MNN the persona went unread and the P30 answered "I am Qwen3.5"
+        // (persona-must-live-where-the-answer-is-built). Here it is the system turn itself.
+        // The same question the phone's "engine" broadcast asks, for comparing its answer.
+        // Measured 2026-10-31, greedy: "I am an AI assistant designed to provide helpful
+        // information and support." - the persona's assistant in one sentence, no longer Qwen;
+        // without the persona the same question gets "Hello! I am Qwen3.5, a large language
+        // model developed by Alibaba Cloud...". It does not give its name.
+        var g = Generator();
+        if (g is null) return;
+
+        var response = await g.GenerateResponseAsync([new("system", CircleAI.Assistant.AssistantPersona.Prompt), new("user", "Hello! Who are you?")], Greedy(48));
+        output.WriteLine($"{response.TokensIn} in, {response.TokensOut} out, {response.FinishReason}: {response.Text}");
+        Assert.DoesNotContain("Qwen", response.Text);
+        Assert.DoesNotContain("Alibaba", response.Text);
+        Assert.Equal(FinishReason.Stop, response.FinishReason);
+    }
+
+    [Fact]
     public async Task The_streams_add_up_to_the_reply()
     {
         var g = Generator();

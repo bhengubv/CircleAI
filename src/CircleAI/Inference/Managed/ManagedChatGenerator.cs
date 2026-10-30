@@ -63,9 +63,13 @@ public sealed class ManagedChatGenerator : IChatGenerator
     private const string Area = "Engine";
     private const ulong SessionMagic = 0x314E_4547_4D49_4143; // "CAIMGEN1", little-endian
 
-    // End-of-generation tokens beside the file's eos, as the fork collects them (llama-vocab.cpp).
+    // End-of-generation tokens beside the file's eos, eot and eom, as the fork collects them
+    // (llama-vocab.cpp): by their text, whatever type the file gives them.
     private static readonly string[] EndOfGenerationTexts =
-        ["<|im_end|>", "<|endoftext|>", "<|eot_id|>", "<|eom_id|>", "<|end|>", "<end_of_turn>", "<|fim_pad|>", "<|repo_name|>", "<|file_sep|>"];
+    [
+        "<|eot_id|>", "<|im_end|>", "<|end|>", "<end_of_turn>", "<|endoftext|>", "<|eom_id|>", "<EOT>", "_<EOT>",
+        "<|end_of_text|>", "<end_of_utterance>", "<|fim_pad|>", "<|repo_name|>", "<|file_sep|>",
+    ];
 
     private readonly GgufFile _file;
     private readonly WorkerPool _pool;
@@ -95,10 +99,13 @@ public sealed class ManagedChatGenerator : IChatGenerator
         _logits = new float[model.Config.Vocabulary];
         _state = model.NewState(options.ContextLength);
 
-        if (file.TryGetValue("tokenizer.ggml.eos_token_id", out var eos)) _endOfGeneration.Add(checked((int)eos.AsInt64()));
+        foreach (var key in new[] { "tokenizer.ggml.eos_token_id", "tokenizer.ggml.eot_token_id", "tokenizer.ggml.eom_token_id" })
+        {
+            if (file.TryGetValue(key, out var id)) _endOfGeneration.Add(checked((int)id.AsInt64()));
+        }
         foreach (var text in EndOfGenerationTexts)
         {
-            if (tokenizer.TryGetSpecial(text, out var id) && tokenizer.Kind(id) == TokenKind.Control) _endOfGeneration.Add(id);
+            if (tokenizer.TryGetSpecial(text, out var id)) _endOfGeneration.Add(id);
         }
         if (_endOfGeneration.Count == 0) throw new NotSupportedException("The model names no end-of-generation token.");
         _turnStart = tokenizer.TryGetSpecial("<|im_start|>", out var turn) ? turn : -1;
