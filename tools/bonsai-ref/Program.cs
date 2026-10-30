@@ -189,7 +189,55 @@ static JsonObject Tokens(nint vocab, JsonObject source)
         "é (decomposed) and é (composed)",
         "     \n\n\n   ",
         "http://example.com/path?query=1&x=2",
+
+        // S2: every rule of the qwen35 splitter and its edges - contractions, letters with
+        // combining marks, numbers of other scripts, punctuation runs ending in newlines,
+        // whitespace the fork's \s does and does not match, emoji sequences, unassigned and
+        // private-use code points, characters past the BMP, special tokens and their near
+        // misses, code, repetition.
+        "I'm sure you're right; they've said we'll see, he'd know - it's DON'T and WE'LL and 'S.",
+        "rock'n'roll o'clock 'tis it’s can't",
+        "e\u0301\u0302 a\u0301b \u0301abc \u0308\u0308",
+        "क्षत्रिय ภาษาไทย שָׁלוֹם Tiếng Việt",
+        "한국어 日本語のテキスト Ελληνικά Привет, мир!",
+        "٣٤٥ ①② Ⅻ x² 1,000,000 3.14 -42 +7",
+        "!!! ...\n\n?!\r\n ---(foo)[x]{y} a+b=c #tag @user $5 % →←↑ ©®™",
+        "“quotes” « guillemets » ‘single’  ... \t!! !!\n\nabc",
+        "a\u00a0b \u00a0 \u3000全角 line\u2028sep a\u2029b \u0085 \f\v a \t b",
+        "x  \n  y   end tabs\t\t\t \r\r\n\n \n\n  abc   ",
+        "👨‍👩‍👧‍👦 👍🏿 🇺🇸🇯🇵 1️⃣ ❤️ 🫠",
+        "\u0378 \ue000 \ufeff \u200b \u200d \u0001 \u007f",
+        "𝔘𝔫𝔦𝔠𝔬𝔡𝔢 𠀀 𝟘𝟙𝟚",
+        "<|im_start|>system\nYou are B.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n",
+        "<think>\nhmm\n</think>\n\nDone. <tool_call>{\"name\": \"x\"}</tool_call>",
+        "text<|endoftext|>more <|im_start|><|im_start|> <|im_start <|IM_START|> <think><think>",
+        "for (int i = 0; i < n; ++i) {\n\tsum += a[i];\n}",
+        "x = {'a': 1, \"b\": [2, 3]}; SELECT * FROM t WHERE id='5';",
+        "<div class=\"x\">Hi</div> C:\\Users\\name\\file.txt snake_case CamelCase",
+        "https://example.org:8080/a/b?c=d#e mailto:a@b.co",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ha ha ha ha =================",
+        "        \n\n\n\n",
+        "isiZulu: Ngiyakuthanda! 爱你 ❤ Ünïcödé ﬁ ǅ ʰ",
+        "'", "''", "' s", "'S", "'ll", "a'", " ", "  ", "\n", "\r\n", "\t", "x", "1", "!", "<", "<|",
     ];
+
+    // And 150 strings drawn from those same edges with a fixed seed: pairings nobody thought
+    // to write down.
+    string[] pool =
+    [
+        "a", "b", "Z", "e", "s", "t", "ll", "re", "1", "7", "٣", " ", "  ", "\t", "\n", "\r", "\r\n", "\u00a0", "\u3000",
+        "'", "’", ".", ",", "!", "?", "-", "(", ")", "\"", "#", "→", "é", "e\u0301", "\u0301", "ñ", "中", "文", "😀",
+        "👍🏽", "न", "्", "م", "<|im_start|>", "<|im_end|>", "<think>", "</think>", "\u200d", "\ufe0f", "ﬁ", "𝔘",
+    ];
+    var rng = new Random(20261030);
+    var fuzz = new List<string>();
+    for (var i = 0; i < 150; i++)
+    {
+        var text = new StringBuilder();
+        for (var parts = rng.Next(1, 25); parts > 0; parts--) text.Append(pool[rng.Next(pool.Length)]);
+        fuzz.Add(text.ToString());
+    }
+    corpus = [.. corpus, .. fuzz];
 
     var cases = new JsonArray();
     foreach (var text in corpus)

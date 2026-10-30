@@ -10,7 +10,6 @@
 //      needs the 429 MB model on this machine and says SKIPPED when it is not there.
 
 using System.Text;
-using System.Text.Json;
 using CircleAI.Inference.Managed.Gguf;
 using Xunit;
 using Xunit.Abstractions;
@@ -19,89 +18,12 @@ namespace CircleAI.Tests;
 
 public sealed class GgufFileTests(ITestOutputHelper output)
 {
-    // Writes GGUF bytes field by field as the format lays them out, so the reader is tested
-    // against the layout rather than against itself.
-    private sealed class Builder
-    {
-        private readonly MemoryStream _keys = new();
-        private readonly List<(string Name, long[] Shape, uint Type, byte[] Data)> _tensors = [];
-        private int _keyCount;
-
-        public uint Magic { get; set; } = GgufFile.Magic;
-        public uint Version { get; set; } = 3;
-        public int Alignment { get; set; } = GgufFile.DefaultAlignment; // how the data is laid out
-
-        public Builder Key(string key, GgufType type, Action<BinaryWriter> value)
-        {
-            var w = new BinaryWriter(_keys, Encoding.UTF8, leaveOpen: true);
-            Text(w, key);
-            w.Write((uint)type);
-            value(w);
-            w.Flush();
-            _keyCount++;
-            return this;
-        }
-
-        public Builder Tensor(string name, long[] shape, uint type, byte[] data)
-        {
-            _tensors.Add((name, shape, type, data));
-            return this;
-        }
-
-        // offsets: where each tensor claims to start; by default where the fork lays them out.
-        public byte[] Build(Func<int, long, long>? offsets = null)
-        {
-            var ms = new MemoryStream();
-            var w = new BinaryWriter(ms);
-            w.Write(Magic);
-            w.Write(Version);
-            w.Write((ulong)_tensors.Count);
-            w.Write((ulong)_keyCount);
-            w.Write(_keys.ToArray());
-
-            var running = 0L;
-            for (var i = 0; i < _tensors.Count; i++)
-            {
-                var (name, shape, type, data) = _tensors[i];
-                Text(w, name);
-                w.Write((uint)shape.Length);
-                foreach (var d in shape) w.Write((ulong)d);
-                w.Write(type);
-                w.Write((ulong)(offsets?.Invoke(i, running) ?? running));
-                running = Align(running + data.Length);
-            }
-            Pad(w);
-            foreach (var t in _tensors)
-            {
-                w.Write(t.Data);
-                Pad(w);
-            }
-            w.Flush();
-            return ms.ToArray();
-        }
-
-        public static void Text(BinaryWriter w, string s)
-        {
-            var bytes = Encoding.UTF8.GetBytes(s);
-            w.Write((ulong)bytes.Length);
-            w.Write(bytes);
-        }
-
-        private long Align(long n) => (n + Alignment - 1) / Alignment * Alignment;
-
-        private void Pad(BinaryWriter w)
-        {
-            w.Flush();
-            while (w.BaseStream.Length % Alignment != 0) w.Write((byte)0);
-        }
-    }
-
     private static readonly string[] Words = ["Ġhello", "isiZulu: ẓ", "😀", ""];
 
     // Every value type, a custom alignment, and one tensor of each type this engine sizes.
-    private static Builder Everything()
+    private static GgufBuilder Everything()
     {
-        var b = new Builder { Alignment = 64 }
+        var b = new GgufBuilder { Alignment = 64 }
             .Key("u8", GgufType.UInt8, w => w.Write((byte)200))
             .Key("i8", GgufType.Int8, w => w.Write((sbyte)-5))
             .Key("u16", GgufType.UInt16, w => w.Write((ushort)65535))
@@ -112,25 +34,13 @@ public sealed class GgufFileTests(ITestOutputHelper output)
             .Key("eps", GgufType.Float32, w => w.Write(1e-6f))
             .Key("yes", GgufType.Bool, w => w.Write((byte)1))
             .Key("no", GgufType.Bool, w => w.Write((byte)0))
-            .Key("text", GgufType.String, w => Builder.Text(w, "qwen35"))
+            .String("text", "qwen35")
             .Key("u64", GgufType.UInt64, w => w.Write(18_000_000_000_000_000_000UL))
             .Key("i64", GgufType.Int64, w => w.Write(-9_000_000_000L))
             .Key("f64", GgufType.Float64, w => w.Write(1e7))
             .Key("general.alignment", GgufType.UInt32, w => w.Write(64u))
-            .Key("ints", GgufType.Array, w =>
-            {
-                w.Write((uint)GgufType.Int32);
-                w.Write(3UL);
-                w.Write(11);
-                w.Write(-11);
-                w.Write(10);
-            })
-            .Key("words", GgufType.Array, w =>
-            {
-                w.Write((uint)GgufType.String);
-                w.Write((ulong)Words.Length);
-                foreach (var s in Words) Builder.Text(w, s);
-            })
+            .Int32s("ints", [11, -11, 10])
+            .Strings("words", Words)
             .Key("floats", GgufType.Array, w =>
             {
                 w.Write((uint)GgufType.Float32);
@@ -161,34 +71,13 @@ public sealed class GgufFileTests(ITestOutputHelper output)
         return bytes;
     }
 
-    private static T WithFile<T>(byte[] bytes, Func<string, T> use)
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"gguf-test-{Guid.NewGuid():N}.gguf");
-        File.WriteAllBytes(path, bytes);
-        try
-        {
-            return use(path);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    private static void Read(byte[] bytes, Action<GgufFile> check) => WithFile(bytes, path =>
-    {
-        using var file = GgufFile.Open(path);
-        check(file);
-        return 0;
-    });
-
     private static InvalidDataException Refused(byte[] bytes) =>
-        WithFile(bytes, path => Assert.Throws<InvalidDataException>(() => GgufFile.Open(path).Dispose()));
+        GgufBuilder.WithFile(bytes, path => Assert.Throws<InvalidDataException>(() => GgufFile.Open(path).Dispose()));
 
     [Fact]
     public void Every_value_type_reads_back_as_written()
     {
-        Read(Everything().Build(), file =>
+        GgufBuilder.Read(Everything().Build(), file =>
         {
             Assert.Equal(3u, file.Version);
             Assert.Equal(
@@ -248,15 +137,15 @@ public sealed class GgufFileTests(ITestOutputHelper output)
     [InlineData(1e30, "1000000000000000019884624838656.000000")]
     public void Floats_render_as_C_printf_does(double value, string expected)
     {
-        var bytes = new Builder().Key("x", GgufType.Float64, w => w.Write(value)).Build();
-        Read(bytes, file => Assert.Equal(expected, file["x"].Render()));
+        var bytes = new GgufBuilder().Key("x", GgufType.Float64, w => w.Write(value)).Build();
+        GgufBuilder.Read(bytes, file => Assert.Equal(expected, file["x"].Render()));
     }
 
     [Fact]
     public void Tensors_are_views_of_the_file_where_the_fork_lays_them_out()
     {
         var bytes = Everything().Build();
-        Read(bytes, file =>
+        GgufBuilder.Read(bytes, file =>
         {
             Assert.Equal(64, file.Alignment);
             Assert.Equal(0, file.DataOffset % 64);
@@ -290,12 +179,12 @@ public sealed class GgufFileTests(ITestOutputHelper output)
     [Fact]
     public void Without_general_alignment_the_data_section_aligns_to_32()
     {
-        var bytes = new Builder()
-            .Key("text", GgufType.String, w => Builder.Text(w, "abc"))
+        var bytes = new GgufBuilder()
+            .String("text", "abc")
             .Tensor("a", [3], (uint)GgmlType.F32, new byte[12])
             .Tensor("b", [2], (uint)GgmlType.F16, new byte[4])
             .Build();
-        Read(bytes, file =>
+        GgufBuilder.Read(bytes, file =>
         {
             Assert.Equal(32, file.Alignment);
             Assert.Equal(0, file.DataOffset % 32);
@@ -306,11 +195,11 @@ public sealed class GgufFileTests(ITestOutputHelper output)
     [Fact]
     public void A_tensor_of_a_type_this_engine_does_not_size_is_listed_but_not_read()
     {
-        var bytes = new Builder()
+        var bytes = new GgufBuilder()
             .Tensor("known", [8], (uint)GgmlType.F32, new byte[32])
             .Tensor("q4_0", [32], 2, new byte[18])
             .Build();
-        Read(bytes, file =>
+        GgufBuilder.Read(bytes, file =>
         {
             var unknown = file.Tensor("q4_0")!;
             Assert.Equal(-1, unknown.ByteCount);
@@ -331,7 +220,7 @@ public sealed class GgufFileTests(ITestOutputHelper output)
         foreach (var cut in cuts)
         {
             var damaged = bytes.AsSpan(0, cut).ToArray();
-            var error = Record.Exception(() => WithFile(damaged, path =>
+            var error = Record.Exception(() => GgufBuilder.WithFile(damaged, path =>
             {
                 GgufFile.Open(path).Dispose();
                 return 0;
@@ -339,9 +228,9 @@ public sealed class GgufFileTests(ITestOutputHelper output)
             Assert.True(error is InvalidDataException, $"a file cut at byte {cut} of {bytes.Length} gave {error?.GetType().Name ?? "no error"}");
         }
 
-        Read(bytes.AsSpan(0, (int)lastEnd).ToArray(), file => Assert.Equal(3, file.Tensors.Count));
+        GgufBuilder.Read(bytes.AsSpan(0, (int)lastEnd).ToArray(), file => Assert.Equal(3, file.Tensors.Count));
 
-        static long LastTensorEnd(byte[] whole) => WithFile(whole, path =>
+        static long LastTensorEnd(byte[] whole) => GgufBuilder.WithFile(whole, path =>
         {
             using var file = GgufFile.Open(path);
             var last = file.Tensors[^1];
@@ -351,36 +240,36 @@ public sealed class GgufFileTests(ITestOutputHelper output)
 
     private static readonly Dictionary<string, Func<byte[]>> RefusedFiles = new()
     {
-        { "bad magic", () => new Builder { Magic = 0x46554748 }.Build() },
-        { "version 1", () => new Builder { Version = 1 }.Build() },
-        { "version 4", () => new Builder { Version = 4 }.Build() },
-        { "an array of arrays", () => new Builder().Key("nested", GgufType.Array, w =>
+        { "bad magic", () => new GgufBuilder { Magic = 0x46554748 }.Build() },
+        { "version 1", () => new GgufBuilder { Version = 1 }.Build() },
+        { "version 4", () => new GgufBuilder { Version = 4 }.Build() },
+        { "an array of arrays", () => new GgufBuilder().Key("nested", GgufType.Array, w =>
             {
                 w.Write((uint)GgufType.Array);
                 w.Write(1UL);
                 w.Write((uint)GgufType.Int32);
                 w.Write(0UL);
             }).Build() },
-        { "an undefined value type", () => new Builder().Key("odd", (GgufType)13, w => w.Write(0)).Build() },
-        { "a key twice", () => new Builder()
+        { "an undefined value type", () => new GgufBuilder().Key("odd", (GgufType)13, w => w.Write(0)).Build() },
+        { "a key twice", () => new GgufBuilder()
             .Key("k", GgufType.UInt8, w => w.Write((byte)1))
             .Key("k", GgufType.UInt8, w => w.Write((byte)2)).Build() },
-        { "an alignment of 48", () => new Builder().Key("general.alignment", GgufType.UInt32, w => w.Write(48u)).Build() },
-        { "an alignment that is not a u32", () => new Builder().Key("general.alignment", GgufType.Int32, w => w.Write(32)).Build() },
-        { "a tensor name twice", () => new Builder()
+        { "an alignment of 48", () => new GgufBuilder().Key("general.alignment", GgufType.UInt32, w => w.Write(48u)).Build() },
+        { "an alignment that is not a u32", () => new GgufBuilder().Key("general.alignment", GgufType.Int32, w => w.Write(32)).Build() },
+        { "a tensor name twice", () => new GgufBuilder()
             .Tensor("t", [8], (uint)GgmlType.F32, new byte[32])
             .Tensor("t", [8], (uint)GgmlType.F32, new byte[32]).Build() },
-        { "no dimensions", () => new Builder().Tensor("t", [], (uint)GgmlType.F32, new byte[4]).Build() },
-        { "five dimensions", () => new Builder().Tensor("t", [1, 1, 1, 1, 1], (uint)GgmlType.F32, new byte[4]).Build() },
-        { "a row that is not whole blocks", () => new Builder().Tensor("t", [100], (uint)GgmlType.PTQ1_0, new byte[28]).Build() },
-        { "a misaligned tensor", () => new Builder()
+        { "no dimensions", () => new GgufBuilder().Tensor("t", [], (uint)GgmlType.F32, new byte[4]).Build() },
+        { "five dimensions", () => new GgufBuilder().Tensor("t", [1, 1, 1, 1, 1], (uint)GgmlType.F32, new byte[4]).Build() },
+        { "a row that is not whole blocks", () => new GgufBuilder().Tensor("t", [100], (uint)GgmlType.PTQ1_0, new byte[28]).Build() },
+        { "a misaligned tensor", () => new GgufBuilder()
             .Tensor("a", [8], (uint)GgmlType.F32, new byte[32])
             .Tensor("b", [8], (uint)GgmlType.F32, new byte[32]).Build((i, at) => i == 1 ? at + 4 : at) },
-        { "a gap before a tensor", () => new Builder() // b claims c's place: in bounds, but not where a ended
+        { "a gap before a tensor", () => new GgufBuilder() // b claims c's place: in bounds, but not where a ended
             .Tensor("a", [8], (uint)GgmlType.F32, new byte[32])
             .Tensor("b", [8], (uint)GgmlType.F32, new byte[32])
             .Tensor("c", [8], (uint)GgmlType.F32, new byte[32]).Build((i, at) => i == 1 ? at + 32 : at) },
-        { "a tensor past the end", () => new Builder()
+        { "a tensor past the end", () => new GgufBuilder()
             .Tensor("a", [8], (uint)GgmlType.F32, new byte[32]).Build((i, at) => at + 4096) },
         { "too short to be a file", () => new byte[10] },
     };
@@ -406,7 +295,7 @@ public sealed class GgufFileTests(ITestOutputHelper output)
     [Fact]
     public void Views_end_when_the_file_is_disposed()
     {
-        WithFile(Everything().Build(), path =>
+        GgufBuilder.WithFile(Everything().Build(), path =>
         {
             var file = GgufFile.Open(path);
             var tensor = file.Tensor("ternary")!;
@@ -424,18 +313,14 @@ public sealed class GgufFileTests(ITestOutputHelper output)
     public void The_2B_reads_as_the_pinned_fork_read_it()
     {
         // NOT SkippableFact - one opt-in test does not justify a package. It says so out loud.
-        var path = Environment.GetEnvironmentVariable("BONSAI2_2B_GGUF");
-        if (string.IsNullOrEmpty(path))
-            path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "CircleAI", "models", "Ternary-Bonsai-2-2B", "Ternary-Bonsai-2-2B-PTQ1_0.gguf");
-        if (!File.Exists(path))
+        var path = Bonsai2Model.TwoB();
+        if (path is null)
         {
-            output.WriteLine($"SKIPPED: {path} is not here; set BONSAI2_2B_GGUF to the 2B PTQ1_0 file to run this.");
+            output.WriteLine(Bonsai2Model.Missing);
             return;
         }
 
-        using var fixture = JsonDocument.Parse(File.ReadAllText(
-            Path.Combine(AppContext.BaseDirectory, "fixtures", "bonsai2", "2B", "meta.json")));
+        using var fixture = Bonsai2Model.Fixture("meta.json");
         var root = fixture.RootElement;
         using var file = GgufFile.Open(path);
         Assert.Equal(429_183_456, file.Length); // the file the fixture was made from (sha256 36061ad4...)
