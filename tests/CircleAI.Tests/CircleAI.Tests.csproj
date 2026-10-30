@@ -53,4 +53,12 @@
       would have needed another two lines here before a test could see it.
     -->
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Bonsai 2 reference fixtures (S0.1): what the pinned fork read and produced, which
+         the managed engine's parts are checked against. -->
+    <None Include="..\..\fixtures\bonsai2\**\*.json"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="fixtures\bonsai2\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>
