@@ -128,6 +128,54 @@ public sealed class Ptq1KernelTests
     }
 
     [Fact]
+    public void The_lookup_table_path_matches_the_scalar_path_within_float_rounding()
+    {
+        // Same sums, different association order: equal to within float rounding, which is
+        // far inside the drift the reference shows between its own thread counts (S0.1).
+        const int cols = 2048;
+        var x = new Q8Activations(cols);
+        for (var seed = 0; seed < 8; seed++)
+        {
+            x.Quantize(RandomActivations(cols, seed));
+            var row = RandomRow(cols / Ptq1.BlockWeights, seed + 200);
+            var expected = Ptq1.Dot(row, x, KernelPath.Scalar);
+            var actual = Ptq1.Dot(row, x, KernelPath.Lut);
+            Assert.InRange(MathF.Abs(actual - expected), 0f, 1e-4f * MathF.Max(1f, MathF.Abs(expected)));
+        }
+    }
+
+    [Fact]
+    public void The_lookup_table_matrix_product_equals_its_row_by_row_product()
+    {
+        // MatVec walks block by block across the rows for the cache; that must not change
+        // a single sum. The tables are built for another input first, so a rebuild is
+        // proven to leave nothing of the old one behind.
+        const int cols = 2048, rows = 37;
+        var blocks = cols / Ptq1.BlockWeights;
+        var rowBytes = blocks * Ptq1.BlockBytes;
+        var matrix = new byte[rows * rowBytes];
+        for (var r = 0; r < rows; r++) RandomRow(blocks, 300 + r).CopyTo(matrix, r * rowBytes);
+        var scales = Ptq1.BlockScales(matrix);
+
+        var lut = new Ptq1Lut(cols);
+        var x = new Q8Activations(cols);
+        x.Quantize(RandomActivations(cols, 6));
+        lut.Build(x);
+        x.Quantize(RandomActivations(cols, 7));
+        lut.Build(x);
+        var output = new float[rows];
+        lut.MatVec(matrix, scales, output);
+
+        for (var r = 0; r < rows; r++)
+        {
+            var expected = lut.Dot(matrix.AsSpan(r * rowBytes, rowBytes), scales.AsSpan(r * blocks, blocks));
+            Assert.Equal(BitConverter.SingleToInt32Bits(expected), BitConverter.SingleToInt32Bits(output[r]));
+            var scalar = Ptq1.Dot(matrix.AsSpan(r * rowBytes, rowBytes), x, KernelPath.Scalar);
+            Assert.InRange(MathF.Abs(output[r] - scalar), 0f, 1e-4f * MathF.Max(1f, MathF.Abs(scalar)));
+        }
+    }
+
+    [Fact]
     public void Activations_round_half_to_even_like_the_x86_reference()
     {
         // amax 127 makes id exactly 1, so each value lands on its own midpoint.

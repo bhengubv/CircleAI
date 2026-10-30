@@ -59,12 +59,13 @@ public static class KernelBench
         var results = new List<Result>();
         var output = new float[rows];
         var scales = Kernels.Ptq1.BlockScales(weights); // decoded once, as a loaded model would hold them
+        var lut = new Ptq1Lut(cols); // allocated once, as an engine would hold it
         foreach (var path in Enum.GetValues<KernelPath>())
         {
             if (!Kernels.Ptq1.CanRun(path)) continue;
-            Pass(weights, scales, rowBytes, q, output, path); // warm-up: JIT and caches
+            Pass(weights, scales, rowBytes, q, lut, output, path); // warm-up: JIT and caches
             var sw = Stopwatch.StartNew();
-            for (var p = 0; p < passes; p++) Pass(weights, scales, rowBytes, q, output, path);
+            for (var p = 0; p < passes; p++) Pass(weights, scales, rowBytes, q, lut, output, path);
             sw.Stop();
             var ms = sw.Elapsed.TotalMilliseconds / passes;
             results.Add(new Result(path, rows, cols, ms, weights.Length / (ms / 1000.0) / 1e9));
@@ -76,12 +77,47 @@ public static class KernelBench
     public static IEnumerable<string> Report(int rows = 6144, int cols = 2048, int passes = 5)
     {
         yield return InstructionSets();
+        var (shuffleNs, addNs) = Shuffle();
+        yield return $"Vector128 byte shuffle {shuffleNs:F2} ns/op, add {addNs:F2} ns/op";
         foreach (var r in Ptq1(rows, cols, passes))
             yield return $"PTQ1_0 {r.Rows}x{r.Cols} {r.Path,-9} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecondOneThread,5:F2} tok/s on one thread (2B)";
     }
 
-    private static void Pass(byte[] weights, float[] scales, int rowBytes, Q8Activations q, float[] output, KernelPath path)
+    /// <summary>
+    /// Nanoseconds per <see cref="Vector128.Shuffle(Vector128{byte}, Vector128{byte})"/> with
+    /// indices known only at run time, next to a plain vector add. Near the add's cost, the
+    /// runtime made it one table-lookup instruction (NEON TBL) and a vector table kernel is
+    /// worth writing; far above it, the shuffle runs lane by lane in software.
+    /// </summary>
+    public static (double ShuffleNs, double AddNs) Shuffle(int iterations = 4_000_000)
     {
+        // A permutation of 0..15, so every result is a valid index for the next round.
+        var table = Vector128.Create((byte)7, 12, 3, 9, 0, 14, 5, 11, 2, 15, 8, 1, 13, 6, 10, 4);
+        var mask = Vector128.Create((byte)15);
+        var idx = Vector128.Create((byte)0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+        var sw = Stopwatch.StartNew();
+        for (var i = 0; i < iterations; i++) idx = Vector128.Shuffle(table, idx);
+        var shuffleNs = sw.Elapsed.TotalNanoseconds / iterations;
+
+        var acc = idx;
+        sw.Restart();
+        for (var i = 0; i < iterations; i++) acc = (acc + table) & mask;
+        var addNs = sw.Elapsed.TotalNanoseconds / iterations;
+
+        GC.KeepAlive(idx.GetElement(0) + acc.GetElement(0)); // keeps both loops from being dropped
+        return (shuffleNs, addNs);
+    }
+
+    private static void Pass(byte[] weights, float[] scales, int rowBytes, Q8Activations q, Ptq1Lut lut, float[] output, KernelPath path)
+    {
+        if (path == KernelPath.Lut)
+        {
+            // The table build is part of the pass: one build serves every row of the matrix.
+            lut.Build(q);
+            lut.MatVec(weights, scales, output);
+            return;
+        }
+
         var blocksPerRow = rowBytes / Kernels.Ptq1.BlockBytes;
         for (var r = 0; r < output.Length; r++)
         {

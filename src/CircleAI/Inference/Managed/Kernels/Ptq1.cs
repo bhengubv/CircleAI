@@ -51,6 +51,12 @@ public enum KernelPath
     /// no ARM intrinsics and accelerated the vector path only 1.7x on the P30 (S0.2).
     /// </summary>
     Table = 5,
+
+    /// <summary>
+    /// Per-input lookup tables (<see cref="Ptq1Lut"/>): one load and one add per weight byte.
+    /// Equal to the scalar path up to float rounding order, not to the last bit.
+    /// </summary>
+    Lut = 6,
 }
 
 /// <summary>PTQ1_0 decoding and its dot product with <see cref="Q8Activations"/>.</summary>
@@ -77,6 +83,7 @@ public static class Ptq1
     {
         KernelPath.Scalar => true,
         KernelPath.Table => true,
+        KernelPath.Lut => true,
         KernelPath.Vector128 => System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated,
         KernelPath.AdvSimd => AdvSimd.Arm64.IsSupported,
         KernelPath.Dp => Dp.IsSupported,
@@ -142,6 +149,12 @@ public static class Ptq1
     public static float Dot(ReadOnlySpan<byte> row, Q8Activations x, KernelPath path)
     {
         if (path == KernelPath.Table) return DotTable(row, BlockScales(row), x);
+        if (path == KernelPath.Lut)
+        {
+            var lut = new Ptq1Lut(x.Length);
+            lut.Build(x);
+            return lut.Dot(row, BlockScales(row));
+        }
         var blocks = x.Length / BlockWeights;
         if (row.Length < blocks * BlockBytes)
             throw new ArgumentException($"Row holds {row.Length} bytes; {blocks} blocks need {blocks * BlockBytes}.", nameof(row));
