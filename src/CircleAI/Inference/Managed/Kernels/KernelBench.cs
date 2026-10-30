@@ -58,12 +58,13 @@ public static class KernelBench
 
         var results = new List<Result>();
         var output = new float[rows];
+        var scales = Kernels.Ptq1.BlockScales(weights); // decoded once, as a loaded model would hold them
         foreach (var path in Enum.GetValues<KernelPath>())
         {
             if (!Kernels.Ptq1.CanRun(path)) continue;
-            Pass(weights, rowBytes, q, output, path); // warm-up: JIT and caches
+            Pass(weights, scales, rowBytes, q, output, path); // warm-up: JIT and caches
             var sw = Stopwatch.StartNew();
-            for (var p = 0; p < passes; p++) Pass(weights, rowBytes, q, output, path);
+            for (var p = 0; p < passes; p++) Pass(weights, scales, rowBytes, q, output, path);
             sw.Stop();
             var ms = sw.Elapsed.TotalMilliseconds / passes;
             results.Add(new Result(path, rows, cols, ms, weights.Length / (ms / 1000.0) / 1e9));
@@ -79,9 +80,15 @@ public static class KernelBench
             yield return $"PTQ1_0 {r.Rows}x{r.Cols} {r.Path,-9} {r.MillisecondsPerPass,8:F2} ms  {r.GigabytesPerSecond,6:F3} GB/s  ~{r.TokensPerSecondOneThread,5:F2} tok/s on one thread (2B)";
     }
 
-    private static void Pass(byte[] weights, int rowBytes, Q8Activations q, float[] output, KernelPath path)
+    private static void Pass(byte[] weights, float[] scales, int rowBytes, Q8Activations q, float[] output, KernelPath path)
     {
+        var blocksPerRow = rowBytes / Kernels.Ptq1.BlockBytes;
         for (var r = 0; r < output.Length; r++)
-            output[r] = Kernels.Ptq1.Dot(weights.AsSpan(r * rowBytes, rowBytes), q, path);
+        {
+            var row = weights.AsSpan(r * rowBytes, rowBytes);
+            output[r] = path == KernelPath.Table
+                ? Kernels.Ptq1.DotTable(row, scales.AsSpan(r * blocksPerRow, blocksPerRow), q)
+                : Kernels.Ptq1.Dot(row, q, path);
+        }
     }
 }

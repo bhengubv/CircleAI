@@ -44,6 +44,13 @@ public enum KernelPath
 
     /// <summary>x86 AVX2.</summary>
     Avx2 = 4,
+
+    /// <summary>
+    /// Plain pointer code with a 256-entry trit table and the block's four sub-block
+    /// sums accumulated directly - no vectors. Built for Mono on Android, which exposes
+    /// no ARM intrinsics and accelerated the vector path only 1.7x on the P30 (S0.2).
+    /// </summary>
+    Table = 5,
 }
 
 /// <summary>PTQ1_0 decoding and its dot product with <see cref="Q8Activations"/>.</summary>
@@ -69,6 +76,7 @@ public static class Ptq1
     public static bool CanRun(KernelPath path) => path switch
     {
         KernelPath.Scalar => true,
+        KernelPath.Table => true,
         KernelPath.Vector128 => System.Runtime.Intrinsics.Vector128.IsHardwareAccelerated,
         KernelPath.AdvSimd => AdvSimd.Arm64.IsSupported,
         KernelPath.Dp => Dp.IsSupported,
@@ -133,6 +141,7 @@ public static class Ptq1
     /// </summary>
     public static float Dot(ReadOnlySpan<byte> row, Q8Activations x, KernelPath path)
     {
+        if (path == KernelPath.Table) return DotTable(row, BlockScales(row), x);
         var blocks = x.Length / BlockWeights;
         if (row.Length < blocks * BlockBytes)
             throw new ArgumentException($"Row holds {row.Length} bytes; {blocks} blocks need {blocks * BlockBytes}.", nameof(row));
@@ -154,6 +163,88 @@ public static class Ptq1
                 sumi += x.Scales[i * 4 + k] * Dot32(a, b, path);
             }
             sumf += Scale(block) * sumi;
+        }
+        return sumf;
+    }
+
+    // Every byte's five trits, -1/0/+1, decoded once: byte b's trit n is at b * 5 + n.
+    // The two qh bytes of a block hold four trits and use the first four of these.
+    private static readonly sbyte[] TritTable = BuildTritTable();
+
+    private static sbyte[] BuildTritTable()
+    {
+        var table = new sbyte[256 * 5];
+        for (var b = 0; b < 256; b++)
+            for (var n = 0; n < 5; n++) table[b * 5 + n] = Trit((byte)b, n);
+        return table;
+    }
+
+    /// <summary>Every block's weight scale as a float, decoded once instead of on every product.</summary>
+    public static float[] BlockScales(ReadOnlySpan<byte> matrix)
+    {
+        var scales = new float[matrix.Length / BlockBytes];
+        for (var i = 0; i < scales.Length; i++) scales[i] = Scale(matrix.Slice(i * BlockBytes, BlockBytes));
+        return scales;
+    }
+
+    /// <summary>
+    /// The <see cref="KernelPath.Table"/> dot product of one row: each byte's trits come from
+    /// <see cref="TritTable"/> and go straight into the block's four sub-block sums, in the
+    /// order the weights sit in. <paramref name="blockScales"/> holds this row's block scales
+    /// (from <see cref="BlockScales"/>). Equal to <see cref="Dot"/> on the scalar path to the
+    /// last bit: the integer sums are the same and the float steps run in the same order.
+    /// </summary>
+    public static unsafe float DotTable(ReadOnlySpan<byte> row, ReadOnlySpan<float> blockScales, Q8Activations x)
+    {
+        var blocks = x.Length / BlockWeights;
+        if (row.Length < blocks * BlockBytes || blockScales.Length < blocks)
+            throw new ArgumentException("Row or scales too short for the activations.");
+
+        var sumf = 0f;
+        fixed (byte* rowStart = row)
+        fixed (float* dw = blockScales)
+        fixed (sbyte* table = TritTable)
+        fixed (sbyte* qStart = x.Quants)
+        fixed (float* dy = x.Scales)
+        {
+            for (var i = 0; i < blocks; i++)
+            {
+                var blk = rowStart + i * BlockBytes;
+                var y = qStart + i * BlockWeights;
+                int s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+
+                // qs[0..15]: weights m, m+16 (sub-block 0), m+32, m+48 (1), m+64 (2).
+                for (var m = 0; m < 16; m++)
+                {
+                    var t = table + blk[m] * 5;
+                    s0 += t[0] * y[m] + t[1] * y[16 + m];
+                    s1 += t[2] * y[32 + m] + t[3] * y[48 + m];
+                    s2 += t[4] * y[64 + m];
+                }
+
+                // qs[16..23]: weights 80+m, 88+m (sub-block 2), 96+m, 104+m, 112+m (3).
+                for (var m = 0; m < 8; m++)
+                {
+                    var t = table + blk[16 + m] * 5;
+                    s2 += t[0] * y[80 + m] + t[1] * y[88 + m];
+                    s3 += t[2] * y[96 + m] + t[3] * y[104 + m] + t[4] * y[112 + m];
+                }
+
+                // qh[0..1]: weights 120+h, 122+h, 124+h, 126+h (sub-block 3).
+                for (var h = 0; h < 2; h++)
+                {
+                    var t = table + blk[24 + h] * 5;
+                    s3 += t[0] * y[120 + h] + t[1] * y[122 + h] + t[2] * y[124 + h] + t[3] * y[126 + h];
+                }
+
+                var d = dy + i * 4;
+                var sumi = 0f;
+                sumi += d[0] * s0;
+                sumi += d[1] * s1;
+                sumi += d[2] * s2;
+                sumi += d[3] * s3;
+                sumf += dw[i] * sumi;
+            }
         }
         return sumf;
     }

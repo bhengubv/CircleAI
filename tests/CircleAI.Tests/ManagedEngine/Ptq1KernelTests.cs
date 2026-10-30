@@ -106,6 +106,7 @@ public sealed class Ptq1KernelTests
     }
 
     [Theory]
+    [InlineData(KernelPath.Table)]
     [InlineData(KernelPath.Vector128)]
     [InlineData(KernelPath.AdvSimd)]
     [InlineData(KernelPath.Dp)]

@@ -9,7 +9,7 @@
 //   adb shell am broadcast -a com.bhengubv.circleai.action.SOAK -n com.bhengubv.circleai.service/ai.circle.SoakReceiver --es do bench
 //
 // "bench" times the C# engine's kernels on every instruction path this phone's runtime
-// can take, and logs them under the tag CircleAI.Bench.
+// can take, and logs them under the tag CircleAI.Engine.Bench.
 //
 // "arm" lets the files in the app's soak/ folder act as test switches (prompt dump, notes
 // wording, sampler, question list) until "disarm"; without it they are ignored, because
@@ -70,16 +70,18 @@ public sealed class SoakReceiver : BroadcastReceiver
                 // THE C# ENGINE'S KERNELS, TIMED IN THIS PROCESS'S OWN RUNTIME (S0.2): the
                 // Release build's AOT Mono is what a phone runs, and it accelerates only part
                 // of the vector API, so the kernel path is chosen from this, not from a desktop.
+                // Through CircleLog, so each run also proves the S1 log reaches logcat
+                // (tag CircleAI.Engine.Bench) and the process's log file.
                 System.Threading.Tasks.Task.Run(() =>
                 {
                     try
                     {
                         foreach (var line in CircleAI.Inference.Managed.Kernels.KernelBench.Report())
-                            global::Android.Util.Log.Info("CircleAI.Bench", line);
+                            CircleAI.Core.Logging.CircleLog.Info("Engine.Bench", line);
                     }
                     catch (Exception ex)
                     {
-                        global::Android.Util.Log.Error("CircleAI.Bench", ex.ToString());
+                        CircleAI.Core.Logging.CircleLog.Error("Engine.Bench", "bench failed", ex);
                     }
                 });
                 break;
