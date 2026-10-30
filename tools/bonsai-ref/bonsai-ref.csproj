@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>bonsai-ref</AssemblyName>
+    <RootNamespace>CircleAI.Tools.BonsaiRef</RootNamespace>
+    <!-- Dev tool, not a shippable package. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The reference is the pinned fork build the repo already ships for Windows
+         (prism-b10743-adfffbe, native/llama-bridge/CMakeLists.txt). Nothing is
+         downloaded or rebuilt for it, and nothing here ships. -->
+    <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\llama.dll" Link="llama.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml.dll" Link="ggml.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml-base.dll" Link="ggml-base.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\CircleAI\Inference\runtimes\win-x64\native\ggml-cpu.dll" Link="ggml-cpu.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

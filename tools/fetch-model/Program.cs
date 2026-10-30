@@ -12,8 +12,10 @@
 // Checks, in order:
 //   1. The model resolves in the registry and is bundle-shaped.
 //   2. ModelExists() is false before the fetch (nothing cached).
-//   3. DownloadModelAsync() returns a path that EXISTS and ends in config.json
-//      — the specific defect LocalModelLoader had was returning the weight blob.
+//   3. DownloadModelAsync() returns a path that EXISTS and is what the entry's
+//      engine opens: config.json for an MNN bundle (the specific defect
+//      LocalModelLoader had was returning the weight blob), the .gguf file for
+//      a GGUF entry.
 //   4. ModelExists() is true after — which re-hashes the weight anchor, so this
 //      is a real SHA-256 verification of the downloaded bytes, not a file check.
 //   5. installed.json was stamped for upgrade detection.
@@ -93,8 +95,11 @@ var failures = new List<string>();
 if (!File.Exists(resolvedPath))
     failures.Add($"returned path does not exist: {resolvedPath}");
 
-if (!resolvedPath.EndsWith("config.json", StringComparison.OrdinalIgnoreCase))
-    failures.Add($"expected config.json (what mnn_llm_create loads), got '{Path.GetFileName(resolvedPath)}'");
+// What the path must point at depends on the engine that loads it: MNN opens the
+// bundle's config.json, a GGUF engine opens the single .gguf weights file.
+var expectedAnchor = entry.Engine == CircleAI.Core.ModelEngine.LlamaCpp ? ".gguf" : "config.json";
+if (!resolvedPath.EndsWith(expectedAnchor, StringComparison.OrdinalIgnoreCase))
+    failures.Add($"expected {expectedAnchor} (what the {entry.Engine} engine loads), got '{Path.GetFileName(resolvedPath)}'");
 
 // Re-hashes the weight anchor against its pinned SHA-256.
 if (!loader.ModelExists(modelName))
@@ -125,5 +130,5 @@ if (failures.Count > 0)
     return 1;
 }
 
-Console.WriteLine("PASS: fetched, SHA-256 verified, and returned the MNN config path.");
+Console.WriteLine($"PASS: fetched, SHA-256 verified, and returned the path the {entry.Engine} engine loads.");
 return 0;

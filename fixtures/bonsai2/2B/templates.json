@@ -1,0 +1,373 @@
+{
+  "_comment": "The model's own chat template rendered the Hugging Face way (jinja2). JinjaLite must reproduce `rendered` byte for byte and raise where `error` is set.",
+  "_source": {
+    "template_from": "Ternary-Bonsai-2-2B-PTQ1_0.gguf",
+    "sha256": "36061ad406df8a4903a6db005be350c50fabfaf717f9ef0acf4b76adcd9929fa",
+    "renderer": "jinja2 3.1.6",
+    "made": "2026-10-30"
+  },
+  "cases": [
+    {
+      "name": "greet",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello! Who are you?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nHello! Who are you?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "fact",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the capital of Kenya?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nWhat is the capital of Kenya?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "isizulu",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Sawubona! Ungangitshela ukuthi iyini inhloko-dolobha yaseNingizimu Afrika?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nSawubona! Ungangitshela ukuthi iyini inhloko-dolobha yaseNingizimu Afrika?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "afrikaans",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Wat is die hoofstad van Suid-Afrika?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nWat is die hoofstad van Suid-Afrika?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "chinese",
+      "messages": [
+        {
+          "role": "user",
+          "content": "请用一句话解释什么是人工智能。"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\n请用一句话解释什么是人工智能。<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "arabic",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ما هي عاصمة مصر؟"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nما هي عاصمة مصر؟<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "code",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Write a Python function that checks whether a number is prime."
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nWrite a Python function that checks whether a number is prime.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "math",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 17 times 23? Answer with just the number."
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nWhat is 17 times 23? Answer with just the number.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "system",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a concise assistant."
+        },
+        {
+          "role": "user",
+          "content": "Name three colours."
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>system\nYou are a concise assistant.<|im_end|>\n<|im_start|>user\nName three colours.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "multiturn",
+      "messages": [
+        {
+          "role": "user",
+          "content": "My name is Thandi."
+        },
+        {
+          "role": "assistant",
+          "content": "Nice to meet you, Thandi!"
+        },
+        {
+          "role": "user",
+          "content": "What is my name?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nMy name is Thandi.<|im_end|>\n<|im_start|>assistant\nNice to meet you, Thandi!<|im_end|>\n<|im_start|>user\nWhat is my name?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "tool",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the weather in Durban right now?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWhat is the weather in Durban right now?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "long",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Durban is a coastal city in KwaZulu-Natal, known for its warm Indian Ocean beaches, its harbour, and a large Indian community whose food, especially bunny chow, is famous across the country. The city hosts many festivals, and its botanic gardens are among the oldest in Africa. Somewhere in this paragraph the secret code is 7429, which you should remember. Durban's climate is humid and subtropical, with hot summers and mild winters. What is the secret code?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": true,
+      "rendered": "<|im_start|>user\nDurban is a coastal city in KwaZulu-Natal, known for its warm Indian Ocean beaches, its harbour, and a large Indian community whose food, especially bunny chow, is famous across the country. The city hosts many festivals, and its botanic gardens are among the oldest in Africa. Somewhere in this paragraph the secret code is 7429, which you should remember. Durban's climate is humid and subtropical, with hot summers and mild winters. What is the secret code?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "thinking_on",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello!"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": true,
+      "logits": false,
+      "rendered": "<|im_start|>user\nHello!<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "tool_roundtrip",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is the weather in Durban?"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "Durban"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": "{\"temp_c\": 24, \"sky\": \"sunny\"}"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWhat is the weather in Durban?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n<parameter=location>\nDurban\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temp_c\": 24, \"sky\": \"sunny\"}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "empty_arguments",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Check the weather."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {}
+              }
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nCheck the weather.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n</function>\n</tool_call><|im_end|>\n"
+    },
+    {
+      "name": "reasoning_history",
+      "messages": [
+        {
+          "role": "user",
+          "content": "What is 2 + 2?"
+        },
+        {
+          "role": "assistant",
+          "content": "4",
+          "reasoning_content": "Two plus two is four."
+        },
+        {
+          "role": "user",
+          "content": "And 3 + 3?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": true,
+      "logits": false,
+      "rendered": "<|im_start|>user\nWhat is 2 + 2?<|im_end|>\n<|im_start|>assistant\n4<|im_end|>\n<|im_start|>user\nAnd 3 + 3?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "no_generation_prompt",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello!"
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nHello!<|im_end|>\n"
+    },
+    {
+      "name": "two_system_messages",
+      "messages": [
+        {
+          "role": "system",
+          "content": "One."
+        },
+        {
+          "role": "system",
+          "content": "Two."
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "System message must be at the beginning."
+    }
+  ]
+}
