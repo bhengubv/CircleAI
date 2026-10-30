@@ -60,5 +60,9 @@
     <None Include="..\..\fixtures\bonsai2\**\*.json"
           CopyToOutputDirectory="PreserveNewest"
           Link="fixtures\bonsai2\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- jinja2's own renders of small templates: JinjaLite's ruler beyond the 2B's template. -->
+    <None Include="..\..\fixtures\jinja\*.json"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="fixtures\jinja\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

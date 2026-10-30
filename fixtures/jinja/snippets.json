@@ -1,0 +1,436 @@
+{
+  "_comment": "Small templates rendered by jinja2 the way Hugging Face renders chat templates. JinjaLite must match `rendered` byte for byte, and fail where `error` is set (raise_exception's message exactly when error_type is TemplateError).",
+  "_source": {
+    "renderer": "jinja2 3.1.6",
+    "made": "2026-10-30"
+  },
+  "cases": [
+    {
+      "name": "trim_and_lstrip",
+      "template": "{% if true %}\n  yes\n{% endif %}\nafter",
+      "variables": {},
+      "rendered": "  yes\nafter"
+    },
+    {
+      "name": "indented_block",
+      "template": "line1\n    {% if true %}\n    inner\n    {% endif %}\nline2",
+      "variables": {},
+      "rendered": "line1\n    inner\nline2"
+    },
+    {
+      "name": "lstrip_not_for_variables",
+      "template": "  {{ x }}  \n  {% if true %}b{% endif %}",
+      "variables": {
+        "x": "a"
+      },
+      "rendered": "  a  \nb"
+    },
+    {
+      "name": "minus_both_sides",
+      "template": "a  \n {%- if true -%} \n b \n {%- endif -%}  \n c",
+      "variables": {},
+      "rendered": "abc"
+    },
+    {
+      "name": "plus_keeps_indent",
+      "template": "a\n  {%+ if true %}b{% endif %}",
+      "variables": {},
+      "rendered": "a\n  b"
+    },
+    {
+      "name": "comment_lines",
+      "template": "a\n{# a comment #}\nb\n  {# indented #}\nc\n{#- stripped -#}\n  d",
+      "variables": {},
+      "rendered": "a\nb\ncd"
+    },
+    {
+      "name": "variable_minus",
+      "template": "x {{- ' y ' -}} z",
+      "variables": {},
+      "rendered": "x y z"
+    },
+    {
+      "name": "for_lines",
+      "template": "{% for x in [1, 2] %}\n  {{ x }}\n{% endfor %}\nend",
+      "variables": {},
+      "rendered": "  1\n  2\nend"
+    },
+    {
+      "name": "windows_newlines",
+      "template": "a\r\nb\rc\r\n",
+      "variables": {},
+      "rendered": "a\nb\nc"
+    },
+    {
+      "name": "one_trailing_newline_dropped",
+      "template": "text\n\n",
+      "variables": {},
+      "rendered": "text\n"
+    },
+    {
+      "name": "text_only",
+      "template": "plain text, no tags",
+      "variables": {},
+      "rendered": "plain text, no tags"
+    },
+    {
+      "name": "loop_variables",
+      "template": "{% for x in 'abc' %}{{ loop.index }}{{ loop.index0 }}{{ loop.revindex }}{{ loop.revindex0 }}{{ loop.first }}{{ loop.last }}{{ loop.length }};{% endfor %}",
+      "variables": {},
+      "rendered": "1032TrueFalse3;2121FalseFalse3;3210FalseTrue3;"
+    },
+    {
+      "name": "loop_neighbours",
+      "template": "{% for x in [1, 2, 3] %}[{{ loop.previtem }}<{{ x }}>{{ loop.nextitem }}]{% endfor %}",
+      "variables": {},
+      "rendered": "[<1>2][1<2>3][2<3>]"
+    },
+    {
+      "name": "for_else",
+      "template": "{% for x in [] %}a{% else %}empty{% endfor %}|{% for x in none %}a{% else %}none{% endfor %}",
+      "variables": {},
+      "error": "'NoneType' object is not iterable",
+      "error_type": "TypeError"
+    },
+    {
+      "name": "for_filter",
+      "template": "{% for x in [1, 2, 3, 4] if x > 1 %}{{ x }}/{{ loop.length }} {% endfor %}",
+      "variables": {},
+      "rendered": "2/3 3/3 4/3 "
+    },
+    {
+      "name": "break_continue",
+      "template": "{% for x in [1, 2, 3, 4, 5] %}{% if x == 2 %}{% continue %}{% endif %}{% if x == 4 %}{% break %}{% endif %}{{ x }}{% endfor %}",
+      "variables": {},
+      "rendered": "13"
+    },
+    {
+      "name": "tuple_targets",
+      "template": "{% for k, v in d | items %}{{ k }}={{ v }};{% endfor %}{% for a, b in [[1, 2], [3, 4]] %}{{ a + b }}{% endfor %}",
+      "variables": {
+        "d": {
+          "x": 1,
+          "y": [
+            2
+          ]
+        }
+      },
+      "rendered": "x=1;y=[2];37"
+    },
+    {
+      "name": "nested_loops",
+      "template": "{% for a in [1, 2] %}{% for b in [1, 2] %}{{ loop.index }}{% endfor %}{{ loop.index }}|{% endfor %}",
+      "variables": {},
+      "rendered": "121|122|"
+    },
+    {
+      "name": "dict_iteration",
+      "template": "{% for k in d %}{{ k }}{% endfor %}",
+      "variables": {
+        "d": {
+          "b": 1,
+          "a": 2
+        }
+      },
+      "rendered": "ba"
+    },
+    {
+      "name": "loop_scope",
+      "template": "{% set x = 1 %}{% for i in [1] %}{% set x = 2 %}{{ x }}{% endfor %}{{ x }}",
+      "variables": {},
+      "rendered": "21"
+    },
+    {
+      "name": "namespace",
+      "template": "{% set ns = namespace(n=0, s='') %}{% for x in [1, 2, 3] %}{% set ns.n = ns.n + x %}{% set ns.s = ns.s ~ x %}{% endfor %}{{ ns.n }} {{ ns.s }}",
+      "variables": {},
+      "rendered": "6 123"
+    },
+    {
+      "name": "if_does_not_scope",
+      "template": "{% if true %}{% set x = 'set in if' %}{% endif %}{{ x }}",
+      "variables": {},
+      "rendered": "set in if"
+    },
+    {
+      "name": "set_block",
+      "template": "{% set block %}hello {{ name }}{% endset %}[{{ block }}]",
+      "variables": {
+        "name": "Thandi"
+      },
+      "rendered": "[hello Thandi]"
+    },
+    {
+      "name": "set_tuple",
+      "template": "{% set a, b = 1, 2 %}{{ a }}{{ b }}",
+      "variables": {},
+      "rendered": "12"
+    },
+    {
+      "name": "macro_defaults",
+      "template": "{% macro m(a, b=2, c='x') %}{{ a }}-{{ b }}-{{ c }}{% endmacro %}{{ m(1) }}|{{ m(1, 3) }}|{{ m(1, c='y') }}|{{ m() }}",
+      "variables": {},
+      "rendered": "1-2-x|1-3-x|1-2-y|-2-x"
+    },
+    {
+      "name": "macro_sees_top_level",
+      "template": "{% set top = 'T' %}{% macro m() %}{{ top }}{{ local }}{% endmacro %}{% for local in [1] %}{{ m() }}{% endfor %}",
+      "variables": {},
+      "rendered": "T"
+    },
+    {
+      "name": "macro_value_is_text",
+      "template": "{% macro m(x) %} {{ x }} {% endmacro %}[{{ m(1) | trim }}]{{ m(2) | length }}",
+      "variables": {},
+      "rendered": "[1]3"
+    },
+    {
+      "name": "conditional",
+      "template": "{{ 'yes' if x else 'no' }}{{ 'a' if false }}|{{ 1 if true else 2 if true else 3 }}",
+      "variables": {},
+      "rendered": "no|1"
+    },
+    {
+      "name": "and_or_values",
+      "template": "{{ 0 or 'b' }} {{ 'a' and 'b' }} {{ '' and 'b' }}| {{ none or [] or 'c' }} {{ not 0 }}",
+      "variables": {},
+      "rendered": "b b | c True"
+    },
+    {
+      "name": "arithmetic",
+      "template": "{{ 0.1 + 0.2 }} {{ 10 / 4 }} {{ 10 // 4 }} {{ -7 // 2 }} {{ -7 % 3 }} {{ 7.5 % 2 }} {{ 2 ** 10 }} {{ 2 ** -1 }} {{ -(3) }} {{ 1 - -1 }}",
+      "variables": {},
+      "rendered": "0.30000000000000004 2.5 2 -4 2 1.5 1024 0.5 -3 2"
+    },
+    {
+      "name": "floats",
+      "template": "{{ 1e16 }} {{ 1e15 }} {{ 1e-5 }} {{ 0.0001 }} {{ 2.5e-4 }} {{ 1.0 }} {{ 123.456 }} {{ -0.0 }} {{ 3.0 * 2 }} {{ 1 / 3 }}",
+      "variables": {},
+      "rendered": "1e+16 1000000000000000.0 1e-05 0.0001 0.00025 1.0 123.456 -0.0 6.0 0.3333333333333333"
+    },
+    {
+      "name": "precedence",
+      "template": "{{ 1 + 2 * 3 }} {{ (1 + 2) * 3 }} {{ 2 ** 3 ** 2 }} {{ 'a' ~ (1 + 2) }} {{ [1, 2] | length - 1 }} {{ not true == false }} {{ -2 ** 2 }}",
+      "variables": {},
+      "rendered": "7 9 64 a3 1 True 4"
+    },
+    {
+      "name": "tilde_binds_tighter_than_plus",
+      "template": "{{ 'a' ~ 1 + 2 }}",
+      "variables": {},
+      "error": "can only concatenate str (not \"int\") to str",
+      "error_type": "TypeError"
+    },
+    {
+      "name": "concat",
+      "template": "{{ x ~ 1 ~ none ~ true ~ 2.0 }}|{{ 'ab' * 3 }}|{{ [1] + [2] }}",
+      "variables": {},
+      "rendered": "1NoneTrue2.0|ababab|[1, 2]"
+    },
+    {
+      "name": "reprs",
+      "template": "{{ [1, 'a', none, true, 2.5] }} {{ {'k': 'v', 'q': \"it's\"} }} {{ (1, 2) }} {{ (1,) }} {{ d.items() | list }}",
+      "variables": {
+        "d": {
+          "a": 1
+        }
+      },
+      "rendered": "[1, 'a', None, True, 2.5] {'k': 'v', 'q': \"it's\"} (1, 2) (1,) [('a', 1)]"
+    },
+    {
+      "name": "string_repr_escapes",
+      "template": "{{ ['a\\nb', 'tab\\t', \"q'\", 'both \\' \"', 'back\\\\slash', 'é ✓'] }}",
+      "variables": {},
+      "rendered": "['a\\nb', 'tab\\t', \"q'\", 'both \\' \"', 'back\\\\slash', 'é ✓']"
+    },
+    {
+      "name": "subscripts",
+      "template": "{{ 'abc'[1] }}{{ 'abcdef'[1:4] }}{{ 'abc'[::-1] }}{{ [1, 2, 3][-1] }}[{{ [1, 2, 3][5] }}]{{ [1, 2, 3, 4][::2] }}{{ 'héllo😀'[1:3] }}",
+      "variables": {},
+      "rendered": "bbcdcba3[][1, 3]él"
+    },
+    {
+      "name": "lengths",
+      "template": "{{ 'héllo😀' | length }} {{ [1, 2] | length }} {{ {'a': 1} | length }} {{ x | length }}",
+      "variables": {},
+      "rendered": "6 2 1 0"
+    },
+    {
+      "name": "membership",
+      "template": "{{ 'b' in 'abc' }} {{ 2 in [1, 2] }} {{ 'k' in {'k': 1} }} {{ 'z' not in 'abc' }} {{ 1 in [1.0] }} {{ 'x' in u }}",
+      "variables": {},
+      "rendered": "True True True True True False"
+    },
+    {
+      "name": "comparisons",
+      "template": "{{ 1 < 2 < 3 }} {{ 3 > 2 > 2 }} {{ 1 == 1.0 }} {{ true == 1 }} {{ 'b' > 'a' }} {{ [1, 2] < [1, 3] }} {{ none == none }} {{ x == y }}",
+      "variables": {},
+      "rendered": "True False True True True True True True"
+    },
+    {
+      "name": "attribute_vs_item",
+      "template": "{{ d.a }} {{ d['a'] }} {{ d['items'] }} {{ d.items is defined }} {{ d.missing }}|{{ d.get('a') }} {{ d.get('z', 'dflt') }} {{ l.append }}",
+      "variables": {
+        "d": {
+          "a": 1,
+          "items": "key"
+        },
+        "l": [
+          1
+        ]
+      },
+      "rendered": "1 1 key True |1 dflt "
+    },
+    {
+      "name": "literals",
+      "template": "{{ [1, [2, 3], {'a': 'b'}] }} {{ {'x': none, 'y': true} | tojson }} {{ 'adj' \"acent\" }} {{ True }} {{ None }}",
+      "variables": {},
+      "rendered": "[1, [2, 3], {'a': 'b'}] {\"x\": null, \"y\": true} adjacent True None"
+    },
+    {
+      "name": "escapes",
+      "template": "{{ 'a\\tb\\\\c\\x41\\u00e9\\U0001F600\\101\\q' }}",
+      "variables": {},
+      "rendered": "a\tb\\cAé😀A\\q"
+    },
+    {
+      "name": "trim",
+      "template": "[{{ '  a b  ' | trim }}][{{ 'xxaxx' | trim('x') }}][{{ x | trim }}][{{ 5 | trim }}]",
+      "variables": {},
+      "rendered": "[a b][a][][5]"
+    },
+    {
+      "name": "default",
+      "template": "{{ x | default('d') }} {{ none | default('d') }} {{ '' | default('d', true) }} {{ 0 | d(1) }}",
+      "variables": {},
+      "rendered": "d None d 0"
+    },
+    {
+      "name": "tojson",
+      "template": "{{ [1, 2.0, 'a', none, true, 1e16, -0.5] | tojson }} {{ s | tojson }} {{ {} | tojson }} {{ [] | tojson }}",
+      "variables": {
+        "s": "tab\there \"q\" \\ é   \u0001 "
+      },
+      "rendered": "[1, 2.0, \"a\", null, true, 1e+16, -0.5] \"tab\\there \\\"q\\\" \\\\ é   \\u0001 \" {} []"
+    },
+    {
+      "name": "tojson_indent",
+      "template": "{{ {'b': 1, 'a': [1, {'c': none}], 'e': {}} | tojson(indent=2) }}",
+      "variables": {},
+      "rendered": "{\n  \"b\": 1,\n  \"a\": [\n    1,\n    {\n      \"c\": null\n    }\n  ],\n  \"e\": {}\n}"
+    },
+    {
+      "name": "tojson_sorted_ascii",
+      "template": "{{ {'b': 1, 'a': 'é😀'} | tojson(sort_keys=true) }} {{ 'é😀' | tojson(ensure_ascii=true) }}",
+      "variables": {},
+      "rendered": "{\"a\": \"é😀\", \"b\": 1} \"\\u00e9\\ud83d\\ude00\""
+    },
+    {
+      "name": "string_and_safe",
+      "template": "{{ 2 | string }} {{ none | string }} {{ [1] | string }} {{ 1.5 | safe }} {{ x | safe }}|",
+      "variables": {},
+      "rendered": "2 None [1] 1.5 |"
+    },
+    {
+      "name": "join_first_last_list",
+      "template": "{{ ['a', 'b'] | join('/') }} {{ [1, 2] | join }} {{ [3, 1] | first }} {{ 'xyz' | last }} {{ 'ab' | list }} {{ [] | first }}",
+      "variables": {},
+      "rendered": "a/b 12 3 z ['a', 'b'] "
+    },
+    {
+      "name": "items_filter",
+      "template": "{{ d | items | list }} {{ x | items | list }}",
+      "variables": {
+        "d": {
+          "a": 1,
+          "b": [
+            2
+          ]
+        }
+      },
+      "rendered": "[('a', 1), ('b', [2])] []"
+    },
+    {
+      "name": "split",
+      "template": "{{ 'a,b,,c'.split(',') }} {{ '  a  b '.split() }} {{ 'a b c'.split(none, 1) }} {{ 'a,b,c'.split(',', 1) }} {{ ''.split() }} {{ ''.split(',') }}",
+      "variables": {},
+      "rendered": "['a', 'b', '', 'c'] ['a', 'b'] ['a', 'b c'] ['a', 'b,c'] [] ['']"
+    },
+    {
+      "name": "strip_family",
+      "template": "[{{ 'xxhixx'.strip('x') }}][{{ '  hi  '.lstrip() }}][{{ 'hi\\n\\n'.rstrip('\\n') }}][{{ '\\n hi \\t'.strip() }}]",
+      "variables": {},
+      "rendered": "[hi][hi  ][hi][hi]"
+    },
+    {
+      "name": "starts_ends_replace",
+      "template": "{{ 'abc'.startswith('a') }} {{ 'abc'.endswith(('x', 'c')) }} {{ 'a-b-c'.replace('-', '+') }} {{ 'a-b-c'.replace('-', '+', 1) }}",
+      "variables": {},
+      "rendered": "True True a+b+c a+b-c"
+    },
+    {
+      "name": "join_method",
+      "template": "{{ ', '.join(['a', 'b']) }}|{{ ''.join('abc') }}",
+      "variables": {},
+      "rendered": "a, b|abc"
+    },
+    {
+      "name": "dict_methods",
+      "template": "{{ d.items() | list }} {{ d.keys() | list }} {{ d.values() | list }}",
+      "variables": {
+        "d": {
+          "a": 1,
+          "b": 2
+        }
+      },
+      "rendered": "[('a', 1), ('b', 2)] ['a', 'b'] [1, 2]"
+    },
+    {
+      "name": "tests",
+      "template": "{{ x is defined }} {{ x is undefined }} {{ none is none }} {{ 'a' is string }} {{ {} is mapping }} {{ 'a' is sequence }} {{ {} is sequence }} {{ 1 is sequence }} {{ x is sequence }} {{ 'a' is iterable }} {{ x is iterable }} {{ 1 is iterable }} {{ 1 is number }} {{ true is number }} {{ 1.5 is float }} {{ true is boolean }} {{ 1 is integer }} {{ true is integer }} {{ false is false }} {{ 0 is false }} {{ true is true }} {{ 'a' is not string }}",
+      "variables": {},
+      "rendered": "False True True True True True True False True True True False True True True True True False True False True False"
+    },
+    {
+      "name": "raise",
+      "template": "before{{ raise_exception('stop: ' ~ 3) }}after",
+      "variables": {},
+      "error": "stop: 3",
+      "error_type": "TemplateError"
+    },
+    {
+      "name": "undefined_attribute",
+      "template": "{{ x.y }}",
+      "variables": {},
+      "error": "'x' is undefined",
+      "error_type": "UndefinedError"
+    },
+    {
+      "name": "str_plus_int",
+      "template": "{{ 'a' + 1 }}",
+      "variables": {},
+      "error": "can only concatenate str (not \"int\") to str",
+      "error_type": "TypeError"
+    },
+    {
+      "name": "call_undefined",
+      "template": "{{ x() }}",
+      "variables": {},
+      "error": "'x' is undefined",
+      "error_type": "UndefinedError"
+    },
+    {
+      "name": "assign_attribute_of_non_namespace",
+      "template": "{% set d = {'a': 1} %}{% set d.a = 2 %}{{ d.a }}",
+      "variables": {},
+      "error": "cannot assign attribute on non-namespace object",
+      "error_type": "TemplateRuntimeError"
+    },
+    {
+      "name": "range",
+      "template": "{{ range(3) | list }} {{ range(1, 7, 2) | list }} {{ range(3, 0, -1) | list }}",
+      "variables": {},
+      "rendered": "[0, 1, 2] [1, 3, 5] [3, 2, 1]"
+    }
+  ]
+}

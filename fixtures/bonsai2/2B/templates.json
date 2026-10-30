@@ -368,6 +368,681 @@
       "enable_thinking": false,
       "logits": false,
       "error": "System message must be at the beginning."
+    },
+    {
+      "name": "content_parts",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Describe "
+            },
+            {
+              "type": "image"
+            },
+            {
+              "type": "text",
+              "text": " please."
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\nDescribe <|vision_start|><|image_pad|><|vision_end|> please.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "system_parts",
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "Be brief."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>system\nBe brief.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "video_part",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "video"
+            },
+            {
+              "text": "What happens?"
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\n<|vision_start|><|video_pad|><|vision_end|>What happens?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "image_url_part",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "image_url": "x.png"
+            },
+            {
+              "type": "text",
+              "text": "And this?"
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>And this?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "two_tool_calls",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather in Durban and Cape Town?"
+        },
+        {
+          "role": "assistant",
+          "content": "Checking both.",
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "Durban"
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "Cape Town"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": "{\"temp_c\": 24}"
+        },
+        {
+          "role": "tool",
+          "content": "{\"temp_c\": 19}"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWeather in Durban and Cape Town?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nChecking both.\n\n<tool_call>\n<function=get_weather>\n<parameter=location>\nDurban\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=get_weather>\n<parameter=location>\nCape Town\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\n{\"temp_c\": 24}\n</tool_response>\n<tool_response>\n{\"temp_c\": 19}\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "tool_call_without_function_wrapper",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Weather?"
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "name": "get_weather",
+              "arguments": {
+                "location": "Durban"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": "sunny"
+        },
+        {
+          "role": "user",
+          "content": "Thanks. And tomorrow?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": true,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWeather?<|im_end|>\n<|im_start|>assistant\n<tool_call>\n<function=get_weather>\n<parameter=location>\nDurban\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nsunny\n</tool_response><|im_end|>\n<|im_start|>user\nThanks. And tomorrow?<|im_end|>\n<|im_start|>assistant\n<think>\n"
+    },
+    {
+      "name": "argument_types",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Book it."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "book",
+                "arguments": {
+                  "seats": 2,
+                  "price": 99.5,
+                  "tiny": 1e-07,
+                  "big": 1e+16,
+                  "window": true,
+                  "note": null,
+                  "tags": [
+                    "a",
+                    "ñ",
+                    3,
+                    2.0
+                  ],
+                  "who": {
+                    "name": "Thandi",
+                    "age": 30
+                  },
+                  "quote": "say \"hi\"\n\ttab",
+                  "unicode": "Ngiyabonga 😀"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nBook it.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=book>\n<parameter=seats>\n2\n</parameter>\n<parameter=price>\n99.5\n</parameter>\n<parameter=tiny>\n1e-07\n</parameter>\n<parameter=big>\n1e+16\n</parameter>\n<parameter=window>\nTrue\n</parameter>\n<parameter=note>\nNone\n</parameter>\n<parameter=tags>\n[\"a\", \"ñ\", 3, 2.0]\n</parameter>\n<parameter=who>\n{\"name\": \"Thandi\", \"age\": 30}\n</parameter>\n<parameter=quote>\nsay \"hi\"\n\ttab\n</parameter>\n<parameter=unicode>\nNgiyabonga 😀\n</parameter>\n</function>\n</tool_call><|im_end|>\n"
+    },
+    {
+      "name": "tool_with_numbers",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Pick a number."
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "pick",
+            "description": "Pick one.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "n": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 1e+16,
+                  "default": 1e-05,
+                  "enum": [
+                    1,
+                    2.0,
+                    -3.25
+                  ]
+                },
+                "strict": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "label": {
+                  "type": "string",
+                  "default": null
+                }
+              },
+              "required": []
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"pick\", \"description\": \"Pick one.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"n\": {\"type\": \"number\", \"minimum\": 0.5, \"maximum\": 1e+16, \"default\": 1e-05, \"enum\": [1, 2.0, -3.25]}, \"strict\": {\"type\": \"boolean\", \"default\": false}, \"label\": {\"type\": \"string\", \"default\": null}}, \"required\": []}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nPick a number.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "inline_reasoning",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Q1"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>\nfirst thought\n</think>\n\nA1"
+        },
+        {
+          "role": "user",
+          "content": "Q2"
+        },
+        {
+          "role": "assistant",
+          "content": "<think>\nsecond\n</think>\n\nA2"
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": true,
+      "logits": false,
+      "rendered": "<|im_start|>user\nQ1<|im_end|>\n<|im_start|>assistant\nA1<|im_end|>\n<|im_start|>user\nQ2<|im_end|>\n<|im_start|>assistant\n<think>\nsecond\n</think>\n\nA2<|im_end|>\n"
+    },
+    {
+      "name": "reasoning_after_last_query",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Q"
+        },
+        {
+          "role": "assistant",
+          "content": "partial",
+          "reasoning_content": "  thinking...  "
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": true,
+      "logits": false,
+      "rendered": "<|im_start|>user\nQ<|im_end|>\n<|im_start|>assistant\n<think>\nthinking...\n</think>\n\npartial<|im_end|>\n"
+    },
+    {
+      "name": "multi_step_tool_query",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Find it."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "Durban"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "<tool_response>\nsunny\n</tool_response>"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nFind it.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n<parameter=location>\nDurban\n</parameter>\n</function>\n</tool_call><|im_end|>\n<|im_start|>user\n<tool_response>\nsunny\n</tool_response><|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "system_with_tools",
+      "messages": [
+        {
+          "role": "system",
+          "content": "Use tools wisely."
+        },
+        {
+          "role": "user",
+          "content": "Weather?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>\n\nUse tools wisely.<|im_end|>\n<|im_start|>user\nWeather?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "blank_system_with_tools",
+      "messages": [
+        {
+          "role": "system",
+          "content": "   "
+        },
+        {
+          "role": "user",
+          "content": "Weather?"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nWeather?<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "tools_empty_list",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [],
+      "rendered": "<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "none_content",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "type": "function",
+              "function": {
+                "name": "get_weather",
+                "arguments": {
+                  "location": "X"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": false,
+      "enable_thinking": false,
+      "logits": false,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a place.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "City name"
+                }
+              },
+              "required": [
+                "location"
+              ]
+            }
+          }
+        }
+      ],
+      "rendered": "<|im_start|>system\n# Tools\n\nYou have access to the following functions:\n\n<tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get the current weather for a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}}, \"required\": [\"location\"]}}}\n</tools>\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT><|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>\n<function=get_weather>\n<parameter=location>\nX\n</parameter>\n</function>\n</tool_call><|im_end|>\n"
+    },
+    {
+      "name": "whitespace_content",
+      "messages": [
+        {
+          "role": "user",
+          "content": "  padded  \n"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\npadded<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "unicode",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Ngiyabonga! 你好 مرحبا 😀 ́e"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "rendered": "<|im_start|>user\nNgiyabonga! 你好 مرحبا 😀 ́e<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    },
+    {
+      "name": "no_messages",
+      "messages": [],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "No messages provided."
+    },
+    {
+      "name": "no_user_query",
+      "messages": [
+        {
+          "role": "system",
+          "content": "S"
+        },
+        {
+          "role": "assistant",
+          "content": "A"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "No user query found in messages."
+    },
+    {
+      "name": "unexpected_role",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hi"
+        },
+        {
+          "role": "narrator",
+          "content": "..."
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "Unexpected message role."
+    },
+    {
+      "name": "image_in_system",
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "image"
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "System message cannot contain images."
+    },
+    {
+      "name": "unexpected_content_type",
+      "messages": [
+        {
+          "role": "user",
+          "content": 42
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "Unexpected content type."
+    },
+    {
+      "name": "unexpected_item",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "audio"
+            }
+          ]
+        }
+      ],
+      "add_generation_prompt": true,
+      "enable_thinking": false,
+      "logits": false,
+      "error": "Unexpected item type in content."
     }
   ]
 }

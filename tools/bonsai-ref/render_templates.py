@@ -102,6 +102,78 @@ CASES = [
     ("two_system_messages", [{"role": "system", "content": "One."},
                              {"role": "system", "content": "Two."},
                              user("Hi")], None, True, False, False),
+
+    # S2: what JinjaLite must get right beyond the everyday - content given as parts, several
+    # tool calls, runs of tool results, reasoning written inline or kept apart, argument
+    # values of every JSON type, numbers in a tool's schema, and every refusal the template
+    # makes. Template-only: none of these runs logits.
+    ("content_parts", [{"role": "user", "content": [{"type": "text", "text": "Describe "}, {"type": "image"},
+                                                    {"type": "text", "text": " please."}]}], None, True, False, False),
+    ("system_parts", [{"role": "system", "content": [{"type": "text", "text": "Be brief."}]}, user("Hi")],
+     None, True, False, False),
+    ("video_part", [{"role": "user", "content": [{"type": "video"}, {"text": "What happens?"}]}], None, True, False, False),
+    ("image_url_part", [{"role": "user", "content": [{"image_url": "x.png"}, {"type": "text", "text": "And this?"}]}],
+     None, True, False, False),
+    ("two_tool_calls", [
+        user("Weather in Durban and Cape Town?"),
+        {"role": "assistant", "content": "Checking both.", "tool_calls": [
+            {"type": "function", "function": {"name": "get_weather", "arguments": {"location": "Durban"}}},
+            {"type": "function", "function": {"name": "get_weather", "arguments": {"location": "Cape Town"}}}]},
+        {"role": "tool", "content": "{\"temp_c\": 24}"},
+        {"role": "tool", "content": "{\"temp_c\": 19}"},
+    ], [WEATHER_TOOL], True, False, False),
+    ("tool_call_without_function_wrapper", [
+        user("Weather?"),
+        {"role": "assistant", "content": "", "tool_calls": [{"name": "get_weather", "arguments": {"location": "Durban"}}]},
+        {"role": "tool", "content": "sunny"},
+        user("Thanks. And tomorrow?"),
+    ], [WEATHER_TOOL], True, True, False),
+    ("argument_types", [
+        user("Book it."),
+        {"role": "assistant", "content": "", "tool_calls": [{"type": "function", "function": {"name": "book", "arguments": {
+            "seats": 2, "price": 99.5, "tiny": 1e-07, "big": 1e16, "window": True, "note": None,
+            "tags": ["a", "ñ", 3, 2.0], "who": {"name": "Thandi", "age": 30},
+            "quote": "say \"hi\"\n\ttab", "unicode": "Ngiyabonga 😀"}}}]},
+    ], [WEATHER_TOOL], False, False, False),
+    ("tool_with_numbers", [user("Pick a number.")], [{
+        "type": "function",
+        "function": {"name": "pick", "description": "Pick one.", "parameters": {
+            "type": "object", "properties": {"n": {"type": "number", "minimum": 0.5, "maximum": 1e16,
+                                                   "default": 1e-05, "enum": [1, 2.0, -3.25]},
+                                             "strict": {"type": "boolean", "default": False},
+                                             "label": {"type": "string", "default": None}},
+            "required": []}}}], True, False, False),
+    ("inline_reasoning", [
+        user("Q1"),
+        {"role": "assistant", "content": "<think>\nfirst thought\n</think>\n\nA1"},
+        user("Q2"),
+        {"role": "assistant", "content": "<think>\nsecond\n</think>\n\nA2"},
+    ], None, False, True, False),
+    ("reasoning_after_last_query", [
+        user("Q"),
+        {"role": "assistant", "content": "partial", "reasoning_content": "  thinking...  "},
+    ], None, False, True, False),
+    ("multi_step_tool_query", [
+        user("Find it."),
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"type": "function", "function": {"name": "get_weather", "arguments": {"location": "Durban"}}}]},
+        {"role": "user", "content": "<tool_response>\nsunny\n</tool_response>"},
+    ], [WEATHER_TOOL], True, False, False),
+    ("system_with_tools", [{"role": "system", "content": "Use tools wisely."}, user("Weather?")],
+     [WEATHER_TOOL], True, False, False),
+    ("blank_system_with_tools", [{"role": "system", "content": "   "}, user("Weather?")], [WEATHER_TOOL], True, False, False),
+    ("tools_empty_list", [user("Hi")], [], True, False, False),
+    ("none_content", [user("Hi"), {"role": "assistant", "content": None, "tool_calls": [
+        {"type": "function", "function": {"name": "get_weather", "arguments": {"location": "X"}}}]}],
+     [WEATHER_TOOL], False, False, False),
+    ("whitespace_content", [user("  padded  \n")], None, True, False, False),
+    ("unicode", [user("Ngiyabonga! 你好 مرحبا 😀 ́e")], None, True, False, False),
+    ("no_messages", [], None, True, False, False),
+    ("no_user_query", [{"role": "system", "content": "S"}, {"role": "assistant", "content": "A"}], None, True, False, False),
+    ("unexpected_role", [user("Hi"), {"role": "narrator", "content": "..."}], None, True, False, False),
+    ("image_in_system", [{"role": "system", "content": [{"type": "image"}]}, user("Hi")], None, True, False, False),
+    ("unexpected_content_type", [user(42)], None, True, False, False),
+    ("unexpected_item", [{"role": "user", "content": [{"type": "audio"}]}], None, True, False, False),
 ]
 
 
