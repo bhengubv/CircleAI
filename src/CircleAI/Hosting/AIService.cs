@@ -190,7 +190,7 @@ public sealed class AIService : IAIService
         _modelSelector    = modelSelector;
         _modelRegistry    = modelRegistry;
         _pressureSource   = memoryPressureSource;
-        _logger           = logger ?? NullLogger<AIService>.Instance;
+        _logger           = logger ?? CircleAI.Core.Logging.CircleLog.LoggerFor<AIService>();
     }
 
     /// <inheritdoc />

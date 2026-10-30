@@ -40,7 +40,7 @@ namespace CircleAI.Core.Components;
 /// </summary>
 public abstract class CircleAIComponentBase
 {
-    /// <summary>Component-supplied logger. Defaults to <see cref="NullLogger.Instance"/>.</summary>
+    /// <summary>Component-supplied logger. Defaults to one that writes through <see cref="CircleAI.Core.Logging.CircleLog"/>.</summary>
     protected ILogger Logger { get; }
 
     /// <summary>
@@ -53,7 +53,7 @@ public abstract class CircleAIComponentBase
     /// <summary>Construct with an optional logger.</summary>
     protected CircleAIComponentBase(ILogger? logger = null)
     {
-        Logger = logger ?? NullLogger.Instance;
+        Logger = logger ?? CircleAI.Core.Logging.CircleLog.Logger(GetType().FullName ?? GetType().Name);
     }
 
     /// <summary>

@@ -61,7 +61,7 @@ public static class CatalogueBootstrap
         ArgumentNullException.ThrowIfNull(assessor);
         ArgumentNullException.ThrowIfNull(probe);
         var obs = observer ?? NullModelCatalogObserver.Instance;
-        var log = logger ?? NullLogger.Instance;
+        var log = logger ?? CircleAI.Core.Logging.CircleLog.Logger("Models.Catalogue");
 
         try
         {

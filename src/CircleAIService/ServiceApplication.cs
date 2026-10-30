@@ -105,6 +105,7 @@ public sealed class ServiceApplication : Application
     {
         AndroidDeviceMemory.Install(this);
         base.OnCreate();
+        InstallLogging("inference");
         global::Android.Util.Log.Info("CircleAI.Worker", "inference process started");
 
         // A TEST SWITCH, NOT A LOG: with soak/prompt-dump.on in this app's own test folder,
@@ -248,6 +249,33 @@ public sealed class ServiceApplication : Application
     /// </remarks>
     private static string TestSwitchesArmedFile(global::Android.Content.Context context) =>
         System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "CircleAI", "state", "test-switches.armed");
+
+    /// <summary>
+    /// ONE LOG FOR THE PROCESS (S1): logcat as before, a file in this app's own storage
+    /// that outlives logcat's two minutes on the P30, and hooks for the exceptions nothing
+    /// caught. Each process writes its own file - two writers on one file would interleave.
+    /// A developer can change levels with soak/log-levels.txt ("Engine=Verbose,Voice=Debug"),
+    /// read only while the test switches are armed, like every other soak/ switch.
+    /// </summary>
+    private void InstallLogging(string process)
+    {
+        CircleAI.Core.Logging.CircleLog.AddSink(new CircleAI.Service.Droid.LogcatSink());
+        CircleAI.Core.Logging.CircleLog.AddSink(new CircleAI.Core.Logging.RollingFileSink(
+            System.IO.Path.Combine(FilesDir!.AbsolutePath, "logs", $"circleai-{process}.log")));
+        CircleAI.Core.Logging.CircleLog.InstallCrashHooks();
+
+        try
+        {
+            var levels = System.IO.Path.Combine(GetExternalFilesDir(null)!.AbsolutePath, "soak", "log-levels.txt");
+            if (System.IO.File.Exists(TestSwitchesArmedFile(this)) && System.IO.File.Exists(levels))
+                CircleAI.Core.Logging.CircleLog.Info("Heal",
+                    $"log levels from soak/log-levels.txt: {CircleAI.Core.Logging.CircleLog.ApplyLevels(System.IO.File.ReadAllText(levels))} applied");
+        }
+        catch (Exception ex)
+        {
+            CircleAI.Core.Logging.CircleLog.Warn("Heal", "soak/log-levels.txt could not be read", ex);
+        }
+    }
 
     /// <summary>The questions in soak/quality-typed.txt, one a line; null when there is no such file.</summary>
     private static IReadOnlyList<string>? TypedQuestionsForTest(string soakDir)
@@ -514,6 +542,9 @@ public sealed class ServiceApplication : Application
             new("readinessSeq", N(readiness.Seq)),
             new("bootId", readiness.BootId),
             new("heard", N(CircleNeuronLinkService.Heard)),
+            // WHAT HEALING SEES: the switches SelfHeal has tripped, and the newest failure.
+            new("heal", CircleAI.SelfKnowledge.SelfHeal.Status().OneLine),
+            new("lastFault", CircleAI.Core.Logging.HealthEvents.Recent.FirstOrDefault()?.Fingerprint ?? string.Empty),
         };
     }
 
@@ -571,6 +602,7 @@ public sealed class ServiceApplication : Application
         AndroidConnectivity.Install(this);
 
         base.OnCreate();
+        InstallLogging("service");
 
         // WHERE STANDING GRANTS LIVE. A killed service process must not forget who
         // the person already approved: an in-memory store is safe but asks again on
@@ -704,9 +736,10 @@ public sealed class ServiceApplication : Application
         CircleAI.Voice.OpenJTalkPhonemizer.DictionaryFolder = sideload;
         CircleAI.Voice.OpenJTalkPhonemizer.ModelStoreFolder = ModelStore.Path;
 
-        // Managed voice logging reaches nothing through ILogger on Android, so it
-        // goes to logcat directly - the one place it is actually readable.
-        CircleAI.Voice.VoiceTrace.Sink = line => global::Android.Util.Log.Info("CircleAI.Voice", line);
+        // Managed voice logging goes through CircleLog: logcat under CircleAI.Voice as
+        // before, and the process's log file as well.
+        CircleAI.Voice.VoiceTrace.Sink = line => CircleAI.Core.Logging.CircleLog.Info("Voice", line);
+        CircleAI.Assistant.VoiceTurnRouter.Trace = line => CircleAI.Core.Logging.CircleLog.Debug("Voice", line);
 
         // AND WHETHER A TRACE LINE MAY CARRY WHAT WAS SAID. Off unless the marker file
         // is there - the same deliberate act that turns the audio dump on, asked once
@@ -989,7 +1022,7 @@ public sealed class ServiceApplication : Application
             // can no longer disagree about whether a model is paged.
             CircleAI.Inference.ModelCosts.Directory = stateDir;
             CircleAI.Inference.ModelCosts.Say = line =>
-                global::Android.Util.Log.Info("CircleAI.Memory", line);
+                CircleAI.Core.Logging.CircleLog.Info("Memory", line);
 
             // AND WHAT THE SOFTWARE SWITCHES OFF ON SOMEBODY'S BEHALF IS SAID OUT LOUD.
             //
@@ -1004,7 +1037,7 @@ public sealed class ServiceApplication : Application
             // about. Healing also has to work on a device whose memory will not open at
             // all, which is why this is outside the try below.
             CircleAI.SelfKnowledge.SelfHeal.Say = line =>
-                global::Android.Util.Log.Info("CircleAI.Heal", line);
+                CircleAI.Core.Logging.CircleLog.Info("Heal", line);
 
             // AND THE LONG-TERM MEMORY FINALLY HOLDS WHAT THE SERVICE LEARNS ABOUT
             // ITSELF, WHICH IS HALF THE JOB IT WAS BUILT FOR AND HAS NEVER DONE.

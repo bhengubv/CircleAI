@@ -267,7 +267,7 @@ public static class CatalogueHousekeeping
                               Func<string, bool>? keep = null, Action<string>? say = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        var log = logger ?? NullLogger.Instance;
+        var log = logger ?? CircleAI.Core.Logging.CircleLog.Logger("Models.Housekeeping");
         if (string.IsNullOrWhiteSpace(modelsDirectory)) return 0;
 
         var plan = Plan(catalog, keep);
