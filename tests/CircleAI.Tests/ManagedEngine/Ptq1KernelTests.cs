@@ -10,6 +10,7 @@
 //   3. Rounding - activations round half to even, as the fork's x86 path does.
 
 using CircleAI.Inference.Managed.Kernels;
+using CircleAI.Inference.Managed.Runtime;
 using Xunit;
 
 namespace CircleAI.Tests;
@@ -172,6 +173,37 @@ public sealed class Ptq1KernelTests
             Assert.Equal(BitConverter.SingleToInt32Bits(expected), BitConverter.SingleToInt32Bits(output[r]));
             var scalar = Ptq1.Dot(matrix.AsSpan(r * rowBytes, rowBytes), x, KernelPath.Scalar);
             Assert.InRange(MathF.Abs(output[r] - scalar), 0f, 1e-4f * MathF.Max(1f, MathF.Abs(scalar)));
+        }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(7)]
+    public void The_lookup_table_product_split_across_threads_equals_the_one_thread_product(int threads)
+    {
+        // 1000 rows is no multiple of any chunk size, so the last chunk is a short one.
+        const int cols = 2048, rows = 1000;
+        var blocks = cols / Ptq1.BlockWeights;
+        var rowBytes = blocks * Ptq1.BlockBytes;
+        var matrix = new byte[rows * rowBytes];
+        for (var r = 0; r < rows; r++) RandomRow(blocks, 500 + r).CopyTo(matrix, r * rowBytes);
+        var scales = Ptq1.BlockScales(matrix);
+
+        var lut = new Ptq1Lut(cols);
+        var x = new Q8Activations(cols);
+        x.Quantize(RandomActivations(cols, 8));
+        lut.Build(x);
+        var single = new float[rows];
+        lut.MatVec(matrix, scales, single);
+
+        using var pool = new WorkerPool(threads);
+        for (var round = 0; round < 3; round++)
+        {
+            var split = new float[rows];
+            lut.MatVec(matrix, scales, split, pool);
+            for (var r = 0; r < rows; r++)
+                Assert.Equal(BitConverter.SingleToInt32Bits(single[r]), BitConverter.SingleToInt32Bits(split[r]));
         }
     }
 

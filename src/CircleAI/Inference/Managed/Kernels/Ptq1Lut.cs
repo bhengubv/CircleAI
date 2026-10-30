@@ -24,6 +24,7 @@
 // between thread counts (S0.1).
 
 using System.Runtime.CompilerServices;
+using CircleAI.Inference.Managed.Runtime;
 
 namespace CircleAI.Inference.Managed.Kernels;
 
@@ -35,9 +36,14 @@ public sealed class Ptq1Lut
 
     private const int BlockTableFloats = PositionsPerBlock * 256;
 
+    // Rows per chunk handed to a thread, at least: below this, warming each block's tables
+    // into the cache costs a large share of the chunk's own work.
+    private const int MinChunkRows = 128;
+
     private readonly float[] _table;
     private readonly float[] _y;
     private readonly float[] _sums;
+    private readonly RowsWork _rows;
 
     /// <summary>Tables for an input of <paramref name="cols"/> values (a multiple of 128).</summary>
     public Ptq1Lut(int cols)
@@ -48,6 +54,7 @@ public sealed class Ptq1Lut
         _table = new float[Blocks * BlockTableFloats];
         _y = new float[Ptq1.BlockWeights];
         _sums = new float[243];
+        _rows = new RowsWork(this);
     }
 
     /// <summary>Blocks per row.</summary>
@@ -109,26 +116,97 @@ public sealed class Ptq1Lut
     /// </summary>
     public unsafe void MatVec(ReadOnlySpan<byte> matrix, ReadOnlySpan<float> blockScales, Span<float> output)
     {
-        var rows = output.Length;
-        var blocks = Blocks;
-        var rowBytes = blocks * Ptq1.BlockBytes;
-        if (matrix.Length < (long)rows * rowBytes || blockScales.Length < (long)rows * blocks)
-            throw new ArgumentException("Matrix or scales too short for the output.");
-
-        output.Clear();
+        CheckMatrix(matrix, blockScales, output.Length);
         fixed (byte* m = matrix)
         fixed (float* dw = blockScales)
-        fixed (float* table = _table)
         fixed (float* o = output)
+            MatVecRows(m, dw, o, 0, output.Length);
+    }
+
+    /// <summary>
+    /// The same product shared across <paramref name="pool"/>'s threads. Each row is still
+    /// summed by one thread in the same order, so the result is the single-thread result to
+    /// the last bit, whatever the number of threads. One product at a time per instance.
+    /// </summary>
+    public unsafe void MatVec(ReadOnlySpan<byte> matrix, ReadOnlySpan<float> blockScales, Span<float> output, WorkerPool pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        CheckMatrix(matrix, blockScales, output.Length);
+        fixed (byte* m = matrix)
+        fixed (float* dw = blockScales)
+        fixed (float* o = output)
+        {
+            _rows.Set(m, dw, o, output.Length, Math.Max(MinChunkRows, output.Length / (pool.Threads * 4)));
+            try
+            {
+                pool.Run(_rows);
+            }
+            finally
+            {
+                _rows.Clear();
+            }
+        }
+    }
+
+    private void CheckMatrix(ReadOnlySpan<byte> matrix, ReadOnlySpan<float> blockScales, int rows)
+    {
+        if (matrix.Length < (long)rows * Blocks * Ptq1.BlockBytes || blockScales.Length < (long)rows * Blocks)
+            throw new ArgumentException("Matrix or scales too short for the output.");
+    }
+
+    // Rows [first, end) of the product, block by block across those rows so one block's
+    // tables stay in the L1 cache while every row uses them.
+    private unsafe void MatVecRows(byte* matrix, float* blockScales, float* output, int first, int end)
+    {
+        var blocks = Blocks;
+        var rowBytes = blocks * Ptq1.BlockBytes;
+        for (var r = first; r < end; r++) output[r] = 0f;
+        fixed (float* table = _table)
         {
             for (var b = 0; b < blocks; b++)
             {
                 var tab = table + b * BlockTableFloats;
-                var blk = m + b * Ptq1.BlockBytes;
-                var scale = dw + b;
-                for (var r = 0; r < rows; r++, blk += rowBytes, scale += blocks)
-                    o[r] += *scale * BlockSum(blk, tab);
+                var blk = matrix + (long)first * rowBytes + b * Ptq1.BlockBytes;
+                var scale = blockScales + (long)first * blocks + b;
+                for (var r = first; r < end; r++, blk += rowBytes, scale += blocks)
+                    output[r] += *scale * BlockSum(blk, tab);
             }
+        }
+    }
+
+    // One pooled product: the rows go out in chunks taken in turn, so a slower core (a
+    // phone's little cores) simply takes fewer of them.
+    private sealed unsafe class RowsWork(Ptq1Lut lut) : WorkerPool.IWork
+    {
+        private byte* _matrix;
+        private float* _scales;
+        private float* _output;
+        private int _count;
+        private int _chunk;
+        private int _next;
+
+        public void Set(byte* matrix, float* scales, float* output, int count, int chunk)
+        {
+            _matrix = matrix;
+            _scales = scales;
+            _output = output;
+            _count = count;
+            _chunk = chunk;
+            _next = 0;
+        }
+
+        public void Clear()
+        {
+            _matrix = null;
+            _scales = null;
+            _output = null;
+        }
+
+        public void Execute(int worker, int workers)
+        {
+            long first;
+            while ((first = (long)(Interlocked.Increment(ref _next) - 1) * _chunk) < _count)
+                lut.MatVecRows(_matrix, _scales, _output, (int)first, (int)Math.Min(_count, first + _chunk));
         }
     }
 
