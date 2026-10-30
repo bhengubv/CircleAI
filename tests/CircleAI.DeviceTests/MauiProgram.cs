@@ -17,6 +17,7 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        StartKernelBench();
         var builder = MauiApp.CreateBuilder();
 
         builder.UseVisualTestRunner(conf => conf
@@ -30,4 +31,30 @@ public static class MauiProgram
 
         return builder.Build();
     }
+
+    /// <summary>
+    /// THE C# ENGINE'S KERNELS ARE TIMED ON EVERY LAUNCH (S0.2), on a thread of their
+    /// own, and logged under CircleAI.Bench. A phone runs .NET on Mono, which accelerates
+    /// only part of the vector API and runs the rest as plain code without a word, so
+    /// which kernel path is fastest is a measurement, not a reading of IsSupported.
+    /// It takes a few seconds and finishes before anybody can start a test run.
+    /// </summary>
+    /// <remarks>
+    /// Started here rather than from an Application.OnCreate override: a new override
+    /// needs a JNI registration that a Debug build did not make, and the app died on
+    /// launch with UnsatisfiedLinkError (n_onCreate).
+    /// </remarks>
+    private static void StartKernelBench() =>
+        new Thread(() =>
+        {
+            try
+            {
+                foreach (var line in CircleAI.Inference.Managed.Kernels.KernelBench.Report())
+                    global::Android.Util.Log.Info("CircleAI.Bench", line);
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Error("CircleAI.Bench", ex.ToString());
+            }
+        }) { IsBackground = true, Name = "kernel-bench" }.Start();
 }
